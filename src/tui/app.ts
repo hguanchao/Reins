@@ -1,0 +1,893 @@
+import { emitKeypressEvents } from 'node:readline';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { createAgentRuntime, type AgentRuntime } from '../agent/run.ts';
+import { findModelTarget, loadCatalogFile, resolveModel, resolveProvider } from '../catalog/load.ts';
+import type { Catalog } from '../catalog/schema.ts';
+import {
+  CHAT_COMMANDS,
+  CHAT_HELP_TEXT,
+  parseChatCommand,
+} from '../cli/commands/chat-commands.ts';
+import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../cli/commands/sessions.ts';
+import { ensureHomeConfig } from '../config/ensure.ts';
+import { loadLayeredConfig } from '../config/layers.ts';
+import type { Config } from '../config/schema.ts';
+import type { ToolCall, Usage } from '../llm/types.ts';
+import type { Approver } from '../permissions/approval.ts';
+import type { Decision } from '../permissions/engine.ts';
+import type { RuleTarget } from '../permissions/rules.ts';
+import type { AgentUi } from '../ui/printer.ts';
+import { describeError } from '../util/errors.ts';
+import { absolutize, reinsHome } from '../util/paths.ts';
+import type { CommandIo, ParsedArgs } from '../cli/args.ts';
+import { formatElapsed, renderBlock, summarizeToolArgs, type NoticeLevel, type ScrollBlock } from './blocks.ts';
+import { InputEditor } from './editor.ts';
+import { mapKeypress, type RawKey, type TuiKey } from './keys.ts';
+import { codePointWidth, truncateAnsi, truncatePlain, visibleWidth } from './layout.ts';
+import { Terminal } from './screen.ts';
+import { paint, symbols } from './theme.ts';
+
+/**
+ * TUI 应用:三区域(header / main / footer)全屏交互。
+ *
+ * 设计意图:事件驱动——按键事件与代理事件都只更新状态并标脏,
+ * 渲染器按帧差分输出;纯文本模式保留在 chat --plain。
+ */
+
+const TICK_MS = 250;
+const RENDER_DEBOUNCE_MS = 16;
+const MAX_INPUT_LINES = 4;
+const MIN_COLS = 40;
+const MIN_ROWS = 12;
+
+export interface TuiAppOptions {
+  home: string;
+  workspace: string;
+  resumeFile?: string;
+}
+
+/** 组装并启动 TUI 会话;返回进程退出码。 */
+export async function startTui(args: ParsedArgs, io: CommandIo): Promise<number> {
+  const home = reinsHome();
+  const workspace =
+    typeof args.flags['workspace'] === 'string'
+      ? absolutize(args.flags['workspace'])
+      : process.cwd();
+
+  const ensured = await ensureHomeConfig(home);
+  if (ensured.created.length > 0) {
+    io.err(`已创建默认配置:${ensured.created.join('、')}`);
+    io.err('提示:请编辑 providers.json 填入你的端点与密钥。');
+  }
+
+  let resumeFile: string | undefined;
+  try {
+    const flag = args.flags['resume'];
+    if (flag !== undefined) {
+      resumeFile =
+        flag === true || flag === ''
+          ? await latestSessionFile(home)
+          : await resolveSessionFile(home, String(flag));
+      if (resumeFile === undefined) {
+        io.err('未找到可恢复的会话,将开始新会话。');
+      }
+    }
+  } catch (error) {
+    io.err(`警告:${describeError(error)}`);
+  }
+
+  const app = new TuiApp({ home, workspace, resumeFile });
+  return await app.start();
+}
+
+export class TuiApp implements AgentUi {
+  private readonly options: TuiAppOptions;
+  private readonly terminal: Terminal;
+  private readonly editor = new InputEditor(CHAT_COMMANDS);
+  private readonly blocks: ScrollBlock[] = [];
+  private readonly toolStartTimes = new Map<ScrollBlock, number>();
+  private readonly alwaysAllow = new Set<string>();
+
+  private runtime: AgentRuntime | undefined;
+  private catalog: Catalog | undefined;
+  private currentConfig: Config | undefined;
+  private contextWindow = 200_000;
+  private contextTokens: number | undefined;
+
+  private running = false;
+  private runController: AbortController | undefined;
+  private runStartedAt = 0;
+  private spinnerIndex = 0;
+
+  private scrollTop = 0;
+  private follow = true;
+  private lastMainHeight = 1;
+  private lastMaxTop = 0;
+
+  private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
+  private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
+
+  private renderTimer: NodeJS.Timeout | undefined;
+  private ticker: NodeJS.Timeout | undefined;
+  private keypressHandler: ((str: string | undefined, key: RawKey | undefined) => void) | undefined;
+  private exiting = false;
+  private closed: (() => void) | undefined;
+
+  constructor(options: TuiAppOptions) {
+    this.options = options;
+    this.terminal = new Terminal(process.stdout, process.stdin);
+  }
+
+  async start(): Promise<number> {
+    this.terminal.enter();
+    emitKeypressEvents(process.stdin);
+    this.keypressHandler = (str, key) => this.handleKey(mapKeypress(str, key));
+    process.stdin.on('keypress', this.keypressHandler);
+    process.stdout.on('resize', this.onResize);
+
+    this.push({ kind: 'welcome' });
+    try {
+      await this.startup();
+    } catch (error) {
+      this.pushNotice(`配置未就绪:${describeError(error)}(修复后可输入任务重试)`, 'warn');
+    }
+
+    this.ticker = setInterval(() => {
+      if (this.running) {
+        this.spinnerIndex += 1;
+        this.scheduleRender();
+      }
+    }, TICK_MS);
+    this.scheduleRender();
+
+    await new Promise<void>((resolve) => {
+      this.closed = resolve;
+    });
+
+    // 退出清理:先停定时器,再恢复终端,最后关闭运行时
+    if (this.ticker !== undefined) {
+      clearInterval(this.ticker);
+    }
+    if (this.renderTimer !== undefined) {
+      clearTimeout(this.renderTimer);
+    }
+    process.stdout.off('resize', this.onResize);
+    if (this.keypressHandler !== undefined) {
+      process.stdin.off('keypress', this.keypressHandler);
+    }
+    this.terminal.leave();
+    await this.runtime?.close().catch(() => undefined);
+    return 0;
+  }
+
+  // —— AgentUi 事件(由代理循环驱动) ——
+
+  onAssistantText(text: string): void {
+    const last = this.blocks[this.blocks.length - 1];
+    if (last !== undefined && last.kind === 'assistant' && last.streaming) {
+      last.text += text;
+    } else {
+      this.blocks.push({ kind: 'assistant', text, streaming: true });
+    }
+    this.scheduleRender();
+  }
+
+  onToolCall(call: ToolCall): void {
+    const block: ScrollBlock = {
+      kind: 'tool',
+      name: call.name,
+      summary: summarizeToolArgs(call.arguments),
+      state: 'running',
+    };
+    this.blocks.push(block);
+    this.toolStartTimes.set(block, Date.now());
+    this.scheduleRender();
+  }
+
+  onToolResult(name: string, content: string, isError: boolean): void {
+    const block = this.blocks.find(
+      (item) => item.kind === 'tool' && item.state === 'running' && item.name === name,
+    );
+    if (block === undefined || block.kind !== 'tool') {
+      return;
+    }
+    const started = this.toolStartTimes.get(block);
+    block.state = isError ? 'fail' : 'ok';
+    block.elapsedMs = started !== undefined ? Date.now() - started : undefined;
+    if (isError) {
+      block.detail = (content.split('\n')[0] ?? '').trim();
+    }
+    this.toolStartTimes.delete(block);
+    this.scheduleRender();
+  }
+
+  onNotice(message: string): void {
+    this.pushNotice(message, 'info');
+  }
+
+  onUsage(usage: Usage): void {
+    this.contextTokens = usage.inputTokens;
+    this.scheduleRender();
+  }
+
+  // —— 按键分发 ——
+
+  private handleKey(key: TuiKey): void {
+    if (this.exiting) {
+      return;
+    }
+    if (this.approvalCard !== undefined) {
+      this.handleApprovalKey(key);
+      this.scheduleRender();
+      return;
+    }
+    switch (key.type) {
+      case 'ctrl-c':
+        if (this.running) {
+          this.interrupt();
+        } else if (!this.editor.isEmpty) {
+          this.editor.clear();
+        } else {
+          this.requestExit();
+        }
+        break;
+      case 'escape':
+        if (this.running) {
+          this.interrupt();
+        } else if (!this.editor.isEmpty) {
+          this.editor.clear();
+        }
+        break;
+      case 'ctrl-d':
+        if (!this.running && this.editor.isEmpty) {
+          this.requestExit();
+        }
+        break;
+      case 'enter':
+        void this.submit();
+        break;
+      case 'ctrl-j':
+        this.editor.insertNewline();
+        break;
+      case 'tab':
+        this.editor.applyCompletion();
+        break;
+      case 'text':
+        this.editor.insert(key.text);
+        break;
+      case 'backspace':
+        this.editor.backspace();
+        break;
+      case 'delete':
+        this.editor.deleteForward();
+        break;
+      case 'left':
+        this.editor.moveLeft();
+        break;
+      case 'right':
+        this.editor.moveRight();
+        break;
+      case 'home':
+        this.editor.moveHome();
+        break;
+      case 'end':
+        if (!this.follow) {
+          this.follow = true;
+        } else {
+          this.editor.moveEnd();
+        }
+        break;
+      case 'up':
+        this.editor.moveUp();
+        break;
+      case 'down':
+        this.editor.moveDown();
+        break;
+      case 'pageup':
+        this.pageUp();
+        break;
+      case 'pagedown':
+        this.pageDown();
+        break;
+      case 'ctrl-u':
+        this.editor.clear();
+        break;
+      case 'ctrl-w':
+        this.editor.deleteWordBackward();
+        break;
+      default:
+        break;
+    }
+    this.scheduleRender();
+  }
+
+  private interrupt(): void {
+    this.runController?.abort();
+    this.pushNotice('中断中…', 'warn');
+  }
+
+  private pageUp(): void {
+    const page = Math.max(1, this.lastMainHeight - 1);
+    this.follow = false;
+    this.scrollTop = Math.max(0, this.scrollTop - page);
+  }
+
+  private pageDown(): void {
+    const page = Math.max(1, this.lastMainHeight - 1);
+    const target = this.scrollTop + page;
+    if (target >= this.lastMaxTop) {
+      this.follow = true;
+    } else {
+      this.scrollTop = target;
+    }
+  }
+
+  // —— 提交与命令 ——
+
+  private async submit(): Promise<void> {
+    if (this.running) {
+      return;
+    }
+    if (this.editor.completionState !== null) {
+      this.editor.applyCompletion();
+    }
+    const text = this.editor.submit();
+    if (text.trim() === '') {
+      this.scheduleRender();
+      return;
+    }
+    this.scheduleRender();
+    const command = parseChatCommand(text);
+    switch (command.type) {
+      case 'exit':
+        this.requestExit();
+        return;
+      case 'empty':
+        return;
+      case 'help':
+        this.pushNotice(CHAT_HELP_TEXT, 'info');
+        break;
+      case 'session':
+        this.pushNotice(
+          this.runtime !== undefined ? `会话文件:${this.runtime.session.path}` : '(暂无会话)',
+          'info',
+        );
+        break;
+      case 'status':
+        this.printStatus();
+        break;
+      case 'mcp':
+        this.printMcp();
+        break;
+      case 'new':
+        await this.commandNew();
+        break;
+      case 'compact':
+        await this.commandCompact();
+        break;
+      case 'model':
+        await this.commandModel(command.target);
+        break;
+      case 'resume':
+        await this.commandResume(command.id);
+        break;
+      case 'prompt':
+        await this.runPrompt(command.text);
+        break;
+    }
+  }
+
+  private printStatus(): void {
+    if (this.runtime === undefined || this.currentConfig === undefined) {
+      this.pushNotice('(尚未就绪:配置未加载)', 'warn');
+      return;
+    }
+    const entries = this.runtime.session.activeBranch().length;
+    const mcp =
+      this.runtime.mcp.length === 0
+        ? '未配置'
+        : this.runtime.mcp
+            .map((status) => `${status.name}(${status.ok ? `${status.toolCount ?? 0} 工具` : '未连接'})`)
+            .join('、');
+    this.pushNotice(
+      [
+        `会话   ${this.runtime.session.id} · ${entries} 条记录`,
+        `模型   ${this.currentConfig.provider}/${this.currentConfig.model}`,
+        `工作区 ${this.options.workspace}`,
+        `审批   ${this.currentConfig.approval} · 沙箱 ${this.currentConfig.sandbox}`,
+        `MCP    ${mcp}`,
+        `文件   ${this.runtime.session.path}`,
+      ].join('\n'),
+      'info',
+    );
+  }
+
+  private printMcp(): void {
+    if (this.runtime === undefined) {
+      this.pushNotice('(尚未就绪)', 'warn');
+      return;
+    }
+    if (this.runtime.mcp.length === 0) {
+      this.pushNotice('未配置 MCP 服务器(见 config.toml 的 [mcp_servers])。', 'info');
+      return;
+    }
+    for (const status of this.runtime.mcp) {
+      this.pushNotice(
+        status.ok ? `${status.name} · ${status.toolCount ?? 0} 个工具` : `${status.name} · ${status.error ?? '未知原因'}`,
+        status.ok ? 'info' : 'warn',
+      );
+    }
+  }
+
+  private async commandNew(): Promise<void> {
+    try {
+      await this.rebuild({ freshSession: true });
+      this.pushNotice(`已开始新会话:${this.runtime?.session.id ?? ''}`, 'info');
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
+    }
+  }
+
+  private async commandCompact(): Promise<void> {
+    try {
+      const runtime = await this.ensureRuntime();
+      const done = await runtime.agent.compact();
+      if (!done) {
+        this.pushNotice('当前没有可压缩的内容。', 'info');
+      }
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
+    }
+  }
+
+  private async commandModel(target: string | undefined): Promise<void> {
+    if (this.catalog === undefined) {
+      this.pushNotice('(尚未就绪:产商目录未加载)', 'warn');
+      return;
+    }
+    if (target === undefined) {
+      for (const [name, spec] of Object.entries(this.catalog.providers)) {
+        for (const model of spec.models) {
+          const current =
+            this.currentConfig?.provider === name && this.currentConfig.model === model.id;
+          this.pushNotice(`${current ? '▸ ' : '  '}${name}/${model.id}`, 'info');
+        }
+      }
+      this.pushNotice('用法:/model <provider/model-id>', 'info');
+      return;
+    }
+    const match = findModelTarget(this.catalog, target);
+    if (match.kind === 'found') {
+      try {
+        await this.rebuild({ provider: match.provider, model: match.modelId });
+        this.pushNotice(`已切换模型:${match.provider}/${match.modelId}`, 'info');
+      } catch (error) {
+        this.pushNotice(`错误:${describeError(error)}`, 'error');
+      }
+    } else if (match.kind === 'ambiguous') {
+      this.pushNotice('匹配到多个模型,请带上 provider:', 'info');
+      for (const option of match.options) {
+        this.pushNotice(`  ${option.provider}/${option.modelId}`, 'info');
+      }
+    } else {
+      this.pushNotice(`未找到模型:${target}(用 /model 查看可选)`, 'warn');
+    }
+  }
+
+  private async commandResume(id: string | undefined): Promise<void> {
+    if (id === undefined) {
+      const summaries = await listSessionSummaries(this.options.home);
+      if (summaries.length === 0) {
+        this.pushNotice('还没有任何会话。', 'info');
+      }
+      for (const summary of summaries.slice(0, 10)) {
+        this.pushNotice(
+          `${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`,
+          'info',
+        );
+      }
+      this.pushNotice('用法:/resume <会话 id>(或 reins resume 恢复最近一次)', 'info');
+      return;
+    }
+    try {
+      await this.rebuild({ sessionFile: await resolveSessionFile(this.options.home, id) });
+      this.pushNotice(`已恢复会话:${this.runtime?.session.id ?? ''}`, 'info');
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
+    }
+  }
+
+  private async runPrompt(text: string): Promise<void> {
+    if (this.running) {
+      return;
+    }
+    this.push({ kind: 'user', text });
+    this.running = true;
+    this.runStartedAt = Date.now();
+    this.follow = true;
+    const controller = new AbortController();
+    this.runController = controller;
+    this.scheduleRender();
+    try {
+      const runtime = await this.ensureRuntime();
+      await runtime.agent.run(text, { signal: controller.signal });
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        this.pushNotice(`错误:${describeError(error)}`, 'error');
+        this.pushNotice('(修复配置后直接输入任务即可重试)', 'info');
+      }
+    } finally {
+      this.running = false;
+      this.runController = undefined;
+      this.markRunStopped(controller.signal.aborted);
+      this.scheduleRender();
+    }
+  }
+
+  // —— 运行时装配 ——
+
+  private async startup(): Promise<void> {
+    const layered = await loadLayeredConfig({ home: this.options.home, cwd: this.options.workspace });
+    this.currentConfig = layered.config;
+    this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
+    this.runtime = await createAgentRuntime({
+      config: this.currentConfig,
+      catalog: this.catalog,
+      workspace: this.options.workspace,
+      home: this.options.home,
+      ui: this,
+      sessionFile: this.options.resumeFile,
+      approval: { approver: this.approver },
+    });
+    this.options.resumeFile = undefined;
+    this.updateContextWindow();
+  }
+
+  private async rebuild(options: {
+    provider?: string;
+    model?: string;
+    sessionFile?: string;
+    freshSession?: boolean;
+  }): Promise<void> {
+    const layered = await loadLayeredConfig({ home: this.options.home, cwd: this.options.workspace });
+    this.currentConfig = {
+      ...layered.config,
+      ...(options.provider !== undefined ? { provider: options.provider } : {}),
+      ...(options.model !== undefined ? { model: options.model } : {}),
+    };
+    this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
+    const sessionFile =
+      options.freshSession === true ? undefined : (options.sessionFile ?? this.runtime?.session.path);
+    await this.runtime?.close();
+    this.runtime = undefined;
+    this.runtime = await createAgentRuntime({
+      config: this.currentConfig,
+      catalog: this.catalog,
+      workspace: this.options.workspace,
+      home: this.options.home,
+      ui: this,
+      sessionFile,
+      approval: { approver: this.approver },
+    });
+    this.updateContextWindow();
+  }
+
+  private async ensureRuntime(): Promise<AgentRuntime> {
+    if (this.runtime !== undefined) {
+      return this.runtime;
+    }
+    await this.startup();
+    if (this.runtime === undefined) {
+      throw new Error('运行时未就绪');
+    }
+    return this.runtime;
+  }
+
+  private updateContextWindow(): void {
+    try {
+      if (this.catalog === undefined || this.currentConfig === undefined) {
+        return;
+      }
+      const provider = resolveProvider(this.catalog, this.currentConfig.provider);
+      const model = resolveModel(provider, this.currentConfig.provider, this.currentConfig.model);
+      this.contextWindow = model.contextWindow ?? this.currentConfig.contextWindow ?? 200_000;
+    } catch {
+      this.contextWindow = 200_000;
+    }
+  }
+
+  private readonly approver: Approver = {
+    ask: (target, decision) => this.askApproval(target, decision),
+  };
+
+  private askApproval(target: RuleTarget, decision: Decision): Promise<'allow' | 'deny'> {
+    const key = this.approvalKey(target, decision);
+    if (this.alwaysAllow.has(key)) {
+      return Promise.resolve('allow');
+    }
+    this.approvalCard = { target, decision };
+    this.scheduleRender();
+    return new Promise<'allow' | 'deny'>((resolve) => {
+      this.approvalResolve = resolve;
+    });
+  }
+
+  private handleApprovalKey(key: TuiKey): void {
+    if (this.approvalCard === undefined || this.approvalResolve === undefined) {
+      return;
+    }
+    let verdict: 'allow' | 'deny' | undefined;
+    if (key.type === 'text' && ['y', 'a', 'n'].includes(key.text.toLowerCase())) {
+      const choice = key.text.toLowerCase();
+      verdict = choice === 'n' ? 'deny' : 'allow';
+      if (choice === 'a') {
+        this.alwaysAllow.add(this.approvalKey(this.approvalCard.target, this.approvalCard.decision));
+      }
+    } else if (key.type === 'escape' || key.type === 'ctrl-c') {
+      verdict = 'deny';
+    }
+    if (verdict === undefined) {
+      return;
+    }
+    const resolve = this.approvalResolve;
+    this.approvalCard = undefined;
+    this.approvalResolve = undefined;
+    resolve(verdict);
+  }
+
+  private approvalKey(target: RuleTarget, decision: Decision): string {
+    return decision.rule ?? `${target.tool}:${target.command ?? target.path ?? target.server ?? ''}`;
+  }
+
+  // —— 渲染 ——
+
+  private scheduleRender(): void {
+    if (this.exiting || this.renderTimer !== undefined) {
+      return;
+    }
+    this.renderTimer = setTimeout(() => {
+      this.renderTimer = undefined;
+      this.render();
+    }, RENDER_DEBOUNCE_MS);
+  }
+
+  private readonly onResize = (): void => {
+    this.terminal.invalidate();
+    this.scheduleRender();
+  };
+
+  private render(): void {
+    const cols = this.terminal.columns;
+    const rows = this.terminal.rows;
+    if (cols < MIN_COLS || rows < MIN_ROWS) {
+      this.terminal.render([truncatePlain(`窗口太小,请调整终端尺寸(至少 ${MIN_COLS}×${MIN_ROWS})`, cols)], null);
+      return;
+    }
+    const header = this.renderHeader(cols);
+    const separator = paint.gray(symbols.separator.repeat(cols));
+    const footer = this.renderFooter(cols);
+    const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
+    const content = this.renderScrollbackLines(cols);
+    const maxTop = Math.max(0, content.length - mainHeight);
+    if (this.follow) {
+      this.scrollTop = maxTop;
+    }
+    const top = Math.min(this.scrollTop, maxTop);
+    this.scrollTop = top;
+    this.lastMainHeight = mainHeight;
+    this.lastMaxTop = maxTop;
+    const main = content.slice(top, top + mainHeight);
+    while (main.length < mainHeight) {
+      main.push('');
+    }
+    const lines = [header, separator, ...main, separator, ...footer.lines];
+    const cursor =
+      footer.cursor === undefined
+        ? null
+        : { row: 3 + mainHeight + footer.cursor.line, col: footer.cursor.column };
+    this.terminal.render(lines, cursor);
+  }
+
+  private renderScrollbackLines(width: number): string[] {
+    const spinner = symbols.spinner[this.spinnerIndex % symbols.spinner.length] as string;
+    const lines: string[] = [];
+    for (const block of this.blocks) {
+      if (lines.length > 0) {
+        lines.push('');
+      }
+      lines.push(...renderBlock(block, width, { spinner }));
+    }
+    return lines;
+  }
+
+  private renderHeader(width: number): string {
+    const modelText = this.currentConfig
+      ? `${this.currentConfig.provider}/${this.currentConfig.model}`
+      : '未配置';
+    const left = `${paint.cyanBold('Reins')} ${paint.gray('·')} ${modelText} ${paint.gray('·')} ${shortenPath(this.options.workspace)} ${paint.gray('·')} ${this.sessionLabel()}`;
+    const rightParts: string[] = [];
+    if (this.running) {
+      rightParts.push(
+        `${paint.amber(this.currentSpinner())} ${paint.gray(formatElapsed(Date.now() - this.runStartedAt))}`,
+      );
+    }
+    if (this.contextTokens !== undefined && this.contextTokens > 0) {
+      const percent = Math.min(999, Math.round((this.contextTokens / this.contextWindow) * 100));
+      rightParts.push(percent >= 80 ? paint.amber(`${percent}% ctx`) : paint.gray(`${percent}% ctx`));
+    }
+    if (this.currentConfig !== undefined) {
+      rightParts.push(paint.gray(this.currentConfig.approval));
+    }
+    if (this.runtime !== undefined && this.runtime.mcp.length > 0) {
+      rightParts.push(paint.gray(`MCP ${this.runtime.mcp.length}`));
+    }
+    const right = rightParts.join(paint.gray(' · '));
+    if (right === '') {
+      return truncateAnsi(left, width);
+    }
+    if (visibleWidth(left) + visibleWidth(right) + 1 <= width) {
+      const gap = width - visibleWidth(left) - visibleWidth(right);
+      return `${left}${' '.repeat(Math.max(1, gap))}${right}`;
+    }
+    const allowLeft = Math.max(0, width - visibleWidth(right) - 2);
+    return `${truncateAnsi(left, allowLeft)} ${right}`;
+  }
+
+  private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
+    if (this.approvalCard !== undefined) {
+      const { target, decision } = this.approvalCard;
+      const what = target.command ?? target.path ?? target.server ?? target.domain ?? '';
+      const lines = [
+        paint.amber(`  ${symbols.warn} 审批请求`),
+        `    ${paint.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
+        paint.gray(`    触发规则:${decision.rule ?? decision.reason}`),
+        `    ${paint.green('[y] 允许')}   ${paint.green('[a] 本会话总是允许')}   ${paint.red('[n] 拒绝')}`,
+        paint.gray('  y/a/n 选择 · Esc 拒绝'),
+      ];
+      return { lines };
+    }
+
+    const lines: string[] = [];
+    const completion = this.editor.completionState;
+    if (completion !== null) {
+      for (let index = 0; index < completion.items.length; index += 1) {
+        const item = completion.items[index] as string;
+        lines.push(index === completion.index ? `  ${paint.cyan(`▸ ${item}`)}` : `    ${paint.gray(item)}`);
+      }
+    }
+    const dropdownLines = lines.length;
+
+    const input = this.renderInputLines(width);
+    lines.push(...input.lines);
+    lines.push(this.renderHints(width));
+    return {
+      lines,
+      cursor: { line: dropdownLines + input.cursorLine, column: input.cursorColumn },
+    };
+  }
+
+  private renderInputLines(width: number): {
+    lines: string[];
+    cursorLine: number;
+    cursorColumn: number;
+  } {
+    const text = this.editor.text;
+    const { line: cursorLineRaw, column: cursorColumnRaw } = this.editor.cursorLineColumn();
+    const rawLines = text.split('\n');
+    let windowStart = 0;
+    if (rawLines.length > MAX_INPUT_LINES) {
+      windowStart = Math.min(
+        Math.max(0, cursorLineRaw - (MAX_INPUT_LINES - 1)),
+        rawLines.length - MAX_INPUT_LINES,
+      );
+    }
+    const visible = rawLines.slice(windowStart, windowStart + MAX_INPUT_LINES);
+    const available = Math.max(4, width - 4);
+    const lines: string[] = [];
+    let cursorLine = 0;
+    let cursorColumn = 0;
+    visible.forEach((raw, index) => {
+      const absoluteLine = windowStart + index;
+      const isCursorLine = absoluteLine === cursorLineRaw;
+      const chars = [...raw];
+      let colStart = 0;
+      if (isCursorLine && cursorColumnRaw > available - 1) {
+        colStart = cursorColumnRaw - available + 1;
+      }
+      let shown = '';
+      let used = 0;
+      for (let charIndex = colStart; charIndex < chars.length; charIndex += 1) {
+        const charWidth = codePointWidth((chars[charIndex] as string).codePointAt(0) ?? 0);
+        if (used + charWidth > available) {
+          break;
+        }
+        shown += chars[charIndex];
+        used += charWidth;
+      }
+      const prefix = index === 0 ? paint.cyan(symbols.inputPrompt) : '  ';
+      const ellipsis = colStart > 0 ? '…' : '';
+      lines.push(`${prefix}${ellipsis}${shown}`);
+      if (isCursorLine) {
+        cursorLine = index;
+        let beforeWidth = 0;
+        for (let charIndex = colStart; charIndex < cursorColumnRaw && charIndex < chars.length; charIndex += 1) {
+          beforeWidth += codePointWidth((chars[charIndex] as string).codePointAt(0) ?? 0);
+        }
+        cursorColumn = visibleWidth(symbols.inputPrompt) + (colStart > 0 ? 1 : 0) + beforeWidth;
+      }
+    });
+    return { lines, cursorLine, cursorColumn };
+  }
+
+  private renderHints(width: number): string {
+    let text: string;
+    if (this.approvalCard !== undefined) {
+      text = 'y/a/n 选择 · Esc 拒绝';
+    } else if (this.running) {
+      text = `⏱ ${formatElapsed(Date.now() - this.runStartedAt)} · ^C/Esc 中断 · PgUp/PgDn 滚动`;
+    } else if (!this.follow) {
+      text = '⤓ End 回到底部 · PgUp/PgDn 滚动';
+    } else {
+      text = '⏎ 发送 · ^J 换行 · Tab 补全 · ↑↓ 历史 · PgUp/PgDn 滚动 · ^C 中断 · /help';
+    }
+    return paint.gray(` ${truncatePlain(text, Math.max(0, width - 2))}`);
+  }
+
+  // —— 基础工具 ——
+
+  private currentSpinner(): string {
+    return symbols.spinner[this.spinnerIndex % symbols.spinner.length] as string;
+  }
+
+  private sessionLabel(): string {
+    if (this.runtime === undefined) {
+      return '新会话';
+    }
+    return `#${this.runtime.session.id.slice(-6)}`;
+  }
+
+  private push(block: ScrollBlock): void {
+    this.blocks.push(block);
+    this.scheduleRender();
+  }
+
+  private pushNotice(text: string, level: NoticeLevel): void {
+    this.push({ kind: 'notice', text, level });
+  }
+
+  /** 运行结束(含中断)后的收尾:停掉流式光标,未完成的工具标记为已中断。 */
+  private markRunStopped(aborted: boolean): void {
+    const last = this.blocks[this.blocks.length - 1];
+    if (last !== undefined && last.kind === 'assistant') {
+      last.streaming = false;
+    }
+    if (aborted) {
+      for (const block of this.blocks) {
+        if (block.kind === 'tool' && block.state === 'running') {
+          block.state = 'fail';
+          block.detail = '已中断';
+          this.toolStartTimes.delete(block);
+        }
+      }
+    }
+  }
+
+  private requestExit(): void {
+    if (this.exiting) {
+      return;
+    }
+    this.exiting = true;
+    this.closed?.();
+  }
+}
+
+function shortenPath(path: string): string {
+  const home = homedir();
+  let text = path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+  if (visibleWidth(text) > 30) {
+    const chars = [...text];
+    text = `…${chars.slice(Math.max(0, chars.length - 29)).join('')}`;
+  }
+  return text;
+}

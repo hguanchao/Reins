@@ -11,139 +11,55 @@ import { formatUsage } from '../../llm/usage.ts';
 import { ConsoleUi } from '../../ui/printer.ts';
 import { describeError } from '../../util/errors.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
+import { startTui } from '../../tui/app.ts';
 import { latestSessionFile, listSessionSummaries, resolveSessionFile } from './sessions.ts';
+import {
+  CHAT_COMMANDS,
+  CHAT_HELP_TEXT,
+  completeChatInput,
+  decideInterrupt,
+  parseChatCommand,
+} from './chat-commands.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
+
+export {
+  CHAT_COMMANDS,
+  completeChatInput,
+  decideInterrupt,
+  parseChatCommand,
+} from './chat-commands.ts';
+export type { ChatCommand } from './chat-commands.ts';
 
 /**
  * chat 子命令:交互式会话。
  *
- * 设计意图:一个运行时承载多轮对话;斜杠命令与快捷键对齐主流 agent 的
- * 共同约定,降低切换成本;启动时不因配置问题退出,只警告并在输入任务时重试。
+ * 默认进入全屏 TUI;--plain 回退到纯文本模式(保留原有行为)。
  */
-
-export type ChatCommand =
-  | { type: 'exit' }
-  | { type: 'help' }
-  | { type: 'session' }
-  | { type: 'status' }
-  | { type: 'new' }
-  | { type: 'compact' }
-  | { type: 'mcp' }
-  | { type: 'model'; target: string | undefined }
-  | { type: 'resume'; id: string | undefined }
-  | { type: 'empty' }
-  | { type: 'prompt'; text: string };
-
-/** 可补全的斜杠命令集合。 */
-export const CHAT_COMMANDS: readonly string[] = [
-  '/clear',
-  '/compact',
-  '/exit',
-  '/help',
-  '/mcp',
-  '/model',
-  '/new',
-  '/quit',
-  '/resume',
-  '/session',
-  '/sessions',
-  '/status',
-];
-
-/** 解析一行输入:斜杠命令或普通任务文本(未知斜杠按普通文本处理)。 */
-export function parseChatCommand(input: string): ChatCommand {
-  const trimmed = input.trim();
-  if (trimmed === '') {
-    return { type: 'empty' };
-  }
-  if (!trimmed.startsWith('/')) {
-    return { type: 'prompt', text: trimmed };
-  }
-  const [name, ...rest] = trimmed.slice(1).split(/\s+/);
-  const arg = rest.join(' ').trim() === '' ? undefined : rest.join(' ').trim();
-  switch ((name ?? '').toLowerCase()) {
-    case 'exit':
-    case 'quit':
-      return { type: 'exit' };
-    case 'help':
-    case 'hotkeys':
-      return { type: 'help' };
-    case 'session':
-      return { type: 'session' };
-    case 'status':
-      return { type: 'status' };
-    case 'new':
-    case 'clear':
-      return { type: 'new' };
-    case 'compact':
-      return { type: 'compact' };
-    case 'mcp':
-    case 'mcps':
-      return { type: 'mcp' };
-    case 'model':
-    case 'm':
-      return { type: 'model', target: arg };
-    case 'resume':
-    case 'sessions':
-      return { type: 'resume', id: arg };
-    default:
-      return { type: 'prompt', text: trimmed };
-  }
-}
-
-/** 补全斜杠命令;非斜杠输入不补全。 */
-export function completeChatInput(line: string): [string[], string] {
-  if (!line.startsWith('/') || line.includes(' ')) {
-    return [[], line];
-  }
-  const matches = CHAT_COMMANDS.filter((command) => command.startsWith(line));
-  return [matches, line];
-}
-
-/** 中断决策:运行中优先中断,空闲时先清空输入,空行再退出。 */
-export function decideInterrupt(state: { running: boolean; hasInput: boolean }): 'abort' | 'clear' | 'exit' {
-  if (state.running) {
-    return 'abort';
-  }
-  if (state.hasInput) {
-    return 'clear';
-  }
-  return 'exit';
-}
-
-const HELP_TEXT = [
-  '/help                 显示帮助',
-  '/new(/clear)          开始新会话',
-  '/model [provider/model-id]  查看或切换模型',
-  '/compact              立即压缩上下文',
-  '/status               显示会话与模型状态',
-  '/mcp(/mcps)           显示 MCP 服务器状态',
-  '/resume(/sessions) [会话 id]  恢复会话;无 id 时列出',
-  '/session              显示当前会话文件',
-  '/exit(/quit)          退出',
-  '',
-  '快捷键:↑/↓ 历史 · Tab 补全 · Ctrl+C/Esc 中断 · 空行 Ctrl+D 退出',
-].join('\n');
-
 export async function chatCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
   if (process.stdin.isTTY !== true) {
     io.err('chat 需要交互式终端;非交互场景请使用 reins run "任务"。');
     return 1;
   }
+  if (args.flags['plain'] !== true && process.stdout.isTTY === true) {
+    return await startTui(args, io);
+  }
+  return await runPlainChat(args, io);
+}
+
+/** 纯文本交互模式。 */
+async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
   const home = reinsHome();
   const workspace =
     typeof args.flags['workspace'] === 'string'
       ? absolutize(args.flags['workspace'])
       : process.cwd();
 
-  // 启动时自动补全配置文件(缺失则创建模板;已存在的不动)
   const ensured = await ensureHomeConfig(home);
   if (ensured.created.length > 0) {
     io.err(`已创建默认配置:${ensured.created.join('、')}`);
     io.err('提示:请编辑 providers.json 填入你的端点与密钥。');
   }
 
-  // 恢复目标:resume 命令或 --resume 标志
   let resumeFile: string | undefined;
   try {
     const flag = args.flags['resume'];
@@ -295,7 +211,7 @@ export async function chatCommand(args: ParsedArgs, io: CommandIo = defaultIo): 
         continue;
       }
       if (command.type === 'help') {
-        io.err(HELP_TEXT);
+        io.err(CHAT_HELP_TEXT);
         continue;
       }
       if (command.type === 'session') {
@@ -307,7 +223,12 @@ export async function chatCommand(args: ParsedArgs, io: CommandIo = defaultIo): 
           io.err('(尚未就绪:配置未加载)');
         } else {
           const entries = runtime.session.activeBranch().length;
-          const mcp = runtime.mcp.length === 0 ? '未配置' : runtime.mcp.map((s) => `${s.name}(${s.ok ? `${s.toolCount ?? 0} 工具` : '未连接'})`).join('、');
+          const mcp =
+            runtime.mcp.length === 0
+              ? '未配置'
+              : runtime.mcp
+                  .map((status) => `${status.name}(${status.ok ? `${status.toolCount ?? 0} 工具` : '未连接'})`)
+                  .join('、');
           io.err(`会话   ${runtime.session.id} · ${entries} 条记录`);
           io.err(`模型   ${currentConfig.provider}/${currentConfig.model}`);
           io.err(`工作区 ${workspace}`);
@@ -324,7 +245,11 @@ export async function chatCommand(args: ParsedArgs, io: CommandIo = defaultIo): 
           io.err('未配置 MCP 服务器(见 config.toml 的 [mcp_servers])。');
         } else {
           for (const status of runtime.mcp) {
-            io.err(status.ok ? `  ✓ ${status.name} · ${status.toolCount ?? 0} 个工具` : `  ✗ ${status.name} · ${status.error ?? '未知原因'}`);
+            io.err(
+              status.ok
+                ? `  ✓ ${status.name} · ${status.toolCount ?? 0} 个工具`
+                : `  ✗ ${status.name} · ${status.error ?? '未知原因'}`,
+            );
           }
         }
         continue;

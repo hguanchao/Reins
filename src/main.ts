@@ -20,7 +20,7 @@ const HELP = [
   '',
   '用法:',
   '  reins run "任务描述" [--workspace 目录] [--resume 会话 id]     执行一次任务(别名:exec)',
-  '  reins chat [--workspace 目录] [--resume 会话 id]              交互式会话(直接输入 reins 亦可)',
+  '  reins chat [--workspace 目录] [--resume 会话 id] [--plain]     交互式会话(默认全屏 TUI,--plain 纯文本)',
   '  reins resume [会话 id]                                        恢复会话;省略 id 恢复最近一次',
   '  reins sessions list [--limit 数量]                            列出历史会话',
   '  reins doctor [--no-network]                                   自检配置与端点连通性',
