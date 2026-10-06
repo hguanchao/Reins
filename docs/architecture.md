@@ -1,7 +1,7 @@
 # Reins 架构:模块与职责
 
-> 本文件是项目的模块职责图。行为配置的权威样例在 [config.toml](config.toml),
-> 产商目录的模板在 [providers.example.json](providers.example.json)。
+> 本文件是项目的模块职责图。行为配置的权威样例在 [config.toml](../examples/config.toml),
+> 产商目录的模板在 [providers.json](../examples/providers.json)。
 
 ## 三条原则
 
@@ -27,8 +27,8 @@
 
 ```
 reins/
-├── docs/                       # 设计文档与配置样例
-├── examples/                   # providers.json 产商配方(纯数据:deepseek/kimi/ollama/openrouter…)
+├── docs/                       # 设计文档
+├── examples/                   # config.toml 与 providers.json 样例(可复制到 ~/.reins)
 ├── tests/                      # 与 src/ 一一镜像(与 src 同级)
 ├── src/
 │   ├── main.ts                 # 进程入口,子命令路由

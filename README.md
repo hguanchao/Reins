@@ -25,8 +25,8 @@ node src/main.ts run "把 README 里的错别字修一下" --workspace .
 
 | 文件 | 职责 | 样例 |
 |---|---|---|
-| `~/.reins/config.toml` | 行为:模型选择、请求参数、权限、界面 | `docs/config.toml` |
-| `~/.reins/providers.json` | 端点:baseUrl、api、密钥、模型与定价 | `docs/providers.example.json` |
+| `~/.reins/config.toml` | 行为:模型选择、请求参数、权限、界面 | `examples/config.toml` |
+| `~/.reins/providers.json` | 端点:baseUrl、api、密钥、模型与定价 | `examples/providers.json` |
 
 要点:
 
