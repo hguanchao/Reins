@@ -19,15 +19,16 @@ const HELP = [
   'Reins — 可控优先的编程智能体',
   '',
   '用法:',
-  '  reins run "任务描述" [--workspace 目录] [--resume 会话 id]     执行一次任务',
-  '  reins chat [--workspace 目录]                                 交互式会话(直接输入 reins 亦可)',
+  '  reins run "任务描述" [--workspace 目录] [--resume 会话 id]     执行一次任务(别名:exec)',
+  '  reins chat [--workspace 目录] [--resume 会话 id]              交互式会话(直接输入 reins 亦可)',
+  '  reins resume [会话 id]                                        恢复会话;省略 id 恢复最近一次',
   '  reins sessions list [--limit 数量]                            列出历史会话',
   '  reins doctor [--no-network]                                   自检配置与端点连通性',
   '  reins config check|show                                       校验 / 展示解析后的配置',
   '  reins models list [--provider 名称]                           列出产商与模型',
   '  reins init [--force]                                          交互式初始化配置',
-  '  reins help                                                    显示帮助',
-  '  reins version                                                 显示版本',
+  '  reins help / -h / --help                                      显示帮助',
+  '  reins version / -v / --version                                显示版本',
   '',
   '环境变量:',
   '  REINS_HOME   覆盖配置目录(默认 ~/.reins)',
@@ -35,13 +36,26 @@ const HELP = [
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.flags['v'] === true || args.flags['version'] === true) {
+    console.log('reins 0.0.1');
+    return;
+  }
+  if (args.flags['h'] === true || args.flags['help'] === true) {
+    console.log(HELP);
+    return;
+  }
   let code = 0;
   try {
     switch (args.command) {
       case 'run':
+      case 'exec':
         code = await runCommand(args);
         break;
       case 'chat':
+        code = await chatCommand(args);
+        break;
+      case 'resume':
+        args.flags['resume'] = args.positionals[0] ?? '';
         code = await chatCommand(args);
         break;
       case 'doctor':

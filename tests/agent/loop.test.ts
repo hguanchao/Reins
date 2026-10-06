@@ -335,4 +335,78 @@ describe('代理循环', () => {
       await harness.cleanup();
     }
   });
+
+  it('信号已中止时不发起模型调用', async () => {
+    const harness = await makeAgent([[text('不该到达'), done()]]);
+    try {
+      const controller = new AbortController();
+      controller.abort();
+      const result = await harness.agent.run('任务', { signal: controller.signal });
+      assert.equal(result.turns, 0);
+      assert.equal(harness.adapter.calls, 0);
+      assert.ok(
+        harness.session
+          .activeBranch()
+          .some((entry) => entry.type === 'assistant' && entry.text === '(已中断)'),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it('工具中触发中止后不再进入下一轮', async () => {
+    const controller = new AbortController();
+    const abortTool: Tool = {
+      name: 'abort-now',
+      description: '触发中止',
+      parameters: { type: 'object' },
+      permissionKind: 'bash',
+      targetOf: () => ({}),
+      execute: async () => {
+        controller.abort();
+        return { content: '已请求中止', isError: false };
+      },
+    };
+    const harness = await makeAgent(
+      [
+        [toolCall('c1', 'abort-now', {}), done('tool_calls')],
+        [text('不该到达'), done()],
+      ],
+      { extraTools: [abortTool] },
+    );
+    try {
+      const result = await harness.agent.run('任务', { signal: controller.signal });
+      assert.equal(result.turns, 1);
+      assert.equal(harness.adapter.calls, 1);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it('compact() 可强制压缩;内容过少或未配置压缩器时返回 false', async () => {
+    const harness = await makeAgent([[text('a'), done()]], {
+      compactor: async () => '摘要内容',
+    });
+    try {
+      assert.equal(await harness.agent.compact(), false);
+      await harness.session.append({ type: 'user', text: 'x1' });
+      await harness.session.append({ type: 'assistant', text: 'a1', toolCalls: [] });
+      await harness.session.append({ type: 'user', text: 'x2' });
+      assert.equal(await harness.agent.compact(), true);
+      assert.ok(harness.session.activeBranch().some((entry) => entry.type === 'summary'));
+      assert.equal(await harness.agent.compact(), false);
+    } finally {
+      await harness.cleanup();
+    }
+
+    const bare = await makeAgent([[text('a'), done()]]);
+    try {
+      await bare.session.append({ type: 'user', text: 'x1' });
+      await bare.session.append({ type: 'assistant', text: 'a1', toolCalls: [] });
+      await bare.session.append({ type: 'user', text: 'x2' });
+      assert.equal(await bare.agent.compact(), false);
+    } finally {
+      await bare.cleanup();
+    }
+  });
 });

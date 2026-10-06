@@ -52,6 +52,12 @@ export interface AgentRunResult {
   usage: Usage;
 }
 
+/** 单次运行的选项。 */
+export interface AgentRunOptions {
+  /** 外部中止信号:触发后尽快停止本次运行。 */
+  signal?: AbortSignal;
+}
+
 export class Agent {
   private readonly options: AgentOptions;
 
@@ -60,21 +66,36 @@ export class Agent {
   }
 
   /** 执行一次用户输入,直到模型不再请求工具;返回最终文本与统计。 */
-  async run(userText: string): Promise<AgentRunResult> {
+  async run(userText: string, options: AgentRunOptions = {}): Promise<AgentRunResult> {
     const { session, config, ui } = this.options;
+    const signal = options.signal;
     await session.append({ type: 'user', text: userText });
 
     let turns = 0;
     let finalText = '';
     let total: Usage = { inputTokens: 0, outputTokens: 0 };
+    let aborted = false;
 
     for (;;) {
+      if (signal?.aborted) {
+        aborted = true;
+        break;
+      }
       if (config.maxTurns !== undefined && turns >= config.maxTurns) {
         ui.onNotice(`达到模型轮数上限(${config.maxTurns}),停止`);
         break;
       }
       turns += 1;
-      const turn = await this.runModelTurn();
+      const turn = await this.runModelTurn(signal).catch((error: unknown) => {
+        if (signal?.aborted) {
+          return undefined;
+        }
+        throw error;
+      });
+      if (turn === undefined) {
+        aborted = true;
+        break;
+      }
       total = addUsage(total, turn.usage);
       if (turn.text !== '') {
         finalText = turn.text;
@@ -83,15 +104,27 @@ export class Agent {
         break;
       }
       for (const call of turn.toolCalls) {
-        await this.executeToolCall(call);
+        if (signal?.aborted) {
+          aborted = true;
+          break;
+        }
+        await this.executeToolCall(call, signal);
+      }
+      if (aborted) {
+        break;
       }
       await this.maybeCompact(turn.usage.inputTokens);
+    }
+
+    if (aborted) {
+      await session.append({ type: 'assistant', text: '(已中断)', toolCalls: [] });
+      ui.onNotice('运行已中断');
     }
 
     return { text: finalText, turns, usage: total };
   }
 
-  private async runModelTurn() {
+  private async runModelTurn(signal?: AbortSignal) {
     const { adapter, runtime, model, config, registry, session, ui, systemPrompt } = this.options;
     const turn = await collectModelTurn({
       adapter,
@@ -102,6 +135,7 @@ export class Agent {
         tools: registry.toToolSpecs(),
         maxTokens: config.maxTokens,
         reasoningEffort: config.reasoningEffort,
+        signal,
       },
       onText: (text) => ui.onAssistantText(text),
       onToolCall: (call) => ui.onToolCall(call),
@@ -149,7 +183,7 @@ export class Agent {
   }
 
   /** 执行一次工具调用:参数解析 → 策略/沙箱 → 审批 → 执行 → 落盘。 */
-  private async executeToolCall(call: ToolCall): Promise<void> {
+  private async executeToolCall(call: ToolCall, signal?: AbortSignal): Promise<void> {
     const { registry, engine, approval, spill, config, workspace, ui } = this.options;
 
     const tool = registry.get(call.name);
@@ -184,7 +218,7 @@ export class Agent {
     let content: string;
     let isError: boolean;
     try {
-      const outcome = await tool.execute(input, { workspace });
+      const outcome = await tool.execute(input, { workspace, signal });
       content = outcome.content;
       isError = outcome.isError;
     } catch (error) {
@@ -225,14 +259,23 @@ export class Agent {
     return null;
   }
 
-  /** 上下文接近窗口上限时,生成摘要并切换上下文;失败不阻断主流程。 */
+  /** 立即压缩上下文(手动触发);内容过少或压缩器不可用时返回 false。 */
+  async compact(): Promise<boolean> {
+    return await this.compactNow(true, 0);
+  }
+
+  /** 上下文接近窗口上限时触发压缩;失败不阻断主流程。 */
   private async maybeCompact(usedTokens: number): Promise<void> {
+    await this.compactNow(false, usedTokens);
+  }
+
+  private async compactNow(force: boolean, usedTokens: number): Promise<boolean> {
     const compactor = this.options.compactor;
     if (compactor === undefined) {
-      return;
+      return false;
     }
-    if (!shouldCompact(usedTokens, this.options.model.contextWindow)) {
-      return;
+    if (!force && !shouldCompact(usedTokens, this.options.model.contextWindow)) {
+      return false;
     }
     const branch = this.options.session.activeBranch();
     let lastSummary = -1;
@@ -243,16 +286,19 @@ export class Agent {
     }
     const compressible = branch.length - (lastSummary + 1);
     if (compressible < 3) {
-      return;
+      return false;
     }
     try {
       const summary = (await compactor(formatTranscript(branch))).trim();
-      if (summary !== '') {
-        await this.options.session.append({ type: 'summary', text: summary });
-        this.options.ui.onNotice('上下文已压缩为摘要');
+      if (summary === '') {
+        return false;
       }
+      await this.options.session.append({ type: 'summary', text: summary });
+      this.options.ui.onNotice('上下文已压缩为摘要');
+      return true;
     } catch (error) {
       this.options.ui.onNotice(`上下文压缩失败,继续运行:${describeError(error)}`);
+      return false;
     }
   }
 
