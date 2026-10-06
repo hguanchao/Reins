@@ -1,52 +1,29 @@
-# 端点与模型的声明在 providers.json;这里只回答「用哪个 provider 与哪个模型」。
-#
-# 快速上手:
-#   1. 在 providers.json 里把 apiKey 换成你的 key——模板里的 $OPENAI_API_KEY 是
-#      环境变量占位(设好变量即可,未设变量会拒绝启动),也可以直接写字面量;
-#      baseUrl / models 也换成你自己的(cost 示例数字仅演示格式,按厂商定价页填);
-#   2. 把下面的 provider / model 改成你声明的名字;
-#   3. 重新运行 reins。
+# Reins 行为配置(注释行 = 可选配置与取值说明)
 
-provider = "example-openai"
-model = "gpt-5.2"
+provider = "example-openai"     # providers.json 中的名称
+model = "gpt-5.2"               # provider 下的模型 id
 
-# ── 模型与请求 ────────────────────────────────────────────────────────────────
-# context_window = 256000        # 模型上下文窗口;providers.json 里模型未声明时在这里兜底
-# max_tokens = 8192              # 单次输出上限
-# reasoning_effort = "medium"    # off | low | medium | high | xhigh | max
-# max_retries = 10               # 上游失败重试次数;0 = 失败即停
-# proxy = ""                     # 出站代理 http(s);显式空串 = 强制直连
-# compact_model = "..."          # 压缩摘要专用模型(provider 内的模型 id);省略用主模型
-# review_model = "..."           # auto 审批审查器专用模型;省略用主模型
+max_retries = 10                # 上游失败重试次数,0 = 失败即停
+approval = "ask"                # ask | auto | yolo
+sandbox = "off"                 # off | workspace | read-only
+spill_threshold = 8192          # 超长工具结果落盘阈值,0 = 关闭
 
-# ── 权限与安全 ────────────────────────────────────────────────────────────────
-# approval = "ask"               # ask | auto | yolo
-# sandbox = "off"                # off | workspace | read-only
+# context_window = 256000       # 模型窗口兜底(providers.json 未声明时)
+# max_tokens = 8192             # 单次输出上限
+# reasoning_effort = "medium"   # off | low | medium | high | xhigh | max
+# proxy = ""                    # 出站代理,空串 = 强制直连
+# compact_model = ""            # 压缩摘要模型,省略 = 主模型
+# review_model = ""             # auto 审批审查模型,省略 = 主模型
+# max_turns = 20                # 模型轮数上限,省略 = 不封顶
 
-# [permissions]                  # 长期规则。跨层按 deny > ask > allow 求值,先命中先定论
-# deny = ["bash(rm *)", "read(~/.ssh/**)", "read(*.env)"]
-# ask = ["bash(git push *)", "web_fetch(domain:*.internal.example)"]
-# allow = ["bash(npm *)", "bash(git status)", "mcp(context7)"]
+[permissions]                   # deny > ask > allow,先命中先定论
+deny = []                       # 例:["bash(rm *)", "read(*.env)"]
+ask = []                        # 例:["bash(git push *)"]
+allow = []                      # 例:["bash(git status)"]
 
-# ── 用量与预算 ────────────────────────────────────────────────────────────────
-# max_turns = 20                 # 子代理的模型调用上限;省略时子代理默认 20 步,根会话不封顶
-# spill_threshold = 8192         # 工具结果超过这个字符数落盘,上下文只留预览;0 = 关闭
+[ui]
+notify = "auto"                 # auto | bell | desktop | off
 
-# ── 界面 ──────────────────────────────────────────────────────────────────────
-# [ui]                           # 界面行为;/notify 写的就是这一张表
-# notify = "auto"                # auto(响铃+桌面通知) | bell(只响铃) | desktop(只桌面通知) | off
-
-# ── MCP ───────────────────────────────────────────────────────────────────────
-# 启用的 server 一律在启动时后台连接,不等谁;连不上的进 /mcps 的报错清单,不挡启动。
-#
-# [mcp_servers.context7]         # stdio 型:本地进程
+# [mcp_servers.context7]        # MCP 示例:stdio 型
 # command = "npx"
 # args = ["-y", "@upstash/context7-mcp"]
-#
-# [mcp_servers.docs]            # http 型:远程端点(type = "sse" 走旧 SSE)
-# type = "http"
-# url = "https://example.com/mcp"
-# headers = { Authorization = "Bearer $DOCS_KEY" }
-# call_timeout_ms = 120000       # 只作用于 tools/call;控制请求固定 15s
-# disabled = false               # true = 不连接(默认 false);写一条只有 disabled 的同名条目
-#                                # 即可关掉外部配置(~/.claude.json 等)里声明的 server

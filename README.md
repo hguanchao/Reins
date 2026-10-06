@@ -31,7 +31,8 @@ node src/main.ts run "把 README 里的错别字修一下" --workspace .
 要点:
 
 - 每个 provider 条目必须自包含 `baseUrl + api + models`,缺一即报错;
-- 密钥支持三种形态:`$ENV`(未设置时拒绝启动)、`!command`(请求时执行、不缓存)、字面量;
+- 密钥与请求头值支持三种形态:`$ENV`(未设置时拒绝启动)、`!command`(请求时执行、不缓存)、字面量;
+- 请求头在 provider 或模型层级配置,例:`"headers": { "X-Custom": "$CUSTOM_VAR" }`;
 - 当前已实现的协议:`openai-completions`、`openai-responses`、`anthropic-messages`、`google-generative-ai`;
 
 ## 命令
