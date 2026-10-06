@@ -1,7 +1,6 @@
 import { ReinsError } from '../../util/errors.ts';
-import { resolveProxyDispatcher } from '../proxy.ts';
-import { withRetry } from '../retry.ts';
 import { parseSseStream } from '../sse.ts';
+import { buildRequestInit, fetchWithRetry, trimBaseUrl, tryParseObject } from './shared.ts';
 import type {
   AdapterRuntime,
   ChatMessage,
@@ -29,8 +28,20 @@ export class OpenAiCompletionsAdapter implements ProviderAdapter {
 
   async *stream(request: StreamRequest, runtime: AdapterRuntime): AsyncIterable<StreamChunk> {
     const fetchImpl = runtime.fetchImpl ?? fetch;
-    const url = buildUrl(request.model.baseUrl, 'chat/completions');
-    const init = await buildInit(request, runtime);
+    const url = `${trimBaseUrl(request.model.baseUrl)}/chat/completions`;
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      ...(request.model.headers ?? {}),
+    };
+    if (request.model.apiKey !== undefined) {
+      headers['authorization'] = `Bearer ${request.model.apiKey}`;
+    }
+    const init = await buildRequestInit({
+      headers,
+      body: buildRequestBody(request),
+      signal: request.signal,
+      proxy: runtime.proxy,
+    });
     const response = await fetchWithRetry(fetchImpl, url, init, runtime);
 
     if (!response.ok || response.body === null) {
@@ -50,7 +61,7 @@ export class OpenAiCompletionsAdapter implements ProviderAdapter {
       if (event.data === '[DONE]') {
         break;
       }
-      const payload = tryParse(event.data);
+      const payload = tryParseObject(event.data);
       if (payload === undefined) {
         continue;
       }
@@ -127,59 +138,6 @@ function* handleDelta(
   }
 }
 
-async function buildInit(
-  request: StreamRequest,
-  runtime: AdapterRuntime,
-): Promise<RequestInit & { dispatcher?: unknown }> {
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    ...(request.model.headers ?? {}),
-  };
-  if (request.model.apiKey !== undefined) {
-    headers['authorization'] = `Bearer ${request.model.apiKey}`;
-  }
-  const init: RequestInit & { dispatcher?: unknown } = {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(buildRequestBody(request)),
-    signal: request.signal,
-  };
-  const dispatcher = await resolveProxyDispatcher(runtime.proxy);
-  if (dispatcher !== undefined) {
-    // 代理 dispatcher 运行时透传;Node 的 RequestInit 已带同名声明
-    (init as { dispatcher?: unknown }).dispatcher = dispatcher;
-  }
-  return init;
-}
-
-async function fetchWithRetry(
-  fetchImpl: typeof fetch,
-  url: string,
-  init: RequestInit,
-  runtime: AdapterRuntime,
-): Promise<Response> {
-  try {
-    return await withRetry(
-      async () => {
-        const response = await fetchImpl(url, init);
-        if (response.status >= 500 || response.status === 429) {
-          throw new Error(`上游返回 HTTP ${response.status}`);
-        }
-        return response;
-      },
-      {
-        // max_retries 表示首次失败后的重试次数,0 = 失败即停
-        attempts: Math.max(1, runtime.maxRetries + 1),
-        retriable: (error: unknown) => (error as { name?: string })?.name !== 'AbortError',
-        sleep: runtime.sleep,
-      },
-    );
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new ReinsError('llm', `模型请求失败:${detail}`, '检查网络与 baseUrl,或调大 max_retries。');
-  }
-}
-
 function buildRequestBody(request: StreamRequest): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: request.model.id,
@@ -241,20 +199,4 @@ function mapUsage(raw: Record<string, unknown>): Usage {
     outputTokens: number(raw['completion_tokens']),
     cacheReadTokens: typeof cached === 'number' ? cached : undefined,
   };
-}
-
-function tryParse(text: string): Record<string, unknown> | undefined {
-  try {
-    const value = JSON.parse(text) as unknown;
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function buildUrl(baseUrl: string, suffix: string): string {
-  return `${baseUrl.replace(/\/+$/, '')}/${suffix}`;
 }
