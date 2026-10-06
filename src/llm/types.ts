@@ -75,6 +75,8 @@ export interface AdapterRuntime {
   maxRetries: number;
   proxy?: string;
   fetchImpl?: typeof fetch;
+  /** 重试等待实现;默认真实计时,测试可注入空实现。 */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export interface ProviderAdapter {
