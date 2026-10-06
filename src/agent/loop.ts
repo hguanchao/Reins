@@ -140,6 +140,7 @@ export class Agent {
       onText: (text) => ui.onAssistantText(text),
       onToolCall: (call) => ui.onToolCall(call),
     });
+    ui.onUsage?.(turn.usage);
     await session.append({
       type: 'assistant',
       text: turn.text,

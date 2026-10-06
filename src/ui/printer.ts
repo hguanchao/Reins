@@ -1,4 +1,4 @@
-import type { ToolCall } from '../llm/types.ts';
+import type { ToolCall, Usage } from '../llm/types.ts';
 
 /**
  * 界面呈现契约与最简实现。
@@ -12,6 +12,8 @@ export interface AgentUi {
   onToolCall(call: ToolCall): void;
   onToolResult(name: string, content: string, isError: boolean): void;
   onNotice(message: string): void;
+  /** 用量事件:每轮模型调用结束后上报,供界面展示上下文占用。 */
+  onUsage?(usage: Usage): void;
 }
 
 /** 控制台渲染:文本原样流出,工具事件折叠成单行摘要。 */
