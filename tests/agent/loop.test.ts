@@ -19,6 +19,7 @@ import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 
 class ScriptedAdapter implements ProviderAdapter {
   readonly api = 'openai-completions';
+  readonly requests: StreamRequest[] = [];
   calls = 0;
   private readonly script: StreamChunk[][];
 
@@ -26,7 +27,8 @@ class ScriptedAdapter implements ProviderAdapter {
     this.script = script;
   }
 
-  async *stream(_request: StreamRequest, _runtime: AdapterRuntime): AsyncIterable<StreamChunk> {
+  async *stream(request: StreamRequest, _runtime: AdapterRuntime): AsyncIterable<StreamChunk> {
+    this.requests.push(request);
     const chunks = this.script[this.calls] ?? [{ type: 'done', finishReason: 'stop' } as StreamChunk];
     this.calls += 1;
     for (const chunk of chunks) {
@@ -64,6 +66,7 @@ async function makeAgent(
     configRaw?: Record<string, unknown>;
     approver?: Approver;
     extraTools?: Tool[];
+    compactor?: (transcript: string) => Promise<string>;
   } = {},
 ): Promise<AgentHarness> {
   const workspace = await createTmpDir();
@@ -102,6 +105,7 @@ async function makeAgent(
     workspace,
     systemPrompt: '测试系统提示',
     runtime: { maxRetries: 0 },
+    compactor: options.compactor,
   });
   return {
     agent,
@@ -255,6 +259,40 @@ describe('代理循环', () => {
       const result = await harness.agent.run('循环任务');
       assert.equal(result.turns, 1);
       assert.equal(harness.adapter.calls, 1);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it('上下文接近上限时压缩为摘要,后续请求只带摘要', async () => {
+    const transcripts: string[] = [];
+    const harness = await makeAgent(
+      [
+        [
+          toolCall('c1', 'write', { path: 'a.txt', content: '1' }),
+          usage(8000, 5),
+          done('tool_calls'),
+        ],
+        [text('结束'), usage(10, 1), done()],
+      ],
+      {
+        compactor: async (transcript) => {
+          transcripts.push(transcript);
+          return '历史摘要内容';
+        },
+      },
+    );
+    try {
+      const result = await harness.agent.run('长任务');
+      assert.equal(result.text, '结束');
+      assert.equal(transcripts.length, 1);
+      assert.ok(transcripts[0]?.includes('长任务'));
+
+      const secondRequest = harness.adapter.requests[1];
+      assert.ok(secondRequest !== undefined);
+      assert.equal(secondRequest.messages.length, 2);
+      assert.ok(secondRequest.messages[1]?.content.includes('历史摘要内容'));
+      assert.ok(harness.session.activeBranch().some((entry) => entry.type === 'summary'));
     } finally {
       await harness.cleanup();
     }

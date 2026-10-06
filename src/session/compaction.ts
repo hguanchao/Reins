@@ -1,5 +1,7 @@
+import type { SessionEntry } from './store.ts';
+
 /**
- * 会话压缩:策略与提示词。
+ * 会话压缩:策略、格式化与提示词。
  *
  * 设计意图:长会话会把上下文窗口挤爆,压缩的产物是一条 summary 条目;
  * 原始条目保留在文件中,只是不再进入后续请求——审计不受影响。
@@ -31,4 +33,32 @@ export function buildCompactionPrompt(transcript: string): string {
     '会话记录:',
     transcript,
   ].join('\n');
+}
+
+const MAX_TRANSCRIPT_CHARS = 200_000;
+
+/** 把会话条目格式化为用于摘要的纯文本;过长时保留最近的尾部。 */
+export function formatTranscript(entries: SessionEntry[]): string {
+  const parts: string[] = [];
+  for (const entry of entries) {
+    if (entry.type === 'user') {
+      parts.push(`【用户】${entry.text}`);
+    } else if (entry.type === 'assistant') {
+      const calls =
+        entry.toolCalls.length > 0
+          ? `(工具调用:${entry.toolCalls.map((call) => call.name).join('、')})`
+          : '';
+      parts.push(`【助手】${entry.text}${calls}`);
+    } else if (entry.type === 'tool_result') {
+      const mark = entry.isError ? ',失败' : '';
+      parts.push(`【工具结果:${entry.name}${mark}】${entry.content}`);
+    } else if (entry.type === 'summary') {
+      parts.push(`【历史摘要】${entry.text}`);
+    }
+  }
+  const text = parts.join('\n\n');
+  if (text.length <= MAX_TRANSCRIPT_CHARS) {
+    return text;
+  }
+  return `…(较早内容已截断)…\n\n${text.slice(text.length - MAX_TRANSCRIPT_CHARS)}`;
 }

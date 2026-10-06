@@ -12,6 +12,7 @@ import type { ApprovalGate } from '../permissions/approval.ts';
 import type { Decision, PermissionEngine } from '../permissions/engine.ts';
 import type { RuleTarget } from '../permissions/rules.ts';
 import type { Sandbox } from '../permissions/sandbox.ts';
+import { formatTranscript, shouldCompact } from '../session/compaction.ts';
 import type { Session } from '../session/tree.ts';
 import { buildPreview, buildSpillNotice, shouldSpill } from '../spill/policy.ts';
 import type { SpillStore } from '../spill/store.ts';
@@ -41,6 +42,8 @@ export interface AgentOptions {
   workspace: string;
   systemPrompt: string;
   runtime: AdapterRuntime;
+  /** 上下文压缩器;未注入时不做压缩。 */
+  compactor?: (transcript: string) => Promise<string>;
 }
 
 export interface AgentRunResult {
@@ -82,6 +85,7 @@ export class Agent {
       for (const call of turn.toolCalls) {
         await this.executeToolCall(call);
       }
+      await this.maybeCompact(turn.usage.inputTokens);
     }
 
     return { text: finalText, turns, usage: total };
@@ -114,10 +118,18 @@ export class Agent {
     return turn;
   }
 
-  /** 把活动分支转换为模型消息;摘要以用户消息形式注入。 */
+  /** 把活动分支转换为模型消息;存在摘要时,只保留摘要及其之后的条目。 */
   private buildMessages(systemPrompt: string): ChatMessage[] {
     const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
-    for (const entry of this.options.session.activeBranch()) {
+    const branch = this.options.session.activeBranch();
+    let start = 0;
+    for (let index = branch.length - 1; index >= 0; index -= 1) {
+      if (branch[index]?.type === 'summary') {
+        start = index;
+        break;
+      }
+    }
+    for (const entry of branch.slice(start)) {
       if (entry.type === 'user') {
         messages.push({ role: 'user', content: entry.text });
       } else if (entry.type === 'assistant') {
@@ -206,6 +218,37 @@ export class Agent {
       return this.options.sandbox.checkPath('read', target.path);
     }
     return null;
+  }
+
+  /** 上下文接近窗口上限时,生成摘要并切换上下文;失败不阻断主流程。 */
+  private async maybeCompact(usedTokens: number): Promise<void> {
+    const compactor = this.options.compactor;
+    if (compactor === undefined) {
+      return;
+    }
+    if (!shouldCompact(usedTokens, this.options.model.contextWindow)) {
+      return;
+    }
+    const branch = this.options.session.activeBranch();
+    let lastSummary = -1;
+    for (let index = 0; index < branch.length; index += 1) {
+      if (branch[index]?.type === 'summary') {
+        lastSummary = index;
+      }
+    }
+    const compressible = branch.length - (lastSummary + 1);
+    if (compressible < 3) {
+      return;
+    }
+    try {
+      const summary = (await compactor(formatTranscript(branch))).trim();
+      if (summary !== '') {
+        await this.options.session.append({ type: 'summary', text: summary });
+        this.options.ui.onNotice('上下文已压缩为摘要');
+      }
+    } catch (error) {
+      this.options.ui.onNotice(`上下文压缩失败,继续运行:${describeError(error)}`);
+    }
   }
 
   private async recordToolResult(call: ToolCall, content: string, isError: boolean): Promise<void> {

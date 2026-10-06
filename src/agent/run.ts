@@ -1,6 +1,6 @@
 import { dirname, join } from 'node:path';
 import { resolveAuth, resolveModel, resolveProvider } from '../catalog/load.ts';
-import type { Catalog } from '../catalog/schema.ts';
+import type { Catalog, ModelSpec, ProviderSpec } from '../catalog/schema.ts';
 import type { Config } from '../config/schema.ts';
 import { discoverProjectDoc } from '../context/agents-md.ts';
 import { buildSystemPrompt } from '../context/system.ts';
@@ -14,7 +14,9 @@ import { SpillStore } from '../spill/store.ts';
 import { createDefaultRegistry } from '../tools/defaults.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { ConfigError } from '../util/errors.ts';
+import { createCompactor } from './compactor.ts';
 import { Agent, type AgentRunResult } from './loop.ts';
+import { createReviewer } from './reviewer.ts';
 
 /**
  * 运行时组装:把配置、目录、会话、工具与权限拼成一个可运行的代理。
@@ -74,10 +76,42 @@ export async function runTask(prompt: string, options: RunTaskOptions): Promise<
       ? await Session.resume(options.sessionFile)
       : await Session.create(join(options.home, 'sessions'), options.workspace);
 
+  const runtime: AdapterRuntime = {
+    maxRetries: options.config.maxRetries,
+    proxy: options.config.proxy,
+    fetchImpl: options.fetchImpl,
+    sleep: options.sleep,
+  };
+
   const registry = createDefaultRegistry();
   const engine = new PermissionEngine([options.config.permissions], options.config.approval);
   const sandbox = new Sandbox(options.config.sandbox, options.workspace);
-  const approval = new ApprovalGate(options.config.approval, options.approval);
+  const gateOptions: ApprovalGateOptions = { ...options.approval };
+  if (options.config.approval === 'auto' && gateOptions.reviewer === undefined) {
+    gateOptions.reviewer = createReviewer({
+      adapter,
+      runtime,
+      model: resolveNamedModel({
+        config: options.config,
+        provider,
+        providerName,
+        mainModel: model,
+        modelId: options.config.reviewModel,
+      }),
+    });
+  }
+  const approval = new ApprovalGate(options.config.approval, gateOptions);
+  const compactor = createCompactor({
+    adapter,
+    runtime,
+    model: resolveNamedModel({
+      config: options.config,
+      provider,
+      providerName,
+      mainModel: model,
+      modelId: options.config.compactModel,
+    }),
+  });
   const spill = new SpillStore(join(dirname(session.path), `${session.id}.spill`));
 
   const projectDoc = await discoverProjectDoc(options.workspace);
@@ -86,13 +120,6 @@ export async function runTask(prompt: string, options: RunTaskOptions): Promise<
     model: `${providerName}/${model.id}`,
     projectDoc,
   });
-
-  const runtime: AdapterRuntime = {
-    maxRetries: options.config.maxRetries,
-    proxy: options.config.proxy,
-    fetchImpl: options.fetchImpl,
-    sleep: options.sleep,
-  };
 
   const agent = new Agent({
     config: options.config,
@@ -108,8 +135,37 @@ export async function runTask(prompt: string, options: RunTaskOptions): Promise<
     workspace: options.workspace,
     systemPrompt,
     runtime,
+    compactor,
   });
 
   const result = await agent.run(prompt);
   return { session, result };
+}
+
+/** 解析辅助模型(审查、压缩共用):未指定或与主模型同名时复用主模型。 */
+function resolveNamedModel(params: {
+  config: Config;
+  provider: ProviderSpec;
+  providerName: string;
+  mainModel: ResolvedModel;
+  modelId: string | undefined;
+}): ResolvedModel {
+  const id = params.modelId ?? params.mainModel.id;
+  if (id === params.mainModel.id) {
+    return params.mainModel;
+  }
+  const spec = resolveModel(params.provider, params.providerName, id);
+  return {
+    provider: params.providerName,
+    id: spec.id,
+    api: params.provider.api,
+    baseUrl: params.provider.baseUrl,
+    contextWindow:
+      spec.contextWindow ?? params.config.contextWindow ?? params.mainModel.contextWindow,
+    maxTokens: spec.maxTokens,
+    reasoning: spec.reasoning,
+    cost: spec.cost,
+    headers: params.mainModel.headers,
+    apiKey: params.mainModel.apiKey,
+  };
 }
