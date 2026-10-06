@@ -10,6 +10,7 @@ import type { Catalog } from '../../catalog/schema.ts';
 import { loadLayeredConfig } from '../../config/layers.ts';
 import type { Config } from '../../config/schema.ts';
 import { supportedApis } from '../../llm/stream.ts';
+import { McpManager } from '../../mcp/servers.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
 import { describeError } from '../../util/errors.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
@@ -50,6 +51,10 @@ export async function doctorCommand(args: ParsedArgs, io: CommandIo = defaultIo)
 
   if (config !== undefined && catalog !== undefined) {
     await checkModel(config, catalog, skipNetwork, passes, issues);
+  }
+
+  if (config !== undefined && Object.keys(config.mcpServers).length > 0) {
+    await checkMcpServers(config, skipNetwork, passes, issues);
   }
 
   io.out('Reins 自检');
@@ -118,4 +123,31 @@ async function probeEndpoint(baseUrl: string, auth: ResolvedAuth): Promise<numbe
   }
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(5000) });
   return response.status;
+}
+
+/** 连接被声明的 MCP server,把状态合并进报告;--no-network 时跳过 http 型。 */
+async function checkMcpServers(
+  config: Config,
+  skipNetwork: boolean,
+  passes: string[],
+  issues: string[],
+): Promise<void> {
+  const configs = Object.fromEntries(
+    Object.entries(config.mcpServers).filter(
+      ([, server]) => !skipNetwork || server.type === undefined,
+    ),
+  );
+  const manager = new McpManager(configs);
+  try {
+    const statuses = await manager.connectAll();
+    for (const status of statuses) {
+      if (status.ok) {
+        passes.push(`MCP ${status.name}:${status.toolCount ?? 0} 个工具`);
+      } else {
+        issues.push(`MCP ${status.name} 未连接:${status.error ?? '未知原因'}`);
+      }
+    }
+  } finally {
+    await manager.close();
+  }
 }
