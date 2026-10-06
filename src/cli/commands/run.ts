@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline/promises';
 import { join } from 'node:path';
 import { loadCatalogFile, resolveModel, resolveProvider } from '../../catalog/load.ts';
+import { ensureHomeConfig } from '../../config/ensure.ts';
 import { loadLayeredConfig } from '../../config/layers.ts';
 import { formatUsage } from '../../llm/usage.ts';
 import type { Approver } from '../../permissions/approval.ts';
@@ -19,7 +20,7 @@ import { resolveSessionFile } from './sessions.ts';
 export async function runCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
   const prompt = args.positionals.join(' ').trim();
   if (prompt === '') {
-    io.err('用法:reins run "任务描述" [--workspace 目录] [--session 会话文件]');
+    io.err('用法:reins run "任务描述" [--workspace 目录] [--resume 会话 id]');
     return 1;
   }
   const home = reinsHome();
@@ -27,6 +28,15 @@ export async function runCommand(args: ParsedArgs, io: CommandIo = defaultIo): P
     typeof args.flags['workspace'] === 'string'
       ? absolutize(args.flags['workspace'])
       : process.cwd();
+
+  // 启动时自动补全配置文件;首次创建时提示编辑而不是继续执行
+  const ensured = await ensureHomeConfig(home);
+  if (ensured.created.length > 0) {
+    io.err(`已创建默认配置:${ensured.created.join('、')}`);
+    io.err('请先编辑 providers.json 填入你的端点与密钥,然后重新运行。');
+    return 1;
+  }
+
   const resume = typeof args.flags['resume'] === 'string' ? args.flags['resume'] : undefined;
   const sessionFile =
     resume !== undefined
