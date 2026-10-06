@@ -160,7 +160,7 @@ export class Agent {
 
     let target: RuleTarget;
     try {
-      target = { tool: call.name, ...tool.targetOf(input, { workspace }) };
+      target = { tool: tool.ruleToolName ?? call.name, ...tool.targetOf(input, { workspace }) };
     } catch (error) {
       await this.recordToolResult(call, `工具参数不完整:${describeError(error)}`, true);
       return;

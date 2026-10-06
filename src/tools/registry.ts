@@ -32,6 +32,8 @@ export interface Tool {
   readonly description: string;
   readonly parameters: Record<string, unknown>;
   readonly permissionKind: PermissionKind;
+  /** 规则匹配使用的工具名;默认用 name(MCP 工具统一用 "mcp")。 */
+  readonly ruleToolName?: string;
   /** 从模型输入中提取规则匹配目标(路径/命令等)。 */
   targetOf(input: Record<string, unknown>, ctx: ToolContext): ToolInvocationTarget;
   execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;

@@ -6,6 +6,8 @@ import { discoverProjectDoc } from '../context/agents-md.ts';
 import { buildSystemPrompt } from '../context/system.ts';
 import { createAdapter } from '../llm/stream.ts';
 import type { AdapterRuntime, ResolvedModel } from '../llm/types.ts';
+import { McpManager, type McpServerStatus } from '../mcp/servers.ts';
+import { registerMcpTools } from '../mcp/tools.ts';
 import { ApprovalGate, type ApprovalGateOptions } from '../permissions/approval.ts';
 import { PermissionEngine } from '../permissions/engine.ts';
 import { Sandbox } from '../permissions/sandbox.ts';
@@ -41,6 +43,8 @@ export interface RunTaskOptions {
 export interface RunTaskOutcome {
   session: Session;
   result: AgentRunResult;
+  /** MCP server 连接状态(被禁用的不出现,失败的都在这)。 */
+  mcp: McpServerStatus[];
 }
 
 export async function runTask(prompt: string, options: RunTaskOptions): Promise<RunTaskOutcome> {
@@ -84,6 +88,14 @@ export async function runTask(prompt: string, options: RunTaskOptions): Promise<
   };
 
   const registry = createDefaultRegistry();
+  const mcpManager = new McpManager(options.config.mcpServers, { fetchImpl: options.fetchImpl });
+  const mcpStatuses = await mcpManager.connectAll();
+  registerMcpTools(registry, mcpManager);
+  for (const status of mcpStatuses) {
+    if (!status.ok) {
+      options.ui.onNotice(`MCP ${status.name} 未连接:${status.error ?? '未知原因'}`);
+    }
+  }
   const engine = new PermissionEngine([options.config.permissions], options.config.approval);
   const sandbox = new Sandbox(options.config.sandbox, options.workspace);
   const gateOptions: ApprovalGateOptions = { ...options.approval };
@@ -138,8 +150,10 @@ export async function runTask(prompt: string, options: RunTaskOptions): Promise<
     compactor,
   });
 
-  const result = await agent.run(prompt);
-  return { session, result };
+  const result = await agent.run(prompt).finally(async () => {
+    await mcpManager.close().catch(() => undefined);
+  });
+  return { session, result, mcp: mcpStatuses };
 }
 
 /** 解析辅助模型(审查、压缩共用):未指定或与主模型同名时复用主模型。 */

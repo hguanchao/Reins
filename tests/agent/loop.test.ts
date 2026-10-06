@@ -297,4 +297,42 @@ describe('代理循环', () => {
       await harness.cleanup();
     }
   });
+
+  it('MCP 类工具的规则匹配使用 ruleToolName', async () => {
+    const mcpishTool: Tool = {
+      name: 'mcp__svc__ping',
+      description: '伪 MCP 工具',
+      parameters: { type: 'object' },
+      permissionKind: 'mcp',
+      ruleToolName: 'mcp',
+      targetOf: () => ({ server: 'svc' }),
+      execute: async () => ({ content: 'pong', isError: false }),
+    };
+    const harness = await makeAgent(
+      [
+        [
+          { type: 'tool_call', toolCall: { id: 'c1', name: 'mcp__svc__ping', arguments: '{}' } },
+          done('tool_calls'),
+        ],
+        [text('完成'), done()],
+      ],
+      {
+        configRaw: { approval: 'ask', permissions: { deny: [], ask: [], allow: ['mcp(svc)'] } },
+        approver: {
+          async ask() {
+            return 'deny';
+          },
+        },
+        extraTools: [mcpishTool],
+      },
+    );
+    try {
+      const result = await harness.agent.run('调用 MCP');
+      assert.equal(result.text, '完成');
+      const toolResult = harness.session.activeBranch().find(isToolResult);
+      assert.equal(toolResult?.content, 'pong');
+    } finally {
+      await harness.cleanup();
+    }
+  });
 });
