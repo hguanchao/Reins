@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { resolveSessionFile, sessionsCommand } from '../../src/cli/commands/sessions.ts';
+import { latestSessionFile, resolveSessionFile, sessionsCommand } from '../../src/cli/commands/sessions.ts';
 import { Session } from '../../src/session/tree.ts';
 import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 
@@ -66,5 +66,28 @@ describe('sessions 子命令', () => {
 
   it('路径形式原样返回', async () => {
     assert.equal(await resolveSessionFile(home, 'E:/some/file.jsonl'), 'E:/some/file.jsonl');
+  });
+
+  it('latestSessionFile 返回最近更新的会话', async () => {
+    const isolated = await createTmpDir();
+    try {
+      const first = await Session.create(join(isolated, 'sessions'), 'C:/a');
+      await first.append({ type: 'user', text: '一' });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const second = await Session.create(join(isolated, 'sessions'), 'C:/b');
+      await second.append({ type: 'user', text: '二' });
+      assert.equal(await latestSessionFile(isolated), second.path);
+    } finally {
+      await removeTmpDir(isolated);
+    }
+  });
+
+  it('latestSessionFile 在无会话时返回 undefined', async () => {
+    const isolated = await createTmpDir();
+    try {
+      assert.equal(await latestSessionFile(isolated), undefined);
+    } finally {
+      await removeTmpDir(isolated);
+    }
   });
 });

@@ -69,6 +69,21 @@ export function makeEntryId(): string {
   return randomUUID().slice(0, 12);
 }
 
+/** 把项目路径编码为会话目录名:如 E:\Projects\Reins → E--Projects-Reins。 */
+export function encodeProjectDir(cwd: string): string {
+  return cwd.replace(/[<>:"/\\|?*]/g, '-');
+}
+
+/** 生成会话标识:时间戳(本地)+ 去掉连字符的 UUID。 */
+export function makeSessionId(now: Date = new Date()): string {
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  const stamp =
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const uuid = randomUUID().replace(/-/g, '');
+  return `${stamp}-${uuid}`;
+}
+
 export class SessionStore {
   readonly file: string;
   private metaValue: SessionMeta | undefined;
@@ -77,11 +92,12 @@ export class SessionStore {
     this.file = file;
   }
 
-  /** 新建会话文件并写入 meta。 */
+  /** 新建会话:按项目分目录,文件名为「时间-UUID」。 */
   static async create(dir: string, cwd: string): Promise<SessionStore> {
-    await ensureDir(dir);
-    const sessionId = `s-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
-    const store = new SessionStore(join(dir, `${sessionId}.jsonl`));
+    const projectDir = join(dir, encodeProjectDir(cwd));
+    await ensureDir(projectDir);
+    const sessionId = makeSessionId();
+    const store = new SessionStore(join(projectDir, `${sessionId}.jsonl`));
     await store.writeMeta({
       v: SESSION_FORMAT_VERSION,
       type: 'meta',

@@ -5,6 +5,8 @@ import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 import {
   SESSION_FORMAT_VERSION,
   SessionStore,
+  encodeProjectDir,
+  makeSessionId,
   type SessionEntry,
 } from '../../src/session/store.ts';
 import { readTextFile, writeTextFile } from '../../src/util/fsx.ts';
@@ -35,7 +37,8 @@ describe('会话存储', () => {
     const meta = JSON.parse(text.split('\n')[0] as string) as Record<string, unknown>;
     assert.equal(meta['v'], SESSION_FORMAT_VERSION);
     assert.equal(meta['type'], 'meta');
-    assert.ok(store.sessionId.startsWith('s-'));
+    assert.match(store.sessionId, /^\d{8}-\d{6}-[0-9a-f]{32}$/);
+    assert.ok(store.file.includes(encodeProjectDir(process.cwd())));
   });
 
   it('追加条目后可完整读回且父子链正确', async () => {
@@ -76,5 +79,17 @@ describe('会话存储', () => {
     await writeTextFile(file, `${JSON.stringify(meta)}\n`);
     const store = new SessionStore(file);
     await assert.rejects(() => store.readAll(), /版本/);
+  });
+
+  it('项目路径编码与会话标识格式', () => {
+    assert.equal(encodeProjectDir('C:/work/a'), 'C--work-a');
+    assert.equal(encodeProjectDir(String.raw`E:\Projects\Reins`), 'E--Projects-Reins');
+    assert.match(makeSessionId(), /^\d{8}-\d{6}-[0-9a-f]{32}$/);
+  });
+
+  it('会话按项目目录归档', async () => {
+    const store = await SessionStore.create(dir, 'C:/work/demo');
+    assert.ok(store.file.includes('C--work-demo'));
+    assert.ok(store.file.endsWith('.jsonl'));
   });
 });
