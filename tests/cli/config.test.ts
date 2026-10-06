@@ -1,0 +1,71 @@
+import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { after, before, describe, it } from 'node:test';
+import { configCommand } from '../../src/cli/commands/config.ts';
+import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
+
+describe('config 子命令', () => {
+  let home = '';
+  const previous = process.env['REINS_HOME'];
+
+  before(async () => {
+    home = await createTmpDir();
+    process.env['REINS_HOME'] = home;
+    await writeFile(
+      join(home, 'config.toml'),
+      ['provider = "demo"', 'model = "m1"', '', '[permissions]', 'deny = ["bash(rm *)"]', ''].join('\n'),
+    );
+  });
+
+  after(async () => {
+    if (previous === undefined) {
+      delete process.env['REINS_HOME'];
+    } else {
+      process.env['REINS_HOME'] = previous;
+    }
+    await removeTmpDir(home);
+  });
+
+  it('check 通过时输出摘要', async () => {
+    const lines: string[] = [];
+    const code = await configCommand(
+      { command: 'config', positionals: ['check'], flags: {} },
+      { out: (t) => void lines.push(t), err: (t) => void lines.push(t) },
+    );
+    assert.equal(code, 0);
+    assert.ok(lines.join('\n').includes('配置有效'));
+    assert.ok(lines.join('\n').includes('provider=demo'));
+  });
+
+  it('show 打印解析后的 JSON', async () => {
+    const lines: string[] = [];
+    const code = await configCommand(
+      { command: 'config', positionals: ['show'], flags: {} },
+      { out: (t) => void lines.push(t), err: (t) => void lines.push(t) },
+    );
+    assert.equal(code, 0);
+    const parsed = JSON.parse(lines.join('\n')) as Record<string, unknown>;
+    assert.equal(parsed['provider'], 'demo');
+    assert.deepEqual((parsed['permissions'] as Record<string, unknown>)['deny'], ['bash(rm *)']);
+  });
+
+  it('非法配置返回错误码', async () => {
+    const broken = await createTmpDir();
+    const previousHome = process.env['REINS_HOME'];
+    process.env['REINS_HOME'] = broken;
+    try {
+      await writeFile(join(broken, 'config.toml'), 'provider = "demo"\napproval = "whatever"\n');
+      const lines: string[] = [];
+      const code = await configCommand(
+        { command: 'config', positionals: ['check'], flags: {} },
+        { out: (t) => void lines.push(t), err: (t) => void lines.push(t) },
+      );
+      assert.equal(code, 1);
+      assert.ok(lines.join('\n').includes('approval'));
+    } finally {
+      process.env['REINS_HOME'] = previousHome;
+      await removeTmpDir(broken);
+    }
+  });
+});
