@@ -1,0 +1,221 @@
+import type { Config } from '../config/schema.ts';
+import type {
+  AdapterRuntime,
+  ChatMessage,
+  ProviderAdapter,
+  ResolvedModel,
+  ToolCall,
+  Usage,
+} from '../llm/types.ts';
+import { addUsage } from '../llm/usage.ts';
+import type { ApprovalGate } from '../permissions/approval.ts';
+import type { Decision, PermissionEngine } from '../permissions/engine.ts';
+import type { RuleTarget } from '../permissions/rules.ts';
+import type { Sandbox } from '../permissions/sandbox.ts';
+import type { Session } from '../session/tree.ts';
+import { buildPreview, buildSpillNotice, shouldSpill } from '../spill/policy.ts';
+import type { SpillStore } from '../spill/store.ts';
+import type { Tool, ToolRegistry } from '../tools/registry.ts';
+import type { AgentUi } from '../ui/printer.ts';
+import { describeError } from '../util/errors.ts';
+import { collectModelTurn } from './turn.ts';
+
+/**
+ * 代理循环。
+ *
+ * 设计意图:循环本身只做四件事——组装请求、收集单轮结果、执行工具、落盘;
+ * 所有依赖显式注入,循环不创建任何资源,便于测试与替换。
+ */
+
+export interface AgentOptions {
+  config: Config;
+  adapter: ProviderAdapter;
+  model: ResolvedModel;
+  registry: ToolRegistry;
+  session: Session;
+  engine: PermissionEngine;
+  sandbox: Sandbox;
+  approval: ApprovalGate;
+  spill: SpillStore;
+  ui: AgentUi;
+  workspace: string;
+  systemPrompt: string;
+  runtime: AdapterRuntime;
+}
+
+export interface AgentRunResult {
+  text: string;
+  turns: number;
+  usage: Usage;
+}
+
+export class Agent {
+  private readonly options: AgentOptions;
+
+  constructor(options: AgentOptions) {
+    this.options = options;
+  }
+
+  /** 执行一次用户输入,直到模型不再请求工具;返回最终文本与统计。 */
+  async run(userText: string): Promise<AgentRunResult> {
+    const { session, config, ui } = this.options;
+    await session.append({ type: 'user', text: userText });
+
+    let turns = 0;
+    let finalText = '';
+    let total: Usage = { inputTokens: 0, outputTokens: 0 };
+
+    for (;;) {
+      if (config.maxTurns !== undefined && turns >= config.maxTurns) {
+        ui.onNotice(`达到模型轮数上限(${config.maxTurns}),停止`);
+        break;
+      }
+      turns += 1;
+      const turn = await this.runModelTurn();
+      total = addUsage(total, turn.usage);
+      if (turn.text !== '') {
+        finalText = turn.text;
+      }
+      if (turn.toolCalls.length === 0) {
+        break;
+      }
+      for (const call of turn.toolCalls) {
+        await this.executeToolCall(call);
+      }
+    }
+
+    return { text: finalText, turns, usage: total };
+  }
+
+  private async runModelTurn() {
+    const { adapter, runtime, model, config, registry, session, ui, systemPrompt } = this.options;
+    const turn = await collectModelTurn({
+      adapter,
+      runtime,
+      request: {
+        model,
+        messages: this.buildMessages(systemPrompt),
+        tools: registry.toToolSpecs(),
+        maxTokens: config.maxTokens,
+        reasoningEffort: config.reasoningEffort,
+      },
+      onText: (text) => ui.onAssistantText(text),
+      onToolCall: (call) => ui.onToolCall(call),
+    });
+    await session.append({
+      type: 'assistant',
+      text: turn.text,
+      toolCalls: turn.toolCalls.map((call) => ({
+        id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+      })),
+    });
+    return turn;
+  }
+
+  /** 把活动分支转换为模型消息;摘要以用户消息形式注入。 */
+  private buildMessages(systemPrompt: string): ChatMessage[] {
+    const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
+    for (const entry of this.options.session.activeBranch()) {
+      if (entry.type === 'user') {
+        messages.push({ role: 'user', content: entry.text });
+      } else if (entry.type === 'assistant') {
+        messages.push({ role: 'assistant', content: entry.text, toolCalls: entry.toolCalls });
+      } else if (entry.type === 'tool_result') {
+        messages.push({ role: 'tool', content: entry.content, toolCallId: entry.toolCallId });
+      } else if (entry.type === 'summary') {
+        messages.push({ role: 'user', content: `(上下文摘要)\n${entry.text}` });
+      }
+    }
+    return messages;
+  }
+
+  /** 执行一次工具调用:参数解析 → 策略/沙箱 → 审批 → 执行 → 落盘。 */
+  private async executeToolCall(call: ToolCall): Promise<void> {
+    const { registry, engine, approval, spill, config, workspace, ui } = this.options;
+
+    const tool = registry.get(call.name);
+    if (tool === undefined) {
+      await this.recordToolResult(call, `未知工具:${call.name}`, true);
+      return;
+    }
+
+    const input = await this.parseArguments(call);
+    if (input === undefined) {
+      return;
+    }
+
+    let target: RuleTarget;
+    try {
+      target = { tool: call.name, ...tool.targetOf(input, { workspace }) };
+    } catch (error) {
+      await this.recordToolResult(call, `工具参数不完整:${describeError(error)}`, true);
+      return;
+    }
+
+    let decision = this.checkSandbox(tool, target) ?? engine.evaluate(target);
+    if (decision.verdict === 'ask') {
+      decision = await approval.decide(target, decision);
+    }
+    if (decision.verdict !== 'allow') {
+      ui.onNotice(`${call.name} 被拒绝:${decision.reason}`);
+      await this.recordToolResult(call, `操作被拒绝:${decision.reason}`, true);
+      return;
+    }
+
+    let content: string;
+    let isError: boolean;
+    try {
+      const outcome = await tool.execute(input, { workspace });
+      content = outcome.content;
+      isError = outcome.isError;
+    } catch (error) {
+      content = `工具执行失败:${describeError(error)}`;
+      isError = true;
+    }
+
+    if (shouldSpill(content, config.spillThreshold)) {
+      const saved = await spill.save(content, call.name);
+      content = buildSpillNotice(saved.path, content.length, buildPreview(content));
+    }
+    await this.recordToolResult(call, content, isError);
+  }
+
+  private async parseArguments(call: ToolCall): Promise<Record<string, unknown> | undefined> {
+    try {
+      const parsed = JSON.parse(call.arguments === '' ? '{}' : call.arguments) as unknown;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('参数应为 JSON 对象');
+      }
+      return parsed as Record<string, unknown>;
+    } catch (error) {
+      await this.recordToolResult(call, `工具参数解析失败:${describeError(error)}`, true);
+      return undefined;
+    }
+  }
+
+  private checkSandbox(tool: Tool, target: RuleTarget): Decision | null {
+    if (target.path === undefined) {
+      return null;
+    }
+    if (tool.permissionKind === 'path-write') {
+      return this.options.sandbox.checkPath('write', target.path);
+    }
+    if (tool.permissionKind === 'path-read') {
+      return this.options.sandbox.checkPath('read', target.path);
+    }
+    return null;
+  }
+
+  private async recordToolResult(call: ToolCall, content: string, isError: boolean): Promise<void> {
+    await this.options.session.append({
+      type: 'tool_result',
+      toolCallId: call.id,
+      name: call.name,
+      content,
+      isError,
+    });
+    this.options.ui.onToolResult(call.name, content, isError);
+  }
+}
