@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { ReinsError } from '../util/errors.ts';
+import { parseSseStream } from '../util/sse.ts';
 
 /**
  * MCP 客户端与传输层。
@@ -351,6 +352,116 @@ export class HttpTransport implements McpTransport {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 旧版 SSE 传输:GET 建立事件流,收到 endpoint 事件后把消息 POST 过去。 */
+export class SseTransport implements McpTransport {
+  private readonly url: string;
+  private readonly headers: Record<string, string>;
+  private readonly fetchImpl: typeof fetch;
+  private readonly controller = new AbortController();
+  private readonly queue: JsonRpcMessage[] = [];
+  private readonly opening: Promise<void>;
+  private messageHandler: ((message: JsonRpcMessage) => void) | undefined;
+  private closeHandler: ((reason: string) => void) | undefined;
+  private closed = false;
+  private postUrl: string | undefined;
+
+  constructor(url: string, headers: Record<string, string>, fetchImpl: typeof fetch = fetch) {
+    this.url = url;
+    this.headers = headers;
+    this.fetchImpl = fetchImpl;
+    this.opening = this.openStream();
+  }
+
+  onMessage(handler: (message: JsonRpcMessage) => void): void {
+    this.messageHandler = handler;
+  }
+
+  onClose(handler: (reason: string) => void): void {
+    this.closeHandler = handler;
+  }
+
+  send(message: JsonRpcMessage): void {
+    if (this.closed) {
+      return;
+    }
+    if (this.postUrl === undefined) {
+      // endpoint 事件还没到,先排队
+      this.queue.push(message);
+      return;
+    }
+    void this.post(message);
+  }
+
+  async close(): Promise<void> {
+    this.markClosed('主动关闭');
+    this.controller.abort();
+    await this.opening.catch(() => undefined);
+  }
+
+  private async openStream(): Promise<void> {
+    try {
+      const response = await this.fetchImpl(this.url, {
+        headers: { accept: 'text/event-stream', ...this.headers },
+        signal: this.controller.signal,
+      });
+      if (!response.ok || response.body === null) {
+        this.markClosed(`HTTP ${response.status}`);
+        return;
+      }
+      for await (const event of parseSseStream(response.body)) {
+        if (this.closed) {
+          return;
+        }
+        if (event.event === 'endpoint') {
+          this.postUrl = new URL(event.data, this.url).toString();
+          for (const message of this.queue.splice(0)) {
+            void this.post(message);
+          }
+          continue;
+        }
+        const parsed = tryParseObject(event.data);
+        if (parsed !== undefined) {
+          this.messageHandler?.(parsed);
+        }
+      }
+      this.markClosed('事件流结束');
+    } catch (error) {
+      if (!this.closed) {
+        this.markClosed(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+
+  private async post(message: JsonRpcMessage): Promise<void> {
+    const target = this.postUrl;
+    if (this.closed || target === undefined) {
+      return;
+    }
+    try {
+      const response = await this.fetchImpl(target, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...this.headers },
+        body: JSON.stringify(message),
+      });
+      if (!response.ok) {
+        this.markClosed(`HTTP ${response.status}(消息发送失败)`);
+      }
+    } catch (error) {
+      if (!this.closed) {
+        this.markClosed(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+
+  private markClosed(reason: string): void {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.closeHandler?.(reason);
+  }
 }
 
 /** 为 cmd.exe 转义参数:普通字符原样,含特殊字符时整体加引号。 */

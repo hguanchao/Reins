@@ -104,3 +104,67 @@ describe('MCP http 客户端', () => {
     }
   });
 });
+
+describe('MCP SSE(旧版)客户端', () => {
+  it('通过事件流端点完成全链路', async () => {
+    const encoder = new TextEncoder();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const posts: string[] = [];
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+        controller.enqueue(encoder.encode('event: endpoint\ndata: /messages?sessionId=s1\n\n'));
+      },
+    });
+    const fakeFetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (method === 'GET') {
+        // 让外部 abort 能结束事件流
+        init?.signal?.addEventListener('abort', () => {
+          try {
+            streamController?.close();
+          } catch {
+            // 已关闭则忽略
+          }
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        });
+      }
+      const message = JSON.parse(String(init?.body)) as { id?: number; method: string };
+      posts.push(message.method);
+      let result: Record<string, unknown> = {};
+      if (message.method === 'initialize') {
+        result = { protocolVersion: '2024-11-05' };
+      } else if (message.method === 'tools/list') {
+        result = { tools: [{ name: 'ping' }] };
+      } else if (message.method === 'tools/call') {
+        result = { content: [{ type: 'text', text: 'pong' }] };
+      }
+      if (message.id !== undefined && streamController !== undefined) {
+        streamController.enqueue(
+          encoder.encode(
+            `event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: message.id, result })}\n\n`,
+          ),
+        );
+      }
+      return new Response('', { status: 202 });
+    }) as typeof fetch;
+
+    const manager = new McpManager(
+      { legacy: { type: 'sse', url: 'https://mcp.example/sse' } },
+      { fetchImpl: fakeFetch },
+    );
+    try {
+      const statuses = await manager.connectAll();
+      assert.deepEqual(statuses, [{ name: 'legacy', ok: true, toolCount: 1 }]);
+      const result = await manager.callTool('legacy', 'ping', {});
+      assert.equal(result.text, 'pong');
+      assert.ok(posts.includes('initialize'));
+      assert.ok(posts.includes('tools/call'));
+    } finally {
+      await manager.close();
+    }
+  });
+});

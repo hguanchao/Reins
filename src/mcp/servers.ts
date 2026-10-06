@@ -3,6 +3,7 @@ import { ReinsError, describeError } from '../util/errors.ts';
 import {
   HttpTransport,
   McpClient,
+  SseTransport,
   StdioTransport,
   type McpCallResult,
   type McpToolDefinition,
@@ -116,7 +117,10 @@ function buildTransport(
     return new HttpTransport(config.url, config.headers ?? {}, fetchImpl);
   }
   if (config.type === 'sse') {
-    throw new ReinsError('mcp', `MCP server "${name}" 声明的旧版 SSE 传输暂未实现`);
+    if (config.url === undefined) {
+      throw new ReinsError('mcp', `MCP server "${name}" 缺少 url`);
+    }
+    return new SseTransport(config.url, config.headers ?? {}, fetchImpl);
   }
   if (config.command === undefined) {
     throw new ReinsError('mcp', `MCP server "${name}" 缺少 command`);
