@@ -47,7 +47,16 @@ export interface RunTaskOutcome {
   mcp: McpServerStatus[];
 }
 
-export async function runTask(prompt: string, options: RunTaskOptions): Promise<RunTaskOutcome> {
+/** 长期存活的运行实例:会话与 MCP 连接跨多轮复用,用完必须 close。 */
+export interface AgentRuntime {
+  agent: Agent;
+  session: Session;
+  mcp: McpServerStatus[];
+  close(): Promise<void>;
+}
+
+/** 组装运行时;调用方负责在结束时 close。 */
+export async function createAgentRuntime(options: RunTaskOptions): Promise<AgentRuntime> {
   const providerName = options.config.provider;
   const provider = resolveProvider(options.catalog, providerName);
   const catalogModel = resolveModel(provider, providerName, options.config.model);
@@ -150,10 +159,25 @@ export async function runTask(prompt: string, options: RunTaskOptions): Promise<
     compactor,
   });
 
-  const result = await agent.run(prompt).finally(async () => {
-    await mcpManager.close().catch(() => undefined);
-  });
-  return { session, result, mcp: mcpStatuses };
+  return {
+    agent,
+    session,
+    mcp: mcpStatuses,
+    close: async () => {
+      await mcpManager.close().catch(() => undefined);
+    },
+  };
+}
+
+/** 执行一次任务:创建运行时、跑一轮、关闭运行时。 */
+export async function runTask(prompt: string, options: RunTaskOptions): Promise<RunTaskOutcome> {
+  const runtime = await createAgentRuntime(options);
+  try {
+    const result = await runtime.agent.run(prompt);
+    return { session: runtime.session, result, mcp: runtime.mcp };
+  } finally {
+    await runtime.close();
+  }
 }
 
 /** 解析辅助模型(审查、压缩共用):未指定或与主模型同名时复用主模型。 */

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseArgs } from './cli/args.ts';
 import { runCommand } from './cli/commands/run.ts';
+import { chatCommand } from './cli/commands/chat.ts';
 import { doctorCommand } from './cli/commands/doctor.ts';
 import { configCommand } from './cli/commands/config.ts';
 import { modelsCommand } from './cli/commands/models.ts';
@@ -19,6 +20,7 @@ const HELP = [
   '',
   '用法:',
   '  reins run "任务描述" [--workspace 目录] [--resume 会话 id]     执行一次任务',
+  '  reins chat [--workspace 目录]                                 交互式会话(直接输入 reins 亦可)',
   '  reins sessions list [--limit 数量]                            列出历史会话',
   '  reins doctor [--no-network]                                   自检配置与端点连通性',
   '  reins config check|show                                       校验 / 展示解析后的配置',
@@ -39,6 +41,9 @@ async function main(): Promise<void> {
       case 'run':
         code = await runCommand(args);
         break;
+      case 'chat':
+        code = await chatCommand(args);
+        break;
       case 'doctor':
         code = await doctorCommand(args);
         break;
@@ -57,9 +62,15 @@ async function main(): Promise<void> {
       case 'version':
         console.log('reins 0.0.1');
         break;
-      case 'help':
-        console.log(HELP);
+      case 'help': {
+        // 裸命令 reins 且处于交互终端时,直接进入会话模式
+        if (process.argv.slice(2).length === 0 && process.stdin.isTTY === true) {
+          code = await chatCommand(args);
+        } else {
+          console.log(HELP);
+        }
         break;
+      }
       default:
         console.error(`未知子命令:${args.command}`);
         console.error(HELP);
