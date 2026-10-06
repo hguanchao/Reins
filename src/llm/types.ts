@@ -22,6 +22,8 @@ export interface ChatMessage {
   content: string;
   /** role = 'tool' 时关联的调用 id。 */
   toolCallId?: string;
+  /** role = 'tool' 时的函数名(部分协议需要)。 */
+  name?: string;
   /** role = 'assistant' 时携带的工具调用。 */
   toolCalls?: ToolCall[];
 }

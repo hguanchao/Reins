@@ -1,6 +1,8 @@
 import { ReinsError } from '../util/errors.ts';
 import { AnthropicMessagesAdapter } from './adapters/anthropic-messages.ts';
+import { GoogleGenerativeAiAdapter } from './adapters/google-generative-ai.ts';
 import { OpenAiCompletionsAdapter } from './adapters/openai-completions.ts';
+import { OpenAiResponsesAdapter } from './adapters/openai-responses.ts';
 import type { ProviderAdapter } from './types.ts';
 
 /**
@@ -14,7 +16,9 @@ const ADAPTER_FACTORIES: ReadonlyMap<string, () => ProviderAdapter> = new Map<
   () => ProviderAdapter
 >([
   ['openai-completions', () => new OpenAiCompletionsAdapter()],
+  ['openai-responses', () => new OpenAiResponsesAdapter()],
   ['anthropic-messages', () => new AnthropicMessagesAdapter()],
+  ['google-generative-ai', () => new GoogleGenerativeAiAdapter()],
 ]);
 
 export function createAdapter(api: string): ProviderAdapter {

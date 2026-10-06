@@ -135,7 +135,12 @@ export class Agent {
       } else if (entry.type === 'assistant') {
         messages.push({ role: 'assistant', content: entry.text, toolCalls: entry.toolCalls });
       } else if (entry.type === 'tool_result') {
-        messages.push({ role: 'tool', content: entry.content, toolCallId: entry.toolCallId });
+        messages.push({
+          role: 'tool',
+          content: entry.content,
+          toolCallId: entry.toolCallId,
+          name: entry.name,
+        });
       } else if (entry.type === 'summary') {
         messages.push({ role: 'user', content: `(上下文摘要)\n${entry.text}` });
       }

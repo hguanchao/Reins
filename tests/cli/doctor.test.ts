@@ -56,29 +56,6 @@ describe('doctor 子命令', () => {
     assert.ok(lines.join('\n').includes('一切正常'));
   });
 
-  it('协议未实现时报出问题', async () => {
-    await writeFile(
-      join(home, 'providers.json'),
-      JSON.stringify({
-        providers: {
-          demo: {
-            baseUrl: 'https://demo.example/v1',
-            api: 'google-generative-ai',
-            apiKey: 'k',
-            models: [{ id: 'm1', contextWindow: 8000 }],
-          },
-        },
-      }),
-    );
-    const { lines, io } = captureLines();
-    const code = await doctorCommand(
-      { command: 'doctor', positionals: [], flags: { 'no-network': true } },
-      io,
-    );
-    assert.equal(code, 1);
-    assert.ok(lines.join('\n').includes('尚未实现'));
-  });
-
   it('模型不存在时报出问题', async () => {
     await writeFile(
       join(home, 'providers.json'),
