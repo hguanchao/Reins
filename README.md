@@ -32,7 +32,7 @@ node src/main.ts run "把 README 里的错别字修一下" --workspace .
 
 - 每个 provider 条目必须自包含 `baseUrl + api + models`,缺一即报错;
 - 密钥支持三种形态:`$ENV`(未设置时拒绝启动)、`!command`(请求时执行、不缓存)、字面量;
-- 当前已实现的协议:`openai-completions`;
+- 当前已实现的协议:`openai-completions`、`anthropic-messages`;
 
 ## 命令
 
@@ -60,4 +60,5 @@ npm run typecheck # tsc --noEmit
 
 M0 内核已完成:代理循环、六个内置工具(read / write / edit / bash / grep / glob)、
 权限规则引擎与审批门、沙箱边界、会话 JSONL 存储与分支、超大结果落盘、
-OpenAI 兼容协议适配器(流式 + 重试 + 代理)、命令行入口与自检。
+上下文压缩、审查模型(auto 审批)、MCP 客户端(stdio / http)、
+协议适配器(openai-completions、anthropic-messages)、命令行入口与自检。
