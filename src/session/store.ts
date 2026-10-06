@@ -160,3 +160,32 @@ export class SessionStore {
     }
   }
 }
+
+/** 会话文件摘要(用于列表展示)。 */
+export interface SessionSummary {
+  file: string;
+  sessionId: string;
+  createdAt: string;
+  cwd: string;
+  entryCount: number;
+  preview: string;
+}
+
+/** 读取会话文件的轻量摘要。 */
+export async function summarizeSessionFile(file: string): Promise<SessionSummary> {
+  const store = new SessionStore(file);
+  const { meta, entries } = await store.readAll();
+  const firstUser = entries.find((entry): entry is UserEntry => entry.type === 'user');
+  const preview =
+    firstUser === undefined
+      ? '(无用户消息)'
+      : (firstUser.text.split('\n')[0] ?? '').slice(0, 60);
+  return {
+    file,
+    sessionId: meta.sessionId,
+    createdAt: meta.createdAt,
+    cwd: meta.cwd,
+    entryCount: entries.length,
+    preview,
+  };
+}

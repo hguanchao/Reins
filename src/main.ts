@@ -4,6 +4,7 @@ import { runCommand } from './cli/commands/run.ts';
 import { doctorCommand } from './cli/commands/doctor.ts';
 import { configCommand } from './cli/commands/config.ts';
 import { modelsCommand } from './cli/commands/models.ts';
+import { sessionsCommand } from './cli/commands/sessions.ts';
 import { initCommand } from './cli/commands/init.ts';
 import { describeError, ReinsError } from './util/errors.ts';
 
@@ -17,7 +18,8 @@ const HELP = [
   'Reins — 可控优先的编程智能体',
   '',
   '用法:',
-  '  reins run "任务描述" [--workspace 目录] [--session 会话文件]   执行一次任务',
+  '  reins run "任务描述" [--workspace 目录] [--resume 会话 id]     执行一次任务',
+  '  reins sessions list [--limit 数量]                            列出历史会话',
   '  reins doctor [--no-network]                                   自检配置与端点连通性',
   '  reins config check|show                                       校验 / 展示解析后的配置',
   '  reins models list [--provider 名称]                           列出产商与模型',
@@ -45,6 +47,9 @@ async function main(): Promise<void> {
         break;
       case 'models':
         code = await modelsCommand(args);
+        break;
+      case 'sessions':
+        code = await sessionsCommand(args);
         break;
       case 'init':
         code = await initCommand(args);

@@ -9,6 +9,7 @@ import { notify } from '../../ui/notify.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
 import { runTask } from '../../agent/run.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
+import { resolveSessionFile } from './sessions.ts';
 
 /**
  * run 子命令:执行一次任务。
@@ -26,8 +27,13 @@ export async function runCommand(args: ParsedArgs, io: CommandIo = defaultIo): P
     typeof args.flags['workspace'] === 'string'
       ? absolutize(args.flags['workspace'])
       : process.cwd();
+  const resume = typeof args.flags['resume'] === 'string' ? args.flags['resume'] : undefined;
   const sessionFile =
-    typeof args.flags['session'] === 'string' ? absolutize(args.flags['session']) : undefined;
+    resume !== undefined
+      ? await resolveSessionFile(home, resume)
+      : typeof args.flags['session'] === 'string'
+        ? absolutize(args.flags['session'])
+        : undefined;
 
   const { config, files } = await loadLayeredConfig({ home, cwd: workspace });
   const catalog = await loadCatalogFile(join(home, 'providers.json'));
