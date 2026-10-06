@@ -1,4 +1,5 @@
 import { ConfigError } from '../util/errors.ts';
+import { globToRegExp, shellGlobMatch } from '../util/glob.ts';
 import { absolutize, expandHome } from '../util/paths.ts';
 
 /**
@@ -6,7 +7,7 @@ import { absolutize, expandHome } from '../util/paths.ts';
  *
  * 设计意图:用户用一眼可读的文本表达规则——`bash(rm *)`、`read(~/.ssh/**)`、
  * `mcp(context7)`、`web_fetch(domain:*.internal.example)`。
- * 匹配语义按工具类型区分:命令按 shell 通配、路径按文件通配(并支持对文件名兜底)、
+ * 匹配语义按工具类型区分:命令按 shell 通配、路径按文件通配(支持对文件名兜底)、
  * 域名不区分大小写。
  */
 
@@ -29,7 +30,7 @@ export interface ParsedRule {
 /** 路径类工具集合。 */
 const PATH_TOOLS = new Set(['read', 'write', 'edit', 'glob', 'grep']);
 
-/** 是否为受支持的规则工具名。 */
+/** 受支持的规则工具名。 */
 export const RULE_TOOLS: readonly string[] = [
   'bash',
   'read',
@@ -68,10 +69,12 @@ export function parseRule(raw: string): ParsedRule {
         return target.command !== undefined && shellGlobMatch(pattern, target.command);
       }
       if (PATH_TOOLS.has(tool)) {
-        return target.path !== undefined && pathGlobMatch(pattern, target.path);
+        return target.path !== undefined && pathRuleMatch(pattern, target.path);
       }
       if (tool === 'web_fetch') {
-        const domainPattern = pattern.startsWith('domain:') ? pattern.slice('domain:'.length) : pattern;
+        const domainPattern = pattern.startsWith('domain:')
+          ? pattern.slice('domain:'.length)
+          : pattern;
         return target.domain !== undefined && shellGlobMatch(domainPattern, target.domain, true);
       }
       if (tool === 'mcp') {
@@ -83,14 +86,8 @@ export function parseRule(raw: string): ParsedRule {
   };
 }
 
-/** shell 风格通配:`*` 匹配任意字符(含分隔符),`?` 匹配单字符。 */
-export function shellGlobMatch(pattern: string, value: string, caseInsensitive = false): boolean {
-  const regex = globToRegExp(pattern, { crossSeparator: true, caseInsensitive });
-  return regex.test(value);
-}
-
-/** 路径风格通配:`*` 不跨分隔符,`**` 跨分隔符;支持 ~ 展开与文件名兜底匹配。 */
-export function pathGlobMatch(pattern: string, value: string): boolean {
+/** 文件规则的路径匹配:支持 ~ 展开、绝对路径、相对后缀与文件名兜底。 */
+function pathRuleMatch(pattern: string, value: string): boolean {
   const expanded = normalizeSlashes(expandHome(pattern));
   const target = normalizeSlashes(absolutize(value));
   const caseInsensitive = process.platform === 'win32';
@@ -124,42 +121,6 @@ function matchAnySuffix(target: string, regex: RegExp): boolean {
     }
     index = next + 1;
   }
-}
-
-function globToRegExp(
-  pattern: string,
-  options: { crossSeparator: boolean; caseInsensitive: boolean },
-): RegExp {
-  let out = '^';
-  for (let index = 0; index < pattern.length; index += 1) {
-    const char = pattern[index] as string;
-    if (char === '*') {
-      if (!options.crossSeparator && pattern[index + 1] === '*') {
-        out += '.*';
-        index += 1;
-        continue;
-      }
-      const isLast = index === pattern.length - 1;
-      if (options.crossSeparator && isLast && out.endsWith(' ')) {
-        // 末尾的 " *" 表示「可带任意参数」:不带参数(无空格)同样命中
-        out = `${out.slice(0, -1)}(?: .*)?`;
-        continue;
-      }
-      out += options.crossSeparator ? '.*' : '[^/]*';
-      continue;
-    }
-    if (char === '?') {
-      out += options.crossSeparator ? '.' : '[^/]';
-      continue;
-    }
-    out += escapeRegExpChar(char);
-  }
-  out += '$';
-  return new RegExp(out, options.caseInsensitive ? 'i' : '');
-}
-
-function escapeRegExpChar(char: string): string {
-  return /[.*+?^${}()|[\]\\]/.test(char) ? `\\${char}` : char;
 }
 
 function normalizeSlashes(value: string): string {
