@@ -1,0 +1,25 @@
+{
+  "name": "reins",
+  "version": "0.0.1",
+  "description": "Reins — 可控优先的编程智能体",
+  "type": "module",
+  "private": false,
+  "bin": {
+    "reins": "./src/main.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "reins": "node src/main.ts",
+    "test": "node --test \"tests/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "smol-toml": "^1.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
