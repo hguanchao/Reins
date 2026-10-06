@@ -152,9 +152,9 @@ export class SessionStore {
     return { meta, entries };
   }
 
-  private parseLine(line: string, lineNumber: number): Record<string, unknown> {
+  private parseLine(line: string, lineNumber: number): unknown {
     try {
-      return JSON.parse(line) as Record<string, unknown>;
+      return JSON.parse(line) as unknown;
     } catch {
       throw new ReinsError('session', `会话文件第 ${lineNumber} 行不是合法 JSON:${this.file}`);
     }
