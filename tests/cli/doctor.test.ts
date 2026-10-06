@@ -62,7 +62,7 @@ describe('doctor 子命令', () => {
         providers: {
           demo: {
             baseUrl: 'https://demo.example/v1',
-            api: 'anthropic-messages',
+            api: 'google-generative-ai',
             apiKey: 'k',
             models: [{ id: 'm1', contextWindow: 8000 }],
           },

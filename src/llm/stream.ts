@@ -1,4 +1,5 @@
 import { ReinsError } from '../util/errors.ts';
+import { AnthropicMessagesAdapter } from './adapters/anthropic-messages.ts';
 import { OpenAiCompletionsAdapter } from './adapters/openai-completions.ts';
 import type { ProviderAdapter } from './types.ts';
 
@@ -11,7 +12,10 @@ import type { ProviderAdapter } from './types.ts';
 const ADAPTER_FACTORIES: ReadonlyMap<string, () => ProviderAdapter> = new Map<
   string,
   () => ProviderAdapter
->([['openai-completions', () => new OpenAiCompletionsAdapter()]]);
+>([
+  ['openai-completions', () => new OpenAiCompletionsAdapter()],
+  ['anthropic-messages', () => new AnthropicMessagesAdapter()],
+]);
 
 export function createAdapter(api: string): ProviderAdapter {
   const factory = ADAPTER_FACTORIES.get(api);
