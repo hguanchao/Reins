@@ -175,13 +175,19 @@ export class StdioTransport implements McpTransport {
   private closed = false;
 
   constructor(command: string, args: string[]) {
-    // Windows 下裸命令(npx 等)需要 shell;显式路径直接执行,避免引号问题
+    // Windows 下裸命令(npx 等)需要 shell;显式路径直接执行。
+    // 需要 shell 时自行拼好命令行,不再把 args 交给 shell(避免弃用告警与注入面)
     const useShell = process.platform === 'win32' && !/[\\/]/.test(command);
-    this.child = spawn(command, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      shell: useShell,
-    });
+    this.child = useShell
+      ? spawn([command, ...args].map(quoteShellArg).join(' '), {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+          shell: true,
+        })
+      : spawn(command, args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+        });
     this.child.stdout?.setEncoding('utf8');
     this.child.stdout?.on('data', (chunk: string) => this.consume(chunk));
     this.child.stderr?.setEncoding('utf8');
@@ -345,6 +351,14 @@ export class HttpTransport implements McpTransport {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 为 cmd.exe 转义参数:普通字符原样,含特殊字符时整体加引号。 */
+function quoteShellArg(value: string): string {
+  if (/^[A-Za-z0-9_\-./:=@]+$/.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 function tryParseObject(text: string): Record<string, unknown> | undefined {
