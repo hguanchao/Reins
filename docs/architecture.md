@@ -29,7 +29,6 @@
 reins/
 ├── docs/                       # 设计文档与配置样例
 ├── examples/                   # providers.json 产商配方(纯数据:deepseek/kimi/ollama/openrouter…)
-├── evals/                      # 固定任务回放脚本
 ├── tests/                      # 与 src/ 一一镜像(与 src 同级)
 ├── src/
 │   ├── main.ts                 # 进程入口,子命令路由
@@ -123,5 +122,5 @@ reins run "任务"
 - 每模块只暴露一个入口 barrel;禁止跨模块深导入。
 - 外部副作用(磁盘 / 网络 / 子进程)集中在 `session / spill / llm / tools / mcp`。
 - `ui/` 不含业务逻辑,只订阅事件。
-- `tests/` 与 `src/` 一一镜像(与 src 同级);`evals/` 固化真实任务做回归。
+- `tests/` 与 `src/` 一一镜像(与 src 同级)。
 - 单包起步,模块边界即未来拆包边界,拆包时保持机械可迁移。
