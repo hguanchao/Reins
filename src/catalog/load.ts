@@ -28,17 +28,76 @@ export async function loadCatalogFile(file: string): Promise<Catalog> {
   return parseCatalog(raw, file);
 }
 
+/** 按名查找 provider(大小写不敏感);返回规范名称与声明。 */
+export function findProvider(
+  catalog: Catalog,
+  name: string,
+): { name: string; spec: ProviderSpec } | undefined {
+  const direct = catalog.providers[name];
+  if (direct !== undefined) {
+    return { name, spec: direct };
+  }
+  const lower = name.toLowerCase();
+  for (const [key, spec] of Object.entries(catalog.providers)) {
+    if (key.toLowerCase() === lower) {
+      return { name: key, spec };
+    }
+  }
+  return undefined;
+}
+
 /** 按名解析 provider,找不到时列出已声明的候选。 */
 export function resolveProvider(catalog: Catalog, name: string): ProviderSpec {
-  const provider = catalog.providers[name];
-  if (provider === undefined) {
+  const found = findProvider(catalog, name);
+  if (found === undefined) {
     const available = Object.keys(catalog.providers);
     throw new ConfigError(
       `providers.json 中没有名为 "${name}" 的 provider`,
       available.length > 0 ? `已声明:${available.join('、')}` : '请先在 providers.json 中声明。',
     );
   }
-  return provider;
+  return found.spec;
+}
+
+/** 模型引用解析结果(供 /model 等交互场景使用)。 */
+export type ModelTargetMatch =
+  | { kind: 'found'; provider: string; modelId: string }
+  | { kind: 'ambiguous'; options: { provider: string; modelId: string }[] }
+  | { kind: 'none' };
+
+/** 解析模型引用:"provider/model" 优先,其次在全部 provider 中按模型 id 搜索。 */
+export function findModelTarget(catalog: Catalog, query: string): ModelTargetMatch {
+  const trimmed = query.trim();
+  if (trimmed === '') {
+    return { kind: 'none' };
+  }
+  const slash = trimmed.indexOf('/');
+  if (slash > 0) {
+    const providerName = trimmed.slice(0, slash);
+    const modelId = trimmed.slice(slash + 1);
+    const provider = findProvider(catalog, providerName);
+    if (provider !== undefined) {
+      const model = provider.spec.models.find((item) => item.id === modelId);
+      if (model !== undefined) {
+        return { kind: 'found', provider: provider.name, modelId: model.id };
+      }
+    }
+  }
+  const options: { provider: string; modelId: string }[] = [];
+  for (const [name, spec] of Object.entries(catalog.providers)) {
+    for (const model of spec.models) {
+      if (model.id === trimmed) {
+        options.push({ provider: name, modelId: model.id });
+      }
+    }
+  }
+  if (options.length === 1) {
+    return { kind: 'found', provider: options[0]!.provider, modelId: options[0]!.modelId };
+  }
+  if (options.length > 1) {
+    return { kind: 'ambiguous', options };
+  }
+  return { kind: 'none' };
 }
 
 /** 在 provider 内按 id 解析模型,找不到时列出候选。 */
