@@ -1,5 +1,5 @@
 import { ReinsError } from '../../util/errors.ts';
-import { parseSseStream } from '../sse.ts';
+import { parseSseStream } from '../../util/sse.ts';
 import { buildRequestInit, fetchWithRetry, trimBaseUrl, tryParseObject } from './shared.ts';
 import type {
   AdapterRuntime,

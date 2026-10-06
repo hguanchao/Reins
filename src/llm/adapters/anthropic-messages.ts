@@ -1,5 +1,5 @@
 import { ReinsError } from '../../util/errors.ts';
-import { parseSseStream } from '../sse.ts';
+import { parseSseStream } from '../../util/sse.ts';
 import type {
   AdapterRuntime,
   ChatMessage,

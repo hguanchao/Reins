@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseSseStream, type SseEvent } from '../../src/llm/sse.ts';
+import { parseSseStream, type SseEvent } from '../../src/util/sse.ts';
 
 function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
