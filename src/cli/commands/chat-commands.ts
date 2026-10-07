@@ -33,6 +33,26 @@ export const CHAT_COMMANDS: readonly string[] = [
   '/status',
 ];
 
+/**
+ * 斜杠命令的说明,供补全菜单逐条展示。
+ *
+ * 别名(/clear、/quit、/sessions)与主命令共用同一句说明,菜单里不区分。
+ */
+export const CHAT_COMMAND_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  '/clear': '开始新会话',
+  '/compact': '立即压缩上下文',
+  '/exit': '退出',
+  '/help': '显示帮助',
+  '/mcp': '显示 MCP 服务器状态',
+  '/model': '查看或切换模型',
+  '/new': '开始新会话',
+  '/quit': '退出',
+  '/resume': '恢复会话;无 id 时列出',
+  '/session': '显示当前会话文件',
+  '/sessions': '恢复会话;无 id 时列出',
+  '/status': '显示会话与模型状态',
+};
+
 /** 解析一行输入:斜杠命令或普通任务文本(未知斜杠按普通文本处理)。 */
 export function parseChatCommand(input: string): ChatCommand {
   const trimmed = input.trim();

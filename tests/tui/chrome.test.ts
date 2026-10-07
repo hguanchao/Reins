@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   centerVertically,
+  completionMenu,
   headerLine,
   inputBoxFrame,
   inputBoxLine,
   scrollbarChar,
   scrollbarGeometry,
+  splitPathLabel,
 } from '../../src/tui/chrome.ts';
 import { createTheme } from '../../src/tui/theme.ts';
 import { stripAnsi, visibleWidth } from '../../src/tui/layout.ts';
@@ -102,5 +104,53 @@ describe('垂直居中', () => {
     assert.deepEqual(centerVertically(['a', 'b', 'c'], 1), ['a', 'b', 'c']);
     // 空内容只补一行空行,不抛错
     assert.deepEqual(centerVertically([], 3), ['']);
+  });
+});
+
+describe('补全菜单', () => {
+  const rows = [
+    { label: '/help', detail: '显示帮助' },
+    { label: '/new', detail: '开始新会话' },
+    { label: '/resume', detail: '恢复会话;无 id 时列出' },
+  ];
+
+  it('高度固定:候选不足时补空行', () => {
+    const menu = completionMenu(rows, 0, 60, theme, 5);
+    assert.equal(menu.length, 5);
+    assert.equal(menu[3], '');
+    assert.equal(menu[4], '');
+  });
+
+  it('主次两列:次要文本对齐到同一列', () => {
+    const menu = completionMenu(rows, 0, 60, theme, 3).map(stripAnsi);
+    assert.ok(menu[0]?.startsWith('  › /help  '), menu[0]);
+    const column = menu[0]?.indexOf('显示帮助');
+    assert.equal(menu[1]?.indexOf('开始新会话'), column);
+    assert.equal(menu[2]?.indexOf('恢复会话;无 id 时列出'), column);
+  });
+
+  it('候选超出高度时选中项始终落在窗口内', () => {
+    const many = Array.from({ length: 20 }, (_, index) => ({ label: `/cmd${index}` }));
+    for (const selected of [0, 5, 12, 19]) {
+      const menu = completionMenu(many, selected, 60, theme, 8);
+      const active = menu.findIndex((line) => stripAnsi(line).includes('›'));
+      assert.ok(active >= 0, `选中项 ${selected} 不在窗口内`);
+      assert.ok(stripAnsi(menu[active] ?? '').includes(`/cmd${selected}`));
+    }
+  });
+
+  it('长路径按宽度截断,不撑破边框', () => {
+    const long = [{ label: 'a-very-long-file-name.ts', detail: 'some/deeply/nested/directory/path' }];
+    for (const width of [20, 30, 40]) {
+      for (const line of completionMenu(long, 0, width, theme, 2)) {
+        assert.ok(visibleWidth(line) <= width, `宽${width} 超宽:${stripAnsi(line)}`);
+      }
+    }
+  });
+
+  it('splitPathLabel:拆出文件名与所在目录', () => {
+    assert.deepEqual(splitPathLabel('src/tui/app.ts'), { label: 'app.ts', detail: 'src/tui' });
+    // 根目录下的文件没有目录部分
+    assert.deepEqual(splitPathLabel('README.md'), { label: 'README.md' });
   });
 });

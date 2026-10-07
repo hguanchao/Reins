@@ -1,4 +1,4 @@
-import { padAnsi, truncateAnsi, visibleWidth } from './layout.ts';
+import { fitPlain, padAnsi, truncateAnsi, truncatePlain, visibleWidth } from './layout.ts';
 import type { Theme } from './theme.ts';
 
 /**
@@ -87,4 +87,67 @@ export function centerVertically(lines: readonly string[], height: number): stri
     return [...lines];
   }
   return [...Array.from({ length: pad }, () => ''), ...lines];
+}
+
+/** 补全菜单的一行:主文本 + 次要文本(命令说明或文件所在目录)。 */
+export interface MenuRow {
+  label: string;
+  detail?: string;
+}
+
+/** 补全菜单的常规行数:高度固定,输入框才不会随候选多少上下跳动。 */
+export const COMPLETION_MENU_ROWS = 8;
+
+/** 文件相对路径拆成「文件名 + 所在目录」,根目录下的文件没有目录部分。 */
+export function splitPathLabel(path: string): MenuRow {
+  const cut = path.lastIndexOf('/');
+  return cut === -1 ? { label: path } : { label: path.slice(cut + 1), detail: path.slice(0, cut) };
+}
+
+/** 固定高度窗口的起始下标:选中项尽量居中,两端不越界。 */
+function windowStart(selected: number, total: number, height: number): number {
+  if (total <= height) {
+    return 0;
+  }
+  const half = Math.floor(height / 2);
+  return Math.max(0, Math.min(selected - half, total - height));
+}
+
+/**
+ * 渲染补全菜单:行数固定,选中项始终落在窗口内。
+ *
+ * 行数固定是为了输入框不随候选多少上下跳动;候选不足时补空行。
+ * 主文本与次要文本分两列,次要列对齐;两段各自按可用宽度截断,长路径不会撑破边框。
+ */
+export function completionMenu(
+  rows: readonly MenuRow[],
+  selected: number,
+  width: number,
+  theme: Theme,
+  height: number = COMPLETION_MENU_ROWS,
+): string[] {
+  const labelColumn = Math.min(
+    rows.reduce((max, row) => Math.max(max, visibleWidth(row.label)), 0) + 2,
+    Math.max(0, width - 6),
+  );
+  const detailRoom = Math.max(0, width - 4 - labelColumn);
+  const start = windowStart(selected, rows.length, height);
+  const out: string[] = [];
+  for (let offset = 0; offset < height; offset += 1) {
+    const row = rows[start + offset];
+    if (row === undefined) {
+      out.push('');
+      continue;
+    }
+    const label = fitPlain(row.label, labelColumn);
+    const detail = truncatePlain(row.detail ?? '', detailRoom);
+    // 没有次要文本时不产生空的样式序列
+    const tail = detail === '' ? '' : theme.paint.muted(detail);
+    out.push(
+      start + offset === selected
+        ? `  ${theme.paint.accent('› ')}${theme.paint.accent(label)}${tail}`
+        : theme.paint.muted(`    ${label}${detail}`),
+    );
+  }
+  return out;
 }

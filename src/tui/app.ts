@@ -5,6 +5,7 @@ import { findModelTarget, loadCatalogFile, resolveModel, resolveProvider } from 
 import type { Catalog } from '../catalog/schema.ts';
 import {
   CHAT_COMMANDS,
+  CHAT_COMMAND_DESCRIPTIONS,
   CHAT_HELP_TEXT,
   parseChatCommand,
 } from '../cli/commands/chat-commands.ts';
@@ -30,11 +31,14 @@ import {
 } from './blocks.ts';
 import {
   centerVertically,
+  COMPLETION_MENU_ROWS,
+  completionMenu,
   headerLine,
   inputBoxFrame,
   inputBoxLine,
   scrollbarChar,
   scrollbarGeometry,
+  splitPathLabel,
 } from './chrome.ts';
 import { createFileIndex, needsFileScan, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
@@ -891,7 +895,7 @@ export class TuiApp implements AgentUi {
     const { left, right } = this.headerParts();
     const header = headerLine(left, right, cols, theme);
     const separator = theme.paint.muted(symbols.separator.repeat(cols));
-    const footer = this.renderFooter(cols);
+    const footer = this.renderFooter(cols, rows);
     const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
     const scrollback = this.renderScrollbackLines(cols - 1);
@@ -969,7 +973,10 @@ export class TuiApp implements AgentUi {
       : '未配置';
   }
 
-  private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
+  private renderFooter(
+    width: number,
+    rows: number,
+  ): { lines: string[]; cursor?: { line: number; column: number } } {
     if (this.approvalCard !== undefined) {
       const paint = this.renderContext.theme.paint;
       const { target, decision } = this.approvalCard;
@@ -984,19 +991,22 @@ export class TuiApp implements AgentUi {
       return { lines };
     }
 
-    const paint = this.renderContext.theme.paint;
+    const theme = this.renderContext.theme;
     const lines: string[] = [];
     const completion = this.editor.completionState;
     if (completion !== null) {
-      for (let index = 0; index < completion.items.length; index += 1) {
-        const item = completion.items[index] as string;
-        lines.push(index === completion.index ? `  ${paint.accent(`› ${item}`)}` : `    ${paint.muted(item)}`);
-      }
+      // 菜单高度固定,矮终端里按可用高度收缩,否则整帧会超出屏幕
+      const height = Math.max(0, Math.min(COMPLETION_MENU_ROWS, rows - 8));
+      const menu = completion.items.map((item) =>
+        completion.kind === 'slash'
+          ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
+          : splitPathLabel(item),
+      );
+      lines.push(...completionMenu(menu, completion.index, width, theme, height));
     }
     const dropdownLines = lines.length;
 
     // 输入框:上下边框 + 两侧竖线;光标行列按框内偏移修正
-    const theme = this.renderContext.theme;
     const input = this.renderInputLines(width);
     const frame = inputBoxFrame(width, theme);
     lines.push(frame.top, ...input.lines.map((line) => inputBoxLine(line, width, theme)), frame.bottom);
