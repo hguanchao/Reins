@@ -895,9 +895,8 @@ export class TuiApp implements AgentUi {
       if (bar === undefined) {
         return padded;
       }
-      return scrollbarChar(index, bar) === 'thumb'
-        ? `${padded}${theme.paint.accent('█')}`
-        : `${padded}${theme.paint.muted('│')}`;
+      // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
+      return `${padded}${theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│')}`;
     });
     const lines = [band.top, band.join, ...mainLines, bottomSeparator, ...footer.lines];
     const cursor =
