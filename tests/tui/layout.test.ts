@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   fitPlain,
+  fitStyledLine,
   padAnsi,
   renderStyledLine,
   stripAnsi,
@@ -103,6 +104,17 @@ describe('布局宽度计算', () => {
     assert.deepEqual(wrapStyled([], 10), [[]]);
   });
 
+  it('带样式折行:片段中的换行符强制断行', () => {
+    const lines = wrapStyled([{ text: '第一行\n第二行', codes: '' }], 40);
+    assert.deepEqual(lines.map((line) => stripAnsi(renderStyledLine(line))), ['第一行', '第二行']);
+    // 换行在片段中间同样生效
+    const mixed = wrapStyled([
+      { text: '甲', codes: '1' },
+      { text: '\n乙', codes: '36' },
+    ], 40);
+    assert.deepEqual(mixed.map((line) => stripAnsi(renderStyledLine(line))), ['甲', '乙']);
+  });
+
   it('padAnsi:补齐空格、超宽截断、样式保留', () => {
     assert.equal(visibleWidth(padAnsi('ab', 5)), 5);
     assert.ok(padAnsi('ab', 5).endsWith('   '));
@@ -113,5 +125,18 @@ describe('布局宽度计算', () => {
     assert.equal(padAnsi('', 3), '   ');
     // emoji 按 2 列计,补齐后总宽不超
     assert.equal(visibleWidth(padAnsi('📁x', 5)), 5);
+  });
+
+  it('fitStyledLine:补齐、截断与样式保留', () => {
+    assert.equal(fitStyledLine([{ text: 'ab', codes: '' }], 5), 'ab   ');
+    // 超宽截断加省略号,并补齐到精确宽度(CJK 步进为 2,截断点后留 1 列补空格)
+    assert.equal(fitStyledLine([{ text: '很长很长的一段中文内容', codes: '' }], 6), '很长… ');
+    // 样式保留在截断后的片段上
+    const cut = fitStyledLine([{ text: 'bold', codes: '1' }], 3);
+    assert.equal(stripAnsi(cut), 'bo…');
+    assert.ok(cut.includes('\u001b[1m'));
+    // 任意输入的输出宽度都精确等于目标宽度
+    assert.equal(visibleWidth(fitStyledLine([{ text: '📁📁📁', codes: '' }], 5)), 5);
+    assert.equal(visibleWidth(fitStyledLine([{ text: '中文', codes: '' }], 7)), 7);
   });
 });

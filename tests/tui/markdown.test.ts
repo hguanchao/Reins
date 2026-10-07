@@ -91,4 +91,80 @@ describe('markdown 渲染', () => {
     const lines = renderMarkdown('**粗体** 与 `code`', 40, mono);
     assert.ok(lines.every((line) => !line.includes('\u001b[')));
   });
+
+  it('段内单换行保留为独立行', () => {
+    const lines = render('第一点说明\n第二点说明\n第三点说明');
+    assert.deepEqual(lines, ['  第一点说明', '  第二点说明', '  第三点说明']);
+  });
+
+  it('表格:分隔行竖线对齐、列宽按渲染后内容、超宽截断', () => {
+    const lines = render(
+      [
+        '| 场景 | 我会怎么做 |',
+        '| --- | --- |',
+        '| **修 bug** | 读代码 → 定位 → 改 → 测试 |',
+        '| 短 | 很长很长的单元格内容远远超过列宽上限的例子内容 |',
+      ].join('\n'),
+      44,
+    );
+    // 每行宽度一致,右边框不参差
+    const widths = new Set(lines.map((line) => visibleWidth(line)));
+    assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);
+    // ┼ 与数据行的竖线按显示列对齐(CJK 一字符两列,须按宽度展开)
+    const displayCols = (line: string): Map<number, string> => {
+      const map = new Map<number, string>();
+      let column = 0;
+      for (const char of line) {
+        if (!map.has(column)) {
+          map.set(column, char);
+        }
+        column += visibleWidth(char);
+      }
+      return map;
+    };
+    const headerCols = displayCols(stripAnsi(lines[0] ?? ''));
+    const dividerCols = displayCols(stripAnsi(lines[1] ?? ''));
+    const bars = [...dividerCols.entries()].filter(([, char]) => char === '┼');
+    assert.ok(bars.length > 0);
+    for (const [column] of bars) {
+      assert.equal(headerCols.get(column), '│', `第 ${column} 显示列 ┼ 未对准竖线`);
+    }
+    // 超宽单元格被截断,行宽不超限
+    assert.ok(lines.every((line) => visibleWidth(line) <= 44));
+    assert.ok(lines.some((line) => line.includes('…')));
+  });
+
+  it('表格:单横线与冒号对齐分隔行被识别', () => {
+    const lines = render('| 左 | 右 |\n| :- | :-: |\n| a | b |');
+    const text = lines.map(stripAnsi).join('\n');
+    assert.ok(!text.includes(':-'), '对齐分隔行不应渲染为数据行');
+    assert.ok(text.includes('左'));
+    assert.ok(text.includes('a'));
+  });
+
+  it('__init__ 等双下划线标识符保持原样', () => {
+    const lines = render('Python 里 __init__ 是构造器,__私有__ 也常见');
+    const text = lines.map(stripAnsi).join('\n');
+    assert.ok(text.includes('__init__'));
+    assert.ok(text.includes('__私有__'));
+    // ** 粗体不受影响
+    assert.ok(renderMarkdown('**仍生效**', 40, theme).join('').includes('\u001b[1m'));
+  });
+
+  it('下划线斜体不吃残缺标识符,词边界外仍生效', () => {
+    const eaten = render('导出 my_var_ 和 file_name 检查').map(stripAnsi).join('\n');
+    assert.ok(eaten.includes('my_var_'));
+    assert.ok(eaten.includes('file_name'));
+    const italic = renderMarkdown('这是 _斜体内容_ 的演示', 40, theme);
+    assert.ok(italic.join('').includes('\u001b[3m斜体内容\u001b[0m'));
+  });
+
+  it('有序列表多位编号的续行缩进对齐', () => {
+    const lines = render('1. 第一项\n10. 第十项\n    续行与编号后文本对齐');
+    const text = lines.map(stripAnsi);
+    const continuation = text.find((line) => line.includes('续行与编号后文本对齐'));
+    if (continuation === undefined) throw new Error('续行应存在');
+    // 续行缩进 6 列(2 缩进 + "10. " 4 列)
+    assert.ok(continuation.startsWith('      续行'));
+  });
 });

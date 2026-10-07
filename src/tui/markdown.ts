@@ -1,6 +1,6 @@
 import { highlightCode, type CodeToken } from './highlight.ts';
 import {
-  codePointWidth,
+  fitStyledLine,
   renderStyledLine,
   styledLineWidth,
   wrapStyled,
@@ -122,6 +122,8 @@ function collectListItem(
   const indent = (head?.[1] ?? '').length;
   const marker = head?.[2] ?? '';
   const ordered = /\d/.test(marker);
+  // 正文起始列 = 缩进 + 标记宽度 + 空格;续行与嵌套都按它去缩进
+  const contentOffset = indent + marker.length + 1;
   const body: string[] = [head?.[3] ?? ''];
   let index = start + 1;
   while (index < lines.length) {
@@ -140,7 +142,7 @@ function collectListItem(
     if (!deeper) {
       break;
     }
-    body.push(line.slice(Math.min(indent + 2, line.length - line.trimStart().length)));
+    body.push(line.slice(Math.min(contentOffset, line.length - line.trimStart().length)));
     index += 1;
   }
   return { block: { marker, ordered, text: body.join('\n') }, consumed: index - start };
@@ -152,7 +154,8 @@ function renderListItem(
   theme: Theme,
 ): string[] {
   const bullet = block.ordered ? `${block.marker} ` : `${theme.paint.muted('•')} `;
-  const bulletWidth = 2;
+  // 续行缩进跟随编号实际宽度,多位编号(10. )才不会错位
+  const bulletWidth = block.ordered ? block.marker.length + 1 : 2;
   const inner = renderBlocks(block.text, width - bulletWidth, theme);
   const out: string[] = [];
   inner.forEach((line, itemIndex) => {
@@ -179,8 +182,8 @@ function collectTable(
     rows.push(line.split('|').map((cell) => cell.trim()));
     index += 1;
   }
-  // 第二行是分隔行时不参与内容
-  if (rows.length >= 2 && rows[1]?.every((cell) => /^:?-{2,}:?$/.test(cell)) === true) {
+  // 第二行是对齐分隔行时不参与内容;单横线与冒号修饰(:-、:-:、::---: 等)都算
+  if (rows.length >= 2 && rows[1]?.every((cell) => /^:?-+:?$/.test(cell)) === true) {
     rows.splice(1, 1);
   }
   return { table: rows, consumed: index - start };
@@ -191,27 +194,35 @@ function renderTable(table: readonly (readonly string[])[], width: number, theme
     return [];
   }
   const columns = Math.max(...table.map((row) => row.length));
+  // 列宽按渲染后的实际内容宽计算:原始 markdown 里的 ** ` 等语法符与样式不影响宽度
+  const measure = (cell: string): number =>
+    styledLineWidth(parseInline(cell, '', theme));
+  // 行宽预算:两端框线 6 列,列间 ' │ ' 各 3 列
+  const budget = Math.max(columns * 4, width - 3 * columns - 3);
   const colWidth: number[] = [];
   for (let column = 0; column < columns; column += 1) {
     let max = 0;
     for (const row of table) {
-      max = Math.max(max, visibleLength(row[column] ?? ''));
+      max = Math.max(max, measure(row[column] ?? ''));
     }
-    colWidth.push(Math.min(max, Math.max(4, Math.floor((width - columns * 3) / columns))));
+    colWidth.push(Math.min(max, Math.max(4, Math.floor(budget / columns))));
   }
-  const render = (row: readonly string[], codes: string): string => {
-    const cells = row.map((cell, column) => {
-      const segments = parseInline(cell, codes, theme);
-      return padSegments(segments, colWidth[column] ?? 0);
-    });
+  const render = (rowIndex: number, codes: string): string => {
+    const row = table[rowIndex] ?? [];
+    const cells = Array.from({ length: columns }, (_, column) =>
+      fitStyledLine(parseInline(row[column] ?? '', codes, theme), colWidth[column] ?? 0),
+    );
     return `  ${theme.paint.muted('│')} ${cells.join(theme.paint.muted(' │ '))} ${theme.paint.muted('│')}`;
   };
   const out: string[] = [];
-  out.push(render(table[0] ?? [], theme.codes.heading));
-  const divider = colWidth.map((width_) => '─'.repeat(width_)).join(theme.paint.muted('┼─'));
-  out.push(`  ${theme.paint.muted('│')} ${divider} ${theme.paint.muted('│')}`);
-  for (const row of table.slice(1)) {
-    out.push(render(row, ''));
+  out.push(render(0, theme.codes.heading));
+  // 分隔列比数据列宽 1:正好吃掉数据行 ' │ ' 里的两个空格,┼ 对准竖线
+  const divider = colWidth
+    .map((columnWidth) => '─'.repeat(columnWidth + 1))
+    .join(theme.paint.muted('┼'));
+  out.push(`  ${theme.paint.muted('│')} ${theme.paint.muted(divider)} ${theme.paint.muted('│')}`);
+  for (let index = 1; index < table.length; index += 1) {
+    out.push(render(index, ''));
   }
   return out;
 }
@@ -252,20 +263,6 @@ function emitInline(
 ): string[] {
   const segments = parseInline(text, baseCodes, theme);
   return wrapStyled(segments, width).map((line) => renderStyledLine(line));
-}
-
-function padSegments(segments: readonly StyledSegment[], width: number): string {
-  const text = renderStyledLine(segments);
-  const pad = Math.max(0, width - styledLineWidth(segments));
-  return text + ' '.repeat(pad);
-}
-
-function visibleLength(text: string): number {
-  let width = 0;
-  for (const char of text) {
-    width += codePointWidth(char.codePointAt(0) ?? 0);
-  }
-  return width;
 }
 
 /** 行内解析:代码 span、粗体、斜体、删除线、链接与裸链接。 */
@@ -312,7 +309,8 @@ export function parseInline(text: string, baseCodes: string, theme: Theme): Styl
       index += (boldItalic[0] ?? '').length;
       continue;
     }
-    const bold = /^\*\*([^*\n]+)\*\*/.exec(rest) ?? /^__([^_\n]+)__(?!\w)/.exec(rest);
+    // 粗体只认 **:__ 与 __init__、__main__ 这类双下划线标识符冲突太狠,不作为语法
+    const bold = /^\*\*([^*\n]+)\*\*/.exec(rest);
     if (bold !== null) {
       push(bold[1] ?? '', mergeCodes(baseCodes, modifier('1')));
       index += (bold[0] ?? '').length;
@@ -324,8 +322,14 @@ export function parseInline(text: string, baseCodes: string, theme: Theme): Styl
       index += (strike[0] ?? '').length;
       continue;
     }
-    // 单星号总是斜体;下划线斜体要求两侧不成词,避免误伤 file_name 之类的标识符
-    const italic = /^\*([^*\n]+)\*/.exec(rest) ?? /^_(?!_)([^_\n]+)_(?!\w)/.exec(rest);
+    // 单星号总是斜体;下划线斜体要求两侧都是词边界(不能贴着字母/数字/下划线),
+    // 否则 my_var_ 这类残缺标识符会被吃进去
+    const italicStar = /^\*([^*\n]+)\*/.exec(rest);
+    const italicUnder = /^_(?!_)([^_\n]+)_(?![\p{L}\p{N}_])/u.exec(rest);
+    const prevChar = index > 0 ? (text[index - 1] ?? '') : '';
+    const italic =
+      italicStar ??
+      (italicUnder !== null && !/[\p{L}\p{N}_]/u.test(prevChar) ? italicUnder : null);
     if (italic !== null) {
       push(italic[1] ?? '', mergeCodes(baseCodes, modifier('3')));
       index += (italic[0] ?? '').length;

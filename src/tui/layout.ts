@@ -233,13 +233,13 @@ export interface StyledSegment {
   codes: string;
 }
 
-/** 把一行片段拆成「字符 + 样式」单元,折行时不拆断任何片段语义。 */
+/** 把一行片段拆成「字符 + 样式」单元;换行符保留为断行标记(宽度 0)。 */
 function segmentUnits(segments: readonly StyledSegment[]): { char: string; codes: string; width: number }[] {
   const units: { char: string; codes: string; width: number }[] = [];
   for (const segment of segments) {
     for (const char of segment.text) {
       const width = codePointWidth(char.codePointAt(0) ?? 0);
-      if (width === 0) {
+      if (width === 0 && char !== '\n') {
         continue;
       }
       units.push({ char, codes: segment.codes, width });
@@ -282,6 +282,11 @@ export function wrapStyled(segments: readonly StyledSegment[], width: number): S
     lastSpace = -1;
   };
   for (const unit of units) {
+    // 段内硬换行:立刻断行,不参与宽度计算
+    if (unit.char === '\n') {
+      flush();
+      continue;
+    }
     if (currentWidth + unit.width > width) {
       if (lastSpace >= 0 && lastSpace > 0) {
         const rest = current.slice(lastSpace + 1);
@@ -315,4 +320,37 @@ export function styledLineWidth(line: readonly StyledSegment[]): number {
     width += visibleWidth(segment.text);
   }
   return width;
+}
+
+/**
+ * 把样式片段补齐或截断到指定显示宽度,返回渲染后的字符串:
+ * 不足补空格保证右缘对齐,超出按显示宽度硬截并加省略号。
+ */
+export function fitStyledLine(line: readonly StyledSegment[], width: number): string {
+  const total = styledLineWidth(line);
+  if (total <= width) {
+    return renderStyledLine(line) + ' '.repeat(width - total);
+  }
+  const limit = Math.max(0, width - 1);
+  let out = '';
+  let used = 0;
+  for (const segment of line) {
+    if (used >= limit) {
+      break;
+    }
+    let text = '';
+    for (const char of segment.text) {
+      const charWidth = codePointWidth(char.codePointAt(0) ?? 0);
+      if (used + charWidth > limit) {
+        break;
+      }
+      text += char;
+      used += charWidth;
+    }
+    out += text === '' ? '' : sgr(segment.codes, text);
+  }
+  // CJK 步进为 2,截断点可能比 limit 少 1 列;补齐到精确宽度,表格边框才不会参差
+  const result = `${out}…`;
+  const pad = width - visibleWidth(result);
+  return pad > 0 ? result + ' '.repeat(pad) : result;
 }
