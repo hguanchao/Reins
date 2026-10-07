@@ -20,12 +20,16 @@ const MAX_OUTPUT_CHARS = 200_000;
 
 export class BashTool implements Tool {
   readonly name = 'bash';
-  readonly description = '在工作区执行 shell 命令(非交互式),返回退出码与输出。';
+  readonly description =
+    'Execute a shell command in the workspace (non-interactive) and return its exit code and output.';
   readonly parameters = {
     type: 'object',
     properties: {
-      command: { type: 'string', description: '要执行的命令' },
-      timeout_ms: { type: 'number', description: `超时毫秒数(默认 ${DEFAULT_TIMEOUT_MS},上限 ${MAX_TIMEOUT_MS})` },
+      command: { type: 'string', description: 'Shell command to execute.' },
+      timeout_ms: {
+        type: 'number',
+        description: `Timeout in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}). Non-positive values fall back to the default.`,
+      },
     },
     required: ['command'],
     additionalProperties: false,
@@ -38,10 +42,12 @@ export class BashTool implements Tool {
 
   async execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const command = requireString(input, 'command', this.name);
-    const timeoutMs = Math.min(
-      optionalNumber(input, 'timeout_ms', this.name) ?? DEFAULT_TIMEOUT_MS,
-      MAX_TIMEOUT_MS,
-    );
+    // 非正数或非有限值按未指定处理:0 会被 setTimeout 立即触发,命令刚启动就被杀掉
+    const requested = optionalNumber(input, 'timeout_ms', this.name);
+    const timeoutMs =
+      requested === undefined || !Number.isFinite(requested) || requested <= 0
+        ? DEFAULT_TIMEOUT_MS
+        : Math.min(Math.floor(requested), MAX_TIMEOUT_MS);
     const outcome = await runShell(command, {
       cwd: ctx.workspace,
       timeoutMs,

@@ -20,13 +20,14 @@ const MAX_FILE_BYTES = 5_000_000;
 
 export class ReadTool implements Tool {
   readonly name = 'read';
-  readonly description = '读取文件内容,返回带行号的文本。可用 offset/limit 分页读取大文件。';
+  readonly description =
+    'Read a file and return its contents with line numbers. Use offset and limit to page through large files.';
   readonly parameters = {
     type: 'object',
     properties: {
-      path: { type: 'string', description: '文件路径(相对工作区或绝对路径)' },
-      offset: { type: 'number', description: '起始行号(从 1 开始)' },
-      limit: { type: 'number', description: '最多读取的行数' },
+      path: { type: 'string', description: 'File path, relative to the workspace or absolute.' },
+      offset: { type: 'number', description: 'First line to read (1-based).' },
+      limit: { type: 'number', description: 'Maximum number of lines to read.' },
     },
     required: ['path'],
     additionalProperties: false,

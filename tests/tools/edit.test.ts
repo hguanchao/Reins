@@ -51,4 +51,27 @@ describe('编辑工具', () => {
     assert.ok(result.content.includes('不唯一'));
     assert.equal(await readFile(file, 'utf8'), 'a a');
   });
+
+  it('替换文本里的 $ 不被当作替换模式展开', async () => {
+    const file = join(dir, 'edit4.txt');
+    await writeFile(file, 'let price = 0;');
+    const result = await tool.execute(
+      { path: 'edit4.txt', oldText: '0', newText: '$$' },
+      { workspace: dir },
+    );
+    assert.equal(result.isError, false);
+    assert.equal(await readFile(file, 'utf8'), 'let price = $$;');
+  });
+
+  it('CRLF 文件的多行替换也能命中,且写回仍是 CRLF', async () => {
+    const file = join(dir, 'edit5.txt');
+    await writeFile(file, 'hello\r\nworld\r\n');
+    // read 工具按 \r?\n 拆行,模型给出的 oldText 一律是 \n
+    const result = await tool.execute(
+      { path: 'edit5.txt', oldText: 'hello\nworld', newText: 'hello\nreins' },
+      { workspace: dir },
+    );
+    assert.equal(result.isError, false);
+    assert.equal(await readFile(file, 'utf8'), 'hello\r\nreins\r\n');
+  });
 });

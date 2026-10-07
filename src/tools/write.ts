@@ -16,12 +16,13 @@ import {
  */
 export class WriteTool implements Tool {
   readonly name = 'write';
-  readonly description = '写入文件(整体覆盖),自动创建父目录。局部修改请优先使用 edit。';
+  readonly description =
+    'Write a file, replacing its entire contents. Parent directories are created automatically. Prefer edit for partial changes.';
   readonly parameters = {
     type: 'object',
     properties: {
-      path: { type: 'string', description: '文件路径(相对工作区或绝对路径)' },
-      content: { type: 'string', description: '完整文件内容' },
+      path: { type: 'string', description: 'File path, relative to the workspace or absolute.' },
+      content: { type: 'string', description: 'Full file contents.' },
     },
     required: ['path', 'content'],
     additionalProperties: false,

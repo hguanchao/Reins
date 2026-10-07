@@ -48,6 +48,19 @@ describe('命令执行工具', () => {
     assert.ok(result.content.includes('执行超时'));
   });
 
+  it('timeout_ms 非正数时回退默认超时,不立即杀进程', async () => {
+    const zero = await tool.execute({ command: 'echo hi-zero', timeout_ms: 0 }, { workspace: dir });
+    assert.equal(zero.isError, false);
+    assert.ok(zero.content.includes('hi-zero'));
+    assert.equal(zero.content.includes('执行超时'), false);
+    const negative = await tool.execute(
+      { command: 'echo hi-neg', timeout_ms: -5 },
+      { workspace: dir },
+    );
+    assert.ok(negative.content.includes('hi-neg'));
+    assert.equal(negative.content.includes('执行超时'), false);
+  });
+
   it('targetOf 提取命令文本', () => {
     assert.deepEqual(tool.targetOf({ command: 'git status' }, { workspace: dir }), {
       command: 'git status',

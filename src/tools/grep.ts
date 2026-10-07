@@ -22,13 +22,20 @@ const MAX_LINE_CHARS = 300;
 
 export class GrepTool implements Tool {
   readonly name = 'grep';
-  readonly description = '按正则表达式搜索文件内容,返回 file:line: 匹配行(忽略大小写)。';
+  readonly description =
+    'Search file contents by regular expression and return matching lines as file:line. Case-insensitive.';
   readonly parameters = {
     type: 'object',
     properties: {
-      pattern: { type: 'string', description: '正则表达式' },
-      path: { type: 'string', description: '搜索起点(相对工作区,默认工作区根)' },
-      max_results: { type: 'number', description: `最多返回条数(默认 ${MAX_RESULT_LINES})` },
+      pattern: { type: 'string', description: 'Regular expression.' },
+      path: {
+        type: 'string',
+        description: 'Directory to search, relative to the workspace (defaults to the workspace root).',
+      },
+      max_results: {
+        type: 'number',
+        description: `Maximum number of matches to return (default ${MAX_RESULT_LINES}).`,
+      },
     },
     required: ['pattern'],
     additionalProperties: false,

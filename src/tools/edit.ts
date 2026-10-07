@@ -15,13 +15,14 @@ import {
  */
 export class EditTool implements Tool {
   readonly name = 'edit';
-  readonly description = '精确文本替换:oldText 需在文件中唯一出现;出现 0 次或多次时拒绝修改。';
+  readonly description =
+    'Replace exact text in a file. oldText must occur exactly once; the edit is rejected when it occurs zero or multiple times.';
   readonly parameters = {
     type: 'object',
     properties: {
-      path: { type: 'string', description: '文件路径(相对工作区或绝对路径)' },
-      oldText: { type: 'string', description: '要被替换的原文(需唯一)' },
-      newText: { type: 'string', description: '替换后的新文本' },
+      path: { type: 'string', description: 'File path, relative to the workspace or absolute.' },
+      oldText: { type: 'string', description: 'Exact existing text to replace (must be unique).' },
+      newText: { type: 'string', description: 'Replacement text.' },
     },
     required: ['path', 'oldText', 'newText'],
     additionalProperties: false,
@@ -43,7 +44,12 @@ export class EditTool implements Tool {
       return { content: `文件不存在:${file}`, isError: true };
     }
     const text = await readTextFile(file);
-    const occurrences = countOccurrences(text, oldText);
+    // read 工具按 \r?\n 拆行,模型看到的文本一律是 \n;CRLF 文件必须先归一,
+    // 否则多行 oldText 在 Windows 上永远匹配不到
+    const crlf = text.includes('\r\n');
+    const haystack = crlf ? text.replace(/\r\n/g, '\n') : text;
+    const needle = oldText.replace(/\r\n/g, '\n');
+    const occurrences = countOccurrences(haystack, needle);
     if (occurrences === 0) {
       return { content: `未找到匹配的 oldText,未做修改:${file}`, isError: true };
     }
@@ -53,7 +59,11 @@ export class EditTool implements Tool {
         isError: true,
       };
     }
-    await writeTextFile(file, text.replace(oldText, newText));
+    // 替换值走函数形式:字符串形式会把 newText 里的 $&、$$ 当替换模式展开,
+    // 静默写坏文件(写 shell 脚本与模板时很常见)
+    const replacement = newText.replace(/\r\n/g, '\n');
+    const updated = haystack.replace(needle, () => replacement);
+    await writeTextFile(file, crlf ? updated.replace(/\n/g, '\r\n') : updated);
     return { content: `已修改 ${file}(替换 1 处)`, isError: false };
   }
 }

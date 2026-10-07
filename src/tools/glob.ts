@@ -20,12 +20,16 @@ const MAX_RESULTS = 200;
 
 export class GlobTool implements Tool {
   readonly name = 'glob';
-  readonly description = '按通配模式查找文件(支持 ** 递归),返回相对工作区的路径列表。';
+  readonly description =
+    'Find files by glob pattern (** supported) and return paths relative to the workspace.';
   readonly parameters = {
     type: 'object',
     properties: {
-      pattern: { type: 'string', description: '通配模式,例如 src/**/*.ts、*.json' },
-      path: { type: 'string', description: '搜索起点(相对工作区,默认工作区根)' },
+      pattern: { type: 'string', description: 'Glob pattern, for example src/**/*.ts or *.json.' },
+      path: {
+        type: 'string',
+        description: 'Directory to search, relative to the workspace (defaults to the workspace root).',
+      },
     },
     required: ['pattern'],
     additionalProperties: false,
