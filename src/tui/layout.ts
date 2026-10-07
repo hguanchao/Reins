@@ -19,6 +19,20 @@ export function codePointWidth(codePoint: number): number {
   if (codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) {
     return 0;
   }
+  // 零宽字符:组合附加符号、零宽连接/断字、方向标记、文本变体选择符、变体选择符补充
+  if (
+    (codePoint >= 0x300 && codePoint <= 0x36f) ||
+    (codePoint >= 0x200b && codePoint <= 0x200f) ||
+    codePoint === 0xfe0e ||
+    (codePoint >= 0xe0100 && codePoint <= 0xe01ef)
+  ) {
+    return 0;
+  }
+  // VS16 把前一个字符切换成 emoji 呈现,多占一列;配 SMP emoji 会多算 1,
+  // 宁可多算(行画短、右缘留缝)也不少算(行画超宽、挤换行破坏整帧)
+  if (codePoint === 0xfe0f) {
+    return 1;
+  }
   if (
     (codePoint >= 0x1100 && codePoint <= 0x115f) ||
     (codePoint >= 0x2e80 && codePoint <= 0xa4cf) ||
@@ -31,7 +45,60 @@ export function codePointWidth(codePoint: number): number {
   ) {
     return 2;
   }
+  // emoji:补充平面各表情区块与 BMP 上默认即 emoji 呈现的符号,
+  // 终端普遍按双宽渲染,漏算会把行挤到换行、破坏帧差分
+  if (
+    (codePoint >= 0x1f300 && codePoint <= 0x1f64f) ||
+    (codePoint >= 0x1f680 && codePoint <= 0x1f6ff) ||
+    (codePoint >= 0x1f900 && codePoint <= 0x1f9ff) ||
+    (codePoint >= 0x1fa70 && codePoint <= 0x1faff)
+  ) {
+    return 2;
+  }
+  if (inRanges(codePoint, EMOJI_PRESENTATION_BMP)) {
+    return 2;
+  }
   return 1;
+}
+
+/** BMP 上默认以 emoji 呈现(双宽)的符号区间。 */
+const EMOJI_PRESENTATION_BMP: readonly (readonly [number, number])[] = [
+  [0x231a, 0x231b],
+  [0x23ce, 0x23ce],
+  [0x23e9, 0x23f3],
+  [0x23f8, 0x23fa],
+  [0x25fd, 0x25fe],
+  [0x2614, 0x2615],
+  [0x2648, 0x2653],
+  [0x267f, 0x267f],
+  [0x2693, 0x2693],
+  [0x26a1, 0x26a1],
+  [0x26aa, 0x26ab],
+  [0x26bd, 0x26be],
+  [0x26c4, 0x26c5],
+  [0x26ce, 0x26ce],
+  [0x26d4, 0x26d4],
+  [0x26ea, 0x26ea],
+  [0x26f2, 0x26f3],
+  [0x26f5, 0x26f5],
+  [0x26fa, 0x26fa],
+  [0x26fd, 0x26fd],
+  [0x2705, 0x2705],
+  [0x270a, 0x270b],
+  [0x2728, 0x2728],
+  [0x274c, 0x274c],
+  [0x274e, 0x274e],
+  [0x2753, 0x2755],
+  [0x2757, 0x2757],
+  [0x2795, 0x2797],
+  [0x2b05, 0x2b07],
+  [0x2b1b, 0x2b1c],
+  [0x2b50, 0x2b50],
+  [0x2b55, 0x2b55],
+];
+
+function inRanges(codePoint: number, ranges: readonly (readonly [number, number])[]): boolean {
+  return ranges.some(([start, end]) => codePoint >= start && codePoint <= end);
 }
 
 /** 文本的显示宽度(忽略 ANSI 样式)。 */

@@ -119,11 +119,12 @@ describe('滚动区块渲染', () => {
     assert.ok(text.includes('@'));
   });
 
-  it('渲染结果不超过给定宽度(含 CJK)', () => {
+  it('渲染结果不超过给定宽度(含 CJK 与 emoji)', () => {
     const blocks: ScrollBlock[] = [
       { kind: 'user', text: '中文很长的任务描述会不会超过宽度呢可能会也可能不会但总之要检查一下' },
-      { kind: 'tool', name: 'bash', summary: '很长的命令参数需要截断处理', state: 'ok', elapsedMs: 12, output: '输出内容也很长需要折行处理输出内容也很长需要折行处理' },
-      { kind: 'notice', text: '这是一条很长的通知文本用于测试宽度截断行为是否正常', level: 'warn' },
+      { kind: 'assistant', text: '## 能力\n\n- 📁 **文件操作**\n- 🖥️ **命令行**:在你看工作区跑 shell 命令\n- 🛠 典型任务 | 我会怎么做', streaming: false },
+      { kind: 'tool', name: 'bash', summary: '很长的命令参数需要截断处理', state: 'ok', elapsedMs: 12, output: '输出内容也很长需要折行处理输出内容也很长需要折行处理 📁📁📁' },
+      { kind: 'notice', text: '这是一条很长的通知文本用于测试宽度截断行为是否正常 ⚠️', level: 'warn' },
     ];
     for (const block of blocks) {
       for (const line of renderBlock(block, 30, context)) {

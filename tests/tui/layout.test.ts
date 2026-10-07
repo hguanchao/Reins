@@ -21,6 +21,26 @@ describe('布局宽度计算', () => {
     assert.equal(stripAnsi('\u001b[36mhi\u001b[0m'), 'hi');
   });
 
+  it('emoji 与变体选择符的宽度', () => {
+    // 补充平面 emoji 按双宽
+    assert.equal(visibleWidth('📁'), 2);
+    assert.equal(visibleWidth('🖥'), 2);
+    // BMP 符号:默认 emoji 呈现为 2,普通符号为 1
+    assert.equal(visibleWidth('✅'), 2);
+    assert.equal(visibleWidth('⏱'), 2);
+    assert.equal(visibleWidth('⭐'), 2);
+    assert.equal(visibleWidth('✓'), 1);
+    assert.equal(visibleWidth('⚠'), 1);
+    // VS16 切换 emoji 呈现:基础符 1 + 选择符 1
+    assert.equal(visibleWidth('\u2699\uFE0F'), 2);
+    assert.equal(visibleWidth('\u2764\uFE0F'), 2);
+    // 组合符号与零宽字符不占列
+    assert.equal(visibleWidth('a\u0301'), 1);
+    assert.equal(visibleWidth('\u200b'), 0);
+    // 混排:emoji 两侧 CJK(2+2+2+2)
+    assert.equal(visibleWidth('看📁文件'), 8);
+  });
+
   it('截断:超宽加省略号,宽度内原样', () => {
     assert.equal(truncatePlain('你好世界', 5), '你好…');
     assert.equal(truncatePlain('hello', 5), 'hello');
@@ -91,5 +111,7 @@ describe('布局宽度计算', () => {
     assert.equal(visibleWidth(styled), 6);
     assert.ok(styled.includes('\u001b[36m'));
     assert.equal(padAnsi('', 3), '   ');
+    // emoji 按 2 列计,补齐后总宽不超
+    assert.equal(visibleWidth(padAnsi('📁x', 5)), 5);
   });
 });
