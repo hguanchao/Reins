@@ -6,10 +6,12 @@ import {
   SESSION_FORMAT_VERSION,
   SessionStore,
   encodeProjectDir,
-  makeSessionId,
   type SessionEntry,
 } from '../../src/session/store.ts';
 import { readTextFile, writeTextFile } from '../../src/util/fsx.ts';
+
+/** 会话 id 是裸 UUID v7:版本位 7、variant 8/9/a/b。 */
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function makeEntry(partial: Partial<SessionEntry> & Pick<SessionEntry, 'id' | 'type'>): SessionEntry {
   return {
@@ -37,7 +39,7 @@ describe('会话存储', () => {
     const meta = JSON.parse(text.split('\n')[0] as string) as Record<string, unknown>;
     assert.equal(meta['v'], SESSION_FORMAT_VERSION);
     assert.equal(meta['type'], 'meta');
-    assert.match(store.sessionId, /^\d{8}-\d{6}-[0-9a-f]{32}$/);
+    assert.match(store.sessionId, SESSION_ID);
     assert.ok(store.file.includes(encodeProjectDir(process.cwd())));
   });
 
@@ -81,15 +83,14 @@ describe('会话存储', () => {
     await assert.rejects(() => store.readAll(), /版本/);
   });
 
-  it('项目路径编码与会话标识格式', () => {
+  it('项目路径编码:盘符与分隔符都换成连字符', () => {
     assert.equal(encodeProjectDir('C:/work/a'), 'C--work-a');
     assert.equal(encodeProjectDir(String.raw`E:\Projects\Reins`), 'E--Projects-Reins');
-    assert.match(makeSessionId(), /^\d{8}-\d{6}-[0-9a-f]{32}$/);
   });
 
   it('会话按项目目录归档', async () => {
     const store = await SessionStore.create(dir, 'C:/work/demo');
     assert.ok(store.file.includes('C--work-demo'));
-    assert.ok(store.file.endsWith('.jsonl'));
+    assert.ok(store.file.endsWith(`${store.sessionId}.jsonl`), '文件名就是会话 id');
   });
 });

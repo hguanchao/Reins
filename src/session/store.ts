@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { ReinsError } from '../util/errors.ts';
+import { uuidv7 } from '../util/ids.ts';
 import { appendLine, ensureDir, pathExists, readTextFile } from '../util/fsx.ts';
 
 /**
@@ -76,16 +77,6 @@ export function encodeProjectDir(cwd: string): string {
   return cwd.replace(/[<>:"/\\|?*]/g, '-');
 }
 
-/** 生成会话标识:时间戳(本地)+ 去掉连字符的 UUID。 */
-export function makeSessionId(now: Date = new Date()): string {
-  const pad = (value: number): string => String(value).padStart(2, '0');
-  const stamp =
-    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
-    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  const uuid = randomUUID().replace(/-/g, '');
-  return `${stamp}-${uuid}`;
-}
-
 export class SessionStore {
   readonly file: string;
   private metaValue: SessionMeta | undefined;
@@ -94,11 +85,11 @@ export class SessionStore {
     this.file = file;
   }
 
-  /** 新建会话:按项目分目录,文件名为「时间-UUID」。 */
+  /** 新建会话:按项目分目录,文件名就是会话 id(v7 名字序即时间序)。 */
   static async create(dir: string, cwd: string, trusted = false): Promise<SessionStore> {
     const projectDir = join(dir, encodeProjectDir(cwd));
     await ensureDir(projectDir);
-    const sessionId = makeSessionId();
+    const sessionId = uuidv7();
     const store = new SessionStore(join(projectDir, `${sessionId}.jsonl`));
     await store.writeMeta({
       v: SESSION_FORMAT_VERSION,
