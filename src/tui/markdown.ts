@@ -31,6 +31,19 @@ function isThematicBreak(line: string): boolean {
   return /^\s*[-*_](?:[ \t]*[-*_]){2,}\s*$/.test(line);
 }
 
+/**
+ * 是否是栅栏的闭合行:同种标记、不短于开启标记、且行内没有别的内容。
+ * 只判前缀会让 ```md 里的 ```js 提前闭合,把后续代码块内容排成正文。
+ */
+function isClosingFence(line: string, marker: string): boolean {
+  const match = /^\s*(`{3,}|~{3,})\s*$/.exec(line);
+  if (match === null) {
+    return false;
+  }
+  const found = match[1] ?? '';
+  return found[0] === marker[0] && found.length >= marker.length;
+}
+
 function renderBlocks(text: string, width: number, theme: Theme): string[] {
   const lines = text.split('\n');
   const out: string[] = [];
@@ -44,7 +57,7 @@ function renderBlocks(text: string, width: number, theme: Theme): string[] {
       const lang = fence[3] ?? '';
       const code: string[] = [];
       index += 1;
-      while (index < lines.length && !(lines[index] ?? '').trimStart().startsWith(marker)) {
+      while (index < lines.length && !isClosingFence(lines[index] ?? '', marker)) {
         code.push(lines[index] ?? '');
         index += 1;
       }

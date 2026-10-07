@@ -276,4 +276,12 @@ describe('markdown 渲染', () => {
     }
     assert.ok(true, '全程无卡死即通过');
   });
+
+  it('代码围栏内的同类标记行不提前闭合', () => {
+    // 内层 ```js 只是内容:按前缀判断会在这里提前闭合,把后面的代码排成正文
+    const lines = render(['```md', '```js', 'const x = 1;', '```'].join('\n'), 40);
+    const codeLines = lines.filter((line) => /```js|const x = 1;/.test(line));
+    assert.equal(codeLines.length, 2);
+    assert.ok(codeLines.every((line) => line.includes('│')), codeLines.join('\n'));
+  });
 });

@@ -56,6 +56,27 @@ describe('输入解码', () => {
     assert.equal(decoder.hasPending(), false);
   });
 
+  it('带修饰键的方向键按终结符归类,不落成文本', () => {
+    assert.deepEqual(decode('\u001b[1;5A'), [{ type: 'up' }]);
+    assert.deepEqual(decode('\u001b[1;2B'), [{ type: 'down' }]);
+    assert.deepEqual(decode('\u001b[1;3C'), [{ type: 'right' }]);
+    assert.deepEqual(decode('\u001b[1;5D'), [{ type: 'left' }]);
+    assert.deepEqual(decode('\u001b[3;5~'), [{ type: 'delete' }]);
+    assert.deepEqual(decode('\u001b[5;2~'), [{ type: 'pageup' }]);
+    // 关键:参数绝不能落成普通文本插进输入框
+    assert.equal(decode('\u001b[1;5A').some((event) => event.type === 'text'), false);
+  });
+
+  it('残缺序列跨块且中途 flush 时不丢,补齐后仍能识别', () => {
+    const decoder = createKeyDecoder();
+    assert.deepEqual(decoder.feed('\u001b['), []);
+    // 静默超时:保留缓冲,否则后半截会变成文本(方向键插出 "A")
+    assert.deepEqual(decoder.flush(), []);
+    assert.equal(decoder.hasPending(), true);
+    assert.deepEqual(decoder.feed('A'), [{ type: 'up' }]);
+    assert.equal(decoder.hasPending(), false);
+  });
+
   it('SGR 鼠标滚轮:64 上 65 下,松开忽略', () => {
     assert.deepEqual(decode('\u001b[<64;10;5M'), [{ type: 'wheel', delta: -3 }]);
     assert.deepEqual(decode('\u001b[<65;10;5M'), [{ type: 'wheel', delta: 3 }]);

@@ -32,7 +32,7 @@ import { headerLine, inputBoxFrame, inputBoxLine, scrollbarChar, scrollbarGeomet
 import { createFileIndex, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
-import { codePointWidth, padAnsi, softWrapRows, truncatePlain, visibleWidth } from './layout.ts';
+import { codePointWidth, padAnsi, softWrapRows, truncatePlain, visibleWidth, visualRowContains } from './layout.ts';
 import { Terminal } from './screen.ts';
 import { createTheme, symbols, type Theme } from './theme.ts';
 import { Viewer } from './viewer.ts';
@@ -1020,9 +1020,10 @@ export class TuiApp implements AgentUi {
       }
     });
 
-    // 光标所在视觉行:列落在 [start, end) 内;行尾时顺延到下一行,行尾为末行则在本行
+    // 光标所在视觉行:列落在 [start, end] 内。行边界归属前一行,这样按 ↑ 从下一
+    // 视觉行回到上一行行尾时,光标显示在行尾而不是下一行行首;行尾为末行则在本行
     let cursorRow = rows.findIndex(
-      (row) => row.logical === cursorLineRaw && cursorColumnRaw >= row.start && cursorColumnRaw < row.end,
+      (row) => row.logical === cursorLineRaw && visualRowContains(row, cursorColumnRaw),
     );
     if (cursorRow < 0) {
       cursorRow = rows.reduce((last, row, index) => (row.logical === cursorLineRaw ? index : last), 0);

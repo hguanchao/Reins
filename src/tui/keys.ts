@@ -72,6 +72,33 @@ const SEQUENCES: readonly ControlDef[] = [
   { sequence: '\u001b[Z', key: { type: 'shift-tab' } },
 ];
 
+/**
+ * 带参数 CSI 的终结符 → 按键。
+ *
+ * 终端把 Ctrl/Alt+方向键编码成 `\x1b[1;5A` 这类带参数的序列;不归类就会被当成
+ * 普通文本插进输入框(方向键变成 "1;5A")。这里忽略修饰参数、按终结符归类。
+ */
+const CSI_FINALS: Readonly<Record<string, TuiKey>> = {
+  A: { type: 'up' },
+  B: { type: 'down' },
+  C: { type: 'right' },
+  D: { type: 'left' },
+  F: { type: 'end' },
+  H: { type: 'home' },
+  Z: { type: 'shift-tab' },
+};
+
+/** 带参数的 `~` 形式(如 `\x1b[3;5~`)的编号 → 按键。 */
+const TILDE_FINALS: Readonly<Record<number, TuiKey>> = {
+  1: { type: 'home' },
+  3: { type: 'delete' },
+  4: { type: 'end' },
+  5: { type: 'pageup' },
+  6: { type: 'pagedown' },
+  7: { type: 'home' },
+  8: { type: 'end' },
+};
+
 const CONTROLS: Readonly<Record<string, TuiKey>> = {
   '\r': { type: 'enter' },
   '\n': { type: 'ctrl-j' },
@@ -188,6 +215,18 @@ export function createKeyDecoder(): KeyDecoder {
       return wheel !== 0 ? { type: 'wheel', delta: wheel * WHEEL_STEP } : { type: 'unknown' };
     }
 
+    // 带参数的 CSI(如 Ctrl+方向键 \x1b[1;5A):忽略参数、按终结符归类
+    const csi = /^\u001b\[(\d+(?:;\d+)*)?([A-DFHZ])/.exec(buf);
+    if (csi !== null) {
+      consume(csi[0].length);
+      return CSI_FINALS[csi[2] ?? ''] ?? { type: 'unknown' };
+    }
+    const tilde = /^\u001b\[(\d+)(?:;\d+)*~/.exec(buf);
+    if (tilde !== null) {
+      consume(tilde[0].length);
+      return TILDE_FINALS[Number.parseInt(tilde[1] ?? '', 10)] ?? { type: 'unknown' };
+    }
+
     // 终端回执类序列(焦点、私有模式应答):吞到终结符,忽略
     if (buf.startsWith('\u001b[I') || buf.startsWith('\u001b[O')) {
       consume(3);
@@ -243,14 +282,17 @@ export function createKeyDecoder(): KeyDecoder {
       if (buf === '' || pasting) {
         return [];
       }
-      const events: TuiKey[] = [];
+      // 孤立的 Esc 才是用户的按键;其余残缺序列可能只是被终端拆成了两块
+      // (远程终端、tmux、慢 SSH 常见),丢弃会把后半截当普通文本插进输入框
       if (buf === '\u001b') {
-        events.push({ type: 'escape' });
-      } else {
-        events.push({ type: 'unknown' });
+        buf = '';
+        return [{ type: 'escape' }];
+      }
+      if (couldBeEscapePrefix(buf)) {
+        return [];
       }
       buf = '';
-      return events;
+      return [{ type: 'unknown' }];
     },
     hasPending() {
       return buf !== '';

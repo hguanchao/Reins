@@ -217,6 +217,16 @@ export function softWrapRows(text: string, width: number): { text: string; start
   return rows;
 }
 
+/**
+ * 视觉行的列归属:列落在 [start, end] 内。
+ *
+ * 行边界(列等于某行 end)归属前一行,光标停在折行处时才显示在上一行行尾,
+ * 而不是跳到下一行行首(按 ↑ 从下一视觉行回到行尾时会露出来)。
+ */
+export function visualRowContains(row: { start: number; end: number }, column: number): boolean {
+  return column >= row.start && column <= row.end;
+}
+
 /** 折行:优先在空格处断行,中文等无空格文本按宽度硬折。 */
 export function wrapPlain(text: string, width: number): string[] {
   if (width <= 0) {

@@ -11,6 +11,7 @@ import {
   truncateAnsi,
   truncatePlain,
   visibleWidth,
+  visualRowContains,
   wrapPlain,
   wrapStyled,
 } from '../../src/tui/layout.ts';
@@ -167,5 +168,15 @@ describe('布局宽度计算', () => {
     // 任意输入的输出宽度都精确等于目标宽度
     assert.equal(visibleWidth(fitStyledLine([{ text: '📁📁📁', codes: '' }], 5)), 5);
     assert.equal(visibleWidth(fitStyledLine([{ text: '中文', codes: '' }], 7)), 7);
+  });
+
+  it('visualRowContains:行边界归属前一行', () => {
+    const row = { start: 4, end: 8 };
+    assert.equal(visualRowContains(row, 3), false);
+    assert.equal(visualRowContains(row, 4), true);
+    assert.equal(visualRowContains(row, 6), true);
+    // 列等于 end 时归属本行,光标停在折行处显示为上一行行尾
+    assert.equal(visualRowContains(row, 8), true);
+    assert.equal(visualRowContains(row, 9), false);
   });
 });
