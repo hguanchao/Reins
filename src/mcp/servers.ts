@@ -1,5 +1,6 @@
 import type { McpServerConfig } from '../config/schema.ts';
 import { ReinsError, describeError } from '../util/errors.ts';
+import { VERSION } from '../util/version.ts';
 import {
   HttpTransport,
   McpClient,
@@ -95,7 +96,7 @@ export class McpManager {
       const client = new McpClient(buildTransport(name, config, this.fetchImpl), {
         callTimeoutMs: config.callTimeoutMs,
       });
-      await client.initialize('reins', '0.0.1');
+      await client.initialize('reins', VERSION);
       const tools = await client.listTools();
       this.clients.set(name, { client, tools });
       this.statusList.push({ name, ok: true, toolCount: tools.length });
