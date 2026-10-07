@@ -107,16 +107,22 @@ export function renderBlockVerbose(block: ScrollBlock, width: number, context: R
   return lines;
 }
 
-/** 用户消息条:整行中性灰,前缀 › 取强调色,不标注角色。 */
+/** 助手正文的左缩进:与用户消息正文、工具块共用同一条左边界。 */
+const ASSISTANT_INDENT = 2;
+
+/** 用户消息条:整行中性灰,前缀 › 取强调色,上下各留一行空白条带,不标注角色。 */
 function renderUser(text: string, width: number, theme: Theme): string[] {
   const prefix = '› ';
   const prefixWidth = visibleWidth(prefix);
   const bodyWidth = Math.max(1, width - prefixWidth);
   const raw = text === '' ? [''] : wrapPlain(text, bodyWidth);
-  return raw.map((line, index) => {
+  const body = raw.map((line, index) => {
     const head = index === 0 ? theme.paint.accent(prefix) : ' '.repeat(prefixWidth);
     return paintRow(`${head}${line}`, width, theme.codes.userBar);
   });
+  // 上下各补一行空白条带:消息条有厚度,不贴着文字
+  const blank = paintRow('', width, theme.codes.userBar);
+  return [blank, ...body, blank];
 }
 
 function renderAssistant(
@@ -124,11 +130,11 @@ function renderAssistant(
   width: number,
   theme: Theme,
 ): string[] {
-  // 正文顶格排,不标注角色也不缩进
-  const body = renderMarkdown(block.text, width, theme, 0);
+  // 正文左缩进与用户消息正文对齐,不标注角色
+  const body = renderMarkdown(block.text, width, theme, ASSISTANT_INDENT);
   if (block.streaming) {
     if (body.length === 0) {
-      body.push(theme.paint.muted(symbols.cursor));
+      body.push(`${' '.repeat(ASSISTANT_INDENT)}${theme.paint.muted(symbols.cursor)}`);
     } else {
       const last = body.length - 1;
       body[last] = `${body[last]}${theme.paint.muted(symbols.cursor)}`;

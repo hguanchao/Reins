@@ -26,25 +26,39 @@ describe('滚动区块渲染', () => {
     assert.equal(summarizeToolArgs('{}'), '{}');
   });
 
-  it('用户消息:中性灰条带、› 前缀取强调色、不标注角色', () => {
+  it('用户消息:中性灰条带、上下留白、› 前缀取强调色、不标注角色', () => {
     const lines = renderBlock({ kind: 'user', text: '修复登录页' }, 40, context);
-    const plain = lines.map(stripAnsi).join('\n');
-    assert.ok(plain.startsWith('› 修复登录页'));
-    assert.equal(plain.includes('你'), false);
+    const plain = lines.map(stripAnsi);
+    // 上下各一行空白条带,消息条有厚度
+    assert.equal(plain[0]?.trim(), '');
+    assert.equal(plain[plain.length - 1]?.trim(), '');
+    assert.ok(plain[1]?.startsWith('› 修复登录页'));
+    assert.equal(plain.join('\n').includes('你'), false);
     // 条带样式同时含前景与背景,不依赖终端默认前景色
     assert.ok(lines.every((line) => line.startsWith(`\u001b[${context.theme.codes.userBar}m`)));
     assert.ok(lines.every((line) => visibleWidth(line) === 40));
     // 前缀带强调色,且颜色不泄漏到正文
-    const first = lines[0] ?? '';
+    const first = lines[1] ?? '';
     assert.ok(first.includes(`\u001b[${context.theme.codes.accent}m› `));
     assert.ok(first.includes(`\u001b[0m\u001b[${context.theme.codes.userBar}m`));
   });
 
   it('用户消息:折行后续行与首行对齐,不重复前缀', () => {
     const lines = renderBlock({ kind: 'user', text: '一二三四五六七八九十' }, 10, context).map(stripAnsi);
-    assert.ok(lines[0]?.startsWith('› '));
-    assert.ok(lines.length > 1);
-    assert.ok(lines.slice(1).every((line) => line.startsWith('  ') && !line.includes('›')));
+    // 去掉上下空白条带
+    const body = lines.slice(1, -1);
+    assert.ok(body[0]?.startsWith('› '));
+    assert.ok(body.length > 1);
+    assert.ok(body.slice(1).every((line) => line.startsWith('  ') && !line.includes('›')));
+  });
+
+  it('模型回复与用户消息正文左对齐', () => {
+    const user = renderBlock({ kind: 'user', text: '任务' }, 40, context).map(stripAnsi);
+    const assistant = renderBlock({ kind: 'assistant', text: '好的', streaming: false }, 40, context)
+      .map(stripAnsi);
+    const userText = user.find((line) => line.includes('任务')) ?? '';
+    const assistantText = assistant.find((line) => line.includes('好的')) ?? '';
+    assert.equal(assistantText.indexOf('好的'), userText.indexOf('任务'), '回复应与用户消息正文对齐');
   });
 
   it('助手消息:markdown 渲染且流式光标只在末尾', () => {
@@ -54,9 +68,8 @@ describe('滚动区块渲染', () => {
       context,
     ).map(stripAnsi);
     assert.equal(streaming.some((line) => line.trim() === '助手'), false);
-    // 正文顶格,不再缩进
-    assert.ok(streaming.some((line) => line === '标题'));
-    assert.equal(streaming.some((line) => line.startsWith(' ') && line.includes('标题')), false);
+    // 正文缩进两格,与用户消息正文对齐
+    assert.ok(streaming.some((line) => line === '  标题'));
     assert.ok(streaming[streaming.length - 1]?.includes('▏'));
     const idle = renderBlock({ kind: 'assistant', text: '完成', streaming: false }, 60, context)
       .map(stripAnsi)
