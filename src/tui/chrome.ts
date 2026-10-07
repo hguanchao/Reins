@@ -74,3 +74,17 @@ export function scrollbarChar(
     ? 'thumb'
     : 'track';
 }
+
+/**
+ * 把内容在给定高度内垂直居中,上下用空行补齐。
+ *
+ * 只用于「欢迎面板独占屏幕」这类静态单块内容:对话开始后内容自上而下增长,
+ * 再居中会让最新一行随长度跳动,反而不好找。
+ */
+export function centerVertically(lines: readonly string[], height: number): string[] {
+  const pad = Math.floor((height - lines.length) / 2);
+  if (pad <= 0) {
+    return [...lines];
+  }
+  return [...Array.from({ length: pad }, () => ''), ...lines];
+}

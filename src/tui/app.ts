@@ -28,7 +28,14 @@ import {
   type RenderContext,
   type ScrollBlock,
 } from './blocks.ts';
-import { headerLine, inputBoxFrame, inputBoxLine, scrollbarChar, scrollbarGeometry } from './chrome.ts';
+import {
+  centerVertically,
+  headerLine,
+  inputBoxFrame,
+  inputBoxLine,
+  scrollbarChar,
+  scrollbarGeometry,
+} from './chrome.ts';
 import { createFileIndex, needsFileScan, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
@@ -887,7 +894,12 @@ export class TuiApp implements AgentUi {
     const footer = this.renderFooter(cols);
     const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
-    const content = this.renderScrollbackLines(cols - 1);
+    const scrollback = this.renderScrollbackLines(cols - 1);
+    // 欢迎面板独占屏幕时垂直居中;一旦有对话内容就回到顶部对齐,避免最新一行随长度跳动
+    const content =
+      this.blocks.length === 1 && this.blocks[0]?.kind === 'welcome'
+        ? centerVertically(scrollback, mainHeight)
+        : scrollback;
     const maxTop = Math.max(0, content.length - mainHeight);
     if (this.follow) {
       this.scrollTop = maxTop;

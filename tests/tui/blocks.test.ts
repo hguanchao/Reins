@@ -153,11 +153,46 @@ describe('滚动区块渲染', () => {
     // 边框闭合:所有行显示宽度一致(内容行不再短于边框行)
     const widths = new Set(lines.map((line) => visibleWidth(line)));
     assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);
-    // 命令与快捷键两节的说明列对齐
+    // 节内说明列对齐(两节按键宽度不同,各按自己的最长按键对齐)
     const helpLine = lines.find((line) => line.includes('/help'));
-    const atLine = lines.find((line) => line.includes('@ '));
-    if (helpLine === undefined || atLine === undefined) throw new Error('两节内容应存在');
-    assert.equal(helpLine.indexOf('显示帮助'), atLine.indexOf('引用文件'), '说明列未对齐');
+    const newLine = lines.find((line) => line.includes('/new'));
+    const ctrlOLine = lines.find((line) => line.includes('Ctrl+O'));
+    const ctrlJLine = lines.find((line) => line.includes('Ctrl+J'));
+    if (
+      helpLine === undefined ||
+      newLine === undefined ||
+      ctrlOLine === undefined ||
+      ctrlJLine === undefined
+    ) {
+      throw new Error('两节内容应存在');
+    }
+    assert.equal(helpLine.indexOf('显示帮助'), newLine.indexOf('开始新会话'), '命令节说明列未对齐');
+    assert.equal(ctrlOLine.indexOf('全屏查看输出'), ctrlJLine.indexOf('插入换行'), '快捷键节说明列未对齐');
+    // 命令比快捷键短,命令节的说明列应更靠左,不再被最长按键拖出一片空白
+    assert.ok(helpLine.indexOf('显示帮助') < ctrlOLine.indexOf('全屏查看输出'));
+  });
+
+  it('欢迎面板:按键列取强调色,盒宽贴合内容', () => {
+    const lines = renderBlock({ kind: 'welcome' }, 120, context);
+    const helpLine = lines.find((line) => stripAnsi(line).includes('/help'));
+    if (helpLine === undefined) throw new Error('应有 /help 行');
+    assert.ok(helpLine.includes(`\u001b[${context.theme.codes.accent}m`), '按键列应取强调色');
+    // 说明保持常规色,整块才不会发灰
+    assert.equal(helpLine.includes(`\u001b[${context.theme.codes.accent}m显示帮助`), false);
+    // 盒宽贴合内容,而不是撑满可用宽度
+    const width = visibleWidth(lines[0] ?? '');
+    assert.ok(width > 30 && width < 100, `盒宽应贴合内容,实际 ${width}`);
+  });
+
+  it('欢迎面板:各宽度下都不超宽且边框闭合', () => {
+    for (const width of [30, 34, 40, 50, 80, 120]) {
+      const lines = renderBlock({ kind: 'welcome' }, width, context);
+      for (const line of lines) {
+        assert.ok(visibleWidth(line) <= width, `宽${width} 超宽:${stripAnsi(line)}`);
+      }
+      const widths = new Set(lines.map((line) => visibleWidth(line)));
+      assert.equal(widths.size, 1, `宽${width} 行宽不一致:${[...widths].join(',')}`);
+    }
   });
 
   it('渲染结果不超过给定宽度(含 CJK 与 emoji)', () => {

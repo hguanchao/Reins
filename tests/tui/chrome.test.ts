@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  centerVertically,
   headerLine,
   inputBoxFrame,
   inputBoxLine,
@@ -86,5 +87,20 @@ describe('滚动条几何', () => {
     const negative = scrollbarGeometry(-5, 10, 100);
     if (negative === undefined) throw new Error('应显示滚动条');
     assert.equal(negative.thumbStart, 0);
+  });
+});
+
+describe('垂直居中', () => {
+  it('上方补空行,下方由主区补满', () => {
+    assert.deepEqual(centerVertically(['a', 'b'], 6), ['', '', 'a', 'b']);
+    assert.deepEqual(centerVertically(['a'], 4), ['', 'a']);
+    assert.deepEqual(centerVertically(['a'], 5), ['', '', 'a']);
+  });
+
+  it('内容不低于容器时原样返回', () => {
+    assert.deepEqual(centerVertically(['a', 'b', 'c'], 3), ['a', 'b', 'c']);
+    assert.deepEqual(centerVertically(['a', 'b', 'c'], 1), ['a', 'b', 'c']);
+    // 空内容只补一行空行,不抛错
+    assert.deepEqual(centerVertically([], 3), ['']);
   });
 });

@@ -243,45 +243,72 @@ function padDisplay(text: string, width: number): string {
   return text + ' '.repeat(Math.max(0, width - visibleWidth(text)));
 }
 
+const WELCOME_TITLE = '欢迎使用 Reins';
+const WELCOME_HINT = '提示:reins doctor 可自检配置';
+
+/** 欢迎面板的一行:text 为纯文本,style 只作用于需要上色的区段。 */
+interface WelcomeRow {
+  text: string;
+  style?: (plain: string) => string;
+  center?: boolean;
+}
+
+/** 一节里按键列的宽度:该节最长按键 + 两格间隔。 */
+function keyColumnWidth(keys: readonly string[]): number {
+  return keys.reduce((max, key) => Math.max(max, visibleWidth(key)), 0) + 2;
+}
+
 function renderWelcome(width: number, theme: Theme): string[] {
-  const boxWidth = Math.min(56, Math.max(32, width - 8));
   if (width < 30) {
-    const text = truncatePlain('欢迎使用 Reins', Math.max(0, width - 2));
+    const text = truncatePlain(WELCOME_TITLE, Math.max(0, width - 2));
     const pad = Math.max(0, Math.floor((width - visibleWidth(text)) / 2));
     return [' '.repeat(pad) + text];
   }
-  const inner = boxWidth - 4;
-  // 命令与快捷键两节共用一条说明列,说明文本逐行对齐
-  const descColumn =
-    Math.max(
-      ...[...WELCOME_COMMANDS.map((entry) => entry.command), ...WELCOME_SHORTCUTS.map((entry) => entry.keys)].map(
-        (text) => visibleWidth(text),
-      ),
-    ) + 2;
 
-  const rows: { text: string; style?: (text: string) => string; center?: boolean }[] = [];
-  rows.push({ text: '欢迎使用 Reins', style: theme.paint.accent, center: true });
+  // 两节的按键宽度差得多(命令最长 7 格、快捷键最长 10 格),共用一列会让短命令后
+  // 拖出一大片空白;各节按自己的最长按键对齐,节内间隔统一两格
+  const commandColumn = keyColumnWidth(WELCOME_COMMANDS.map((entry) => entry.command));
+  const shortcutColumn = keyColumnWidth(WELCOME_SHORTCUTS.map((entry) => entry.keys));
+
+  // 盒宽贴合内容:内容只有三十来格,固定宽度会在右侧留一大片空白
+  const natural = Math.max(
+    visibleWidth(WELCOME_TITLE),
+    visibleWidth(WELCOME_HINT),
+    ...WELCOME_COMMANDS.map((entry) => 2 + commandColumn + visibleWidth(entry.description)),
+    ...WELCOME_SHORTCUTS.map((entry) => 2 + shortcutColumn + visibleWidth(entry.description)),
+  );
+  const boxWidth = Math.min(natural + 6, width - 4);
+  const inner = boxWidth - 6;
+
+  const entryRow = (key: string, description: string, column: number): WelcomeRow => ({
+    text: `  ${padDisplay(key, column)}${description}`,
+    // 只给按键列取强调色:一眼先看到能敲什么;说明保持常规色,整块才不会发灰
+    style: (plain) => `${theme.paint.accent(plain.slice(0, column + 2))}${plain.slice(column + 2)}`,
+  });
+
+  const rows: WelcomeRow[] = [];
+  rows.push({ text: WELCOME_TITLE, style: theme.paint.accent, center: true });
   rows.push({ text: '' });
   rows.push({ text: '斜杠命令', style: theme.bold });
   for (const entry of WELCOME_COMMANDS) {
-    rows.push({ text: `  ${padDisplay(entry.command, descColumn)}${entry.description}` });
+    rows.push(entryRow(entry.command, entry.description, commandColumn));
   }
   rows.push({ text: '' });
   rows.push({ text: '快捷键', style: theme.bold });
   for (const entry of WELCOME_SHORTCUTS) {
-    rows.push({ text: `  ${padDisplay(entry.keys, descColumn)}${entry.description}` });
+    rows.push(entryRow(entry.keys, entry.description, shortcutColumn));
   }
   rows.push({ text: '' });
-  rows.push({ text: '提示:reins doctor 可自检配置', style: theme.paint.muted });
+  rows.push({ text: WELCOME_HINT, style: theme.paint.muted });
 
   // 内容统一裁到 inner 再补齐,保证每一行(含边框行)显示宽度严格等于盒宽
-  const buildContent = (row: { text: string; style?: (text: string) => string; center?: boolean }): string => {
+  const buildContent = (row: WelcomeRow): string => {
     if (row.text === '') {
       return ' '.repeat(inner);
     }
     const plain = truncatePlain(row.text, inner);
     if (row.center === true) {
-      const left = Math.floor((inner - visibleWidth(plain)) / 2);
+      const left = Math.max(0, Math.floor((inner - visibleWidth(plain)) / 2));
       return padDisplay(' '.repeat(left) + (row.style !== undefined ? row.style(plain) : plain), inner);
     }
     return padDisplay(row.style !== undefined ? row.style(plain) : plain, inner);
@@ -291,7 +318,7 @@ function renderWelcome(width: number, theme: Theme): string[] {
   const indent = ' '.repeat(Math.max(0, Math.floor((width - boxWidth) / 2)));
   const lines: string[] = [`${indent}${frame(`┌${'─'.repeat(boxWidth - 2)}┐`)}`];
   for (const row of rows) {
-    lines.push(`${indent}${frame('│')} ${buildContent(row)} ${frame('│')}`);
+    lines.push(`${indent}${frame('│')}  ${buildContent(row)}  ${frame('│')}`);
   }
   lines.push(`${indent}${frame(`└${'─'.repeat(boxWidth - 2)}┘`)}`);
   return lines;
