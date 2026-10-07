@@ -100,29 +100,25 @@ describe('config.toml 校验', () => {
     );
   });
 
-  it('主题:预设与角色颜色覆盖', () => {
-    const config = parseConfig({
-      provider: 'p',
-      model: 'm',
-      ui: { theme: 'light', colors: { accent: '#8ab4f8', fail: 'bold magenta' } },
-    });
+  it('主题:只接受预设名', () => {
+    const config = parseConfig({ provider: 'p', model: 'm', ui: { theme: 'light' } });
     assert.equal(config.ui.theme, 'light');
-    assert.equal(config.ui.colors?.accent, '#8ab4f8');
-    assert.equal(config.ui.colors?.fail, 'bold magenta');
   });
 
-  it('主题:未知预设、未知角色与非法颜色均报错', () => {
+  it('主题:未知预设报错', () => {
     assert.throws(
       () => parseConfig({ provider: 'p', model: 'm', ui: { theme: 'solarized' } }),
       (error: unknown) => error instanceof ConfigError && error.message.includes('ui.theme'),
     );
+  });
+
+  it('主题:已移除的 [ui.colors] 显式报错,而不是静默忽略', () => {
     assert.throws(
-      () => parseConfig({ provider: 'p', model: 'm', ui: { colors: { brand: 'red' } } }),
-      (error: unknown) => error instanceof ConfigError && error.message.includes('ui.colors.brand'),
-    );
-    assert.throws(
-      () => parseConfig({ provider: 'p', model: 'm', ui: { colors: { accent: 'not-a-color' } } }),
-      (error: unknown) => error instanceof ConfigError && error.message.includes('ui.colors.accent'),
+      () => parseConfig({ provider: 'p', model: 'm', ui: { colors: { accent: '#8ab4f8' } } }),
+      (error: unknown) =>
+        error instanceof ConfigError &&
+        error.message.includes('ui.colors') &&
+        error.message.includes('不可配置'),
     );
   });
 });

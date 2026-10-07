@@ -85,7 +85,7 @@ reins/
 │   │   ├── keys.ts             # 输入解码:按键/鼠标滚轮/括号粘贴
 │   │   ├── files.ts            # 工作区文件索引(@ 补全数据源)
 │   │   ├── screen.ts           # 备用屏、raw 模式、帧差分输出
-│   │   ├── theme.ts            # 角色化主题(dark/light/mono + [ui.colors] 覆盖)
+│   │   ├── theme.ts            # 角色化主题(dark/light/mono,颜色固定不可配置)
 │   │   └── layout.ts           # 显示宽度、截断、折行(含 CJK)
 │   ├── ui/                     # 职责:呈现
 │   │   ├── printer.ts          # print 模式渲染(headless)
@@ -111,7 +111,7 @@ reins/
 | `max_turns` | `agent/loop.ts` | 根会话不封顶 |
 | `spill_threshold` | `spill/policy.ts` | 超长工具结果落盘留预览 |
 | `[ui] notify` | `ui/notify.ts` | auto / bell / desktop / off |
-| `[ui] theme` `[ui] colors` | `tui/theme.ts` | dark / light / mono;按角色覆盖取色 |
+| `[ui] theme` | `tui/theme.ts` | dark / light / mono(颜色固定不可配置) |
 | `[mcp_servers]` | `mcp/servers.ts` | stdio / http / sse |
 
 ## 一次运行的流转

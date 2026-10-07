@@ -1092,7 +1092,7 @@ export class TuiApp implements AgentUi {
   /** 按配置组装主题并重建渲染器(缓存随主题整体失效)。 */
   private applyTheme(): void {
     const ui = this.currentConfig?.ui;
-    this.renderContext.theme = createTheme({ preset: ui?.theme, colors: ui?.colors });
+    this.renderContext.theme = createTheme({ preset: ui?.theme });
     this.renderer = createBlockRenderer(this.renderContext);
   }
 

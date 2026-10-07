@@ -1,4 +1,3 @@
-import { parseSgrSpec } from '../util/ansi.ts';
 import { ConfigError } from '../util/errors.ts';
 import { Checker } from '../util/schema.ts';
 
@@ -19,33 +18,9 @@ export const SANDBOX_MODES: readonly SandboxMode[] = ['off', 'workspace', 'read-
 export const NOTIFY_MODES: readonly NotifyMode[] = ['auto', 'bell', 'desktop', 'off'];
 export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
 
-/**
- * 主题:预设名与可覆盖的颜色角色。
- *
- * 角色即界面上唯一的一组取色点(品牌、成败、代码高亮等);
- * 预设只决定各角色的默认值,真正消费它们的是 tui/theme.ts。
- */
+/** 主题预设:只切换配色方案,具体取值固定定义在 tui/theme.ts。 */
 export const THEME_PRESETS = ['dark', 'light', 'mono'] as const;
 export type ThemePreset = (typeof THEME_PRESETS)[number];
-export const THEME_COLOR_ROLES = [
-  'accent',
-  'userBar',
-  'ok',
-  'warn',
-  'fail',
-  'muted',
-  'heading',
-  'quote',
-  'code',
-  'link',
-  'keyword',
-  'string',
-  'comment',
-  'number',
-  'function',
-  'type',
-] as const;
-export type ThemeRole = (typeof THEME_COLOR_ROLES)[number];
 
 /** 长期权限规则:跨层按 deny > ask > allow 求值,先命中先定论。 */
 export interface PermissionRules {
@@ -68,8 +43,6 @@ export interface McpServerConfig {
 export interface UiConfig {
   notify: NotifyMode;
   theme?: ThemePreset;
-  /** 角色取色覆盖;键必须是 THEME_COLOR_ROLES 之一,值是颜色规格。 */
-  colors?: Partial<Record<ThemeRole, string>>;
 }
 
 export interface Config {
@@ -135,7 +108,10 @@ export function parseConfig(raw: unknown, file = 'config.toml'): Config {
   const uiTable = checker.object(source, 'ui', 'ui') ?? {};
   const notify = checker.string(uiTable, 'notify', 'ui.notify', { values: NOTIFY_MODES });
   const theme = checker.string(uiTable, 'theme', 'ui.theme', { values: THEME_PRESETS });
-  const colors = parseThemeColors(uiTable, checker);
+  // 主题颜色已全局固定;显式报错而不是静默忽略,否则用户改了颜色却看不到任何反馈
+  if (uiTable['colors'] !== undefined) {
+    checker.fail('ui.colors', '已移除:主题颜色全局固定、不可配置,请删除该小节');
+  }
 
   const mcpServers = parseMcpServers(source, checker);
 
@@ -159,40 +135,9 @@ export function parseConfig(raw: unknown, file = 'config.toml'): Config {
     ui: {
       notify: (notify as NotifyMode | undefined) ?? 'auto',
       theme: theme as ThemePreset | undefined,
-      colors,
     },
     mcpServers,
   };
-}
-
-/** 校验 [ui.colors]:键必须是已知角色,值必须是可解析的颜色规格。 */
-function parseThemeColors(
-  uiTable: Record<string, unknown>,
-  checker: Checker,
-): Partial<Record<ThemeRole, string>> | undefined {
-  const table = checker.object(uiTable, 'colors', 'ui.colors');
-  if (table === undefined) {
-    return undefined;
-  }
-  const roles = new Set<string>(THEME_COLOR_ROLES);
-  const colors: Partial<Record<ThemeRole, string>> = {};
-  for (const [key, value] of Object.entries(table)) {
-    const path = `ui.colors.${key}`;
-    if (!roles.has(key)) {
-      checker.fail(path, `未知主题角色,可选:${THEME_COLOR_ROLES.join(' | ')}`);
-      continue;
-    }
-    if (typeof value !== 'string') {
-      checker.fail(path, `应为字符串,实际为 ${Array.isArray(value) ? '数组' : typeof value}`);
-      continue;
-    }
-    if (parseSgrSpec(value) === undefined) {
-      checker.fail(path, `无法识别的颜色 "${value}";可用:颜色名(如 "bold cyan")、#rrggbb、0-255 色号、背景用 bg- 前缀`);
-      continue;
-    }
-    colors[key as ThemeRole] = value;
-  }
-  return colors;
 }
 
 function parseMcpServers(

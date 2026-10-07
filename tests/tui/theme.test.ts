@@ -11,11 +11,14 @@ describe('主题', () => {
     assert.equal(theme.codes.accent, '1;36');
   });
 
-  it('颜色按角色覆盖', () => {
-    const theme = createTheme({ color: true, colors: { accent: '#ff0000', fail: 'bold magenta' } });
-    assert.equal(theme.paint.accent('x'), '\u001b[38;2;255;0;0mx\u001b[0m');
-    assert.equal(theme.paint.fail('x'), '\u001b[1;35mx\u001b[0m');
-    assert.equal(theme.paint.ok('x'), '\u001b[32mx\u001b[0m');
+  it('角色取色全局固定:每个角色都有值,消息条同时给定前景与背景', () => {
+    const theme = createTheme({ color: true });
+    for (const role of Object.keys(theme.codes)) {
+      assert.notEqual(theme.codes[role as keyof typeof theme.codes], '', `角色 ${role} 缺少取色`);
+    }
+    // 只设背景会跟着终端默认前景走,条带里的文字可能看不清
+    assert.ok(theme.codes.userBar.includes('38;'));
+    assert.ok(theme.codes.userBar.includes('48;'));
   });
 
   it('light 预设与 dark 不同', () => {

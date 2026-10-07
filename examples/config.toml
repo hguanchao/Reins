@@ -25,15 +25,6 @@ allow = []                      # 例:["bash(git status)"]
 notify = "auto"                 # auto | bell | desktop | off
 theme = "dark"                  # TUI 主题:dark | light | mono(纯文本)
 
-# [ui.colors]                   # 按角色覆盖主题取色:颜色名 / #rrggbb / 0-255
-# accent = "#56b6c2"            # 品牌与强调(标题、提示符、选中项)
-# userBar = "#dadada bg-#444444" # 用户消息条配色(文字色 + bg- 背景)
-# ok = "green"                  # 成功状态
-# warn = "bold yellow"          # 运行中与审批
-# fail = "red"                  # 失败状态
-# code = "#8ab4f8"              # 行内代码
-# keyword = "1;35"              # 代码高亮关键字
-
 # [mcp_servers.context7]        # MCP 示例:stdio 型
 # command = "npx"
 # args = ["-y", "@upstash/context7-mcp"]

@@ -75,7 +75,7 @@ npm run typecheck # tsc --noEmit
 - **工具输出**:默认折叠为一行,`Ctrl+E` 展开预览,`Ctrl+O` 全屏查看器翻阅完整输出;
 - **@ 文件选择器**:输入 `@` 触发工作区文件补全,文件名前缀 > 包含的排序,Tab 选中;
 - **鼠标与粘贴**:滚轮滚动历史,括号粘贴(bracketed paste)下多行粘贴不会误发送;
-- **主题**:`[ui] theme = dark | light | mono`,可用 `[ui.colors]` 按角色覆盖取色,支持颜色名、`#rrggbb` 与 256 色。
+- **主题**:`[ui] theme = dark | light | mono`,配色全局固定,不可逐项配置。
 
 快捷键:`↑/↓` 历史 · `@` 文件 · `Tab` 补全 · `Ctrl+J` 换行 · `Ctrl+O` 查看 ·
 `Ctrl+E` 展开 · `Ctrl+C/Esc` 中断 · `PgUp/PgDn`/滚轮 滚动。

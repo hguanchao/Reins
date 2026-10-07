@@ -1,12 +1,31 @@
-import { parseSgrSpec, sgr } from '../util/ansi.ts';
-import type { ThemePreset, ThemeRole } from '../config/schema.ts';
+import { sgr } from '../util/ansi.ts';
+import type { ThemePreset } from '../config/schema.ts';
 
 /**
  * TUI 主题:角色化取色的唯一定义点。
  *
  * 设计意图:界面只按「角色」取色(品牌、成败、代码高亮……),不出现裸色号;
- * 预设决定各角色的默认值,[ui.colors] 可按角色覆盖,NO_COLOR 下自动退化为纯文本。
+ * 颜色全局固定、不开放配置,预设决定各角色的取值,NO_COLOR 下整体退化为纯文本。
  */
+
+/** 主题颜色角色:界面上唯一的一组取色点。 */
+export type ThemeRole =
+  | 'accent'
+  | 'userBar'
+  | 'ok'
+  | 'warn'
+  | 'fail'
+  | 'muted'
+  | 'heading'
+  | 'quote'
+  | 'code'
+  | 'link'
+  | 'keyword'
+  | 'string'
+  | 'comment'
+  | 'number'
+  | 'function'
+  | 'type';
 
 /** 各角色的默认颜色规格:dark 面向深色终端背景。 */
 const DARK_PRESET: Readonly<Record<ThemeRole, string>> = {
@@ -63,8 +82,6 @@ function detectColor(): boolean {
 export interface ThemeOptions {
   /** 预设名;省略 = dark。mono 强制纯文本。 */
   preset?: ThemePreset;
-  /** 角色取色覆盖(值是颜色规格,如 "bold cyan" / "#8ab4f8")。 */
-  colors?: Partial<Record<ThemeRole, string>>;
   /** 强制开/关颜色;省略 = 按 NO_COLOR 与 TERM 自动判断。 */
   color?: boolean;
 }
@@ -82,23 +99,15 @@ export interface Theme {
   inverse(text: string): string;
 }
 
-/** 组装主题:预设打底、用户覆盖其后、mono 或无色环境整体退化为纯文本。 */
+/** 组装主题:预设打底,mono 或无色环境整体退化为纯文本。 */
 export function createTheme(options: ThemeOptions = {}): Theme {
   const preset = options.preset ?? 'dark';
   const useColor = preset !== 'mono' && (options.color ?? detectColor());
   const defaults = PRESETS[preset] ?? DARK_PRESET;
-  // 覆盖值是面向用户的颜色规格,先解析成 SGR 码再参与合成
-  const overrides = new Map<ThemeRole, string>();
-  for (const [role, spec] of Object.entries(options.colors ?? {})) {
-    const parsed = parseSgrSpec(spec);
-    if (parsed !== undefined) {
-      overrides.set(role as ThemeRole, parsed);
-    }
-  }
   const codes = {} as Record<ThemeRole, string>;
   const paint = {} as Record<ThemeRole, (text: string) => string>;
   for (const role of Object.keys(defaults) as ThemeRole[]) {
-    codes[role] = useColor ? (overrides.get(role) ?? defaults[role]) : '';
+    codes[role] = useColor ? defaults[role] : '';
     paint[role] = (text: string) => sgr(codes[role] ?? '', text);
   }
   const modifier = (code: string) => (text: string) => sgr(useColor ? code : '', text);
