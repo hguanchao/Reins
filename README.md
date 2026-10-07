@@ -72,13 +72,12 @@ npm run typecheck # tsc --noEmit
 全屏 TUI(chat 默认表面)已完成:
 
 - **排版**:助手回复按 markdown 渲染(标题、列表、引用、表格、行内样式),
-  代码栅栏带画框与语法高亮(js/ts、json、python、bash、go、rust、sql、yaml、toml 等,零依赖);
-  header 置顶带、输入框边框与主区右侧滚动条;
+  代码栅栏带语法高亮,靠缩进与配色与正文分界(不画框、不铺底色,复制不夹带边框字符;
+  支持 js/ts、json、python、bash、go、rust、sql、yaml、toml 等,零依赖);
+  输入框边框与主区右侧滚动条;
 - **工具输出**:默认折叠为一行,`Ctrl+E` 展开预览,`Ctrl+O` 全屏查看器翻阅完整输出;
 - **@ 文件选择器**:输入 `@` 触发工作区文件补全,文件名前缀 > 包含的排序,Tab 选中;
 - **鼠标与粘贴**:滚轮滚动历史,括号粘贴(bracketed paste)下多行粘贴不会误发送;
-- **分支**:header 里的分支名悬停高光,点击弹出下拉列出本地分支;选中即切换,
-  工作区有未提交改动时拒绝并说明原因(方向键选、Enter 确认、Esc 收起);
 - **主题**:`[ui] theme = dark | light | mono`,配色全局固定,不可逐项配置。
 - **目录信任**:项目自带的 `.reins/config.toml` 能覆盖审批、沙箱、权限与 MCP,
   `REINS.md`/`AGENTS.md` 会被写进系统提示词,因此默认都不生效;命中 `[trust].trusted`

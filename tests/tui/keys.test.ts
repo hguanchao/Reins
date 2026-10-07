@@ -81,15 +81,7 @@ describe('输入解码', () => {
     assert.deepEqual(decode('\u001b[<64;10;5M'), [{ type: 'wheel', delta: -3 }]);
     assert.deepEqual(decode('\u001b[<65;10;5M'), [{ type: 'wheel', delta: 3 }]);
     assert.deepEqual(decode('\u001b[<64;10;5m'), [{ type: 'unknown' }]);
-  });
-
-  it('SGR 鼠标点击与移动:坐标转成 0 基的行/列', () => {
-    // 按钮 0 = 左键按下;x=10(列)、y=5(行)
-    assert.deepEqual(decode('\u001b[<0;10;5M'), [{ type: 'mouse', kind: 'press', row: 4, column: 9 }]);
-    // 32 = 拖动/任意移动上报
-    assert.deepEqual(decode('\u001b[<32;10;5M'), [{ type: 'mouse', kind: 'move', row: 4, column: 9 }]);
-    // 第 3 位为松开
-    assert.deepEqual(decode('\u001b[<0;10;5m'), [{ type: 'mouse', kind: 'release', row: 4, column: 9 }]);
+    assert.deepEqual(decode('\u001b[<0;10;5M'), [{ type: 'unknown' }]);
   });
 
   it('X10 鼠标滚轮', () => {

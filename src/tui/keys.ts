@@ -34,8 +34,6 @@ export type TuiKey =
   | { type: 'paste'; text: string }
   /** 鼠标滚轮;正数向下、负数向上,单位为行。 */
   | { type: 'wheel'; delta: number }
-  /** 鼠标事件;行列均为 0 基,供界面做命中测试。 */
-  | { type: 'mouse'; kind: 'press' | 'release' | 'move'; row: number; column: number }
   | { type: 'unknown' };
 
 const PASTE_START = '\u001b[200~';
@@ -200,19 +198,11 @@ export function createKeyDecoder(): KeyDecoder {
     const sgr = /^\u001b\[<(\d+);(\d+);(\d+)([Mm])/.exec(buf);
     if (sgr !== null) {
       consume(sgr[0].length);
-      const button = Number.parseInt(sgr[1] ?? '0', 10);
-      const wheel = wheelFromButton(button);
-      if (wheel !== 0) {
-        // 滚轮的松开序列没有意义,当无法识别丢掉
-        return sgr[4] === 'M' ? { type: 'wheel', delta: wheel * WHEEL_STEP } : { type: 'unknown' };
+      const wheel = wheelFromButton(Number.parseInt(sgr[1] ?? '0', 10));
+      if (wheel !== 0 && sgr[4] === 'M') {
+        return { type: 'wheel', delta: wheel * WHEEL_STEP };
       }
-      // 序列里的坐标是 1 基的 列;行,转成 0 基的 行/列
-      return {
-        type: 'mouse',
-        kind: sgr[4] === 'm' ? 'release' : mouseKind(button),
-        row: Number.parseInt(sgr[3] ?? '1', 10) - 1,
-        column: Number.parseInt(sgr[2] ?? '1', 10) - 1,
-      };
+      return { type: 'unknown' };
     }
     // X10 鼠标:\x1b[M 后跟 3 个字节
     if (buf.startsWith('\u001b[M')) {
@@ -222,15 +212,7 @@ export function createKeyDecoder(): KeyDecoder {
       const button = (buf.charCodeAt(3) ?? 0) - 32;
       consume(6);
       const wheel = wheelFromButton(button);
-      if (wheel !== 0) {
-        return { type: 'wheel', delta: wheel * WHEEL_STEP };
-      }
-      return {
-        type: 'mouse',
-        kind: mouseKind(button),
-        row: ((buf.charCodeAt(5) ?? 32) - 32) - 1,
-        column: ((buf.charCodeAt(4) ?? 32) - 32) - 1,
-      };
+      return wheel !== 0 ? { type: 'wheel', delta: wheel * WHEEL_STEP } : { type: 'unknown' };
     }
 
     // 带参数的 CSI(如 Ctrl+方向键 \x1b[1;5A):忽略参数、按终结符归类
@@ -353,20 +335,6 @@ function couldBeEscapePrefix(buf: string): boolean {
 
 function isControlStart(char: string): boolean {
   return char === '\u001b' || char < ' ' || char === '\u007f';
-}
-
-/**
- * 按钮码 → 事件类型:第 3 位(8)是松开,第 5 位(32)是移动
- * (拖动或开了任意移动上报),其余按下去。
- */
-export function mouseKind(button: number): 'press' | 'release' | 'move' {
-  if ((button & 8) !== 0) {
-    return 'release';
-  }
-  if ((button & 32) !== 0) {
-    return 'move';
-  }
-  return 'press';
 }
 
 /** SGR/X10 按钮码 → 滚动方向:64 上、65 下。 */

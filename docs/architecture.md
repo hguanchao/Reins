@@ -78,12 +78,12 @@ reins/
 │   │   ├── client.ts
 │   │   └── servers.ts          # 后台连接不挡启动;可禁用外部配置声明的 server
 │   ├── tui/                    # 职责:全屏交互界面(chat 默认表面)
-│   │   ├── app.ts              # 三区域状态机:按键分发、区块流、渲染调度
+│   │   ├── app.ts              # 两区域状态机:按键分发、区块流、渲染调度
 │   │   ├── blocks.ts           # 滚动区块模型:折叠/展开、缓存渲染
 │   │   ├── markdown.ts         # 助手文本排版(标题/列表/引用/表格/代码栅栏)
 │   │   ├── highlight.ts        # 零依赖代码高亮(语言表驱动)
 │   │   ├── viewer.ts           # 全屏查看器(完整工具输出)
-│   │   ├── chrome.ts           # 界面镶边:header 行、输入框边框、滚动条几何
+│   │   ├── chrome.ts           # 界面镶边:输入框边框、滚动条几何
 │   │   ├── editor.ts           # 输入行编辑(历史/斜杠/@ 文件补全)
 │   │   ├── keys.ts             # 输入解码:按键/鼠标滚轮/括号粘贴
 │   │   ├── files.ts            # 工作区文件索引(@ 补全数据源)
@@ -93,7 +93,7 @@ reins/
 │   ├── ui/                     # 职责:呈现
 │   │   ├── printer.ts          # print 模式渲染(headless)
 │   │   └── notify.ts           # [ui] notify
-│   └── util/                   # 职责:通用工具,不依赖任何人(git 探测与切换在此,切换用 git switch,需 git ≥ 2.23)
+│   └── util/                   # 职责:通用工具,不依赖任何人
 ├── package.json                # name: reins;bin: reins
 └── tsconfig.json
 ```

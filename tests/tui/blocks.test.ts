@@ -146,70 +146,35 @@ describe('滚动区块渲染', () => {
     assert.ok(render({ kind: 'notice', text: '错误', level: 'error' }).includes('×'));
   });
 
-  it('欢迎面板:核心命令+快捷键、居中、边框闭合、说明列对齐', () => {
+  it('欢迎页:品牌名带版本 + 一句描述,两行都居中', () => {
     const lines = renderBlock({ kind: 'welcome' }, 80, context).map(stripAnsi);
-    const text = lines.join('\n');
-    // 核心内容齐备
-    assert.ok(text.includes('欢迎使用 Reins'));
-    // 版本属于标题块:紧跟标题单独一行,且在框内居中(整行含边框,不能按整行 trim 比较)
-    const titleIndex = lines.findIndex((line) => line.includes('欢迎使用 Reins'));
-    const versionLine = lines[titleIndex + 1];
-    if (titleIndex < 0 || versionLine === undefined) throw new Error('标题下应有版本行');
-    assert.ok(versionLine.includes(`v${VERSION}`));
-    const inner = versionLine.slice(versionLine.indexOf('│') + 1, versionLine.lastIndexOf('│'));
-    const trimmed = inner.trim();
-    assert.equal(trimmed, `v${VERSION}`);
-    const lead = inner.indexOf(trimmed);
-    assert.ok(Math.abs(lead - (inner.length - lead - trimmed.length)) <= 1, '版本应在框内居中');
-    assert.ok(text.includes('/help'));
-    assert.ok(text.includes('显示帮助'));
-    assert.ok(text.includes('快捷键'));
-    assert.ok(text.includes('Ctrl+O'));
-    assert.ok(text.includes('@'));
-    // 非核心项不展示(完整清单只在 /help)
-    assert.ok(!text.includes('/compact'));
-    assert.ok(!text.includes('Ctrl+E'));
-    // 居中:所有行共享同一缩进
-    const top = lines.find((line) => line.includes('╭'));
-    if (top === undefined) throw new Error('应有边框');
-    const indent = top.length - top.trimStart().length;
-    assert.ok(indent > 0, '应水平居中');
-    assert.ok(lines.every((line) => line === '' || line.startsWith(' '.repeat(indent))));
-    // 边框闭合:所有行显示宽度一致(内容行不再短于边框行)
-    const widths = new Set(lines.map((line) => visibleWidth(line)));
-    assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);
-    // 命令与快捷键共用一条说明列:跨节逐行对齐
-    const helpLine = lines.find((line) => line.includes('/help'));
-    const atLine = lines.find((line) => line.includes('@ '));
-    const ctrlOLine = lines.find((line) => line.includes('Ctrl+O'));
-    if (helpLine === undefined || atLine === undefined || ctrlOLine === undefined) {
-      throw new Error('两节内容应存在');
+    assert.deepEqual(lines.map((line) => line.trim()), [
+      `Reins v${VERSION}`,
+      '可控优先的编程智能体',
+    ]);
+    for (const line of lines) {
+      const lead = line.length - line.trimStart().length;
+      assert.equal(lead, Math.floor((80 - visibleWidth(line.trim())) / 2), `应水平居中:${JSON.stringify(line)}`);
     }
-    const descColumn = helpLine.indexOf('显示帮助');
-    assert.equal(atLine.indexOf('引用文件'), descColumn, '快捷键节说明列未对齐');
-    assert.equal(ctrlOLine.indexOf('全屏查看输出'), descColumn, '快捷键节说明列未对齐');
   });
 
-  it('欢迎面板:按键列取强调色,盒宽贴合内容', () => {
-    const lines = renderBlock({ kind: 'welcome' }, 120, context);
-    const helpLine = lines.find((line) => stripAnsi(line).includes('/help'));
-    if (helpLine === undefined) throw new Error('应有 /help 行');
-    assert.ok(helpLine.includes(`\u001b[${context.theme.codes.accent}m`), '按键列应取强调色');
-    // 说明保持常规色,整块才不会发灰
-    assert.equal(helpLine.includes(`\u001b[${context.theme.codes.accent}m显示帮助`), false);
-    // 盒宽贴合内容,而不是撑满可用宽度
-    const width = visibleWidth(lines[0] ?? '');
-    assert.ok(width > 30 && width < 100, `盒宽应贴合内容,实际 ${width}`);
+  it('欢迎页两行都取灰,不再出现盒框与命令清单', () => {
+    const raw = renderBlock({ kind: 'welcome' }, 80, context);
+    const muted = `\u001b[${context.theme.codes.muted}m`;
+    assert.ok(raw.every((line) => line.includes(muted)), '两行都该是灰(muted)');
+    const text = raw.map(stripAnsi).join('\n');
+    assert.equal(/[╭╰│─]/.test(text), false, '欢迎页不该再有边框');
+    assert.equal(text.includes('/help'), false);
+    assert.equal(text.includes('Ctrl+'), false);
   });
 
-  it('欢迎面板:各宽度下都不超宽且边框闭合', () => {
-    for (const width of [30, 34, 40, 50, 80, 120]) {
+  it('欢迎页在各种宽度下都只有两行且不超宽', () => {
+    for (const width of [20, 30, 80, 120]) {
       const lines = renderBlock({ kind: 'welcome' }, width, context);
+      assert.equal(lines.length, 2, `宽${width} 该行数应为 2`);
       for (const line of lines) {
         assert.ok(visibleWidth(line) <= width, `宽${width} 超宽:${stripAnsi(line)}`);
       }
-      const widths = new Set(lines.map((line) => visibleWidth(line)));
-      assert.equal(widths.size, 1, `宽${width} 行宽不一致:${[...widths].join(',')}`);
     }
   });
 

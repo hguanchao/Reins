@@ -226,112 +226,16 @@ function renderNotice(
   return body.map((line, index) => `  ${color(index === 0 ? `${prefix} ${line}` : `  ${line}`)}`);
 }
 
-/** 欢迎面板只展示核心命令(完整清单见 /help)。 */
-const WELCOME_COMMANDS: readonly { command: string; description: string }[] = [
-  { command: '/help', description: '显示帮助' },
-  { command: '/new', description: '开始新会话' },
-  { command: '/model', description: '查看或切换模型' },
-  { command: '/resume', description: '恢复会话' },
-  { command: '/exit', description: '退出' },
-];
-
-/** 欢迎面板只展示核心快捷键(完整行为见提示行)。 */
-const WELCOME_SHORTCUTS: readonly { keys: string; description: string }[] = [
-  { keys: '@', description: '引用文件或目录' },
-  { keys: '↑/↓', description: '移动光标 · 顶底翻历史' },
-  { keys: 'Tab', description: '应用补全' },
-  { keys: 'Ctrl+J', description: '插入换行' },
-  { keys: 'Ctrl+O', description: '全屏查看输出' },
-  { keys: 'Ctrl+C/Esc', description: '中断运行' },
-];
-
-/** 按显示宽度右补空格(命令与按键列都是窄字符,统一按可见宽计算)。 */
-function padDisplay(text: string, width: number): string {
-  return text + ' '.repeat(Math.max(0, width - visibleWidth(text)));
-}
-
-const WELCOME_TITLE = '欢迎使用 Reins';
-const WELCOME_HINT = '提示:reins doctor 可自检配置';
-
-/** 欢迎面板的一行:text 为纯文本,style 只作用于需要上色的区段。 */
-interface WelcomeRow {
-  text: string;
-  style?: (plain: string) => string;
-  center?: boolean;
-}
-
-/** 一节里按键列的宽度:该节最长按键 + 两格间隔。 */
-function keyColumnWidth(keys: readonly string[]): number {
-  return keys.reduce((max, key) => Math.max(max, visibleWidth(key)), 0) + 2;
-}
+/** 品牌名与一句话定位:欢迎页只留这两行,其余信息各有固定去处(命令见 /help,状态见 /status)。 */
+const BRAND = 'Reins';
+const BRAND_DESC = '可控优先的编程智能体';
 
 function renderWelcome(width: number, theme: Theme): string[] {
-  if (width < 30) {
-    const text = truncatePlain(WELCOME_TITLE, Math.max(0, width - 2));
-    const pad = Math.max(0, Math.floor((width - visibleWidth(text)) / 2));
-    return [' '.repeat(pad) + text];
-  }
-
-  // 命令与快捷键共用一条说明列:两节的说明文本逐行对齐,纵向扫读更整齐
-  const keyColumn = keyColumnWidth([
-    ...WELCOME_COMMANDS.map((entry) => entry.command),
-    ...WELCOME_SHORTCUTS.map((entry) => entry.keys),
-  ]);
-
-  // 盒宽贴合内容:内容只有三十来格,固定宽度会在右侧留一大片空白
-  const natural = Math.max(
-    visibleWidth(WELCOME_TITLE),
-    visibleWidth(WELCOME_HINT),
-    ...WELCOME_COMMANDS.map((entry) => 2 + keyColumn + visibleWidth(entry.description)),
-    ...WELCOME_SHORTCUTS.map((entry) => 2 + keyColumn + visibleWidth(entry.description)),
-  );
-  const boxWidth = Math.min(natural + 6, width - 4);
-  const inner = boxWidth - 6;
-
-  const entryRow = (key: string, description: string): WelcomeRow => ({
-    text: `  ${padDisplay(key, keyColumn)}${description}`,
-    // 只给按键列取强调色:一眼先看到能敲什么;说明保持常规色,整块才不会发灰
-    style: (plain) => `${theme.paint.accent(plain.slice(0, keyColumn + 2))}${plain.slice(keyColumn + 2)}`,
-  });
-
-  const rows: WelcomeRow[] = [];
-  rows.push({ text: WELCOME_TITLE, style: theme.paint.accent, center: true });
-  // 版本属于标题块的一部分:居中放标题下一行,不干扰标题居中、也不加宽面板
-  rows.push({ text: `v${VERSION}`, style: theme.paint.muted, center: true });
-  rows.push({ text: '' });
-  rows.push({ text: '斜杠命令', style: theme.bold });
-  for (const entry of WELCOME_COMMANDS) {
-    rows.push(entryRow(entry.command, entry.description));
-  }
-  rows.push({ text: '' });
-  rows.push({ text: '快捷键', style: theme.bold });
-  for (const entry of WELCOME_SHORTCUTS) {
-    rows.push(entryRow(entry.keys, entry.description));
-  }
-  rows.push({ text: '' });
-  rows.push({ text: WELCOME_HINT, style: theme.paint.muted });
-
-  // 内容统一裁到 inner 再补齐,保证每一行(含边框行)显示宽度严格等于盒宽
-  const buildContent = (row: WelcomeRow): string => {
-    if (row.text === '') {
-      return ' '.repeat(inner);
-    }
-    const plain = truncatePlain(row.text, inner);
-    if (row.center === true) {
-      const left = Math.max(0, Math.floor((inner - visibleWidth(plain)) / 2));
-      return padDisplay(' '.repeat(left) + (row.style !== undefined ? row.style(plain) : plain), inner);
-    }
-    return padDisplay(row.style !== undefined ? row.style(plain) : plain, inner);
-  };
-
-  const frame = theme.paint.muted;
-  const indent = ' '.repeat(Math.max(0, Math.floor((width - boxWidth) / 2)));
-  const lines: string[] = [`${indent}${frame(`╭${'─'.repeat(boxWidth - 2)}╮`)}`];
-  for (const row of rows) {
-    lines.push(`${indent}${frame('│')}  ${buildContent(row)}  ${frame('│')}`);
-  }
-  lines.push(`${indent}${frame(`╰${'─'.repeat(boxWidth - 2)}╯`)}`);
-  return lines;
+  // 两行都居中且同取灰:欢迎页是启动时唯一占屏的东西,不该比它介绍的家伙更抢眼
+  return [
+    centerLine(`${BRAND} v${VERSION}`, width, theme.paint.muted),
+    centerLine(BRAND_DESC, width, theme.paint.muted),
+  ];
 }
 
 /** 信任页上的一行覆盖项。 */
@@ -345,6 +249,11 @@ function centerLine(text: string, width: number, style?: (value: string) => stri
   const plain = truncatePlain(text, width);
   const pad = Math.max(0, Math.floor((width - visibleWidth(plain)) / 2));
   return ' '.repeat(pad) + (style !== undefined ? style(plain) : plain);
+}
+
+/** 按显示宽度右补空格,用于两列对齐(CJK 占两格,靠字符串长度对不齐)。 */
+function padDisplay(text: string, width: number): string {
+  return text + ' '.repeat(Math.max(0, width - visibleWidth(text)));
 }
 
 /**

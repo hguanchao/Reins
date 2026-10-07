@@ -23,7 +23,6 @@ import type { RuleTarget } from '../permissions/rules.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { describeError } from '../util/errors.ts';
 import { absolutize, reinsHome } from '../util/paths.ts';
-import { checkoutBranch, hasUncommittedChanges, listLocalBranches, readGitBranch } from '../util/git.ts';
 import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
   createBlockRenderer,
@@ -36,12 +35,9 @@ import {
   type ScrollBlock,
 } from './blocks.ts';
 import {
-  branchDropdown,
-  branchWindow,
   centerVertically,
   COMPLETION_MENU_ROWS,
   completionMenu,
-  headerLine,
   inputBoxFrame,
   inputBoxLine,
   scrollbarChar,
@@ -57,7 +53,7 @@ import { createTheme, symbols, type Theme } from './theme.ts';
 import { Viewer } from './viewer.ts';
 
 /**
- * TUI 应用:三区域(header / main / footer)全屏交互。
+ * TUI 应用:两区域(main / footer)全屏交互。
  *
  * 设计意图:事件驱动——按键事件与代理事件都只更新状态并标脏,
  * 渲染器按帧差分输出;纯文本模式保留在 chat --plain。
@@ -72,8 +68,6 @@ const MIN_ROWS = 12;
 const ESC_FLUSH_MS = 50;
 /** 状态条消息的驻留时长。 */
 const STATUS_MS = 3000;
-/** 分支的重读间隔:git 可能在外部被切换,但没必要每帧读文件。 */
-const BRANCH_TTL_MS = 5_000;
 
 export interface TuiAppOptions {
   home: string;
@@ -138,14 +132,6 @@ export class TuiApp implements AgentUi {
   private runtime: AgentRuntime | undefined;
   private catalog: Catalog | undefined;
   private currentConfig: Config | undefined;
-  /** 当前分支;非 git 仓库时为 undefined。 */
-  private gitBranch: string | undefined;
-  /** 上次读取分支的时间戳,用于按间隔重读。 */
-  private branchCheckedAt = 0;
-  /** 鼠标是否停在 header 的分支段上:决定该段是弱显还是高光。 */
-  private branchHover = false;
-  /** 分支下拉;undefined 表示未打开。index 是选中项下标。 */
-  private branchMenu: { items: string[]; index: number } | undefined;
 
   private running = false;
   private runController: AbortController | undefined;
@@ -212,7 +198,6 @@ export class TuiApp implements AgentUi {
     this.push({ kind: 'welcome' });
     // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
     void this.fileIndex.refresh();
-    void this.refreshGitBranch();
     try {
       await this.startup();
     } catch (error) {
@@ -227,7 +212,6 @@ export class TuiApp implements AgentUi {
         ] as string;
         this.scheduleRender();
       }
-      void this.refreshGitBranch();
     }, TICK_MS);
     this.scheduleRender();
 
@@ -397,15 +381,6 @@ export class TuiApp implements AgentUi {
     }
     if (this.viewer.isOpen) {
       this.handleViewerKey(key);
-      this.scheduleRender();
-      return;
-    }
-    if (key.type === 'mouse') {
-      void this.handleMouse(key);
-      return;
-    }
-    // 分支下拉打开时按键先归它:不能让方向键与 Enter 漏进输入框
-    if (this.branchMenu !== undefined && this.handleBranchKey(key)) {
       this.scheduleRender();
       return;
     }
@@ -1037,11 +1012,9 @@ export class TuiApp implements AgentUi {
       return;
     }
     const theme = this.renderContext.theme;
-    const { left, right } = this.headerParts();
-    const header = headerLine(left, right, cols, theme);
-    const separator = theme.paint.muted(symbols.separator.repeat(cols));
     const footer = this.renderFooter(cols, rows);
-    const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
+    // 顶部无 header、底部无分隔线:整屏只有内容区与输入区,行数全部给内容
+    const mainHeight = Math.max(1, rows - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
     const scrollback = this.renderScrollbackLines(cols - 1);
     // 欢迎面板独占屏幕时垂直居中;一旦有对话内容就回到顶部对齐,避免最新一行随长度跳动
@@ -1062,25 +1035,24 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     const bar = scrollbarGeometry(top, mainHeight, content.length);
-    // 最后一列留给滚动条:轨道细线、滑块实块靠形状区分,被下拉盖住时也照原样续画
-    const railAt = (index: number): string =>
-      bar === undefined ? '' : theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│');
-    const mainLines = main.map((line, index) => `${padAnsi(line, cols - 1)}${railAt(index)}`);
-    // 分支下拉紧贴 header:覆盖主区顶部若干行,不插入行、不改版面高度
-    const dropdown = this.branchDropdownLines(cols - 1);
-    for (let index = 0; index < dropdown.length && index < mainLines.length; index += 1) {
-      mainLines[index] = `${padAnsi(dropdown[index] ?? '', cols - 1)}${railAt(index)}`;
-    }
-    const lines = [header, separator, ...mainLines, separator, ...footer.lines];
+    const mainLines = main.map((line, index) => {
+      const padded = padAnsi(line, cols - 1);
+      if (bar === undefined) {
+        return padded;
+      }
+      // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
+      return `${padded}${theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│')}`;
+    });
+    const lines = [...mainLines, ...footer.lines];
     const cursor =
       footer.cursor === undefined
         ? null
-        : { row: 3 + mainHeight + footer.cursor.line, col: footer.cursor.column };
+        : { row: mainHeight + footer.cursor.line, col: footer.cursor.column };
     this.terminal.render(lines, cursor);
   }
 
   /**
-   * 信任页整屏:header + 居中的信任内容 + 底部按键。
+   * 信任页整屏:居中的信任内容 + 底部按键。
    *
    * 与欢迎页同一条居中规则;正文过长(矮终端)时保留顶部——提问与路径比清单更要紧。
    */
@@ -1090,25 +1062,23 @@ export class TuiApp implements AgentUi {
     if (pending === undefined) {
       return [];
     }
-    const { left, right } = this.headerParts();
-    const header = headerLine(left, right, cols, theme);
     const separator = theme.paint.muted(symbols.separator.repeat(cols));
     const footer = [
       ...renderTrustMenu(theme),
       theme.paint.muted('  y/n 选择 · 信任后写入 ~/.reins/config.toml 的 [trust].trusted'),
     ];
     const body = renderTrustPage(cols, theme, {
-      // 信任页要看清是哪个目录,不做 header 那种保留尾部的截断
+      // 信任页要看清是哪个目录,不做保留尾部的截断
       path: tildePath(pending.resolution.key),
       overrides: pending.resolution.overrides,
       docs: pending.docs,
     });
-    const mainHeight = Math.max(1, rows - 3 - footer.length);
+    const mainHeight = Math.max(1, rows - 1 - footer.length);
     const main = centerVertically(body, mainHeight).slice(0, mainHeight);
     while (main.length < mainHeight) {
       main.push('');
     }
-    return [header, separator, ...main, separator, ...footer];
+    return [...main, separator, ...footer];
   }
 
   private renderScrollbackLines(width: number): string[] {
@@ -1120,200 +1090,6 @@ export class TuiApp implements AgentUi {
       lines.push(...this.renderer.render(block, width));
     }
     return lines;
-  }
-
-  /** header 带的左右内容;置顶带边框由 chrome.headerBand 负责。 */
-  /**
-   * header 只回答「在哪、在哪个分支」。
-   *
-   * 非 git 仓库时取不到分支,只显示路径;运行状态、上下文占用等交给正文区块
-   * 与底部提示行,不再挤在 header。路径在用户目录下时缩成 ~/xxx。
-   */
-  /** header 里分支段的列范围;不在 git 仓库里就没有这一段。 */
-  private branchSpan(): { start: number; end: number } | undefined {
-    if (this.gitBranch === undefined) {
-      return undefined;
-    }
-    // 尾随空格算进命中区:鼠标不必精确停在字上才算停在分支上
-    return { start: 0, end: visibleWidth(`${this.gitBranch} `) };
-  }
-
-  /** 鼠标是否停在 header 的分支段上。 */
-  private isOverBranch(row: number, column: number): boolean {
-    const span = this.branchSpan();
-    return row === 0 && span !== undefined && column >= span.start && column < span.end;
-  }
-
-  private headerParts(): { left: string; right: string } {
-    const paint = this.renderContext.theme.paint;
-    if (this.gitBranch === undefined) {
-      return { left: paint.muted(shortenPath(this.options.workspace)), right: '' };
-    }
-    const label = `${this.gitBranch} `;
-    // 分支平时弱显、悬停高光;项目路径用正常前景——两者颜色相反于早先的写法
-    return {
-      left: `${this.branchHover || this.branchMenu !== undefined ? paint.accent(label) : paint.muted(label)}${shortenPath(this.options.workspace)}`,
-      right: '',
-    };
-  }
-
-  /**
-   * 分支可能被外部 git 切换,按间隔重读;值变了才重绘。
-   * 读的是 .git/HEAD 一个小文件,秒级间隔足够,不必每帧读。
-   */
-  private async refreshGitBranch(): Promise<void> {
-    const now = Date.now();
-    if (now - this.branchCheckedAt < BRANCH_TTL_MS) {
-      return;
-    }
-    this.branchCheckedAt = now;
-    const branch = await readGitBranch(this.options.workspace);
-    if (branch !== this.gitBranch) {
-      this.gitBranch = branch;
-      this.scheduleRender();
-    }
-  }
-
-  // —— 分支:悬停高光与点击下拉 ——
-
-  /** 鼠标事件:停在分支段上则高光,按下打开下拉;下拉打开时点击候选即切换。 */
-  private async handleMouse(key: {
-    kind: 'press' | 'release' | 'move';
-    row: number;
-    column: number;
-  }): Promise<void> {
-    if (this.branchMenu !== undefined) {
-      if (key.kind !== 'press') {
-        return;
-      }
-      const picked = this.branchAtRow(key.row);
-      if (picked !== undefined) {
-        await this.chooseBranch(picked);
-        return;
-      }
-      // 点在下拉之外:只收起,不做别的
-      this.closeBranchMenu();
-      this.scheduleRender();
-      return;
-    }
-    const hovered = this.isOverBranch(key.row, key.column);
-    if (hovered !== this.branchHover) {
-      this.branchHover = hovered;
-      this.scheduleRender();
-    }
-    if (key.kind === 'press' && hovered) {
-      // 任务跑着时不碰工作区:checkout 会换掉正在被工具读写的文件
-      if (this.running) {
-        this.flashStatus('任务运行中,先中断再切分支');
-        return;
-      }
-      await this.openBranchMenu();
-    }
-  }
-
-  /** 下拉打开时的按键;返回 true 表示已消费(未消费的不存在,一律吃掉免得漏进输入框)。 */
-  private handleBranchKey(key: TuiKey): boolean {
-    const menu = this.branchMenu;
-    if (menu === undefined) {
-      return false;
-    }
-    if (key.type === 'up') {
-      menu.index = Math.max(0, menu.index - 1);
-    } else if (key.type === 'down') {
-      menu.index = Math.min(menu.items.length - 1, menu.index + 1);
-    } else if (key.type === 'enter') {
-      const name = menu.items[menu.index];
-      if (name !== undefined) {
-        void this.chooseBranch(name);
-      }
-    } else if (key.type === 'escape' || key.type === 'ctrl-c') {
-      this.closeBranchMenu();
-    }
-    this.scheduleRender();
-    return true;
-  }
-
-  private async openBranchMenu(): Promise<void> {
-    const items = await listLocalBranches(this.options.workspace);
-    if (items.length === 0) {
-      this.flashStatus('未找到本地分支');
-      return;
-    }
-    this.branchMenu = { items, index: Math.max(0, items.indexOf(this.gitBranch ?? '')) };
-    this.scheduleRender();
-  }
-
-  private closeBranchMenu(): void {
-    this.branchMenu = undefined;
-  }
-
-  /** 分支下拉的行(覆盖在主区顶部,紧贴 header);未打开时为空数组。 */
-  private branchDropdownLines(width: number): string[] {
-    const menu = this.branchMenu;
-    if (menu === undefined) {
-      return [];
-    }
-    return branchDropdown(menu.items, menu.index, this.gitBranch, width, this.renderContext.theme);
-  }
-
-  /**
-   * 终端某一行落在下拉里的分支名。
-   *
-   * 下拉占主区顶部:主区第 0 行是提示行,候选从第 1 行起,窗口下标与渲染同一套算法。
-   */
-  private branchAtRow(row: number): string | undefined {
-    const menu = this.branchMenu;
-    if (menu === undefined) {
-      return undefined;
-    }
-    const { start, rows } = branchWindow(menu.items.length, menu.index);
-    const slot = row - 2;
-    if (slot < 1 || slot > rows) {
-      return undefined;
-    }
-    return menu.items[start + slot - 1];
-  }
-
-  /** 选中分支:工作区脏就拒绝,干净才 checkout;成功后按新内容重新判定信任。 */
-  private async chooseBranch(name: string): Promise<void> {
-    this.closeBranchMenu();
-    if (name === this.gitBranch) {
-      this.scheduleRender();
-      return;
-    }
-    if (await hasUncommittedChanges(this.options.workspace)) {
-      this.pushNotice(`未切换到 ${name}:工作区有未提交改动 · 先提交或撤销再试`, 'warn');
-      this.scheduleRender();
-      return;
-    }
-    const result = await checkoutBranch(this.options.workspace, name);
-    if (!result.ok) {
-      this.pushNotice(`切换分支失败:${result.message}`, 'error');
-      this.scheduleRender();
-      return;
-    }
-    this.pushNotice(`已切换到 ${name}`, 'info');
-    await this.afterBranchSwitch();
-  }
-
-  /**
-   * 切分支后重新判定信任并按新的项目内容重建运行时。
-   *
-   * 分支一变,.reins/config.toml 与 AGENTS.md 都可能换掉,沿用旧的信任结论
-   * 等于让上一个分支的授权管这一个新的仓库内容。
-   */
-  private async afterBranchSwitch(): Promise<void> {
-    this.branchCheckedAt = 0;
-    await this.refreshGitBranch();
-    if (!(await this.resolveTrust())) {
-      this.requestExit();
-      return;
-    }
-    try {
-      await this.rebuild({});
-    } catch (error) {
-      this.pushNotice(`错误:${describeError(error)}`, 'error');
-    }
   }
 
   private renderFooter(
@@ -1503,12 +1279,3 @@ function tildePath(path: string): string {
   return normalized.startsWith(home) ? `~${normalized.slice(home.length)}` : normalized;
 }
 
-/** header 用的路径:在 tildePath 基础上截断到 30 列,保留尾部。 */
-function shortenPath(path: string): string {
-  const text = tildePath(path);
-  if (visibleWidth(text) > 30) {
-    const chars = [...text];
-    return `…${chars.slice(Math.max(0, chars.length - 29)).join('')}`;
-  }
-  return text;
-}
