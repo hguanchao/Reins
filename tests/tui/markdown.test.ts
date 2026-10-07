@@ -31,18 +31,25 @@ describe('markdown 渲染', () => {
     assert.ok(lines[0]?.includes('my_var_name'));
   });
 
-  it('代码栅栏:画框并保留内容', () => {
-    const lines = render('```ts\nconst a = 1;\nconst b = 2;\n```');
-    assert.ok(lines[0]?.startsWith('  ╭─ ts'));
-    assert.ok(lines.some((line) => line.includes('const a = 1;')));
-    assert.ok(lines.at(-1)?.startsWith('  ╰'));
+  it('代码栅栏:靠缩进分界,不画边框、语言标签不上屏', () => {
+    assert.deepEqual(render('```ts\nconst a = 1;\nconst b = 2;\n```'), [
+      '    const a = 1;',
+      '    const b = 2;',
+    ]);
+  });
+
+  it('代码栅栏折行:续行同为空格缩进,行内不出现边框字符', () => {
+    const lines = render('```\n' + 'x'.repeat(50) + ' tail\n```', 30);
+    assert.ok(lines.length >= 3, '长行应被预折,否则整屏行数会漂');
+    for (const line of lines) {
+      assert.ok(line.startsWith('    '), `续行只该有空格缩进:${JSON.stringify(line)}`);
+      assert.equal(/[│╭╰─]/.test(line), false, `代码里混进边框字符:${line}`);
+      assert.ok(visibleWidth(line) <= 30);
+    }
   });
 
   it('流式中未闭合的代码栅栏按代码块渲染', () => {
-    const lines = render('```python\nx = 1');
-    assert.ok(lines[0]?.startsWith('  ╭─ python'));
-    assert.ok(lines.some((line) => line.includes('x = 1;') === false));
-    assert.ok(lines.some((line) => line.includes('x = 1')));
+    assert.deepEqual(render('```python\nx = 1'), ['    x = 1']);
   });
 
   it('列表与嵌套续行', () => {
@@ -107,7 +114,7 @@ describe('markdown 渲染', () => {
       ].join('\n'),
       44,
     );
-    // 全包:圆角顶底,与代码栅栏/输入框同一套视觉语言(前导为 markdown 缩进 + 表格缩进)
+    // 全包:圆角顶底,与输入框同一套视觉语言(前导为 markdown 缩进 + 表格缩进)
     assert.ok((lines[0] ?? '').trimStart().startsWith('╭'), '应有顶边框');
     assert.ok((lines[0] ?? '').endsWith('╮'));
     assert.ok((lines.at(-1) ?? '').trimStart().startsWith('╰'), '应有底边框');
@@ -282,7 +289,8 @@ describe('markdown 渲染', () => {
     const lines = render(['```md', '```js', 'const x = 1;', '```'].join('\n'), 40);
     const codeLines = lines.filter((line) => /```js|const x = 1;/.test(line));
     assert.equal(codeLines.length, 2);
-    assert.ok(codeLines.every((line) => line.includes('│')), codeLines.join('\n'));
+    // 代码行的身份标记是四格缩进(正文只有两格),不再靠边框竖线
+    assert.ok(codeLines.every((line) => line.startsWith('    ')), codeLines.join('\n'));
   });
 
   it('标题取 markdown 组的 heading 角色,不借用 TUI 的 accent', () => {

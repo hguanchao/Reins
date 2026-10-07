@@ -274,7 +274,7 @@ function renderTable(
     }
     return lines;
   };
-  // 全包边框:圆角与代码栅栏/输入框一致;横线段比列宽多 2,
+  // 全包边框:圆角与输入框一致;横线段比列宽多 2,
   // 正好吃掉数据行 ' │ ' 里的空格,┬ ┼ ┴ 与竖线逐列对准
   const frame = (left: string, middle: string, right: string): string =>
     `  ${theme.paint.muted(left)}${colWidth
@@ -290,23 +290,25 @@ function renderTable(
   return out;
 }
 
-/** 代码栅栏:高亮 + 画框;超长行折行并加缩进续行。 */
-function renderCodeFence(code: string, lang: string, width: number, theme: Theme): string[] {
-  const lineWidth = Math.max(8, width - 4);
-  const frame = theme.paint.muted;
-  const label = lang === '' ? '' : ` ${lang} `;
-  const top = `╭─${label}${'─'.repeat(Math.max(0, width - 2 - label.length))}`;
-  const out: string[] = [frame(top)];
+/** 代码块相对正文再退两格:分界交给缩进与配色。 */
+const CODE_INSET = 2;
 
-  const rows = highlightCode(code, lang).map((tokens) => tokensToSegments(tokens, theme));
-  for (const row of rows) {
-    wrapStyled(row, lineWidth).forEach((segments, index) => {
-      // 续行额外缩进两格:折行的代码仍是同一条语句
-      const prefix = index === 0 ? `${frame('│')} ` : `${frame('│')}   `;
-      out.push(`${prefix}${renderStyledLine(segments)}`);
-    });
+/**
+ * 代码栅栏:语法高亮 + 缩进分界,不画边框也不铺背景。
+ *
+ * 边框会把 `│ ` 一起复制进剪贴板,铺背景又与 dark / light / mono 三档配色和用户
+ * 自己的终端底色打架;代码与正文的分界靠缩进加高亮已经足够。长行仍需预折——
+ * 整屏差分渲染要求行数恒定,但续行只用空格补齐,不放任何标记字符。
+ */
+function renderCodeFence(code: string, lang: string, width: number, theme: Theme): string[] {
+  const indent = ' '.repeat(CODE_INSET);
+  const lineWidth = Math.max(8, width - CODE_INSET);
+  const out: string[] = [];
+  for (const tokens of highlightCode(code, lang)) {
+    for (const segments of wrapStyled(tokensToSegments(tokens, theme), lineWidth)) {
+      out.push(`${indent}${renderStyledLine(segments)}`);
+    }
   }
-  out.push(frame(`╰${'─'.repeat(Math.max(2, width - 2))}╯`));
   return out;
 }
 
