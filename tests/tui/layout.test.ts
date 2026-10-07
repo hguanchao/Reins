@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   fitPlain,
+  renderStyledLine,
   stripAnsi,
   truncateAnsi,
   truncatePlain,
   visibleWidth,
   wrapPlain,
+  wrapStyled,
 } from '../../src/tui/layout.ts';
 
 describe('布局宽度计算', () => {
@@ -47,5 +49,36 @@ describe('布局宽度计算', () => {
 
   it('折行保留手动换行', () => {
     assert.deepEqual(wrapPlain('a\nb', 10), ['a', 'b']);
+  });
+
+  it('带样式折行:样式跟随片段,宽度按可见宽计算', () => {
+    const segments = [
+      { text: 'hello ', codes: '1' },
+      { text: '美丽世界', codes: '36' },
+    ];
+    const lines = wrapStyled(segments, 7);
+    assert.equal(lines.length, 3);
+    assert.ok(visibleWidth(renderStyledLine(lines[0] ?? [])) <= 7);
+    assert.ok(visibleWidth(renderStyledLine(lines[1] ?? [])) <= 7);
+    assert.ok(visibleWidth(renderStyledLine(lines[2] ?? [])) <= 7);
+    assert.ok(renderStyledLine(lines[0] ?? []).includes('\u001b[1m'));
+    assert.ok(renderStyledLine(lines[1] ?? []).includes('\u001b[36m'));
+  });
+
+  it('带样式折行:相邻同样式片段合并,减少 SGR 切换', () => {
+    const lines = wrapStyled(
+      [
+        { text: 'ab', codes: '' },
+        { text: 'cd', codes: '' },
+      ],
+      10,
+    );
+    assert.equal(lines.length, 1);
+    assert.equal((lines[0] ?? []).length, 1);
+    assert.equal(stripAnsi(renderStyledLine(lines[0] ?? [])), 'abcd');
+  });
+
+  it('带样式折行:空内容得到单空行', () => {
+    assert.deepEqual(wrapStyled([], 10), [[]]);
   });
 });

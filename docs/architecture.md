@@ -74,6 +74,18 @@ reins/
 │   ├── mcp/                    # 职责:MCP 客户端
 │   │   ├── client.ts
 │   │   └── servers.ts          # 后台连接不挡启动;可禁用外部配置声明的 server
+│   ├── tui/                    # 职责:全屏交互界面(chat 默认表面)
+│   │   ├── app.ts              # 三区域状态机:按键分发、区块流、渲染调度
+│   │   ├── blocks.ts           # 滚动区块模型:折叠/展开、缓存渲染
+│   │   ├── markdown.ts         # 助手文本排版(标题/列表/引用/表格/代码栅栏)
+│   │   ├── highlight.ts        # 零依赖代码高亮(语言表驱动)
+│   │   ├── viewer.ts           # 全屏查看器(完整工具输出)
+│   │   ├── editor.ts           # 输入行编辑(历史/斜杠/@ 文件补全)
+│   │   ├── keys.ts             # 输入解码:按键/鼠标滚轮/括号粘贴
+│   │   ├── files.ts            # 工作区文件索引(@ 补全数据源)
+│   │   ├── screen.ts           # 备用屏、raw 模式、帧差分输出
+│   │   ├── theme.ts            # 角色化主题(dark/light/mono + [ui.colors] 覆盖)
+│   │   └── layout.ts           # 显示宽度、截断、折行(含 CJK)
 │   ├── ui/                     # 职责:呈现
 │   │   ├── printer.ts          # print 模式渲染(headless)
 │   │   └── notify.ts           # [ui] notify
@@ -98,6 +110,7 @@ reins/
 | `max_turns` | `agent/loop.ts` | 根会话不封顶 |
 | `spill_threshold` | `spill/policy.ts` | 超长工具结果落盘留预览 |
 | `[ui] notify` | `ui/notify.ts` | auto / bell / desktop / off |
+| `[ui] theme` `[ui] colors` | `tui/theme.ts` | dark / light / mono;按角色覆盖取色 |
 | `[mcp_servers]` | `mcp/servers.ts` | stdio / http / sse |
 
 ## 一次运行的流转

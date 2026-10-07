@@ -1,41 +1,115 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { mapKeypress } from '../../src/tui/keys.ts';
+import { createKeyDecoder } from '../../src/tui/keys.ts';
 
-describe('按键映射', () => {
-  it('控制键', () => {
-    assert.equal(mapKeypress('\u0003', { name: 'c', ctrl: true }).type, 'ctrl-c');
-    assert.equal(mapKeypress('\u0004', { name: 'd', ctrl: true }).type, 'ctrl-d');
-    assert.equal(mapKeypress('\n', { name: 'j', ctrl: true }).type, 'ctrl-j');
-    assert.equal(mapKeypress('\u0015', { name: 'u', ctrl: true }).type, 'ctrl-u');
-    assert.equal(mapKeypress('\u0017', { name: 'w', ctrl: true }).type, 'ctrl-w');
+/** 把一次喂入当成完整输入流,收集全部事件后 flush。 */
+function decode(input: string): { type: string; text?: string; delta?: number }[] {
+  const decoder = createKeyDecoder();
+  const events = decoder.feed(input);
+  return [...events, ...decoder.flush()] as { type: string }[];
+}
+
+describe('输入解码', () => {
+  it('普通文本与中文', () => {
+    assert.deepEqual(decode('ab'), [{ type: 'text', text: 'ab' }]);
+    assert.deepEqual(decode('你好'), [{ type: 'text', text: '你好' }]);
   });
 
-  it('回车与换行区分', () => {
-    assert.equal(mapKeypress('\r', { name: 'return' }).type, 'enter');
-    assert.equal(mapKeypress('\n', { name: 'enter' }).type, 'ctrl-j');
+  it('控制键映射', () => {
+    assert.deepEqual(decode('\r'), [{ type: 'enter' }]);
+    assert.deepEqual(decode('\n'), [{ type: 'ctrl-j' }]);
+    assert.deepEqual(decode('\t'), [{ type: 'tab' }]);
+    assert.deepEqual(decode('\u007f'), [{ type: 'backspace' }]);
+    assert.deepEqual(decode('\u0003'), [{ type: 'ctrl-c' }]);
+    assert.deepEqual(decode('\u0004'), [{ type: 'ctrl-d' }]);
+    assert.deepEqual(decode('\u0015'), [{ type: 'ctrl-u' }]);
+    assert.deepEqual(decode('\u0017'), [{ type: 'ctrl-w' }]);
+    assert.deepEqual(decode('\u0005'), [{ type: 'ctrl-e' }]);
+    assert.deepEqual(decode('\u000f'), [{ type: 'ctrl-o' }]);
   });
 
-  it('方向键与翻页', () => {
-    assert.equal(mapKeypress('\u001b[A', { name: 'up' }).type, 'up');
-    assert.equal(mapKeypress('\u001b[B', { name: 'down' }).type, 'down');
-    assert.equal(mapKeypress('\u001b[C', { name: 'right' }).type, 'right');
-    assert.equal(mapKeypress('\u001b[D', { name: 'left' }).type, 'left');
-    assert.equal(mapKeypress('\u001b[5~', { name: 'pageup' }).type, 'pageup');
-    assert.equal(mapKeypress('\u001b[6~', { name: 'pagedown' }).type, 'pagedown');
-    assert.equal(mapKeypress('\u001b', { name: 'escape' }).type, 'escape');
-    assert.equal(mapKeypress('\t', { name: 'tab' }).type, 'tab');
-    assert.equal(mapKeypress('\u007f', { name: 'backspace' }).type, 'backspace');
+  it('方向键、翻页与 Home/End', () => {
+    assert.deepEqual(decode('\u001b[A'), [{ type: 'up' }]);
+    assert.deepEqual(decode('\u001b[B'), [{ type: 'down' }]);
+    assert.deepEqual(decode('\u001b[C'), [{ type: 'right' }]);
+    assert.deepEqual(decode('\u001b[D'), [{ type: 'left' }]);
+    assert.deepEqual(decode('\u001b[5~'), [{ type: 'pageup' }]);
+    assert.deepEqual(decode('\u001b[6~'), [{ type: 'pagedown' }]);
+    assert.deepEqual(decode('\u001b[H'), [{ type: 'home' }]);
+    assert.deepEqual(decode('\u001b[F'), [{ type: 'end' }]);
+    assert.deepEqual(decode('\u001b[3~'), [{ type: 'delete' }]);
+    assert.deepEqual(decode('\u001b[Z'), [{ type: 'shift-tab' }]);
   });
 
-  it('普通字符与中文按文本处理', () => {
-    assert.deepEqual(mapKeypress('a', { name: 'a' }), { type: 'text', text: 'a' });
-    assert.deepEqual(mapKeypress('中', { name: undefined }), { type: 'text', text: '中' });
-    assert.deepEqual(mapKeypress(' ', { name: 'space' }), { type: 'text', text: ' ' });
+  it('孤立 Esc 交给 flush 兜底', () => {
+    const decoder = createKeyDecoder();
+    assert.deepEqual(decoder.feed('\u001b'), []);
+    assert.deepEqual(decoder.flush(), [{ type: 'escape' }]);
+    assert.equal(decoder.hasPending(), false);
   });
 
-  it('未知转义序列归为 unknown', () => {
-    assert.equal(mapKeypress('\u001b[<35;1;1M', { name: undefined }).type, 'unknown');
-    assert.equal(mapKeypress(undefined, { name: 'f5' }).type, 'unknown');
+  it('残缺序列等待更多数据', () => {
+    const decoder = createKeyDecoder();
+    assert.deepEqual(decoder.feed('\u001b['), []);
+    assert.equal(decoder.hasPending(), true);
+    assert.deepEqual(decoder.feed('A'), [{ type: 'up' }]);
+    assert.equal(decoder.hasPending(), false);
+  });
+
+  it('SGR 鼠标滚轮:64 上 65 下,松开忽略', () => {
+    assert.deepEqual(decode('\u001b[<64;10;5M'), [{ type: 'wheel', delta: -3 }]);
+    assert.deepEqual(decode('\u001b[<65;10;5M'), [{ type: 'wheel', delta: 3 }]);
+    assert.deepEqual(decode('\u001b[<64;10;5m'), [{ type: 'unknown' }]);
+    assert.deepEqual(decode('\u001b[<0;10;5M'), [{ type: 'unknown' }]);
+  });
+
+  it('X10 鼠标滚轮', () => {
+    // 按钮 64 → 字节 64+32;x=10,y=5
+    assert.deepEqual(decode('\u001b[M`_\u0005'), [{ type: 'wheel', delta: -3 }]);
+  });
+
+  it('括号粘贴:整段交付,换行不变成回车', () => {
+    assert.deepEqual(decode('\u001b[200~第一行\n第二行\u001b[201~'), [
+      { type: 'paste', text: '第一行\n第二行' },
+    ]);
+  });
+
+  it('括号粘贴:跨块到达并处理 CR/LF', () => {
+    const decoder = createKeyDecoder();
+    const events = [
+      ...decoder.feed('\u001b[200~hello\r\nwo'),
+      ...decoder.feed('rld\u001b[201~'),
+      ...decoder.flush(),
+    ];
+    assert.deepEqual(events, [{ type: 'paste', text: 'hello\nworld' }]);
+  });
+
+  it('粘贴结束标记部分跨块时不错切', () => {
+    const decoder = createKeyDecoder();
+    const events = [
+      ...decoder.feed('\u001b[200~abc\u001b'),
+      ...decoder.feed('[201~'),
+      ...decoder.flush(),
+    ];
+    assert.deepEqual(events, [{ type: 'paste', text: 'abc' }]);
+  });
+
+  it('粘贴内容剥离控制字符但保留 emoji', () => {
+    assert.deepEqual(decode('\u001b[200~a\u0002b\u007fc😀\u001b[201~'), [
+      { type: 'paste', text: 'abc😀' },
+    ]);
+  });
+
+  it('文本与转义序列连续到达时各自正确解析', () => {
+    const events = decode('abc\u001b[Bdef');
+    assert.deepEqual(events, [
+      { type: 'text', text: 'abc' },
+      { type: 'down' },
+      { type: 'text', text: 'def' },
+    ]);
+  });
+
+  it('焦点与私有模式回执被忽略', () => {
+    assert.deepEqual(decode('\u001b[I\u001b[O\u001b[?2004h'), []);
   });
 });

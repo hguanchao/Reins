@@ -1,16 +1,11 @@
 /**
- * 按键解析:把终端的原始按键事件归一为 TuiKey。
+ * 输入解码:把终端的原始字节流切成语义按键。
  *
- * 设计意图:与 Node 的 keypress 事件对接;仅做映射,不做业务判断,便于单测。
+ * 设计意图:Node 内建的 keypress 解析不认识 SGR 鼠标序列,会把它们
+ * 拆成零散字符,因此这里自建一个增量状态机——喂入字节块、吐出按键事件;
+ * 同时承接括号粘贴(整段插入、换行不触发提交)与鼠标滚轮。
+ * 不完整的转义序列留在缓冲区,flush() 在超时后兜底吐出(如单独的 Esc)。
  */
-
-export interface RawKey {
-  name?: string;
-  ctrl?: boolean;
-  meta?: boolean;
-  shift?: boolean;
-  sequence?: string;
-}
 
 export type TuiKey =
   | { type: 'text'; text: string }
@@ -27,71 +22,286 @@ export type TuiKey =
   | { type: 'pageup' }
   | { type: 'pagedown' }
   | { type: 'tab' }
+  | { type: 'shift-tab' }
   | { type: 'escape' }
   | { type: 'ctrl-c' }
   | { type: 'ctrl-d' }
   | { type: 'ctrl-u' }
   | { type: 'ctrl-w' }
+  | { type: 'ctrl-e' }
+  | { type: 'ctrl-o' }
+  /** 括号粘贴的整段文本;换行已归一为 \n。 */
+  | { type: 'paste'; text: string }
+  /** 鼠标滚轮;正数向下、负数向上,单位为行。 */
+  | { type: 'wheel'; delta: number }
   | { type: 'unknown' };
 
-export function mapKeypress(str: string | undefined, key: RawKey | undefined): TuiKey {
-  if (key === undefined) {
-    return str !== undefined && str.length > 0 ? { type: 'text', text: str } : { type: 'unknown' };
-  }
-  if (key.ctrl === true) {
-    switch ((key.name ?? '').toLowerCase()) {
-      case 'c':
-        return { type: 'ctrl-c' };
-      case 'd':
-        return { type: 'ctrl-d' };
-      case 'j':
-        return { type: 'ctrl-j' };
-      case 'u':
-        return { type: 'ctrl-u' };
-      case 'w':
-        return { type: 'ctrl-w' };
-      default:
-        return { type: 'unknown' };
+const PASTE_START = '\u001b[200~';
+const PASTE_END = '\u001b[201~';
+/** 单次粘贴的字符上限:超过即截断,避免一次粘贴拖垮内存与渲染。 */
+export const MAX_PASTE_CHARS = 100_000;
+/** 每格滚轮滚动的行数。 */
+const WHEEL_STEP = 3;
+
+interface ControlDef {
+  sequence: string;
+  key: TuiKey;
+}
+
+/** 固定转义序列 → 按键;按前缀长度优先匹配。 */
+const SEQUENCES: readonly ControlDef[] = [
+  { sequence: '\u001b[A', key: { type: 'up' } },
+  { sequence: '\u001b[B', key: { type: 'down' } },
+  { sequence: '\u001b[C', key: { type: 'right' } },
+  { sequence: '\u001b[D', key: { type: 'left' } },
+  { sequence: '\u001bOA', key: { type: 'up' } },
+  { sequence: '\u001bOB', key: { type: 'down' } },
+  { sequence: '\u001bOC', key: { type: 'right' } },
+  { sequence: '\u001bOD', key: { type: 'left' } },
+  { sequence: '\u001b[H', key: { type: 'home' } },
+  { sequence: '\u001b[F', key: { type: 'end' } },
+  { sequence: '\u001bOH', key: { type: 'home' } },
+  { sequence: '\u001bOF', key: { type: 'end' } },
+  { sequence: '\u001b[1~', key: { type: 'home' } },
+  { sequence: '\u001b[4~', key: { type: 'end' } },
+  { sequence: '\u001b[7~', key: { type: 'home' } },
+  { sequence: '\u001b[8~', key: { type: 'end' } },
+  { sequence: '\u001b[3~', key: { type: 'delete' } },
+  { sequence: '\u001b[5~', key: { type: 'pageup' } },
+  { sequence: '\u001b[6~', key: { type: 'pagedown' } },
+  { sequence: '\u001b[Z', key: { type: 'shift-tab' } },
+];
+
+const CONTROLS: Readonly<Record<string, TuiKey>> = {
+  '\r': { type: 'enter' },
+  '\n': { type: 'ctrl-j' },
+  '\t': { type: 'tab' },
+  '\u007f': { type: 'backspace' },
+  '\b': { type: 'backspace' },
+  '\u0003': { type: 'ctrl-c' },
+  '\u0004': { type: 'ctrl-d' },
+  '\u0015': { type: 'ctrl-u' },
+  '\u0017': { type: 'ctrl-w' },
+  '\u0005': { type: 'ctrl-e' },
+  '\u000f': { type: 'ctrl-o' },
+};
+
+export interface KeyDecoder {
+  /** 喂入一块原始输入(Buffer 会按 UTF-8 流式解码),返回其中完整的按键事件。 */
+  feed(chunk: Buffer | string): TuiKey[];
+  /** 输入流静止后调用:把缓冲区里挂起的孤立 Esc 或残缺序列吐出。 */
+  flush(): TuiKey[];
+  /** 缓冲区里是否还有未决字节(需要安排 flush 定时器)。 */
+  hasPending(): boolean;
+}
+
+export function createKeyDecoder(): KeyDecoder {
+  const textDecoder = new TextDecoder('utf-8');
+  let buf = '';
+  let pasting = false;
+
+  const consume = (length: number): void => {
+    buf = buf.slice(length);
+  };
+
+  /** 尝试从缓冲头部解析一个事件;返回 null 表示需要更多数据。 */
+  const parseOne = (): TuiKey | null | 'drain-paste' => {
+    if (buf === '') {
+      return null;
     }
+    if (pasting) {
+      const end = buf.indexOf(PASTE_END);
+      if (end !== -1) {
+        const deliverable = buf.slice(0, end);
+        consume(end + PASTE_END.length);
+        pasting = false;
+        if (deliverable !== '') {
+          return pasteEvent(deliverable);
+        }
+        return 'drain-paste';
+      }
+      // 没等到结束标记:超过上限时强制收尾,防止缓冲无限增长
+      if (buf.length > MAX_PASTE_CHARS) {
+        const deliverable = buf;
+        buf = '';
+        pasting = false;
+        return pasteEvent(deliverable);
+      }
+      return null;
+    }
+
+    if (!buf.startsWith('\u001b')) {
+      const control = CONTROLS[buf[0] ?? ''];
+      if (control !== undefined) {
+        consume(1);
+        return control;
+      }
+      if ((buf.codePointAt(0) ?? 0x7f) < 32) {
+        consume(1);
+        return { type: 'unknown' };
+      }
+      // 普通文本:一直吃到下一个控制符或转义
+      let length = 0;
+      while (length < buf.length && !isControlStart(buf[length] ?? '')) {
+        length += 1;
+      }
+      const text = buf.slice(0, length);
+      consume(length);
+      return { type: 'text', text };
+    }
+
+    if (buf.startsWith(PASTE_START)) {
+      consume(PASTE_START.length);
+      pasting = true;
+      return 'drain-paste';
+    }
+    if (buf.startsWith(PASTE_END)) {
+      // 游离的结束标记:直接丢弃
+      consume(PASTE_END.length);
+      return 'drain-paste';
+    }
+
+    const fixed = SEQUENCES.find((def) => buf.startsWith(def.sequence));
+    if (fixed !== undefined) {
+      consume(fixed.sequence.length);
+      return fixed.key;
+    }
+
+    // SGR 鼠标:\x1b[<b;x;yM(m 为松开,滚轮只关心按下)
+    const sgr = /^\u001b\[<(\d+);(\d+);(\d+)([Mm])/.exec(buf);
+    if (sgr !== null) {
+      consume(sgr[0].length);
+      const wheel = wheelFromButton(Number.parseInt(sgr[1] ?? '0', 10));
+      if (wheel !== 0 && sgr[4] === 'M') {
+        return { type: 'wheel', delta: wheel * WHEEL_STEP };
+      }
+      return { type: 'unknown' };
+    }
+    // X10 鼠标:\x1b[M 后跟 3 个字节
+    if (buf.startsWith('\u001b[M')) {
+      if (buf.length < 6) {
+        return null;
+      }
+      const button = (buf.charCodeAt(3) ?? 0) - 32;
+      consume(6);
+      const wheel = wheelFromButton(button);
+      return wheel !== 0 ? { type: 'wheel', delta: wheel * WHEEL_STEP } : { type: 'unknown' };
+    }
+
+    // 终端回执类序列(焦点、私有模式应答):吞到终结符,忽略
+    if (buf.startsWith('\u001b[I') || buf.startsWith('\u001b[O')) {
+      consume(3);
+      return 'drain-paste';
+    }
+    const report = /^\u001b\[\?[0-9;]*[A-Za-z]/.exec(buf);
+    if (report !== null) {
+      consume(report[0].length);
+      return 'drain-paste';
+    }
+    const osc = buf.startsWith('\u001b]');
+    if (osc) {
+      const bel = buf.indexOf('\u0007');
+      const st = buf.indexOf('\u001b\\');
+      if (bel === -1 && st === -1) {
+        return null;
+      }
+      const end = bel === -1 ? (st as number) + 2 : bel + 1;
+      consume(end);
+      return 'drain-paste';
+    }
+
+    // Alt+键 与未知转义:吞掉 ESC 与后续一个字符;
+    // 但若缓冲仍可能补全成一个已知序列,则等待更多数据
+    if (couldBeEscapePrefix(buf)) {
+      return null;
+    }
+    if (buf.length >= 2) {
+      consume(2);
+      return { type: 'unknown' };
+    }
+    return null;
+  };
+
+  return {
+    feed(chunk) {
+      buf += typeof chunk === 'string' ? chunk : textDecoder.decode(chunk, { stream: true });
+      const events: TuiKey[] = [];
+      for (;;) {
+        const event = parseOne();
+        if (event === 'drain-paste') {
+          continue;
+        }
+        if (event === null) {
+          break;
+        }
+        events.push(event);
+      }
+      return events;
+    },
+    flush() {
+      // 粘贴中途静默不代表粘贴结束:保留缓冲等待后续数据
+      if (buf === '' || pasting) {
+        return [];
+      }
+      const events: TuiKey[] = [];
+      if (buf === '\u001b') {
+        events.push({ type: 'escape' });
+      } else {
+        events.push({ type: 'unknown' });
+      }
+      buf = '';
+      return events;
+    },
+    hasPending() {
+      return buf !== '';
+    },
+  };
+}
+
+/** 粘贴事件:统一换行符并剥离 C0/C1 控制字符;超限时截断。 */
+function pasteEvent(text: string): TuiKey {
+  const normalized = text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '');
+  return { type: 'paste', text: normalized.slice(0, MAX_PASTE_CHARS) };
+}
+
+/**
+ * 缓冲是否可能是某个转义序列的前缀(等待更多数据)。
+ * 覆盖 ESC、CSI 数字/分号、SGR 鼠标、SS3 与 OSC 引导。
+ */
+function couldBeEscapePrefix(buf: string): boolean {
+  if (buf === '\u001b') {
+    return true;
   }
-  if (key.meta === true) {
-    return { type: 'unknown' };
+  if (!buf.startsWith('\u001b')) {
+    return false;
   }
-  switch (key.name) {
-    case 'return':
-      return { type: 'enter' };
-    case 'enter':
-      // 单独的换行符(^J)用于插入换行
-      return { type: 'ctrl-j' };
-    case 'backspace':
-      return { type: 'backspace' };
-    case 'delete':
-      return { type: 'delete' };
-    case 'left':
-      return { type: 'left' };
-    case 'right':
-      return { type: 'right' };
-    case 'up':
-      return { type: 'up' };
-    case 'down':
-      return { type: 'down' };
-    case 'home':
-      return { type: 'home' };
-    case 'end':
-      return { type: 'end' };
-    case 'pageup':
-      return { type: 'pageup' };
-    case 'pagedown':
-      return { type: 'pagedown' };
-    case 'tab':
-      return { type: 'tab' };
-    case 'escape':
-      return { type: 'escape' };
-    default:
-      break;
+  const rest = buf.slice(1);
+  if (rest === 'O' || rest === ']') {
+    return true;
   }
-  if (str !== undefined && str.length > 0 && !str.startsWith('\u001b')) {
-    return { type: 'text', text: str };
+  if (!rest.startsWith('[')) {
+    return false;
   }
-  return { type: 'unknown' };
+  const body = rest.slice(1);
+  if (body.startsWith('<')) {
+    return /^[0-9;]*$/.test(body.slice(1));
+  }
+  return /^[0-9;]*$/.test(body);
+}
+
+function isControlStart(char: string): boolean {
+  return char === '\u001b' || char < ' ' || char === '\u007f';
+}
+
+/** SGR/X10 按钮码 → 滚动方向:64 上、65 下。 */
+function wheelFromButton(button: number): -1 | 0 | 1 {
+  if (button === 64) {
+    return -1;
+  }
+  if (button === 65) {
+    return 1;
+  }
+  return 0;
 }

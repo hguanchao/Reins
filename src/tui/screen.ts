@@ -57,8 +57,8 @@ export class Terminal {
       this.input.setRawMode(true);
     }
     this.input.resume();
-    // 备用屏 + 隐藏光标
-    this.out.write('\u001b[?1049h\u001b[?25l');
+    // 备用屏 + 隐藏光标 + 鼠标上报(1000 普通/1006 SGR)+ 括号粘贴
+    this.out.write('\u001b[?1049h\u001b[?25l\u001b[?1000h\u001b[?1006h\u001b[?2004h');
     this.previousFrame = [];
   }
 
@@ -68,7 +68,8 @@ export class Terminal {
       return;
     }
     this.entered = false;
-    this.out.write('\u001b[?25h\u001b[?1049l');
+    // 退出顺序与进入相反,确保异常路径下终端不留残余模式
+    this.out.write('\u001b[?2004l\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[?1049l');
     if (this.input.isTTY === true) {
       this.input.setRawMode(false);
     }

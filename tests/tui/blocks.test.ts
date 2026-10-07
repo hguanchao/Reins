@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { renderBlock, summarizeToolArgs, type ScrollBlock } from '../../src/tui/blocks.ts';
+import {
+  createBlockRenderer,
+  renderBlock,
+  renderBlockVerbose,
+  summarizeToolArgs,
+  type RenderContext,
+  type ScrollBlock,
+} from '../../src/tui/blocks.ts';
 import { stripAnsi, visibleWidth } from '../../src/tui/layout.ts';
+import { createTheme } from '../../src/tui/theme.ts';
 
-const context = { spinner: '⠋' };
+const context: RenderContext = { spinner: '⠋', theme: createTheme({ color: true }) };
 
 function render(block: ScrollBlock, width = 60): string {
   return renderBlock(block, width, context).map(stripAnsi).join('\n');
@@ -24,17 +32,25 @@ describe('滚动区块渲染', () => {
     assert.ok(text.includes('修复登录页'));
   });
 
-  it('助手消息:流式光标只出现在最后一行', () => {
+  it('助手消息:markdown 渲染且流式光标只在末尾', () => {
     const streaming = renderBlock(
-      { kind: 'assistant', text: '第一行\n第二行', streaming: true },
+      { kind: 'assistant', text: '# 标题\n正文', streaming: true },
       60,
       context,
     ).map(stripAnsi);
+    assert.ok(streaming.some((line) => line.includes('标题')));
     assert.ok(streaming[streaming.length - 1]?.includes('▏'));
     const idle = renderBlock({ kind: 'assistant', text: '完成', streaming: false }, 60, context)
       .map(stripAnsi)
       .join('\n');
     assert.equal(idle.includes('▏'), false);
+  });
+
+  it('助手消息 markdown:粗体与代码栅栏上样式', () => {
+    const lines = renderBlock({ kind: 'assistant', text: '**粗**\n\n```ts\nlet x;\n```', streaming: false }, 60, context);
+    const styled = lines.join('\n');
+    assert.ok(styled.includes('\u001b[1m粗\u001b[0m'));
+    assert.ok(styled.includes('\u001b[1;35mlet\u001b[0m'));
   });
 
   it('工具卡片:运行中与成功态', () => {
@@ -47,17 +63,48 @@ describe('滚动区块渲染', () => {
     assert.ok(ok.includes('0.3s'));
   });
 
-  it('工具失败带详情行', () => {
-    const text = render({
+  it('工具输出默认折叠,失败带详情行', () => {
+    const collapsed = render({
+      kind: 'tool',
+      name: 'bash',
+      summary: 'cat log',
+      state: 'ok',
+      output: '第一行\n第二行',
+    });
+    assert.equal(collapsed.includes('第一行'), false);
+    const failed = render({
       kind: 'tool',
       name: 'bash',
       summary: 'rm x',
       state: 'fail',
       elapsedMs: 50,
+      output: '操作被拒绝\n更多',
       detail: '操作被拒绝',
     });
-    assert.ok(text.includes('✗'));
-    assert.ok(text.includes('↳ 操作被拒绝'));
+    assert.ok(failed.includes('✗'));
+    assert.ok(failed.includes('↳ 操作被拒绝'));
+    assert.equal(failed.includes('更多'), false);
+  });
+
+  it('工具块展开显示预览与剩余行数提示', () => {
+    const output = Array.from({ length: 14 }, (_, index) => `第${index + 1}行`).join('\n');
+    const lines = renderBlock(
+      { kind: 'tool', name: 'read', summary: 'a', state: 'ok', output, expanded: true },
+      60,
+      context,
+    ).map(stripAnsi);
+    assert.ok(lines.some((line) => line.includes('第1行')));
+    assert.ok(lines.some((line) => line.includes('第10行')));
+    assert.equal(lines.some((line) => line.includes('第11行')), false);
+    assert.ok(lines.some((line) => line.includes('共 14 行') && line.includes('Ctrl+O')));
+  });
+
+  it('查看器渲染:完整输出全部可见', () => {
+    const output = Array.from({ length: 30 }, (_, index) => `行${index + 1}`).join('\n');
+    const block: ScrollBlock = { kind: 'tool', name: 'read', summary: 'a', state: 'ok', output };
+    const verbose = renderBlockVerbose(block, 60, context).map(stripAnsi).join('\n');
+    assert.ok(verbose.includes('行1'));
+    assert.ok(verbose.includes('行30'));
   });
 
   it('通知:三级样式均可渲染', () => {
@@ -69,13 +116,13 @@ describe('滚动区块渲染', () => {
   it('欢迎卡含标题与提示', () => {
     const text = render({ kind: 'welcome' });
     assert.ok(text.includes('欢迎使用 Reins'));
-    assert.ok(text.includes('/'));
+    assert.ok(text.includes('@'));
   });
 
   it('渲染结果不超过给定宽度(含 CJK)', () => {
     const blocks: ScrollBlock[] = [
       { kind: 'user', text: '中文很长的任务描述会不会超过宽度呢可能会也可能不会但总之要检查一下' },
-      { kind: 'tool', name: 'bash', summary: '很长的命令参数需要截断处理', state: 'ok', elapsedMs: 12 },
+      { kind: 'tool', name: 'bash', summary: '很长的命令参数需要截断处理', state: 'ok', elapsedMs: 12, output: '输出内容也很长需要折行处理输出内容也很长需要折行处理' },
       { kind: 'notice', text: '这是一条很长的通知文本用于测试宽度截断行为是否正常', level: 'warn' },
     ];
     for (const block of blocks) {
@@ -86,5 +133,16 @@ describe('滚动区块渲染', () => {
         );
       }
     }
+  });
+
+  it('区块渲染器:同参数复用缓存,状态变化后重算', () => {
+    const renderer = createBlockRenderer(context);
+    const block: ScrollBlock = { kind: 'assistant', text: '你好', streaming: false };
+    const first = renderer.render(block, 60);
+    assert.equal(renderer.render(block, 60), first);
+    block.text = '你好,世界';
+    const second = renderer.render(block, 60);
+    assert.notEqual(second, first);
+    assert.ok(stripAnsi(second.join('\n')).includes('世界'));
   });
 });

@@ -1,4 +1,3 @@
-import { emitKeypressEvents } from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createAgentRuntime, type AgentRuntime } from '../agent/run.ts';
@@ -21,12 +20,21 @@ import type { AgentUi } from '../ui/printer.ts';
 import { describeError } from '../util/errors.ts';
 import { absolutize, reinsHome } from '../util/paths.ts';
 import type { CommandIo, ParsedArgs } from '../cli/args.ts';
-import { formatElapsed, renderBlock, summarizeToolArgs, type NoticeLevel, type ScrollBlock } from './blocks.ts';
+import {
+  createBlockRenderer,
+  formatElapsed,
+  summarizeToolArgs,
+  type NoticeLevel,
+  type RenderContext,
+  type ScrollBlock,
+} from './blocks.ts';
+import { createFileIndex, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
-import { mapKeypress, type RawKey, type TuiKey } from './keys.ts';
+import { createKeyDecoder, type TuiKey } from './keys.ts';
 import { codePointWidth, truncateAnsi, truncatePlain, visibleWidth } from './layout.ts';
 import { Terminal } from './screen.ts';
-import { paint, symbols } from './theme.ts';
+import { createTheme, symbols, type Theme } from './theme.ts';
+import { Viewer } from './viewer.ts';
 
 /**
  * TUI 应用:三区域(header / main / footer)全屏交互。
@@ -40,6 +48,10 @@ const RENDER_DEBOUNCE_MS = 16;
 const MAX_INPUT_LINES = 4;
 const MIN_COLS = 40;
 const MIN_ROWS = 12;
+/** 输入流静止多久后把挂起的孤立 Esc 兜底吐出。 */
+const ESC_FLUSH_MS = 50;
+/** 状态条消息的驻留时长。 */
+const STATUS_MS = 3000;
 
 export interface TuiAppOptions {
   home: string;
@@ -84,10 +96,16 @@ export async function startTui(args: ParsedArgs, io: CommandIo): Promise<number>
 export class TuiApp implements AgentUi {
   private readonly options: TuiAppOptions;
   private readonly terminal: Terminal;
-  private readonly editor = new InputEditor(CHAT_COMMANDS);
+  private readonly editor: InputEditor;
+  private readonly fileIndex: FileIndex;
+  private readonly viewer = new Viewer();
+  private readonly decoder = createKeyDecoder();
   private readonly blocks: ScrollBlock[] = [];
   private readonly toolStartTimes = new Map<ScrollBlock, number>();
   private readonly alwaysAllow = new Set<string>();
+
+  private readonly renderContext: RenderContext;
+  private renderer: ReturnType<typeof createBlockRenderer>;
 
   private runtime: AgentRuntime | undefined;
   private catalog: Catalog | undefined;
@@ -108,22 +126,41 @@ export class TuiApp implements AgentUi {
   private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
   private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
 
+  private statusMessage: { text: string; until: number } | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
   private ticker: NodeJS.Timeout | undefined;
-  private keypressHandler: ((str: string | undefined, key: RawKey | undefined) => void) | undefined;
+  private escFlushTimer: NodeJS.Timeout | undefined;
+  private readonly onData = (chunk: Buffer): void => {
+    this.dispatch(this.decoder.feed(chunk));
+    if (this.decoder.hasPending()) {
+      if (this.escFlushTimer === undefined) {
+        this.escFlushTimer = setTimeout(() => {
+          this.escFlushTimer = undefined;
+          this.dispatch(this.decoder.flush());
+        }, ESC_FLUSH_MS);
+      }
+      return;
+    }
+    if (this.escFlushTimer !== undefined) {
+      clearTimeout(this.escFlushTimer);
+      this.escFlushTimer = undefined;
+    }
+  };
   private exiting = false;
   private closed: (() => void) | undefined;
 
   constructor(options: TuiAppOptions) {
     this.options = options;
     this.terminal = new Terminal(process.stdout, process.stdin);
+    this.renderContext = { spinner: symbols.spinner[0] as string, theme: createTheme() };
+    this.renderer = createBlockRenderer(this.renderContext);
+    this.fileIndex = createFileIndex(options.workspace);
+    this.editor = new InputEditor({ commands: CHAT_COMMANDS, files: () => this.fileIndex.list() });
   }
 
   async start(): Promise<number> {
     this.terminal.enter();
-    emitKeypressEvents(process.stdin);
-    this.keypressHandler = (str, key) => this.handleKey(mapKeypress(str, key));
-    process.stdin.on('keypress', this.keypressHandler);
+    process.stdin.on('data', this.onData);
     process.stdout.on('resize', this.onResize);
 
     this.push({ kind: 'welcome' });
@@ -136,6 +173,9 @@ export class TuiApp implements AgentUi {
     this.ticker = setInterval(() => {
       if (this.running) {
         this.spinnerIndex += 1;
+        this.renderContext.spinner = symbols.spinner[
+          this.spinnerIndex % symbols.spinner.length
+        ] as string;
         this.scheduleRender();
       }
     }, TICK_MS);
@@ -152,13 +192,20 @@ export class TuiApp implements AgentUi {
     if (this.renderTimer !== undefined) {
       clearTimeout(this.renderTimer);
     }
-    process.stdout.off('resize', this.onResize);
-    if (this.keypressHandler !== undefined) {
-      process.stdin.off('keypress', this.keypressHandler);
+    if (this.escFlushTimer !== undefined) {
+      clearTimeout(this.escFlushTimer);
     }
+    process.stdout.off('resize', this.onResize);
+    process.stdin.off('data', this.onData);
     this.terminal.leave();
     await this.runtime?.close().catch(() => undefined);
     return 0;
+  }
+
+  private dispatch(events: readonly TuiKey[]): void {
+    for (const key of events) {
+      this.handleKey(key);
+    }
   }
 
   // —— AgentUi 事件(由代理循环驱动) ——
@@ -195,6 +242,7 @@ export class TuiApp implements AgentUi {
     const started = this.toolStartTimes.get(block);
     block.state = isError ? 'fail' : 'ok';
     block.elapsedMs = started !== undefined ? Date.now() - started : undefined;
+    block.output = content;
     if (isError) {
       block.detail = (content.split('\n')[0] ?? '').trim();
     }
@@ -222,6 +270,27 @@ export class TuiApp implements AgentUi {
       this.scheduleRender();
       return;
     }
+    if (this.viewer.isOpen) {
+      this.handleViewerKey(key);
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'paste') {
+      this.handlePaste(key.text);
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'wheel') {
+      this.scrollBy(key.delta);
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'text') {
+      this.editor.insert(key.text);
+      this.maybeRefreshFileIndex();
+      this.scheduleRender();
+      return;
+    }
     switch (key.type) {
       case 'ctrl-c':
         if (this.running) {
@@ -233,7 +302,10 @@ export class TuiApp implements AgentUi {
         }
         break;
       case 'escape':
-        if (this.running) {
+        // Esc 优先收起补全菜单,其次中断/清空
+        if (this.editor.completionState !== null) {
+          this.editor.closeCompletion();
+        } else if (this.running) {
           this.interrupt();
         } else if (!this.editor.isEmpty) {
           this.editor.clear();
@@ -252,9 +324,6 @@ export class TuiApp implements AgentUi {
         break;
       case 'tab':
         this.editor.applyCompletion();
-        break;
-      case 'text':
-        this.editor.insert(key.text);
         break;
       case 'backspace':
         this.editor.backspace();
@@ -296,10 +365,136 @@ export class TuiApp implements AgentUi {
       case 'ctrl-w':
         this.editor.deleteWordBackward();
         break;
+      case 'ctrl-e':
+        this.toggleToolExpand();
+        break;
+      case 'ctrl-o':
+        this.toggleViewer();
+        break;
       default:
         break;
     }
     this.scheduleRender();
+  }
+
+  private handleViewerKey(key: TuiKey): void {
+    const rows = this.terminal.rows;
+    switch (key.type) {
+      case 'escape':
+      case 'ctrl-c':
+      case 'ctrl-o':
+        this.viewer.close();
+        return;
+      case 'up':
+        this.viewer.scroll(-1);
+        return;
+      case 'down':
+        this.viewer.scroll(1);
+        return;
+      case 'pageup':
+        this.viewer.pageUp(rows);
+        return;
+      case 'pagedown':
+        this.viewer.pageDown(rows);
+        return;
+      case 'home':
+        this.viewer.home();
+        return;
+      case 'end':
+        this.viewer.end();
+        return;
+      case 'wheel':
+        this.viewer.scroll(key.delta);
+        return;
+      case 'text': {
+        const lower = key.text.toLowerCase();
+        if (lower === 'q') {
+          this.viewer.close();
+        } else if (lower === 'n') {
+          this.viewer.step(1, this.blocks.length);
+        } else if (lower === 'p') {
+          this.viewer.step(-1, this.blocks.length);
+        }
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  private handlePaste(text: string): void {
+    const lines = this.editor.insertRaw(text);
+    if (lines > 1) {
+      this.flashStatus(`已粘贴 ${lines} 行 · 回车发送`);
+    }
+    this.maybeRefreshFileIndex();
+  }
+
+  /** @ 补全打开且文件快照过期时,后台重新扫描工作区。 */
+  private maybeRefreshFileIndex(): void {
+    const completion = this.editor.completionState;
+    if (completion === null || completion.kind !== 'mention' || !this.fileIndex.stale()) {
+      return;
+    }
+    void this.fileIndex.refresh().then(() => {
+      this.editor.refreshCompletion();
+      this.scheduleRender();
+    });
+  }
+
+  private toggleToolExpand(): void {
+    for (let index = this.blocks.length - 1; index >= 0; index -= 1) {
+      const block = this.blocks[index];
+      if (block !== undefined && block.kind === 'tool') {
+        block.expanded = !(block.expanded === true);
+        return;
+      }
+    }
+    this.flashStatus('没有可展开的工具输出');
+  }
+
+  private toggleViewer(): void {
+    if (this.viewer.isOpen) {
+      this.viewer.close();
+      return;
+    }
+    let target = -1;
+    for (let index = this.blocks.length - 1; index >= 0; index -= 1) {
+      const block = this.blocks[index];
+      if (block !== undefined && block.kind === 'tool' && block.output !== undefined) {
+        target = index;
+        break;
+      }
+    }
+    if (target === -1 && this.blocks.length > 0) {
+      target = this.blocks.length - 1;
+    }
+    if (target === -1) {
+      this.flashStatus('还没有可查看的内容');
+      return;
+    }
+    this.viewer.open(target);
+  }
+
+  private flashStatus(text: string): void {
+    this.statusMessage = { text, until: Date.now() + STATUS_MS };
+    // 状态条到点后自动隐去
+    setTimeout(() => this.scheduleRender(), STATUS_MS + 50);
+    this.scheduleRender();
+  }
+
+  private scrollBy(delta: number): void {
+    if (delta < 0) {
+      this.follow = false;
+      this.scrollTop = Math.max(0, this.scrollTop + delta);
+      return;
+    }
+    const target = this.scrollTop + delta;
+    if (target >= this.lastMaxTop) {
+      this.follow = true;
+    } else {
+      this.scrollTop = target;
+    }
   }
 
   private interrupt(): void {
@@ -530,6 +725,7 @@ export class TuiApp implements AgentUi {
   private async startup(): Promise<void> {
     const layered = await loadLayeredConfig({ home: this.options.home, cwd: this.options.workspace });
     this.currentConfig = layered.config;
+    this.applyTheme();
     this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
     this.runtime = await createAgentRuntime({
       config: this.currentConfig,
@@ -556,6 +752,7 @@ export class TuiApp implements AgentUi {
       ...(options.provider !== undefined ? { provider: options.provider } : {}),
       ...(options.model !== undefined ? { model: options.model } : {}),
     };
+    this.applyTheme();
     this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
     const sessionFile =
       options.freshSession === true ? undefined : (options.sessionFile ?? this.runtime?.session.path);
@@ -606,6 +803,8 @@ export class TuiApp implements AgentUi {
     if (this.alwaysAllow.has(key)) {
       return Promise.resolve('allow');
     }
+    // 审批需要立即关注:把查看器收起,让审批卡片可见
+    this.viewer.close();
     this.approvalCard = { target, decision };
     this.scheduleRender();
     return new Promise<'allow' | 'deny'>((resolve) => {
@@ -664,8 +863,14 @@ export class TuiApp implements AgentUi {
       this.terminal.render([truncatePlain(`窗口太小,请调整终端尺寸(至少 ${MIN_COLS}×${MIN_ROWS})`, cols)], null);
       return;
     }
+    // 全屏查看器独占整屏;返回时靠帧差分自然重绘
+    if (this.viewer.isOpen) {
+      this.terminal.render(this.viewer.render(this.blocks, cols, rows, this.renderContext), null);
+      return;
+    }
+    const theme = this.renderContext.theme;
     const header = this.renderHeader(cols);
-    const separator = paint.gray(symbols.separator.repeat(cols));
+    const separator = theme.paint.muted(symbols.separator.repeat(cols));
     const footer = this.renderFooter(cols);
     const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
     const content = this.renderScrollbackLines(cols);
@@ -690,39 +895,39 @@ export class TuiApp implements AgentUi {
   }
 
   private renderScrollbackLines(width: number): string[] {
-    const spinner = symbols.spinner[this.spinnerIndex % symbols.spinner.length] as string;
     const lines: string[] = [];
     for (const block of this.blocks) {
       if (lines.length > 0) {
         lines.push('');
       }
-      lines.push(...renderBlock(block, width, { spinner }));
+      lines.push(...this.renderer.render(block, width));
     }
     return lines;
   }
 
   private renderHeader(width: number): string {
+    const paint = this.renderContext.theme.paint;
     const modelText = this.currentConfig
       ? `${this.currentConfig.provider}/${this.currentConfig.model}`
       : '未配置';
-    const left = `${paint.cyanBold('Reins')} ${paint.gray('·')} ${modelText} ${paint.gray('·')} ${shortenPath(this.options.workspace)} ${paint.gray('·')} ${this.sessionLabel()}`;
+    const left = `${paint.accent('Reins')} ${paint.muted('·')} ${modelText} ${paint.muted('·')} ${shortenPath(this.options.workspace)} ${paint.muted('·')} ${this.sessionLabel()}`;
     const rightParts: string[] = [];
     if (this.running) {
       rightParts.push(
-        `${paint.amber(this.currentSpinner())} ${paint.gray(formatElapsed(Date.now() - this.runStartedAt))}`,
+        `${paint.warn(this.currentSpinner())} ${paint.muted(formatElapsed(Date.now() - this.runStartedAt))}`,
       );
     }
     if (this.contextTokens !== undefined && this.contextTokens > 0) {
       const percent = Math.min(999, Math.round((this.contextTokens / this.contextWindow) * 100));
-      rightParts.push(percent >= 80 ? paint.amber(`${percent}% ctx`) : paint.gray(`${percent}% ctx`));
+      rightParts.push(percent >= 80 ? paint.warn(`${percent}% ctx`) : paint.muted(`${percent}% ctx`));
     }
     if (this.currentConfig !== undefined) {
-      rightParts.push(paint.gray(this.currentConfig.approval));
+      rightParts.push(paint.muted(this.currentConfig.approval));
     }
     if (this.runtime !== undefined && this.runtime.mcp.length > 0) {
-      rightParts.push(paint.gray(`MCP ${this.runtime.mcp.length}`));
+      rightParts.push(paint.muted(`MCP ${this.runtime.mcp.length}`));
     }
-    const right = rightParts.join(paint.gray(' · '));
+    const right = rightParts.join(paint.muted(' · '));
     if (right === '') {
       return truncateAnsi(left, width);
     }
@@ -736,24 +941,26 @@ export class TuiApp implements AgentUi {
 
   private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
     if (this.approvalCard !== undefined) {
+      const paint = this.renderContext.theme.paint;
       const { target, decision } = this.approvalCard;
       const what = target.command ?? target.path ?? target.server ?? target.domain ?? '';
       const lines = [
-        paint.amber(`  ${symbols.warn} 审批请求`),
-        `    ${paint.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
-        paint.gray(`    触发规则:${decision.rule ?? decision.reason}`),
-        `    ${paint.green('[y] 允许')}   ${paint.green('[a] 本会话总是允许')}   ${paint.red('[n] 拒绝')}`,
-        paint.gray('  y/a/n 选择 · Esc 拒绝'),
+        paint.warn(`  ${symbols.warn} 审批请求`),
+        `    ${this.renderContext.theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
+        paint.muted(`    触发规则:${decision.rule ?? decision.reason}`),
+        `    ${paint.ok('[y] 允许')}   ${paint.ok('[a] 本会话总是允许')}   ${paint.fail('[n] 拒绝')}`,
+        paint.muted('  y/a/n 选择 · Esc 拒绝'),
       ];
       return { lines };
     }
 
+    const paint = this.renderContext.theme.paint;
     const lines: string[] = [];
     const completion = this.editor.completionState;
     if (completion !== null) {
       for (let index = 0; index < completion.items.length; index += 1) {
         const item = completion.items[index] as string;
-        lines.push(index === completion.index ? `  ${paint.cyan(`▸ ${item}`)}` : `    ${paint.gray(item)}`);
+        lines.push(index === completion.index ? `  ${paint.accent(`▸ ${item}`)}` : `    ${paint.muted(item)}`);
       }
     }
     const dropdownLines = lines.length;
@@ -805,7 +1012,8 @@ export class TuiApp implements AgentUi {
         shown += chars[charIndex];
         used += charWidth;
       }
-      const prefix = index === 0 ? paint.cyan(symbols.inputPrompt) : '  ';
+      const prefix =
+        index === 0 ? this.renderContext.theme.paint.accent(symbols.inputPrompt) : '  ';
       const ellipsis = colStart > 0 ? '…' : '';
       lines.push(`${prefix}${ellipsis}${shown}`);
       if (isCursorLine) {
@@ -821,20 +1029,32 @@ export class TuiApp implements AgentUi {
   }
 
   private renderHints(width: number): string {
+    const paint = this.renderContext.theme.paint;
     let text: string;
+    const status = this.statusMessage;
+    if (status !== undefined && status.until > Date.now()) {
+      return paint.warn(` ${truncatePlain(status.text, Math.max(0, width - 2))}`);
+    }
     if (this.approvalCard !== undefined) {
       text = 'y/a/n 选择 · Esc 拒绝';
     } else if (this.running) {
-      text = `⏱ ${formatElapsed(Date.now() - this.runStartedAt)} · ^C/Esc 中断 · PgUp/PgDn 滚动`;
+      text = `⏱ ${formatElapsed(Date.now() - this.runStartedAt)} · ^C/Esc 中断 · 滚轮/PgUp/PgDn 滚动 · ^O 查看`;
     } else if (!this.follow) {
-      text = '⤓ End 回到底部 · PgUp/PgDn 滚动';
+      text = '⤓ End 回到底部 · 滚轮/PgUp/PgDn 滚动';
     } else {
-      text = '⏎ 发送 · ^J 换行 · Tab 补全 · ↑↓ 历史 · PgUp/PgDn 滚动 · ^C 中断 · /help';
+      text = '⏎ 发送 · ^J 换行 · @ 文件 · Tab 补全 · ↑↓ 历史 · ^E 展开 · ^O 查看 · ^C 中断 · /help';
     }
-    return paint.gray(` ${truncatePlain(text, Math.max(0, width - 2))}`);
+    return paint.muted(` ${truncatePlain(text, Math.max(0, width - 2))}`);
   }
 
   // —— 基础工具 ——
+
+  /** 按配置组装主题并重建渲染器(缓存随主题整体失效)。 */
+  private applyTheme(): void {
+    const ui = this.currentConfig?.ui;
+    this.renderContext.theme = createTheme({ preset: ui?.theme, colors: ui?.colors });
+    this.renderer = createBlockRenderer(this.renderContext);
+  }
 
   private currentSpinner(): string {
     return symbols.spinner[this.spinnerIndex % symbols.spinner.length] as string;

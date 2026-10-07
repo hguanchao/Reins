@@ -65,4 +65,16 @@ npm run typecheck # tsc --noEmit
 权限规则引擎与审批门、沙箱边界、会话 JSONL 存储与分支、超大结果落盘、
 上下文压缩、审查模型(auto 审批)、MCP 客户端(stdio / http / sse)、
 四个协议适配器(openai-completions、openai-responses、anthropic-messages、google-generative-ai)、
-交互式会话(全屏 TUI:header / main / footer 三区域,含审批卡片与斜杠补全)、会话管理、命令行入口与自检。
+会话管理、命令行入口与自检。
+
+全屏 TUI(chat 默认表面)已完成:
+
+- **排版**:助手回复按 markdown 渲染(标题、列表、引用、表格、行内样式),
+  代码栅栏带画框与语法高亮(js/ts、json、python、bash、go、rust、sql、yaml、toml 等,零依赖);
+- **工具输出**:默认折叠为一行,`Ctrl+E` 展开预览,`Ctrl+O` 全屏查看器翻阅完整输出;
+- **@ 文件选择器**:输入 `@` 触发工作区文件补全,文件名前缀 > 包含的排序,Tab 选中;
+- **鼠标与粘贴**:滚轮滚动历史,括号粘贴(bracketed paste)下多行粘贴不会误发送;
+- **主题**:`[ui] theme = dark | light | mono`,可用 `[ui.colors]` 按角色覆盖取色,支持颜色名、`#rrggbb` 与 256 色。
+
+快捷键:`↑/↓` 历史 · `@` 文件 · `Tab` 补全 · `Ctrl+J` 换行 · `Ctrl+O` 查看 ·
+`Ctrl+E` 展开 · `Ctrl+C/Esc` 中断 · `PgUp/PgDn`/滚轮 滚动。

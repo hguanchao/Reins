@@ -1,13 +1,27 @@
+import { rankFileCandidates } from './files.ts';
+
 /**
- * 输入行编辑器:光标、历史、斜杠命令补全。
+ * 输入行编辑器:光标、历史、斜杠命令与 @ 文件补全。
  *
  * 设计意图:纯状态机、不碰终端;文本按码点维护,避免拆断代理对;
- * 支持多行(^J 换行),光标与历史在被上层按键分发调用时保持可预测。
+ * 文件候选由上层注入(同步快照),编辑器自己不做任何 IO。
  */
 
+export type CompletionKind = 'slash' | 'mention';
+
 export interface EditorCompletion {
+  kind: CompletionKind;
   items: string[];
   index: number;
+}
+
+export interface EditorOptions {
+  /** 可补全的斜杠命令。 */
+  commands?: readonly string[];
+  /** @ 引用的候选文件路径(由上层维护缓存与刷新)。 */
+  files?: () => readonly string[];
+  /** mention 补全的最大条数。 */
+  mentionLimit?: number;
 }
 
 export class InputEditor {
@@ -18,9 +32,13 @@ export class InputEditor {
   private draftChars: string[] = [];
   private completion: EditorCompletion | null = null;
   private readonly commands: readonly string[];
+  private readonly files: (() => readonly string[]) | undefined;
+  private readonly mentionLimit: number;
 
-  constructor(commands: readonly string[] = []) {
-    this.commands = commands;
+  constructor(options: EditorOptions = {}) {
+    this.commands = options.commands ?? [];
+    this.files = options.files;
+    this.mentionLimit = options.mentionLimit ?? 8;
   }
 
   get text(): string {
@@ -39,7 +57,7 @@ export class InputEditor {
     return this.completion;
   }
 
-  /** 插入可打印文本(换行被忽略,由 insertNewline 处理)。 */
+  /** 插入可打印文本(控制字符被忽略,换行由 insertNewline / insertRaw 处理)。 */
   insert(text: string): void {
     for (const char of text) {
       if ((char.codePointAt(0) ?? 0) < 32) {
@@ -49,6 +67,20 @@ export class InputEditor {
       this.cursorIndex += 1;
     }
     this.afterEdit();
+  }
+
+  /** 粘贴插入:整段一次性放入,保留换行;返回本次粘贴的行数。 */
+  insertRaw(text: string): number {
+    const incoming = [...text];
+    if (incoming.length === 0) {
+      return 0;
+    }
+    const before = this.chars.slice(0, this.cursorIndex);
+    const after = this.chars.slice(this.cursorIndex);
+    this.chars = [...before, ...incoming, ...after];
+    this.cursorIndex += incoming.length;
+    this.afterEdit();
+    return incoming.filter((char) => char === '\n').length + 1;
   }
 
   insertNewline(): void {
@@ -97,21 +129,25 @@ export class InputEditor {
   moveLeft(): void {
     if (this.cursorIndex > 0) {
       this.cursorIndex -= 1;
+      this.recomputeCompletion();
     }
   }
 
   moveRight(): void {
     if (this.cursorIndex < this.chars.length) {
       this.cursorIndex += 1;
+      this.recomputeCompletion();
     }
   }
 
   moveHome(): void {
     this.cursorIndex = this.currentLineStart();
+    this.recomputeCompletion();
   }
 
   moveEnd(): void {
     this.cursorIndex = this.currentLineEnd();
+    this.recomputeCompletion();
   }
 
   /** 上:优先补全菜单,其次多行上移,最后历史。 */
@@ -126,6 +162,7 @@ export class InputEditor {
       const previousStart = this.chars.lastIndexOf('\n', lineStart - 2) + 1;
       const previousEnd = lineStart - 1;
       this.cursorIndex = Math.min(previousStart + column, previousEnd);
+      this.recomputeCompletion();
       return true;
     }
     return this.historyPrev();
@@ -144,6 +181,7 @@ export class InputEditor {
       const nextEnd = this.chars.indexOf('\n', nextStart);
       const limit = nextEnd === -1 ? this.chars.length : nextEnd;
       this.cursorIndex = Math.min(nextStart + column, limit);
+      this.recomputeCompletion();
       return true;
     }
     return this.historyNext();
@@ -187,8 +225,29 @@ export class InputEditor {
     if (item === undefined) {
       return false;
     }
+    if (this.completion.kind === 'mention') {
+      const token = this.tokenAtCursor();
+      if (token === undefined) {
+        return false;
+      }
+      const replacement = [...`@${item} `];
+      this.chars.splice(token.start, token.end - token.start, ...replacement);
+      this.cursorIndex = token.start + replacement.length;
+      this.afterEdit();
+      return true;
+    }
     this.setChars(`${item} `);
     return true;
+  }
+
+  /** 手动关闭补全菜单(Esc)。 */
+  closeCompletion(): void {
+    this.completion = null;
+  }
+
+  /** 文件候选快照更新后由上层调用,重算当前补全。 */
+  refreshCompletion(): void {
+    this.recomputeCompletion();
   }
 
   /** 提交:返回文本并清空(非空文本进入历史)。 */
@@ -228,6 +287,18 @@ export class InputEditor {
     return index === -1 ? this.chars.length : index;
   }
 
+  /** 光标所在的连续非空白 token;光标在空白上时返回 undefined。 */
+  private tokenAtCursor(): { start: number; end: number; text: string } | undefined {
+    if (this.cursorIndex > 0 && isWhitespace(this.chars[this.cursorIndex - 1] ?? '')) {
+      return undefined;
+    }
+    let start = this.cursorIndex;
+    while (start > 0 && !isWhitespace(this.chars[start - 1] ?? '')) {
+      start -= 1;
+    }
+    return { start, end: this.cursorIndex, text: this.chars.slice(start, this.cursorIndex).join('') };
+  }
+
   private completionStep(delta: number): void {
     if (this.completion === null) {
       return;
@@ -251,12 +322,29 @@ export class InputEditor {
   }
 
   private recomputeCompletion(): void {
-    const text = this.text;
-    if (!text.startsWith('/') || text.includes(' ') || text.includes('\n')) {
-      this.completion = null;
+    const before = this.chars.slice(0, this.cursorIndex).join('');
+
+    // 斜杠命令:仅当光标之前是纯粹的命令前缀
+    if (before.startsWith('/') && !before.includes(' ') && !before.includes('\n')) {
+      const items = this.commands.filter((command) => command.startsWith(before) && command !== before);
+      this.completion = items.length > 0 ? { kind: 'slash', items, index: 0 } : null;
       return;
     }
-    const items = this.commands.filter((command) => command.startsWith(text) && command !== text);
-    this.completion = items.length > 0 ? { items, index: 0 } : null;
+
+    // @ 引用:@ 必须成词出现(行首或空白后),否则邮箱之类会被误触
+    const token = this.tokenAtCursor();
+    if (token !== undefined && token.text.startsWith('@') && token.text.length >= 1) {
+      const wordStart = token.start === 0 || isWhitespace(this.chars[token.start - 1] ?? '');
+      if (wordStart) {
+        const items = rankFileCandidates(this.files?.() ?? [], token.text.slice(1), this.mentionLimit);
+        this.completion = items.length > 0 ? { kind: 'mention', items, index: 0 } : null;
+        return;
+      }
+    }
+    this.completion = null;
   }
+}
+
+function isWhitespace(char: string): boolean {
+  return char === ' ' || char === '\n' || char === '\t' || char === '\r';
 }

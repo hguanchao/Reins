@@ -105,5 +105,6 @@ export const CHAT_HELP_TEXT = [
   '/session              显示当前会话文件',
   '/exit(/quit)          退出',
   '',
-  '快捷键:↑/↓ 历史 · Tab 补全 · Ctrl+C/Esc 中断 · 空行 Ctrl+D 退出',
+  '快捷键:↑/↓ 历史 · @ 引用文件 · Tab 补全 · Ctrl+J 换行',
+  '        Ctrl+O 全屏查看工具输出 · Ctrl+E 展开或折叠 · Ctrl+C/Esc 中断 · 空行 Ctrl+D 退出',
 ].join('\n');
