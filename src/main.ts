@@ -6,6 +6,7 @@ import { doctorCommand } from './cli/commands/doctor.ts';
 import { configCommand } from './cli/commands/config.ts';
 import { modelsCommand } from './cli/commands/models.ts';
 import { sessionsCommand } from './cli/commands/sessions.ts';
+import { trustCommand } from './cli/commands/trust.ts';
 import { initCommand } from './cli/commands/init.ts';
 import { describeError, ReinsError } from './util/errors.ts';
 
@@ -19,10 +20,11 @@ const HELP = [
   'Reins — 可控优先的编程智能体',
   '',
   '用法:',
-  '  reins run "任务描述" [--workspace 目录] [--resume 会话 id]     执行一次任务(别名:exec)',
-  '  reins chat [--workspace 目录] [--resume 会话 id] [--plain]     交互式会话(默认全屏 TUI,--plain 纯文本)',
+  '  reins run "任务描述" [--workspace 目录] [--resume 会话 id] [--trust]  执行一次任务(别名:exec)',
+  '  reins chat [--workspace 目录] [--resume 会话 id] [--plain] [--trust]  交互式会话(默认全屏 TUI,--plain 纯文本)',
   '  reins resume [会话 id]                                        恢复会话;省略 id 恢复最近一次',
   '  reins sessions list [--limit 数量]                            列出历史会话',
+  '  reins trust [list|add 目录|remove 目录]                       查看 / 授权 / 撤销项目信任',
   '  reins doctor [--no-network]                                   自检配置与端点连通性',
   '  reins config check|show                                       校验 / 展示解析后的配置',
   '  reins models list [--provider 名称]                           列出产商与模型',
@@ -69,6 +71,9 @@ async function main(): Promise<void> {
         break;
       case 'sessions':
         code = await sessionsCommand(args);
+        break;
+      case 'trust':
+        code = await trustCommand(args);
         break;
       case 'init':
         code = await initCommand(args);

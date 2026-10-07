@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { loadCatalogFile, resolveModel, resolveProvider } from '../../catalog/load.ts';
 import { ensureHomeConfig } from '../../config/ensure.ts';
 import { loadLayeredConfig } from '../../config/layers.ts';
+import { ignoredNotice, resolveTrustForCli } from '../trust.ts';
 import { formatUsage } from '../../llm/usage.ts';
 import type { Approver } from '../../permissions/approval.ts';
 import { ConsoleUi } from '../../ui/printer.ts';
@@ -45,7 +46,27 @@ export async function runCommand(args: ParsedArgs, io: CommandIo = defaultIo): P
         ? absolutize(args.flags['session'])
         : undefined;
 
-  const { config, files } = await loadLayeredConfig({ home, cwd: workspace });
+  const resolution = await resolveTrustForCli({
+    home,
+    workspace,
+    force: args.flags['trust'] === true,
+    allowPrompt: true,
+    io,
+  });
+  if (resolution.reason === 'declined') {
+    io.err('未信任该项目,已退出;项目配置与项目级 AGENTS.md 未加载。');
+    return 1;
+  }
+  const ignored = ignoredNotice(resolution);
+  if (ignored !== undefined) {
+    io.err(`警告:${ignored}`);
+  }
+
+  const { config, files } = await loadLayeredConfig({
+    home,
+    cwd: workspace,
+    projectLayer: resolution.projectAllowed ? 'allow' : 'ignore',
+  });
   const catalog = await loadCatalogFile(join(home, 'providers.json'));
 
   io.err(`· 配置:${files.join('、')}`);
@@ -62,6 +83,7 @@ export async function runCommand(args: ParsedArgs, io: CommandIo = defaultIo): P
     home,
     ui,
     sessionFile,
+    projectTrusted: resolution.projectAllowed,
     approval: approver === undefined ? {} : { approver },
   });
 

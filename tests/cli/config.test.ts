@@ -38,16 +38,19 @@ describe('config 子命令', () => {
     assert.ok(lines.join('\n').includes('provider=demo'));
   });
 
-  it('show 打印解析后的 JSON', async () => {
-    const lines: string[] = [];
+  it('show 打印解析后的 JSON:stdout 是纯 JSON,信任状态走 stderr', async () => {
+    const out: string[] = [];
+    const err: string[] = [];
     const code = await configCommand(
       { command: 'config', positionals: ['show'], flags: {} },
-      { out: (t) => void lines.push(t), err: (t) => void lines.push(t) },
+      { out: (t) => void out.push(t), err: (t) => void err.push(t) },
     );
     assert.equal(code, 0);
-    const parsed = JSON.parse(lines.join('\n')) as Record<string, unknown>;
+    const parsed = JSON.parse(out.join('\n')) as Record<string, unknown>;
     assert.equal(parsed['provider'], 'demo');
     assert.deepEqual((parsed['permissions'] as Record<string, unknown>)['deny'], ['bash(rm *)']);
+    // 信任说明不得混进 stdout,否则管道里的 JSON 解析会失败
+    assert.ok(err.join('\n').includes('信任'));
   });
 
   it('非法配置返回错误码', async () => {

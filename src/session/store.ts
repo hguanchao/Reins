@@ -57,6 +57,8 @@ export interface SessionMeta {
   sessionId: string;
   createdAt: string;
   cwd: string;
+  /** 本次会话是否在受信任的项目里创建;审计用,旧文件缺此字段。 */
+  trusted?: boolean;
 }
 
 export interface SessionFile {
@@ -93,7 +95,7 @@ export class SessionStore {
   }
 
   /** 新建会话:按项目分目录,文件名为「时间-UUID」。 */
-  static async create(dir: string, cwd: string): Promise<SessionStore> {
+  static async create(dir: string, cwd: string, trusted = false): Promise<SessionStore> {
     const projectDir = join(dir, encodeProjectDir(cwd));
     await ensureDir(projectDir);
     const sessionId = makeSessionId();
@@ -104,6 +106,7 @@ export class SessionStore {
       sessionId,
       createdAt: new Date().toISOString(),
       cwd,
+      trusted,
     });
     return store;
   }

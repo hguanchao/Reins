@@ -31,6 +31,12 @@ allow = []                      # 例:["bash(git status)"]
 notify = "auto"                 # auto | bell | desktop | off
 theme = "dark"                  # TUI 主题:dark | light | mono(纯文本)
 
+# [trust]                       # 项目信任:命中的项目才加载其 .reins/config.toml 与项目级 AGENTS.md
+# trusted = [                   # 绝对路径或 ~/ 开头,支持 * 与 **(不含分隔符的写法会被拒绝)
+#   "~/work/**",
+#   "E:/Projects/Reins",
+# ]
+
 # [mcp_servers.context7]        # MCP 示例:stdio 型
 # command = "npx"
 # args = ["-y", "@upstash/context7-mcp"]

@@ -26,8 +26,8 @@ export class Session {
   }
 
   /** 新建会话。 */
-  static async create(dir: string, cwd: string): Promise<Session> {
-    const store = await SessionStore.create(dir, cwd);
+  static async create(dir: string, cwd: string, trusted = false): Promise<Session> {
+    const store = await SessionStore.create(dir, cwd, trusted);
     return new Session(store, [], null);
   }
 

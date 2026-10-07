@@ -21,6 +21,7 @@ import {
   parseChatCommand,
 } from './chat-commands.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
+import { ignoredNotice, resolveTrustForCli } from '../trust.ts';
 
 export {
   CHAT_COMMANDS,
@@ -59,6 +60,24 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
     io.err(`已创建默认配置:${ensured.created.join('、')}`);
     io.err('提示:请编辑 providers.json 填入你的端点与密钥。');
   }
+
+  // 信任先于一切:未信任就不加载项目层,也不注入项目级文档
+  const resolution = await resolveTrustForCli({
+    home,
+    workspace,
+    force: args.flags['trust'] === true,
+    allowPrompt: true,
+    io,
+  });
+  if (resolution.reason === 'declined') {
+    io.err('未信任该项目,已退出;项目配置与项目级 AGENTS.md 未加载。');
+    return 1;
+  }
+  const ignored = ignoredNotice(resolution);
+  if (ignored !== undefined) {
+    io.err(`警告:${ignored}`);
+  }
+  const projectLayer = resolution.projectAllowed ? 'allow' : 'ignore';
 
   let resumeFile: string | undefined;
   try {
@@ -105,7 +124,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
   };
 
   const startup = async (): Promise<void> => {
-    const layered = await loadLayeredConfig({ home, cwd: workspace });
+    const layered = await loadLayeredConfig({ home, cwd: workspace, projectLayer });
     currentConfig = layered.config;
     catalog = await loadCatalogFile(join(home, 'providers.json'));
     runtime = await createAgentRuntime({
@@ -115,6 +134,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
       home,
       ui,
       sessionFile: resumeFile,
+      projectTrusted: projectLayer === 'allow',
       approval: { approver },
     });
     resumeFile = undefined;
@@ -126,7 +146,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
     sessionFile?: string;
     freshSession?: boolean;
   }): Promise<void> => {
-    const layered = await loadLayeredConfig({ home, cwd: workspace });
+    const layered = await loadLayeredConfig({ home, cwd: workspace, projectLayer });
     currentConfig = {
       ...layered.config,
       ...(options.provider !== undefined ? { provider: options.provider } : {}),
@@ -144,6 +164,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
       home,
       ui,
       sessionFile,
+      projectTrusted: projectLayer === 'allow',
       approval: { approver },
     });
   };

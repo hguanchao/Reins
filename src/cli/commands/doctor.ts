@@ -14,6 +14,7 @@ import { McpManager } from '../../mcp/servers.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
 import { describeError } from '../../util/errors.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
+import { resolveTrustForCli, trustLine } from '../trust.ts';
 
 /**
  * doctor 子命令:自检配置、目录、模型解析、密钥与端点连通性。
@@ -34,9 +35,23 @@ export async function doctorCommand(args: ParsedArgs, io: CommandIo = defaultIo)
 
   let config: Config | undefined;
   try {
-    const layered = await loadLayeredConfig({ home, cwd: workspace });
+    const resolution = await resolveTrustForCli({
+      home,
+      workspace,
+      force: args.flags['trust'] === true,
+      // 自检不提问:它只报告状态,更不该为了看一眼而要求授权
+      allowPrompt: false,
+      io,
+    });
+    const layered = await loadLayeredConfig({
+      home,
+      cwd: workspace,
+      projectLayer: resolution.projectAllowed ? 'allow' : 'ignore',
+    });
     config = layered.config;
     passes.push(`配置加载成功(${layered.files.join('、')})`);
+    // 项目层被忽略是安全相关的状态,必须报出来
+    (resolution.projectAllowed ? passes : issues).push(trustLine(resolution));
   } catch (error) {
     issues.push(`配置:${describeError(error)}`);
   }
