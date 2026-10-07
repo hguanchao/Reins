@@ -13,6 +13,7 @@ import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../
 import { ensureHomeConfig } from '../config/ensure.ts';
 import { loadLayeredConfig } from '../config/layers.ts';
 import type { Config } from '../config/schema.ts';
+import { recordTrust, resolveProjectTrust, type TrustResolution } from '../config/trust.ts';
 import type { ToolCall } from '../llm/types.ts';
 import type { Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
@@ -25,6 +26,8 @@ import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
   createBlockRenderer,
   formatElapsed,
+  renderTrustMenu,
+  renderTrustPage,
   summarizeToolArgs,
   type NoticeLevel,
   type RenderContext,
@@ -72,6 +75,8 @@ export interface TuiAppOptions {
   home: string;
   workspace: string;
   resumeFile?: string;
+  /** 命令行 --trust:跳过信任询问并记下信任。 */
+  forceTrust?: boolean;
 }
 
 /** 组装并启动 TUI 会话;返回进程退出码。 */
@@ -104,7 +109,12 @@ export async function startTui(args: ParsedArgs, io: CommandIo): Promise<number>
     io.err(`警告:${describeError(error)}`);
   }
 
-  const app = new TuiApp({ home, workspace, resumeFile });
+  const app = new TuiApp({
+    home,
+    workspace,
+    resumeFile,
+    forceTrust: args.flags['trust'] === true,
+  });
   return await app.start();
 }
 
@@ -142,6 +152,10 @@ export class TuiApp implements AgentUi {
 
   private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
   private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
+  /** 项目信任判定结果;启动时先于会话确定。 */
+  private trust: TrustResolution | undefined;
+  /** 待回答的信任页;有值时整屏只显示它。 */
+  private trustPrompt: { resolution: TrustResolution; resolve: (accepted: boolean) => void } | undefined;
 
   private statusMessage: { text: string; until: number } | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
@@ -180,6 +194,12 @@ export class TuiApp implements AgentUi {
     process.stdin.on('data', this.onData);
     process.stdout.on('resize', this.onResize);
 
+    // 信任先于会话:未信任就不加载项目层配置、不注入项目级文档
+    if (!(await this.resolveTrust())) {
+      this.cleanupTerminal();
+      return 1;
+    }
+
     this.push({ kind: 'welcome' });
     // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
     void this.fileIndex.refresh();
@@ -206,7 +226,13 @@ export class TuiApp implements AgentUi {
       this.closed = resolve;
     });
 
-    // 退出清理:先停定时器,再恢复终端,最后关闭运行时
+    this.cleanupTerminal();
+    await this.runtime?.close().catch(() => undefined);
+    return 0;
+  }
+
+  /** 退出清理:先停定时器,再恢复终端。 */
+  private cleanupTerminal(): void {
     if (this.ticker !== undefined) {
       clearInterval(this.ticker);
     }
@@ -219,8 +245,60 @@ export class TuiApp implements AgentUi {
     process.stdout.off('resize', this.onResize);
     process.stdin.off('data', this.onData);
     this.terminal.leave();
-    await this.runtime?.close().catch(() => undefined);
-    return 0;
+  }
+
+  /**
+   * 解析项目信任;需要询问时渲染信任页并等 y/n。
+   *
+   * 返回 false 表示用户拒绝信任,调用方应直接退出——不在受限状态下继续。
+   */
+  private async resolveTrust(): Promise<boolean> {
+    const resolution = await resolveProjectTrust({
+      home: this.options.home,
+      workspace: this.options.workspace,
+      interactive: process.stdin.isTTY === true,
+      force: this.options.forceTrust === true,
+      prompt: (pending) => this.askTrust(pending),
+      record: (pattern) => recordTrust(this.options.home, pattern),
+    });
+    this.trust = resolution;
+    if (resolution.reason === 'declined') {
+      return false;
+    }
+    if (resolution.reason === 'recorded') {
+      this.pushNotice('已信任此项目,记录写入 ~/.reins/config.toml', 'info');
+    } else if (!resolution.projectAllowed) {
+      this.pushNotice(
+        `未信任该项目,已忽略 .reins/config.toml 与项目级 AGENTS.md;把 ${resolution.key} 加入 [trust].trusted 可授权`,
+        'warn',
+      );
+    }
+    return true;
+  }
+
+  /** 信任页:挂起一个 Promise,等按键回答。 */
+  private askTrust(resolution: TrustResolution): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.trustPrompt = { resolution, resolve };
+      this.scheduleRender();
+    });
+  }
+
+  /** 信任页按键:y 信任并继续,n / Esc 退出。 */
+  private handleTrustKey(key: TuiKey): void {
+    const pending = this.trustPrompt;
+    if (pending === undefined) {
+      return;
+    }
+    const accepted = key.type === 'text' && key.text.trim().toLowerCase().startsWith('y');
+    const declined = key.type === 'escape' || key.type === 'ctrl-c';
+    const rejected = key.type === 'text' && key.text.trim().toLowerCase().startsWith('n');
+    if (!accepted && !declined && !rejected) {
+      return;
+    }
+    this.trustPrompt = undefined;
+    pending.resolve(accepted);
+    this.scheduleRender();
   }
 
   private dispatch(events: readonly TuiKey[]): void {
@@ -279,6 +357,11 @@ export class TuiApp implements AgentUi {
 
   private handleKey(key: TuiKey): void {
     if (this.exiting) {
+      return;
+    }
+    // 信任页先于一切:它决定后面加载什么配置
+    if (this.trustPrompt !== undefined) {
+      this.handleTrustKey(key);
       return;
     }
     if (this.approvalCard !== undefined) {
@@ -611,6 +694,7 @@ export class TuiApp implements AgentUi {
         `模型   ${this.currentConfig.provider}/${this.currentConfig.model}`,
         `工作区 ${this.options.workspace}`,
         `审批   ${this.currentConfig.approval} · 沙箱 ${this.currentConfig.sandbox}`,
+        `信任   ${this.trustText()}`,
         `MCP    ${mcp}`,
         `文件   ${this.runtime.session.path}`,
       ].join('\n'),
@@ -748,7 +832,11 @@ export class TuiApp implements AgentUi {
   // —— 运行时装配 ——
 
   private async startup(): Promise<void> {
-    const layered = await loadLayeredConfig({ home: this.options.home, cwd: this.options.workspace });
+    const layered = await loadLayeredConfig({
+      home: this.options.home,
+      cwd: this.options.workspace,
+      projectLayer: this.projectLayer(),
+    });
     this.currentConfig = layered.config;
     this.applyTheme();
     this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
@@ -759,9 +847,33 @@ export class TuiApp implements AgentUi {
       home: this.options.home,
       ui: this,
       sessionFile: this.options.resumeFile,
+      projectTrusted: this.projectAllowed(),
       approval: { approver: this.approver },
     });
     this.options.resumeFile = undefined;
+  }
+
+  /** 信任状态一行文案,供 /status 展示。 */
+  private trustText(): string {
+    const trust = this.trust;
+    if (trust === undefined) {
+      return '未解析';
+    }
+    if (!trust.projectAllowed) {
+      return `未信任,项目层未加载(授权:把 ${trust.key} 加入 [trust].trusted)`;
+    }
+    return trust.reason === 'matched'
+      ? `项目层已加载(命中 ${trust.pattern})`
+      : '项目层已加载(无会生效的配置)';
+  }
+
+  /** 项目层是否可用;未解析出信任结果时按不可用处理(fail-closed)。 */
+  private projectLayer(): 'allow' | 'ignore' {
+    return this.projectAllowed() ? 'allow' : 'ignore';
+  }
+
+  private projectAllowed(): boolean {
+    return this.trust?.projectAllowed === true;
   }
 
   private async rebuild(options: {
@@ -770,7 +882,11 @@ export class TuiApp implements AgentUi {
     sessionFile?: string;
     freshSession?: boolean;
   }): Promise<void> {
-    const layered = await loadLayeredConfig({ home: this.options.home, cwd: this.options.workspace });
+    const layered = await loadLayeredConfig({
+      home: this.options.home,
+      cwd: this.options.workspace,
+      projectLayer: this.projectLayer(),
+    });
     this.currentConfig = {
       ...layered.config,
       ...(options.provider !== undefined ? { provider: options.provider } : {}),
@@ -789,6 +905,7 @@ export class TuiApp implements AgentUi {
       home: this.options.home,
       ui: this,
       sessionFile,
+      projectTrusted: this.projectAllowed(),
       approval: { approver: this.approver },
     });
   }
@@ -873,6 +990,11 @@ export class TuiApp implements AgentUi {
       this.terminal.render([truncatePlain(`窗口太小,请调整终端尺寸(至少 ${MIN_COLS}×${MIN_ROWS})`, cols)], null);
       return;
     }
+    // 信任页独占整屏:它决定后面加载哪些配置,先问清楚再谈别的
+    if (this.trustPrompt !== undefined) {
+      this.terminal.render(this.renderTrustFrame(cols, rows), null);
+      return;
+    }
     // 全屏查看器独占整屏;返回时靠帧差分自然重绘
     if (this.viewer.isOpen) {
       this.terminal.render(this.viewer.render(this.blocks, cols, rows, this.renderContext), null);
@@ -918,6 +1040,37 @@ export class TuiApp implements AgentUi {
         ? null
         : { row: 3 + mainHeight + footer.cursor.line, col: footer.cursor.column };
     this.terminal.render(lines, cursor);
+  }
+
+  /**
+   * 信任页整屏:header + 居中的信任内容 + 底部按键。
+   *
+   * 与欢迎页同一条居中规则;正文过长(矮终端)时保留顶部——提问与路径比清单更要紧。
+   */
+  private renderTrustFrame(cols: number, rows: number): string[] {
+    const theme = this.renderContext.theme;
+    const pending = this.trustPrompt;
+    if (pending === undefined) {
+      return [];
+    }
+    const { left, right } = this.headerParts();
+    const header = headerLine(left, right, cols, theme);
+    const separator = theme.paint.muted(symbols.separator.repeat(cols));
+    const footer = [
+      ...renderTrustMenu(theme),
+      theme.paint.muted('  y/n 选择 · 信任后写入 ~/.reins/config.toml 的 [trust].trusted'),
+    ];
+    const body = renderTrustPage(cols, theme, {
+      // 信任页要看清是哪个目录,不做 header 那种保留尾部的截断
+      path: tildePath(pending.resolution.key),
+      overrides: pending.resolution.overrides,
+    });
+    const mainHeight = Math.max(1, rows - 3 - footer.length);
+    const main = centerVertically(body, mainHeight).slice(0, mainHeight);
+    while (main.length < mainHeight) {
+      main.push('');
+    }
+    return [header, separator, ...main, separator, ...footer];
   }
 
   private renderScrollbackLines(width: number): string[] {
@@ -1141,14 +1294,19 @@ export class TuiApp implements AgentUi {
   }
 }
 
-/** header 用的路径:用户目录下缩成 ~/xxx,分隔符统一为 /(与 displayPath 一致),过长保留尾部。 */
-function shortenPath(path: string): string {
+/** 路径在用户目录下缩成 ~/xxx,分隔符统一为 /(与 displayPath 一致)。 */
+function tildePath(path: string): string {
   const home = homedir().split(sep).join('/');
   const normalized = path.split(sep).join('/');
-  let text = normalized.startsWith(home) ? `~${normalized.slice(home.length)}` : normalized;
+  return normalized.startsWith(home) ? `~${normalized.slice(home.length)}` : normalized;
+}
+
+/** header 用的路径:在 tildePath 基础上截断到 30 列,保留尾部。 */
+function shortenPath(path: string): string {
+  const text = tildePath(path);
   if (visibleWidth(text) > 30) {
     const chars = [...text];
-    text = `…${chars.slice(Math.max(0, chars.length - 29)).join('')}`;
+    return `…${chars.slice(Math.max(0, chars.length - 29)).join('')}`;
   }
   return text;
 }

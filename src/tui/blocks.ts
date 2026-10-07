@@ -331,6 +331,66 @@ function renderWelcome(width: number, theme: Theme): string[] {
   return lines;
 }
 
+/** 信任页上的一行覆盖项。 */
+export interface TrustPageRow {
+  label: string;
+  detail: string;
+}
+
+/** 按显示宽度把一行居中。 */
+function centerLine(text: string, width: number, style?: (value: string) => string): string {
+  const plain = truncatePlain(text, width);
+  const pad = Math.max(0, Math.floor((width - visibleWidth(plain)) / 2));
+  return ' '.repeat(pad) + (style !== undefined ? style(plain) : plain);
+}
+
+/**
+ * 信任页:居中提问 + 项目路径 + 会被覆盖的项 + 不信任的后果。
+ *
+ * 版式照同类实现的欢迎页子状态:提问与路径居中,清单整块居中,按键留给 footer。
+ * 与那句通用风险警告不同的是,这里把「会被改成什么」逐条摆出来——控制优先的
+ * 工具里,用户按下 y 之前应当看得见自己在信任什么。
+ */
+export function renderTrustPage(
+  width: number,
+  theme: Theme,
+  input: { path: string; overrides: readonly TrustPageRow[] },
+): string[] {
+  const lines: string[] = [];
+  lines.push(centerLine('要信任这个目录的内容吗?', width, theme.paint.accent));
+  lines.push('');
+  lines.push(centerLine(input.path, width, theme.paint.muted));
+  lines.push('');
+  lines.push(centerLine('该目录的 .reins/config.toml 会覆盖全局配置:', width, theme.bold));
+  lines.push('');
+
+  if (input.overrides.length > 0) {
+    // 清单整块居中:先按最宽标签对齐两列,再把整块推到中间
+    const labelWidth = input.overrides.reduce((max, row) => Math.max(max, visibleWidth(row.label)), 0);
+    const rows = input.overrides.map(
+      (row) => `  ${padDisplay(row.label, labelWidth + 2)}${row.detail}`,
+    );
+    const blockWidth = rows.reduce((max, row) => Math.max(max, visibleWidth(row)), 0);
+    const indent = ' '.repeat(Math.max(0, Math.floor((width - blockWidth) / 2)));
+    for (const row of rows) {
+      lines.push(indent + truncatePlain(row, Math.max(0, width - indent.length)));
+    }
+    lines.push('');
+  }
+
+  lines.push(centerLine('不信任时:项目配置与项目级 AGENTS.md 都不生效', width, theme.paint.muted));
+  return lines;
+}
+
+/** 信任页底部的两项按键;› 标出主选项。 */
+export function renderTrustMenu(theme: Theme): string[] {
+  const paint = theme.paint;
+  return [
+    `  ${paint.accent('› ')}${paint.ok('[y]')} 信任并继续`,
+    `    ${paint.fail('[n]')} 退出`,
+  ];
+}
+
 /** 带缓存的区块渲染器:同区块同参数直接复用上一帧的行。 */
 export interface BlockRenderer {
   render(block: ScrollBlock, width: number): string[];
