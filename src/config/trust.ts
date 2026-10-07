@@ -7,18 +7,18 @@ import { readTomlFile } from './load.ts';
 import { addTrustPattern, removeTrustPattern } from './trust-edit.ts';
 
 /**
- * 项目信任:判定是否加载项目层配置与项目级文档。
+ * 目录信任:决定一个目录带来的项目层配置与项目说明文件能否生效。
  *
- * 设计意图:项目目录里的 .reins/config.toml 能覆盖审批、沙箱、权限与 MCP——
- * 克隆一个仓库就等于让仓库决定这些。所以它必须先被信任:判定是纯函数,
- * 记录放在全局 config.toml 的 [trust].trusted(路径模式数组)。
+ * 设计意图:项目目录里的 .reins/config.toml 能覆盖审批、沙箱、权限与 MCP,
+ * 而 AGENTS.md/REINS.md 会被写进系统提示词——两者都让仓库决定代理的行为,
+ * 所以进入陌生目录就要先取得授权。判定是纯函数,授权记录放在全局 config.toml
+ * 的 [trust].trusted(目录路径模式数组)。
  */
 
 /** 判定依据,用于提示与审计。 */
 export type TrustReason =
   | 'matched'
   | 'recorded'
-  | 'no-config'
   | 'unrecordable'
   | 'non-interactive'
   | 'declined';
@@ -28,27 +28,24 @@ export interface TrustInputs {
   patternMatched: boolean;
   /** 项目目录能否作为信任键记录(非 $HOME／文件系统根)。 */
   keyRecordable: boolean;
-  /** 项目层是否有会生效的键。 */
-  projectConfigPresent: boolean;
   /** 是否有可交互终端。 */
   interactive: boolean;
 }
 
 /**
- * 信任判定。优先级照 grok-build:
+ * 信任判定。信任的是目录,不看目录里恰好有什么:
  *
  * 1. 命中 trusted 模式 → 信任。
  * 2. 键不可记录($HOME／文件系统根)→ 信任:存不下来的键若门控会永远重复询问;
  *    而且 cwd 就是 $HOME 时,项目层文件恰好就是全局配置本身,合并等于没合并。
- * 3. 项目层没有会生效的键 → 信任:没有东西需要信任。
- * 4. 交互终端 → 询问。
- * 5. 否则(无 TTY)→ 未信任。
+ * 3. 交互终端 → 询问。
+ * 4. 否则(无 TTY)→ 未信任。
  *
- * 第 2、3 条是临时结论,调用方**不得缓存**:配置可能在这次判定之后才出现
- * (git pull、或代理写入),缓存会让它绕过信任。
+ * 第 2 条是临时结论,调用方**不得缓存**:目录内容会因 git pull 而变,而信任状态
+ * 一旦缓存就可能绕过后来出现的项目配置。
  */
 export function decideTrust(inputs: TrustInputs): 'trusted' | 'untrusted' | 'prompt' {
-  if (inputs.patternMatched || !inputs.keyRecordable || !inputs.projectConfigPresent) {
+  if (inputs.patternMatched || !inputs.keyRecordable) {
     return 'trusted';
   }
   return inputs.interactive ? 'prompt' : 'untrusted';
@@ -87,15 +84,9 @@ function stripTrailingSlash(value: string): string {
 }
 
 /**
- * 项目层是否含有会生效的键。
- *
- * 空数组与空表不算(permissions.deny = [] 这类空配置不该触发询问);解析失败由调用方
- * 按「有」处理——畸形配置同样是仓库可控内容,应当 fail-closed。
+ * 空数组与空表不算生效值(permissions.deny = [] 这类空配置不该算作覆盖);
+ * 解析失败由调用方按「有配置」处理——畸形配置同样是仓库可控内容,应当 fail-closed。
  */
-export function projectLayerHasContent(raw: Record<string, unknown>): boolean {
-  return Object.values(raw).some(isEffectiveValue);
-}
-
 function isEffectiveValue(value: unknown): boolean {
   if (value === undefined || value === null) {
     return false;
@@ -258,6 +249,8 @@ export interface TrustResolution {
   pattern?: string;
   /** 信任键(项目目录绝对路径)。 */
   key: string;
+  /** 目录里是否有 .reins/config.toml——决定「未信任」是否真的忽略了东西。 */
+  projectConfigFound: boolean;
   /** 供信任页展示的覆盖清单。 */
   overrides: OverrideRow[];
 }
@@ -284,27 +277,27 @@ async function readGlobalRaw(home: string): Promise<Record<string, unknown>> {
 }
 
 interface ProjectLayer {
-  present: boolean;
+  found: boolean;
   raw: Record<string, unknown>;
   malformed: boolean;
 }
 
-/** 读取项目层配置;解析失败也视为「存在」,由调用方 fail-closed。 */
+/** 读取项目层配置:存在与否决定「未信任」忽略了什么,内容只为生成覆盖清单。 */
 async function readProjectLayer(file: string): Promise<ProjectLayer> {
   if (!(await pathExists(file))) {
-    return { present: false, raw: {}, malformed: false };
+    return { found: false, raw: {}, malformed: false };
   }
   try {
-    return { present: true, raw: await readTomlFile(file), malformed: false };
+    return { found: true, raw: await readTomlFile(file), malformed: false };
   } catch {
-    return { present: true, raw: {}, malformed: true };
+    return { found: true, raw: {}, malformed: true };
   }
 }
 
 /**
- * 解析项目信任:读全局信任表 → 判定 → 必要时询问 → 记录。
+ * 解析目录信任:读全局信任表 → 判定 → 必要时询问 → 记录。
  *
- * 临时结论(no-config / unrecordable)每次重新判定,不做任何缓存。
+ * 临时结论(unrecordable)每次重新判定,不做任何缓存。
  */
 export async function resolveProjectTrust(options: ResolveTrustOptions): Promise<TrustResolution> {
   const key = absolutize(options.workspace);
@@ -313,13 +306,13 @@ export async function resolveProjectTrust(options: ResolveTrustOptions): Promise
   const overrides: OverrideRow[] = layer.malformed
     ? [{ label: '项目配置', detail: '解析失败,按「有配置」处理' }]
     : describeOverrides(globalRaw, layer.raw);
-  const projectConfigPresent = layer.malformed || (layer.present && projectLayerHasContent(layer.raw));
   const keyRecordable = isRecordableRoot(key);
   const matched = readTrustPatterns(globalRaw).find((pattern) => trustPatternMatch(pattern, key));
   const base: TrustResolution = {
     projectAllowed: false,
     reason: 'non-interactive',
     key,
+    projectConfigFound: layer.found,
     overrides,
   };
 
@@ -331,14 +324,13 @@ export async function resolveProjectTrust(options: ResolveTrustOptions): Promise
   const outcome = decideTrust({
     patternMatched: matched !== undefined,
     keyRecordable,
-    projectConfigPresent,
     interactive: options.interactive,
   });
   if (outcome === 'trusted') {
     return {
       ...base,
       projectAllowed: true,
-      reason: matched !== undefined ? 'matched' : keyRecordable ? 'no-config' : 'unrecordable',
+      reason: matched !== undefined ? 'matched' : 'unrecordable',
       pattern: matched,
     };
   }

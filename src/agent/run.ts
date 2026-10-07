@@ -39,7 +39,7 @@ export interface RunTaskOptions {
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   /**
-   * 项目是否受信任。未信任时不注入项目级 AGENTS.md/REINS.md——它会被写进系统提示词,
+   * 工作区目录是否受信任。未信任时不注入 REINS.md/AGENTS.md——它会被写进系统提示词,
    * 而提示词里明确声明「项目指令优先于通用习惯」,所以它和项目配置一样需要先被信任。
    */
   projectTrusted?: boolean;
@@ -141,7 +141,7 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
   });
   const spill = new SpillStore(join(dirname(session.path), `${session.id}.spill`));
 
-  // 未信任的项目不注入项目文档:它与项目配置同源,都来自仓库
+  // 未信任的目录不注入说明文件:它与项目配置同源,都来自仓库
   const projectDoc = projectTrusted ? await discoverProjectDoc(options.workspace) : null;
   const systemPrompt = buildSystemPrompt({
     workspace: options.workspace,

@@ -7,7 +7,6 @@ import {
   decideTrust,
   describeOverrides,
   isRecordableRoot,
-  projectLayerHasContent,
   readTrustPatterns,
   resolveProjectTrust,
   trustPatternMatch,
@@ -17,14 +16,15 @@ import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 const win = process.platform === 'win32';
 
 describe('信任判定', () => {
-  it('优先级:命中模式 > 键不可记录 > 无配置 > 交互询问 > 未信任', () => {
-    const base = { patternMatched: false, keyRecordable: true, projectConfigPresent: true, interactive: false };
+  it('优先级:命中模式 > 键不可记录 > 交互询问 > 未信任', () => {
+    const base = { patternMatched: false, keyRecordable: true, interactive: false };
     assert.equal(decideTrust({ ...base, patternMatched: true }), 'trusted');
     assert.equal(decideTrust({ ...base, keyRecordable: false }), 'trusted');
-    assert.equal(decideTrust({ ...base, projectConfigPresent: false }), 'trusted');
     assert.equal(decideTrust(base), 'untrusted');
     assert.equal(decideTrust({ ...base, interactive: true }), 'prompt');
-    // 无 TTY 时即使有配置也不询问
+    // 无 TTY 时即使是陌生目录也不询问
+    assert.equal(decideTrust({ ...base, interactive: false, patternMatched: false }), 'untrusted');
+    // 命中模式时有没有 TTY 都无所谓
     assert.equal(decideTrust({ ...base, interactive: false, patternMatched: true }), 'trusted');
   });
 
@@ -58,15 +58,6 @@ describe('信任判定', () => {
     } else {
       assert.equal(isRecordableRoot('/'), false);
     }
-  });
-
-  it('项目层是否含会生效的键:空数组与空表不算', () => {
-    assert.equal(projectLayerHasContent({}), false);
-    assert.equal(projectLayerHasContent({ permissions: { deny: [], allow: [] } }), false);
-    assert.equal(projectLayerHasContent({ mcp_servers: {} }), false);
-    assert.equal(projectLayerHasContent({ permissions: { deny: ['bash(rm *)'] } }), true);
-    assert.equal(projectLayerHasContent({ approval: 'yolo' }), true);
-    assert.equal(projectLayerHasContent({ ui: { notify: 'off' } }), true);
   });
 
   it('读取信任模式列表', () => {
@@ -148,23 +139,50 @@ describe('信任解析(端到端)', () => {
     await writeFile(join(workspace, '.reins', 'config.toml'), text);
   }
 
-  it('项目层不存在时直接信任(没有东西需要信任)', async () => {
+  it('陌生目录无 TTY 时按未信任处理(fail-closed)', async () => {
     await writeGlobal('provider = "p"\nmodel = "m"\n');
     await removeTmpDir(join(workspace, '.reins'));
     const resolution = await resolveProjectTrust({ home, workspace, interactive: false });
-    assert.equal(resolution.projectAllowed, true);
-    assert.equal(resolution.reason, 'no-config');
+    assert.equal(resolution.projectAllowed, false);
+    assert.equal(resolution.reason, 'non-interactive');
   });
 
-  it('项目层只有空数组时不触发询问', async () => {
+  it('信任的是目录本身:没有项目层配置也照样询问', async () => {
+    await writeGlobal('provider = "p"\nmodel = "m"\n');
+    await removeTmpDir(join(workspace, '.reins'));
+    let asked = 0;
+    const resolution = await resolveProjectTrust({
+      home,
+      workspace,
+      interactive: true,
+      prompt: async () => {
+        asked += 1;
+        return true;
+      },
+    });
+    assert.equal(asked, 1);
+    assert.equal(resolution.projectAllowed, true);
+    assert.equal(resolution.reason, 'recorded');
+    assert.deepEqual(resolution.overrides, []);
+  });
+
+  it('项目层只有空数组时覆盖清单为空,但仍然询问', async () => {
     await writeGlobal('provider = "p"\nmodel = "m"\n');
     await writeProject('permissions = { deny = [] }\n');
-    const resolution = await resolveProjectTrust({ home, workspace, interactive: false });
-    assert.equal(resolution.projectAllowed, true);
-    assert.equal(resolution.reason, 'no-config');
+    let asked = 0;
+    await resolveProjectTrust({
+      home,
+      workspace,
+      interactive: true,
+      prompt: async () => {
+        asked += 1;
+        return false;
+      },
+    });
+    assert.equal(asked, 1);
   });
 
-  it('有会生效的配置且无 TTY 时按未信任处理(fail-closed)', async () => {
+  it('有会生效的配置且无 TTY 时按未信任处理,并列出覆盖项', async () => {
     await writeGlobal('provider = "p"\nmodel = "m"\n');
     await writeProject('approval = "yolo"\n');
     const resolution = await resolveProjectTrust({ home, workspace, interactive: false });

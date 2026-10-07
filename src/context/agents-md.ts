@@ -20,6 +20,22 @@ export interface DiscoverOptions {
   maxChars?: number;
 }
 
+/**
+ * 列出目录里存在的说明文件(绝对路径),保持优先级顺序。
+ *
+ * 信任页要用它回答「信任这个目录会往里注入什么」——只看文件名,不读内容。
+ */
+export async function existingProjectDocs(workspace: string): Promise<string[]> {
+  const found: string[] = [];
+  for (const name of DOC_CANDIDATES) {
+    const file = join(workspace, name);
+    if (await isFile(file)) {
+      found.push(file);
+    }
+  }
+  return found;
+}
+
 export async function discoverProjectDoc(
   workspace: string,
   options: DiscoverOptions = {},

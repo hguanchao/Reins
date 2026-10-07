@@ -8,7 +8,6 @@ import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 describe('trust 子命令', () => {
   let home = '';
   let target = '';
-  const previous = process.env['REINS_HOME'];
 
   function capture(): { out: string[]; err: string[] } {
     return { out: [], err: [] };
@@ -19,6 +18,7 @@ describe('trust 子命令', () => {
     const code = await trustCommand(
       { command: 'trust', positionals, flags: {} },
       { out: (t) => void lines.out.push(t), err: (t) => void lines.err.push(t) },
+      home,
     );
     return { code, out: lines.out.join('\n'), err: lines.err.join('\n') };
   }
@@ -26,16 +26,10 @@ describe('trust 子命令', () => {
   before(async () => {
     home = await createTmpDir();
     target = await createTmpDir();
-    process.env['REINS_HOME'] = home;
     await writeFile(join(home, 'config.toml'), 'provider = "p"\nmodel = "m"\n');
   });
 
   after(async () => {
-    if (previous === undefined) {
-      delete process.env['REINS_HOME'];
-    } else {
-      process.env['REINS_HOME'] = previous;
-    }
     await removeTmpDir(home);
     await removeTmpDir(target);
   });
@@ -43,7 +37,7 @@ describe('trust 子命令', () => {
   it('空列表时给出授权方法', async () => {
     const result = await run('list');
     assert.equal(result.code, 0);
-    assert.ok(result.out.includes('尚未信任任何项目'));
+    assert.ok(result.out.includes('尚未信任任何目录'));
     assert.ok(result.out.includes('[trust].trusted'));
   });
 
@@ -66,7 +60,7 @@ describe('trust 子命令', () => {
     const removed = await run('remove', target);
     assert.equal(removed.code, 0);
     assert.ok(removed.out.includes('已撤销'));
-    assert.ok((await run('list')).out.includes('尚未信任任何项目'));
+    assert.ok((await run('list')).out.includes('尚未信任任何目录'));
   });
 
   it('缺目录参数与未知动作都报用法', async () => {

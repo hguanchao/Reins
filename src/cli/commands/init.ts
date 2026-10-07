@@ -10,12 +10,15 @@ import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
  * 设计意图:零内置产商意味着首跑必须靠配置;向导把这一步压缩到几十秒,
  * 并在终端里明确告知下一步要做什么。
  */
-export async function initCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
+export async function initCommand(
+  args: ParsedArgs,
+  io: CommandIo = defaultIo,
+  home = reinsHome(),
+): Promise<number> {
   if (process.stdin.isTTY !== true) {
     io.err('init 需要交互式终端;也可以参考 README 手动创建 providers.json 与 config.toml。');
     return 1;
   }
-  const home = reinsHome();
   const providersFile = join(home, 'providers.json');
   const configFile = join(home, 'config.toml');
   const force = args.flags['force'] === true;

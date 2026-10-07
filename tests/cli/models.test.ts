@@ -12,11 +12,9 @@ function captureLines(): { lines: string[]; io: { out: (t: string) => void; err:
 
 describe('models 子命令', () => {
   let home = '';
-  const previous = process.env['REINS_HOME'];
 
   before(async () => {
     home = await createTmpDir();
-    process.env['REINS_HOME'] = home;
     await writeFile(
       join(home, 'providers.json'),
       JSON.stringify({
@@ -32,17 +30,12 @@ describe('models 子命令', () => {
   });
 
   after(async () => {
-    if (previous === undefined) {
-      delete process.env['REINS_HOME'];
-    } else {
-      process.env['REINS_HOME'] = previous;
-    }
     await removeTmpDir(home);
   });
 
   it('列出产商与模型', async () => {
     const { lines, io } = captureLines();
-    const code = await modelsCommand({ command: 'models', positionals: ['list'], flags: {} }, io);
+    const code = await modelsCommand({ command: 'models', positionals: ['list'], flags: {} }, io, home);
     assert.equal(code, 0);
     const all = lines.join('\n');
     assert.ok(all.includes('demo(openai-completions'));
@@ -54,6 +47,7 @@ describe('models 子命令', () => {
     const code = await modelsCommand(
       { command: 'models', positionals: ['list'], flags: { provider: 'nope' } },
       io,
+      home,
     );
     assert.equal(code, 1);
     assert.ok(lines.join('').includes('未找到'));

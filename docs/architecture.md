@@ -34,7 +34,7 @@ reins/
 │   ├── main.ts                 # 进程入口,子命令路由
 │   ├── cli/                    # 职责:命令行表面
 │   │   ├── args.ts
-│   │   ├── trust.ts            # 命令行侧的信任提问(readline)与提示文案
+│   │   ├── trust.ts            # 命令行侧的目录信任提问(readline)与提示文案
 │   │   └── commands/           # run.ts doctor.ts models.ts config.ts init.ts trust.ts
 │   ├── agent/                  # 职责:代理循环与轮次调度
 │   │   ├── loop.ts             # 主循环;max_turns 在此执行
@@ -54,7 +54,7 @@ reins/
 │   ├── config/                 # 职责:config.toml 的加载与分层
 │   │   ├── schema.ts           # smol-toml + zod,默认值,带行号的报错
 │   │   ├── layers.ts           # 全局 / 项目两层合并(项目层须受信任)
-│   │   ├── trust.ts            # 项目信任:判定、模式匹配、覆盖清单、记录读写
+│   │   ├── trust.ts            # 目录信任:判定、模式匹配、覆盖清单、记录读写
 │   │   └── trust-edit.ts       # 定点编辑 [trust].trusted,保住注释与排版
 │   ├── session/                # 职责:会话存储(JSONL 树)
 │   │   ├── store.ts            # append-only,首行带版本号
@@ -111,7 +111,7 @@ reins/
 | `approval` | `permissions/approval.ts` | ask / auto / yolo |
 | `sandbox` | `permissions/sandbox.ts` | off / workspace / read-only |
 | `[permissions]` | `permissions/rules.ts` + `engine.ts` | 跨层 deny > ask > allow |
-| `[trust]` | `config/trust.ts` | 命中的项目才加载其项目层配置与项目级文档;只从全局层读取 |
+| `[trust]` | `config/trust.ts` | 命中的目录才加载它的项目层配置与项目说明文件;只从全局层读取 |
 | `max_turns` | `agent/loop.ts` | 根会话不封顶 |
 | `spill_threshold` | `spill/policy.ts` | 超长工具结果落盘留预览 |
 | `[ui] notify` | `ui/notify.ts` | auto / bell / desktop / off |

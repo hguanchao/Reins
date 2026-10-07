@@ -14,7 +14,7 @@ import { McpManager } from '../../mcp/servers.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
 import { describeError } from '../../util/errors.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
-import { resolveTrustForCli, trustLine } from '../trust.ts';
+import { ignoredNotice, resolveTrustForCli, trustLine } from '../trust.ts';
 
 /**
  * doctor 子命令:自检配置、目录、模型解析、密钥与端点连通性。
@@ -22,8 +22,11 @@ import { resolveTrustForCli, trustLine } from '../trust.ts';
  * 设计意图:把「第一次跑不起来」的各种原因逐项检查并给出可行动的结论;
  * 任一硬性问题都会让退出码为 1,便于脚本化校验。
  */
-export async function doctorCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
-  const home = reinsHome();
+export async function doctorCommand(
+  args: ParsedArgs,
+  io: CommandIo = defaultIo,
+  home = reinsHome(),
+): Promise<number> {
   const workspace =
     typeof args.flags['workspace'] === 'string'
       ? absolutize(args.flags['workspace'])
@@ -41,7 +44,6 @@ export async function doctorCommand(args: ParsedArgs, io: CommandIo = defaultIo)
       force: args.flags['trust'] === true,
       // 自检不提问:它只报告状态,更不该为了看一眼而要求授权
       allowPrompt: false,
-      io,
     });
     const layered = await loadLayeredConfig({
       home,
@@ -50,8 +52,10 @@ export async function doctorCommand(args: ParsedArgs, io: CommandIo = defaultIo)
     });
     config = layered.config;
     passes.push(`配置加载成功(${layered.files.join('、')})`);
-    // 项目层被忽略是安全相关的状态,必须报出来
-    (resolution.projectAllowed ? passes : issues).push(trustLine(resolution));
+    // 未信任是陌生目录的常态:确实忽略了东西才算问题,否则只报状态
+    const ignored = await ignoredNotice(resolution);
+    const line = await trustLine(resolution);
+    (ignored === undefined ? passes : issues).push(line);
   } catch (error) {
     issues.push(`配置:${describeError(error)}`);
   }

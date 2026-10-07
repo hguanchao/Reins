@@ -7,6 +7,7 @@ import {
 } from './layout.ts';
 import { renderMarkdown } from './markdown.ts';
 import { symbols, type Theme } from './theme.ts';
+import { VERSION } from '../util/version.ts';
 
 /**
  * 滚动区块模型:对话历史的唯一数据结构。
@@ -295,6 +296,8 @@ function renderWelcome(width: number, theme: Theme): string[] {
 
   const rows: WelcomeRow[] = [];
   rows.push({ text: WELCOME_TITLE, style: theme.paint.accent, center: true });
+  // 版本属于标题块的一部分:居中放标题下一行,不干扰标题居中、也不加宽面板
+  rows.push({ text: `v${VERSION}`, style: theme.paint.muted, center: true });
   rows.push({ text: '' });
   rows.push({ text: '斜杠命令', style: theme.bold });
   for (const entry of WELCOME_COMMANDS) {
@@ -345,40 +348,54 @@ function centerLine(text: string, width: number, style?: (value: string) => stri
 }
 
 /**
- * 信任页:居中提问 + 项目路径 + 会被覆盖的项 + 不信任的后果。
+ * 信任页:居中提问 + 目录路径 + 会被采纳的内容 + 不信任的后果。
  *
- * 版式照同类实现的欢迎页子状态:提问与路径居中,清单整块居中,按键留给 footer。
- * 与那句通用风险警告不同的是,这里把「会被改成什么」逐条摆出来——控制优先的
- * 工具里,用户按下 y 之前应当看得见自己在信任什么。
+ * 会被采纳的内容分两块:项目层对全局配置的覆盖(逐条给「改成什么」),
+ * 以及会被读进系统提示词的说明文件。都为空时如实说明——按下 y 之前应当
+ * 看得见自己在信任什么,而不是靠一句通用风险警告。
  */
 export function renderTrustPage(
   width: number,
   theme: Theme,
-  input: { path: string; overrides: readonly TrustPageRow[] },
+  input: { path: string; overrides: readonly TrustPageRow[]; docs: readonly string[] },
 ): string[] {
   const lines: string[] = [];
   lines.push(centerLine('要信任这个目录的内容吗?', width, theme.paint.accent));
   lines.push('');
   lines.push(centerLine(input.path, width, theme.paint.muted));
   lines.push('');
-  lines.push(centerLine('该目录的 .reins/config.toml 会覆盖全局配置:', width, theme.bold));
-  lines.push('');
 
+  const entries: string[] = [];
   if (input.overrides.length > 0) {
-    // 清单整块居中:先按最宽标签对齐两列,再把整块推到中间
+    entries.push('覆盖全局配置:');
+    // 两列对齐:标签按最宽的补齐,再统一缩进到清单块内
     const labelWidth = input.overrides.reduce((max, row) => Math.max(max, visibleWidth(row.label)), 0);
-    const rows = input.overrides.map(
-      (row) => `  ${padDisplay(row.label, labelWidth + 2)}${row.detail}`,
-    );
-    const blockWidth = rows.reduce((max, row) => Math.max(max, visibleWidth(row)), 0);
-    const indent = ' '.repeat(Math.max(0, Math.floor((width - blockWidth) / 2)));
-    for (const row of rows) {
-      lines.push(indent + truncatePlain(row, Math.max(0, width - indent.length)));
+    for (const row of input.overrides) {
+      entries.push(`  ${padDisplay(row.label, labelWidth + 2)}${row.detail}`);
     }
-    lines.push('');
+  }
+  if (input.docs.length > 0) {
+    if (entries.length > 0) {
+      entries.push('');
+    }
+    entries.push('注入项目说明文件:');
+    for (const doc of input.docs) {
+      entries.push(`  ${doc}`);
+    }
+  }
+  if (entries.length === 0) {
+    entries.push('(该目录没有项目层配置,也没有说明文件)');
   }
 
-  lines.push(centerLine('不信任时:项目配置与项目级 AGENTS.md 都不生效', width, theme.paint.muted));
+  // 清单整块居中:先算最宽行,再把每行推同样数量的空格
+  const blockWidth = entries.reduce((max, row) => Math.max(max, visibleWidth(row)), 0);
+  const indent = ' '.repeat(Math.max(0, Math.floor((width - blockWidth) / 2)));
+  for (const row of entries) {
+    lines.push(indent + truncatePlain(row, Math.max(0, width - indent.length)));
+  }
+  lines.push('');
+
+  lines.push(centerLine('不信任时:只加载全局配置,项目层配置与说明文件都不生效', width, theme.paint.muted));
   return lines;
 }
 

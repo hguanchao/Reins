@@ -31,18 +31,16 @@ describe('路径工具', () => {
     assert.equal(displayPath(base, base), '.');
   });
 
-  it('reinsHome 支持环境变量覆盖', () => {
-    const previous = process.env.REINS_HOME;
+  it('reinsHome 固定在 ~/.reins,环境变量改不动', () => {
+    const previous = process.env['REINS_HOME'];
     try {
-      process.env.REINS_HOME = join(homedir(), 'custom-reins');
-      assert.equal(reinsHome(), join(homedir(), 'custom-reins'));
-      delete process.env.REINS_HOME;
+      process.env['REINS_HOME'] = join(homedir(), 'custom-reins');
       assert.equal(reinsHome(), join(homedir(), '.reins'));
     } finally {
       if (previous === undefined) {
-        delete process.env.REINS_HOME;
+        delete process.env['REINS_HOME'];
       } else {
-        process.env.REINS_HOME = previous;
+        process.env['REINS_HOME'] = previous;
       }
     }
   });

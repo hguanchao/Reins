@@ -6,21 +6,24 @@ import { absolutize, reinsHome } from '../../util/paths.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
 
 /**
- * trust 子命令:查看、添加、移除被信任的项目路径模式。
+ * trust 子命令:查看、添加、移除被信任的目录。
  *
  * 记录就是全局 config.toml 的 [trust].trusted——与手写配置同一份数据,
  * 这里只是省去手改的麻烦并保证格式正确。加目录时写它的绝对路径。
  */
-export async function trustCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
+export async function trustCommand(
+  args: ParsedArgs,
+  io: CommandIo = defaultIo,
+  home = reinsHome(),
+): Promise<number> {
   const action = args.positionals[0] ?? 'list';
-  const home = reinsHome();
   const file = join(home, 'config.toml');
 
   if (action === 'list') {
     try {
       const patterns = readTrustPatterns(await readTomlFile(file));
       if (patterns.length === 0) {
-        io.out('尚未信任任何项目。');
+        io.out('尚未信任任何目录。');
         io.out('授权:reins trust add <目录>,或直接编辑 ~/.reins/config.toml 的 [trust].trusted');
         return 0;
       }

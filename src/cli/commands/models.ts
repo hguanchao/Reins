@@ -5,8 +5,12 @@ import { describeError } from '../../util/errors.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
 
 /** models 子命令:列出产商与模型。 */
-export async function modelsCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
-  const file = join(reinsHome(), 'providers.json');
+export async function modelsCommand(
+  args: ParsedArgs,
+  io: CommandIo = defaultIo,
+  home = reinsHome(),
+): Promise<number> {
+  const file = join(home, 'providers.json');
   try {
     const catalog = await loadCatalogFile(file);
     const filter = typeof args.flags['provider'] === 'string' ? args.flags['provider'] : undefined;

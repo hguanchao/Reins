@@ -7,11 +7,9 @@ import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 
 describe('config 子命令', () => {
   let home = '';
-  const previous = process.env['REINS_HOME'];
 
   before(async () => {
     home = await createTmpDir();
-    process.env['REINS_HOME'] = home;
     await writeFile(
       join(home, 'config.toml'),
       ['provider = "demo"', 'model = "m1"', '', '[permissions]', 'deny = ["bash(rm *)"]', ''].join('\n'),
@@ -19,11 +17,6 @@ describe('config 子命令', () => {
   });
 
   after(async () => {
-    if (previous === undefined) {
-      delete process.env['REINS_HOME'];
-    } else {
-      process.env['REINS_HOME'] = previous;
-    }
     await removeTmpDir(home);
   });
 
@@ -32,6 +25,7 @@ describe('config 子命令', () => {
     const code = await configCommand(
       { command: 'config', positionals: ['check'], flags: {} },
       { out: (t) => void lines.push(t), err: (t) => void lines.push(t) },
+      home,
     );
     assert.equal(code, 0);
     assert.ok(lines.join('\n').includes('配置有效'));
@@ -44,6 +38,7 @@ describe('config 子命令', () => {
     const code = await configCommand(
       { command: 'config', positionals: ['show'], flags: {} },
       { out: (t) => void out.push(t), err: (t) => void err.push(t) },
+      home,
     );
     assert.equal(code, 0);
     const parsed = JSON.parse(out.join('\n')) as Record<string, unknown>;
@@ -55,19 +50,17 @@ describe('config 子命令', () => {
 
   it('非法配置返回错误码', async () => {
     const broken = await createTmpDir();
-    const previousHome = process.env['REINS_HOME'];
-    process.env['REINS_HOME'] = broken;
     try {
       await writeFile(join(broken, 'config.toml'), 'provider = "demo"\napproval = "whatever"\n');
       const lines: string[] = [];
       const code = await configCommand(
         { command: 'config', positionals: ['check'], flags: {} },
         { out: (t) => void lines.push(t), err: (t) => void lines.push(t) },
+        broken,
       );
       assert.equal(code, 1);
       assert.ok(lines.join('\n').includes('approval'));
     } finally {
-      process.env['REINS_HOME'] = previousHome;
       await removeTmpDir(broken);
     }
   });

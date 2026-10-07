@@ -25,7 +25,7 @@ allow = []                      # 例:["bash(git status)"]
 notify = "auto"                 # auto | bell | desktop | off
 theme = "dark"                  # TUI 主题:dark | light | mono(纯文本)
 
-# [trust]                       # 项目信任:命中的项目才加载其 .reins/config.toml 与项目级 AGENTS.md
+# [trust]                       # 目录信任:命中的目录才加载它的 .reins/config.toml 与 REINS.md/AGENTS.md
 # trusted = [                   # 绝对路径或 ~/ 开头,支持 * 与 **(不含分隔符的写法会被拒绝)
 #   "~/work/**",
 #   "E:/Projects/Reins",

@@ -36,20 +36,23 @@ export type { ChatCommand } from './chat-commands.ts';
  *
  * 默认进入全屏 TUI;--plain 回退到纯文本模式(保留原有行为)。
  */
-export async function chatCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
+export async function chatCommand(
+  args: ParsedArgs,
+  io: CommandIo = defaultIo,
+  home = reinsHome(),
+): Promise<number> {
   if (process.stdin.isTTY !== true) {
     io.err('chat 需要交互式终端;非交互场景请使用 reins run "任务"。');
     return 1;
   }
   if (args.flags['plain'] !== true && process.stdout.isTTY === true) {
-    return await startTui(args, io);
+    return await startTui(args, io, home);
   }
-  return await runPlainChat(args, io);
+  return await runPlainChat(args, io, home);
 }
 
 /** 纯文本交互模式。 */
-async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
-  const home = reinsHome();
+async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Promise<number> {
   const workspace =
     typeof args.flags['workspace'] === 'string'
       ? absolutize(args.flags['workspace'])
@@ -61,19 +64,18 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
     io.err('提示:请编辑 providers.json 填入你的端点与密钥。');
   }
 
-  // 信任先于一切:未信任就不加载项目层,也不注入项目级文档
+  // 信任先于一切:未信任就不加载项目层,也不注入项目说明文件
   const resolution = await resolveTrustForCli({
     home,
     workspace,
     force: args.flags['trust'] === true,
     allowPrompt: true,
-    io,
   });
   if (resolution.reason === 'declined') {
-    io.err('未信任该项目,已退出;项目配置与项目级 AGENTS.md 未加载。');
+    io.err('未信任该目录,已退出;项目层配置与项目说明文件未加载。');
     return 1;
   }
-  const ignored = ignoredNotice(resolution);
+  const ignored = await ignoredNotice(resolution);
   if (ignored !== undefined) {
     io.err(`警告:${ignored}`);
   }

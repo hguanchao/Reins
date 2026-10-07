@@ -15,11 +15,9 @@ function captureLines(): {
 
 describe('sessions 子命令', () => {
   let home = '';
-  const previous = process.env['REINS_HOME'];
 
   before(async () => {
     home = await createTmpDir();
-    process.env['REINS_HOME'] = home;
     const dir = join(home, 'sessions');
     const first = await Session.create(dir, 'C:/work/a');
     await first.append({ type: 'user', text: '修复登录页面的错别字' });
@@ -29,17 +27,12 @@ describe('sessions 子命令', () => {
   });
 
   after(async () => {
-    if (previous === undefined) {
-      delete process.env['REINS_HOME'];
-    } else {
-      process.env['REINS_HOME'] = previous;
-    }
     await removeTmpDir(home);
   });
 
   it('list 输出会话摘要', async () => {
     const { lines, io } = captureLines();
-    const code = await sessionsCommand({ command: 'sessions', positionals: ['list'], flags: {} }, io);
+    const code = await sessionsCommand({ command: 'sessions', positionals: ['list'], flags: {} }, io, home);
     assert.equal(code, 0);
     const all = lines.join('\n');
     assert.ok(all.includes('修复登录页面的错别字'));

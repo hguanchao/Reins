@@ -47,8 +47,8 @@ export interface UiConfig {
 }
 
 /**
- * 项目信任:命中 trusted 里某个路径模式的项目,才加载它的 .reins/config.toml
- * 与项目级 AGENTS.md/REINS.md。
+ * 目录信任:命中 trusted 里某个目录模式,才加载那个目录的 .reins/config.toml
+ * 与 REINS.md/AGENTS.md。
  *
  * 只从全局层读取——项目层不得声明本节点,否则仓库可以给自己授权。
  */

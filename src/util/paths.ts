@@ -8,12 +8,14 @@ import { isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
  * 因此集中在此处实现,避免散落各处的字符串比较。
  */
 
-/** Reins 主目录:支持 REINS_HOME 覆盖,默认 ~/.reins。 */
+/**
+ * Reins 主目录:固定 `~/.reins`,不提供环境变量或命令行出口。
+ *
+ * 为什么固定:这个目录里同时放着 `[trust].trusted` 授权记录与端点密钥。若允许
+ * REINS_HOME 之类的外移,同一份工作区在不同启动环境下就会命中不同的信任与凭据,
+ * 授权面不再只有一份;固定路径让「谁被信任、用哪把密钥」始终可由同一个文件回答。
+ */
 export function reinsHome(): string {
-  const override = process.env.REINS_HOME;
-  if (override && override.trim() !== '') {
-    return absolutize(override);
-  }
   return join(homedir(), '.reins');
 }
 

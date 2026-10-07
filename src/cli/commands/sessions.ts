@@ -11,10 +11,14 @@ import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
  * 设计意图:会话按项目分目录存放,列表与解析都兼容旧版扁平布局;
  * 引用解析支持「id 前缀」与「文件路径」两种写法。
  */
-export async function sessionsCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
+export async function sessionsCommand(
+  args: ParsedArgs,
+  io: CommandIo = defaultIo,
+  home = reinsHome(),
+): Promise<number> {
   const action = args.positionals[0] ?? 'list';
   if (action === 'list') {
-    return await listSessions(reinsHome(), args, io);
+    return await listSessions(home, args, io);
   }
   io.err(`未知子命令:sessions ${action}(可用:list)`);
   return 1;

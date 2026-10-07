@@ -13,20 +13,17 @@ function captureLines(): { lines: string[]; io: { out: (t: string) => void; err:
 
 describe('doctor 子命令', () => {
   let home = '';
-  const previous = process.env['REINS_HOME'];
+  /** 干净工作区:不指向仓库,免得把 Reins 自己的 AGENTS.md 当成被忽略的内容。 */
+  let workspace = '';
 
   before(async () => {
     home = await createTmpDir();
-    process.env['REINS_HOME'] = home;
+    workspace = await createTmpDir();
   });
 
   after(async () => {
-    if (previous === undefined) {
-      delete process.env['REINS_HOME'];
-    } else {
-      process.env['REINS_HOME'] = previous;
-    }
     await removeTmpDir(home);
+    await removeTmpDir(workspace);
   });
 
   it('全部就绪时返回 0', async () => {
@@ -49,8 +46,9 @@ describe('doctor 子命令', () => {
     );
     const { lines, io } = captureLines();
     const code = await doctorCommand(
-      { command: 'doctor', positionals: [], flags: { 'no-network': true } },
+      { command: 'doctor', positionals: [], flags: { 'no-network': true, workspace } },
       io,
+      home,
     );
     assert.equal(code, 0);
     assert.ok(lines.join('\n').includes('一切正常'));
@@ -72,8 +70,9 @@ describe('doctor 子命令', () => {
     );
     const { lines, io } = captureLines();
     const code = await doctorCommand(
-      { command: 'doctor', positionals: [], flags: { 'no-network': true } },
+      { command: 'doctor', positionals: [], flags: { 'no-network': true, workspace } },
       io,
+      home,
     );
     assert.equal(code, 1);
     assert.ok(lines.join('\n').includes('没有名为 "m1" 的模型'));
@@ -113,13 +112,49 @@ describe('doctor 子命令', () => {
       );
       const { lines, io } = captureLines();
       const code = await doctorCommand(
-        { command: 'doctor', positionals: [], flags: { 'no-network': true } },
+        { command: 'doctor', positionals: [], flags: { 'no-network': true, workspace } },
         io,
+        home,
       );
       assert.equal(code, 0);
       assert.ok(lines.join('\n').includes('MCP fake:1 个工具'));
     } finally {
       await removeTmpDir(fakeDir);
+    }
+  });
+
+  it('未信任目录里有项目内容时报为问题,授权后消失', async () => {
+    await writeFile(join(home, 'config.toml'), 'provider = "demo"\nmodel = "m1"\n');
+    await writeFile(join(workspace, 'AGENTS.md'), '# 项目规范\n');
+    try {
+      const first = captureLines();
+      assert.equal(
+        await doctorCommand(
+          { command: 'doctor', positionals: [], flags: { 'no-network': true, workspace } },
+          first.io,
+          home,
+        ),
+        1,
+      );
+      assert.ok(first.lines.join('\n').includes('AGENTS.md 未加载'));
+
+      // 把该目录写进 [trust].trusted 后,同一份工作区应当一切正常
+      await writeFile(
+        join(home, 'config.toml'),
+        `provider = "demo"\nmodel = "m1"\n\n[trust]\ntrusted = ['${workspace}']\n`,
+      );
+      const second = captureLines();
+      assert.equal(
+        await doctorCommand(
+          { command: 'doctor', positionals: [], flags: { 'no-network': true, workspace } },
+          second.io,
+          home,
+        ),
+        0,
+      );
+      assert.ok(second.lines.join('\n').includes('项目层已加载'));
+    } finally {
+      await removeTmpDir(join(workspace, 'AGENTS.md'));
     }
   });
 });

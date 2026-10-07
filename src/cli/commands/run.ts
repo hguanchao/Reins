@@ -18,13 +18,16 @@ import { resolveSessionFile } from './sessions.ts';
  *
  * 交互终端下提供人工审批通道;非交互环境按「保守拒绝」语义运行。
  */
-export async function runCommand(args: ParsedArgs, io: CommandIo = defaultIo): Promise<number> {
+export async function runCommand(
+  args: ParsedArgs,
+  io: CommandIo = defaultIo,
+  home = reinsHome(),
+): Promise<number> {
   const prompt = args.positionals.join(' ').trim();
   if (prompt === '') {
     io.err('用法:reins run "任务描述" [--workspace 目录] [--resume 会话 id]');
     return 1;
   }
-  const home = reinsHome();
   const workspace =
     typeof args.flags['workspace'] === 'string'
       ? absolutize(args.flags['workspace'])
@@ -51,13 +54,12 @@ export async function runCommand(args: ParsedArgs, io: CommandIo = defaultIo): P
     workspace,
     force: args.flags['trust'] === true,
     allowPrompt: true,
-    io,
   });
   if (resolution.reason === 'declined') {
-    io.err('未信任该项目,已退出;项目配置与项目级 AGENTS.md 未加载。');
+    io.err('未信任该目录,已退出;项目层配置与项目说明文件未加载。');
     return 1;
   }
-  const ignored = ignoredNotice(resolution);
+  const ignored = await ignoredNotice(resolution);
   if (ignored !== undefined) {
     io.err(`警告:${ignored}`);
   }

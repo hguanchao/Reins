@@ -4,12 +4,14 @@ import {
   createBlockRenderer,
   renderBlock,
   renderBlockVerbose,
+  renderTrustPage,
   summarizeToolArgs,
   type RenderContext,
   type ScrollBlock,
 } from '../../src/tui/blocks.ts';
 import { stripAnsi, visibleWidth } from '../../src/tui/layout.ts';
 import { createTheme } from '../../src/tui/theme.ts';
+import { VERSION } from '../../src/util/version.ts';
 
 const context: RenderContext = { spinner: '⠋', theme: createTheme({ color: true }) };
 
@@ -149,6 +151,16 @@ describe('滚动区块渲染', () => {
     const text = lines.join('\n');
     // 核心内容齐备
     assert.ok(text.includes('欢迎使用 Reins'));
+    // 版本属于标题块:紧跟标题单独一行,且在框内居中(整行含边框,不能按整行 trim 比较)
+    const titleIndex = lines.findIndex((line) => line.includes('欢迎使用 Reins'));
+    const versionLine = lines[titleIndex + 1];
+    if (titleIndex < 0 || versionLine === undefined) throw new Error('标题下应有版本行');
+    assert.ok(versionLine.includes(`v${VERSION}`));
+    const inner = versionLine.slice(versionLine.indexOf('│') + 1, versionLine.lastIndexOf('│'));
+    const trimmed = inner.trim();
+    assert.equal(trimmed, `v${VERSION}`);
+    const lead = inner.indexOf(trimmed);
+    assert.ok(Math.abs(lead - (inner.length - lead - trimmed.length)) <= 1, '版本应在框内居中');
     assert.ok(text.includes('/help'));
     assert.ok(text.includes('显示帮助'));
     assert.ok(text.includes('快捷键'));
@@ -227,5 +239,58 @@ describe('滚动区块渲染', () => {
     const second = renderer.render(block, 60);
     assert.notEqual(second, first);
     assert.ok(stripAnsi(second.join('\n')).includes('世界'));
+  });
+});
+
+describe('信任页渲染', () => {
+  function page(
+    input: { path: string; overrides: { label: string; detail: string }[]; docs: string[] },
+    width = 60,
+  ): string {
+    return renderTrustPage(width, context.theme, input).map(stripAnsi).join('\n');
+  }
+
+  it('同时列出会被覆盖的配置与会被注入的说明文件', () => {
+    const text = page({
+      path: 'E:/Projects/Reins',
+      overrides: [{ label: '审批模式', detail: 'ask(默认) → yolo' }],
+      docs: ['REINS.md', 'AGENTS.md'],
+    });
+    assert.ok(text.includes('要信任这个目录的内容吗?'));
+    assert.ok(text.includes('E:/Projects/Reins'));
+    assert.ok(text.includes('覆盖全局配置:'));
+    assert.ok(text.includes('审批模式  ask(默认) → yolo'));
+    assert.ok(text.includes('注入项目说明文件:'));
+    assert.ok(text.includes('REINS.md'));
+    assert.ok(text.includes('AGENTS.md'));
+    assert.ok(text.includes('不信任时:只加载全局配置,项目层配置与说明文件都不生效'));
+  });
+
+  it('两者皆空时如实说明,不留空标题', () => {
+    const text = page({ path: '/tmp/scratch', overrides: [], docs: [] });
+    assert.ok(text.includes('(该目录没有项目层配置,也没有说明文件)'));
+    assert.equal(text.includes('覆盖全局配置'), false);
+    assert.equal(text.includes('注入项目说明文件'), false);
+  });
+
+  it('只有说明文件时不出现覆盖标题', () => {
+    const text = page({ path: '/tmp/repo', overrides: [], docs: ['AGENTS.md'] });
+    assert.equal(text.includes('覆盖全局配置'), false);
+    assert.ok(text.includes('注入项目说明文件:'));
+  });
+
+  it('窄终端下每一行都不超宽', () => {
+    const lines = renderTrustPage(
+      40,
+      context.theme,
+      {
+        path: 'E:/Projects/Reins/very/nested/workspace/path',
+        overrides: [{ label: '权限规则', detail: 'deny 0 条 → 12 条 · allow 0 条 → 9 条' }],
+        docs: ['AGENTS.md'],
+      },
+    );
+    for (const line of lines) {
+      assert.ok(visibleWidth(line) <= 40, `行超宽(${visibleWidth(line)}): ${stripAnsi(line)}`);
+    }
   });
 });

@@ -9,6 +9,7 @@ import { sessionsCommand } from './cli/commands/sessions.ts';
 import { trustCommand } from './cli/commands/trust.ts';
 import { initCommand } from './cli/commands/init.ts';
 import { describeError, ReinsError } from './util/errors.ts';
+import { VERSION } from './util/version.ts';
 
 /**
  * 进程入口:解析子命令并分发。
@@ -24,22 +25,19 @@ const HELP = [
   '  reins chat [--workspace 目录] [--resume 会话 id] [--plain] [--trust]  交互式会话(默认全屏 TUI,--plain 纯文本)',
   '  reins resume [会话 id]                                        恢复会话;省略 id 恢复最近一次',
   '  reins sessions list [--limit 数量]                            列出历史会话',
-  '  reins trust [list|add 目录|remove 目录]                       查看 / 授权 / 撤销项目信任',
+  '  reins trust [list|add 目录|remove 目录]                       查看 / 授权 / 撤销目录信任',
   '  reins doctor [--no-network]                                   自检配置与端点连通性',
   '  reins config check|show                                       校验 / 展示解析后的配置',
   '  reins models list [--provider 名称]                           列出产商与模型',
   '  reins init [--force]                                          交互式初始化配置',
   '  reins help / -h / --help                                      显示帮助',
   '  reins version / -v / --version                                显示版本',
-  '',
-  '环境变量:',
-  '  REINS_HOME   覆盖配置目录(默认 ~/.reins)',
 ].join('\n');
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   if (args.flags['v'] === true || args.flags['version'] === true) {
-    console.log('reins 0.0.1');
+    console.log(`reins ${VERSION}`);
     return;
   }
   if (args.flags['h'] === true || args.flags['help'] === true) {
@@ -79,7 +77,7 @@ async function main(): Promise<void> {
         code = await initCommand(args);
         break;
       case 'version':
-        console.log('reins 0.0.1');
+        console.log(`reins ${VERSION}`);
         break;
       case 'help': {
         // 裸命令 reins 且处于交互终端时,直接进入会话模式

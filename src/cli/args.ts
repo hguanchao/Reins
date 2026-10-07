@@ -11,6 +11,12 @@ export interface ParsedArgs {
   flags: Record<string, string | boolean>;
 }
 
+/**
+ * 命令的输出面。
+ *
+ * 各命令的 io 与紧随其后的 home(Reins 主目录)都是注入点:测试借此把输出与配置目录
+ * 指向临时环境,不碰用户真实的 ~/.reins。默认值只在 main.ts 的路由里被使用。
+ */
 export interface CommandIo {
   out(text: string): void;
   err(text: string): void;

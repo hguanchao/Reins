@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { join, sep } from 'node:path';
+import { basename, join, sep } from 'node:path';
 import { createAgentRuntime, type AgentRuntime } from '../agent/run.ts';
 import { findModelTarget, loadCatalogFile } from '../catalog/load.ts';
 import type { Catalog } from '../catalog/schema.ts';
@@ -10,10 +10,12 @@ import {
   parseChatCommand,
 } from '../cli/commands/chat-commands.ts';
 import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../cli/commands/sessions.ts';
+import { ignoredNotice } from '../cli/trust.ts';
 import { ensureHomeConfig } from '../config/ensure.ts';
 import { loadLayeredConfig } from '../config/layers.ts';
 import type { Config } from '../config/schema.ts';
 import { recordTrust, resolveProjectTrust, type TrustResolution } from '../config/trust.ts';
+import { existingProjectDocs } from '../context/agents-md.ts';
 import type { ToolCall } from '../llm/types.ts';
 import type { Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
@@ -80,8 +82,7 @@ export interface TuiAppOptions {
 }
 
 /** 组装并启动 TUI 会话;返回进程退出码。 */
-export async function startTui(args: ParsedArgs, io: CommandIo): Promise<number> {
-  const home = reinsHome();
+export async function startTui(args: ParsedArgs, io: CommandIo, home = reinsHome()): Promise<number> {
   const workspace =
     typeof args.flags['workspace'] === 'string'
       ? absolutize(args.flags['workspace'])
@@ -152,10 +153,12 @@ export class TuiApp implements AgentUi {
 
   private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
   private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
-  /** 项目信任判定结果;启动时先于会话确定。 */
+  /** 目录信任判定结果;启动时先于会话确定。 */
   private trust: TrustResolution | undefined;
-  /** 待回答的信任页;有值时整屏只显示它。 */
-  private trustPrompt: { resolution: TrustResolution; resolve: (accepted: boolean) => void } | undefined;
+  /** 待回答的信任页;有值时整屏只显示它。docs 是会被注入的说明文件。 */
+  private trustPrompt:
+    | { resolution: TrustResolution; docs: string[]; resolve: (accepted: boolean) => void }
+    | undefined;
 
   private statusMessage: { text: string; until: number } | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
@@ -194,7 +197,7 @@ export class TuiApp implements AgentUi {
     process.stdin.on('data', this.onData);
     process.stdout.on('resize', this.onResize);
 
-    // 信任先于会话:未信任就不加载项目层配置、不注入项目级文档
+    // 信任先于会话:未信任就不加载项目层配置、不注入项目说明文件
     if (!(await this.resolveTrust())) {
       this.cleanupTerminal();
       return 1;
@@ -248,7 +251,7 @@ export class TuiApp implements AgentUi {
   }
 
   /**
-   * 解析项目信任;需要询问时渲染信任页并等 y/n。
+   * 解析目录信任;需要询问时渲染信任页并等 y/n。
    *
    * 返回 false 表示用户拒绝信任,调用方应直接退出——不在受限状态下继续。
    */
@@ -266,20 +269,22 @@ export class TuiApp implements AgentUi {
       return false;
     }
     if (resolution.reason === 'recorded') {
-      this.pushNotice('已信任此项目,记录写入 ~/.reins/config.toml', 'info');
-    } else if (!resolution.projectAllowed) {
-      this.pushNotice(
-        `未信任该项目,已忽略 .reins/config.toml 与项目级 AGENTS.md;把 ${resolution.key} 加入 [trust].trusted 可授权`,
-        'warn',
-      );
+      this.pushNotice('已信任该目录,记录写入 ~/.reins/config.toml', 'info');
+    } else {
+      // 目录里没有项目层配置与说明文件时,未信任不改变任何行为,不必报警
+      const ignored = await ignoredNotice(resolution);
+      if (ignored !== undefined) {
+        this.pushNotice(ignored, 'warn');
+      }
     }
     return true;
   }
 
-  /** 信任页:挂起一个 Promise,等按键回答。 */
-  private askTrust(resolution: TrustResolution): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      this.trustPrompt = { resolution, resolve };
+  /** 信任页:先取会被注入的说明文件,再挂起一个 Promise 等按键回答。 */
+  private async askTrust(resolution: TrustResolution): Promise<boolean> {
+    const docs = (await existingProjectDocs(resolution.key)).map((file) => basename(file));
+    return await new Promise<boolean>((resolve) => {
+      this.trustPrompt = { resolution, docs, resolve };
       this.scheduleRender();
     });
   }
@@ -860,11 +865,15 @@ export class TuiApp implements AgentUi {
       return '未解析';
     }
     if (!trust.projectAllowed) {
-      return `未信任,项目层未加载(授权:把 ${trust.key} 加入 [trust].trusted)`;
+      return `未信任该目录,只加载全局配置(授权:把 ${trust.key} 加入 [trust].trusted)`;
     }
-    return trust.reason === 'matched'
-      ? `项目层已加载(命中 ${trust.pattern})`
-      : '项目层已加载(无会生效的配置)';
+    if (trust.reason === 'matched') {
+      return `项目层已加载(命中 ${trust.pattern})`;
+    }
+    if (trust.reason === 'unrecordable') {
+      return '项目层已加载($HOME 或盘根不作信任键,按信任处理)';
+    }
+    return `项目层已加载(本次记下 ${trust.key})`;
   }
 
   /** 项目层是否可用;未解析出信任结果时按不可用处理(fail-closed)。 */
@@ -1064,6 +1073,7 @@ export class TuiApp implements AgentUi {
       // 信任页要看清是哪个目录,不做 header 那种保留尾部的截断
       path: tildePath(pending.resolution.key),
       overrides: pending.resolution.overrides,
+      docs: pending.docs,
     });
     const mainHeight = Math.max(1, rows - 3 - footer.length);
     const main = centerVertically(body, mainHeight).slice(0, mainHeight);
