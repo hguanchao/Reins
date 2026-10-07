@@ -1,4 +1,4 @@
-import { rankFileCandidates } from './files.ts';
+import { isDirectoryEntry, rankFileCandidates } from './files.ts';
 
 import { codePointWidth, softWrapRows } from './layout.ts';
 
@@ -314,7 +314,10 @@ export class InputEditor {
       if (token === undefined) {
         return false;
       }
-      const replacement = [...`@${item} `];
+      // 目录不带尾随空格:插入后查询词变成该目录前缀,菜单继续列出其下内容(逐级下钻);
+      // 文件带尾随空格表示引用结束,菜单随之关闭
+      const suffix = isDirectoryEntry(item) ? '' : ' ';
+      const replacement = [...`@${item}${suffix}`];
       this.chars.splice(token.start, token.end - token.start, ...replacement);
       this.cursorIndex = token.start + replacement.length;
       this.afterEdit();

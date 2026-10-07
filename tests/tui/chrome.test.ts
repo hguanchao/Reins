@@ -153,4 +153,9 @@ describe('补全菜单', () => {
     // 根目录下的文件没有目录部分
     assert.deepEqual(splitPathLabel('README.md'), { label: 'README.md' });
   });
+
+  it('splitPathLabel:目录项保留尾斜杠,一眼看出可下钻', () => {
+    assert.deepEqual(splitPathLabel('src/tui/'), { label: 'tui/', detail: 'src' });
+    assert.deepEqual(splitPathLabel('src/'), { label: 'src/' });
+  });
 });

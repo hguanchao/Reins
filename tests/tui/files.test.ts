@@ -46,6 +46,13 @@ describe('@ 文件候选', () => {
     assert.equal(rankFileCandidates(files, '', 2).length, 2);
     assert.deepEqual(rankFileCandidates(files, '', 0), []);
   });
+
+  it('目录项按名称匹配,不被结尾斜杠干扰', () => {
+    const entries = ['src/tui/', 'src/tui/app.ts', 'src/config/schema.ts'];
+    assert.equal(rankFileCandidates(entries, 'tui', 5)[0], 'src/tui/');
+    // 查询以 / 结尾时只列其下内容,不再列目录自身
+    assert.deepEqual(rankFileCandidates(entries, 'src/tui/', 5), ['src/tui/app.ts']);
+  });
 });
 
 describe('@ 文件索引', () => {
@@ -72,6 +79,8 @@ describe('@ 文件索引', () => {
     const listed = [...index.list()];
     assert.ok(listed.includes('README.md'), listed.join(','));
     assert.ok(listed.includes('src/app.ts'), listed.join(','));
+    // 目录也在候选里,且以 '/' 结尾以便与文件区分
+    assert.ok(listed.includes('src/'), listed.join(','));
   });
 
   it('首次输入 @ 就能触发扫描并给出候选', async () => {

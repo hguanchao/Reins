@@ -131,6 +131,22 @@ describe('输入行编辑器', () => {
     assert.deepEqual(completion.items, ['a.ts']);
   });
 
+  it('@ 补全:目录项可下钻,插入后不带空格且菜单保持打开', () => {
+    const editor = new InputEditor({ files: () => ['src/tui/app.ts', 'src/tui/'] });
+    editor.insert('@src/tu');
+    const first = editor.completionState;
+    if (first === null) throw new Error('应出现补全');
+    // 目录路径比其下文件短,同分时排在前
+    assert.equal(first.items[0], 'src/tui/');
+    assert.equal(editor.applyCompletion(), true);
+    // 目录不补尾随空格:引用未结束
+    assert.equal(editor.text, '@src/tui/');
+    // 菜单继续列出该目录下的内容
+    const next = editor.completionState;
+    if (next === null) throw new Error('插入目录后菜单应保持打开');
+    assert.deepEqual(next.items, ['src/tui/app.ts']);
+  });
+
   it('mentionQuery:空索引下也能识别 @ 词条,供上层决定是否扫描', () => {
     const editor = new InputEditor({ files: () => [] });
     editor.insert('@');

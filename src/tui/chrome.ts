@@ -98,10 +98,18 @@ export interface MenuRow {
 /** 补全菜单的常规行数:高度固定,输入框才不会随候选多少上下跳动。 */
 export const COMPLETION_MENU_ROWS = 8;
 
-/** 文件相对路径拆成「文件名 + 所在目录」,根目录下的文件没有目录部分。 */
+/**
+ * 相对路径拆成「名称 + 所在目录」,根目录下的条目没有目录部分。
+ *
+ * 目录项以 '/' 结尾,拆出的名称保留这个尾斜杠:菜单里一眼能看出是可下钻的目录。
+ */
 export function splitPathLabel(path: string): MenuRow {
-  const cut = path.lastIndexOf('/');
-  return cut === -1 ? { label: path } : { label: path.slice(cut + 1), detail: path.slice(0, cut) };
+  const isDir = path.endsWith('/');
+  const body = isDir ? path.slice(0, -1) : path;
+  const cut = body.lastIndexOf('/');
+  const name = cut === -1 ? body : body.slice(cut + 1);
+  const label = isDir ? `${name}/` : name;
+  return cut === -1 ? { label } : { label, detail: body.slice(0, cut) };
 }
 
 /** 固定高度窗口的起始下标:选中项尽量居中,两端不越界。 */
