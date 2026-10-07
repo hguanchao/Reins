@@ -52,6 +52,10 @@ export class GoogleGenerativeAiAdapter implements ProviderAdapter {
     let callIndex = 0;
     let usage: Usage | undefined;
     let finishReason = '';
+    // 上一个事件里已发出的调用签名:流式分片可能把同一个 functionCall 重发一次,
+    // 不去重会当成两次调用执行,对有副作用的工具即重复写入/重复执行。
+    // 只在事件之间比对,同一事件内的两次相同调用是合法的,照常发出。
+    let previousSignatures = new Set<string>();
 
     for await (const event of parseSseStream(response.body)) {
       if (event.data === '[DONE]') {
@@ -74,6 +78,7 @@ export class GoogleGenerativeAiAdapter implements ProviderAdapter {
         continue;
       }
       const content = candidate['content'];
+      const currentSignatures = new Set<string>();
       if (isRecord(content)) {
         const parts = content['parts'];
         if (Array.isArray(parts)) {
@@ -86,6 +91,11 @@ export class GoogleGenerativeAiAdapter implements ProviderAdapter {
             }
             const call = part['functionCall'];
             if (isRecord(call) && typeof call['name'] === 'string') {
+              const signature = `${call['name']}\u0000${JSON.stringify(call['args'] ?? {})}`;
+              if (previousSignatures.has(signature)) {
+                continue;
+              }
+              currentSignatures.add(signature);
               callIndex += 1;
               yield {
                 type: 'tool_call',
@@ -99,6 +109,7 @@ export class GoogleGenerativeAiAdapter implements ProviderAdapter {
           }
         }
       }
+      previousSignatures = currentSignatures;
       if (typeof candidate['finishReason'] === 'string') {
         finishReason = mapFinishReason(candidate['finishReason']);
       }

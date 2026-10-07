@@ -112,4 +112,29 @@ describe('Google Generative AI 适配器', () => {
       'stop',
     );
   });
+
+  it('同一函数调用跨分片重发时只发出一次', async () => {
+    const call = { functionCall: { name: 'write', args: { path: 'a.txt', content: 'x' } } };
+    const body =
+      frame({ candidates: [{ content: { parts: [call] } }] }) +
+      frame({ candidates: [{ content: { parts: [call] } }] }) +
+      frame({ candidates: [{ finishReason: 'STOP' }] });
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const chunks = await collect(adapter, fakeFetch);
+    assert.equal(
+      chunks.filter((chunk) => chunk.type === 'tool_call').length,
+      1,
+      '重复的 functionCall 不应被当成两次调用',
+    );
+  });
+
+  it('同一事件内的两次相同调用仍然都发出', async () => {
+    const call = { functionCall: { name: 'read', args: { path: 'a.txt' } } };
+    const body =
+      frame({ candidates: [{ content: { parts: [call, call] } }] }) +
+      frame({ candidates: [{ finishReason: 'STOP' }] });
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const chunks = await collect(adapter, fakeFetch);
+    assert.equal(chunks.filter((chunk) => chunk.type === 'tool_call').length, 2);
+  });
 });

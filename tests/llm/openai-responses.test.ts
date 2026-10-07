@@ -116,6 +116,34 @@ describe('OpenAI Responses 适配器', () => {
     );
   });
 
+  it('只在完成事件里给出输出时,正文与函数调用都不丢', async () => {
+    const item = {
+      type: 'function_call',
+      id: 'fc_2',
+      call_id: 'call_2',
+      name: 'bash',
+      arguments: '{"command":"ls"}',
+    };
+    const body =
+      frame({ type: 'response.output_item.done', item }) +
+      frame({
+        type: 'response.completed',
+        response: {
+          status: 'completed',
+          output: [{ type: 'message', content: [{ type: 'output_text', text: 'hi' }] }, item],
+        },
+      });
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+
+    const chunks = await collect(adapter, fakeFetch);
+
+    const texts = chunks.flatMap((chunk) => (chunk.type === 'text' ? [chunk.text] : []));
+    assert.deepEqual(texts, ['hi']);
+    const toolCalls = chunks.flatMap((chunk) => (chunk.type === 'tool_call' ? [chunk.toolCall] : []));
+    // done 与 completed 携带同一 item,参数只补一次,不能重复发出
+    assert.deepEqual(toolCalls, [{ id: 'call_2', name: 'bash', arguments: '{"command":"ls"}' }]);
+  });
+
   it('failed 事件转为可读错误', async () => {
     const body = frame({ type: 'response.failed', error: { message: 'rate limited' } });
     const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;

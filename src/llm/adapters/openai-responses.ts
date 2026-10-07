@@ -54,6 +54,37 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
 
     const calls = new Map<string, FunctionCallAccumulator>();
     let usage: Usage | undefined;
+    let textDeltaSeen = false;
+    let finishReason = 'stop';
+
+    /** 登记或补全一个函数调用;只填空参数,避免与已累积的分片重复拼接。 */
+    const upsertFunctionCall = (item: Record<string, unknown>): void => {
+      const itemId = typeof item['id'] === 'string' ? item['id'] : '';
+      const callId = typeof item['call_id'] === 'string' ? item['call_id'] : '';
+      const key = itemId !== '' ? itemId : callId;
+      if (key === '') {
+        return;
+      }
+      const args = typeof item['arguments'] === 'string' ? item['arguments'] : '';
+      const existing = calls.get(key);
+      if (existing === undefined) {
+        calls.set(key, {
+          callId,
+          name: typeof item['name'] === 'string' ? item['name'] : '',
+          arguments: args,
+        });
+        return;
+      }
+      if (existing.arguments === '' && args !== '') {
+        existing.arguments = args;
+      }
+      if (existing.name === '' && typeof item['name'] === 'string') {
+        existing.name = item['name'];
+      }
+      if (existing.callId === '' && callId !== '') {
+        existing.callId = callId;
+      }
+    };
 
     for await (const event of parseSseStream(response.body)) {
       if (event.data === '[DONE]') {
@@ -66,19 +97,24 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
       const type = typeof payload['type'] === 'string' ? payload['type'] : undefined;
       if (type === 'response.output_text.delta') {
         if (typeof payload['delta'] === 'string' && payload['delta'] !== '') {
+          textDeltaSeen = true;
           yield { type: 'text', text: payload['delta'] };
         }
         continue;
       }
-      if (type === 'response.output_item.added') {
+      if (type === 'response.output_text.done') {
+        // 只在完全没有收到增量时兜底,否则会与已产出的文本重复
+        if (!textDeltaSeen && typeof payload['text'] === 'string' && payload['text'] !== '') {
+          textDeltaSeen = true;
+          yield { type: 'text', text: payload['text'] };
+        }
+        continue;
+      }
+      if (type === 'response.output_item.added' || type === 'response.output_item.done') {
+        // done 事件携带的是完整 item:端点只发 done 时,参数必须从这里补齐
         const item = payload['item'];
         if (isRecord(item) && item['type'] === 'function_call') {
-          const itemId = typeof item['id'] === 'string' ? item['id'] : '';
-          calls.set(itemId, {
-            callId: typeof item['call_id'] === 'string' ? item['call_id'] : '',
-            name: typeof item['name'] === 'string' ? item['name'] : '',
-            arguments: '',
-          });
+          upsertFunctionCall(item);
         }
         continue;
       }
@@ -96,6 +132,26 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
           const rawUsage = completed['usage'];
           if (isRecord(rawUsage)) {
             usage = mapUsage(rawUsage);
+          }
+          // 有的端点只在完成事件里给完整输出、不逐条发增量;
+          // 漏掉这段会静默丢掉正文与工具调用,代理误以为模型正常结束而停轮
+          const output = completed['output'];
+          if (Array.isArray(output)) {
+            if (!textDeltaSeen) {
+              const text = collectOutputText(output);
+              if (text !== '') {
+                textDeltaSeen = true;
+                yield { type: 'text', text };
+              }
+            }
+            for (const item of output) {
+              if (isRecord(item) && item['type'] === 'function_call') {
+                upsertFunctionCall(item);
+              }
+            }
+          }
+          if (completed['status'] === 'incomplete') {
+            finishReason = 'length';
           }
         }
         continue;
@@ -123,8 +179,28 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
     if (usage !== undefined) {
       yield { type: 'usage', usage };
     }
-    yield { type: 'done', finishReason: 'stop' };
+    yield { type: 'done', finishReason };
   }
+}
+
+/** 从 completed.output 的 message 项里拼出正文;仅用于未收到任何文本增量时的兜底。 */
+function collectOutputText(output: readonly unknown[]): string {
+  let text = '';
+  for (const item of output) {
+    if (!isRecord(item) || item['type'] !== 'message') {
+      continue;
+    }
+    const content = item['content'];
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const part of content) {
+      if (isRecord(part) && typeof part['text'] === 'string') {
+        text += part['text'];
+      }
+    }
+  }
+  return text;
 }
 
 function buildRequestBody(request: StreamRequest): Record<string, unknown> {
