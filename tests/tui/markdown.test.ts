@@ -138,9 +138,22 @@ describe('markdown 渲染', () => {
       assert.equal(headerRowCols.get(column), '│', `第 ${column} 显示列 ┼ 未对准表头竖线`);
       assert.equal(bottomCols.get(column), '┴', `第 ${column} 显示列 ┴ 未对准表底竖线`);
     }
-    // 超宽单元格被截断,行宽不超限
+    // 超宽单元格折行而非截断:内容完整、无省略号、行宽不超限
     assert.ok(lines.every((line) => visibleWidth(line) <= 44));
-    assert.ok(lines.some((line) => line.includes('…')));
+    const flattened = lines.map(stripAnsi).join('').replace(/[│\s]/g, '');
+    assert.ok(flattened.includes('很长很长的单元格内容远远超过列宽上限的例子内容'));
+    assert.ok(!flattened.includes('…'), '表格内容不应省略');
+  });
+
+  it('表格:折行续行保留边框,首列留空对齐', () => {
+    const lines = render('| 名称 | 说明 |\n| --- | --- |\n| dev | 开发服务器,用于本地开发与热更新 |', 34);
+    const text = lines.map(stripAnsi);
+    // 折行后第二行的第一列为空白填充,左右边框仍在
+    const wrapped = text.filter((line) => line.includes('│') && !line.includes('┌') && !line.includes('├') && !line.includes('└'));
+    assert.ok(wrapped.length >= 3, `数据行应占多行:${text.join('\n')}`);
+    assert.ok(text.some((line) => /│\s+│/.test(line) && line.includes('热更新')), '续行首列应留空');
+    const widths = new Set(lines.map((line) => visibleWidth(line)));
+    assert.equal(widths.size, 1, '所有行宽度一致');
   });
 
   it('表格:单横线与冒号对齐分隔行被识别', () => {

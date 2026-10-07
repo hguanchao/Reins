@@ -245,16 +245,21 @@ function renderTable(
     }
     colWidth.push(Math.min(max, Math.max(4, Math.floor(budget / columns))));
   }
-  const render = (rowIndex: number, codes: string): string => {
+  const render = (rowIndex: number, codes: string): string[] => {
     const row = table[rowIndex] ?? [];
-    const cells = Array.from({ length: columns }, (_, column) =>
-      fitStyledLine(
-        parseInline(row[column] ?? '', codes, theme),
-        colWidth[column] ?? 0,
-        align[column] ?? 'left',
-      ),
+    // 单元格内容超出列宽时折行为多行,不截断丢内容;行高取本行最高的单元格
+    const cellLines = Array.from({ length: columns }, (_, column) =>
+      wrapStyled(parseInline(row[column] ?? '', codes, theme), colWidth[column] ?? 0),
     );
-    return `  ${theme.paint.muted('│')} ${cells.join(theme.paint.muted(' │ '))} ${theme.paint.muted('│')}`;
+    const lineCount = Math.max(...cellLines.map((cell) => cell.length));
+    const lines: string[] = [];
+    for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
+      const cells = cellLines.map((cell, column) =>
+        fitStyledLine(cell[lineIndex] ?? [], colWidth[column] ?? 0, align[column] ?? 'left'),
+      );
+      lines.push(`  ${theme.paint.muted('│')} ${cells.join(theme.paint.muted(' │ '))} ${theme.paint.muted('│')}`);
+    }
+    return lines;
   };
   // 全包边框:圆角与代码栅栏/输入框一致;横线段比列宽多 2,
   // 正好吃掉数据行 ' │ ' 里的空格,┬ ┼ ┴ 与竖线逐列对准
@@ -263,10 +268,10 @@ function renderTable(
       .map((columnWidth) => theme.paint.muted('─'.repeat(columnWidth + 2)))
       .join(theme.paint.muted(middle))}${theme.paint.muted(right)}`;
   const out: string[] = [frame('┌', '┬', '┐')];
-  out.push(render(0, theme.codes.heading));
+  out.push(...render(0, theme.codes.heading));
   out.push(frame('├', '┼', '┤'));
   for (let index = 1; index < table.length; index += 1) {
-    out.push(render(index, ''));
+    out.push(...render(index, ''));
   }
   out.push(frame('└', '┴', '┘'));
   return out;
