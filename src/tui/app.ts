@@ -32,7 +32,7 @@ import { headerLine, inputBoxFrame, inputBoxLine, scrollbarChar, scrollbarGeomet
 import { createFileIndex, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
-import { codePointWidth, padAnsi, truncatePlain, visibleWidth } from './layout.ts';
+import { codePointWidth, padAnsi, softWrapRows, truncatePlain, visibleWidth } from './layout.ts';
 import { Terminal } from './screen.ts';
 import { createTheme, symbols, type Theme } from './theme.ts';
 import { Viewer } from './viewer.ts';
@@ -996,51 +996,66 @@ export class TuiApp implements AgentUi {
   } {
     const text = this.editor.text;
     const { line: cursorLineRaw, column: cursorColumnRaw } = this.editor.cursorLineColumn();
-    const rawLines = text.split('\n');
+    // 框内内容区 = 宽度 - 4(两侧竖线与留白),再扣除提示符与续行缩进
+    const available = Math.max(4, width - 8);
+
+    // 软折行:每个逻辑行按显示宽度切成若干视觉行,超长文本不再横向滚动
+    interface VisualRow {
+      logical: number;
+      text: string;
+      start: number;
+      end: number;
+    }
+    const rows: VisualRow[] = [];
+    text.split('\n').forEach((raw, logical) => {
+      for (const row of softWrapRows(raw, available)) {
+        rows.push({
+          logical,
+          text: row.text,
+          start: row.start,
+          end: row.start + [...row.text].length,
+        });
+      }
+    });
+
+    // 光标所在视觉行:列落在 [start, end) 内;行尾时顺延到下一行,行尾为末行则在本行
+    let cursorRow = rows.findIndex(
+      (row) => row.logical === cursorLineRaw && cursorColumnRaw >= row.start && cursorColumnRaw < row.end,
+    );
+    if (cursorRow < 0) {
+      cursorRow = rows.reduce((last, row, index) => (row.logical === cursorLineRaw ? index : last), 0);
+    }
+
+    // 视口只显示 MAX_INPUT_LINES 行,滚动跟随光标
     let windowStart = 0;
-    if (rawLines.length > MAX_INPUT_LINES) {
+    if (rows.length > MAX_INPUT_LINES) {
       windowStart = Math.min(
-        Math.max(0, cursorLineRaw - (MAX_INPUT_LINES - 1)),
-        rawLines.length - MAX_INPUT_LINES,
+        Math.max(0, cursorRow - (MAX_INPUT_LINES - 1)),
+        rows.length - MAX_INPUT_LINES,
       );
     }
-    const visible = rawLines.slice(windowStart, windowStart + MAX_INPUT_LINES);
-    // 框内内容区 = 宽度 - 4(两侧竖线与留白),再扣除提示符与可能的省略号
-    const available = Math.max(4, width - 8);
+
+    const paint = this.renderContext.theme.paint;
     const lines: string[] = [];
     let cursorLine = 0;
     let cursorColumn = 0;
-    visible.forEach((raw, index) => {
-      const absoluteLine = windowStart + index;
-      const isCursorLine = absoluteLine === cursorLineRaw;
-      const chars = [...raw];
-      let colStart = 0;
-      if (isCursorLine && cursorColumnRaw > available - 1) {
-        colStart = cursorColumnRaw - available + 1;
+    for (let index = 0; index < MAX_INPUT_LINES; index += 1) {
+      const rowIndex = windowStart + index;
+      const row = rows[rowIndex];
+      if (row === undefined) {
+        break;
       }
-      let shown = '';
-      let used = 0;
-      for (let charIndex = colStart; charIndex < chars.length; charIndex += 1) {
-        const charWidth = codePointWidth((chars[charIndex] as string).codePointAt(0) ?? 0);
-        if (used + charWidth > available) {
-          break;
-        }
-        shown += chars[charIndex];
-        used += charWidth;
-      }
-      const prefix =
-        index === 0 ? this.renderContext.theme.paint.accent(symbols.inputPrompt) : '  ';
-      const ellipsis = colStart > 0 ? '…' : '';
-      lines.push(`${prefix}${ellipsis}${shown}`);
-      if (isCursorLine) {
+      const prefix = rowIndex === 0 ? paint.accent(symbols.inputPrompt) : '  ';
+      lines.push(`${prefix}${row.text}`);
+      if (rowIndex === cursorRow) {
         cursorLine = index;
         let beforeWidth = 0;
-        for (let charIndex = colStart; charIndex < cursorColumnRaw && charIndex < chars.length; charIndex += 1) {
-          beforeWidth += codePointWidth((chars[charIndex] as string).codePointAt(0) ?? 0);
+        for (const char of [...row.text].slice(0, cursorColumnRaw - row.start)) {
+          beforeWidth += codePointWidth(char.codePointAt(0) ?? 0);
         }
-        cursorColumn = visibleWidth(symbols.inputPrompt) + (colStart > 0 ? 1 : 0) + beforeWidth;
+        cursorColumn = visibleWidth(symbols.inputPrompt) + beforeWidth;
       }
-    });
+    }
     return { lines, cursorLine, cursorColumn };
   }
 

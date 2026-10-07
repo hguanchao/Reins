@@ -177,6 +177,31 @@ export function padAnsi(text: string, width: number): string {
   return text + ' '.repeat(width - used);
 }
 
+/** 按显示宽度把一行文本软折行为多个视觉行;text 为各行内容,start 为各行首字符在原行中的码点下标。 */
+export function softWrapRows(text: string, width: number): { text: string; start: number }[] {
+  if (width <= 0) {
+    return [{ text, start: 0 }];
+  }
+  const chars = [...text];
+  const rows: { text: string; start: number }[] = [];
+  let rowStart = 0;
+  let used = 0;
+  for (let index = 0; index < chars.length; index += 1) {
+    const char = chars[index] ?? '';
+    const charWidth = codePointWidth(char.codePointAt(0) ?? 0);
+    // used > 0 才折,避免行首零宽字符造成空行死循环
+    if (used > 0 && used + charWidth > width) {
+      rows.push({ text: chars.slice(rowStart, index).join(''), start: rowStart });
+      rowStart = index;
+      used = charWidth;
+    } else {
+      used += charWidth;
+    }
+  }
+  rows.push({ text: chars.slice(rowStart).join(''), start: rowStart });
+  return rows;
+}
+
 /** 折行:优先在空格处断行,中文等无空格文本按宽度硬折。 */
 export function wrapPlain(text: string, width: number): string[] {
   if (width <= 0) {

@@ -5,6 +5,7 @@ import {
   fitStyledLine,
   padAnsi,
   renderStyledLine,
+  softWrapRows,
   stripAnsi,
   truncateAnsi,
   truncatePlain,
@@ -125,6 +126,21 @@ describe('布局宽度计算', () => {
     assert.equal(padAnsi('', 3), '   ');
     // emoji 按 2 列计,补齐后总宽不超
     assert.equal(visibleWidth(padAnsi('📁x', 5)), 5);
+  });
+
+  it('softWrapRows:按显示宽度折行并记录各行起点', () => {
+    assert.deepEqual(softWrapRows('abcdefgh', 4), [
+      { text: 'abcd', start: 0 },
+      { text: 'efgh', start: 4 },
+    ]);
+    // CJK 按双宽折行
+    assert.deepEqual(softWrapRows('你好世界', 5), [
+      { text: '你好', start: 0 },
+      { text: '世界', start: 2 },
+    ]);
+    // 空文本得到单空行;零宽字符不产生空行
+    assert.deepEqual(softWrapRows('', 4), [{ text: '', start: 0 }]);
+    assert.deepEqual(softWrapRows('\u200bab', 4), [{ text: '\u200bab', start: 0 }]);
   });
 
   it('fitStyledLine:补齐、截断与样式保留', () => {
