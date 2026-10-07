@@ -383,6 +383,40 @@ describe('代理循环', () => {
     }
   });
 
+  it('中断时未执行的工具调用也补上结果,不留悬空 tool call', async () => {
+    const controller = new AbortController();
+    const abortTool: Tool = {
+      name: 'abort-now',
+      description: '触发中止',
+      parameters: { type: 'object' },
+      permissionKind: 'bash',
+      targetOf: () => ({}),
+      execute: async () => {
+        controller.abort();
+        return { content: '已请求中止', isError: false };
+      },
+    };
+    const harness = await makeAgent(
+      [[toolCall('c1', 'abort-now', {}), toolCall('c2', 'abort-now', {}), done('tool_calls')]],
+      { extraTools: [abortTool] },
+    );
+    try {
+      await harness.agent.run('任务', { signal: controller.signal });
+      const branch = harness.session.activeBranch();
+      const callIds = branch.flatMap((entry) =>
+        entry.type === 'assistant' ? entry.toolCalls.map((call) => call.id) : [],
+      );
+      const resultIds = branch.flatMap((entry) =>
+        entry.type === 'tool_result' ? [entry.toolCallId] : [],
+      );
+      // 每个 tool call 都必须有配对结果,否则下一次请求会被端点以「tool_calls 必须跟 tool 消息」拒绝
+      assert.deepEqual(callIds, ['c1', 'c2']);
+      assert.deepEqual(resultIds, ['c1', 'c2']);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it('compact() 可强制压缩;内容过少或未配置压缩器时返回 false', async () => {
     const harness = await makeAgent([[text('a'), done()]], {
       compactor: async () => '摘要内容',

@@ -103,14 +103,21 @@ export class Agent {
       if (turn.toolCalls.length === 0) {
         break;
       }
+      let executed = 0;
       for (const call of turn.toolCalls) {
         if (signal?.aborted) {
           aborted = true;
           break;
         }
         await this.executeToolCall(call, signal);
+        executed += 1;
       }
       if (aborted) {
+        // 中断时补齐未执行调用的结果:assistant 消息已带着全部 tool call 落盘,
+        // 缺配对结果会让下一次请求被端点以「tool_calls 必须跟 tool 消息」拒绝,会话再也无法继续
+        for (const call of turn.toolCalls.slice(executed)) {
+          await this.recordToolResult(call, '已中断:未执行', true);
+        }
         break;
       }
       await this.maybeCompact(turn.usage.inputTokens);
@@ -177,7 +184,7 @@ export class Agent {
           name: entry.name,
         });
       } else if (entry.type === 'summary') {
-        messages.push({ role: 'user', content: `(上下文摘要)\n${entry.text}` });
+        messages.push({ role: 'user', content: `(context summary)\n${entry.text}` });
       }
     }
     return messages;
