@@ -229,7 +229,7 @@ const WELCOME_COMMANDS: readonly { command: string; description: string }[] = [
 /** 欢迎面板只展示核心快捷键(完整行为见提示行)。 */
 const WELCOME_SHORTCUTS: readonly { keys: string; description: string }[] = [
   { keys: '@', description: '引用文件' },
-  { keys: '↑/↓', description: '历史 · 补全选择' },
+  { keys: '↑/↓', description: '移动光标 · 顶底翻历史' },
   { keys: 'Tab', description: '应用补全' },
   { keys: 'Ctrl+J', description: '插入换行' },
   { keys: 'Ctrl+O', description: '全屏查看输出' },

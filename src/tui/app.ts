@@ -998,6 +998,8 @@ export class TuiApp implements AgentUi {
     const { line: cursorLineRaw, column: cursorColumnRaw } = this.editor.cursorLineColumn();
     // 框内内容区 = 宽度 - 4(两侧竖线与留白),再扣除提示符与续行缩进
     const available = Math.max(4, width - 8);
+    // 同步折行宽度,↑↓ 据此按视觉行移动
+    this.editor.setWrapWidth(available);
 
     // 软折行:每个逻辑行按显示宽度切成若干视觉行,超长文本不再横向滚动
     interface VisualRow {

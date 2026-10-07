@@ -1,5 +1,7 @@
 import { rankFileCandidates } from './files.ts';
 
+import { codePointWidth, softWrapRows } from './layout.ts';
+
 /**
  * 输入行编辑器:光标、历史、斜杠命令与 @ 文件补全。
  *
@@ -34,6 +36,8 @@ export class InputEditor {
   private readonly commands: readonly string[];
   private readonly files: (() => readonly string[]) | undefined;
   private readonly mentionLimit: number;
+  /** 软折行宽度(显示列),由视图层在渲染时同步;未设置时 ↑↓ 按逻辑行移动。 */
+  private wrapWidth: number | undefined;
 
   constructor(options: EditorOptions = {}) {
     this.commands = options.commands ?? [];
@@ -126,6 +130,62 @@ export class InputEditor {
     return true;
   }
 
+  /** 同步软折行宽度(视图层渲染时调用);影响 ↑↓ 的移动粒度。 */
+  setWrapWidth(width: number): void {
+    this.wrapWidth = Math.max(0, width);
+  }
+
+  /** 软折行后的视觉行区间([start, end) 为全文码点下标)。 */
+  private visualRows(): { start: number; end: number }[] {
+    const width = this.wrapWidth ?? 0;
+    const rows: { start: number; end: number }[] = [];
+    let lineStart = 0;
+    for (const raw of this.text.split('\n')) {
+      const lineLength = [...raw].length;
+      if (width <= 0) {
+        rows.push({ start: lineStart, end: lineStart + lineLength });
+      } else {
+        for (const row of softWrapRows(raw, width)) {
+          rows.push({ start: lineStart + row.start, end: lineStart + row.start + [...row.text].length });
+        }
+      }
+      lineStart += lineLength + 1;
+    }
+    return rows;
+  }
+
+  /** 光标所在的视觉行下标;光标在文本末尾时取最后一个视觉行。 */
+  private currentVisualRow(rows: readonly { start: number; end: number }[]): number {
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index]!.start <= this.cursorIndex) {
+        return index;
+      }
+    }
+    return 0;
+  }
+
+  /** 光标在视觉行内的显示列宽。 */
+  private rowColumn(row: { start: number; end: number }): number {
+    let width = 0;
+    for (let index = row.start; index < this.cursorIndex && index < row.end; index += 1) {
+      width += codePointWidth(this.chars[index]?.codePointAt(0) ?? 0);
+    }
+    return width;
+  }
+
+  /** 把显示列换算成目标视觉行内的码点下标;列超出行宽时夹到行尾。 */
+  private indexAtColumn(row: { start: number; end: number }, column: number): number {
+    let used = 0;
+    for (let index = row.start; index < row.end; index += 1) {
+      const charWidth = codePointWidth(this.chars[index]?.codePointAt(0) ?? 0);
+      if (used + charWidth > column) {
+        return index;
+      }
+      used += charWidth;
+    }
+    return row.end;
+  }
+
   moveLeft(): void {
     if (this.cursorIndex > 0) {
       this.cursorIndex -= 1;
@@ -150,10 +210,22 @@ export class InputEditor {
     this.recomputeCompletion();
   }
 
-  /** 上:优先补全菜单,其次多行上移,最后历史。 */
+  /** 上:优先补全菜单;有折行宽度时按视觉行上移(最顶视觉行才接历史);否则逻辑行上移、最后历史。 */
   moveUp(): boolean {
     if (this.completion !== null) {
       this.completionStep(-1);
+      return true;
+    }
+    if (this.wrapWidth !== undefined && this.wrapWidth > 0) {
+      const rows = this.visualRows();
+      const rowIndex = this.currentVisualRow(rows);
+      if (rowIndex === 0) {
+        return this.historyPrev();
+      }
+      const column = this.rowColumn(rows[rowIndex]!);
+      const previous = rows[rowIndex - 1]!;
+      this.cursorIndex = this.indexAtColumn(previous, column);
+      this.recomputeCompletion();
       return true;
     }
     const lineStart = this.currentLineStart();
@@ -172,6 +244,18 @@ export class InputEditor {
   moveDown(): boolean {
     if (this.completion !== null) {
       this.completionStep(1);
+      return true;
+    }
+    if (this.wrapWidth !== undefined && this.wrapWidth > 0) {
+      const rows = this.visualRows();
+      const rowIndex = this.currentVisualRow(rows);
+      if (rowIndex >= rows.length - 1) {
+        return this.historyNext();
+      }
+      const column = this.rowColumn(rows[rowIndex]!);
+      const next = rows[rowIndex + 1]!;
+      this.cursorIndex = this.indexAtColumn(next, column);
+      this.recomputeCompletion();
       return true;
     }
     const lineEnd = this.currentLineEnd();
