@@ -647,7 +647,7 @@ export class TuiApp implements AgentUi {
         for (const model of spec.models) {
           const current =
             this.currentConfig?.provider === name && this.currentConfig.model === model.id;
-          this.pushNotice(`${current ? '▸ ' : '  '}${name}/${model.id}`, 'info');
+          this.pushNotice(`${current ? '› ' : '  '}${name}/${model.id}`, 'info');
         }
       }
       this.pushNotice('用法:/model <provider/model-id>', 'info');
@@ -967,7 +967,7 @@ export class TuiApp implements AgentUi {
     if (completion !== null) {
       for (let index = 0; index < completion.items.length; index += 1) {
         const item = completion.items[index] as string;
-        lines.push(index === completion.index ? `  ${paint.accent(`▸ ${item}`)}` : `    ${paint.muted(item)}`);
+        lines.push(index === completion.index ? `  ${paint.accent(`› ${item}`)}` : `    ${paint.muted(item)}`);
       }
     }
     const dropdownLines = lines.length;
