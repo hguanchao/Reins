@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reins 低饱和配色提案</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 24px 64px;
+    background: #17181a; color: #d8d8d8;
+    font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; font-weight: 600; }
+  h2 { font-size: 15px; margin: 40px 0 12px; font-weight: 600; color: #b9c2cc; }
+  p.lead { margin: 0 0 4px; color: #9aa4ae; max-width: 76ch; }
+  p.note { margin: 6px 0 0; color: #8b949e; max-width: 76ch; font-size: 13px; }
+  code { font-family: ui-monospace, Consolas, "Cascadia Mono", monospace; }
+
+  table { border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { padding: 5px 10px; text-align: left; border-bottom: 1px solid #2a2d31; white-space: nowrap; }
+  th { color: #8b949e; font-weight: 500; font-size: 12px; }
+  td.hex { font-family: ui-monospace, Consolas, monospace; color: #9aa4ae; }
+  .chip {
+    display: inline-block; min-width: 116px; padding: 3px 8px; border-radius: 4px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  }
+  .grp { color: #6f7881; font-size: 12px; }
+
+  .terms { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 12px; }
+  .term {
+    border-radius: 8px; padding: 16px 18px; overflow-x: auto;
+    font-family: ui-monospace, Consolas, "Cascadia Mono", "Noto Sans Mono CJK SC", monospace;
+    font-size: 12.5px; line-height: 1.5; white-space: pre;
+  }
+  .term.dark  { background: #1e1e1e; border: 1px solid #2f3134; color: #d4d4d4; }
+  .term.light { background: #ffffff; border: 1px solid #d8dade; color: #2b2b2b; }
+
+  .dark {
+    --muted:#9c9c9c; --ok:#86ab7f; --warn:#c6ad78; --fail:#c48d8d;
+    --accent:#7fa7cf; --heading:#8fb4d9; --code:#7faeae; --link:#7fa7cf;
+    --keyword:#b08cc4; --string:#86ab7f; --comment:#8a8a8a;
+    --number:#c6ad78; --function:#7fa7cf; --type:#7faeae;
+    --bar-fg:#dcdcdc; --bar-bg:#3a3a3a;
+  }
+  .light {
+    --muted:#5f5f5f; --ok:#4f7a48; --warn:#8a6d24; --fail:#a34f4f;
+    --accent:#3f6b9c; --heading:#35608f; --code:#3f7070; --link:#3f6b9c;
+    --keyword:#7a4f96; --string:#4f7a48; --comment:#6f6f6f;
+    --number:#8a6d24; --function:#3f6b9c; --type:#3f7070;
+    --bar-fg:#2b2b2b; --bar-bg:#dcdcdc;
+  }
+
+  .m  { color: var(--muted); }
+  .ok { color: var(--ok); }
+  .wn { color: var(--warn); }
+  .fa { color: var(--fail); }
+  .ac { color: var(--accent); }
+  .hd { color: var(--heading); }
+  .cd { color: var(--code); }
+  .lk { color: var(--link); text-decoration: underline; }
+  .kw { color: var(--keyword); }
+  .st { color: var(--string); }
+  .cm { color: var(--comment); }
+  .nm { color: var(--number); }
+  .fn { color: var(--function); }
+  .ty { color: var(--type); }
+  .bd { font-weight: 700; }
+  .bar { background: var(--bar-bg); color: var(--bar-fg); }
+  .bar-ac { background: var(--bar-bg); color: var(--accent); }
+  .rule { color: var(--muted); }
+  .box { color: var(--muted); }
+  .sel { background: rgba(127,167,207,.14); }
+</style>
+</head>
+<body>
+
+<h1>Reins 低饱和配色提案</h1>
+<p class="lead">15 个角色按色系归类：中性灰、蓝、青、绿、琥珀、玫红、紫，饱和度压到约 25–35%。
+所有角色对背景的对比度均 ≥ 4.5（WCAG AA）。</p>
+<p class="note">当前配色用的是基础 16 色（<code>32</code> / <code>90</code> / <code>1;36</code>），它们指向<b>终端自己的调色板</b>，所以下面的“当前”一列按 xterm 默认调色板渲染——在你机器上的实际观感取决于你的终端主题。</p>
+
+<h2>角色对照</h2>
+<table>
+  <thead>
+    <tr><th>组</th><th>角色</th><th>当前（xterm 默认）</th><th>提案 · 暗色</th><th>对比度</th><th>提案 · 浅色</th><th>对比度</th><th>用在哪里</th></tr>
+  </thead>
+  <tbody>
+    <tr><td class="grp" rowspan="4">基础色</td>
+      <td><code>muted</code></td><td><span class="chip" style="color:#7f7f7f;background:#1e1e1e">结构 · 弱化</span></td>
+      <td><span class="chip" style="color:#9c9c9c;background:#1e1e1e">结构 · 弱化</span></td><td class="hex">6.07</td>
+      <td><span class="chip" style="color:#5f5f5f;background:#fff">结构 · 弱化</span></td><td class="hex">6.39</td>
+      <td class="hex">分隔线、边框、滚动条、工具摘要</td></tr>
+    <tr><td><code>ok</code></td><td><span class="chip" style="color:#00cd00;background:#1e1e1e">√ 成功</span></td>
+      <td><span class="chip" style="color:#86ab7f;background:#1e1e1e">√ 成功</span></td><td class="hex">6.47</td>
+      <td><span class="chip" style="color:#4f7a48;background:#fff">√ 成功</span></td><td class="hex">4.99</td>
+      <td class="hex">工具成功、任务完成</td></tr>
+    <tr><td><code>warn</code></td><td><span class="chip" style="color:#cdcd00;background:#1e1e1e">⚠ 运行中</span></td>
+      <td><span class="chip" style="color:#c6ad78;background:#1e1e1e">⚠ 运行中</span></td><td class="hex">7.66</td>
+      <td><span class="chip" style="color:#8a6d24;background:#fff">⚠ 运行中</span></td><td class="hex">4.89</td>
+      <td class="hex">运行中、审批请求、状态条</td></tr>
+    <tr><td><code>fail</code></td><td><span class="chip" style="color:#cd0000;background:#1e1e1e">× 失败</span></td>
+      <td><span class="chip" style="color:#c48d8d;background:#1e1e1e">× 失败</span></td><td class="hex">5.99</td>
+      <td><span class="chip" style="color:#a34f4f;background:#fff">× 失败</span></td><td class="hex">5.54</td>
+      <td class="hex">工具失败、错误通知</td></tr>
+
+    <tr><td class="grp" rowspan="2">TUI</td>
+      <td><code>accent</code></td><td><span class="chip" style="color:#00cdcd;background:#1e1e1e">› 品牌</span></td>
+      <td><span class="chip" style="color:#7fa7cf;background:#1e1e1e">› 品牌</span></td><td class="hex">6.61</td>
+      <td><span class="chip" style="color:#3f6b9c;background:#fff">› 品牌</span></td><td class="hex">5.53</td>
+      <td class="hex">header 品牌名、提示符、菜单选中</td></tr>
+    <tr><td><code>userBar</code></td><td><span class="chip" style="color:#7f7f7f;background:#1e1e1e">消息条</span></td>
+      <td><span class="chip" style="color:#dcdcdc;background:#3a3a3a">消息条</span></td><td class="hex">8.29</td>
+      <td><span class="chip" style="color:#2b2b2b;background:#dcdcdc">消息条</span></td><td class="hex">10.33</td>
+      <td class="hex">用户消息条（前景 + 背景）</td></tr>
+
+    <tr><td class="grp" rowspan="3">markdown</td>
+      <td><code>heading</code></td><td><span class="chip" style="color:#00cdcd;background:#1e1e1e">标题</span></td>
+      <td><span class="chip" style="color:#8fb4d9;background:#1e1e1e">标题</span></td><td class="hex">7.70</td>
+      <td><span class="chip" style="color:#35608f;background:#fff">标题</span></td><td class="hex">6.52</td>
+      <td class="hex">一~三级标题、表头</td></tr>
+    <tr><td><code>code</code></td><td><span class="chip" style="color:#00ffff;background:#1e1e1e">行内码</span></td>
+      <td><span class="chip" style="color:#7faeae;background:#1e1e1e">行内码</span></td><td class="hex">6.80</td>
+      <td><span class="chip" style="color:#3f7070;background:#fff">行内码</span></td><td class="hex">5.58</td>
+      <td class="hex">行内代码</td></tr>
+    <tr><td><code>link</code></td><td><span class="chip" style="color:#00cdcd;background:#1e1e1e">链接</span></td>
+      <td><span class="chip" style="color:#7fa7cf;background:#1e1e1e">链接</span></td><td class="hex">6.61</td>
+      <td><span class="chip" style="color:#3f6b9c;background:#fff">链接</span></td><td class="hex">5.53</td>
+      <td class="hex">链接（带下划线）</td></tr>
+
+    <tr><td class="grp" rowspan="6">代码高亮</td>
+      <td><code>keyword</code></td><td><span class="chip" style="color:#cd00cd;background:#1e1e1e">const</span></td>
+      <td><span class="chip" style="color:#b08cc4;background:#1e1e1e">const</span></td><td class="hex">5.87</td>
+      <td><span class="chip" style="color:#7a4f96;background:#fff">const</span></td><td class="hex">6.20</td>
+      <td class="hex">关键字</td></tr>
+    <tr><td><code>string</code></td><td><span class="chip" style="color:#00cd00;background:#1e1e1e">"文本"</span></td>
+      <td><span class="chip" style="color:#86ab7f;background:#1e1e1e">"文本"</span></td><td class="hex">6.47</td>
+      <td><span class="chip" style="color:#4f7a48;background:#fff">"文本"</span></td><td class="hex">4.99</td>
+      <td class="hex">字符串</td></tr>
+    <tr><td><code>comment</code></td><td><span class="chip" style="color:#7f7f7f;background:#1e1e1e">// 注释</span></td>
+      <td><span class="chip" style="color:#8a8a8a;background:#1e1e1e">// 注释</span></td><td class="hex">4.83</td>
+      <td><span class="chip" style="color:#6f6f6f;background:#fff">// 注释</span></td><td class="hex">5.02</td>
+      <td class="hex">注释</td></tr>
+    <tr><td><code>number</code></td><td><span class="chip" style="color:#cdcd00;background:#1e1e1e">42</span></td>
+      <td><span class="chip" style="color:#c6ad78;background:#1e1e1e">42</span></td><td class="hex">7.66</td>
+      <td><span class="chip" style="color:#8a6d24;background:#fff">42</span></td><td class="hex">4.89</td>
+      <td class="hex">数字</td></tr>
+    <tr><td><code>function</code></td><td><span class="chip" style="color:#5c5cff;background:#1e1e1e">fn()</span></td>
+      <td><span class="chip" style="color:#7fa7cf;background:#1e1e1e">fn()</span></td><td class="hex">6.61</td>
+      <td><span class="chip" style="color:#3f6b9c;background:#fff">fn()</span></td><td class="hex">5.53</td>
+      <td class="hex">函数名</td></tr>
+    <tr><td><code>type</code></td><td><span class="chip" style="color:#00ffff;background:#1e1e1e">Type</span></td>
+      <td><span class="chip" style="color:#7faeae;background:#1e1e1e">Type</span></td><td class="hex">6.80</td>
+      <td><span class="chip" style="color:#3f7070;background:#fff">Type</span></td><td class="hex">5.58</td>
+      <td class="hex">类型名</td></tr>
+  </tbody>
+</table>
+
+<h2>实际界面</h2>
+<div class="terms">
+
+<div class="term dark">
+<span class="ac">Reins</span><span class="m"> · </span>example-openai/gpt-5.2<span class="m"> · </span>~/workspace<span class="m"> · </span>#36a568<span class="m">                        0% ctx · ask</span>
+<span class="rule">──────────────────────────────────────────────────────────────────────</span>
+                            <span class="box">┌───────────────────────────────────────┐</span>
+                            <span class="box">│</span>            <span class="ac">欢迎使用 Reins</span>             <span class="box">│</span>
+                            <span class="box">│</span>                                       <span class="box">│</span>
+                            <span class="box">│</span>  <span class="bd">斜杠命令</span>                             <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /help    </span>显示帮助                  <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /new     </span>开始新会话                <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /model   </span>查看或切换模型            <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /resume  </span>恢复会话                  <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /exit    </span>退出                      <span class="box">│</span>
+                            <span class="box">│</span>                                       <span class="box">│</span>
+                            <span class="box">│</span>  <span class="bd">快捷键</span>                               <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  @          </span>引用文件               <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  Ctrl+O     </span>全屏查看输出           <span class="box">│</span>
+                            <span class="box">│</span>                                       <span class="box">│</span>
+                            <span class="box">│</span>  <span class="m">提示:reins doctor 可自检配置</span>         <span class="box">│</span>
+                            <span class="box">└───────────────────────────────────────┘</span>
+
+<span class="bar-ac">› </span><span class="bar">你能作甚恶魔                                                  </span>
+
+  <span class="hd">## 能力</span>
+
+  - 📁 <span class="bd">文件操作</span>:读写、精确替换
+  - 🖥️ <span class="bd">命令行</span>:在工作区跑 shell
+  - 🔍 <span class="bd">搜索</span>:<span class="cd">grep</span> 正则、<span class="cd">glob</span> 通配
+
+  <span class="m">▌ </span><span class="m">被拒绝的操作是用户设定的策略,不会绕行。</span>
+
+  <span class="m">┌──────────────┬──────────────────────┐</span>
+  <span class="m">│</span> <span class="hd">场景</span>         <span class="m">│</span> <span class="hd">我会怎么做</span>           <span class="m">│</span>
+  <span class="m">├──────────────┼──────────────────────┤</span>
+  <span class="m">│</span> 改错别字     <span class="m">│</span> 用 <span class="cd">edit</span> 精确替换      <span class="m">│</span>
+  <span class="m">│</span> 重构         <span class="m">│</span> 先读后改             <span class="m">│</span>
+  <span class="m">└──────────────┴──────────────────────┘</span>
+
+  行内代码 <span class="cd">visibleWidth</span>、链接 <span class="lk">文档</span>
+
+  <span class="m">┌─ ts ─────────────────────────────────</span>
+  <span class="m">│</span> <span class="cm">// 计算显示宽度</span>
+  <span class="m">│</span> <span class="kw">export function</span> <span class="fn">visibleWidth</span>(<span class="ty">text</span>: <span class="ty">string</span>): <span class="ty">number</span> {
+  <span class="m">│</span>   <span class="kw">let</span> width = <span class="nm">0</span>;
+  <span class="m">│</span>   <span class="kw">for</span> (<span class="kw">const</span> char <span class="kw">of</span> <span class="fn">stripAnsi</span>(text)) {
+  <span class="m">│</span>     width += <span class="fn">codePointWidth</span>(char.<span class="fn">codePointAt</span>(<span class="nm">0</span>) ?? <span class="nm">0</span>);
+  <span class="m">│</span>   }
+  <span class="m">│</span>   <span class="kw">return</span> width;
+  <span class="m">│</span> }
+  <span class="m">└──────────────────────────────────────</span>
+
+  <span class="m">⚙</span> <span class="bd">glob</span>  <span class="m">*</span>  <span class="ok">√ 5.5s</span>
+  <span class="m">⚙</span> <span class="bd">bash</span>  <span class="m">ls -la</span>  <span class="ok">√ 6.0s</span>
+  <span class="m">⚙</span> <span class="bd">read</span>  <span class="m">README.md</span>  <span class="ok">√ 2.8s</span>
+  <span class="m">⚙</span> <span class="bd">bash</span>  <span class="m">npm test</span>  <span class="fa">× 12.3s</span>
+      <span class="fa">↳ 3 个用例失败</span>
+  <span class="wn">⚠ 中断中…</span>
+  <span class="m">· 运行已中断</span>
+<span class="rule">──────────────────────────────────────────────────────────────────────</span>
+<span class="box">┌────────────────────────────────────────────────────────────────────┐</span>
+<span class="box">│</span> <span class="ac">› </span>                                                                   <span class="box">│</span>
+<span class="box">└────────────────────────────────────────────────────────────────────┘</span>
+  <span class="ac">› /clear    </span><span class="m">开始新会话</span>
+  <span class="m">    /compact   立即压缩上下文</span>
+  <span class="m">    /help      显示帮助</span>
+<span class="m"> ⏎ 发送 · ^J 换行 · @ 文件 · Tab 补全 · ↑↓ 历史 · ^O 查看 · /help</span>
+</div>
+
+<div class="term light">
+<span class="ac">Reins</span><span class="m"> · </span>example-openai/gpt-5.2<span class="m"> · </span>~/workspace<span class="m"> · </span>#36a568<span class="m">                        0% ctx · ask</span>
+<span class="rule">──────────────────────────────────────────────────────────────────────</span>
+                            <span class="box">┌───────────────────────────────────────┐</span>
+                            <span class="box">│</span>            <span class="ac">欢迎使用 Reins</span>             <span class="box">│</span>
+                            <span class="box">│</span>                                       <span class="box">│</span>
+                            <span class="box">│</span>  <span class="bd">斜杠命令</span>                             <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /help    </span>显示帮助                  <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /new     </span>开始新会话                <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /model   </span>查看或切换模型            <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /resume  </span>恢复会话                  <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  /exit    </span>退出                      <span class="box">│</span>
+                            <span class="box">│</span>                                       <span class="box">│</span>
+                            <span class="box">│</span>  <span class="bd">快捷键</span>                               <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  @          </span>引用文件               <span class="box">│</span>
+                            <span class="box">│</span>  <span class="ac">  Ctrl+O     </span>全屏查看输出           <span class="box">│</span>
+                            <span class="box">│</span>                                       <span class="box">│</span>
+                            <span class="box">│</span>  <span class="m">提示:reins doctor 可自检配置</span>         <span class="box">│</span>
+                            <span class="box">└───────────────────────────────────────┘</span>
+
+<span class="bar-ac">› </span><span class="bar">你能作甚恶魔                                                  </span>
+
+  <span class="hd">## 能力</span>
+
+  - 📁 <span class="bd">文件操作</span>:读写、精确替换
+  - 🖥️ <span class="bd">命令行</span>:在工作区跑 shell
+  - 🔍 <span class="bd">搜索</span>:<span class="cd">grep</span> 正则、<span class="cd">glob</span> 通配
+
+  <span class="m">▌ </span><span class="m">被拒绝的操作是用户设定的策略,不会绕行。</span>
+
+  <span class="m">┌──────────────┬──────────────────────┐</span>
+  <span class="m">│</span> <span class="hd">场景</span>         <span class="m">│</span> <span class="hd">我会怎么做</span>           <span class="m">│</span>
+  <span class="m">├──────────────┼──────────────────────┤</span>
+  <span class="m">│</span> 改错别字     <span class="m">│</span> 用 <span class="cd">edit</span> 精确替换      <span class="m">│</span>
+  <span class="m">│</span> 重构         <span class="m">│</span> 先读后改             <span class="m">│</span>
+  <span class="m">└──────────────┴──────────────────────┘</span>
+
+  行内代码 <span class="cd">visibleWidth</span>、链接 <span class="lk">文档</span>
+
+  <span class="m">┌─ ts ─────────────────────────────────</span>
+  <span class="m">│</span> <span class="cm">// 计算显示宽度</span>
+  <span class="m">│</span> <span class="kw">export function</span> <span class="fn">visibleWidth</span>(<span class="ty">text</span>: <span class="ty">string</span>): <span class="ty">number</span> {
+  <span class="m">│</span>   <span class="kw">let</span> width = <span class="nm">0</span>;
+  <span class="m">│</span>   <span class="kw">for</span> (<span class="kw">const</span> char <span class="kw">of</span> <span class="fn">stripAnsi</span>(text)) {
+  <span class="m">│</span>     width += <span class="fn">codePointWidth</span>(char.<span class="fn">codePointAt</span>(<span class="nm">0</span>) ?? <span class="nm">0</span>);
+  <span class="m">│</span>   }
+  <span class="m">│</span>   <span class="kw">return</span> width;
+  <span class="m">│</span> }
+  <span class="m">└──────────────────────────────────────</span>
+
+  <span class="m">⚙</span> <span class="bd">glob</span>  <span class="m">*</span>  <span class="ok">√ 5.5s</span>
+  <span class="m">⚙</span> <span class="bd">bash</span>  <span class="m">ls -la</span>  <span class="ok">√ 6.0s</span>
+  <span class="m">⚙</span> <span class="bd">read</span>  <span class="m">README.md</span>  <span class="ok">√ 2.8s</span>
+  <span class="m">⚙</span> <span class="bd">bash</span>  <span class="m">npm test</span>  <span class="fa">× 12.3s</span>
+      <span class="fa">↳ 3 个用例失败</span>
+  <span class="wn">⚠ 中断中…</span>
+  <span class="m">· 运行已中断</span>
+<span class="rule">──────────────────────────────────────────────────────────────────────</span>
+<span class="box">┌────────────────────────────────────────────────────────────────────┐</span>
+<span class="box">│</span> <span class="ac">› </span>                                                                   <span class="box">│</span>
+<span class="box">└────────────────────────────────────────────────────────────────────┘</span>
+  <span class="ac">› /clear    </span><span class="m">开始新会话</span>
+  <span class="m">    /compact   立即压缩上下文</span>
+  <span class="m">    /help      显示帮助</span>
+<span class="m"> ⏎ 发送 · ^J 换行 · @ 文件 · Tab 补全 · ↑↓ 历史 · ^O 查看 · /help</span>
+</div>
+
+</div>
+
+<h2>成败标记备选</h2>
+<p class="note">已落地的是第一行 <code>√ / ×</code>。下面是其他候选，放在真实语境里对比（工具块那两行）。</p>
+<div class="dark">
+<table>
+  <thead><tr><th>符号</th><th>说明</th><th>在语境里</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="hex">√ / ×</td>
+      <td>当前。数学符号，不带 emoji 属性，字形宽度稳定，中文界面里也常见</td>
+      <td><code class="m">⚙ read  README.md</code> <code class="ok">√ 2.8s</code><br><code class="m">⚙ bash  npm test</code> <code class="fa">× 12.3s</code></td>
+    </tr>
+    <tr>
+      <td class="hex">✓ / ✕</td>
+      <td>保留原来的勾，只把 <code>✗</code> 换成更轻、更匀的乘号 X</td>
+      <td><code class="m">⚙ read  README.md</code> <code class="ok">✓ 2.8s</code><br><code class="m">⚙ bash  npm test</code> <code class="fa">✕ 12.3s</code></td>
+    </tr>
+    <tr>
+      <td class="hex">✔ / ✘</td>
+      <td>重体一对，视觉重量最一致；但两者带 emoji 属性，个别终端可能渲染成彩色 emoji</td>
+      <td><code class="m">⚙ read  README.md</code> <code class="ok">✔ 2.8s</code><br><code class="m">⚙ bash  npm test</code> <code class="fa">✘ 12.3s</code></td>
+    </tr>
+    <tr>
+      <td class="hex">ok / err</td>
+      <td>纯 ASCII，零字形风险，但占三格、更啰嗦</td>
+      <td><code class="m">⚙ read  README.md</code> <code class="ok">ok 2.8s</code><br><code class="m">⚙ bash  npm test</code> <code class="fa">err 12.3s</code></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2>说明</h2>
+<p class="note">
+<b>格式</b>：低饱和要求精确色值，落地后颜色会从基础 16 色改成 24 位真彩色（<code>38;2;r;g;b</code>）。
+好处是任何终端下观感一致；代价是不再跟随你的终端主题，且需要终端支持真彩色（现代终端基本都支持）。
+256 色走不通——它的色立方最小色阶是 95，做不出这些低饱和值。<br>
+<b>共用</b>：<code>accent</code>/<code>link</code>/<code>function</code> 同为蓝，<code>code</code>/<code>type</code> 同为青，
+<code>ok</code>/<code>string</code> 同为绿，<code>warn</code>/<code>number</code> 同为琥珀——同一色系共用一档明度。
+六个语法角色本身是六个不同色相，扫读能分清。<br>
+<b>退化</b>：<code>mono</code> 预设与 <code>NO_COLOR</code>／<code>TERM=dumb</code> 仍输出纯文本，行为不变。
+</p>
+
+</body>
+</html>
