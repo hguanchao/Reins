@@ -40,6 +40,7 @@ import {
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
+  overlayLines,
   scrollbarChar,
   scrollbarGeometry,
   splitPathLabel,
@@ -1012,7 +1013,7 @@ export class TuiApp implements AgentUi {
       return;
     }
     const theme = this.renderContext.theme;
-    const footer = this.renderFooter(cols, rows);
+    const footer = this.renderFooter(cols);
     // 顶部无 header、底部无分隔线:整屏只有内容区与输入区,行数全部给内容
     const mainHeight = Math.max(1, rows - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
@@ -1035,15 +1036,18 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     const bar = scrollbarGeometry(top, mainHeight, content.length);
-    const mainLines = main.map((line, index) => {
-      const padded = padAnsi(line, cols - 1);
+    const scrollbarLines = main.map((_, index) => {
       if (bar === undefined) {
-        return padded;
+        return '';
       }
       // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
-      return `${padded}${theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│')}`;
+      return theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│');
     });
-    const lines = [...mainLines, ...footer.lines];
+    const mainLines = main.map((line, index) => `${padAnsi(line, cols - 1)}${scrollbarLines[index] ?? ''}`);
+    const menuWidth = cols - 1;
+    const completion = this.renderCompletionMenu(menuWidth, mainHeight);
+    const visibleMainLines = overlayLines(mainLines, completion, scrollbarLines);
+    const lines = [...visibleMainLines, ...footer.lines];
     const cursor =
       footer.cursor === undefined
         ? null
@@ -1092,10 +1096,21 @@ export class TuiApp implements AgentUi {
     return lines;
   }
 
-  private renderFooter(
-    width: number,
-    rows: number,
-  ): { lines: string[]; cursor?: { line: number; column: number } } {
+  private renderCompletionMenu(width: number, height: number): string[] {
+    const completion = this.editor.completionState;
+    if (completion === null || this.approvalCard !== undefined) {
+      return [];
+    }
+    const count = Math.min(COMPLETION_MENU_ROWS, height, completion.items.length);
+    const menu = completion.items.map((item) =>
+      completion.kind === 'slash'
+        ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
+        : splitPathLabel(item),
+    );
+    return completionMenu(menu, completion.index, width, this.renderContext.theme, count);
+  }
+
+  private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
     if (this.approvalCard !== undefined) {
       const paint = this.renderContext.theme.paint;
       const { target, decision } = this.approvalCard;
@@ -1112,18 +1127,6 @@ export class TuiApp implements AgentUi {
 
     const theme = this.renderContext.theme;
     const lines: string[] = [];
-    const completion = this.editor.completionState;
-    if (completion !== null) {
-      // 菜单高度固定,矮终端里按可用高度收缩,否则整帧会超出屏幕
-      const height = Math.max(0, Math.min(COMPLETION_MENU_ROWS, rows - 8));
-      const menu = completion.items.map((item) =>
-        completion.kind === 'slash'
-          ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
-          : splitPathLabel(item),
-      );
-      lines.push(...completionMenu(menu, completion.index, width, theme, height));
-    }
-    const dropdownLines = lines.length;
 
     // 输入框:上下边框 + 两侧竖线;光标行列按框内偏移修正
     const input = this.renderInputLines(width);
@@ -1132,7 +1135,7 @@ export class TuiApp implements AgentUi {
     lines.push(this.renderHints(width));
     return {
       lines,
-      cursor: { line: dropdownLines + 1 + input.cursorLine, column: 2 + input.cursorColumn },
+      cursor: { line: 1 + input.cursorLine, column: 2 + input.cursorColumn },
     };
   }
 

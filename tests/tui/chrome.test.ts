@@ -5,6 +5,7 @@ import {
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
+  overlayLines,
   scrollbarChar,
   scrollbarGeometry,
   splitPathLabel,
@@ -63,6 +64,34 @@ describe('滚动条几何', () => {
     const negative = scrollbarGeometry(-5, 10, 100);
     if (negative === undefined) throw new Error('应显示滚动条');
     assert.equal(negative.thumbStart, 0);
+  });
+});
+
+describe('覆盖菜单', () => {
+  it('覆盖内容区底部但不改变行数和顶部内容', () => {
+    const base = ['上方'.padEnd(20), '中间'.padEnd(20), '底部'.padEnd(20), '输入框'.padEnd(20)];
+    const result = overlayLines(base, ['菜单一', '菜单二']);
+    assert.equal(result.length, base.length);
+    assert.deepEqual(result.slice(0, 2), base.slice(0, 2));
+    assert.ok(result[2]?.startsWith('菜单一'));
+    assert.ok(result[3]?.startsWith('菜单二'));
+  });
+
+  it('保留滚动条列并按空间限制覆盖行数', () => {
+    const base = ['123456789│', 'abcdefghij█'];
+    const result = overlayLines(base, ['menu one', 'menu two', 'menu three'], ['│', '█']);
+    assert.equal(result.length, base.length);
+    assert.deepEqual(result, ['menu two │', 'menu three█']);
+  });
+
+  it('菜单行为空时仍擦除底层内容', () => {
+    const result = overlayLines(['历史内容', '底部'], ['', '菜单']);
+    assert.deepEqual(result, [' '.repeat(visibleWidth('历史内容')), '菜单']);
+  });
+
+  it('无覆盖内容时返回原行', () => {
+    const base = ['一', '二'];
+    assert.deepEqual(overlayLines(base, []), base);
   });
 });
 

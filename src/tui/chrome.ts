@@ -70,6 +70,25 @@ export function centerVertically(lines: readonly string[], height: number): stri
   return [...Array.from({ length: pad }, () => ''), ...lines];
 }
 
+/** 将菜单覆盖到内容区底部,并可保留每行最右侧的滚动条列。 */
+export function overlayLines(
+  base: readonly string[],
+  overlay: readonly string[],
+  rightColumn: readonly string[] = [],
+): string[] {
+  const lines = [...base];
+  const count = Math.min(base.length, overlay.length);
+  const baseStart = base.length - count;
+  const overlayStart = overlay.length - count;
+  for (let offset = 0; offset < count; offset += 1) {
+    const row = baseStart + offset;
+    const edge = rightColumn[row] ?? '';
+    const width = Math.max(0, visibleWidth(base[row] ?? '') - visibleWidth(edge));
+    lines[row] = `${padAnsi(overlay[overlayStart + offset] ?? '', width)}${edge}`;
+  }
+  return lines;
+}
+
 /** 补全菜单的一行:主文本 + 次要文本(命令说明或文件所在目录)。 */
 export interface MenuRow {
   label: string;
