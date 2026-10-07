@@ -159,18 +159,3 @@ export function completionMenu(
   }
   return out;
 }
-
-/**
- * 用菜单行覆盖 base 末尾的若干行,行数与行序都不变。
- *
- * 覆盖而不是插入:版面高度不动,输入框不被顶起,被盖住的历史行只是暂时看不见。
- * 菜单长于 base 时取它的尾部,保证最后一条候选一定落在屏内。
- */
-export function overlayPanel(base: readonly string[], menu: readonly string[]): string[] {
-  const out = [...base];
-  const shown = menu.slice(-out.length);
-  for (let index = 0; index < shown.length; index += 1) {
-    out[out.length - shown.length + index] = shown[index] as string;
-  }
-  return out;
-}

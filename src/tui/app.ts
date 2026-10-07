@@ -42,7 +42,6 @@ import {
   headerLine,
   inputBoxFrame,
   inputBoxLine,
-  overlayPanel,
   scrollbarChar,
   scrollbarGeometry,
   splitPathLabel,
@@ -1010,7 +1009,7 @@ export class TuiApp implements AgentUi {
     const { left, right } = this.headerParts();
     const header = headerLine(left, right, cols, theme);
     const separator = theme.paint.muted(symbols.separator.repeat(cols));
-    const footer = this.renderFooter(cols);
+    const footer = this.renderFooter(cols, rows);
     const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
     const scrollback = this.renderScrollbackLines(cols - 1);
@@ -1032,19 +1031,15 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     const bar = scrollbarGeometry(top, mainHeight, content.length);
-    // 最后一列固定留给滚动条:补全菜单盖住内容时,这一列照原样接着画
-    const rail = (index: number): string =>
-      bar === undefined
-        ? ''
-        : theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│');
-    const mainLines = main.map((line, index) => `${padAnsi(line, cols - 1)}${rail(index)}`);
-    // 补全菜单覆盖历史区末尾若干行:版面行数不变,输入框与历史区都不被顶起
-    const menuRows = this.renderCompletionMenu(cols - 1, mainHeight);
-    const floating = menuRows.map((line, index) =>
-      padAnsi(line, cols - 1) + rail(Math.max(0, mainLines.length - menuRows.length + index)),
-    );
-    const body = overlayPanel(mainLines, floating);
-    const lines = [header, separator, ...body, separator, ...footer.lines];
+    const mainLines = main.map((line, index) => {
+      const padded = padAnsi(line, cols - 1);
+      if (bar === undefined) {
+        return padded;
+      }
+      // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
+      return `${padded}${theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│')}`;
+    });
+    const lines = [header, separator, ...mainLines, separator, ...footer.lines];
     const cursor =
       footer.cursor === undefined
         ? null
@@ -1125,10 +1120,10 @@ export class TuiApp implements AgentUi {
     }
   }
 
-  private renderFooter(width: number): {
-    lines: string[];
-    cursor?: { line: number; column: number };
-  } {
+  private renderFooter(
+    width: number,
+    rows: number,
+  ): { lines: string[]; cursor?: { line: number; column: number } } {
     if (this.approvalCard !== undefined) {
       const paint = this.renderContext.theme.paint;
       const { target, decision } = this.approvalCard;
@@ -1144,38 +1139,29 @@ export class TuiApp implements AgentUi {
     }
 
     const theme = this.renderContext.theme;
-    // 输入框:上下边框 + 两侧竖线;光标行列按框内偏移修正。
-    // 补全菜单不在这里——它悬浮在历史区之上,不占行高,输入框位置因此不动。
+    const lines: string[] = [];
+    const completion = this.editor.completionState;
+    if (completion !== null) {
+      // 菜单高度固定,矮终端里按可用高度收缩,否则整帧会超出屏幕
+      const height = Math.max(0, Math.min(COMPLETION_MENU_ROWS, rows - 8));
+      const menu = completion.items.map((item) =>
+        completion.kind === 'slash'
+          ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
+          : splitPathLabel(item),
+      );
+      lines.push(...completionMenu(menu, completion.index, width, theme, height));
+    }
+    const dropdownLines = lines.length;
+
+    // 输入框:上下边框 + 两侧竖线;光标行列按框内偏移修正
     const input = this.renderInputLines(width);
     const frame = inputBoxFrame(width, theme);
-    const lines = [
-      frame.top,
-      ...input.lines.map((line) => inputBoxLine(line, width, theme)),
-      frame.bottom,
-      this.renderHints(width),
-    ];
+    lines.push(frame.top, ...input.lines.map((line) => inputBoxLine(line, width, theme)), frame.bottom);
+    lines.push(this.renderHints(width));
     return {
       lines,
-      cursor: { line: 1 + input.cursorLine, column: 2 + input.cursorColumn },
+      cursor: { line: dropdownLines + 1 + input.cursorLine, column: 2 + input.cursorColumn },
     };
-  }
-
-  /**
-   * 悬浮补全菜单的行:宽度按主区算(末列留给滚动条),高度按历史区可用行数裁剪。
-   *
-   * 审批卡是独占提示,两者同屏会抢视线——卡片态下不画补全菜单。
-   */
-  private renderCompletionMenu(width: number, budget: number): string[] {
-    const completion = this.editor.completionState;
-    if (completion === null || this.approvalCard !== undefined) {
-      return [];
-    }
-    const menu = completion.items.map((item) =>
-      completion.kind === 'slash'
-        ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
-        : splitPathLabel(item),
-    );
-    return completionMenu(menu, completion.index, width, this.renderContext.theme, Math.min(COMPLETION_MENU_ROWS, budget));
   }
 
   private renderInputLines(width: number): {

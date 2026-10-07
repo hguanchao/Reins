@@ -6,7 +6,6 @@ import {
   headerLine,
   inputBoxFrame,
   inputBoxLine,
-  overlayPanel,
   scrollbarChar,
   scrollbarGeometry,
   splitPathLabel,
@@ -158,19 +157,5 @@ describe('补全菜单', () => {
   it('splitPathLabel:目录项保留尾斜杠,一眼看出可下钻', () => {
     assert.deepEqual(splitPathLabel('src/tui/'), { label: 'tui/', detail: 'src' });
     assert.deepEqual(splitPathLabel('src/'), { label: 'src/' });
-  });
-});
-
-describe('菜单悬浮覆盖', () => {
-  it('替换末尾若干行,总行数与前缀都保持不变', () => {
-    assert.deepEqual(overlayPanel(['a', 'b', 'c', 'd'], ['X', 'Y']), ['a', 'b', 'X', 'Y']);
-  });
-
-  it('空面板原样返回', () => {
-    assert.deepEqual(overlayPanel(['a', 'b'], []), ['a', 'b']);
-  });
-
-  it('面板长于可视行数时取它的尾部,底边框一定落在屏内', () => {
-    assert.deepEqual(overlayPanel(['a'], ['顶', '中', '底']), ['底']);
   });
 });
