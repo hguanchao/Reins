@@ -23,7 +23,7 @@ import type { RuleTarget } from '../permissions/rules.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { describeError } from '../util/errors.ts';
 import { absolutize, reinsHome } from '../util/paths.ts';
-import { readGitBranch } from '../util/git.ts';
+import { checkoutBranch, hasUncommittedChanges, listLocalBranches, readGitBranch } from '../util/git.ts';
 import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
   createBlockRenderer,
@@ -36,6 +36,8 @@ import {
   type ScrollBlock,
 } from './blocks.ts';
 import {
+  branchDropdown,
+  branchWindow,
   centerVertically,
   COMPLETION_MENU_ROWS,
   completionMenu,
@@ -140,6 +142,10 @@ export class TuiApp implements AgentUi {
   private gitBranch: string | undefined;
   /** 上次读取分支的时间戳,用于按间隔重读。 */
   private branchCheckedAt = 0;
+  /** 鼠标是否停在 header 的分支段上:决定该段是弱显还是高光。 */
+  private branchHover = false;
+  /** 分支下拉;undefined 表示未打开。index 是选中项下标。 */
+  private branchMenu: { items: string[]; index: number } | undefined;
 
   private running = false;
   private runController: AbortController | undefined;
@@ -305,7 +311,26 @@ export class TuiApp implements AgentUi {
   private dispatch(events: readonly TuiKey[]): void {
     for (const key of events) {
       this.handleKey(key);
+      // 打字与粘贴都算「开始输入」:一有内容就让欢迎面板退场,不必等首条消息发出
+      this.hideWelcomeOnInput();
     }
+  }
+
+  /** 输入框一旦有内容就撤掉欢迎面板;单向,清空输入也不找回来。 */
+  private hideWelcomeOnInput(): void {
+    if (this.editor.isEmpty) {
+      return;
+    }
+    this.hideWelcome();
+  }
+
+  private hideWelcome(): void {
+    const index = this.blocks.findIndex((block) => block.kind === 'welcome');
+    if (index < 0) {
+      return;
+    }
+    this.blocks.splice(index, 1);
+    this.scheduleRender();
   }
 
   // —— AgentUi 事件(由代理循环驱动) ——
@@ -372,6 +397,15 @@ export class TuiApp implements AgentUi {
     }
     if (this.viewer.isOpen) {
       this.handleViewerKey(key);
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'mouse') {
+      void this.handleMouse(key);
+      return;
+    }
+    // 分支下拉打开时按键先归它:不能让方向键与 Enter 漏进输入框
+    if (this.branchMenu !== undefined && this.handleBranchKey(key)) {
       this.scheduleRender();
       return;
     }
@@ -802,11 +836,8 @@ export class TuiApp implements AgentUi {
     if (this.running) {
       return;
     }
-    // 首条消息发出后隐藏欢迎面板
-    const welcomeIndex = this.blocks.findIndex((block) => block.kind === 'welcome');
-    if (welcomeIndex >= 0) {
-      this.blocks.splice(welcomeIndex, 1);
-    }
+    // 通常欢迎面板在第一个字符时就退了;这里兜住直接提交的路径
+    this.hideWelcome();
     this.push({ kind: 'user', text });
     this.running = true;
     this.runStartedAt = Date.now();
@@ -1031,14 +1062,15 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     const bar = scrollbarGeometry(top, mainHeight, content.length);
-    const mainLines = main.map((line, index) => {
-      const padded = padAnsi(line, cols - 1);
-      if (bar === undefined) {
-        return padded;
-      }
-      // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
-      return `${padded}${theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│')}`;
-    });
+    // 最后一列留给滚动条:轨道细线、滑块实块靠形状区分,被下拉盖住时也照原样续画
+    const railAt = (index: number): string =>
+      bar === undefined ? '' : theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│');
+    const mainLines = main.map((line, index) => `${padAnsi(line, cols - 1)}${railAt(index)}`);
+    // 分支下拉紧贴 header:覆盖主区顶部若干行,不插入行、不改版面高度
+    const dropdown = this.branchDropdownLines(cols - 1);
+    for (let index = 0; index < dropdown.length && index < mainLines.length; index += 1) {
+      mainLines[index] = `${padAnsi(dropdown[index] ?? '', cols - 1)}${railAt(index)}`;
+    }
     const lines = [header, separator, ...mainLines, separator, ...footer.lines];
     const cursor =
       footer.cursor === undefined
@@ -1097,10 +1129,32 @@ export class TuiApp implements AgentUi {
    * 非 git 仓库时取不到分支,只显示路径;运行状态、上下文占用等交给正文区块
    * 与底部提示行,不再挤在 header。路径在用户目录下时缩成 ~/xxx。
    */
+  /** header 里分支段的列范围;不在 git 仓库里就没有这一段。 */
+  private branchSpan(): { start: number; end: number } | undefined {
+    if (this.gitBranch === undefined) {
+      return undefined;
+    }
+    // 尾随空格算进命中区:鼠标不必精确停在字上才算停在分支上
+    return { start: 0, end: visibleWidth(`${this.gitBranch} `) };
+  }
+
+  /** 鼠标是否停在 header 的分支段上。 */
+  private isOverBranch(row: number, column: number): boolean {
+    const span = this.branchSpan();
+    return row === 0 && span !== undefined && column >= span.start && column < span.end;
+  }
+
   private headerParts(): { left: string; right: string } {
     const paint = this.renderContext.theme.paint;
-    const branch = this.gitBranch === undefined ? '' : `${this.gitBranch} `;
-    return { left: `${branch}${paint.muted(shortenPath(this.options.workspace))}`, right: '' };
+    if (this.gitBranch === undefined) {
+      return { left: paint.muted(shortenPath(this.options.workspace)), right: '' };
+    }
+    const label = `${this.gitBranch} `;
+    // 分支平时弱显、悬停高光;项目路径用正常前景——两者颜色相反于早先的写法
+    return {
+      left: `${this.branchHover || this.branchMenu !== undefined ? paint.accent(label) : paint.muted(label)}${shortenPath(this.options.workspace)}`,
+      right: '',
+    };
   }
 
   /**
@@ -1117,6 +1171,148 @@ export class TuiApp implements AgentUi {
     if (branch !== this.gitBranch) {
       this.gitBranch = branch;
       this.scheduleRender();
+    }
+  }
+
+  // —— 分支:悬停高光与点击下拉 ——
+
+  /** 鼠标事件:停在分支段上则高光,按下打开下拉;下拉打开时点击候选即切换。 */
+  private async handleMouse(key: {
+    kind: 'press' | 'release' | 'move';
+    row: number;
+    column: number;
+  }): Promise<void> {
+    if (this.branchMenu !== undefined) {
+      if (key.kind !== 'press') {
+        return;
+      }
+      const picked = this.branchAtRow(key.row);
+      if (picked !== undefined) {
+        await this.chooseBranch(picked);
+        return;
+      }
+      // 点在下拉之外:只收起,不做别的
+      this.closeBranchMenu();
+      this.scheduleRender();
+      return;
+    }
+    const hovered = this.isOverBranch(key.row, key.column);
+    if (hovered !== this.branchHover) {
+      this.branchHover = hovered;
+      this.scheduleRender();
+    }
+    if (key.kind === 'press' && hovered) {
+      // 任务跑着时不碰工作区:checkout 会换掉正在被工具读写的文件
+      if (this.running) {
+        this.flashStatus('任务运行中,先中断再切分支');
+        return;
+      }
+      await this.openBranchMenu();
+    }
+  }
+
+  /** 下拉打开时的按键;返回 true 表示已消费(未消费的不存在,一律吃掉免得漏进输入框)。 */
+  private handleBranchKey(key: TuiKey): boolean {
+    const menu = this.branchMenu;
+    if (menu === undefined) {
+      return false;
+    }
+    if (key.type === 'up') {
+      menu.index = Math.max(0, menu.index - 1);
+    } else if (key.type === 'down') {
+      menu.index = Math.min(menu.items.length - 1, menu.index + 1);
+    } else if (key.type === 'enter') {
+      const name = menu.items[menu.index];
+      if (name !== undefined) {
+        void this.chooseBranch(name);
+      }
+    } else if (key.type === 'escape' || key.type === 'ctrl-c') {
+      this.closeBranchMenu();
+    }
+    this.scheduleRender();
+    return true;
+  }
+
+  private async openBranchMenu(): Promise<void> {
+    const items = await listLocalBranches(this.options.workspace);
+    if (items.length === 0) {
+      this.flashStatus('未找到本地分支');
+      return;
+    }
+    this.branchMenu = { items, index: Math.max(0, items.indexOf(this.gitBranch ?? '')) };
+    this.scheduleRender();
+  }
+
+  private closeBranchMenu(): void {
+    this.branchMenu = undefined;
+  }
+
+  /** 分支下拉的行(覆盖在主区顶部,紧贴 header);未打开时为空数组。 */
+  private branchDropdownLines(width: number): string[] {
+    const menu = this.branchMenu;
+    if (menu === undefined) {
+      return [];
+    }
+    return branchDropdown(menu.items, menu.index, this.gitBranch, width, this.renderContext.theme);
+  }
+
+  /**
+   * 终端某一行落在下拉里的分支名。
+   *
+   * 下拉占主区顶部:主区第 0 行是提示行,候选从第 1 行起,窗口下标与渲染同一套算法。
+   */
+  private branchAtRow(row: number): string | undefined {
+    const menu = this.branchMenu;
+    if (menu === undefined) {
+      return undefined;
+    }
+    const { start, rows } = branchWindow(menu.items.length, menu.index);
+    const slot = row - 2;
+    if (slot < 1 || slot > rows) {
+      return undefined;
+    }
+    return menu.items[start + slot - 1];
+  }
+
+  /** 选中分支:工作区脏就拒绝,干净才 checkout;成功后按新内容重新判定信任。 */
+  private async chooseBranch(name: string): Promise<void> {
+    this.closeBranchMenu();
+    if (name === this.gitBranch) {
+      this.scheduleRender();
+      return;
+    }
+    if (await hasUncommittedChanges(this.options.workspace)) {
+      this.pushNotice(`未切换到 ${name}:工作区有未提交改动 · 先提交或撤销再试`, 'warn');
+      this.scheduleRender();
+      return;
+    }
+    const result = await checkoutBranch(this.options.workspace, name);
+    if (!result.ok) {
+      this.pushNotice(`切换分支失败:${result.message}`, 'error');
+      this.scheduleRender();
+      return;
+    }
+    this.pushNotice(`已切换到 ${name}`, 'info');
+    await this.afterBranchSwitch();
+  }
+
+  /**
+   * 切分支后重新判定信任并按新的项目内容重建运行时。
+   *
+   * 分支一变,.reins/config.toml 与 AGENTS.md 都可能换掉,沿用旧的信任结论
+   * 等于让上一个分支的授权管这一个新的仓库内容。
+   */
+  private async afterBranchSwitch(): Promise<void> {
+    this.branchCheckedAt = 0;
+    await this.refreshGitBranch();
+    if (!(await this.resolveTrust())) {
+      this.requestExit();
+      return;
+    }
+    try {
+      await this.rebuild({});
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
     }
   }
 

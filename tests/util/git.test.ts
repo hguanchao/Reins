@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { readGitBranch } from '../../src/util/git.ts';
+import { listLocalBranches, parsePackedBranches, readGitBranch } from '../../src/util/git.ts';
 import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 
 describe('git 分支探测', () => {
@@ -61,5 +61,54 @@ describe('git 分支探测', () => {
     await mkdir(linked, { recursive: true });
     await writeFile(join(linked, '.git'), `gitdir: ${join(real, '.git')}\n`);
     assert.equal(await readGitBranch(linked), 'worktree-branch');
+  });
+});
+
+describe('本地分支清单', () => {
+  let dir = '';
+  const sha = 'a'.repeat(40);
+
+  before(async () => {
+    dir = await createTmpDir();
+  });
+
+  after(async () => {
+    await removeTmpDir(dir);
+  });
+
+  it('读 refs/heads 下的松散分支,嵌套目录用斜杠连接', async () => {
+    const root = join(dir, 'loose');
+    await mkdir(join(root, '.git', 'refs', 'heads', 'feature'), { recursive: true });
+    await writeFile(join(root, '.git', 'refs', 'heads', 'main'), sha);
+    await writeFile(join(root, '.git', 'refs', 'heads', 'feature', 'login'), sha);
+    assert.deepEqual(await listLocalBranches(root), ['feature/login', 'main']);
+  });
+
+  it('packed-refs 与松散分支取并集、去重并按名排序', async () => {
+    const root = join(dir, 'packed');
+    await mkdir(join(root, '.git', 'refs', 'heads'), { recursive: true });
+    await writeFile(join(root, '.git', 'refs', 'heads', 'main'), sha);
+    await writeFile(
+      join(root, '.git', 'packed-refs'),
+      [`# pack-refs with: peeled fully-peeled sorted`, `${sha} refs/heads/zeta`, `${sha} refs/tags/v1`, `${sha} refs/heads/main`].join('\n'),
+    );
+    assert.deepEqual(await listLocalBranches(root), ['main', 'zeta']);
+  });
+
+  it('parsePackedBranches 只认 refs/heads,忽略注释与标签', () => {
+    assert.deepEqual(
+      parsePackedBranches([`# comment`, `${sha} refs/heads/a`, `${sha} refs/tags/v1`].join('\n')),
+      ['a'],
+    );
+  });
+
+  it('不是仓库、或没有 packed-refs 时都能列出', async () => {
+    const bare = join(dir, 'no-repo');
+    await mkdir(bare, { recursive: true });
+    assert.deepEqual(await listLocalBranches(bare), []);
+    const onlyLoose = join(dir, 'only-loose');
+    await mkdir(join(onlyLoose, '.git', 'refs', 'heads'), { recursive: true });
+    await writeFile(join(onlyLoose, '.git', 'refs', 'heads', 'main'), sha);
+    assert.deepEqual(await listLocalBranches(onlyLoose), ['main']);
   });
 });

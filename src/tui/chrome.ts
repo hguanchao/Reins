@@ -122,6 +122,56 @@ function windowStart(selected: number, total: number, height: number): number {
 }
 
 /**
+ * 下拉窗口:候选行数按上限裁剪,起始下标让选中项尽量居中且不出界。
+ *
+ * 渲染与鼠标命中测试共用它——两处各算一遍窗口,滚到第 9 条分支时就会点对行。
+ */
+export function branchWindow(
+  total: number,
+  selected: number,
+  limit: number = COMPLETION_MENU_ROWS,
+): { start: number; rows: number } {
+  const rows = Math.max(1, Math.min(limit, total));
+  return { start: windowStart(selected, total, rows), rows };
+}
+
+/**
+ * 分支下拉:一行提示 + 固定上限的候选项,选中项带 ›,当前分支带标记。
+ *
+ * 与补全菜单同一套视觉语言:不加边框,靠选中色区分层级。
+ */
+export function branchDropdown(
+  items: readonly string[],
+  selected: number,
+  current: string | undefined,
+  width: number,
+  theme: Theme,
+  limit: number = COMPLETION_MENU_ROWS,
+): string[] {
+  const { start, rows } = branchWindow(items.length, selected, limit);
+  const window = items.slice(start, start + rows);
+  // 列宽取窗口内最宽的分支名,再按可用空间封顶:取 min 会把长名字截成省略号
+  const widest = window.reduce((max, name) => Math.max(max, visibleWidth(name)), 0);
+  const nameWidth = Math.max(0, Math.min(width - 8, widest));
+  const lines = [theme.paint.muted('  ↑↓ 选择 · Enter 切换 · Esc 关闭')];
+  for (let offset = 0; offset < rows; offset += 1) {
+    const name = window[offset];
+    if (name === undefined) {
+      continue;
+    }
+    const label = truncatePlain(name, nameWidth);
+    const tail = name === current ? theme.paint.muted('  当前') : '';
+    lines.push(
+      start + offset === selected
+        ? `  ${theme.paint.accent('› ')}${theme.paint.accent(label)}${tail}`
+        : `    ${theme.paint.muted(label)}${tail}`,
+    );
+  }
+  // 每行都收进给定宽度:提示行在窄终端里同样不能越过右缘
+  return lines.map((line) => truncateAnsi(line, width));
+}
+
+/**
  * 渲染补全菜单:行数固定,选中项始终落在窗口内。
  *
  * 行数固定是为了输入框不随候选多少上下跳动;候选不足时补空行。

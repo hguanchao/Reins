@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  branchDropdown,
+  branchWindow,
   centerVertically,
+  COMPLETION_MENU_ROWS,
   completionMenu,
   headerLine,
   inputBoxFrame,
@@ -157,5 +160,40 @@ describe('补全菜单', () => {
   it('splitPathLabel:目录项保留尾斜杠,一眼看出可下钻', () => {
     assert.deepEqual(splitPathLabel('src/tui/'), { label: 'tui/', detail: 'src' });
     assert.deepEqual(splitPathLabel('src/'), { label: 'src/' });
+  });
+});
+
+describe('分支下拉', () => {
+  const items = Array.from({ length: 12 }, (_unused, index) => `branch-${index + 1}`);
+
+  it('首行是按键提示,其后是候选:选中带 ›、当前分支带标记', () => {
+    const lines = branchDropdown(items, 0, 'branch-1', 40, theme).map(stripAnsi);
+    assert.equal(lines.length, 1 + COMPLETION_MENU_ROWS);
+    assert.ok(lines[0]?.includes('Enter 切换'));
+    assert.ok(lines[1]?.includes('› branch-1'));
+    assert.ok(lines[1]?.includes('当前'));
+  });
+
+  it('候选不足时按实际条数,不留空行', () => {
+    assert.equal(branchDropdown(['main', 'dev'], 0, 'main', 40, theme).length, 1 + 2);
+  });
+
+  it('超过上限时窗口随选中项滑动,选中项始终在屏内', () => {
+    const text = branchDropdown(items, 11, undefined, 40, theme).map(stripAnsi).join('\n');
+    assert.ok(text.includes('branch-12'), '选中项要出现在窗口内');
+    assert.equal(text.includes('branch-4'), false, '窗口外的旧项不该留在下拉里');
+  });
+
+  it('branchWindow 的行数与起始下标不会越界', () => {
+    assert.deepEqual(branchWindow(3, 0), { start: 0, rows: 3 });
+    const moved = branchWindow(50, 49);
+    assert.equal(moved.rows, COMPLETION_MENU_ROWS);
+    assert.ok(moved.start + moved.rows <= 50);
+  });
+
+  it('窄终端下每行都不越过右缘', () => {
+    for (const line of branchDropdown(['feature/一个很长很长的分支名'], 0, undefined, 18, theme)) {
+      assert.ok(visibleWidth(line) <= 18, `超宽:${stripAnsi(line)}`);
+    }
   });
 });

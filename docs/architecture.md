@@ -57,7 +57,7 @@ reins/
 │   │   ├── trust.ts            # 目录信任:判定、模式匹配、覆盖清单、记录读写
 │   │   └── trust-edit.ts       # 定点编辑 [trust].trusted,保住注释与排版
 │   ├── session/                # 职责:会话存储(JSONL 树)
-│   │   ├── store.ts            # append-only,首行带版本号
+│   │   ├── store.ts            # append-only,首行带版本号;会话 id 为裸 UUID v7(名字序即时间序)
 │   │   ├── tree.ts             # 分支 / fork / 活动分支
 │   │   └── compaction.ts       # compact_model 摘要
 │   ├── context/                # 职责:上下文组装
@@ -93,7 +93,7 @@ reins/
 │   ├── ui/                     # 职责:呈现
 │   │   ├── printer.ts          # print 模式渲染(headless)
 │   │   └── notify.ts           # [ui] notify
-│   └── util/                   # 职责:通用工具,不依赖任何人
+│   └── util/                   # 职责:通用工具,不依赖任何人(git 探测与切换在此,切换用 git switch,需 git ≥ 2.23)
 ├── package.json                # name: reins;bin: reins
 └── tsconfig.json
 ```
