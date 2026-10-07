@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { pathExists } from '../util/fsx.ts';
+import { ConfigError } from '../util/errors.ts';
 import { reinsHome } from '../util/paths.ts';
 import { loadConfigFile, readTomlFile } from './load.ts';
 import { parseConfig, type Config } from './schema.ts';
@@ -41,20 +42,34 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export interface LoadLayeredOptions {
   home?: string;
   cwd?: string;
+  /**
+   * 是否加载项目层(<cwd>/.reins/config.toml)。
+   *
+   * 必填且无默认:项目层能覆盖审批、沙箱、权限与 MCP,漏传必须编译失败而不是静默放行。
+   * 取值由 config/trust.ts 的信任判定给出。
+   */
+  projectLayer: 'allow' | 'ignore';
 }
 
-/** 加载分层配置;全局层必须存在,项目层可选。 */
-export async function loadLayeredConfig(options: LoadLayeredOptions = {}): Promise<LayeredConfig> {
+/** 加载分层配置;全局层必须存在,项目层可选且须被信任。 */
+export async function loadLayeredConfig(options: LoadLayeredOptions): Promise<LayeredConfig> {
   const home = options.home ?? reinsHome();
   const cwd = options.cwd ?? process.cwd();
   const globalFile = join(home, 'config.toml');
   const projectFile = join(cwd, '.reins', 'config.toml');
 
   const globalRaw = await readTomlFile(globalFile);
-  if (!(await pathExists(projectFile))) {
+  if (options.projectLayer === 'ignore' || !(await pathExists(projectFile))) {
     return { config: parseConfig(globalRaw, globalFile), files: [globalFile] };
   }
   const projectRaw = await readTomlFile(projectFile);
+  // 项目层不得声明信任:否则仓库可以给自己授权,信任判定就形同虚设
+  if (projectRaw['trust'] !== undefined) {
+    throw new ConfigError(
+      `${projectFile} 声明了 [trust]`,
+      '信任只能写在全局 ~/.reins/config.toml 里;请把该项目从项目层的 [trust] 中移除。',
+    );
+  }
   const merged = deepMerge(globalRaw, projectRaw);
   return { config: parseConfig(merged, `${globalFile} + ${projectFile}`), files: [globalFile, projectFile] };
 }

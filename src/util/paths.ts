@@ -53,3 +53,14 @@ export function displayPath(target: string, base: string = process.cwd()): strin
   const rel = relative(absolutize(base), absolutize(target));
   return rel === '' ? '.' : rel.split(sep).join('/');
 }
+
+/** 反斜杠统一成正斜杠,便于跨平台比较路径字符串。 */
+export function normalizeSlashes(value: string): string {
+  return value.replace(/\\/g, '/');
+}
+
+/** 判断模式是否形如绝对路径(/ 开头或盘符开头);不接触文件系统。 */
+export function isAbsoluteLike(value: string): boolean {
+  return value.startsWith('/') || /^[A-Za-z]:\//.test(value);
+}
+

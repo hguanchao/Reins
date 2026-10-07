@@ -1,4 +1,5 @@
 import { ConfigError } from '../util/errors.ts';
+import { expandHome, isAbsoluteLike, normalizeSlashes } from '../util/paths.ts';
 import { Checker } from '../util/schema.ts';
 
 /**
@@ -45,6 +46,17 @@ export interface UiConfig {
   theme?: ThemePreset;
 }
 
+/**
+ * 项目信任:命中 trusted 里某个路径模式的项目,才加载它的 .reins/config.toml
+ * 与项目级 AGENTS.md/REINS.md。
+ *
+ * 只从全局层读取——项目层不得声明本节点,否则仓库可以给自己授权。
+ */
+export interface TrustConfig {
+  /** 路径模式:绝对路径,或 ~/ 开头;支持 * 与 **(不跨目录的回退匹配)。 */
+  trusted: string[];
+}
+
 export interface Config {
   provider: string;
   model: string;
@@ -61,6 +73,7 @@ export interface Config {
   maxTurns?: number;
   spillThreshold: number;
   ui: UiConfig;
+  trust: TrustConfig;
   mcpServers: Record<string, McpServerConfig>;
 }
 
@@ -114,6 +127,7 @@ export function parseConfig(raw: unknown, file = 'config.toml'): Config {
   }
 
   const mcpServers = parseMcpServers(source, checker);
+  const trust = parseTrust(source, checker);
 
   checker.done();
 
@@ -136,8 +150,33 @@ export function parseConfig(raw: unknown, file = 'config.toml'): Config {
       notify: (notify as NotifyMode | undefined) ?? 'auto',
       theme: theme as ThemePreset | undefined,
     },
+    trust,
     mcpServers,
   };
+}
+
+/**
+ * 校验 [trust]:trusted 必须是路径模式数组,且每项展开后是绝对路径。
+ *
+ * 要求绝对路径是为了挡掉过宽的模式:不含分隔符的写法(如 "Reins")会匹配任意
+ * 同名目录,而信任是"把这个目录交给仓库自己管"的授权,不能这么松。
+ */
+function parseTrust(source: Record<string, unknown>, checker: Checker): TrustConfig {
+  const table = checker.object(source, 'trust', 'trust') ?? {};
+  const list = checker.stringArray(table, 'trusted', 'trust.trusted') ?? [];
+  const trusted: string[] = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const pattern = list[index] as string;
+    if (!isAbsoluteLike(normalizeSlashes(expandHome(pattern.trim())))) {
+      checker.fail(
+        `trust.trusted[${index}]`,
+        `应为绝对路径或 ~/ 开头的模式,实际为 "${pattern}"`,
+      );
+      continue;
+    }
+    trusted.push(pattern);
+  }
+  return { trusted };
 }
 
 function parseMcpServers(

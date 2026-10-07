@@ -1,6 +1,6 @@
 import { ConfigError } from '../util/errors.ts';
 import { globToRegExp, shellGlobMatch } from '../util/glob.ts';
-import { absolutize, expandHome } from '../util/paths.ts';
+import { absolutize, expandHome, isAbsoluteLike, normalizeSlashes } from '../util/paths.ts';
 
 /**
  * 权限规则解析。
@@ -105,10 +105,6 @@ function pathRuleMatch(pattern: string, value: string): boolean {
   return matchAnySuffix(target, regex);
 }
 
-function isAbsoluteLike(pattern: string): boolean {
-  return pattern.startsWith('/') || /^[A-Za-z]:\//.test(pattern);
-}
-
 function matchAnySuffix(target: string, regex: RegExp): boolean {
   let index = 0;
   for (;;) {
@@ -121,8 +117,4 @@ function matchAnySuffix(target: string, regex: RegExp): boolean {
     }
     index = next + 1;
   }
-}
-
-function normalizeSlashes(value: string): string {
-  return value.replace(/\\/g, '/');
 }
