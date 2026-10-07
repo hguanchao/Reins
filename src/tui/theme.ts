@@ -26,63 +26,70 @@ export type HighlightRole = 'keyword' | 'string' | 'comment' | 'number' | 'funct
 /** 全部角色:四组之并。 */
 export type ThemeRole = BaseRole | TuiRole | MarkdownRole | HighlightRole;
 
-// —— dark:面向深色终端背景 ——
+// —— 取值说明 ——
+//
+// 全部使用 24 位真彩色(38;2;r;g;b),不再用基础 16 色:基础 16 色是终端自己的
+// 调色板槽位,跟随终端主题但无法控制饱和度,默认配色普遍过艳。
+// 色相只取中性灰/蓝/青/绿/琥珀/玫红/紫七种,饱和度压到约 25–35%;
+// 每个角色对其背景的对比度均 ≥ 4.5(WCAG AA),改动取值前请重新核对。
+
+// —— dark:面向深色终端背景(对比度按 #1e1e1e 计算) ——
 
 const DARK_BASE: Readonly<Record<BaseRole, string>> = {
-  muted: '90',
-  ok: '32',
-  warn: '33',
-  fail: '31',
+  muted: '38;2;156;156;156', // #9c9c9c  6.07
+  ok: '38;2;134;171;127', // #86ab7f  6.47
+  warn: '38;2;198;173;120', // #c6ad78  7.66
+  fail: '38;2;196;141;141', // #c48d8d  5.99
 };
 
 const DARK_TUI: Readonly<Record<TuiRole, string>> = {
-  accent: '1;36',
-  // 中性灰条带,前景一并给定:只设背景会跟着终端默认前景走,浅色终端上文字看不清
-  userBar: '38;5;253;48;5;240',
+  accent: '38;2;127;167;207', // #7fa7cf  6.61
+  // 前景与背景一并给定:只设背景会跟着终端默认前景走,浅色终端上文字看不清
+  userBar: '38;2;220;220;220;48;2;58;58;58', // #dcdcdc / #3a3a3a  8.29
 };
 
 const DARK_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {
-  heading: '1;36',
-  code: '96',
-  link: '4;36',
+  heading: '38;2;143;180;217', // #8fb4d9  7.70
+  code: '38;2;127;174;174', // #7faeae  6.80
+  link: '4;38;2;127;167;207', // #7fa7cf  6.61
 };
 
 const DARK_HIGHLIGHT: Readonly<Record<HighlightRole, string>> = {
-  keyword: '1;35',
-  string: '32',
-  comment: '90',
-  number: '33',
-  function: '94',
-  type: '96',
+  keyword: '38;2;176;140;196', // #b08cc4  5.87
+  string: '38;2;134;171;127', // #86ab7f  6.47
+  comment: '38;2;138;138;138', // #8a8a8a  4.83
+  number: '38;2;198;173;120', // #c6ad78  7.66
+  function: '38;2;127;167;207', // #7fa7cf  6.61
+  type: '38;2;127;174;174', // #7faeae  6.80
 };
 
-// —— light:面向浅色背景,黄色系对比度差,统一改粗体或换主色;灰改淡(faint 自适应) ——
+// —— light:面向浅色背景(对比度按 #ffffff 计算) ——
 
 const LIGHT_BASE: Readonly<Record<BaseRole, string>> = {
-  muted: '2',
-  ok: '1;32',
-  warn: '1;33',
-  fail: '1;31',
+  muted: '38;2;95;95;95', // #5f5f5f  6.39
+  ok: '38;2;79;122;72', // #4f7a48  4.99
+  warn: '38;2;138;109;36', // #8a6d24  4.89
+  fail: '38;2;163;79;79', // #a34f4f  5.54
 };
 
 const LIGHT_TUI: Readonly<Record<TuiRole, string>> = {
-  accent: '1;34',
-  userBar: '38;5;235;48;5;252',
+  accent: '38;2;63;107;156', // #3f6b9c  5.53
+  userBar: '38;2;43;43;43;48;2;220;220;220', // #2b2b2b / #dcdcdc  10.33
 };
 
 const LIGHT_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {
-  heading: '1;34',
-  code: '34',
-  link: '4;34',
+  heading: '38;2;53;96;143', // #35608f  6.52
+  code: '38;2;63;112;112', // #3f7070  5.58
+  link: '4;38;2;63;107;156', // #3f6b9c  5.53
 };
 
 const LIGHT_HIGHLIGHT: Readonly<Record<HighlightRole, string>> = {
-  keyword: '1;35',
-  string: '1;32',
-  comment: '2',
-  number: '1;33',
-  function: '34',
-  type: '36',
+  keyword: '38;2;122;79;150', // #7a4f96  6.20
+  string: '38;2;79;122;72', // #4f7a48  4.99
+  comment: '38;2;111;111;111', // #6f6f6f  5.02
+  number: '38;2;138;109;36', // #8a6d24  4.89
+  function: '38;2;63;107;156', // #3f6b9c  5.53
+  type: '38;2;63;112;112', // #3f7070  5.58
 };
 
 /** 预设 = 四组合成;mono 复用 dark 取值,由 useColor 统一关闭上色。 */
@@ -155,8 +162,10 @@ export const symbols = {
   /** 运行中的旋转符帧。 */
   spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'],
   tool: '⚙',
-  ok: '✓',
-  fail: '✗',
+  // 成败标记用数学符号而非 dingbat(✓/✗):后者在部分字体里带 emoji 属性,
+  // 会被渲染成彩色 emoji 或双宽字形,把行宽算错、撑破边框
+  ok: '√',
+  fail: '×',
   warn: '⚠',
   cursor: '▏',
   inputPrompt: '› ',

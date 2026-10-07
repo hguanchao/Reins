@@ -22,7 +22,7 @@ describe('markdown 渲染', () => {
     const styled = lines.join('\n');
     assert.ok(styled.includes('\u001b[1m粗\u001b[0m'));
     assert.ok(styled.includes('\u001b[3m斜\u001b[0m'));
-    assert.ok(styled.includes('\u001b[96mcode\u001b[0m'));
+    assert.ok(styled.includes(`\u001b[${theme.codes.code}mcode\u001b[0m`));
     assert.ok(styled.includes('https://x.y'));
   });
 

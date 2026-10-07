@@ -247,8 +247,8 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo): Promise<number> {
           for (const status of runtime.mcp) {
             io.err(
               status.ok
-                ? `  ✓ ${status.name} · ${status.toolCount ?? 0} 个工具`
-                : `  ✗ ${status.name} · ${status.error ?? '未知原因'}`,
+                ? `  √ ${status.name} · ${status.toolCount ?? 0} 个工具`
+                : `  × ${status.name} · ${status.error ?? '未知原因'}`,
             );
           }
         }

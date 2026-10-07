@@ -6,9 +6,9 @@ describe('主题', () => {
   it('默认 dark:角色取色可用', () => {
     const theme = createTheme({ color: true });
     assert.equal(theme.name, 'dark');
-    assert.equal(theme.paint.accent('x'), '\u001b[1;36mx\u001b[0m');
-    assert.equal(theme.paint.fail('x'), '\u001b[31mx\u001b[0m');
-    assert.equal(theme.codes.accent, '1;36');
+    assert.equal(theme.paint.accent('x'), '\u001b[38;2;127;167;207mx\u001b[0m');
+    assert.equal(theme.paint.fail('x'), '\u001b[38;2;196;141;141mx\u001b[0m');
+    assert.equal(theme.codes.accent, '38;2;127;167;207');
   });
 
   it('角色取色全局固定:每个角色都有值,消息条同时给定前景与背景', () => {
@@ -43,7 +43,7 @@ describe('主题', () => {
     const dark = createTheme({ preset: 'dark', color: true });
     const light = createTheme({ preset: 'light', color: true });
     assert.notEqual(light.codes.accent, dark.codes.accent);
-    assert.equal(light.codes.accent, '1;34');
+    assert.equal(light.codes.accent, '38;2;63;107;156');
   });
 
   it('mono 强制无颜色', () => {

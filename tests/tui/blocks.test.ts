@@ -81,7 +81,7 @@ describe('滚动区块渲染', () => {
     const lines = renderBlock({ kind: 'assistant', text: '**粗**\n\n```ts\nlet x;\n```', streaming: false }, 60, context);
     const styled = lines.join('\n');
     assert.ok(styled.includes('\u001b[1m粗\u001b[0m'));
-    assert.ok(styled.includes('\u001b[1;35mlet\u001b[0m'));
+    assert.ok(styled.includes(`\u001b[${context.theme.codes.keyword}mlet\u001b[0m`));
   });
 
   it('工具卡片:运行中与成功态', () => {
@@ -90,7 +90,7 @@ describe('滚动区块渲染', () => {
     assert.ok(running.includes('运行中'));
     assert.ok(running.includes('⠋'));
     const ok = render({ kind: 'tool', name: 'bash', summary: 'git status', state: 'ok', elapsedMs: 320 });
-    assert.ok(ok.includes('✓'));
+    assert.ok(ok.includes('√'));
     assert.ok(ok.includes('0.3s'));
   });
 
@@ -112,7 +112,7 @@ describe('滚动区块渲染', () => {
       output: '操作被拒绝\n更多',
       detail: '操作被拒绝',
     });
-    assert.ok(failed.includes('✗'));
+    assert.ok(failed.includes('×'));
     assert.ok(failed.includes('↳ 操作被拒绝'));
     assert.equal(failed.includes('更多'), false);
   });
@@ -141,7 +141,7 @@ describe('滚动区块渲染', () => {
   it('通知:三级样式均可渲染', () => {
     assert.ok(render({ kind: 'notice', text: '信息', level: 'info' }).includes('信息'));
     assert.ok(render({ kind: 'notice', text: '警告', level: 'warn' }).includes('⚠'));
-    assert.ok(render({ kind: 'notice', text: '错误', level: 'error' }).includes('✗'));
+    assert.ok(render({ kind: 'notice', text: '错误', level: 'error' }).includes('×'));
   });
 
   it('欢迎面板:核心命令+快捷键、居中、边框闭合、说明列对齐', () => {

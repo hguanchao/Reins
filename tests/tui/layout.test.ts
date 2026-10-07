@@ -34,6 +34,9 @@ describe('布局宽度计算', () => {
     assert.equal(visibleWidth('⏱'), 2);
     assert.equal(visibleWidth('⭐'), 2);
     assert.equal(visibleWidth('✓'), 1);
+    // 成败标记:数学符号,不带 emoji 属性
+    assert.equal(visibleWidth('√'), 1);
+    assert.equal(visibleWidth('×'), 1);
     assert.equal(visibleWidth('⚠'), 1);
     // VS16 切换 emoji 呈现:基础符 1 + 选择符 1
     assert.equal(visibleWidth('\u2699\uFE0F'), 2);

@@ -59,10 +59,10 @@ export async function doctorCommand(args: ParsedArgs, io: CommandIo = defaultIo)
 
   io.out('Reins 自检');
   for (const line of passes) {
-    io.out(`  ✓ ${line}`);
+    io.out(`  √ ${line}`);
   }
   for (const line of issues) {
-    io.out(`  ✗ ${line}`);
+    io.out(`  × ${line}`);
   }
   if (issues.length === 0) {
     io.out('一切正常。');
