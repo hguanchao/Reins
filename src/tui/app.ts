@@ -698,6 +698,11 @@ export class TuiApp implements AgentUi {
     if (this.running) {
       return;
     }
+    // 首条消息发出后隐藏欢迎面板
+    const welcomeIndex = this.blocks.findIndex((block) => block.kind === 'welcome');
+    if (welcomeIndex >= 0) {
+      this.blocks.splice(welcomeIndex, 1);
+    }
     this.push({ kind: 'user', text });
     this.running = true;
     this.runStartedAt = Date.now();

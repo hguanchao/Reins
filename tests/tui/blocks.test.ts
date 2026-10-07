@@ -113,10 +113,22 @@ describe('滚动区块渲染', () => {
     assert.ok(render({ kind: 'notice', text: '错误', level: 'error' }).includes('✗'));
   });
 
-  it('欢迎卡含标题与提示', () => {
-    const text = render({ kind: 'welcome' });
+  it('欢迎面板:斜杠命令+说明、快捷键,整体居中', () => {
+    const lines = renderBlock({ kind: 'welcome' }, 80, context).map(stripAnsi);
+    const text = lines.join('\n');
+    // 两节内容齐备
     assert.ok(text.includes('欢迎使用 Reins'));
+    assert.ok(text.includes('/help'));
+    assert.ok(text.includes('显示帮助'));
+    assert.ok(text.includes('快捷键'));
+    assert.ok(text.includes('Ctrl+O'));
     assert.ok(text.includes('@'));
+    // 居中:盒体前导空格 = (80 - 盒宽) / 2,且所有行共享同一缩进
+    const top = lines.find((line) => line.includes('╭'));
+    if (top === undefined) throw new Error('应有边框');
+    const indent = top.length - top.trimStart().length;
+    assert.ok(indent > 0, '应水平居中');
+    assert.ok(lines.every((line) => line === '' || line.startsWith(' '.repeat(indent))));
   });
 
   it('渲染结果不超过给定宽度(含 CJK 与 emoji)', () => {

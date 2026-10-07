@@ -33,6 +33,24 @@ export const CHAT_COMMANDS: readonly string[] = [
   '/status',
 ];
 
+/** 斜杠命令与说明的结构化清单(欢迎面板展示用)。 */
+export interface ChatCommandHelp {
+  command: string;
+  description: string;
+}
+
+export const CHAT_COMMAND_HELP: readonly ChatCommandHelp[] = [
+  { command: '/help', description: '显示帮助' },
+  { command: '/new(/clear)', description: '开始新会话' },
+  { command: '/model [provider/model-id]', description: '查看或切换模型' },
+  { command: '/compact', description: '立即压缩上下文' },
+  { command: '/status', description: '显示会话与模型状态' },
+  { command: '/mcp(/mcps)', description: '显示 MCP 服务器状态' },
+  { command: '/resume(/sessions) [会话 id]', description: '恢复会话;无 id 时列出' },
+  { command: '/session', description: '显示当前会话文件' },
+  { command: '/exit(/quit)', description: '退出' },
+];
+
 /** 解析一行输入:斜杠命令或普通任务文本(未知斜杠按普通文本处理)。 */
 export function parseChatCommand(input: string): ChatCommand {
   const trimmed = input.trim();

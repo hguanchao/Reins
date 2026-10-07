@@ -4,6 +4,7 @@ import {
   visibleWidth,
   wrapPlain,
 } from './layout.ts';
+import { CHAT_COMMAND_HELP } from '../cli/commands/chat-commands.ts';
 import { renderMarkdown } from './markdown.ts';
 import { symbols, type Theme } from './theme.ts';
 
@@ -217,36 +218,73 @@ function renderNotice(
   return body.map((line, index) => `  ${color(index === 0 ? `${prefix} ${line}` : `  ${line}`)}`);
 }
 
-function renderWelcome(width: number, theme: Theme): string[] {
-  const boxWidth = Math.min(66, width - 4);
-  if (boxWidth < 20) {
-    return [`  ${truncatePlain('欢迎使用 Reins', Math.max(0, width - 2))}`];
-  }
-  const inner = boxWidth - 4;
-  const entries: { text: string; style?: (text: string) => string }[] = [
-    { text: '欢迎使用 Reins', style: theme.paint.accent },
-    { text: '' },
-    { text: '直接输入任务开始,或:' },
-    { text: '  /    查看命令        @    引用文件' },
-    { text: '' },
-    { text: 'Ctrl+O 查看工具输出 · Ctrl+E 展开折叠 · 滚轮翻历史', style: theme.paint.muted },
-    { text: '提示:reins doctor 可自检配置', style: theme.paint.muted },
-  ];
-  const lines: string[] = [`  ${theme.paint.muted(`╭${'─'.repeat(boxWidth - 2)}╮`)}`];
-  for (const entry of entries) {
-    const text = entry.text === '' ? '' : fitStyled(entry.text, inner, entry.style);
-    lines.push(`  ${theme.paint.muted('│')} ${text} ${theme.paint.muted('│')}`);
-  }
-  lines.push(`  ${theme.paint.muted(`╰${'─'.repeat(boxWidth - 2)}╯`)}`);
-  return lines;
+/** 快捷键说明:欢迎面板与实际行为一一对应。 */
+const WELCOME_SHORTCUTS: readonly { keys: string; description: string }[] = [
+  { keys: '@', description: '引用文件' },
+  { keys: '↑/↓', description: '历史 · 补全选择' },
+  { keys: 'Tab', description: '应用补全' },
+  { keys: 'Ctrl+J', description: '插入换行' },
+  { keys: 'Ctrl+E', description: '展开或折叠工具输出' },
+  { keys: 'Ctrl+O', description: '全屏查看工具输出' },
+  { keys: 'PgUp/PgDn', description: '滚动历史(或鼠标滚轮)' },
+  { keys: 'Ctrl+C/Esc', description: '中断运行' },
+  { keys: '空行 Ctrl+D', description: '退出' },
+];
+
+/** 按显示宽度右补空格(命令与按键列都是窄字符为主,统一按可见宽计算)。 */
+function padDisplay(text: string, width: number): string {
+  return text + ' '.repeat(Math.max(0, width - visibleWidth(text)));
 }
 
-/** 在固定宽度内渲染并补齐空格(样式包裹后按可见宽度补齐)。 */
-function fitStyled(text: string, width: number, style: ((text: string) => string) | undefined): string {
-  const cut = truncatePlain(text, width);
-  const pad = width - visibleWidth(cut);
-  const padded = pad > 0 ? cut + ' '.repeat(pad) : cut;
-  return style !== undefined ? style(padded) : padded;
+function renderWelcome(width: number, theme: Theme): string[] {
+  const boxWidth = Math.min(72, Math.max(20, width - 4));
+  if (boxWidth < 20 || width < 30) {
+    const text = truncatePlain('欢迎使用 Reins', Math.max(0, width - 2));
+    const pad = Math.max(0, Math.floor((width - visibleWidth(text)) / 2));
+    return [' '.repeat(pad) + text];
+  }
+  const inner = boxWidth - 4;
+  const commandColumn = Math.max(...CHAT_COMMAND_HELP.map((entry) => visibleWidth(entry.command))) + 2;
+  const keyColumn = Math.max(...WELCOME_SHORTCUTS.map((entry) => visibleWidth(entry.keys))) + 2;
+
+  const rows: { text: string; style?: (text: string) => string; center?: boolean }[] = [];
+  rows.push({ text: '欢迎使用 Reins', style: theme.paint.accent, center: true });
+  rows.push({ text: '' });
+  rows.push({ text: '斜杠命令', style: theme.bold });
+  for (const entry of CHAT_COMMAND_HELP) {
+    rows.push({
+      text: `  ${padDisplay(entry.command, commandColumn)}${entry.description}`,
+      style: undefined,
+    });
+  }
+  rows.push({ text: '' });
+  rows.push({ text: '快捷键', style: theme.bold });
+  for (const entry of WELCOME_SHORTCUTS) {
+    rows.push({ text: `  ${padDisplay(entry.keys, keyColumn)}${entry.description}` });
+  }
+  rows.push({ text: '' });
+  rows.push({ text: '提示:reins doctor 可自检配置', style: theme.paint.muted });
+
+  const frame = theme.paint.muted;
+  const indent = ' '.repeat(Math.max(0, Math.floor((width - boxWidth) / 2)));
+  const lines: string[] = [`${indent}${frame(`╭${'─'.repeat(boxWidth - 2)}╮`)}`];
+  for (const row of rows) {
+    if (row.text === '') {
+      lines.push(`${indent}${frame('│')}${' '.repeat(inner)}${frame('│')}`);
+      continue;
+    }
+    const plain = truncatePlain(row.text, inner);
+    if (row.center === true) {
+      const left = Math.floor((inner - visibleWidth(plain)) / 2);
+      const text = ' '.repeat(left) + (row.style !== undefined ? row.style(plain) : plain);
+      lines.push(`${indent}${frame('│')}${padDisplay(text, inner)}${frame('│')}`);
+    } else {
+      const text = row.style !== undefined ? row.style(plain) : plain;
+      lines.push(`${indent}${frame('│')} ${text}${' '.repeat(Math.max(0, inner - 1 - visibleWidth(plain)))}${frame('│')}`);
+    }
+  }
+  lines.push(`${indent}${frame(`╰${'─'.repeat(boxWidth - 2)}╯`)}`);
+  return lines;
 }
 
 /** 带缓存的区块渲染器:同区块同参数直接复用上一帧的行。 */
