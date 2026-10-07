@@ -33,6 +33,7 @@ theme = "dark"                  # TUI 主题:dark | light | mono(纯文本)
 
 # [ui.colors]                   # 按角色覆盖主题取色:颜色名 / #rrggbb / 0-255
 # accent = "#56b6c2"            # 品牌与强调(标题、提示符、选中项)
+# userBar = "bg-brightblack"     # 用户消息条背景(bg- 前缀,如 bg-white / bg-#303030)
 # ok = "green"                  # 成功状态
 # warn = "bold yellow"          # 运行中与审批
 # fail = "red"                  # 失败状态

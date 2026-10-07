@@ -1,4 +1,5 @@
 import {
+  fillBackground,
   truncateAnsi,
   truncatePlain,
   visibleWidth,
@@ -106,14 +107,15 @@ export function renderBlockVerbose(block: ScrollBlock, width: number, context: R
   return lines;
 }
 
+/** 用户消息条:整行灰色背景,前缀 ›,不标注角色。 */
 function renderUser(text: string, width: number, theme: Theme): string[] {
-  const label = '你 ';
-  const ruleWidth = Math.max(0, width - visibleWidth(label) - 1);
-  const lines = [`${theme.paint.accent(label)}${theme.paint.muted(symbols.separator.repeat(ruleWidth))}`];
-  for (const line of wrapPlain(text, Math.max(1, width - 2))) {
-    lines.push(line === '' ? '' : `  ${line}`);
-  }
-  return lines;
+  const prefix = '› ';
+  const prefixWidth = visibleWidth(prefix);
+  const bodyWidth = Math.max(1, width - prefixWidth);
+  const raw = text === '' ? [''] : wrapPlain(text, bodyWidth);
+  return raw.map((line, index) =>
+    fillBackground(`${index === 0 ? prefix : ' '.repeat(prefixWidth)}${line}`, width, theme.codes.userBar),
+  );
 }
 
 function renderAssistant(
@@ -121,18 +123,17 @@ function renderAssistant(
   width: number,
   theme: Theme,
 ): string[] {
-  const lines: string[] = [theme.bold('助手')];
-  const body = renderMarkdown(block.text, width, theme);
+  // 相对用户消息条再缩进两格,不标注角色
+  const body = renderMarkdown(block.text, width, theme, 4);
   if (block.streaming) {
     if (body.length === 0) {
-      body.push(theme.paint.muted(symbols.cursor));
+      body.push(`    ${theme.paint.muted(symbols.cursor)}`);
     } else {
       const last = body.length - 1;
       body[last] = `${body[last]}${theme.paint.muted(symbols.cursor)}`;
     }
   }
-  lines.push(...body);
-  return lines;
+  return body;
 }
 
 function renderTool(

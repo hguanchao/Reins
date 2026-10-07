@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  fillBackground,
   fitPlain,
   fitStyledLine,
   padAnsi,
@@ -126,6 +127,18 @@ describe('布局宽度计算', () => {
     assert.equal(padAnsi('', 3), '   ');
     // emoji 按 2 列计,补齐后总宽不超
     assert.equal(visibleWidth(padAnsi('📁x', 5)), 5);
+  });
+
+  it('fillBackground:背景包住补位空格,前景复位后背景不中断', () => {
+    const filled = fillBackground('ab', 5, '100');
+    assert.equal(visibleWidth(filled), 5);
+    assert.ok(filled.startsWith('\u001b[100m'));
+    assert.ok(filled.endsWith('\u001b[0m'));
+    // 补齐的空格也在背景序列之内
+    assert.ok(filled.includes('ab   '));
+    const styled = fillBackground('\u001b[36mhi\u001b[0m', 4, '100');
+    assert.equal(visibleWidth(styled), 4);
+    assert.ok(styled.includes('\u001b[0m\u001b[100m'));
   });
 
   it('softWrapRows:按显示宽度折行并记录各行起点', () => {

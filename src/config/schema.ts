@@ -29,7 +29,7 @@ export const THEME_PRESETS = ['dark', 'light', 'mono'] as const;
 export type ThemePreset = (typeof THEME_PRESETS)[number];
 export const THEME_COLOR_ROLES = [
   'accent',
-  'user',
+  'userBar',
   'ok',
   'warn',
   'fail',
@@ -187,7 +187,7 @@ function parseThemeColors(
       continue;
     }
     if (parseSgrSpec(value) === undefined) {
-      checker.fail(path, `无法识别的颜色 "${value}";可用:颜色名(如 "bold cyan")、#rrggbb、0-255 色号`);
+      checker.fail(path, `无法识别的颜色 "${value}";可用:颜色名(如 "bold cyan")、#rrggbb、0-255 色号、背景用 bg- 前缀`);
       continue;
     }
     colors[key as ThemeRole] = value;

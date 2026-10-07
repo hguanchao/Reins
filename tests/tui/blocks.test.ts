@@ -26,10 +26,20 @@ describe('滚动区块渲染', () => {
     assert.equal(summarizeToolArgs('{}'), '{}');
   });
 
-  it('用户消息:标题行与正文', () => {
-    const text = render({ kind: 'user', text: '修复登录页' });
-    assert.ok(text.includes('你'));
-    assert.ok(text.includes('修复登录页'));
+  it('用户消息:灰色背景条、› 前缀、不标注角色', () => {
+    const lines = renderBlock({ kind: 'user', text: '修复登录页' }, 40, context);
+    const plain = lines.map(stripAnsi).join('\n');
+    assert.ok(plain.startsWith('› 修复登录页'));
+    assert.equal(plain.includes('你'), false);
+    assert.ok(lines.every((line) => line.startsWith('\u001b[100m')));
+    assert.ok(lines.every((line) => visibleWidth(line) === 40));
+  });
+
+  it('用户消息:折行后续行与首行对齐,不重复前缀', () => {
+    const lines = renderBlock({ kind: 'user', text: '一二三四五六七八九十' }, 10, context).map(stripAnsi);
+    assert.ok(lines[0]?.startsWith('› '));
+    assert.ok(lines.length > 1);
+    assert.ok(lines.slice(1).every((line) => line.startsWith('  ') && !line.includes('›')));
   });
 
   it('助手消息:markdown 渲染且流式光标只在末尾', () => {
@@ -38,7 +48,8 @@ describe('滚动区块渲染', () => {
       60,
       context,
     ).map(stripAnsi);
-    assert.ok(streaming.some((line) => line.includes('标题')));
+    assert.equal(streaming.some((line) => line.trim() === '助手'), false);
+    assert.ok(streaming.some((line) => line.startsWith('    ') && line.includes('标题')));
     assert.ok(streaming[streaming.length - 1]?.includes('▏'));
     const idle = renderBlock({ kind: 'assistant', text: '完成', streaming: false }, 60, context)
       .map(stripAnsi)
@@ -152,7 +163,7 @@ describe('滚动区块渲染', () => {
     for (const block of blocks) {
       for (const line of renderBlock(block, 30, context)) {
         assert.ok(
-          visibleWidth(line) <= 32,
+          visibleWidth(line) <= 30,
           `行超宽(${visibleWidth(line)}): ${stripAnsi(line)}`,
         );
       }

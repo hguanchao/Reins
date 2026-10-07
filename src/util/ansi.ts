@@ -40,6 +40,29 @@ const COLOR_NAMES: Readonly<Record<string, string>> = {
   default: '39',
 };
 
+/** 背景色名 → SGR 背景码;与前景色名一一对应,供消息条等铺底使用。 */
+const BACKGROUND_NAMES: Readonly<Record<string, string>> = {
+  black: '40',
+  red: '41',
+  green: '42',
+  yellow: '43',
+  blue: '44',
+  magenta: '45',
+  cyan: '46',
+  white: '47',
+  gray: '100',
+  grey: '100',
+  brightblack: '100',
+  brightred: '101',
+  brightgreen: '102',
+  brightyellow: '103',
+  brightblue: '104',
+  brightmagenta: '105',
+  brightcyan: '106',
+  brightwhite: '107',
+  default: '49',
+};
+
 /** 样式修饰名 → SGR 码。 */
 const MODIFIERS: Readonly<Record<string, string>> = {
   bold: '1',
@@ -51,17 +74,14 @@ const MODIFIERS: Readonly<Record<string, string>> = {
   strike: '9',
 };
 
-/** #rrggbb → 24bit 前景色 SGR 码;格式不对时返回 undefined。 */
-function parseHex(token: string): string | undefined {
+/** #rrggbb → 24bit 颜色分量;格式不对时返回 undefined。 */
+function parseHexParts(token: string): [number, number, number] | undefined {
   const match = /^#([0-9a-fA-F]{6})$/.exec(token);
   if (match === null) {
     return undefined;
   }
   const hex = match[1] ?? '';
-  const red = parseInt(hex.slice(0, 2), 16);
-  const green = parseInt(hex.slice(2, 4), 16);
-  const blue = parseInt(hex.slice(4, 6), 16);
-  return `38;2;${red};${green};${blue}`;
+  return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
 }
 
 /**
@@ -75,17 +95,28 @@ export function parseSgrSpec(spec: string): string | undefined {
   }
   const codes: string[] = [];
   for (const token of tokens) {
-    const hex = parseHex(token);
+    // bg- 前缀把颜色解释为背景:消息条等铺底场景需要,前景解析保持原样
+    const background = token.startsWith('bg-');
+    const body = background ? token.slice(3) : token;
+    const hex = parseHexParts(body);
     if (hex !== undefined) {
-      codes.push(hex);
+      codes.push(`${background ? 48 : 38};2;${hex[0]};${hex[1]};${hex[2]}`);
       continue;
     }
-    if (/^\d{1,3}$/.test(token)) {
-      const index = Number.parseInt(token, 10);
+    if (/^\d{1,3}$/.test(body)) {
+      const index = Number.parseInt(body, 10);
       if (index > 255) {
         return undefined;
       }
-      codes.push(`38;5;${index}`);
+      codes.push(`${background ? 48 : 38};5;${index}`);
+      continue;
+    }
+    if (background) {
+      const backgroundCode = BACKGROUND_NAMES[body];
+      if (backgroundCode === undefined) {
+        return undefined;
+      }
+      codes.push(backgroundCode);
       continue;
     }
     const modifier = MODIFIERS[token];

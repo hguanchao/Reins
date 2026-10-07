@@ -21,6 +21,14 @@ describe('SGR 颜色规格', () => {
     assert.equal(parseSgrSpec('BOLD  RED'), '1;31');
   });
 
+  it('parseSgrSpec:bg- 前缀解析为背景色', () => {
+    assert.equal(parseSgrSpec('bg-brightblack'), '100');
+    assert.equal(parseSgrSpec('bg-white'), '47');
+    assert.equal(parseSgrSpec('bold bg-#303030'), '1;48;2;48;48;48');
+    assert.equal(parseSgrSpec('bg-236'), '48;5;236');
+    assert.equal(parseSgrSpec('bg-purplish'), undefined);
+  });
+
   it('parseSgrSpec:非法输入返回 undefined', () => {
     assert.equal(parseSgrSpec(''), undefined);
     assert.equal(parseSgrSpec('purplish'), undefined);

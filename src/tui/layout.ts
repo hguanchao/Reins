@@ -177,6 +177,21 @@ export function padAnsi(text: string, width: number): string {
   return text + ' '.repeat(width - used);
 }
 
+/**
+ * 把整行铺上背景色并补到指定宽度。
+ *
+ * 背景必须包住补位空格,否则主区域再补的空格会露成终端底色,条带右缘参差。
+ * 文本已带前景色时,先复位再铺底,避免前一段的复位码把背景提前关掉。
+ */
+export function fillBackground(text: string, width: number, background: string): string {
+  const padded = padAnsi(text, width);
+  if (background === '') {
+    return padded;
+  }
+  const body = padded.replaceAll('\u001b[0m', `\u001b[0m\u001b[${background}m`);
+  return `\u001b[${background}m${body}\u001b[0m`;
+}
+
 /** 按显示宽度把一行文本软折行为多个视觉行;text 为各行内容,start 为各行首字符在原行中的码点下标。 */
 export function softWrapRows(text: string, width: number): { text: string; start: number }[] {
   if (width <= 0) {
