@@ -11,7 +11,8 @@ import type { ThemePreset, ThemeRole } from '../config/schema.ts';
 /** 各角色的默认颜色规格:dark 面向深色终端背景。 */
 const DARK_PRESET: Readonly<Record<ThemeRole, string>> = {
   accent: '1;36',
-  userBar: '100',
+  // 中性灰条带,前景一并给定:只设背景会跟着终端默认前景走,浅色终端上文字看不清
+  userBar: '38;5;253;48;5;238',
   ok: '32',
   warn: '33',
   fail: '31',
@@ -31,7 +32,7 @@ const DARK_PRESET: Readonly<Record<ThemeRole, string>> = {
 /** light 面向浅色背景:黄色系对比度差,统一改粗体或换主色;灰改淡(faint 自适应)。 */
 const LIGHT_PRESET: Readonly<Record<ThemeRole, string>> = {
   accent: '1;34',
-  userBar: '47',
+  userBar: '38;5;235;48;5;252',
   ok: '1;32',
   warn: '1;33',
   fail: '1;31',

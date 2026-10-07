@@ -26,13 +26,18 @@ describe('滚动区块渲染', () => {
     assert.equal(summarizeToolArgs('{}'), '{}');
   });
 
-  it('用户消息:灰色背景条、› 前缀、不标注角色', () => {
+  it('用户消息:中性灰条带、› 前缀取强调色、不标注角色', () => {
     const lines = renderBlock({ kind: 'user', text: '修复登录页' }, 40, context);
     const plain = lines.map(stripAnsi).join('\n');
     assert.ok(plain.startsWith('› 修复登录页'));
     assert.equal(plain.includes('你'), false);
-    assert.ok(lines.every((line) => line.startsWith('\u001b[100m')));
+    // 条带样式同时含前景与背景,不依赖终端默认前景色
+    assert.ok(lines.every((line) => line.startsWith(`\u001b[${context.theme.codes.userBar}m`)));
     assert.ok(lines.every((line) => visibleWidth(line) === 40));
+    // 前缀带强调色,且颜色不泄漏到正文
+    const first = lines[0] ?? '';
+    assert.ok(first.includes(`\u001b[${context.theme.codes.accent}m› `));
+    assert.ok(first.includes(`\u001b[0m\u001b[${context.theme.codes.userBar}m`));
   });
 
   it('用户消息:折行后续行与首行对齐,不重复前缀', () => {
@@ -49,7 +54,9 @@ describe('滚动区块渲染', () => {
       context,
     ).map(stripAnsi);
     assert.equal(streaming.some((line) => line.trim() === '助手'), false);
-    assert.ok(streaming.some((line) => line.startsWith('    ') && line.includes('标题')));
+    // 正文顶格,不再缩进
+    assert.ok(streaming.some((line) => line === '标题'));
+    assert.equal(streaming.some((line) => line.startsWith(' ') && line.includes('标题')), false);
     assert.ok(streaming[streaming.length - 1]?.includes('▏'));
     const idle = renderBlock({ kind: 'assistant', text: '完成', streaming: false }, 60, context)
       .map(stripAnsi)

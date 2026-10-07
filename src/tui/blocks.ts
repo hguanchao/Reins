@@ -1,5 +1,5 @@
 import {
-  fillBackground,
+  paintRow,
   truncateAnsi,
   truncatePlain,
   visibleWidth,
@@ -107,15 +107,16 @@ export function renderBlockVerbose(block: ScrollBlock, width: number, context: R
   return lines;
 }
 
-/** 用户消息条:整行灰色背景,前缀 ›,不标注角色。 */
+/** 用户消息条:整行中性灰,前缀 › 取强调色,不标注角色。 */
 function renderUser(text: string, width: number, theme: Theme): string[] {
   const prefix = '› ';
   const prefixWidth = visibleWidth(prefix);
   const bodyWidth = Math.max(1, width - prefixWidth);
   const raw = text === '' ? [''] : wrapPlain(text, bodyWidth);
-  return raw.map((line, index) =>
-    fillBackground(`${index === 0 ? prefix : ' '.repeat(prefixWidth)}${line}`, width, theme.codes.userBar),
-  );
+  return raw.map((line, index) => {
+    const head = index === 0 ? theme.paint.accent(prefix) : ' '.repeat(prefixWidth);
+    return paintRow(`${head}${line}`, width, theme.codes.userBar);
+  });
 }
 
 function renderAssistant(
@@ -123,11 +124,11 @@ function renderAssistant(
   width: number,
   theme: Theme,
 ): string[] {
-  // 相对用户消息条再缩进两格,不标注角色
-  const body = renderMarkdown(block.text, width, theme, 4);
+  // 正文顶格排,不标注角色也不缩进
+  const body = renderMarkdown(block.text, width, theme, 0);
   if (block.streaming) {
     if (body.length === 0) {
-      body.push(`    ${theme.paint.muted(symbols.cursor)}`);
+      body.push(theme.paint.muted(symbols.cursor));
     } else {
       const last = body.length - 1;
       body[last] = `${body[last]}${theme.paint.muted(symbols.cursor)}`;

@@ -178,18 +178,19 @@ export function padAnsi(text: string, width: number): string {
 }
 
 /**
- * 把整行铺上背景色并补到指定宽度。
+ * 用给定样式铺满整行并补到指定宽度。
  *
- * 背景必须包住补位空格,否则主区域再补的空格会露成终端底色,条带右缘参差。
- * 文本已带前景色时,先复位再铺底,避免前一段的复位码把背景提前关掉。
+ * 样式一般同时含前景与背景:只设背景会依赖终端默认前景色,条带里的文字可能看不清。
+ * 样式必须包住补位空格,否则主区域再补的空格会露成终端底色,条带右缘参差;
+ * 行内自带样式时先复位再铺底,避免那一段的复位码把条带样式提前关掉。
  */
-export function fillBackground(text: string, width: number, background: string): string {
+export function paintRow(text: string, width: number, style: string): string {
   const padded = padAnsi(text, width);
-  if (background === '') {
+  if (style === '') {
     return padded;
   }
-  const body = padded.replaceAll('\u001b[0m', `\u001b[0m\u001b[${background}m`);
-  return `\u001b[${background}m${body}\u001b[0m`;
+  const body = padded.replaceAll('\u001b[0m', `\u001b[0m\u001b[${style}m`);
+  return `\u001b[${style}m${body}\u001b[0m`;
 }
 
 /** 按显示宽度把一行文本软折行为多个视觉行;text 为各行内容,start 为各行首字符在原行中的码点下标。 */

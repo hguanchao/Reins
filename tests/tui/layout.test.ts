@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  fillBackground,
+  paintRow,
   fitPlain,
   fitStyledLine,
   padAnsi,
@@ -130,16 +130,18 @@ describe('布局宽度计算', () => {
     assert.equal(visibleWidth(padAnsi('📁x', 5)), 5);
   });
 
-  it('fillBackground:背景包住补位空格,前景复位后背景不中断', () => {
-    const filled = fillBackground('ab', 5, '100');
+  it('paintRow:样式包住补位空格,行内复位后条带样式不中断', () => {
+    const style = '38;5;253;48;5;238';
+    const filled = paintRow('ab', 5, style);
     assert.equal(visibleWidth(filled), 5);
-    assert.ok(filled.startsWith('\u001b[100m'));
+    assert.ok(filled.startsWith(`\u001b[${style}m`));
     assert.ok(filled.endsWith('\u001b[0m'));
-    // 补齐的空格也在背景序列之内
+    // 补齐的空格也在条带样式之内
     assert.ok(filled.includes('ab   '));
-    const styled = fillBackground('\u001b[36mhi\u001b[0m', 4, '100');
+    // 行内自带样式复位后,条带的前景与背景都要重新铺上
+    const styled = paintRow('\u001b[36mhi\u001b[0m', 4, style);
     assert.equal(visibleWidth(styled), 4);
-    assert.ok(styled.includes('\u001b[0m\u001b[100m'));
+    assert.ok(styled.includes(`\u001b[0m\u001b[${style}m`));
   });
 
   it('softWrapRows:按显示宽度折行并记录各行起点', () => {
