@@ -4,7 +4,6 @@ import {
   visibleWidth,
   wrapPlain,
 } from './layout.ts';
-import { CHAT_COMMAND_HELP } from '../cli/commands/chat-commands.ts';
 import { renderMarkdown } from './markdown.ts';
 import { symbols, type Theme } from './theme.ts';
 
@@ -218,70 +217,79 @@ function renderNotice(
   return body.map((line, index) => `  ${color(index === 0 ? `${prefix} ${line}` : `  ${line}`)}`);
 }
 
-/** 快捷键说明:欢迎面板与实际行为一一对应。 */
+/** 欢迎面板只展示核心命令(完整清单见 /help)。 */
+const WELCOME_COMMANDS: readonly { command: string; description: string }[] = [
+  { command: '/help', description: '显示帮助' },
+  { command: '/new', description: '开始新会话' },
+  { command: '/model', description: '查看或切换模型' },
+  { command: '/resume', description: '恢复会话' },
+  { command: '/exit', description: '退出' },
+];
+
+/** 欢迎面板只展示核心快捷键(完整行为见提示行)。 */
 const WELCOME_SHORTCUTS: readonly { keys: string; description: string }[] = [
   { keys: '@', description: '引用文件' },
   { keys: '↑/↓', description: '历史 · 补全选择' },
   { keys: 'Tab', description: '应用补全' },
   { keys: 'Ctrl+J', description: '插入换行' },
-  { keys: 'Ctrl+E', description: '展开或折叠工具输出' },
-  { keys: 'Ctrl+O', description: '全屏查看工具输出' },
-  { keys: 'PgUp/PgDn', description: '滚动历史(或鼠标滚轮)' },
+  { keys: 'Ctrl+O', description: '全屏查看输出' },
   { keys: 'Ctrl+C/Esc', description: '中断运行' },
-  { keys: '空行 Ctrl+D', description: '退出' },
 ];
 
-/** 按显示宽度右补空格(命令与按键列都是窄字符为主,统一按可见宽计算)。 */
+/** 按显示宽度右补空格(命令与按键列都是窄字符,统一按可见宽计算)。 */
 function padDisplay(text: string, width: number): string {
   return text + ' '.repeat(Math.max(0, width - visibleWidth(text)));
 }
 
 function renderWelcome(width: number, theme: Theme): string[] {
-  const boxWidth = Math.min(72, Math.max(20, width - 4));
-  if (boxWidth < 20 || width < 30) {
+  const boxWidth = Math.min(56, Math.max(32, width - 8));
+  if (width < 30) {
     const text = truncatePlain('欢迎使用 Reins', Math.max(0, width - 2));
     const pad = Math.max(0, Math.floor((width - visibleWidth(text)) / 2));
     return [' '.repeat(pad) + text];
   }
   const inner = boxWidth - 4;
-  const commandColumn = Math.max(...CHAT_COMMAND_HELP.map((entry) => visibleWidth(entry.command))) + 2;
-  const keyColumn = Math.max(...WELCOME_SHORTCUTS.map((entry) => visibleWidth(entry.keys))) + 2;
+  // 命令与快捷键两节共用一条说明列,说明文本逐行对齐
+  const descColumn =
+    Math.max(
+      ...[...WELCOME_COMMANDS.map((entry) => entry.command), ...WELCOME_SHORTCUTS.map((entry) => entry.keys)].map(
+        (text) => visibleWidth(text),
+      ),
+    ) + 2;
 
   const rows: { text: string; style?: (text: string) => string; center?: boolean }[] = [];
   rows.push({ text: '欢迎使用 Reins', style: theme.paint.accent, center: true });
   rows.push({ text: '' });
   rows.push({ text: '斜杠命令', style: theme.bold });
-  for (const entry of CHAT_COMMAND_HELP) {
-    rows.push({
-      text: `  ${padDisplay(entry.command, commandColumn)}${entry.description}`,
-      style: undefined,
-    });
+  for (const entry of WELCOME_COMMANDS) {
+    rows.push({ text: `  ${padDisplay(entry.command, descColumn)}${entry.description}` });
   }
   rows.push({ text: '' });
   rows.push({ text: '快捷键', style: theme.bold });
   for (const entry of WELCOME_SHORTCUTS) {
-    rows.push({ text: `  ${padDisplay(entry.keys, keyColumn)}${entry.description}` });
+    rows.push({ text: `  ${padDisplay(entry.keys, descColumn)}${entry.description}` });
   }
   rows.push({ text: '' });
   rows.push({ text: '提示:reins doctor 可自检配置', style: theme.paint.muted });
+
+  // 内容统一裁到 inner 再补齐,保证每一行(含边框行)显示宽度严格等于盒宽
+  const buildContent = (row: { text: string; style?: (text: string) => string; center?: boolean }): string => {
+    if (row.text === '') {
+      return ' '.repeat(inner);
+    }
+    const plain = truncatePlain(row.text, inner);
+    if (row.center === true) {
+      const left = Math.floor((inner - visibleWidth(plain)) / 2);
+      return padDisplay(' '.repeat(left) + (row.style !== undefined ? row.style(plain) : plain), inner);
+    }
+    return padDisplay(row.style !== undefined ? row.style(plain) : plain, inner);
+  };
 
   const frame = theme.paint.muted;
   const indent = ' '.repeat(Math.max(0, Math.floor((width - boxWidth) / 2)));
   const lines: string[] = [`${indent}${frame(`╭${'─'.repeat(boxWidth - 2)}╮`)}`];
   for (const row of rows) {
-    if (row.text === '') {
-      lines.push(`${indent}${frame('│')}${' '.repeat(inner)}${frame('│')}`);
-      continue;
-    }
-    const plain = truncatePlain(row.text, inner);
-    if (row.center === true) {
-      const left = Math.floor((inner - visibleWidth(plain)) / 2);
-      const text = ' '.repeat(left) + (row.style !== undefined ? row.style(plain) : plain);
-      lines.push(`${indent}${frame('│')}${padDisplay(text, inner)}${frame('│')}`);
-    } else {
-      const text = row.style !== undefined ? row.style(plain) : plain;
-      lines.push(`${indent}${frame('│')} ${text}${' '.repeat(Math.max(0, inner - 1 - visibleWidth(plain)))}${frame('│')}`);
-    }
+    lines.push(`${indent}${frame('│')} ${buildContent(row)} ${frame('│')}`);
   }
   lines.push(`${indent}${frame(`╰${'─'.repeat(boxWidth - 2)}╯`)}`);
   return lines;

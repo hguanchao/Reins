@@ -113,22 +113,33 @@ describe('滚动区块渲染', () => {
     assert.ok(render({ kind: 'notice', text: '错误', level: 'error' }).includes('✗'));
   });
 
-  it('欢迎面板:斜杠命令+说明、快捷键,整体居中', () => {
+  it('欢迎面板:核心命令+快捷键、居中、边框闭合、说明列对齐', () => {
     const lines = renderBlock({ kind: 'welcome' }, 80, context).map(stripAnsi);
     const text = lines.join('\n');
-    // 两节内容齐备
+    // 核心内容齐备
     assert.ok(text.includes('欢迎使用 Reins'));
     assert.ok(text.includes('/help'));
     assert.ok(text.includes('显示帮助'));
     assert.ok(text.includes('快捷键'));
     assert.ok(text.includes('Ctrl+O'));
     assert.ok(text.includes('@'));
-    // 居中:盒体前导空格 = (80 - 盒宽) / 2,且所有行共享同一缩进
+    // 非核心项不展示(完整清单只在 /help)
+    assert.ok(!text.includes('/compact'));
+    assert.ok(!text.includes('Ctrl+E'));
+    // 居中:所有行共享同一缩进
     const top = lines.find((line) => line.includes('╭'));
     if (top === undefined) throw new Error('应有边框');
     const indent = top.length - top.trimStart().length;
     assert.ok(indent > 0, '应水平居中');
     assert.ok(lines.every((line) => line === '' || line.startsWith(' '.repeat(indent))));
+    // 边框闭合:所有行显示宽度一致(内容行不再短于边框行)
+    const widths = new Set(lines.map((line) => visibleWidth(line)));
+    assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);
+    // 命令与快捷键两节的说明列对齐
+    const helpLine = lines.find((line) => line.includes('/help'));
+    const atLine = lines.find((line) => line.includes('@ '));
+    if (helpLine === undefined || atLine === undefined) throw new Error('两节内容应存在');
+    assert.equal(helpLine.indexOf('显示帮助'), atLine.indexOf('引用文件'), '说明列未对齐');
   });
 
   it('渲染结果不超过给定宽度(含 CJK 与 emoji)', () => {
