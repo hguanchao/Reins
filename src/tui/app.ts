@@ -28,7 +28,7 @@ import {
   type RenderContext,
   type ScrollBlock,
 } from './blocks.ts';
-import { headerBand, inputBoxFrame, inputBoxLine, scrollbarChar, scrollbarGeometry } from './chrome.ts';
+import { headerLine, inputBoxFrame, inputBoxLine, scrollbarChar, scrollbarGeometry } from './chrome.ts';
 import { createFileIndex, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
@@ -876,7 +876,8 @@ export class TuiApp implements AgentUi {
     }
     const theme = this.renderContext.theme;
     const { left, right } = this.headerParts();
-    const band = headerBand(left, right, cols, theme);
+    const header = headerLine(left, right, cols, theme);
+    const separator = theme.paint.muted(symbols.separator.repeat(cols));
     const footer = this.renderFooter(cols);
     const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
@@ -894,7 +895,6 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     const bar = scrollbarGeometry(top, mainHeight, content.length);
-    const bottomSeparator = theme.paint.muted(symbols.separator.repeat(cols));
     const mainLines = main.map((line, index) => {
       const padded = padAnsi(line, cols - 1);
       if (bar === undefined) {
@@ -903,7 +903,7 @@ export class TuiApp implements AgentUi {
       // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
       return `${padded}${theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│')}`;
     });
-    const lines = [band.top, band.join, ...mainLines, bottomSeparator, ...footer.lines];
+    const lines = [header, separator, ...mainLines, separator, ...footer.lines];
     const cursor =
       footer.cursor === undefined
         ? null

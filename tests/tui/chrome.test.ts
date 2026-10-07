@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  headerBand,
+  headerLine,
   inputBoxFrame,
   inputBoxLine,
   scrollbarChar,
@@ -12,37 +12,28 @@ import { stripAnsi, visibleWidth } from '../../src/tui/layout.ts';
 
 const theme = createTheme({ color: true });
 
-describe('header 置顶带', () => {
-  it('内容嵌入边框,总宽恰好等于给定宽度', () => {
-    const { top, join } = headerBand('Reins · model', '12% ctx', 60, theme);
-    assert.equal(visibleWidth(top), 60);
-    assert.equal(visibleWidth(join), 60);
-    assert.ok(stripAnsi(top).startsWith('┌─ Reins · model'));
-    assert.ok(stripAnsi(top).endsWith('12% ctx ─┐'));
-    assert.ok(stripAnsi(top).includes('─'));
-    assert.ok(stripAnsi(join).startsWith('├'));
-    assert.ok(stripAnsi(join).endsWith('┤'));
+describe('header 行', () => {
+  it('两端对齐,无任何边框字符', () => {
+    const line = headerLine('Reins · model', '12% ctx', 60, theme);
+    assert.equal(visibleWidth(line), 60);
+    const plain = stripAnsi(line);
+    assert.ok(plain.startsWith('Reins · model'));
+    assert.ok(plain.endsWith('12% ctx'));
+    assert.ok(!/[┌┐└┘├┤╭╮╰╯─│]/.test(plain), 'header 不应包含边框字符');
   });
 
-  it('右侧为空时横线补齐到右缘', () => {
-    const { top } = headerBand('Reins', '', 40, theme);
-    assert.equal(visibleWidth(top), 40);
-    assert.ok(stripAnsi(top).endsWith('─┐'));
+  it('右侧为空时只输出左侧内容', () => {
+    const line = headerLine('Reins', '', 40, theme);
+    assert.equal(stripAnsi(line), 'Reins');
   });
 
   it('窄宽度下左侧截断、右侧优先保留', () => {
     const longLeft = '很长的左侧信息很长的左侧信息很长的左侧信息很长的左侧信息';
-    const { top } = headerBand(longLeft, '5% ctx', 30, theme);
-    const plain = stripAnsi(top);
-    assert.equal(visibleWidth(top), 30);
+    const line = headerLine(longLeft, '5% ctx', 30, theme);
+    const plain = stripAnsi(line);
+    assert.equal(visibleWidth(line), 30);
     assert.ok(plain.includes('5% ctx'));
     assert.ok(plain.includes('…'));
-  });
-
-  it('极窄宽度退化为纯边框', () => {
-    const { top, join } = headerBand('左', '右', 6, theme);
-    assert.equal(stripAnsi(top), '┌────┐');
-    assert.equal(stripAnsi(join), '├────┤');
   });
 });
 

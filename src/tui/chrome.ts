@@ -2,51 +2,29 @@ import { padAnsi, truncateAnsi, visibleWidth } from './layout.ts';
 import type { Theme } from './theme.ts';
 
 /**
- * 界面镶边:header 置顶带、输入框边框与滚动条的排版数学。
+ * 界面镶边:header 行、输入框边框与滚动条的排版数学。
  *
  * 设计意图:与 layout 同样的纯函数思路,但镶边依赖主题取色;
  * 应用层只负责拼装内容,画框与几何全部在这里算,便于单测。
  */
 
 /**
- * header 置顶带:内容嵌进顶边框(┌─ 内容 ─┐),下沿以 ├─┤ 接缝收束。
- * 返回恰好两行,占用行数与普通「文本 + 分隔线」相同。
+ * header 行:左侧信息与右侧统计两端对齐,无边框装饰。
+ * 空间不足时右侧统计优先保留,左侧截断。
  */
-export function headerBand(
-  left: string,
-  right: string,
-  width: number,
-  theme: Theme,
-): { top: string; join: string } {
-  const join = theme.paint.muted(`├${'─'.repeat(Math.max(0, width - 2))}┤`);
-  const budget = width - 6; // 「┌─ 」与「 ─┐」各占 3 列
-  if (budget < 8) {
-    // 极窄时放弃嵌内容,退化为纯边框
-    return { top: theme.paint.muted(`┌${'─'.repeat(Math.max(0, width - 2))}┐`), join };
+export function headerLine(left: string, right: string, width: number, theme: Theme): string {
+  void theme;
+  const leftWidth = visibleWidth(left);
+  const rightWidth = visibleWidth(right);
+  if (rightWidth === 0) {
+    return truncateAnsi(left, width);
   }
-
-  let rightText = right;
-  let rightWidth = visibleWidth(rightText);
-  // 右侧统计信息优先保证完整,放不下先截右边
-  if (rightWidth > budget - 4) {
-    rightText = truncateAnsi(rightText, Math.max(0, budget - 4));
-    rightWidth = visibleWidth(rightText);
+  if (leftWidth + rightWidth + 1 <= width) {
+    return `${left}${' '.repeat(width - leftWidth - rightWidth)}${right}`;
   }
-  let leftText = left;
-  if (visibleWidth(leftText) + rightWidth > budget - 3) {
-    const allowLeft = Math.max(0, budget - rightWidth - 3);
-    leftText = allowLeft > 0 ? truncateAnsi(leftText, allowLeft) : '';
-  }
-  const gap = Math.max(2, budget - visibleWidth(leftText) - rightWidth);
-  const dashes = theme.paint.muted('─'.repeat(gap));
-  const middle =
-    rightText === ''
-      ? `${leftText}${theme.paint.muted('─'.repeat(Math.max(2, budget - visibleWidth(leftText))))}`
-      : `${leftText}${dashes}${rightText}`;
-  return {
-    top: `${theme.paint.muted('┌─ ')}${middle}${theme.paint.muted(' ─┐')}`,
-    join,
-  };
+  const allowLeft = Math.max(0, width - rightWidth - 1);
+  const leftText = allowLeft > 0 ? truncateAnsi(left, allowLeft) : '';
+  return `${leftText}${' '.repeat(Math.max(1, width - visibleWidth(leftText) - rightWidth))}${right}`;
 }
 
 /** 输入框上沿与下沿,占满整行宽度。 */
