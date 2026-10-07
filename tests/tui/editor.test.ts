@@ -131,6 +131,29 @@ describe('输入行编辑器', () => {
     assert.deepEqual(completion.items, ['a.ts']);
   });
 
+  it('mentionQuery:空索引下也能识别 @ 词条,供上层决定是否扫描', () => {
+    const editor = new InputEditor({ files: () => [] });
+    editor.insert('@');
+    // 空索引不会有候选,但词条查询必须可见——否则上层拿不到扫描的触发依据
+    assert.equal(editor.mentionQuery(), '');
+    const empty = editor.completionState;
+    assert.equal(empty, null);
+    editor.insert('ap');
+    assert.equal(editor.mentionQuery(), 'ap');
+  });
+
+  it('mentionQuery:非词首的 @ 不算词条', () => {
+    const editor = new InputEditor({ files: () => ['src/a.ts'] });
+    editor.insert('mail me@example.com');
+    assert.equal(editor.mentionQuery(), null);
+  });
+
+  it('mentionQuery:光标离开词条后返回 null', () => {
+    const editor = new InputEditor({ files: () => ['src/a.ts'] });
+    editor.insert('@src/a.ts ');
+    assert.equal(editor.mentionQuery(), null);
+  });
+
   it('粘贴插入:保留换行并返回行数', () => {
     const editor = new InputEditor();
     editor.insert('前');

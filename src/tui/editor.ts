@@ -334,6 +334,22 @@ export class InputEditor {
     this.recomputeCompletion();
   }
 
+  /**
+   * 光标所在 @ 词条的查询文本(不含 @);不在 @ 词条内时返回 null。
+   *
+   * 上层据此决定要不要刷新文件索引:判定依据必须是输入文本,
+   * 因为索引为空时根本不会产生候选,拿补全当触发条件就永远等不到。
+   */
+  mentionQuery(): string | null {
+    const token = this.tokenAtCursor();
+    if (token === undefined || !token.text.startsWith('@')) {
+      return null;
+    }
+    // @ 必须成词出现(行首或空白后),否则邮箱之类会被误触
+    const wordStart = token.start === 0 || isWhitespace(this.chars[token.start - 1] ?? '');
+    return wordStart ? token.text.slice(1) : null;
+  }
+
   /** 提交:返回文本并清空(非空文本进入历史)。 */
   submit(): string {
     const text = this.text;
@@ -415,15 +431,12 @@ export class InputEditor {
       return;
     }
 
-    // @ 引用:@ 必须成词出现(行首或空白后),否则邮箱之类会被误触
-    const token = this.tokenAtCursor();
-    if (token !== undefined && token.text.startsWith('@') && token.text.length >= 1) {
-      const wordStart = token.start === 0 || isWhitespace(this.chars[token.start - 1] ?? '');
-      if (wordStart) {
-        const items = rankFileCandidates(this.files?.() ?? [], token.text.slice(1), this.mentionLimit);
-        this.completion = items.length > 0 ? { kind: 'mention', items, index: 0 } : null;
-        return;
-      }
+    // @ 引用:光标在 @ 词条内就按查询词给候选
+    const query = this.mentionQuery();
+    if (query !== null) {
+      const items = rankFileCandidates(this.files?.() ?? [], query, this.mentionLimit);
+      this.completion = items.length > 0 ? { kind: 'mention', items, index: 0 } : null;
+      return;
     }
     this.completion = null;
   }

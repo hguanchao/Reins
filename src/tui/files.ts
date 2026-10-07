@@ -69,6 +69,16 @@ export function createFileIndex(root: string, options: FileIndexOptions = {}): F
 }
 
 /**
+ * 是否该为 @ 补全重新扫描工作区。
+ *
+ * 判定依据是输入文本(光标是否在 @ 词条内),不是已有候选:索引为空时
+ * 不会产生任何候选,拿候选当触发条件就永远等不到第一次扫描。
+ */
+export function needsFileScan(mentionQuery: string | null, stale: boolean): boolean {
+  return mentionQuery !== null && stale;
+}
+
+/**
  * 按查询词给文件候选排序:文件名前缀 > 文件名包含 > 路径包含,
  * 同分时短路径优先;空查询按字典序取前 limit 个。
  */

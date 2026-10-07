@@ -29,7 +29,7 @@ import {
   type ScrollBlock,
 } from './blocks.ts';
 import { headerLine, inputBoxFrame, inputBoxLine, scrollbarChar, scrollbarGeometry } from './chrome.ts';
-import { createFileIndex, type FileIndex } from './files.ts';
+import { createFileIndex, needsFileScan, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
 import { codePointWidth, padAnsi, softWrapRows, truncatePlain, visibleWidth, visualRowContains } from './layout.ts';
@@ -165,6 +165,8 @@ export class TuiApp implements AgentUi {
     process.stdout.on('resize', this.onResize);
 
     this.push({ kind: 'welcome' });
+    // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
+    void this.fileIndex.refresh();
     try {
       await this.startup();
     } catch (error) {
@@ -431,10 +433,14 @@ export class TuiApp implements AgentUi {
     this.maybeRefreshFileIndex();
   }
 
-  /** @ 补全打开且文件快照过期时,后台重新扫描工作区。 */
+  /**
+   * 光标处于 @ 词条内且文件快照过期时,后台重新扫描工作区。
+   *
+   * 触发条件由 needsFileScan 给出:它只看输入文本,不看已有候选,
+   * 否则索引为空时永远等不到第一次扫描。
+   */
   private maybeRefreshFileIndex(): void {
-    const completion = this.editor.completionState;
-    if (completion === null || completion.kind !== 'mention' || !this.fileIndex.stale()) {
+    if (!needsFileScan(this.editor.mentionQuery(), this.fileIndex.stale())) {
       return;
     }
     void this.fileIndex.refresh().then(() => {
