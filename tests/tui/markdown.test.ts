@@ -33,14 +33,14 @@ describe('markdown 渲染', () => {
 
   it('代码栅栏:画框并保留内容', () => {
     const lines = render('```ts\nconst a = 1;\nconst b = 2;\n```');
-    assert.ok(lines[0]?.startsWith('  ╭─ ts'));
+    assert.ok(lines[0]?.startsWith('  ┌─ ts'));
     assert.ok(lines.some((line) => line.includes('const a = 1;')));
-    assert.ok(lines.at(-1)?.startsWith('  ╰'));
+    assert.ok(lines.at(-1)?.startsWith('  └'));
   });
 
   it('流式中未闭合的代码栅栏按代码块渲染', () => {
     const lines = render('```python\nx = 1');
-    assert.ok(lines[0]?.startsWith('  ╭─ python'));
+    assert.ok(lines[0]?.startsWith('  ┌─ python'));
     assert.ok(lines.some((line) => line.includes('x = 1;') === false));
     assert.ok(lines.some((line) => line.includes('x = 1')));
   });
@@ -108,10 +108,10 @@ describe('markdown 渲染', () => {
       44,
     );
     // 全包:圆角顶底,与代码栅栏/输入框同一套视觉语言(前导为 markdown 缩进 + 表格缩进)
-    assert.ok((lines[0] ?? '').trimStart().startsWith('╭'), '应有顶边框');
-    assert.ok((lines[0] ?? '').endsWith('╮'));
-    assert.ok((lines.at(-1) ?? '').trimStart().startsWith('╰'), '应有底边框');
-    assert.ok((lines.at(-1) ?? '').endsWith('╯'));
+    assert.ok((lines[0] ?? '').trimStart().startsWith('┌'), '应有顶边框');
+    assert.ok((lines[0] ?? '').endsWith('┐'));
+    assert.ok((lines.at(-1) ?? '').trimStart().startsWith('└'), '应有底边框');
+    assert.ok((lines.at(-1) ?? '').endsWith('┘'));
     // 每行宽度一致,右边框不参差
     const widths = new Set(lines.map((line) => visibleWidth(line)));
     assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);

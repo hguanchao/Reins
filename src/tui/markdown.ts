@@ -220,22 +220,22 @@ function renderTable(table: readonly (readonly string[])[], width: number, theme
     `  ${theme.paint.muted(left)}${colWidth
       .map((columnWidth) => theme.paint.muted('─'.repeat(columnWidth + 2)))
       .join(theme.paint.muted(middle))}${theme.paint.muted(right)}`;
-  const out: string[] = [frame('╭', '┬', '╮')];
+  const out: string[] = [frame('┌', '┬', '┐')];
   out.push(render(0, theme.codes.heading));
   out.push(frame('├', '┼', '┤'));
   for (let index = 1; index < table.length; index += 1) {
     out.push(render(index, ''));
   }
-  out.push(frame('╰', '┴', '╯'));
+  out.push(frame('└', '┴', '┘'));
   return out;
 }
 
-/** 代码栅栏:高亮 + 画框;超长行折行并加缩进续行。 */
+/** 代码栅栏:高亮 + 画框(直角,符合 Markdown 呈现惯例);超长行折行并加缩进续行。 */
 function renderCodeFence(code: string, lang: string, width: number, theme: Theme): string[] {
   const lineWidth = Math.max(8, width - 4);
   const frame = theme.paint.muted;
   const label = lang === '' ? '' : ` ${lang} `;
-  const top = `╭─${label}${'─'.repeat(Math.max(0, width - 2 - label.length))}`;
+  const top = `┌─${label}${'─'.repeat(Math.max(0, width - 2 - label.length))}`;
   const out: string[] = [frame(top)];
 
   const rows = highlightCode(code, lang).map((tokens) => tokensToSegments(tokens, theme));
@@ -246,7 +246,7 @@ function renderCodeFence(code: string, lang: string, width: number, theme: Theme
       out.push(`${prefix}${renderStyledLine(segments)}`);
     });
   }
-  out.push(frame(`╰${'─'.repeat(Math.max(2, width - 2))}╯`));
+  out.push(frame(`└${'─'.repeat(Math.max(2, width - 2))}┘`));
   return out;
 }
 
