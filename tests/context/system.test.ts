@@ -11,7 +11,9 @@ describe('系统提示词组装', () => {
     });
     assert.ok(prompt.includes('/tmp/ws'));
     assert.ok(prompt.includes('demo/model-a'));
-    assert.ok(prompt.includes('先读后改'));
+    assert.ok(prompt.includes('Read before you edit'));
+    // 提示词面向模型,统一英文
+    assert.equal(/[\u4e00-\u9fff]/.test(prompt), false);
   });
 
   it('有项目文档时包裹注入', () => {
@@ -20,13 +22,13 @@ describe('系统提示词组装', () => {
       model: 'm',
       projectDoc: { path: '/tmp/ws/REINS.md', content: '约定:两个空格缩进' },
     });
-    assert.ok(prompt.includes('<项目文档>'));
+    assert.ok(prompt.includes('<project_instructions path="/tmp/ws/REINS.md">'));
     assert.ok(prompt.includes('两个空格缩进'));
-    assert.ok(prompt.includes('</项目文档>'));
+    assert.ok(prompt.includes('</project_instructions>'));
   });
 
   it('无项目文档时不出现文档块', () => {
     const prompt = buildSystemPrompt({ workspace: '/tmp/ws', model: 'm', projectDoc: null });
-    assert.equal(prompt.includes('<项目文档>'), false);
+    assert.equal(prompt.includes('<project_instructions'), false);
   });
 });

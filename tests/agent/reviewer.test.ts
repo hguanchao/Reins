@@ -57,7 +57,10 @@ describe('审查模型', () => {
     assert.equal(await reviewer.review(target, decision), 'allow');
     const content = adapter.lastRequest?.messages[0]?.content ?? '';
     assert.ok(content.includes('git push origin main'));
-    assert.ok(content.includes('ALLOW 或 DENY'));
+    assert.ok(content.includes('ALLOW or DENY'));
+    // 提示词模板统一英文;注入的规则原因属于用户可见文本,仍为中文
+    const template = content.split('Tool:')[0] ?? '';
+    assert.equal(/[\u4e00-\u9fff]/.test(template), false);
   });
 
   it('DENY 拒绝,大小写不敏感', async () => {

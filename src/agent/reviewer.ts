@@ -41,13 +41,16 @@ export function createReviewer(params: {
 }
 
 function buildReviewPrompt(target: RuleTarget, decision: Decision): string {
-  const what = target.command ?? target.path ?? target.server ?? target.domain ?? '(未知目标)';
+  const what = target.command ?? target.path ?? target.server ?? target.domain ?? '(unknown target)';
   return [
-    '你是操作安全审查器。判断下面这次工具调用是否允许执行。',
-    '只回答一个词:ALLOW 或 DENY。不要输出任何其他内容。',
+    'You are a tool-call authorization reviewer. Decide whether the single tool call below may execute.',
     '',
-    `工具:${target.tool}`,
-    `目标:${what}`,
-    `触发原因:${decision.reason}`,
+    'Answer with exactly one word: ALLOW or DENY. Output nothing else.',
+    '',
+    'Judge by what the call will actually do, not by the tool name or the stated intent. Allow routine, project-local, reversible work. Deny anything destructive, irreversible, or reaching beyond the workspace, and anything touching credentials, secrets, or remote systems. When the effect is unclear, deny.',
+    '',
+    `Tool: ${target.tool}`,
+    `Target: ${what}`,
+    `Triggered rule: ${decision.reason}`,
   ].join('\n');
 }

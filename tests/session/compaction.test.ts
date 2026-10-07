@@ -15,8 +15,13 @@ describe('会话压缩策略', () => {
   it('压缩提示词包含必要的保留项', () => {
     const prompt = buildCompactionPrompt('TRANSCRIPT-CONTENT');
     assert.ok(prompt.includes('TRANSCRIPT-CONTENT'));
-    assert.ok(prompt.includes('未完成事项'));
-    assert.ok(prompt.includes('下一步计划'));
+    // 结构化检查点:各节必须齐全,模型才不会漏项
+    for (const section of ['## Goal', '## Progress', '## Key decisions', '## Next steps', '## Critical context']) {
+      assert.ok(prompt.includes(section), `缺少小节:${section}`);
+    }
+    assert.ok(prompt.includes('Preserve exact file paths'));
+    // 提示词面向模型,统一英文
+    assert.equal(/[\u4e00-\u9fff]/.test(prompt), false);
   });
 
   it('格式化会话条目为摘要文本', () => {
@@ -43,10 +48,10 @@ describe('会话压缩策略', () => {
       { id: '4', parentId: '3', ts: '', type: 'summary', text: '旧摘要' },
     ];
     const text = formatTranscript(entries);
-    assert.ok(text.includes('【用户】任务'));
-    assert.ok(text.includes('(工具调用:read)'));
-    assert.ok(text.includes('【工具结果:read】文件内容'));
-    assert.ok(text.includes('【历史摘要】旧摘要'));
+    assert.ok(text.includes('[user] 任务'));
+    assert.ok(text.includes('(tool calls: read)'));
+    assert.ok(text.includes('[tool_result: read] 文件内容'));
+    assert.ok(text.includes('[earlier summary] 旧摘要'));
   });
 
   it('超长记录保留尾部', () => {
@@ -54,6 +59,6 @@ describe('会话压缩策略', () => {
       { id: '1', parentId: null, ts: '', type: 'user', text: 'x'.repeat(300_000) },
     ];
     const text = formatTranscript(entries);
-    assert.ok(text.startsWith('…(较早内容已截断)…'));
+    assert.ok(text.startsWith('…(earlier content truncated)…'));
   });
 });

@@ -25,12 +25,40 @@ export function shouldCompact(
 /** 生成压缩用的提示词;要求保留对后续工作真正有用的信息。 */
 export function buildCompactionPrompt(transcript: string): string {
   return [
-    '以下是一段编程会话的记录。请生成一份简明摘要,供后续对话作为上下文使用。',
-    '需要保留:当前任务与目标、已确认的决策与理由、改动过的文件及要点、未完成事项、下一步计划。',
-    '可以省略:寒暄、重复内容、与任务无关的过程细节。',
-    '直接输出摘要正文,不要添加额外说明。',
+    'The conversation below is a coding session to summarize. Produce a structured checkpoint that another model can use to continue the work.',
     '',
-    '会话记录:',
+    'Output exactly these sections, in this order, using terse bullets. Write "(none)" for an empty section; never drop a section.',
+    '',
+    '## Goal',
+    '- [what the user is trying to accomplish]',
+    '',
+    '## Constraints',
+    '- [requirements, preferences, or restrictions the user stated]',
+    '',
+    '## Progress',
+    '- Done: [completed work]',
+    '- In progress: [current work]',
+    '- Blocked: [anything preventing progress]',
+    '',
+    '## Key decisions',
+    '- [decision: brief rationale]',
+    '',
+    '## Files',
+    '- [exact path: what changed and why it matters]',
+    '',
+    '## Next steps',
+    '- [what should happen next, in order]',
+    '',
+    '## Critical context',
+    '- [data, identifiers, or references needed to continue]',
+    '',
+    'Rules:',
+    '- Preserve exact file paths, commands, error strings, identifiers, and numeric values.',
+    '- Record user corrections and explicit instructions faithfully.',
+    '- Do not mention this summarization request or that the context was compacted.',
+    '- Output only the checkpoint text, with no extra commentary.',
+    '',
+    'Session transcript:',
     transcript,
   ].join('\n');
 }
@@ -42,23 +70,23 @@ export function formatTranscript(entries: SessionEntry[]): string {
   const parts: string[] = [];
   for (const entry of entries) {
     if (entry.type === 'user') {
-      parts.push(`【用户】${entry.text}`);
+      parts.push(`[user] ${entry.text}`);
     } else if (entry.type === 'assistant') {
       const calls =
         entry.toolCalls.length > 0
-          ? `(工具调用:${entry.toolCalls.map((call) => call.name).join('、')})`
+          ? ` (tool calls: ${entry.toolCalls.map((call) => call.name).join(', ')})`
           : '';
-      parts.push(`【助手】${entry.text}${calls}`);
+      parts.push(`[assistant] ${entry.text}${calls}`);
     } else if (entry.type === 'tool_result') {
-      const mark = entry.isError ? ',失败' : '';
-      parts.push(`【工具结果:${entry.name}${mark}】${entry.content}`);
+      const mark = entry.isError ? ', failed' : '';
+      parts.push(`[tool_result: ${entry.name}${mark}] ${entry.content}`);
     } else if (entry.type === 'summary') {
-      parts.push(`【历史摘要】${entry.text}`);
+      parts.push(`[earlier summary] ${entry.text}`);
     }
   }
   const text = parts.join('\n\n');
   if (text.length <= MAX_TRANSCRIPT_CHARS) {
     return text;
   }
-  return `…(较早内容已截断)…\n\n${text.slice(text.length - MAX_TRANSCRIPT_CHARS)}`;
+  return `…(earlier content truncated)…\n\n${text.slice(text.length - MAX_TRANSCRIPT_CHARS)}`;
 }
