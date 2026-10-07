@@ -153,23 +153,16 @@ describe('滚动区块渲染', () => {
     // 边框闭合:所有行显示宽度一致(内容行不再短于边框行)
     const widths = new Set(lines.map((line) => visibleWidth(line)));
     assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);
-    // 节内说明列对齐(两节按键宽度不同,各按自己的最长按键对齐)
+    // 命令与快捷键共用一条说明列:跨节逐行对齐
     const helpLine = lines.find((line) => line.includes('/help'));
-    const newLine = lines.find((line) => line.includes('/new'));
+    const atLine = lines.find((line) => line.includes('@ '));
     const ctrlOLine = lines.find((line) => line.includes('Ctrl+O'));
-    const ctrlJLine = lines.find((line) => line.includes('Ctrl+J'));
-    if (
-      helpLine === undefined ||
-      newLine === undefined ||
-      ctrlOLine === undefined ||
-      ctrlJLine === undefined
-    ) {
+    if (helpLine === undefined || atLine === undefined || ctrlOLine === undefined) {
       throw new Error('两节内容应存在');
     }
-    assert.equal(helpLine.indexOf('显示帮助'), newLine.indexOf('开始新会话'), '命令节说明列未对齐');
-    assert.equal(ctrlOLine.indexOf('全屏查看输出'), ctrlJLine.indexOf('插入换行'), '快捷键节说明列未对齐');
-    // 命令比快捷键短,命令节的说明列应更靠左,不再被最长按键拖出一片空白
-    assert.ok(helpLine.indexOf('显示帮助') < ctrlOLine.indexOf('全屏查看输出'));
+    const descColumn = helpLine.indexOf('显示帮助');
+    assert.equal(atLine.indexOf('引用文件'), descColumn, '快捷键节说明列未对齐');
+    assert.equal(ctrlOLine.indexOf('全屏查看输出'), descColumn, '快捷键节说明列未对齐');
   });
 
   it('欢迎面板:按键列取强调色,盒宽贴合内容', () => {

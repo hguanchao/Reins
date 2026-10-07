@@ -265,25 +265,26 @@ function renderWelcome(width: number, theme: Theme): string[] {
     return [' '.repeat(pad) + text];
   }
 
-  // 两节的按键宽度差得多(命令最长 7 格、快捷键最长 10 格),共用一列会让短命令后
-  // 拖出一大片空白;各节按自己的最长按键对齐,节内间隔统一两格
-  const commandColumn = keyColumnWidth(WELCOME_COMMANDS.map((entry) => entry.command));
-  const shortcutColumn = keyColumnWidth(WELCOME_SHORTCUTS.map((entry) => entry.keys));
+  // 命令与快捷键共用一条说明列:两节的说明文本逐行对齐,纵向扫读更整齐
+  const keyColumn = keyColumnWidth([
+    ...WELCOME_COMMANDS.map((entry) => entry.command),
+    ...WELCOME_SHORTCUTS.map((entry) => entry.keys),
+  ]);
 
   // 盒宽贴合内容:内容只有三十来格,固定宽度会在右侧留一大片空白
   const natural = Math.max(
     visibleWidth(WELCOME_TITLE),
     visibleWidth(WELCOME_HINT),
-    ...WELCOME_COMMANDS.map((entry) => 2 + commandColumn + visibleWidth(entry.description)),
-    ...WELCOME_SHORTCUTS.map((entry) => 2 + shortcutColumn + visibleWidth(entry.description)),
+    ...WELCOME_COMMANDS.map((entry) => 2 + keyColumn + visibleWidth(entry.description)),
+    ...WELCOME_SHORTCUTS.map((entry) => 2 + keyColumn + visibleWidth(entry.description)),
   );
   const boxWidth = Math.min(natural + 6, width - 4);
   const inner = boxWidth - 6;
 
-  const entryRow = (key: string, description: string, column: number): WelcomeRow => ({
-    text: `  ${padDisplay(key, column)}${description}`,
+  const entryRow = (key: string, description: string): WelcomeRow => ({
+    text: `  ${padDisplay(key, keyColumn)}${description}`,
     // 只给按键列取强调色:一眼先看到能敲什么;说明保持常规色,整块才不会发灰
-    style: (plain) => `${theme.paint.accent(plain.slice(0, column + 2))}${plain.slice(column + 2)}`,
+    style: (plain) => `${theme.paint.accent(plain.slice(0, keyColumn + 2))}${plain.slice(keyColumn + 2)}`,
   });
 
   const rows: WelcomeRow[] = [];
@@ -291,12 +292,12 @@ function renderWelcome(width: number, theme: Theme): string[] {
   rows.push({ text: '' });
   rows.push({ text: '斜杠命令', style: theme.bold });
   for (const entry of WELCOME_COMMANDS) {
-    rows.push(entryRow(entry.command, entry.description, commandColumn));
+    rows.push(entryRow(entry.command, entry.description));
   }
   rows.push({ text: '' });
   rows.push({ text: '快捷键', style: theme.bold });
   for (const entry of WELCOME_SHORTCUTS) {
-    rows.push(entryRow(entry.keys, entry.description, shortcutColumn));
+    rows.push(entryRow(entry.keys, entry.description));
   }
   rows.push({ text: '' });
   rows.push({ text: WELCOME_HINT, style: theme.paint.muted });

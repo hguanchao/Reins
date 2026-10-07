@@ -31,7 +31,7 @@ export type ThemeRole =
 const DARK_PRESET: Readonly<Record<ThemeRole, string>> = {
   accent: '1;36',
   // 中性灰条带,前景一并给定:只设背景会跟着终端默认前景走,浅色终端上文字看不清
-  userBar: '38;5;253;48;5;238',
+  userBar: '38;5;253;48;5;240',
   ok: '32',
   warn: '33',
   fail: '31',
