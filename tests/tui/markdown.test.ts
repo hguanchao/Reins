@@ -33,14 +33,14 @@ describe('markdown 渲染', () => {
 
   it('代码栅栏:画框并保留内容', () => {
     const lines = render('```ts\nconst a = 1;\nconst b = 2;\n```');
-    assert.ok(lines[0]?.startsWith('  ┌─ ts'));
+    assert.ok(lines[0]?.startsWith('  ╭─ ts'));
     assert.ok(lines.some((line) => line.includes('const a = 1;')));
-    assert.ok(lines.at(-1)?.startsWith('  └'));
+    assert.ok(lines.at(-1)?.startsWith('  ╰'));
   });
 
   it('流式中未闭合的代码栅栏按代码块渲染', () => {
     const lines = render('```python\nx = 1');
-    assert.ok(lines[0]?.startsWith('  ┌─ python'));
+    assert.ok(lines[0]?.startsWith('  ╭─ python'));
     assert.ok(lines.some((line) => line.includes('x = 1;') === false));
     assert.ok(lines.some((line) => line.includes('x = 1')));
   });
@@ -108,10 +108,10 @@ describe('markdown 渲染', () => {
       44,
     );
     // 全包:圆角顶底,与代码栅栏/输入框同一套视觉语言(前导为 markdown 缩进 + 表格缩进)
-    assert.ok((lines[0] ?? '').trimStart().startsWith('┌'), '应有顶边框');
-    assert.ok((lines[0] ?? '').endsWith('┐'));
-    assert.ok((lines.at(-1) ?? '').trimStart().startsWith('└'), '应有底边框');
-    assert.ok((lines.at(-1) ?? '').endsWith('┘'));
+    assert.ok((lines[0] ?? '').trimStart().startsWith('╭'), '应有顶边框');
+    assert.ok((lines[0] ?? '').endsWith('╮'));
+    assert.ok((lines.at(-1) ?? '').trimStart().startsWith('╰'), '应有底边框');
+    assert.ok((lines.at(-1) ?? '').endsWith('╯'));
     // 每行宽度一致,右边框不参差
     const widths = new Set(lines.map((line) => visibleWidth(line)));
     assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);
@@ -149,7 +149,7 @@ describe('markdown 渲染', () => {
     const lines = render('| 名称 | 说明 |\n| --- | --- |\n| dev | 开发服务器,用于本地开发与热更新 |', 34);
     const text = lines.map(stripAnsi);
     // 折行后第二行的第一列为空白填充,左右边框仍在
-    const wrapped = text.filter((line) => line.includes('│') && !line.includes('┌') && !line.includes('├') && !line.includes('└'));
+    const wrapped = text.filter((line) => line.includes('│') && !line.includes('╭') && !line.includes('├') && !line.includes('╰'));
     assert.ok(wrapped.length >= 3, `数据行应占多行:${text.join('\n')}`);
     assert.ok(text.some((line) => /│\s+│/.test(line) && line.includes('热更新')), '续行首列应留空');
     const widths = new Set(lines.map((line) => visibleWidth(line)));
@@ -246,7 +246,7 @@ describe('markdown 渲染', () => {
     assert.ok(orphan.includes('| 脚本名 | 命令 |'), '孤立行应原样保留');
     assert.ok(render('| --- |').map(stripAnsi).join('\n').includes('| --- |'));
     // 表格后续帧(分隔行到达)恢复为正常表格
-    assert.ok(render('| a | b |\n| --- |').some((line) => line.includes('┌')));
+    assert.ok(render('| a | b |\n| --- |').some((line) => line.includes('╭')));
   });
 
   it('流式逐前缀扫描:含表格/列表/引用/栅栏的文档每一帧都可渲染', () => {

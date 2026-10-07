@@ -170,7 +170,7 @@ describe('滚动区块渲染', () => {
     assert.ok(!text.includes('/compact'));
     assert.ok(!text.includes('Ctrl+E'));
     // 居中:所有行共享同一缩进
-    const top = lines.find((line) => line.includes('┌'));
+    const top = lines.find((line) => line.includes('╭'));
     if (top === undefined) throw new Error('应有边框');
     const indent = top.length - top.trimStart().length;
     assert.ok(indent > 0, '应水平居中');

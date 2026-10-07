@@ -326,11 +326,11 @@ function renderWelcome(width: number, theme: Theme): string[] {
 
   const frame = theme.paint.muted;
   const indent = ' '.repeat(Math.max(0, Math.floor((width - boxWidth) / 2)));
-  const lines: string[] = [`${indent}${frame(`┌${'─'.repeat(boxWidth - 2)}┐`)}`];
+  const lines: string[] = [`${indent}${frame(`╭${'─'.repeat(boxWidth - 2)}╮`)}`];
   for (const row of rows) {
     lines.push(`${indent}${frame('│')}  ${buildContent(row)}  ${frame('│')}`);
   }
-  lines.push(`${indent}${frame(`└${'─'.repeat(boxWidth - 2)}┘`)}`);
+  lines.push(`${indent}${frame(`╰${'─'.repeat(boxWidth - 2)}╯`)}`);
   return lines;
 }
 
