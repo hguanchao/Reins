@@ -21,6 +21,24 @@ describe('主题', () => {
     assert.ok(theme.codes.userBar.includes('48;'));
   });
 
+  it('角色按表面分四组:每组都有取值,四组之并即全部角色', () => {
+    const theme = createTheme({ color: true });
+    // 分组是维护契约:每个角色只属于一组,新增角色必须落进某一组
+    const groups = {
+      base: ['muted', 'ok', 'warn', 'fail'],
+      tui: ['accent', 'userBar'],
+      markdown: ['heading', 'code', 'link'],
+      highlight: ['keyword', 'string', 'comment', 'number', 'function', 'type'],
+    } as const;
+    for (const [name, roles] of Object.entries(groups)) {
+      for (const role of roles) {
+        assert.notEqual(theme.codes[role], '', `${name} 组角色 ${role} 缺少取色`);
+      }
+    }
+    const all: string[] = Object.values(groups).flat();
+    assert.deepEqual([...Object.keys(theme.codes)].sort(), [...all].sort());
+  });
+
   it('light 预设与 dark 不同', () => {
     const dark = createTheme({ preset: 'dark', color: true });
     const light = createTheme({ preset: 'light', color: true });

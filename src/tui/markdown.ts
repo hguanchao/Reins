@@ -69,8 +69,8 @@ function renderBlocks(text: string, width: number, theme: Theme): string[] {
     const heading = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
     if (heading !== null) {
       const level = (heading[1] ?? '').length;
-      // 深层标题只加粗不叠品牌色,避免与 h1~h3 无法区分
-      const codes = level <= 3 ? theme.codes.accent : theme.useColor ? '1' : '';
+      // 深层标题只加粗不叠标题色,避免与 h1~h3 无法区分
+      const codes = level <= 3 ? theme.codes.heading : theme.useColor ? '1' : '';
       out.push(...emitInline(heading[2] ?? '', width, theme, codes));
       index += 1;
       continue;

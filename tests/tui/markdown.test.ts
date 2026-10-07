@@ -284,4 +284,13 @@ describe('markdown 渲染', () => {
     assert.equal(codeLines.length, 2);
     assert.ok(codeLines.every((line) => line.includes('│')), codeLines.join('\n'));
   });
+
+  it('标题取 markdown 组的 heading 角色,不借用 TUI 的 accent', () => {
+    // 两个角色当前取值相同,直接看渲染结果分不出来;用取值不同的替身主题验证归属
+    const base = createTheme({ color: true });
+    const stub = { ...base, codes: { ...base.codes, heading: '38;5;9', accent: '38;5;10' } };
+    const styled = renderMarkdown('# 标题', 40, stub).join('\n');
+    assert.ok(styled.includes('\u001b[38;5;9m'), '标题应取 heading 角色');
+    assert.equal(styled.includes('\u001b[38;5;10m'), false, '标题不应取 accent');
+  });
 });

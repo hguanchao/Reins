@@ -85,7 +85,7 @@ reins/
 │   │   ├── keys.ts             # 输入解码:按键/鼠标滚轮/括号粘贴
 │   │   ├── files.ts            # 工作区文件索引(@ 补全数据源)
 │   │   ├── screen.ts           # 备用屏、raw 模式、帧差分输出
-│   │   ├── theme.ts            # 角色化主题(dark/light/mono,颜色固定不可配置)
+│   │   ├── theme.ts            # 角色化主题:基础色 + TUI/markdown/高亮三组(dark/light/mono,颜色固定)
 │   │   └── layout.ts           # 显示宽度、截断、折行(含 CJK)
 │   ├── ui/                     # 职责:呈现
 │   │   ├── printer.ts          # print 模式渲染(headless)

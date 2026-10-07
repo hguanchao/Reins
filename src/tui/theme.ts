@@ -6,40 +6,48 @@ import type { ThemePreset } from '../config/schema.ts';
  *
  * 设计意图:界面只按「角色」取色(品牌、成败、代码高亮……),不出现裸色号;
  * 颜色全局固定、不开放配置,预设决定各角色的取值,NO_COLOR 下整体退化为纯文本。
+ *
+ * 角色按「表面」分四组:基础色三个表面共用,其余三组各归一个表面。
+ * 分组是为了让「改这一处会影响哪里」有明确归属——调 markdown 不该动到 TUI 的外观。
  */
 
-/** 主题颜色角色:界面上唯一的一组取色点。 */
-export type ThemeRole =
-  | 'accent'
-  | 'userBar'
-  | 'ok'
-  | 'warn'
-  | 'fail'
-  | 'muted'
-  | 'heading'
-  | 'quote'
-  | 'code'
-  | 'link'
-  | 'keyword'
-  | 'string'
-  | 'comment'
-  | 'number'
-  | 'function'
-  | 'type';
+/** 基础色:三个表面共用,不归任何单一表面。 */
+export type BaseRole = 'muted' | 'ok' | 'warn' | 'fail';
 
-/** 各角色的默认颜色规格:dark 面向深色终端背景。 */
-const DARK_PRESET: Readonly<Record<ThemeRole, string>> = {
-  accent: '1;36',
-  // 中性灰条带,前景一并给定:只设背景会跟着终端默认前景走,浅色终端上文字看不清
-  userBar: '38;5;253;48;5;240',
+/** TUI 配色:header、欢迎面板、补全菜单、输入框、用户消息条等界面镶边。 */
+export type TuiRole = 'accent' | 'userBar';
+
+/** markdown 配色:正文排版(标题、行内代码、链接)。 */
+export type MarkdownRole = 'heading' | 'code' | 'link';
+
+/** 代码高亮配色:代码块内的语法分类。 */
+export type HighlightRole = 'keyword' | 'string' | 'comment' | 'number' | 'function' | 'type';
+
+/** 全部角色:四组之并。 */
+export type ThemeRole = BaseRole | TuiRole | MarkdownRole | HighlightRole;
+
+// —— dark:面向深色终端背景 ——
+
+const DARK_BASE: Readonly<Record<BaseRole, string>> = {
+  muted: '90',
   ok: '32',
   warn: '33',
   fail: '31',
-  muted: '90',
+};
+
+const DARK_TUI: Readonly<Record<TuiRole, string>> = {
+  accent: '1;36',
+  // 中性灰条带,前景一并给定:只设背景会跟着终端默认前景走,浅色终端上文字看不清
+  userBar: '38;5;253;48;5;240',
+};
+
+const DARK_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {
   heading: '1;36',
-  quote: '3;90',
   code: '96',
   link: '4;36',
+};
+
+const DARK_HIGHLIGHT: Readonly<Record<HighlightRole, string>> = {
   keyword: '1;35',
   string: '32',
   comment: '90',
@@ -48,24 +56,48 @@ const DARK_PRESET: Readonly<Record<ThemeRole, string>> = {
   type: '96',
 };
 
-/** light 面向浅色背景:黄色系对比度差,统一改粗体或换主色;灰改淡(faint 自适应)。 */
-const LIGHT_PRESET: Readonly<Record<ThemeRole, string>> = {
-  accent: '1;34',
-  userBar: '38;5;235;48;5;252',
+// —— light:面向浅色背景,黄色系对比度差,统一改粗体或换主色;灰改淡(faint 自适应) ——
+
+const LIGHT_BASE: Readonly<Record<BaseRole, string>> = {
+  muted: '2',
   ok: '1;32',
   warn: '1;33',
   fail: '1;31',
-  muted: '2',
+};
+
+const LIGHT_TUI: Readonly<Record<TuiRole, string>> = {
+  accent: '1;34',
+  userBar: '38;5;235;48;5;252',
+};
+
+const LIGHT_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {
   heading: '1;34',
-  quote: '2;3',
   code: '34',
   link: '4;34',
+};
+
+const LIGHT_HIGHLIGHT: Readonly<Record<HighlightRole, string>> = {
   keyword: '1;35',
   string: '1;32',
   comment: '2',
   number: '1;33',
   function: '34',
   type: '36',
+};
+
+/** 预设 = 四组合成;mono 复用 dark 取值,由 useColor 统一关闭上色。 */
+const DARK_PRESET: Readonly<Record<ThemeRole, string>> = {
+  ...DARK_BASE,
+  ...DARK_TUI,
+  ...DARK_MARKDOWN,
+  ...DARK_HIGHLIGHT,
+};
+
+const LIGHT_PRESET: Readonly<Record<ThemeRole, string>> = {
+  ...LIGHT_BASE,
+  ...LIGHT_TUI,
+  ...LIGHT_MARKDOWN,
+  ...LIGHT_HIGHLIGHT,
 };
 
 const PRESETS: Readonly<Record<ThemePreset, Readonly<Record<ThemeRole, string>>>> = {
@@ -94,8 +126,6 @@ export interface Theme {
   /** 角色 → 上色函数;未启用颜色时为恒等。 */
   readonly paint: Readonly<Record<ThemeRole, (text: string) => string>>;
   bold(text: string): string;
-  dim(text: string): string;
-  italic(text: string): string;
   inverse(text: string): string;
 }
 
@@ -117,8 +147,6 @@ export function createTheme(options: ThemeOptions = {}): Theme {
     codes,
     paint,
     bold: modifier('1'),
-    dim: modifier('2'),
-    italic: modifier('3'),
     inverse: modifier('7'),
   };
 }
