@@ -28,10 +28,11 @@ import {
   type RenderContext,
   type ScrollBlock,
 } from './blocks.ts';
+import { headerBand, inputBoxFrame, inputBoxLine, scrollbarChar, scrollbarGeometry } from './chrome.ts';
 import { createFileIndex, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
-import { codePointWidth, truncateAnsi, truncatePlain, visibleWidth } from './layout.ts';
+import { codePointWidth, padAnsi, truncatePlain, visibleWidth } from './layout.ts';
 import { Terminal } from './screen.ts';
 import { createTheme, symbols, type Theme } from './theme.ts';
 import { Viewer } from './viewer.ts';
@@ -869,11 +870,12 @@ export class TuiApp implements AgentUi {
       return;
     }
     const theme = this.renderContext.theme;
-    const header = this.renderHeader(cols);
-    const separator = theme.paint.muted(symbols.separator.repeat(cols));
+    const { left, right } = this.headerParts();
+    const band = headerBand(left, right, cols, theme);
     const footer = this.renderFooter(cols);
     const mainHeight = Math.max(1, rows - 3 - footer.lines.length);
-    const content = this.renderScrollbackLines(cols);
+    // 右侧最后一列固定留给滚动条,内容按窄一列排版
+    const content = this.renderScrollbackLines(cols - 1);
     const maxTop = Math.max(0, content.length - mainHeight);
     if (this.follow) {
       this.scrollTop = maxTop;
@@ -886,7 +888,18 @@ export class TuiApp implements AgentUi {
     while (main.length < mainHeight) {
       main.push('');
     }
-    const lines = [header, separator, ...main, separator, ...footer.lines];
+    const bar = scrollbarGeometry(top, mainHeight, content.length);
+    const bottomSeparator = theme.paint.muted(symbols.separator.repeat(cols));
+    const mainLines = main.map((line, index) => {
+      const padded = padAnsi(line, cols - 1);
+      if (bar === undefined) {
+        return padded;
+      }
+      return scrollbarChar(index, bar) === 'thumb'
+        ? `${padded}${theme.paint.accent('█')}`
+        : `${padded}${theme.paint.muted('│')}`;
+    });
+    const lines = [band.top, band.join, ...mainLines, bottomSeparator, ...footer.lines];
     const cursor =
       footer.cursor === undefined
         ? null
@@ -905,12 +918,10 @@ export class TuiApp implements AgentUi {
     return lines;
   }
 
-  private renderHeader(width: number): string {
+  /** header 带的左右内容;置顶带边框由 chrome.headerBand 负责。 */
+  private headerParts(): { left: string; right: string } {
     const paint = this.renderContext.theme.paint;
-    const modelText = this.currentConfig
-      ? `${this.currentConfig.provider}/${this.currentConfig.model}`
-      : '未配置';
-    const left = `${paint.accent('Reins')} ${paint.muted('·')} ${modelText} ${paint.muted('·')} ${shortenPath(this.options.workspace)} ${paint.muted('·')} ${this.sessionLabel()}`;
+    const left = `${paint.accent('Reins')} ${paint.muted('·')} ${this.modelText} ${paint.muted('·')} ${shortenPath(this.options.workspace)} ${paint.muted('·')} ${this.sessionLabel()}`;
     const rightParts: string[] = [];
     if (this.running) {
       rightParts.push(
@@ -927,16 +938,13 @@ export class TuiApp implements AgentUi {
     if (this.runtime !== undefined && this.runtime.mcp.length > 0) {
       rightParts.push(paint.muted(`MCP ${this.runtime.mcp.length}`));
     }
-    const right = rightParts.join(paint.muted(' · '));
-    if (right === '') {
-      return truncateAnsi(left, width);
-    }
-    if (visibleWidth(left) + visibleWidth(right) + 1 <= width) {
-      const gap = width - visibleWidth(left) - visibleWidth(right);
-      return `${left}${' '.repeat(Math.max(1, gap))}${right}`;
-    }
-    const allowLeft = Math.max(0, width - visibleWidth(right) - 2);
-    return `${truncateAnsi(left, allowLeft)} ${right}`;
+    return { left, right: rightParts.join(paint.muted(' · ')) };
+  }
+
+  private get modelText(): string {
+    return this.currentConfig
+      ? `${this.currentConfig.provider}/${this.currentConfig.model}`
+      : '未配置';
   }
 
   private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
@@ -965,12 +973,15 @@ export class TuiApp implements AgentUi {
     }
     const dropdownLines = lines.length;
 
+    // 输入框:上下边框 + 两侧竖线;光标行列按框内偏移修正
+    const theme = this.renderContext.theme;
     const input = this.renderInputLines(width);
-    lines.push(...input.lines);
+    const frame = inputBoxFrame(width, theme);
+    lines.push(frame.top, ...input.lines.map((line) => inputBoxLine(line, width, theme)), frame.bottom);
     lines.push(this.renderHints(width));
     return {
       lines,
-      cursor: { line: dropdownLines + input.cursorLine, column: input.cursorColumn },
+      cursor: { line: dropdownLines + 1 + input.cursorLine, column: 2 + input.cursorColumn },
     };
   }
 
@@ -990,7 +1001,8 @@ export class TuiApp implements AgentUi {
       );
     }
     const visible = rawLines.slice(windowStart, windowStart + MAX_INPUT_LINES);
-    const available = Math.max(4, width - 4);
+    // 框内内容区 = 宽度 - 4(两侧竖线与留白),再扣除提示符与可能的省略号
+    const available = Math.max(4, width - 8);
     const lines: string[] = [];
     let cursorLine = 0;
     let cursorColumn = 0;

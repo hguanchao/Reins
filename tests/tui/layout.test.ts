@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   fitPlain,
+  padAnsi,
   renderStyledLine,
   stripAnsi,
   truncateAnsi,
@@ -80,5 +81,15 @@ describe('布局宽度计算', () => {
 
   it('带样式折行:空内容得到单空行', () => {
     assert.deepEqual(wrapStyled([], 10), [[]]);
+  });
+
+  it('padAnsi:补齐空格、超宽截断、样式保留', () => {
+    assert.equal(visibleWidth(padAnsi('ab', 5)), 5);
+    assert.ok(padAnsi('ab', 5).endsWith('   '));
+    assert.equal(visibleWidth(padAnsi('你好世界', 5)), 5);
+    const styled = padAnsi('\u001b[36mhi\u001b[0m', 6);
+    assert.equal(visibleWidth(styled), 6);
+    assert.ok(styled.includes('\u001b[36m'));
+    assert.equal(padAnsi('', 3), '   ');
   });
 });

@@ -101,6 +101,15 @@ export function truncateAnsi(text: string, width: number): string {
   return `${out}…\u001b[0m`;
 }
 
+/** 把带样式的行补齐空格到指定显示宽度;超宽时按样式截断。 */
+export function padAnsi(text: string, width: number): string {
+  const used = visibleWidth(text);
+  if (used >= width) {
+    return truncateAnsi(text, width);
+  }
+  return text + ' '.repeat(width - used);
+}
+
 /** 折行:优先在空格处断行,中文等无空格文本按宽度硬折。 */
 export function wrapPlain(text: string, width: number): string[] {
   if (width <= 0) {
