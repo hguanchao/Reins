@@ -214,16 +214,19 @@ function renderTable(table: readonly (readonly string[])[], width: number, theme
     );
     return `  ${theme.paint.muted('│')} ${cells.join(theme.paint.muted(' │ '))} ${theme.paint.muted('│')}`;
   };
-  const out: string[] = [];
+  // 全包边框:圆角与代码栅栏/输入框一致;横线段比列宽多 2,
+  // 正好吃掉数据行 ' │ ' 里的空格,┬ ┼ ┴ 与竖线逐列对准
+  const frame = (left: string, middle: string, right: string): string =>
+    `  ${theme.paint.muted(left)}${colWidth
+      .map((columnWidth) => theme.paint.muted('─'.repeat(columnWidth + 2)))
+      .join(theme.paint.muted(middle))}${theme.paint.muted(right)}`;
+  const out: string[] = [frame('╭', '┬', '╮')];
   out.push(render(0, theme.codes.heading));
-  // 分隔列比数据列宽 1:正好吃掉数据行 ' │ ' 里的两个空格,┼ 对准竖线
-  const divider = colWidth
-    .map((columnWidth) => '─'.repeat(columnWidth + 1))
-    .join(theme.paint.muted('┼'));
-  out.push(`  ${theme.paint.muted('│')} ${theme.paint.muted(divider)} ${theme.paint.muted('│')}`);
+  out.push(frame('├', '┼', '┤'));
   for (let index = 1; index < table.length; index += 1) {
     out.push(render(index, ''));
   }
+  out.push(frame('╰', '┴', '╯'));
   return out;
 }
 

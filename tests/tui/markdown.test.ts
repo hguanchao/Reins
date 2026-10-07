@@ -97,7 +97,7 @@ describe('markdown 渲染', () => {
     assert.deepEqual(lines, ['  第一点说明', '  第二点说明', '  第三点说明']);
   });
 
-  it('表格:分隔行竖线对齐、列宽按渲染后内容、超宽截断', () => {
+  it('表格:全包边框、分隔行竖线对齐、列宽按渲染后内容、超宽截断', () => {
     const lines = render(
       [
         '| 场景 | 我会怎么做 |',
@@ -107,10 +107,15 @@ describe('markdown 渲染', () => {
       ].join('\n'),
       44,
     );
+    // 全包:圆角顶底,与代码栅栏/输入框同一套视觉语言(前导为 markdown 缩进 + 表格缩进)
+    assert.ok((lines[0] ?? '').trimStart().startsWith('╭'), '应有顶边框');
+    assert.ok((lines[0] ?? '').endsWith('╮'));
+    assert.ok((lines.at(-1) ?? '').trimStart().startsWith('╰'), '应有底边框');
+    assert.ok((lines.at(-1) ?? '').endsWith('╯'));
     // 每行宽度一致,右边框不参差
     const widths = new Set(lines.map((line) => visibleWidth(line)));
     assert.equal(widths.size, 1, `行宽不一致:${[...widths].join(',')}`);
-    // ┼ 与数据行的竖线按显示列对齐(CJK 一字符两列,须按宽度展开)
+    // ┬ ┼ ┴ 与数据行的竖线按显示列对齐(CJK 一字符两列,须按宽度展开)
     const displayCols = (line: string): Map<number, string> => {
       const map = new Map<number, string>();
       let column = 0;
@@ -123,11 +128,15 @@ describe('markdown 渲染', () => {
       return map;
     };
     const headerCols = displayCols(stripAnsi(lines[0] ?? ''));
-    const dividerCols = displayCols(stripAnsi(lines[1] ?? ''));
-    const bars = [...dividerCols.entries()].filter(([, char]) => char === '┼');
-    assert.ok(bars.length > 0);
-    for (const [column] of bars) {
-      assert.equal(headerCols.get(column), '│', `第 ${column} 显示列 ┼ 未对准竖线`);
+    const headerRowCols = displayCols(stripAnsi(lines[1] ?? ''));
+    const dividerCols = displayCols(stripAnsi(lines[2] ?? ''));
+    const bottomCols = displayCols(stripAnsi(lines.at(-1) ?? ''));
+    const joints = [...dividerCols.entries()].filter(([, char]) => char === '┼');
+    assert.ok(joints.length > 0);
+    for (const [column] of joints) {
+      assert.equal(headerCols.get(column), '┬', `第 ${column} 显示列 ┬ 未对准表头竖线`);
+      assert.equal(headerRowCols.get(column), '│', `第 ${column} 显示列 ┼ 未对准表头竖线`);
+      assert.equal(bottomCols.get(column), '┴', `第 ${column} 显示列 ┴ 未对准表底竖线`);
     }
     // 超宽单元格被截断,行宽不超限
     assert.ok(lines.every((line) => visibleWidth(line) <= 44));
