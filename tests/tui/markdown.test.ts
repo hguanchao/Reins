@@ -225,4 +225,42 @@ describe('markdown 渲染', () => {
     assert.ok(!text.includes('•'), '不应被当成列表');
     assert.ok(render('- - -').some((line) => /^  ─+$/.test(line)));
   });
+
+  it('流式中间态:孤立表格行原样渲染,不卡死', () => {
+    // 表头行已到、分隔行未到时,该行匹配段落排除条件但不属于任何块,
+    // 曾导致渲染循环原地打转、整 TUI 冻结
+    const orphan = render('| 脚本名 | 命令 |').map(stripAnsi).join('\n');
+    assert.ok(orphan.includes('| 脚本名 | 命令 |'), '孤立行应原样保留');
+    assert.ok(render('| --- |').map(stripAnsi).join('\n').includes('| --- |'));
+    // 表格后续帧(分隔行到达)恢复为正常表格
+    assert.ok(render('| a | b |\n| --- |').some((line) => line.includes('┌')));
+  });
+
+  it('流式逐前缀扫描:含表格/列表/引用/栅栏的文档每一帧都可渲染', () => {
+    const full = [
+      '好的,给你一个表格:',
+      '',
+      '| 脚本名 | 命令 | 说明 |',
+      '| --- | --- | --- |',
+      '| dev | vite | 开发服务器 |',
+      '',
+      '- [ ] 待办一',
+      '- [x] 待办二',
+      '',
+      '> 引用一段',
+      '',
+      '```ts',
+      'const a = 1;',
+      '```',
+      '',
+      '* * *',
+      '',
+      '结束。',
+    ].join('\n');
+    // 逐字符推进前缀,覆盖流式输出可能出现的每一个中间态
+    for (let end = 1; end <= full.length; end += 1) {
+      renderMarkdown(full.slice(0, end), 50, theme);
+    }
+    assert.ok(true, '全程无卡死即通过');
+  });
 });

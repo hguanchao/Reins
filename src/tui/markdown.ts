@@ -114,6 +114,12 @@ function renderBlocks(text: string, width: number, theme: Theme): string[] {
       paragraph.push(lines[index] ?? '');
       index += 1;
     }
+    // 进度保证:行匹配了排除条件却不属于任何已知块时(典型:流式中
+    // 表头行已到、分隔行未到),必须消费当前行,否则外层循环原地打转卡死
+    if (paragraph.length === 0) {
+      paragraph.push(line);
+      index += 1;
+    }
     out.push(...emitInline(paragraph.join('\n'), width, theme, ''));
   }
   return out;
