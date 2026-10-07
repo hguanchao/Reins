@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { createAgentRuntime, type AgentRuntime } from '../agent/run.ts';
-import { findModelTarget, loadCatalogFile, resolveModel, resolveProvider } from '../catalog/load.ts';
+import { findModelTarget, loadCatalogFile } from '../catalog/load.ts';
 import type { Catalog } from '../catalog/schema.ts';
 import {
   CHAT_COMMANDS,
@@ -13,13 +13,14 @@ import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../
 import { ensureHomeConfig } from '../config/ensure.ts';
 import { loadLayeredConfig } from '../config/layers.ts';
 import type { Config } from '../config/schema.ts';
-import type { ToolCall, Usage } from '../llm/types.ts';
+import type { ToolCall } from '../llm/types.ts';
 import type { Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
 import type { RuleTarget } from '../permissions/rules.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { describeError } from '../util/errors.ts';
 import { absolutize, reinsHome } from '../util/paths.ts';
+import { readGitBranch } from '../util/git.ts';
 import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
   createBlockRenderer,
@@ -64,6 +65,8 @@ const MIN_ROWS = 12;
 const ESC_FLUSH_MS = 50;
 /** 状态条消息的驻留时长。 */
 const STATUS_MS = 3000;
+/** 分支的重读间隔:git 可能在外部被切换,但没必要每帧读文件。 */
+const BRANCH_TTL_MS = 5_000;
 
 export interface TuiAppOptions {
   home: string;
@@ -122,8 +125,10 @@ export class TuiApp implements AgentUi {
   private runtime: AgentRuntime | undefined;
   private catalog: Catalog | undefined;
   private currentConfig: Config | undefined;
-  private contextWindow = 200_000;
-  private contextTokens: number | undefined;
+  /** 当前分支;非 git 仓库时为 undefined。 */
+  private gitBranch: string | undefined;
+  /** 上次读取分支的时间戳,用于按间隔重读。 */
+  private branchCheckedAt = 0;
 
   private running = false;
   private runController: AbortController | undefined;
@@ -178,6 +183,7 @@ export class TuiApp implements AgentUi {
     this.push({ kind: 'welcome' });
     // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
     void this.fileIndex.refresh();
+    void this.refreshGitBranch();
     try {
       await this.startup();
     } catch (error) {
@@ -192,6 +198,7 @@ export class TuiApp implements AgentUi {
         ] as string;
         this.scheduleRender();
       }
+      void this.refreshGitBranch();
     }, TICK_MS);
     this.scheduleRender();
 
@@ -266,11 +273,6 @@ export class TuiApp implements AgentUi {
 
   onNotice(message: string): void {
     this.pushNotice(message, 'info');
-  }
-
-  onUsage(usage: Usage): void {
-    this.contextTokens = usage.inputTokens;
-    this.scheduleRender();
   }
 
   // —— 按键分发 ——
@@ -760,7 +762,6 @@ export class TuiApp implements AgentUi {
       approval: { approver: this.approver },
     });
     this.options.resumeFile = undefined;
-    this.updateContextWindow();
   }
 
   private async rebuild(options: {
@@ -790,7 +791,6 @@ export class TuiApp implements AgentUi {
       sessionFile,
       approval: { approver: this.approver },
     });
-    this.updateContextWindow();
   }
 
   private async ensureRuntime(): Promise<AgentRuntime> {
@@ -802,19 +802,6 @@ export class TuiApp implements AgentUi {
       throw new Error('运行时未就绪');
     }
     return this.runtime;
-  }
-
-  private updateContextWindow(): void {
-    try {
-      if (this.catalog === undefined || this.currentConfig === undefined) {
-        return;
-      }
-      const provider = resolveProvider(this.catalog, this.currentConfig.provider);
-      const model = resolveModel(provider, this.currentConfig.provider, this.currentConfig.model);
-      this.contextWindow = model.contextWindow ?? this.currentConfig.contextWindow ?? 200_000;
-    } catch {
-      this.contextWindow = 200_000;
-    }
   }
 
   private readonly approver: Approver = {
@@ -945,32 +932,33 @@ export class TuiApp implements AgentUi {
   }
 
   /** header 带的左右内容;置顶带边框由 chrome.headerBand 负责。 */
+  /**
+   * header 只回答「在哪、在哪个分支」。
+   *
+   * 非 git 仓库时取不到分支,只显示路径;运行状态、上下文占用等交给正文区块
+   * 与底部提示行,不再挤在 header。路径在用户目录下时缩成 ~/xxx。
+   */
   private headerParts(): { left: string; right: string } {
     const paint = this.renderContext.theme.paint;
-    const left = `${paint.accent('Reins')} ${paint.muted('·')} ${this.modelText} ${paint.muted('·')} ${shortenPath(this.options.workspace)} ${paint.muted('·')} ${this.sessionLabel()}`;
-    const rightParts: string[] = [];
-    if (this.running) {
-      rightParts.push(
-        `${paint.warn(this.currentSpinner())} ${paint.muted(formatElapsed(Date.now() - this.runStartedAt))}`,
-      );
-    }
-    if (this.contextTokens !== undefined && this.contextTokens > 0) {
-      const percent = Math.min(999, Math.round((this.contextTokens / this.contextWindow) * 100));
-      rightParts.push(percent >= 80 ? paint.warn(`${percent}% ctx`) : paint.muted(`${percent}% ctx`));
-    }
-    if (this.currentConfig !== undefined) {
-      rightParts.push(paint.muted(this.currentConfig.approval));
-    }
-    if (this.runtime !== undefined && this.runtime.mcp.length > 0) {
-      rightParts.push(paint.muted(`MCP ${this.runtime.mcp.length}`));
-    }
-    return { left, right: rightParts.join(paint.muted(' · ')) };
+    const branch = this.gitBranch === undefined ? '' : `${this.gitBranch} `;
+    return { left: `${branch}${paint.muted(shortenPath(this.options.workspace))}`, right: '' };
   }
 
-  private get modelText(): string {
-    return this.currentConfig
-      ? `${this.currentConfig.provider}/${this.currentConfig.model}`
-      : '未配置';
+  /**
+   * 分支可能被外部 git 切换,按间隔重读;值变了才重绘。
+   * 读的是 .git/HEAD 一个小文件,秒级间隔足够,不必每帧读。
+   */
+  private async refreshGitBranch(): Promise<void> {
+    const now = Date.now();
+    if (now - this.branchCheckedAt < BRANCH_TTL_MS) {
+      return;
+    }
+    this.branchCheckedAt = now;
+    const branch = await readGitBranch(this.options.workspace);
+    if (branch !== this.gitBranch) {
+      this.gitBranch = branch;
+      this.scheduleRender();
+    }
   }
 
   private renderFooter(
@@ -1118,17 +1106,6 @@ export class TuiApp implements AgentUi {
     this.renderer = createBlockRenderer(this.renderContext);
   }
 
-  private currentSpinner(): string {
-    return symbols.spinner[this.spinnerIndex % symbols.spinner.length] as string;
-  }
-
-  private sessionLabel(): string {
-    if (this.runtime === undefined) {
-      return '新会话';
-    }
-    return `#${this.runtime.session.id.slice(-6)}`;
-  }
-
   private push(block: ScrollBlock): void {
     this.blocks.push(block);
     this.scheduleRender();
@@ -1164,9 +1141,11 @@ export class TuiApp implements AgentUi {
   }
 }
 
+/** header 用的路径:用户目录下缩成 ~/xxx,分隔符统一为 /(与 displayPath 一致),过长保留尾部。 */
 function shortenPath(path: string): string {
-  const home = homedir();
-  let text = path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+  const home = homedir().split(sep).join('/');
+  const normalized = path.split(sep).join('/');
+  let text = normalized.startsWith(home) ? `~${normalized.slice(home.length)}` : normalized;
   if (visibleWidth(text) > 30) {
     const chars = [...text];
     text = `…${chars.slice(Math.max(0, chars.length - 29)).join('')}`;
