@@ -9,7 +9,7 @@ import type { Theme } from './theme.ts';
  */
 
 /**
- * header 置顶带:内容嵌进顶边框(╭─ 内容 ─╮),下沿以 ├─┤ 接缝收束。
+ * header 置顶带:内容嵌进顶边框(┌─ 内容 ─┐),下沿以 ├─┤ 接缝收束。
  * 返回恰好两行,占用行数与普通「文本 + 分隔线」相同。
  */
 export function headerBand(
@@ -19,10 +19,10 @@ export function headerBand(
   theme: Theme,
 ): { top: string; join: string } {
   const join = theme.paint.muted(`├${'─'.repeat(Math.max(0, width - 2))}┤`);
-  const budget = width - 6; // 「╭─ 」与「 ─╮」各占 3 列
+  const budget = width - 6; // 「┌─ 」与「 ─┐」各占 3 列
   if (budget < 8) {
     // 极窄时放弃嵌内容,退化为纯边框
-    return { top: theme.paint.muted(`╭${'─'.repeat(Math.max(0, width - 2))}╮`), join };
+    return { top: theme.paint.muted(`┌${'─'.repeat(Math.max(0, width - 2))}┐`), join };
   }
 
   let rightText = right;
@@ -44,7 +44,7 @@ export function headerBand(
       ? `${leftText}${theme.paint.muted('─'.repeat(Math.max(2, budget - visibleWidth(leftText))))}`
       : `${leftText}${dashes}${rightText}`;
   return {
-    top: `${theme.paint.muted('╭─ ')}${middle}${theme.paint.muted(' ─╮')}`,
+    top: `${theme.paint.muted('┌─ ')}${middle}${theme.paint.muted(' ─┐')}`,
     join,
   };
 }
@@ -53,8 +53,8 @@ export function headerBand(
 export function inputBoxFrame(width: number, theme: Theme): { top: string; bottom: string } {
   const dashes = '─'.repeat(Math.max(0, width - 2));
   return {
-    top: theme.paint.muted(`╭${dashes}╮`),
-    bottom: theme.paint.muted(`╰${dashes}╯`),
+    top: theme.paint.muted(`┌${dashes}┐`),
+    bottom: theme.paint.muted(`└${dashes}┘`),
   };
 }
 

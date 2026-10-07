@@ -17,8 +17,8 @@ describe('header 置顶带', () => {
     const { top, join } = headerBand('Reins · model', '12% ctx', 60, theme);
     assert.equal(visibleWidth(top), 60);
     assert.equal(visibleWidth(join), 60);
-    assert.ok(stripAnsi(top).startsWith('╭─ Reins · model'));
-    assert.ok(stripAnsi(top).endsWith('12% ctx ─╮'));
+    assert.ok(stripAnsi(top).startsWith('┌─ Reins · model'));
+    assert.ok(stripAnsi(top).endsWith('12% ctx ─┐'));
     assert.ok(stripAnsi(top).includes('─'));
     assert.ok(stripAnsi(join).startsWith('├'));
     assert.ok(stripAnsi(join).endsWith('┤'));
@@ -27,7 +27,7 @@ describe('header 置顶带', () => {
   it('右侧为空时横线补齐到右缘', () => {
     const { top } = headerBand('Reins', '', 40, theme);
     assert.equal(visibleWidth(top), 40);
-    assert.ok(stripAnsi(top).endsWith('─╮'));
+    assert.ok(stripAnsi(top).endsWith('─┐'));
   });
 
   it('窄宽度下左侧截断、右侧优先保留', () => {
@@ -41,7 +41,7 @@ describe('header 置顶带', () => {
 
   it('极窄宽度退化为纯边框', () => {
     const { top, join } = headerBand('左', '右', 6, theme);
-    assert.equal(stripAnsi(top), '╭────╮');
+    assert.equal(stripAnsi(top), '┌────┐');
     assert.equal(stripAnsi(join), '├────┤');
   });
 });
@@ -49,8 +49,8 @@ describe('header 置顶带', () => {
 describe('输入框边框', () => {
   it('上下沿占满整行', () => {
     const { top, bottom } = inputBoxFrame(40, theme);
-    assert.equal(stripAnsi(top), `╭${'─'.repeat(38)}╮`);
-    assert.equal(stripAnsi(bottom), `╰${'─'.repeat(38)}╯`);
+    assert.equal(stripAnsi(top), `┌${'─'.repeat(38)}┐`);
+    assert.equal(stripAnsi(bottom), `└${'─'.repeat(38)}┘`);
   });
 
   it('内容行两侧竖线夹住并补齐到右缘', () => {
