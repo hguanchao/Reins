@@ -324,12 +324,25 @@ export function styledLineWidth(line: readonly StyledSegment[]): number {
 
 /**
  * 把样式片段补齐或截断到指定显示宽度,返回渲染后的字符串:
- * 不足补空格保证右缘对齐,超出按显示宽度硬截并加省略号。
+ * 不足补空格保证右缘对齐(对齐方向可选),超出按显示宽度硬截并加省略号。
  */
-export function fitStyledLine(line: readonly StyledSegment[], width: number): string {
+export function fitStyledLine(
+  line: readonly StyledSegment[],
+  width: number,
+  align: 'left' | 'center' | 'right' = 'left',
+): string {
   const total = styledLineWidth(line);
   if (total <= width) {
-    return renderStyledLine(line) + ' '.repeat(width - total);
+    const rendered = renderStyledLine(line);
+    const pad = width - total;
+    if (align === 'right') {
+      return ' '.repeat(pad) + rendered;
+    }
+    if (align === 'center') {
+      const left = Math.floor(pad / 2);
+      return ' '.repeat(left) + rendered + ' '.repeat(pad - left);
+    }
+    return rendered + ' '.repeat(pad);
   }
   const limit = Math.max(0, width - 1);
   let out = '';

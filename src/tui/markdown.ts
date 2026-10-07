@@ -3,6 +3,7 @@ import {
   fitStyledLine,
   renderStyledLine,
   styledLineWidth,
+  visibleWidth,
   wrapStyled,
   type StyledSegment,
 } from './layout.ts';
@@ -23,6 +24,11 @@ export function renderMarkdown(text: string, width: number, theme: Theme, indent
   const contentWidth = Math.max(8, width - indent);
   const body = renderBlocks(text, contentWidth, theme);
   return body.map((line) => (line === '' ? '' : `${' '.repeat(indent)}${line}`));
+}
+
+/** 分隔线:三个以上同类符号,允许空格相隔(---、***、___、* * *、- - - 等)。 */
+function isThematicBreak(line: string): boolean {
+  return /^\s*[-*_](?:[ \t]*[-*_]){2,}\s*$/.test(line);
 }
 
 function renderBlocks(text: string, width: number, theme: Theme): string[] {
@@ -57,7 +63,7 @@ function renderBlocks(text: string, width: number, theme: Theme): string[] {
       continue;
     }
 
-    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+    if (isThematicBreak(line)) {
       out.push(theme.paint.muted('─'.repeat(Math.min(width, 40))));
       index += 1;
       continue;
@@ -85,8 +91,8 @@ function renderBlocks(text: string, width: number, theme: Theme): string[] {
     }
 
     if (/^\s*\|.*\|/.test(line) && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[index + 1] ?? '')) {
-      const { table, consumed } = collectTable(lines, index);
-      out.push(...renderTable(table, width, theme));
+      const { table, align, consumed } = collectTable(lines, index);
+      out.push(...renderTable(table, align, width, theme));
       index += consumed;
       continue;
     }
@@ -103,7 +109,7 @@ function renderBlocks(text: string, width: number, theme: Theme): string[] {
       (lines[index] ?? '').trim() !== '' &&
       !/^\s*(?:#{1,6}\s|>|`{3,}|~{3,}|[-*+]\s|\d+[.)]\s)/.test(lines[index] ?? '') &&
       !/^\s*\|.*\|\s*$/.test(lines[index] ?? '') &&
-      !/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(lines[index] ?? '')
+      !isThematicBreak(lines[index] ?? '')
     ) {
       paragraph.push(lines[index] ?? '');
       index += 1;
@@ -153,10 +159,20 @@ function renderListItem(
   width: number,
   theme: Theme,
 ): string[] {
-  const bullet = block.ordered ? `${block.marker} ` : `${theme.paint.muted('•')} `;
-  // 续行缩进跟随编号实际宽度,多位编号(10. )才不会错位
-  const bulletWidth = block.ordered ? block.marker.length + 1 : 2;
-  const inner = renderBlocks(block.text, width - bulletWidth, theme);
+  // GFM 任务列表:未完成 □、已完成 ☑(完成态用成功色点一下)
+  const checkbox = block.ordered ? null : /^\[( |x|X)\]\s+/.exec(block.text);
+  const body = checkbox !== null ? block.text.slice(checkbox[0].length) : block.text;
+  const bullet =
+    checkbox !== null
+      ? checkbox[1]?.toLowerCase() === 'x'
+        ? `${theme.paint.ok('☑')} `
+        : `${theme.paint.muted('□')} `
+      : block.ordered
+        ? `${block.marker} `
+        : `${theme.paint.muted('•')} `;
+  // 续行缩进跟随编号/符号实际宽度,多位编号(10. )才不会错位
+  const bulletWidth = visibleWidth(bullet);
+  const inner = renderBlocks(body, width - bulletWidth, theme);
   const out: string[] = [];
   inner.forEach((line, itemIndex) => {
     if (itemIndex === 0) {
@@ -170,11 +186,14 @@ function renderListItem(
   return out;
 }
 
+/** 单元格对齐方式,来自分隔行的冒号修饰。 */
+export type TableCellAlign = 'left' | 'center' | 'right';
+
 /** 收集一个 markdown 表格(含表头分隔行)。 */
 function collectTable(
   lines: readonly string[],
   start: number,
-): { table: string[][]; consumed: number } {
+): { table: string[][]; align: TableCellAlign[]; consumed: number } {
   const rows: string[][] = [];
   let index = start;
   while (index < lines.length && /^\s*\|.*\|?\s*$/.test(lines[index] ?? '')) {
@@ -182,14 +201,27 @@ function collectTable(
     rows.push(line.split('|').map((cell) => cell.trim()));
     index += 1;
   }
-  // 第二行是对齐分隔行时不参与内容;单横线与冒号修饰(:-、:-:、::---: 等)都算
+  let align: TableCellAlign[] = [];
+  // 分隔行不参与内容;单横线与冒号修饰(:-、:-:、::---: 等)都算,并记录对齐语义
   if (rows.length >= 2 && rows[1]?.every((cell) => /^:?-+:?$/.test(cell)) === true) {
-    rows.splice(1, 1);
+    align = (rows.splice(1, 1)[0] ?? []).map((cell) => {
+      const left = cell.startsWith(':');
+      const right = cell.endsWith(':');
+      if (left && right) {
+        return 'center';
+      }
+      return right ? 'right' : 'left';
+    });
   }
-  return { table: rows, consumed: index - start };
+  return { table: rows, align, consumed: index - start };
 }
 
-function renderTable(table: readonly (readonly string[])[], width: number, theme: Theme): string[] {
+function renderTable(
+  table: readonly (readonly string[])[],
+  align: readonly TableCellAlign[],
+  width: number,
+  theme: Theme,
+): string[] {
   if (table.length === 0) {
     return [];
   }
@@ -210,7 +242,11 @@ function renderTable(table: readonly (readonly string[])[], width: number, theme
   const render = (rowIndex: number, codes: string): string => {
     const row = table[rowIndex] ?? [];
     const cells = Array.from({ length: columns }, (_, column) =>
-      fitStyledLine(parseInline(row[column] ?? '', codes, theme), colWidth[column] ?? 0),
+      fitStyledLine(
+        parseInline(row[column] ?? '', codes, theme),
+        colWidth[column] ?? 0,
+        align[column] ?? 'left',
+      ),
     );
     return `  ${theme.paint.muted('│')} ${cells.join(theme.paint.muted(' │ '))} ${theme.paint.muted('│')}`;
   };
@@ -349,11 +385,25 @@ export function parseInline(text: string, baseCodes: string, theme: Theme): Styl
       index += (link[0] ?? '').length;
       continue;
     }
+    const autolink = /^<(https?:\/\/[^>\s]+)>/.exec(rest);
+    if (autolink !== null) {
+      // 尖括号自动链接:括号本身不是内容
+      push(autolink[1] ?? '', theme.codes.link);
+      index += (autolink[0] ?? '').length;
+      continue;
+    }
     const url = /(https?:\/\/[^\s<>()[\]]+)/.exec(rest);
     if (url !== null && (url.index ?? 0) === 0) {
-      push(url[1] ?? '', theme.codes.link);
-      index += (url[0] ?? '').length;
-      continue;
+      // URL 边界:首个非 ASCII 字符起即是正文——中文句读不属于链接,
+      // URL 里的非 ASCII 本应百分号编码
+      const raw = url[1] ?? '';
+      const cut = /[\u0080-\uffff]/.exec(raw);
+      const matched = cut === null ? raw : raw.slice(0, cut.index ?? 0);
+      if (matched !== '') {
+        push(matched, theme.codes.link);
+        index += matched.length;
+        continue;
+      }
     }
     plain += rest[0] ?? '';
     index += 1;

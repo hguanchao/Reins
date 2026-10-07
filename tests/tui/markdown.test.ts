@@ -176,4 +176,53 @@ describe('markdown 渲染', () => {
     // 续行缩进 6 列(2 缩进 + "10. " 4 列)
     assert.ok(continuation.startsWith('      续行'));
   });
+
+  it('任务列表:未完成 □、已完成 ☑', () => {
+    const lines = render('- [ ] 修复登录页\n- [x] 补充单元测试\n- [X] 大写也认');
+    const text = lines.map(stripAnsi).join('\n');
+    assert.ok(text.includes('□ 修复登录页'));
+    assert.ok(text.includes('☑ 补充单元测试'));
+    assert.ok(text.includes('☑ 大写也认'));
+    assert.ok(!text.includes('[ ]') && !text.includes('[x]'));
+    // 已完成勾用成功色
+    const styled = renderMarkdown('- [x] 完成', 40, theme).join('\n');
+    assert.ok(styled.includes(`\u001b[${theme.codes.ok}m☑\u001b[0m`));
+    // 有序列表里的 [x] 不是任务语法,保持原样
+    assert.ok(render('1. [x] 保留').join('\n').includes('[x] 保留'));
+  });
+
+  it('裸 URL 在首个非 ASCII 字符处截断', () => {
+    const segments = renderMarkdown('见 https://example.com/docs。然后继续。', 60, theme);
+    const styled = segments.join('\n');
+    assert.ok(styled.includes('https://example.com/docs'));
+    // 句号与后续正文不带链接样式:直接检查行内文本的组成
+    const line = segments[2] ?? '';
+    assert.ok(!line.includes('\u001b[4m'), '句号不应是链接');
+  });
+
+  it('表格对齐语义 :-: 居中、---: 右对齐', () => {
+    const lines = render('| 名称 | 数量 |\n| :--- | ---: |\n| 总计 | 42 |', 40);
+    const text = lines.map(stripAnsi);
+    const numberRow = text.find((line) => line.includes('42'));
+    if (numberRow === undefined) throw new Error('数据行应存在');
+    // 右对齐:42 靠向右侧竖线
+    assert.ok(/│\s+42 │$/.test(numberRow), numberRow);
+    // 居中:列宽 4、内容 2,两侧各留 1 格
+    const centered = render('| 名称 |\n| :-: |\n| ab |', 40).map(stripAnsi).join('\n');
+    assert.ok(centered.includes('│  ab  │'), centered);
+  });
+
+  it('尖括号自动链接去掉括号', () => {
+    const lines = render('参考 <https://example.com/a> 说明');
+    const text = lines.map(stripAnsi).join('\n');
+    assert.ok(text.includes('https://example.com/a'));
+    assert.ok(!text.includes('<https'));
+  });
+
+  it('带空格的分隔线 * * * 与 - - -', () => {
+    const text = render('上面\n\n* * *\n\n下面').map(stripAnsi).join('\n');
+    assert.ok(text.includes('──'), '应渲染为横线');
+    assert.ok(!text.includes('•'), '不应被当成列表');
+    assert.ok(render('- - -').some((line) => /^  ─+$/.test(line)));
+  });
 });
