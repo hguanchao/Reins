@@ -28,6 +28,17 @@ export function inputBoxLine(content: string, width: number, theme: Theme, focus
   return `${paintBorder('│')} ${padAnsi(content, Math.max(0, width - 4))} ${paintBorder('│')}`;
 }
 
+/** 审批选项纵向渲染:当前项使用与输入框相同的提示符。 */
+export function renderApprovalOptions(
+  options: readonly string[],
+  selected: number,
+  theme: Theme,
+): string[] {
+  return options.map((option, index) =>
+    index === selected ? `  ${theme.paint.accent('› ')}${option}` : `    ${option}`,
+  );
+}
+
 /** 给输入框首行的斜杠命令着色,参数与普通文本保持原样。 */
 export function paintSlashCommand(text: string, paint: (value: string) => string): string {
   if (!text.startsWith('/')) {

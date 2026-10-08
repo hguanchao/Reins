@@ -8,6 +8,7 @@ import {
   inputBoxRowRange,
   overlayLines,
   paintSlashCommand,
+  renderApprovalOptions,
   renderScrollbarLine,
   scrollbarChar,
   scrollbarGeometry,
@@ -42,6 +43,13 @@ describe('输入框边框', () => {
 
   it('计算输入框在终端中的行范围', () => {
     assert.deepEqual(inputBoxRowRange(18, 3), { top: 19, bottom: 23 });
+  });
+
+  it('审批选项用 › 标记当前项', () => {
+    const options = renderApprovalOptions(['[y] 允许', '[a] 始终允许', '[n] 拒绝'], 1, theme);
+    assert.ok(options[1]?.includes(`\u001b[${theme.codes.accent}m› `));
+    assert.ok(options[0]?.startsWith('    '));
+    assert.ok(options[2]?.startsWith('    '));
   });
 
   it('斜杠命令着色但不影响参数与显示宽度', () => {

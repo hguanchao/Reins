@@ -43,6 +43,7 @@ import {
   inputBoxRowRange,
   overlayLines,
   paintSlashCommand,
+  renderApprovalOptions,
   renderScrollbarLine,
   scrollbarGeometry,
   splitPathLabel,
@@ -148,6 +149,7 @@ export class TuiApp implements AgentUi {
   private lastMaxTop = 0;
 
   private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
+  private approvalIndex = 0;
   private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
   /** 目录信任判定结果;启动时先于会话确定。 */
   private trust: TrustResolution | undefined;
@@ -957,6 +959,7 @@ export class TuiApp implements AgentUi {
     }
     // 审批需要立即关注:把查看器收起,让审批卡片可见
     this.viewer.close();
+    this.approvalIndex = 0;
     this.approvalCard = { target, decision };
     this.scheduleRender();
     return new Promise<'allow' | 'deny'>((resolve) => {
@@ -968,23 +971,42 @@ export class TuiApp implements AgentUi {
     if (this.approvalCard === undefined || this.approvalResolve === undefined) {
       return;
     }
-    let verdict: 'allow' | 'deny' | undefined;
-    if (key.type === 'text' && ['y', 'a', 'n'].includes(key.text.toLowerCase())) {
-      const choice = key.text.toLowerCase();
-      verdict = choice === 'n' ? 'deny' : 'allow';
-      if (choice === 'a') {
-        this.alwaysAllow.add(this.approvalKey(this.approvalCard.target, this.approvalCard.decision));
-      }
-    } else if (key.type === 'escape' || key.type === 'ctrl-c') {
-      verdict = 'deny';
-    }
-    if (verdict === undefined) {
+    if (key.type === 'up' || key.type === 'left') {
+      this.approvalIndex = (this.approvalIndex + 2) % 3;
+      this.scheduleRender();
       return;
     }
+    if (key.type === 'down' || key.type === 'right') {
+      this.approvalIndex = (this.approvalIndex + 1) % 3;
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'enter') {
+      this.finishApproval(this.approvalIndex);
+      return;
+    }
+    if (key.type === 'text' && ['y', 'a', 'n'].includes(key.text.toLowerCase())) {
+      const choice = key.text.toLowerCase();
+      this.finishApproval(choice === 'y' ? 0 : choice === 'a' ? 1 : 2);
+      return;
+    }
+    if (key.type === 'escape' || key.type === 'ctrl-c') {
+      this.finishApproval(2);
+    }
+  }
+
+  private finishApproval(index: number): void {
+    const card = this.approvalCard;
     const resolve = this.approvalResolve;
+    if (card === undefined || resolve === undefined) {
+      return;
+    }
+    if (index === 1) {
+      this.alwaysAllow.add(this.approvalKey(card.target, card.decision));
+    }
     this.approvalCard = undefined;
     this.approvalResolve = undefined;
-    resolve(verdict);
+    resolve(index === 2 ? 'deny' : 'allow');
   }
 
   private approvalKey(target: RuleTarget, decision: Decision): string {
@@ -1133,12 +1155,16 @@ export class TuiApp implements AgentUi {
       const paint = this.renderContext.theme.paint;
       const { target, decision } = this.approvalCard;
       const what = target.command ?? target.path ?? target.server ?? target.domain ?? '';
+      const options = [
+        paint.ok('[y] 允许'),
+        paint.ok('[a] 本会话总是允许'),
+        paint.fail('[n] 拒绝'),
+      ];
       const lines = [
         paint.warn(`  ${symbols.warn} 审批请求`),
         `    ${this.renderContext.theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
         paint.muted(`    触发规则:${decision.rule ?? decision.reason}`),
-        `    ${paint.ok('[y] 允许')}   ${paint.ok('[a] 本会话总是允许')}   ${paint.fail('[n] 拒绝')}`,
-        paint.muted('  y/a/n 选择 · Esc 拒绝'),
+        ...renderApprovalOptions(options, this.approvalIndex, this.renderContext.theme),
       ];
       return { lines };
     }
@@ -1243,7 +1269,7 @@ export class TuiApp implements AgentUi {
       return paint.warn(` ${truncatePlain(status.text, Math.max(0, width - 2))}`);
     }
     if (this.approvalCard !== undefined) {
-      text = 'y/a/n 选择 · Esc 拒绝';
+      text = '';
     } else if (this.running) {
       text = `⏱ ${formatElapsed(Date.now() - this.runStartedAt)} · ^C/Esc 中断 · 滚轮/PgUp/PgDn 滚动 · ^O 查看`;
     } else if (!this.follow) {
