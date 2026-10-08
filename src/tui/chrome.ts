@@ -28,6 +28,12 @@ export function inputBoxLine(content: string, width: number, theme: Theme, focus
   return `${paintBorder('│')} ${padAnsi(content, Math.max(0, width - 4))} ${paintBorder('│')}`;
 }
 
+/** 输入框在终端中的 1 基行范围,包含上下边框。 */
+export function inputBoxRowRange(mainHeight: number, inputLineCount: number): { top: number; bottom: number } {
+  const top = Math.max(1, mainHeight + 1);
+  return { top, bottom: top + Math.max(0, inputLineCount) + 1 };
+}
+
 export interface ScrollbarGeometry {
   thumbStart: number;
   thumbSize: number;

@@ -5,6 +5,7 @@ import {
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
+  inputBoxRowRange,
   overlayLines,
   renderScrollbarLine,
   scrollbarChar,
@@ -36,6 +37,10 @@ describe('输入框边框', () => {
     assert.ok(plain.endsWith('│'));
     assert.ok(line.startsWith(`\u001b[${theme.codes.completionBorder}m`));
     assert.equal(visibleWidth(line), 40);
+  });
+
+  it('计算输入框在终端中的行范围', () => {
+    assert.deepEqual(inputBoxRowRange(18, 3), { top: 19, bottom: 23 });
   });
 
   it('超长内容按显示宽度截断', () => {

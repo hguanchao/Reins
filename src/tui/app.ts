@@ -40,6 +40,7 @@ import {
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
+  inputBoxRowRange,
   overlayLines,
   renderScrollbarLine,
   scrollbarGeometry,
@@ -373,6 +374,11 @@ export class TuiApp implements AgentUi {
     }
     if (key.type === 'focus-in' || key.type === 'focus-out') {
       this.focused = key.type === 'focus-in';
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'mouse-down') {
+      this.focused = this.isInputBoxRow(key.y);
       this.scheduleRender();
       return;
     }
@@ -1108,6 +1114,17 @@ export class TuiApp implements AgentUi {
         : splitPathLabel(item),
     );
     return completionMenu(menu, completion.index, width, this.renderContext.theme, count);
+  }
+
+  private isInputBoxRow(row: number): boolean {
+    if (this.trustPrompt !== undefined || this.approvalCard !== undefined || this.viewer.isOpen) {
+      return false;
+    }
+    const input = this.renderInputLines(this.terminal.columns);
+    const footerHeight = input.lines.length + 3;
+    const mainHeight = Math.max(1, this.terminal.rows - footerHeight);
+    const range = inputBoxRowRange(mainHeight, input.lines.length);
+    return row >= range.top && row <= range.bottom;
   }
 
   private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
