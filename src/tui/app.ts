@@ -135,6 +135,7 @@ export class TuiApp implements AgentUi {
   private currentConfig: Config | undefined;
 
   private running = false;
+  private focused = true;
   private runController: AbortController | undefined;
   private runStartedAt = 0;
   private spinnerIndex = 0;
@@ -368,6 +369,11 @@ export class TuiApp implements AgentUi {
 
   private handleKey(key: TuiKey): void {
     if (this.exiting) {
+      return;
+    }
+    if (key.type === 'focus-in' || key.type === 'focus-out') {
+      this.focused = key.type === 'focus-in';
+      this.scheduleRender();
       return;
     }
     // 信任页先于一切:它决定后面加载什么配置
@@ -1124,8 +1130,12 @@ export class TuiApp implements AgentUi {
 
     // 输入框:上下边框 + 两侧竖线;光标行列按框内偏移修正
     const input = this.renderInputLines(width);
-    const frame = inputBoxFrame(width, theme);
-    lines.push(frame.top, ...input.lines.map((line) => inputBoxLine(line, width, theme)), frame.bottom);
+    const frame = inputBoxFrame(width, theme, this.focused);
+    lines.push(
+      frame.top,
+      ...input.lines.map((line) => inputBoxLine(line, width, theme, this.focused)),
+      frame.bottom,
+    );
     lines.push(this.renderHints(width));
     return {
       lines,

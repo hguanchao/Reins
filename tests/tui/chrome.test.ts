@@ -17,17 +17,24 @@ import { stripAnsi, visibleWidth } from '../../src/tui/layout.ts';
 const theme = createTheme({ color: true });
 
 describe('输入框边框', () => {
-  it('上下沿占满整行', () => {
+  it('上下沿占满整行,聚焦时使用原边框色', () => {
     const { top, bottom } = inputBoxFrame(40, theme);
     assert.equal(stripAnsi(top), `╭${'─'.repeat(38)}╮`);
     assert.equal(stripAnsi(bottom), `╰${'─'.repeat(38)}╯`);
+    assert.ok(top.startsWith(`\u001b[${theme.codes.muted}m`));
+    assert.ok(bottom.startsWith(`\u001b[${theme.codes.muted}m`));
+    assert.ok(inputBoxLine('› 你好', 40, theme).startsWith(`\u001b[${theme.codes.muted}m`));
   });
 
-  it('内容行两侧竖线夹住并补齐到右缘', () => {
-    const line = inputBoxLine('› 你好', 40, theme);
+  it('失焦时边框改为 #242424,内容宽度保持不变', () => {
+    const frame = inputBoxFrame(40, theme, false);
+    assert.ok(frame.top.startsWith(`\u001b[${theme.codes.completionBorder}m`));
+    assert.ok(frame.bottom.startsWith(`\u001b[${theme.codes.completionBorder}m`));
+    const line = inputBoxLine('› 你好', 40, theme, false);
     const plain = stripAnsi(line);
     assert.ok(plain.startsWith('│ › 你好'));
     assert.ok(plain.endsWith('│'));
+    assert.ok(line.startsWith(`\u001b[${theme.codes.completionBorder}m`));
     assert.equal(visibleWidth(line), 40);
   });
 

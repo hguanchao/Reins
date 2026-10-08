@@ -34,6 +34,8 @@ export type TuiKey =
   | { type: 'paste'; text: string }
   /** 鼠标滚轮;正数向下、负数向上,单位为行。 */
   | { type: 'wheel'; delta: number }
+  | { type: 'focus-in' }
+  | { type: 'focus-out' }
   | { type: 'unknown' };
 
 const PASTE_START = '\u001b[200~';
@@ -227,11 +229,16 @@ export function createKeyDecoder(): KeyDecoder {
       return TILDE_FINALS[Number.parseInt(tilde[1] ?? '', 10)] ?? { type: 'unknown' };
     }
 
-    // 终端回执类序列(焦点、私有模式应答):吞到终结符,忽略
-    if (buf.startsWith('\u001b[I') || buf.startsWith('\u001b[O')) {
+    // 焦点上报:把终端窗口焦点变化交给上层,避免失焦时继续显示聚焦边框
+    if (buf.startsWith('\u001b[I')) {
       consume(3);
-      return 'drain-paste';
+      return { type: 'focus-in' };
     }
+    if (buf.startsWith('\u001b[O')) {
+      consume(3);
+      return { type: 'focus-out' };
+    }
+    // 私有模式应答属于终端回执,吞到终结符即可
     const report = /^\u001b\[\?[0-9;]*[A-Za-z]/.exec(buf);
     if (report !== null) {
       consume(report[0].length);

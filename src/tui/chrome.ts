@@ -9,17 +9,23 @@ import type { Theme } from './theme.ts';
  */
 
 /** 输入框上沿与下沿,占满整行宽度。 */
-export function inputBoxFrame(width: number, theme: Theme): { top: string; bottom: string } {
+export function inputBoxFrame(
+  width: number,
+  theme: Theme,
+  focused = true,
+): { top: string; bottom: string } {
   const dashes = '─'.repeat(Math.max(0, width - 2));
+  const paintBorder = focused ? theme.paint.muted : theme.paint.completionBorder;
   return {
-    top: theme.paint.muted(`╭${dashes}╮`),
-    bottom: theme.paint.muted(`╰${dashes}╯`),
+    top: paintBorder(`╭${dashes}╮`),
+    bottom: paintBorder(`╰${dashes}╯`),
   };
 }
 
 /** 输入框内容行:两侧竖线夹住,内容补齐空格保证右缘对齐。 */
-export function inputBoxLine(content: string, width: number, theme: Theme): string {
-  return `${theme.paint.muted('│')} ${padAnsi(content, Math.max(0, width - 4))} ${theme.paint.muted('│')}`;
+export function inputBoxLine(content: string, width: number, theme: Theme, focused = true): string {
+  const paintBorder = focused ? theme.paint.muted : theme.paint.completionBorder;
+  return `${paintBorder('│')} ${padAnsi(content, Math.max(0, width - 4))} ${paintBorder('│')}`;
 }
 
 export interface ScrollbarGeometry {

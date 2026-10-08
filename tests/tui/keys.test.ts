@@ -130,7 +130,10 @@ describe('输入解码', () => {
     ]);
   });
 
-  it('焦点与私有模式回执被忽略', () => {
-    assert.deepEqual(decode('\u001b[I\u001b[O\u001b[?2004h'), []);
+  it('焦点事件被识别,私有模式回执仍被忽略', () => {
+    assert.deepEqual(decode('\u001b[I\u001b[O\u001b[?2004h'), [
+      { type: 'focus-in' },
+      { type: 'focus-out' },
+    ]);
   });
 });
