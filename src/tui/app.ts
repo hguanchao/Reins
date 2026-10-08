@@ -1210,7 +1210,7 @@ export class TuiApp implements AgentUi {
         paint.warn(`  ${symbols.warn} 审批请求`),
         `    ${this.renderContext.theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
         paint.muted(`    触发规则:${decision.rule ?? decision.reason}`),
-        ...renderApprovalOptions(options, this.approvalIndex, this.renderContext.theme),
+        `    ${renderApprovalOptions(options, this.approvalIndex, this.renderContext.theme)}`,
       ];
       return { lines };
     }
