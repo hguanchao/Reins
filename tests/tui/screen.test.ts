@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { computeFrameDiff } from '../../src/tui/screen.ts';
+import { computeFrameDiff, Terminal } from '../../src/tui/screen.ts';
+
+class MockStream {
+  columns = 80;
+  rows = 24;
+  isTTY = false;
+  output = '';
+
+  write(chunk: string): boolean {
+    this.output += chunk;
+    return true;
+  }
+
+  resume(): this {
+    return this;
+  }
+
+  pause(): this {
+    return this;
+  }
+}
 
 describe('帧差分', () => {
   it('相同帧无差异', () => {
@@ -23,5 +43,22 @@ describe('帧差分', () => {
   it('空帧视为全量变化', () => {
     const diffs = computeFrameDiff([], ['x', 'y']);
     assert.equal(diffs.length, 2);
+  });
+
+  it('进入和离开时切换焦点上报', () => {
+    const output = new MockStream();
+    const input = new MockStream();
+    const terminal = new Terminal(output as never, input as never);
+    terminal.enter();
+    assert.ok(output.output.includes('\u001b[?1004h'));
+    terminal.leave();
+    assert.ok(output.output.includes('\u001b[?1000l'));
+    assert.ok(output.output.includes('\u001b[?1006l'));
+    assert.ok(output.output.includes('\u001b[?1004l'));
+    assert.ok(output.output.includes('\u001b[?2004l'));
+    assert.ok(output.output.includes('\u001b[?1049l'));
+    const before = output.output;
+    terminal.leave();
+    assert.equal(output.output, before);
   });
 });

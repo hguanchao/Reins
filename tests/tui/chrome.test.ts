@@ -5,6 +5,11 @@ import {
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
+  inputBoxRowRange,
+  overlayLines,
+  paintSlashCommand,
+  renderApprovalOptions,
+  renderScrollbarLine,
   scrollbarChar,
   scrollbarGeometry,
   splitPathLabel,
@@ -15,18 +20,46 @@ import { stripAnsi, visibleWidth } from '../../src/tui/layout.ts';
 const theme = createTheme({ color: true });
 
 describe('输入框边框', () => {
-  it('上下沿占满整行', () => {
+  it('上下沿占满整行,聚焦时使用原边框色', () => {
     const { top, bottom } = inputBoxFrame(40, theme);
     assert.equal(stripAnsi(top), `╭${'─'.repeat(38)}╮`);
     assert.equal(stripAnsi(bottom), `╰${'─'.repeat(38)}╯`);
+    assert.ok(top.startsWith(`\u001b[${theme.codes.muted}m`));
+    assert.ok(bottom.startsWith(`\u001b[${theme.codes.muted}m`));
+    assert.ok(inputBoxLine('› 你好', 40, theme).startsWith(`\u001b[${theme.codes.muted}m`));
   });
 
-  it('内容行两侧竖线夹住并补齐到右缘', () => {
-    const line = inputBoxLine('› 你好', 40, theme);
+  it('失焦时边框改为 #242424,内容宽度保持不变', () => {
+    const frame = inputBoxFrame(40, theme, false);
+    assert.ok(frame.top.startsWith(`\u001b[${theme.codes.completionBorder}m`));
+    assert.ok(frame.bottom.startsWith(`\u001b[${theme.codes.completionBorder}m`));
+    const line = inputBoxLine('› 你好', 40, theme, false);
     const plain = stripAnsi(line);
     assert.ok(plain.startsWith('│ › 你好'));
     assert.ok(plain.endsWith('│'));
+    assert.ok(line.startsWith(`\u001b[${theme.codes.completionBorder}m`));
     assert.equal(visibleWidth(line), 40);
+  });
+
+  it('计算输入框在终端中的行范围', () => {
+    assert.deepEqual(inputBoxRowRange(18, 3), { top: 19, bottom: 23 });
+  });
+
+  it('审批选项横向排列并用 › 标记当前项', () => {
+    const options = renderApprovalOptions(['[y] 允许', '[a] 始终允许', '[n] 拒绝'], 1, theme);
+    assert.ok(options.includes(`\u001b[${theme.codes.accent}m› `));
+    assert.equal(stripAnsi(options), '  [y] 允许   › [a] 始终允许     [n] 拒绝');
+  });
+
+  it('斜杠命令着色但不影响参数与显示宽度', () => {
+    const paint = theme.paint.accent;
+    const command = paintSlashCommand('/help', paint);
+    const withArgs = paintSlashCommand('/help 参数', paint);
+    const plain = paintSlashCommand('普通文本', paint);
+    assert.equal(command, `${paint('/help')}`);
+    assert.equal(withArgs, `${paint('/help')} 参数`);
+    assert.equal(plain, '普通文本');
+    assert.equal(visibleWidth(withArgs), visibleWidth('/help 参数'));
   });
 
   it('超长内容按显示宽度截断', () => {
@@ -64,6 +97,42 @@ describe('滚动条几何', () => {
     if (negative === undefined) throw new Error('应显示滚动条');
     assert.equal(negative.thumbStart, 0);
   });
+
+  it('滑块使用用户消息背景色,轨道不绘制竖线', () => {
+    const geometry = scrollbarGeometry(0, 4, 8);
+    if (geometry === undefined) throw new Error('应显示滚动条');
+    assert.equal(renderScrollbarLine(0, geometry, theme), `\u001b[${theme.codes.scrollbar}m█\u001b[0m`);
+    assert.equal(renderScrollbarLine(3, geometry, theme), ' ');
+    assert.equal(renderScrollbarLine(0, undefined, theme), ' ');
+  });
+});
+
+describe('覆盖菜单', () => {
+  it('覆盖内容区底部但不改变行数和顶部内容', () => {
+    const base = ['上方'.padEnd(20), '中间'.padEnd(20), '底部'.padEnd(20), '输入框'.padEnd(20)];
+    const result = overlayLines(base, ['菜单一', '菜单二']);
+    assert.equal(result.length, base.length);
+    assert.deepEqual(result.slice(0, 2), base.slice(0, 2));
+    assert.ok(result[2]?.startsWith('菜单一'));
+    assert.ok(result[3]?.startsWith('菜单二'));
+  });
+
+  it('保留滚动条列并按空间限制覆盖行数', () => {
+    const base = ['123456789│', 'abcdefghij█'];
+    const result = overlayLines(base, ['menu one', 'menu two', 'menu three'], ['│', '█']);
+    assert.equal(result.length, base.length);
+    assert.deepEqual(result, ['menu two │', 'menu three█']);
+  });
+
+  it('菜单行为空时仍擦除底层内容', () => {
+    const result = overlayLines(['历史内容', '底部'], ['', '菜单']);
+    assert.deepEqual(result, [' '.repeat(visibleWidth('历史内容')), '菜单']);
+  });
+
+  it('无覆盖内容时返回原行', () => {
+    const base = ['一', '二'];
+    assert.deepEqual(overlayLines(base, []), base);
+  });
 });
 
 describe('垂直居中', () => {
@@ -88,19 +157,22 @@ describe('补全菜单', () => {
     { label: '/resume', detail: '恢复会话;无 id 时列出' },
   ];
 
-  it('高度固定:候选不足时补空行', () => {
+  it('上下有浅灰边框,候选区铺灰色背景且高度固定', () => {
     const menu = completionMenu(rows, 0, 60, theme, 5);
-    assert.equal(menu.length, 5);
-    assert.equal(menu[3], '');
-    assert.equal(menu[4], '');
+    assert.equal(menu.length, 7);
+    assert.equal(menu[0], theme.paint.completionBorder('─'.repeat(60)));
+    assert.equal(menu[6], theme.paint.completionBorder('─'.repeat(60)));
+    assert.equal(stripAnsi(menu[4] ?? ''), ' '.repeat(60));
+    assert.ok(menu[4]?.startsWith(`\u001b[${theme.codes.completionBg}m`));
+    assert.ok(menu[4]?.endsWith('\u001b[0m'));
   });
 
   it('主次两列:次要文本对齐到同一列', () => {
     const menu = completionMenu(rows, 0, 60, theme, 3).map(stripAnsi);
-    assert.ok(menu[0]?.startsWith('  › /help  '), menu[0]);
-    const column = menu[0]?.indexOf('显示帮助');
-    assert.equal(menu[1]?.indexOf('开始新会话'), column);
-    assert.equal(menu[2]?.indexOf('恢复会话;无 id 时列出'), column);
+    assert.ok(menu[1]?.startsWith('  › /help  '), menu[1]);
+    const column = menu[1]?.indexOf('显示帮助');
+    assert.equal(menu[2]?.indexOf('开始新会话'), column);
+    assert.equal(menu[3]?.indexOf('恢复会话;无 id 时列出'), column);
   });
 
   it('候选超出高度时选中项始终落在窗口内', () => {
@@ -108,7 +180,7 @@ describe('补全菜单', () => {
     for (const selected of [0, 5, 12, 19]) {
       const menu = completionMenu(many, selected, 60, theme, 8);
       const active = menu.findIndex((line) => stripAnsi(line).includes('›'));
-      assert.ok(active >= 0, `选中项 ${selected} 不在窗口内`);
+      assert.ok(active >= 1, `选中项 ${selected} 不在窗口内`);
       assert.ok(stripAnsi(menu[active] ?? '').includes(`/cmd${selected}`));
     }
   });

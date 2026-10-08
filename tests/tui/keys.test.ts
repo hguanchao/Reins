@@ -77,16 +77,17 @@ describe('输入解码', () => {
     assert.equal(decoder.hasPending(), false);
   });
 
-  it('SGR 鼠标滚轮:64 上 65 下,松开忽略', () => {
+  it('SGR 鼠标滚轮与点击坐标,松开忽略', () => {
     assert.deepEqual(decode('\u001b[<64;10;5M'), [{ type: 'wheel', delta: -3 }]);
     assert.deepEqual(decode('\u001b[<65;10;5M'), [{ type: 'wheel', delta: 3 }]);
     assert.deepEqual(decode('\u001b[<64;10;5m'), [{ type: 'unknown' }]);
-    assert.deepEqual(decode('\u001b[<0;10;5M'), [{ type: 'unknown' }]);
+    assert.deepEqual(decode('\u001b[<0;10;5M'), [{ type: 'mouse-down', x: 10, y: 5 }]);
   });
 
-  it('X10 鼠标滚轮', () => {
+  it('X10 鼠标滚轮与点击坐标', () => {
     // 按钮 64 → 字节 64+32;x=10,y=5
     assert.deepEqual(decode('\u001b[M`_\u0005'), [{ type: 'wheel', delta: -3 }]);
+    assert.deepEqual(decode('\u001b[M \"#'), [{ type: 'mouse-down', x: 2, y: 3 }]);
   });
 
   it('括号粘贴:整段交付,换行不变成回车', () => {
@@ -130,7 +131,10 @@ describe('输入解码', () => {
     ]);
   });
 
-  it('焦点与私有模式回执被忽略', () => {
-    assert.deepEqual(decode('\u001b[I\u001b[O\u001b[?2004h'), []);
+  it('焦点事件被识别,私有模式回执仍被忽略', () => {
+    assert.deepEqual(decode('\u001b[I\u001b[O\u001b[?2004h'), [
+      { type: 'focus-in' },
+      { type: 'focus-out' },
+    ]);
   });
 });

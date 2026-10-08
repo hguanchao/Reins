@@ -1,4 +1,4 @@
-import { fitPlain, padAnsi, truncatePlain, visibleWidth } from './layout.ts';
+import { fitPlain, padAnsi, paintRow, truncatePlain, visibleWidth } from './layout.ts';
 import type { Theme } from './theme.ts';
 
 /**
@@ -9,17 +9,46 @@ import type { Theme } from './theme.ts';
  */
 
 /** 输入框上沿与下沿,占满整行宽度。 */
-export function inputBoxFrame(width: number, theme: Theme): { top: string; bottom: string } {
+export function inputBoxFrame(
+  width: number,
+  theme: Theme,
+  focused = true,
+): { top: string; bottom: string } {
   const dashes = '─'.repeat(Math.max(0, width - 2));
+  const paintBorder = focused ? theme.paint.muted : theme.paint.completionBorder;
   return {
-    top: theme.paint.muted(`╭${dashes}╮`),
-    bottom: theme.paint.muted(`╰${dashes}╯`),
+    top: paintBorder(`╭${dashes}╮`),
+    bottom: paintBorder(`╰${dashes}╯`),
   };
 }
 
 /** 输入框内容行:两侧竖线夹住,内容补齐空格保证右缘对齐。 */
-export function inputBoxLine(content: string, width: number, theme: Theme): string {
-  return `${theme.paint.muted('│')} ${padAnsi(content, Math.max(0, width - 4))} ${theme.paint.muted('│')}`;
+export function inputBoxLine(content: string, width: number, theme: Theme, focused = true): string {
+  const paintBorder = focused ? theme.paint.muted : theme.paint.completionBorder;
+  return `${paintBorder('│')} ${padAnsi(content, Math.max(0, width - 4))} ${paintBorder('│')}`;
+}
+
+/** 审批选项横向渲染:当前项使用与输入框相同的提示符。 */
+export function renderApprovalOptions(options: readonly string[], selected: number, theme: Theme): string {
+  return options
+    .map((option, index) => `${index === selected ? theme.paint.accent('› ') : '  '}${option}`)
+    .join('   ');
+}
+
+/** 给输入框首行的斜杠命令着色,参数与普通文本保持原样。 */
+export function paintSlashCommand(text: string, paint: (value: string) => string): string {
+  if (!text.startsWith('/')) {
+    return text;
+  }
+  const end = text.search(/[\s]/);
+  const commandEnd = end === -1 ? text.length : end;
+  return `${paint(text.slice(0, commandEnd))}${text.slice(commandEnd)}`;
+}
+
+/** 输入框在终端中的 1 基行范围,包含上下边框。 */
+export function inputBoxRowRange(mainHeight: number, inputLineCount: number): { top: number; bottom: number } {
+  const top = Math.max(1, mainHeight + 1);
+  return { top, bottom: top + Math.max(0, inputLineCount) + 1 };
 }
 
 export interface ScrollbarGeometry {
@@ -46,7 +75,7 @@ export function scrollbarGeometry(
   return { thumbStart, thumbSize };
 }
 
-/** 滚动条第 index 行的字符:滑块 █ / 轨道 │,由调用方决定取色。 */
+/** 滚动条第 index 行的区域:滑块或轨道。 */
 export function scrollbarChar(
   index: number,
   geometry: ScrollbarGeometry,
@@ -54,6 +83,18 @@ export function scrollbarChar(
   return index >= geometry.thumbStart && index < geometry.thumbStart + geometry.thumbSize
     ? 'thumb'
     : 'track';
+}
+
+/** 绘制滚动条一行:滑块着色,轨道留空以免出现竖线。 */
+export function renderScrollbarLine(
+  index: number,
+  geometry: ScrollbarGeometry | undefined,
+  theme: Theme,
+): string {
+  if (geometry === undefined || scrollbarChar(index, geometry) === 'track') {
+    return ' ';
+  }
+  return theme.paint.scrollbar('█');
 }
 
 /**
@@ -68,6 +109,25 @@ export function centerVertically(lines: readonly string[], height: number): stri
     return [...lines];
   }
   return [...Array.from({ length: pad }, () => ''), ...lines];
+}
+
+/** 将菜单覆盖到内容区底部,并可保留每行最右侧的滚动条列。 */
+export function overlayLines(
+  base: readonly string[],
+  overlay: readonly string[],
+  rightColumn: readonly string[] = [],
+): string[] {
+  const lines = [...base];
+  const count = Math.min(base.length, overlay.length);
+  const baseStart = base.length - count;
+  const overlayStart = overlay.length - count;
+  for (let offset = 0; offset < count; offset += 1) {
+    const row = baseStart + offset;
+    const edge = rightColumn[row] ?? '';
+    const width = Math.max(0, visibleWidth(base[row] ?? '') - visibleWidth(edge));
+    lines[row] = `${padAnsi(overlay[overlayStart + offset] ?? '', width)}${edge}`;
+  }
+  return lines;
 }
 
 /** 补全菜单的一行:主文本 + 次要文本(命令说明或文件所在目录)。 */
@@ -103,9 +163,9 @@ function windowStart(selected: number, total: number, height: number): number {
 }
 
 /**
- * 渲染补全菜单:行数固定,选中项始终落在窗口内。
+ * 渲染补全菜单:候选区行数固定,选中项始终落在窗口内。
  *
- * 行数固定是为了输入框不随候选多少上下跳动;候选不足时补空行。
+ * 候选不足时补空行,上下各加一条浅灰横线;背景铺满候选区,避免覆盖主区时露出底色。
  * 主文本与次要文本分两列,次要列对齐;两段各自按可用宽度截断,长路径不会撑破边框。
  */
 export function completionMenu(
@@ -121,22 +181,23 @@ export function completionMenu(
   );
   const detailRoom = Math.max(0, width - 4 - labelColumn);
   const start = windowStart(selected, rows.length, height);
-  const out: string[] = [];
+  const out = [theme.paint.completionBorder('─'.repeat(Math.max(0, width)))];
   for (let offset = 0; offset < height; offset += 1) {
     const row = rows[start + offset];
     if (row === undefined) {
-      out.push('');
+      out.push(paintRow('', width, theme.codes.completionBg));
       continue;
     }
     const label = fitPlain(row.label, labelColumn);
     const detail = truncatePlain(row.detail ?? '', detailRoom);
     // 没有次要文本时不产生空的样式序列
     const tail = detail === '' ? '' : theme.paint.muted(detail);
-    out.push(
+    const line =
       start + offset === selected
         ? `  ${theme.paint.accent('› ')}${theme.paint.accent(label)}${tail}`
-        : theme.paint.muted(`    ${label}${detail}`),
-    );
+        : theme.paint.muted(`    ${label}${detail}`);
+    out.push(paintRow(line, width, theme.codes.completionBg));
   }
+  out.push(theme.paint.completionBorder('─'.repeat(Math.max(0, width))));
   return out;
 }

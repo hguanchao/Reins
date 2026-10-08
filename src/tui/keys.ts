@@ -34,6 +34,10 @@ export type TuiKey =
   | { type: 'paste'; text: string }
   /** 鼠标滚轮;正数向下、负数向上,单位为行。 */
   | { type: 'wheel'; delta: number }
+  /** 鼠标按下;坐标为终端协议中的 1 基值。 */
+  | { type: 'mouse-down'; x: number; y: number }
+  | { type: 'focus-in' }
+  | { type: 'focus-out' }
   | { type: 'unknown' };
 
 const PASTE_START = '\u001b[200~';
@@ -198,11 +202,14 @@ export function createKeyDecoder(): KeyDecoder {
     const sgr = /^\u001b\[<(\d+);(\d+);(\d+)([Mm])/.exec(buf);
     if (sgr !== null) {
       consume(sgr[0].length);
-      const wheel = wheelFromButton(Number.parseInt(sgr[1] ?? '0', 10));
+      const button = Number.parseInt(sgr[1] ?? '0', 10);
+      const x = Number.parseInt(sgr[2] ?? '0', 10);
+      const y = Number.parseInt(sgr[3] ?? '0', 10);
+      const wheel = wheelFromButton(button);
       if (wheel !== 0 && sgr[4] === 'M') {
         return { type: 'wheel', delta: wheel * WHEEL_STEP };
       }
-      return { type: 'unknown' };
+      return sgr[4] === 'M' ? { type: 'mouse-down', x, y } : { type: 'unknown' };
     }
     // X10 鼠标:\x1b[M 后跟 3 个字节
     if (buf.startsWith('\u001b[M')) {
@@ -210,9 +217,13 @@ export function createKeyDecoder(): KeyDecoder {
         return null;
       }
       const button = (buf.charCodeAt(3) ?? 0) - 32;
+      const x = (buf.charCodeAt(4) ?? 32) - 32;
+      const y = (buf.charCodeAt(5) ?? 32) - 32;
       consume(6);
       const wheel = wheelFromButton(button);
-      return wheel !== 0 ? { type: 'wheel', delta: wheel * WHEEL_STEP } : { type: 'unknown' };
+      return wheel !== 0
+        ? { type: 'wheel', delta: wheel * WHEEL_STEP }
+        : { type: 'mouse-down', x, y };
     }
 
     // 带参数的 CSI(如 Ctrl+方向键 \x1b[1;5A):忽略参数、按终结符归类
@@ -227,11 +238,16 @@ export function createKeyDecoder(): KeyDecoder {
       return TILDE_FINALS[Number.parseInt(tilde[1] ?? '', 10)] ?? { type: 'unknown' };
     }
 
-    // 终端回执类序列(焦点、私有模式应答):吞到终结符,忽略
-    if (buf.startsWith('\u001b[I') || buf.startsWith('\u001b[O')) {
+    // 焦点上报:把终端窗口焦点变化交给上层,避免失焦时继续显示聚焦边框
+    if (buf.startsWith('\u001b[I')) {
       consume(3);
-      return 'drain-paste';
+      return { type: 'focus-in' };
     }
+    if (buf.startsWith('\u001b[O')) {
+      consume(3);
+      return { type: 'focus-out' };
+    }
+    // 私有模式应答属于终端回执,吞到终结符即可
     const report = /^\u001b\[\?[0-9;]*[A-Za-z]/.exec(buf);
     if (report !== null) {
       consume(report[0].length);

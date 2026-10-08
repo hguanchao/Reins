@@ -40,7 +40,11 @@ import {
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
-  scrollbarChar,
+  inputBoxRowRange,
+  overlayLines,
+  paintSlashCommand,
+  renderApprovalOptions,
+  renderScrollbarLine,
   scrollbarGeometry,
   splitPathLabel,
 } from './chrome.ts';
@@ -134,6 +138,7 @@ export class TuiApp implements AgentUi {
   private currentConfig: Config | undefined;
 
   private running = false;
+  private focused = true;
   private runController: AbortController | undefined;
   private runStartedAt = 0;
   private spinnerIndex = 0;
@@ -144,6 +149,7 @@ export class TuiApp implements AgentUi {
   private lastMaxTop = 0;
 
   private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
+  private approvalIndex = 0;
   private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
   /** 目录信任判定结果;启动时先于会话确定。 */
   private trust: TrustResolution | undefined;
@@ -173,6 +179,7 @@ export class TuiApp implements AgentUi {
     }
   };
   private exiting = false;
+  private cleanedUp = false;
   private closed: (() => void) | undefined;
 
   constructor(options: TuiAppOptions) {
@@ -188,52 +195,87 @@ export class TuiApp implements AgentUi {
     this.terminal.enter();
     process.stdin.on('data', this.onData);
     process.stdout.on('resize', this.onResize);
-
-    // 信任先于会话:未信任就不加载项目层配置、不注入项目说明文件
-    if (!(await this.resolveTrust())) {
-      this.cleanupTerminal();
-      return 1;
-    }
-
-    this.push({ kind: 'welcome' });
-    // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
-    void this.fileIndex.refresh();
-    try {
-      await this.startup();
-    } catch (error) {
-      this.pushNotice(`配置未就绪:${describeError(error)}(修复后可输入任务重试)`, 'warn');
-    }
-
-    this.ticker = setInterval(() => {
-      if (this.running) {
-        this.spinnerIndex += 1;
-        this.renderContext.spinner = symbols.spinner[
-          this.spinnerIndex % symbols.spinner.length
-        ] as string;
-        this.scheduleRender();
-      }
-    }, TICK_MS);
-    this.scheduleRender();
-
-    await new Promise<void>((resolve) => {
+    const stopped = new Promise<void>((resolve) => {
       this.closed = resolve;
     });
+    const stop = (): void => {
+      this.requestExit();
+      this.cleanupTerminal();
+    };
+    const fatal = (error: unknown): void => {
+      try {
+        process.stderr.write(`错误:${describeError(error)}\n`);
+      } catch {
+        // 终端已损坏时不再尝试输出,优先恢复模式
+      }
+      process.exitCode = 1;
+      stop();
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+    process.on('uncaughtException', fatal);
+    process.on('unhandledRejection', fatal);
+    try {
+      // 信任先于会话:未信任就不加载项目层配置、不注入项目说明文件
+      if (!(await this.resolveTrust())) {
+        return 1;
+      }
+      if (this.exiting) {
+        return 130;
+      }
 
-    this.cleanupTerminal();
-    await this.runtime?.close().catch(() => undefined);
-    return 0;
+      this.push({ kind: 'welcome' });
+      // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
+      void this.fileIndex.refresh().catch(() => undefined);
+      try {
+        await this.startup();
+      } catch (error) {
+        this.pushNotice(`配置未就绪:${describeError(error)}(修复后可输入任务重试)`, 'warn');
+      }
+      if (this.exiting) {
+        return 130;
+      }
+
+      this.ticker = setInterval(() => {
+        if (this.running) {
+          this.spinnerIndex += 1;
+          this.renderContext.spinner = symbols.spinner[
+            this.spinnerIndex % symbols.spinner.length
+          ] as string;
+          this.scheduleRender();
+        }
+      }, TICK_MS);
+      this.scheduleRender();
+
+      await stopped;
+      return process.exitCode === 1 ? 1 : 0;
+    } finally {
+      process.off('SIGINT', stop);
+      process.off('SIGTERM', stop);
+      process.off('uncaughtException', fatal);
+      process.off('unhandledRejection', fatal);
+      this.cleanupTerminal();
+      await this.runtime?.close().catch(() => undefined);
+    }
   }
 
-  /** 退出清理:先停定时器,再恢复终端。 */
+  /** 退出清理:先停定时器,再恢复终端;重复调用不重复发送控制序列。 */
   private cleanupTerminal(): void {
+    if (this.cleanedUp) {
+      return;
+    }
+    this.cleanedUp = true;
     if (this.ticker !== undefined) {
       clearInterval(this.ticker);
+      this.ticker = undefined;
     }
     if (this.renderTimer !== undefined) {
       clearTimeout(this.renderTimer);
+      this.renderTimer = undefined;
     }
     if (this.escFlushTimer !== undefined) {
       clearTimeout(this.escFlushTimer);
+      this.escFlushTimer = undefined;
     }
     process.stdout.off('resize', this.onResize);
     process.stdin.off('data', this.onData);
@@ -369,6 +411,16 @@ export class TuiApp implements AgentUi {
     if (this.exiting) {
       return;
     }
+    if (key.type === 'focus-in' || key.type === 'focus-out') {
+      this.focused = key.type === 'focus-in';
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'mouse-down') {
+      this.focused = this.isInputBoxRow(key.y);
+      this.scheduleRender();
+      return;
+    }
     // 信任页先于一切:它决定后面加载什么配置
     if (this.trustPrompt !== undefined) {
       this.handleTrustKey(key);
@@ -426,7 +478,9 @@ export class TuiApp implements AgentUi {
         }
         break;
       case 'enter':
-        void this.submit();
+        void this.submit().catch((error: unknown) => {
+          this.pushNotice(`错误:${describeError(error)}`, 'error');
+        });
         break;
       case 'ctrl-j':
         this.editor.insertNewline();
@@ -549,10 +603,13 @@ export class TuiApp implements AgentUi {
     if (!needsFileScan(this.editor.mentionQuery(), this.fileIndex.stale())) {
       return;
     }
-    void this.fileIndex.refresh().then(() => {
-      this.editor.refreshCompletion();
-      this.scheduleRender();
-    });
+    void this.fileIndex
+      .refresh()
+      .then(() => {
+        this.editor.refreshCompletion();
+        this.scheduleRender();
+      })
+      .catch(() => undefined);
   }
 
   private toggleToolExpand(): void {
@@ -943,6 +1000,7 @@ export class TuiApp implements AgentUi {
     }
     // 审批需要立即关注:把查看器收起,让审批卡片可见
     this.viewer.close();
+    this.approvalIndex = 0;
     this.approvalCard = { target, decision };
     this.scheduleRender();
     return new Promise<'allow' | 'deny'>((resolve) => {
@@ -954,23 +1012,42 @@ export class TuiApp implements AgentUi {
     if (this.approvalCard === undefined || this.approvalResolve === undefined) {
       return;
     }
-    let verdict: 'allow' | 'deny' | undefined;
-    if (key.type === 'text' && ['y', 'a', 'n'].includes(key.text.toLowerCase())) {
-      const choice = key.text.toLowerCase();
-      verdict = choice === 'n' ? 'deny' : 'allow';
-      if (choice === 'a') {
-        this.alwaysAllow.add(this.approvalKey(this.approvalCard.target, this.approvalCard.decision));
-      }
-    } else if (key.type === 'escape' || key.type === 'ctrl-c') {
-      verdict = 'deny';
-    }
-    if (verdict === undefined) {
+    if (key.type === 'up' || key.type === 'left') {
+      this.approvalIndex = (this.approvalIndex + 2) % 3;
+      this.scheduleRender();
       return;
     }
+    if (key.type === 'down' || key.type === 'right') {
+      this.approvalIndex = (this.approvalIndex + 1) % 3;
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'enter') {
+      this.finishApproval(this.approvalIndex);
+      return;
+    }
+    if (key.type === 'text' && ['y', 'a', 'n'].includes(key.text.toLowerCase())) {
+      const choice = key.text.toLowerCase();
+      this.finishApproval(choice === 'y' ? 0 : choice === 'a' ? 1 : 2);
+      return;
+    }
+    if (key.type === 'escape' || key.type === 'ctrl-c') {
+      this.finishApproval(2);
+    }
+  }
+
+  private finishApproval(index: number): void {
+    const card = this.approvalCard;
     const resolve = this.approvalResolve;
+    if (card === undefined || resolve === undefined) {
+      return;
+    }
+    if (index === 1) {
+      this.alwaysAllow.add(this.approvalKey(card.target, card.decision));
+    }
     this.approvalCard = undefined;
     this.approvalResolve = undefined;
-    resolve(verdict);
+    resolve(index === 2 ? 'deny' : 'allow');
   }
 
   private approvalKey(target: RuleTarget, decision: Decision): string {
@@ -985,7 +1062,12 @@ export class TuiApp implements AgentUi {
     }
     this.renderTimer = setTimeout(() => {
       this.renderTimer = undefined;
-      this.render();
+      try {
+        this.render();
+      } catch (error) {
+        this.pushNotice(`渲染失败:${describeError(error)}`, 'error');
+        this.requestExit();
+      }
     }, RENDER_DEBOUNCE_MS);
   }
 
@@ -1012,7 +1094,7 @@ export class TuiApp implements AgentUi {
       return;
     }
     const theme = this.renderContext.theme;
-    const footer = this.renderFooter(cols, rows);
+    const footer = this.renderFooter(cols);
     // 顶部无 header、底部无分隔线:整屏只有内容区与输入区,行数全部给内容
     const mainHeight = Math.max(1, rows - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
@@ -1035,15 +1117,12 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     const bar = scrollbarGeometry(top, mainHeight, content.length);
-    const mainLines = main.map((line, index) => {
-      const padded = padAnsi(line, cols - 1);
-      if (bar === undefined) {
-        return padded;
-      }
-      // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
-      return `${padded}${theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│')}`;
-    });
-    const lines = [...mainLines, ...footer.lines];
+    const scrollbarLines = main.map((_, index) => renderScrollbarLine(index, bar, theme));
+    const mainLines = main.map((line, index) => `${padAnsi(line, cols - 1)}${scrollbarLines[index] ?? ''}`);
+    const menuWidth = cols - 1;
+    const completion = this.renderCompletionMenu(menuWidth, mainHeight);
+    const visibleMainLines = overlayLines(mainLines, completion, scrollbarLines);
+    const lines = [...visibleMainLines, ...footer.lines];
     const cursor =
       footer.cursor === undefined
         ? null
@@ -1092,47 +1171,65 @@ export class TuiApp implements AgentUi {
     return lines;
   }
 
-  private renderFooter(
-    width: number,
-    rows: number,
-  ): { lines: string[]; cursor?: { line: number; column: number } } {
+  private renderCompletionMenu(width: number, height: number): string[] {
+    const completion = this.editor.completionState;
+    if (completion === null || this.approvalCard !== undefined) {
+      return [];
+    }
+    const count = Math.min(COMPLETION_MENU_ROWS, Math.max(0, height - 2), completion.items.length);
+    const menu = completion.items.map((item) =>
+      completion.kind === 'slash'
+        ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
+        : splitPathLabel(item),
+    );
+    return completionMenu(menu, completion.index, width, this.renderContext.theme, count);
+  }
+
+  private isInputBoxRow(row: number): boolean {
+    if (this.trustPrompt !== undefined || this.approvalCard !== undefined || this.viewer.isOpen) {
+      return false;
+    }
+    const input = this.renderInputLines(this.terminal.columns);
+    const footerHeight = input.lines.length + 3;
+    const mainHeight = Math.max(1, this.terminal.rows - footerHeight);
+    const range = inputBoxRowRange(mainHeight, input.lines.length);
+    return row >= range.top && row <= range.bottom;
+  }
+
+  private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
     if (this.approvalCard !== undefined) {
       const paint = this.renderContext.theme.paint;
       const { target, decision } = this.approvalCard;
       const what = target.command ?? target.path ?? target.server ?? target.domain ?? '';
+      const options = [
+        paint.ok('[y] 允许'),
+        paint.ok('[a] 本会话总是允许'),
+        paint.fail('[n] 拒绝'),
+      ];
       const lines = [
         paint.warn(`  ${symbols.warn} 审批请求`),
         `    ${this.renderContext.theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
         paint.muted(`    触发规则:${decision.rule ?? decision.reason}`),
-        `    ${paint.ok('[y] 允许')}   ${paint.ok('[a] 本会话总是允许')}   ${paint.fail('[n] 拒绝')}`,
-        paint.muted('  y/a/n 选择 · Esc 拒绝'),
+        `    ${renderApprovalOptions(options, this.approvalIndex, this.renderContext.theme)}`,
       ];
       return { lines };
     }
 
     const theme = this.renderContext.theme;
     const lines: string[] = [];
-    const completion = this.editor.completionState;
-    if (completion !== null) {
-      // 菜单高度固定,矮终端里按可用高度收缩,否则整帧会超出屏幕
-      const height = Math.max(0, Math.min(COMPLETION_MENU_ROWS, rows - 8));
-      const menu = completion.items.map((item) =>
-        completion.kind === 'slash'
-          ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
-          : splitPathLabel(item),
-      );
-      lines.push(...completionMenu(menu, completion.index, width, theme, height));
-    }
-    const dropdownLines = lines.length;
 
     // 输入框:上下边框 + 两侧竖线;光标行列按框内偏移修正
     const input = this.renderInputLines(width);
-    const frame = inputBoxFrame(width, theme);
-    lines.push(frame.top, ...input.lines.map((line) => inputBoxLine(line, width, theme)), frame.bottom);
+    const frame = inputBoxFrame(width, theme, this.focused);
+    lines.push(
+      frame.top,
+      ...input.lines.map((line) => inputBoxLine(line, width, theme, this.focused)),
+      frame.bottom,
+    );
     lines.push(this.renderHints(width));
     return {
       lines,
-      cursor: { line: dropdownLines + 1 + input.cursorLine, column: 2 + input.cursorColumn },
+      cursor: { line: 1 + input.cursorLine, column: 2 + input.cursorColumn },
     };
   }
 
@@ -1196,7 +1293,8 @@ export class TuiApp implements AgentUi {
         break;
       }
       const prefix = rowIndex === 0 ? paint.accent(symbols.inputPrompt) : '  ';
-      lines.push(`${prefix}${row.text}`);
+      const body = rowIndex === 0 ? paintSlashCommand(row.text, paint.accent) : row.text;
+      lines.push(`${prefix}${body}`);
       if (rowIndex === cursorRow) {
         cursorLine = index;
         let beforeWidth = 0;
@@ -1217,7 +1315,7 @@ export class TuiApp implements AgentUi {
       return paint.warn(` ${truncatePlain(status.text, Math.max(0, width - 2))}`);
     }
     if (this.approvalCard !== undefined) {
-      text = 'y/a/n 选择 · Esc 拒绝';
+      text = '';
     } else if (this.running) {
       text = `⏱ ${formatElapsed(Date.now() - this.runStartedAt)} · ^C/Esc 中断 · 滚轮/PgUp/PgDn 滚动 · ^O 查看`;
     } else if (!this.follow) {
