@@ -156,7 +156,7 @@ export function completionMenu(
   for (let offset = 0; offset < height; offset += 1) {
     const row = rows[start + offset];
     if (row === undefined) {
-      out.push(paintRow('', width, theme.codes.userBar));
+      out.push(paintRow('', width, theme.codes.completionBg));
       continue;
     }
     const label = fitPlain(row.label, labelColumn);
@@ -167,7 +167,7 @@ export function completionMenu(
       start + offset === selected
         ? `  ${theme.paint.accent('› ')}${theme.paint.accent(label)}${tail}`
         : theme.paint.muted(`    ${label}${detail}`);
-    out.push(paintRow(line, width, theme.codes.userBar));
+    out.push(paintRow(line, width, theme.codes.completionBg));
   }
   out.push(theme.paint.muted('─'.repeat(Math.max(0, width))));
   return out;

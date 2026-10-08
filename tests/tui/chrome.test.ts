@@ -132,7 +132,7 @@ describe('补全菜单', () => {
     assert.equal(menu[0], theme.paint.muted('─'.repeat(60)));
     assert.equal(menu[6], theme.paint.muted('─'.repeat(60)));
     assert.equal(stripAnsi(menu[4] ?? ''), ' '.repeat(60));
-    assert.ok(menu[4]?.startsWith(`\u001b[${theme.codes.userBar}m`));
+    assert.ok(menu[4]?.startsWith(`\u001b[${theme.codes.completionBg}m`));
     assert.ok(menu[4]?.endsWith('\u001b[0m'));
   });
 
