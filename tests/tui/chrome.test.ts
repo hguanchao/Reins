@@ -129,8 +129,8 @@ describe('补全菜单', () => {
   it('上下有浅灰边框,候选区铺灰色背景且高度固定', () => {
     const menu = completionMenu(rows, 0, 60, theme, 5);
     assert.equal(menu.length, 7);
-    assert.equal(menu[0], theme.paint.muted('─'.repeat(60)));
-    assert.equal(menu[6], theme.paint.muted('─'.repeat(60)));
+    assert.equal(menu[0], theme.paint.completionBorder('─'.repeat(60)));
+    assert.equal(menu[6], theme.paint.completionBorder('─'.repeat(60)));
     assert.equal(stripAnsi(menu[4] ?? ''), ' '.repeat(60));
     assert.ok(menu[4]?.startsWith(`\u001b[${theme.codes.completionBg}m`));
     assert.ok(menu[4]?.endsWith('\u001b[0m'));

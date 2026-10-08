@@ -21,6 +21,7 @@ describe('主题', () => {
     assert.ok(theme.codes.userBar.includes('48;'));
     assert.equal(theme.codes.scrollbar, '38;2;58;58;58');
     assert.equal(theme.codes.completionBg, '48;2;36;36;36');
+    assert.equal(theme.codes.completionBorder, '38;2;36;36;36');
     assert.equal(theme.codes.userBar.split(';48;2;')[1], theme.codes.scrollbar.slice('38;2;'.length));
   });
 
@@ -29,7 +30,7 @@ describe('主题', () => {
     // 分组是维护契约:每个角色只属于一组,新增角色必须落进某一组
     const groups = {
       base: ['muted', 'ok', 'warn', 'fail'],
-      tui: ['accent', 'userBar', 'scrollbar', 'completionBg'],
+      tui: ['accent', 'userBar', 'scrollbar', 'completionBg', 'completionBorder'],
       markdown: ['heading', 'code', 'link'],
       highlight: ['keyword', 'string', 'comment', 'number', 'function', 'type'],
     } as const;
@@ -49,6 +50,7 @@ describe('主题', () => {
     assert.equal(light.codes.accent, '38;2;63;107;156');
     assert.equal(light.codes.scrollbar, '38;2;220;220;220');
     assert.equal(light.codes.completionBg, '48;2;36;36;36');
+    assert.equal(light.codes.completionBorder, '38;2;36;36;36');
     assert.equal(light.codes.userBar.split(';48;2;')[1], light.codes.scrollbar.slice('38;2;'.length));
   });
 

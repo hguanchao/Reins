@@ -152,7 +152,7 @@ export function completionMenu(
   );
   const detailRoom = Math.max(0, width - 4 - labelColumn);
   const start = windowStart(selected, rows.length, height);
-  const out = [theme.paint.muted('─'.repeat(Math.max(0, width)))];
+  const out = [theme.paint.completionBorder('─'.repeat(Math.max(0, width)))];
   for (let offset = 0; offset < height; offset += 1) {
     const row = rows[start + offset];
     if (row === undefined) {
@@ -169,6 +169,6 @@ export function completionMenu(
         : theme.paint.muted(`    ${label}${detail}`);
     out.push(paintRow(line, width, theme.codes.completionBg));
   }
-  out.push(theme.paint.muted('─'.repeat(Math.max(0, width))));
+  out.push(theme.paint.completionBorder('─'.repeat(Math.max(0, width))));
   return out;
 }

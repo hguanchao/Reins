@@ -15,7 +15,7 @@ import type { ThemePreset } from '../config/schema.ts';
 export type BaseRole = 'muted' | 'ok' | 'warn' | 'fail';
 
 /** TUI 配色:header、欢迎面板、补全菜单、输入框、用户消息条等界面镶边。 */
-export type TuiRole = 'accent' | 'userBar' | 'scrollbar' | 'completionBg';
+export type TuiRole = 'accent' | 'userBar' | 'scrollbar' | 'completionBg' | 'completionBorder';
 
 /** markdown 配色:正文排版(标题、行内代码、链接)。 */
 export type MarkdownRole = 'heading' | 'code' | 'link';
@@ -45,6 +45,7 @@ const DARK_BASE: Readonly<Record<BaseRole, string>> = {
 const DARK_USER_BAR_FOREGROUND = '220;220;220';
 const DARK_USER_BAR_BACKGROUND = '58;58;58';
 const DARK_COMPLETION_BACKGROUND = '36;36;36';
+const DARK_COMPLETION_BORDER = '36;36;36';
 
 const DARK_TUI: Readonly<Record<TuiRole, string>> = {
   accent: '38;2;127;167;207', // #7fa7cf  6.61
@@ -52,6 +53,7 @@ const DARK_TUI: Readonly<Record<TuiRole, string>> = {
   userBar: `38;2;${DARK_USER_BAR_FOREGROUND};48;2;${DARK_USER_BAR_BACKGROUND}`, // #dcdcdc / #3a3a3a  8.29
   scrollbar: `38;2;${DARK_USER_BAR_BACKGROUND}`, // 与用户消息背景同色
   completionBg: `48;2;${DARK_COMPLETION_BACKGROUND}`, // #242424
+  completionBorder: `38;2;${DARK_COMPLETION_BORDER}`, // #242424
 };
 
 const DARK_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {
@@ -81,12 +83,14 @@ const LIGHT_BASE: Readonly<Record<BaseRole, string>> = {
 const LIGHT_USER_BAR_FOREGROUND = '43;43;43';
 const LIGHT_USER_BAR_BACKGROUND = '220;220;220';
 const LIGHT_COMPLETION_BACKGROUND = '36;36;36';
+const LIGHT_COMPLETION_BORDER = '36;36;36';
 
 const LIGHT_TUI: Readonly<Record<TuiRole, string>> = {
   accent: '38;2;63;107;156', // #3f6b9c  5.53
   userBar: `38;2;${LIGHT_USER_BAR_FOREGROUND};48;2;${LIGHT_USER_BAR_BACKGROUND}`, // #2b2b2b / #dcdcdc  10.33
   scrollbar: `38;2;${LIGHT_USER_BAR_BACKGROUND}`, // 与用户消息背景同色
   completionBg: `48;2;${LIGHT_COMPLETION_BACKGROUND}`, // #242424
+  completionBorder: `38;2;${LIGHT_COMPLETION_BORDER}`, // #242424
 };
 
 const LIGHT_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {
