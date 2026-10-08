@@ -179,6 +179,7 @@ export class TuiApp implements AgentUi {
     }
   };
   private exiting = false;
+  private cleanedUp = false;
   private closed: (() => void) | undefined;
 
   constructor(options: TuiAppOptions) {
@@ -194,52 +195,87 @@ export class TuiApp implements AgentUi {
     this.terminal.enter();
     process.stdin.on('data', this.onData);
     process.stdout.on('resize', this.onResize);
-
-    // 信任先于会话:未信任就不加载项目层配置、不注入项目说明文件
-    if (!(await this.resolveTrust())) {
-      this.cleanupTerminal();
-      return 1;
-    }
-
-    this.push({ kind: 'welcome' });
-    // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
-    void this.fileIndex.refresh();
-    try {
-      await this.startup();
-    } catch (error) {
-      this.pushNotice(`配置未就绪:${describeError(error)}(修复后可输入任务重试)`, 'warn');
-    }
-
-    this.ticker = setInterval(() => {
-      if (this.running) {
-        this.spinnerIndex += 1;
-        this.renderContext.spinner = symbols.spinner[
-          this.spinnerIndex % symbols.spinner.length
-        ] as string;
-        this.scheduleRender();
-      }
-    }, TICK_MS);
-    this.scheduleRender();
-
-    await new Promise<void>((resolve) => {
+    const stopped = new Promise<void>((resolve) => {
       this.closed = resolve;
     });
+    const stop = (): void => {
+      this.requestExit();
+      this.cleanupTerminal();
+    };
+    const fatal = (error: unknown): void => {
+      try {
+        process.stderr.write(`错误:${describeError(error)}\n`);
+      } catch {
+        // 终端已损坏时不再尝试输出,优先恢复模式
+      }
+      process.exitCode = 1;
+      stop();
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+    process.on('uncaughtException', fatal);
+    process.on('unhandledRejection', fatal);
+    try {
+      // 信任先于会话:未信任就不加载项目层配置、不注入项目说明文件
+      if (!(await this.resolveTrust())) {
+        return 1;
+      }
+      if (this.exiting) {
+        return 130;
+      }
 
-    this.cleanupTerminal();
-    await this.runtime?.close().catch(() => undefined);
-    return 0;
+      this.push({ kind: 'welcome' });
+      // 预热文件索引:首次按 @ 就能直接出候选,不必等后台扫描完
+      void this.fileIndex.refresh().catch(() => undefined);
+      try {
+        await this.startup();
+      } catch (error) {
+        this.pushNotice(`配置未就绪:${describeError(error)}(修复后可输入任务重试)`, 'warn');
+      }
+      if (this.exiting) {
+        return 130;
+      }
+
+      this.ticker = setInterval(() => {
+        if (this.running) {
+          this.spinnerIndex += 1;
+          this.renderContext.spinner = symbols.spinner[
+            this.spinnerIndex % symbols.spinner.length
+          ] as string;
+          this.scheduleRender();
+        }
+      }, TICK_MS);
+      this.scheduleRender();
+
+      await stopped;
+      return process.exitCode === 1 ? 1 : 0;
+    } finally {
+      process.off('SIGINT', stop);
+      process.off('SIGTERM', stop);
+      process.off('uncaughtException', fatal);
+      process.off('unhandledRejection', fatal);
+      this.cleanupTerminal();
+      await this.runtime?.close().catch(() => undefined);
+    }
   }
 
-  /** 退出清理:先停定时器,再恢复终端。 */
+  /** 退出清理:先停定时器,再恢复终端;重复调用不重复发送控制序列。 */
   private cleanupTerminal(): void {
+    if (this.cleanedUp) {
+      return;
+    }
+    this.cleanedUp = true;
     if (this.ticker !== undefined) {
       clearInterval(this.ticker);
+      this.ticker = undefined;
     }
     if (this.renderTimer !== undefined) {
       clearTimeout(this.renderTimer);
+      this.renderTimer = undefined;
     }
     if (this.escFlushTimer !== undefined) {
       clearTimeout(this.escFlushTimer);
+      this.escFlushTimer = undefined;
     }
     process.stdout.off('resize', this.onResize);
     process.stdin.off('data', this.onData);
@@ -442,7 +478,9 @@ export class TuiApp implements AgentUi {
         }
         break;
       case 'enter':
-        void this.submit();
+        void this.submit().catch((error: unknown) => {
+          this.pushNotice(`错误:${describeError(error)}`, 'error');
+        });
         break;
       case 'ctrl-j':
         this.editor.insertNewline();
@@ -565,10 +603,13 @@ export class TuiApp implements AgentUi {
     if (!needsFileScan(this.editor.mentionQuery(), this.fileIndex.stale())) {
       return;
     }
-    void this.fileIndex.refresh().then(() => {
-      this.editor.refreshCompletion();
-      this.scheduleRender();
-    });
+    void this.fileIndex
+      .refresh()
+      .then(() => {
+        this.editor.refreshCompletion();
+        this.scheduleRender();
+      })
+      .catch(() => undefined);
   }
 
   private toggleToolExpand(): void {
@@ -1021,7 +1062,12 @@ export class TuiApp implements AgentUi {
     }
     this.renderTimer = setTimeout(() => {
       this.renderTimer = undefined;
-      this.render();
+      try {
+        this.render();
+      } catch (error) {
+        this.pushNotice(`渲染失败:${describeError(error)}`, 'error');
+        this.requestExit();
+      }
     }, RENDER_DEBOUNCE_MS);
   }
 

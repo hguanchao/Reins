@@ -52,6 +52,13 @@ describe('帧差分', () => {
     terminal.enter();
     assert.ok(output.output.includes('\u001b[?1004h'));
     terminal.leave();
+    assert.ok(output.output.includes('\u001b[?1000l'));
+    assert.ok(output.output.includes('\u001b[?1006l'));
     assert.ok(output.output.includes('\u001b[?1004l'));
+    assert.ok(output.output.includes('\u001b[?2004l'));
+    assert.ok(output.output.includes('\u001b[?1049l'));
+    const before = output.output;
+    terminal.leave();
+    assert.equal(output.output, before);
   });
 });
