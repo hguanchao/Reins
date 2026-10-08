@@ -1095,7 +1095,7 @@ export class TuiApp implements AgentUi {
     if (completion === null || this.approvalCard !== undefined) {
       return [];
     }
-    const count = Math.min(COMPLETION_MENU_ROWS, height, completion.items.length);
+    const count = Math.min(COMPLETION_MENU_ROWS, Math.max(0, height - 2), completion.items.length);
     const menu = completion.items.map((item) =>
       completion.kind === 'slash'
         ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }

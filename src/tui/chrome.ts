@@ -1,4 +1,4 @@
-import { fitPlain, padAnsi, truncatePlain, visibleWidth } from './layout.ts';
+import { fitPlain, padAnsi, paintRow, truncatePlain, visibleWidth } from './layout.ts';
 import type { Theme } from './theme.ts';
 
 /**
@@ -134,9 +134,9 @@ function windowStart(selected: number, total: number, height: number): number {
 }
 
 /**
- * 渲染补全菜单:行数固定,选中项始终落在窗口内。
+ * 渲染补全菜单:候选区行数固定,选中项始终落在窗口内。
  *
- * 行数固定是为了输入框不随候选多少上下跳动;候选不足时补空行。
+ * 候选不足时补空行,上下各加一条浅灰横线;背景铺满候选区,避免覆盖主区时露出底色。
  * 主文本与次要文本分两列,次要列对齐;两段各自按可用宽度截断,长路径不会撑破边框。
  */
 export function completionMenu(
@@ -152,22 +152,23 @@ export function completionMenu(
   );
   const detailRoom = Math.max(0, width - 4 - labelColumn);
   const start = windowStart(selected, rows.length, height);
-  const out: string[] = [];
+  const out = [theme.paint.muted('─'.repeat(Math.max(0, width)))];
   for (let offset = 0; offset < height; offset += 1) {
     const row = rows[start + offset];
     if (row === undefined) {
-      out.push('');
+      out.push(paintRow('', width, theme.codes.userBar));
       continue;
     }
     const label = fitPlain(row.label, labelColumn);
     const detail = truncatePlain(row.detail ?? '', detailRoom);
     // 没有次要文本时不产生空的样式序列
     const tail = detail === '' ? '' : theme.paint.muted(detail);
-    out.push(
+    const line =
       start + offset === selected
         ? `  ${theme.paint.accent('› ')}${theme.paint.accent(label)}${tail}`
-        : theme.paint.muted(`    ${label}${detail}`),
-    );
+        : theme.paint.muted(`    ${label}${detail}`);
+    out.push(paintRow(line, width, theme.codes.userBar));
   }
+  out.push(theme.paint.muted('─'.repeat(Math.max(0, width))));
   return out;
 }

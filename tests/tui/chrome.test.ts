@@ -126,19 +126,22 @@ describe('补全菜单', () => {
     { label: '/resume', detail: '恢复会话;无 id 时列出' },
   ];
 
-  it('高度固定:候选不足时补空行', () => {
+  it('上下有浅灰边框,候选区铺灰色背景且高度固定', () => {
     const menu = completionMenu(rows, 0, 60, theme, 5);
-    assert.equal(menu.length, 5);
-    assert.equal(menu[3], '');
-    assert.equal(menu[4], '');
+    assert.equal(menu.length, 7);
+    assert.equal(menu[0], theme.paint.muted('─'.repeat(60)));
+    assert.equal(menu[6], theme.paint.muted('─'.repeat(60)));
+    assert.equal(stripAnsi(menu[4] ?? ''), ' '.repeat(60));
+    assert.ok(menu[4]?.startsWith(`\u001b[${theme.codes.userBar}m`));
+    assert.ok(menu[4]?.endsWith('\u001b[0m'));
   });
 
   it('主次两列:次要文本对齐到同一列', () => {
     const menu = completionMenu(rows, 0, 60, theme, 3).map(stripAnsi);
-    assert.ok(menu[0]?.startsWith('  › /help  '), menu[0]);
-    const column = menu[0]?.indexOf('显示帮助');
-    assert.equal(menu[1]?.indexOf('开始新会话'), column);
-    assert.equal(menu[2]?.indexOf('恢复会话;无 id 时列出'), column);
+    assert.ok(menu[1]?.startsWith('  › /help  '), menu[1]);
+    const column = menu[1]?.indexOf('显示帮助');
+    assert.equal(menu[2]?.indexOf('开始新会话'), column);
+    assert.equal(menu[3]?.indexOf('恢复会话;无 id 时列出'), column);
   });
 
   it('候选超出高度时选中项始终落在窗口内', () => {
@@ -146,7 +149,7 @@ describe('补全菜单', () => {
     for (const selected of [0, 5, 12, 19]) {
       const menu = completionMenu(many, selected, 60, theme, 8);
       const active = menu.findIndex((line) => stripAnsi(line).includes('›'));
-      assert.ok(active >= 0, `选中项 ${selected} 不在窗口内`);
+      assert.ok(active >= 1, `选中项 ${selected} 不在窗口内`);
       assert.ok(stripAnsi(menu[active] ?? '').includes(`/cmd${selected}`));
     }
   });
