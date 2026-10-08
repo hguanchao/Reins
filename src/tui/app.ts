@@ -41,7 +41,7 @@ import {
   inputBoxFrame,
   inputBoxLine,
   overlayLines,
-  scrollbarChar,
+  renderScrollbarLine,
   scrollbarGeometry,
   splitPathLabel,
 } from './chrome.ts';
@@ -1036,13 +1036,7 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     const bar = scrollbarGeometry(top, mainHeight, content.length);
-    const scrollbarLines = main.map((_, index) => {
-      if (bar === undefined) {
-        return '';
-      }
-      // 滚动条整体灰色(muted):轨道细线、滑块实块,靠形状区分
-      return theme.paint.muted(scrollbarChar(index, bar) === 'thumb' ? '█' : '│');
-    });
+    const scrollbarLines = main.map((_, index) => renderScrollbarLine(index, bar, theme));
     const mainLines = main.map((line, index) => `${padAnsi(line, cols - 1)}${scrollbarLines[index] ?? ''}`);
     const menuWidth = cols - 1;
     const completion = this.renderCompletionMenu(menuWidth, mainHeight);

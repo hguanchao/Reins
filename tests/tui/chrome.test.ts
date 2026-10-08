@@ -6,6 +6,7 @@ import {
   inputBoxFrame,
   inputBoxLine,
   overlayLines,
+  renderScrollbarLine,
   scrollbarChar,
   scrollbarGeometry,
   splitPathLabel,
@@ -64,6 +65,14 @@ describe('滚动条几何', () => {
     const negative = scrollbarGeometry(-5, 10, 100);
     if (negative === undefined) throw new Error('应显示滚动条');
     assert.equal(negative.thumbStart, 0);
+  });
+
+  it('滑块使用用户消息背景色,轨道不绘制竖线', () => {
+    const geometry = scrollbarGeometry(0, 4, 8);
+    if (geometry === undefined) throw new Error('应显示滚动条');
+    assert.equal(renderScrollbarLine(0, geometry, theme), `\u001b[${theme.codes.scrollbar}m█\u001b[0m`);
+    assert.equal(renderScrollbarLine(3, geometry, theme), ' ');
+    assert.equal(renderScrollbarLine(0, undefined, theme), ' ');
   });
 });
 

@@ -19,6 +19,8 @@ describe('主题', () => {
     // 只设背景会跟着终端默认前景走,条带里的文字可能看不清
     assert.ok(theme.codes.userBar.includes('38;'));
     assert.ok(theme.codes.userBar.includes('48;'));
+    assert.equal(theme.codes.scrollbar, '38;2;58;58;58');
+    assert.equal(theme.codes.userBar.split(';48;2;')[1], theme.codes.scrollbar.slice('38;2;'.length));
   });
 
   it('角色按表面分四组:每组都有取值,四组之并即全部角色', () => {
@@ -26,7 +28,7 @@ describe('主题', () => {
     // 分组是维护契约:每个角色只属于一组,新增角色必须落进某一组
     const groups = {
       base: ['muted', 'ok', 'warn', 'fail'],
-      tui: ['accent', 'userBar'],
+      tui: ['accent', 'userBar', 'scrollbar'],
       markdown: ['heading', 'code', 'link'],
       highlight: ['keyword', 'string', 'comment', 'number', 'function', 'type'],
     } as const;
@@ -44,6 +46,8 @@ describe('主题', () => {
     const light = createTheme({ preset: 'light', color: true });
     assert.notEqual(light.codes.accent, dark.codes.accent);
     assert.equal(light.codes.accent, '38;2;63;107;156');
+    assert.equal(light.codes.scrollbar, '38;2;220;220;220');
+    assert.equal(light.codes.userBar.split(';48;2;')[1], light.codes.scrollbar.slice('38;2;'.length));
   });
 
   it('mono 强制无颜色', () => {

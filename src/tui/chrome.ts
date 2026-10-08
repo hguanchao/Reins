@@ -46,7 +46,7 @@ export function scrollbarGeometry(
   return { thumbStart, thumbSize };
 }
 
-/** 滚动条第 index 行的字符:滑块 █ / 轨道 │,由调用方决定取色。 */
+/** 滚动条第 index 行的区域:滑块或轨道。 */
 export function scrollbarChar(
   index: number,
   geometry: ScrollbarGeometry,
@@ -54,6 +54,18 @@ export function scrollbarChar(
   return index >= geometry.thumbStart && index < geometry.thumbStart + geometry.thumbSize
     ? 'thumb'
     : 'track';
+}
+
+/** 绘制滚动条一行:滑块着色,轨道留空以免出现竖线。 */
+export function renderScrollbarLine(
+  index: number,
+  geometry: ScrollbarGeometry | undefined,
+  theme: Theme,
+): string {
+  if (geometry === undefined || scrollbarChar(index, geometry) === 'track') {
+    return ' ';
+  }
+  return theme.paint.scrollbar('█');
 }
 
 /**
