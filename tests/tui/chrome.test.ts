@@ -7,6 +7,7 @@ import {
   inputBoxLine,
   inputBoxRowRange,
   overlayLines,
+  paintSlashCommand,
   renderScrollbarLine,
   scrollbarChar,
   scrollbarGeometry,
@@ -41,6 +42,17 @@ describe('输入框边框', () => {
 
   it('计算输入框在终端中的行范围', () => {
     assert.deepEqual(inputBoxRowRange(18, 3), { top: 19, bottom: 23 });
+  });
+
+  it('斜杠命令着色但不影响参数与显示宽度', () => {
+    const paint = theme.paint.accent;
+    const command = paintSlashCommand('/help', paint);
+    const withArgs = paintSlashCommand('/help 参数', paint);
+    const plain = paintSlashCommand('普通文本', paint);
+    assert.equal(command, `${paint('/help')}`);
+    assert.equal(withArgs, `${paint('/help')} 参数`);
+    assert.equal(plain, '普通文本');
+    assert.equal(visibleWidth(withArgs), visibleWidth('/help 参数'));
   });
 
   it('超长内容按显示宽度截断', () => {

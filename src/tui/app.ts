@@ -42,6 +42,7 @@ import {
   inputBoxLine,
   inputBoxRowRange,
   overlayLines,
+  paintSlashCommand,
   renderScrollbarLine,
   scrollbarGeometry,
   splitPathLabel,
@@ -1220,7 +1221,8 @@ export class TuiApp implements AgentUi {
         break;
       }
       const prefix = rowIndex === 0 ? paint.accent(symbols.inputPrompt) : '  ';
-      lines.push(`${prefix}${row.text}`);
+      const body = rowIndex === 0 ? paintSlashCommand(row.text, paint.accent) : row.text;
+      lines.push(`${prefix}${body}`);
       if (rowIndex === cursorRow) {
         cursorLine = index;
         let beforeWidth = 0;

@@ -28,6 +28,16 @@ export function inputBoxLine(content: string, width: number, theme: Theme, focus
   return `${paintBorder('│')} ${padAnsi(content, Math.max(0, width - 4))} ${paintBorder('│')}`;
 }
 
+/** 给输入框首行的斜杠命令着色,参数与普通文本保持原样。 */
+export function paintSlashCommand(text: string, paint: (value: string) => string): string {
+  if (!text.startsWith('/')) {
+    return text;
+  }
+  const end = text.search(/[\s]/);
+  const commandEnd = end === -1 ? text.length : end;
+  return `${paint(text.slice(0, commandEnd))}${text.slice(commandEnd)}`;
+}
+
 /** 输入框在终端中的 1 基行范围,包含上下边框。 */
 export function inputBoxRowRange(mainHeight: number, inputLineCount: number): { top: number; bottom: number } {
   const top = Math.max(1, mainHeight + 1);
