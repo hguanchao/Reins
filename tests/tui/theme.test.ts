@@ -19,10 +19,11 @@ describe('主题', () => {
     // 只设背景会跟着终端默认前景走,条带里的文字可能看不清
     assert.ok(theme.codes.userBar.includes('38;'));
     assert.ok(theme.codes.userBar.includes('48;'));
-    assert.equal(theme.codes.scrollbar, '38;2;58;58;58');
+    assert.equal(theme.codes.scrollbar, '38;2;36;36;36');
     assert.equal(theme.codes.completionBg, '48;2;36;36;36');
     assert.equal(theme.codes.completionBorder, '38;2;36;36;36');
-    assert.equal(theme.codes.userBar.split(';48;2;')[1], theme.codes.scrollbar.slice('38;2;'.length));
+    assert.equal(theme.codes.userBar.split(';48;2;')[1], '36;36;36');
+    assert.equal(theme.codes.scrollbar.slice('38;2;'.length), '36;36;36');
   });
 
   it('角色按表面分四组:每组都有取值,四组之并即全部角色', () => {
@@ -48,7 +49,7 @@ describe('主题', () => {
     const light = createTheme({ preset: 'light', color: true });
     assert.notEqual(light.codes.accent, dark.codes.accent);
     assert.equal(light.codes.accent, '38;2;63;107;156');
-    assert.equal(light.codes.scrollbar, '38;2;220;220;220');
+    assert.equal(light.codes.scrollbar, '38;2;36;36;36');
     assert.equal(light.codes.completionBg, '48;2;36;36;36');
     assert.equal(light.codes.completionBorder, '38;2;36;36;36');
     assert.equal(light.codes.userBar.split(';48;2;')[1], light.codes.scrollbar.slice('38;2;'.length));
