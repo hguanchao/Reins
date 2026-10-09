@@ -1267,10 +1267,16 @@ export class TuiApp implements AgentUi {
       return false;
     }
     const input = this.renderInputLines(this.terminal.columns);
-    const footerHeight = input.lines.length + 3;
+    // 页脚 = 输入框(上下边框 + 内容行)+ 状态栏 + 末尾留白;下方行数取同一处定义,免得两处各写一个数
+    const footerHeight = input.lines.length + 2 + this.footerBelowInput(this.terminal.columns).length;
     const mainHeight = Math.max(1, this.terminal.rows - footerHeight);
     const range = inputBoxRowRange(mainHeight, input.lines.length);
     return row >= range.top && row <= range.bottom;
+  }
+
+  /** 输入框下方的行:状态栏与末尾留白。 */
+  private footerBelowInput(width: number): string[] {
+    return [renderStatusBar(width, this.renderContext.theme, this.statusInfo()), ''];
   }
 
   private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
@@ -1312,7 +1318,7 @@ export class TuiApp implements AgentUi {
       ...input.lines.map((line) => inputBoxLine(line, width, theme, this.focused)),
       frame.bottom,
     );
-    lines.push(renderStatusBar(width, theme, this.statusInfo()));
+    lines.push(...this.footerBelowInput(width));
     return {
       lines,
       // 失焦时不给光标:边框已经变色,光标再闪烁会让人以为还能直接输入
