@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createTheme } from '../../src/tui/theme.ts';
+import { createTheme, symbols } from '../../src/tui/theme.ts';
+import { visibleWidth } from '../../src/tui/layout.ts';
 
 /** 从 SGR 码串里取出 `48;2;r;g;b` 的背景色。 */
 function sgrBackground(codes: string): [number, number, number] | undefined {
@@ -100,6 +101,15 @@ describe('主题', () => {
     if (userBarForeground !== undefined) {
       assert.ok(contrastRatio(userBarForeground, userBarBackground) >= 4.5);
     }
+  });
+
+  it('状态标记是单宽文本符号,不会被渲染成彩色 emoji', () => {
+    for (const glyph of [symbols.ok, symbols.fail, symbols.warn]) {
+      assert.equal(visibleWidth(glyph), 1, `${glyph} 应为单宽`);
+      // 变体选择符会让部分终端改用 emoji 呈现(彩色、双宽)
+      assert.equal(/[\uFE0E\uFE0F]/.test(glyph), false, `${glyph} 不应带变体选择符`);
+    }
+    assert.equal(symbols.warn, '!');
   });
 
   it('mono 强制无颜色', () => {

@@ -192,11 +192,11 @@ export const symbols = {
   /** 运行中的旋转符帧。 */
   spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧'],
   tool: '⚙',
-  // 成败标记用数学符号而非 dingbat(✓/✗):后者在部分字体里带 emoji 属性,
-  // 会被渲染成彩色 emoji 或双宽字形,把行宽算错、撑破边框
+  // 状态标记一律用单宽文本符号,不用 dingbat(✓/✗/⚠):后者在部分字体里带 emoji
+  // 属性,会被渲染成彩色 emoji 或双宽字形,把行宽算错、撑破边框
   ok: '√',
   fail: '×',
-  warn: '⚠',
+  warn: '!',
   cursor: '▏',
   inputPrompt: '› ',
   separator: '─',

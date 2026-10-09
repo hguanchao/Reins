@@ -142,7 +142,7 @@ describe('滚动区块渲染', () => {
 
   it('通知:三级样式均可渲染', () => {
     assert.ok(render({ kind: 'notice', text: '信息', level: 'info' }).includes('信息'));
-    assert.ok(render({ kind: 'notice', text: '警告', level: 'warn' }).includes('⚠'));
+    assert.ok(render({ kind: 'notice', text: '警告', level: 'warn' }).includes('!'));
     assert.ok(render({ kind: 'notice', text: '错误', level: 'error' }).includes('×'));
   });
 

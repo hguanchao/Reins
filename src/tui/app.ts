@@ -1245,7 +1245,8 @@ export class TuiApp implements AgentUi {
 
   private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
     if (this.approvalCard !== undefined) {
-      const paint = this.renderContext.theme.paint;
+      const theme = this.renderContext.theme;
+      const paint = theme.paint;
       const { target, decision } = this.approvalCard;
       const what = target.command ?? target.path ?? target.server ?? target.domain ?? '';
       const options = [
@@ -1253,11 +1254,16 @@ export class TuiApp implements AgentUi {
         paint.ok('[a] 本会话总是允许'),
         paint.fail('[n] 拒绝'),
       ];
+      // 命中规则时给规则原文;靠审批模式兜底时 rule 为空,此时说的是原因而非规则
+      const basis =
+        decision.rule !== undefined ? `触发规则:${decision.rule}` : `原因:${decision.reason}`;
       const lines = [
-        paint.warn(`  ${symbols.warn} 审批请求`),
-        `    ${this.renderContext.theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
-        paint.muted(`    触发规则:${decision.rule ?? decision.reason}`),
-        `    ${renderApprovalOptions(options, this.approvalIndex, this.renderContext.theme)}`,
+        paint.warn(`  ${symbols.warn} 需要授权`),
+        `    ${theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
+        paint.muted(`    ${basis}`),
+        `    ${renderApprovalOptions(options, this.approvalIndex, theme)}`,
+        // 末尾留白:选项行落在倒数第二行,与信任页选项区同高
+        '',
       ];
       return { lines };
     }
