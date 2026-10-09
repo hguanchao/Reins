@@ -1261,7 +1261,8 @@ export class TuiApp implements AgentUi {
         paint.warn(`  ${symbols.warn} 需要授权`),
         `    ${theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
         paint.muted(`    ${basis}`),
-        `    ${renderApprovalOptions(options, this.approvalIndex, theme)}`,
+        // 缩进 2 格:› 占两格,选项文字因此与上面的工具、依据左对齐
+        `  ${renderApprovalOptions(options, this.approvalIndex, theme)}`,
         // 末尾留白:选项行落在倒数第二行,与信任页选项区同高
         '',
       ];
