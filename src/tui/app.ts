@@ -1176,11 +1176,10 @@ export class TuiApp implements AgentUi {
   }
 
   /**
-   * 信任页整屏:垂直居中的正文 + 底部居中的选项。
+   * 信任页整屏:垂直居中的正文 + 分隔线下方居中的选项。
    *
-   * 页脚与命令审批卡片等高(含分隔线共 4 行),选项落在最后一行——与审批卡片的
-   * 选项同高,主区高度也与审批卡片一致,两个状态切换时内容不跳动。
-   * 正文过长(矮终端)时保留顶部——提问与路径比清单更要紧。
+   * 页脚与命令审批卡片等高(含分隔线共 4 行),选项落在分隔线以下三行的中间,
+   * 上下各留一行。正文过长(矮终端)时保留顶部——提问与路径比清单更要紧。
    */
   private renderTrustFrame(cols: number, rows: number): string[] {
     const theme = this.renderContext.theme;
@@ -1192,8 +1191,8 @@ export class TuiApp implements AgentUi {
     const options = [theme.paint.ok('[y] 信任并继续'), theme.paint.fail('[n] 退出')];
     const optionsText = renderApprovalOptions(options, this.trustIndex, theme);
     const optionsPad = Math.max(0, Math.floor((cols - visibleWidth(optionsText)) / 2));
-    // 选项水平居中且固定在最后一行;上方两行留白补足页脚高度,与审批卡片对齐
-    const footer = ['', '', ' '.repeat(optionsPad) + optionsText];
+    // 分隔线以下三行:选项居中,上下各留一行
+    const footer = ['', ' '.repeat(optionsPad) + optionsText, ''];
     const body = renderTrustPage(cols, theme, {
       // 信任页要看清是哪个目录,不做保留尾部的截断
       path: tildePath(pending.resolution.key),
