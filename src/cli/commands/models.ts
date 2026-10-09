@@ -14,8 +14,10 @@ export async function modelsCommand(
   try {
     const catalog = await loadCatalogFile(file);
     const filter = typeof args.flags['provider'] === 'string' ? args.flags['provider'] : undefined;
+    // 与 resolveProvider 的大小写不敏感保持一致,否则 models 能列出的 provider 却解析不到
+    const wanted = filter?.toLowerCase();
     const entries = Object.entries(catalog.providers).filter(
-      ([name]) => filter === undefined || name === filter,
+      ([name]) => wanted === undefined || name.toLowerCase() === wanted,
     );
     if (entries.length === 0) {
       io.out(filter === undefined ? '产商目录为空。' : `未找到 provider:${filter}`);

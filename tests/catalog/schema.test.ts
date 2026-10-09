@@ -78,4 +78,23 @@ describe('providers.json 校验', () => {
     assert.throws(() => parseCatalog([]), ConfigError);
     assert.throws(() => parseCatalog('nope'), ConfigError);
   });
+
+  it('同一 provider 内模型 id 重复时报错', () => {
+    assert.throws(
+      () =>
+        parseCatalog({
+          providers: {
+            x: {
+              baseUrl: 'https://x',
+              api: 'openai-completions',
+              models: [{ id: 'dup' }, { id: 'dup' }],
+            },
+          },
+        }),
+      (error: unknown) =>
+        error instanceof ConfigError &&
+        error.message.includes('models[1].id') &&
+        error.message.includes('重复'),
+    );
+  });
 });

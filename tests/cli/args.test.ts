@@ -26,4 +26,10 @@ describe('参数解析', () => {
     assert.equal(parseArgs([]).command, 'help');
     assert.equal(parseArgs(['--verbose']).command, 'help');
   });
+
+  it('以 - 开头的负数取值不被当成开关吞掉', () => {
+    assert.equal(parseArgs(['sessions', 'list', '--limit', '-5']).flags['limit'], '-5');
+    // 真正的开关形态仍按布尔处理
+    assert.equal(parseArgs(['doctor', '--no-network']).flags['no-network'], true);
+  });
 });

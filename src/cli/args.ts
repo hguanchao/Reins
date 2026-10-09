@@ -46,7 +46,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         continue;
       }
       const next = argv[index + 1];
-      if (next !== undefined && !next.startsWith('-')) {
+      // 负数(如 --limit -5)应作为取值,而不是被当成另一个开关吞掉
+      if (next !== undefined && (!next.startsWith('-') || /^-\d/.test(next))) {
         flags[body] = next;
         index += 1;
       } else {

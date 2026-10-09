@@ -122,8 +122,12 @@ export class Checker {
     if (value === undefined) {
       return undefined;
     }
-    if (typeof value !== 'number' || Number.isNaN(value)) {
+    if (typeof value !== 'number') {
       this.fail(path, `应为数字,实际为 ${typeName(value)}`);
+      return undefined;
+    }
+    if (!Number.isFinite(value)) {
+      this.fail(path, '应为有限数字(不能是 Infinity 或 NaN)');
       return undefined;
     }
     if (opts.integer && !Number.isInteger(value)) {

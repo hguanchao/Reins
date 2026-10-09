@@ -50,4 +50,11 @@ describe('字段校验器', () => {
     const checker = new Checker('demo.toml');
     assert.doesNotThrow(() => checker.done());
   });
+
+  it('非有限数字被拒绝', () => {
+    const checker = new Checker('demo.toml');
+    assert.equal(checker.number({ n: Number.POSITIVE_INFINITY }, 'n', 'n'), undefined);
+    assert.equal(checker.number({ n: Number.NaN }, 'n', 'n'), undefined);
+    assert.equal(checker.issues.length, 2);
+  });
 });

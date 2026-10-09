@@ -71,4 +71,8 @@ describe('密钥解析', () => {
     const auth = await resolveAuth(provider, 'demo', fakeContext());
     assert.equal(auth.apiKey, undefined);
   });
+
+  it('字面量形态去掉首尾空白,避免把空格带进请求头', async () => {
+    assert.equal(await resolveValue('  sk-abc  ', '测试', fakeContext()), 'sk-abc');
+  });
 });

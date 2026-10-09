@@ -104,6 +104,17 @@ function parseProvider(
       }
       models.push(parseModel(item as Record<string, unknown>, itemPath, checker));
     });
+    // 同一 provider 内 id 必须唯一:resolveModel 用 find 取第一条,重复会让后者静默失效
+    const seen = new Set<string>();
+    models.forEach((model, index) => {
+      if (model.id === '') {
+        return; // 空 id 已由必填校验报错
+      }
+      if (seen.has(model.id)) {
+        checker.fail(`${path}.models[${index}].id`, `模型 id 重复:"${model.id}"`);
+      }
+      seen.add(model.id);
+    });
   }
 
   return {

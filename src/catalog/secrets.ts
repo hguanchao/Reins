@@ -71,5 +71,6 @@ export async function resolveValue(
     return found;
   }
 
-  return value;
+  // 字面量形态:也去首尾空白,避免 "  sk-xxx  " 把空格带进请求头
+  return value.trim();
 }

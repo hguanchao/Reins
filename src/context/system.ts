@@ -28,11 +28,15 @@ export function buildSystemPrompt(input: SystemPromptInput): string {
     `Model: ${input.model}`,
   ];
   if (input.projectDoc !== null) {
+    // 项目文档来自仓库,不可信:内容里若出现闭合标签就能提前跳出边界,
+    // 把后续文字伪造成系统指令,所以先把闭合标签中和掉
+    const safeContent = input.projectDoc.content.replace(/<\/project_instructions/gi, '<\\/project_instructions');
+    const safePath = input.projectDoc.path.replace(/"/g, '&quot;');
     lines.push(
       '',
       `Project instructions from ${input.projectDoc.path} take precedence over general habits:`,
-      `<project_instructions path="${input.projectDoc.path}">`,
-      input.projectDoc.content,
+      `<project_instructions path="${safePath}">`,
+      safeContent,
       '</project_instructions>',
     );
   }
