@@ -14,8 +14,14 @@ import type { ThemePreset } from '../config/schema.ts';
 /** 基础色:三个表面共用,不归任何单一表面。 */
 export type BaseRole = 'muted' | 'ok' | 'warn' | 'fail';
 
-/** TUI 配色:header、欢迎面板、补全菜单、输入框、用户消息条等界面镶边。 */
-export type TuiRole = 'accent' | 'userBar' | 'scrollbar' | 'completionBg' | 'completionBorder';
+/** TUI 配色:header、欢迎面板、补全菜单、输入框、用户消息条、分割线等界面镶边。 */
+export type TuiRole =
+  | 'accent'
+  | 'userBar'
+  | 'scrollbar'
+  | 'completionBg'
+  | 'completionBorder'
+  | 'separator';
 
 /** markdown 配色:正文排版(标题、行内代码、链接)。 */
 export type MarkdownRole = 'heading' | 'code' | 'link';
@@ -31,7 +37,8 @@ export type ThemeRole = BaseRole | TuiRole | MarkdownRole | HighlightRole;
 // 全部使用 24 位真彩色(38;2;r;g;b),不再用基础 16 色:基础 16 色是终端自己的
 // 调色板槽位,跟随终端主题但无法控制饱和度,默认配色普遍过艳。
 // 色相只取中性灰/蓝/青/绿/琥珀/玫红/紫七种,饱和度压到约 25–35%;
-// 每个角色对其背景的对比度均 ≥ 4.5(WCAG AA),改动取值前请重新核对。
+// 承载文字的角色对其背景的对比度均 ≥ 4.5(WCAG AA),改动取值前请重新核对。
+// 纯装饰性角色(separator、scrollbar、completionBg 等)不承载文字,不受此约束。
 
 // —— dark:面向深色终端背景(对比度按 #1e1e1e 计算) ——
 
@@ -46,6 +53,7 @@ const DARK_USER_BAR_FOREGROUND = '220;220;220';
 const DARK_USER_BAR_BACKGROUND = '36;36;36';
 const DARK_COMPLETION_BACKGROUND = '36;36;36';
 const DARK_COMPLETION_BORDER = '36;36;36';
+const DARK_SEPARATOR = '36;36;36'; // #242424 分割线:刻意压暗,只作视觉分界
 
 const DARK_TUI: Readonly<Record<TuiRole, string>> = {
   accent: '38;2;127;167;207', // #7fa7cf  6.61
@@ -54,6 +62,7 @@ const DARK_TUI: Readonly<Record<TuiRole, string>> = {
   scrollbar: `38;2;${DARK_USER_BAR_BACKGROUND}`, // 与用户消息背景同色
   completionBg: `48;2;${DARK_COMPLETION_BACKGROUND}`, // #242424
   completionBorder: `38;2;${DARK_COMPLETION_BORDER}`, // #242424
+  separator: `38;2;${DARK_SEPARATOR}`, // #242424
 };
 
 const DARK_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {
@@ -87,6 +96,7 @@ const LIGHT_USER_BAR_BACKGROUND = '232;232;232'; // #e8e8e8 浅色底(对比度�
 const LIGHT_COMPLETION_BACKGROUND = '240;240;240'; // #f0f0f0
 const LIGHT_COMPLETION_BORDER = '150;150;150'; // #969696 可见边框
 const LIGHT_SCROLLBAR = '176;176;176'; // #b0b0b0 浅底上的滚动条
+const LIGHT_SEPARATOR = '208;208;208'; // #d0d0d0 浅底上的分割线
 
 const LIGHT_TUI: Readonly<Record<TuiRole, string>> = {
   accent: '38;2;63;107;156', // #3f6b9c  5.53
@@ -94,6 +104,7 @@ const LIGHT_TUI: Readonly<Record<TuiRole, string>> = {
   scrollbar: `38;2;${LIGHT_SCROLLBAR}`,
   completionBg: `48;2;${LIGHT_COMPLETION_BACKGROUND}`, // #f0f0f0
   completionBorder: `38;2;${LIGHT_COMPLETION_BORDER}`, // #969696
+  separator: `38;2;${LIGHT_SEPARATOR}`, // #d0d0d0
 };
 
 const LIGHT_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {

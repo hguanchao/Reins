@@ -1187,7 +1187,7 @@ export class TuiApp implements AgentUi {
     if (pending === undefined) {
       return [];
     }
-    const separator = theme.paint.muted(symbols.separator.repeat(cols));
+    const separator = theme.paint.separator(symbols.separator.repeat(cols));
     const options = [theme.paint.ok('[y] 信任并继续'), theme.paint.fail('[n] 退出')];
     const optionsText = renderApprovalOptions(options, this.trustIndex, theme);
     const optionsPad = Math.max(0, Math.floor((cols - visibleWidth(optionsText)) / 2));

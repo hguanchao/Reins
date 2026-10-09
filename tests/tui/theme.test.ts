@@ -39,6 +39,9 @@ describe('主题', () => {
     assert.equal(theme.paint.accent('x'), '\u001b[38;2;127;167;207mx\u001b[0m');
     assert.equal(theme.paint.fail('x'), '\u001b[38;2;196;141;141mx\u001b[0m');
     assert.equal(theme.codes.accent, '38;2;127;167;207');
+    // 分割线刻意压暗,只作视觉分界
+    assert.equal(theme.codes.separator, '38;2;36;36;36');
+    assert.equal(theme.paint.separator('─'), '\u001b[38;2;36;36;36m─\u001b[0m');
   });
 
   it('角色取色全局固定:每个角色都有值,消息条同时给定前景与背景', () => {
@@ -61,7 +64,7 @@ describe('主题', () => {
     // 分组是维护契约:每个角色只属于一组,新增角色必须落进某一组
     const groups = {
       base: ['muted', 'ok', 'warn', 'fail'],
-      tui: ['accent', 'userBar', 'scrollbar', 'completionBg', 'completionBorder'],
+      tui: ['accent', 'userBar', 'scrollbar', 'completionBg', 'completionBorder', 'separator'],
       markdown: ['heading', 'code', 'link'],
       highlight: ['keyword', 'string', 'comment', 'number', 'function', 'type'],
     } as const;
