@@ -54,7 +54,7 @@ const DARK_USER_BAR_BACKGROUND = '36;36;36';
 const DARK_COMPLETION_BACKGROUND = '36;36;36';
 const DARK_COMPLETION_BORDER = '36;36;36';
 const DARK_SEPARATOR = '36;36;36'; // #242424 分割线:刻意压暗,只作视觉分界
-const DARK_SCROLLBAR = '28;28;28'; // #1c1c1c 滚动条:比用户消息底色再暗一档
+const DARK_SCROLLBAR = '156;156;156'; // #9c9c9c 滚动条
 
 const DARK_TUI: Readonly<Record<TuiRole, string>> = {
   accent: '38;2;127;167;207', // #7fa7cf  6.61
@@ -96,7 +96,7 @@ const LIGHT_USER_BAR_FOREGROUND = '43;43;43'; // #2b2b2b 深色字
 const LIGHT_USER_BAR_BACKGROUND = '232;232;232'; // #e8e8e8 浅色底(对比度约 11.2)
 const LIGHT_COMPLETION_BACKGROUND = '240;240;240'; // #f0f0f0
 const LIGHT_COMPLETION_BORDER = '150;150;150'; // #969696 可见边框
-const LIGHT_SCROLLBAR = '160;160;160'; // #a0a0a0 浅底上的滚动条
+const LIGHT_SCROLLBAR = '156;156;156'; // #9c9c9c 滚动条
 const LIGHT_SEPARATOR = '208;208;208'; // #d0d0d0 浅底上的分割线
 
 const LIGHT_TUI: Readonly<Record<TuiRole, string>> = {
