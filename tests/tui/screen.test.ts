@@ -66,6 +66,30 @@ describe('帧差分', () => {
     assert.equal(output.output.includes('\u001b[?25h'), false);
   });
 
+  it('光标未变化时不重复写,避免重置终端闪烁计时', () => {
+    const output = new MockStream();
+    const input = new MockStream();
+    const terminal = new Terminal(output as never, input as never);
+    terminal.render(['x'], { row: 1, col: 3 });
+    output.output = '';
+    // 内容变、光标位置没变:只重绘内容,不碰光标
+    terminal.render(['y'], { row: 1, col: 3 });
+    assert.equal(output.output.includes('\u001b[?25h'), false, '不应重复显示光标');
+    assert.equal(output.output.includes('\u001b[2;4H'), false, '不应重复定位光标');
+    output.output = '';
+    // 光标位置变了:重新定位,但无需再发显示序列
+    terminal.render(['y'], { row: 1, col: 4 });
+    assert.ok(output.output.includes('\u001b[2;5H'), '光标移动时应重新定位');
+    assert.equal(output.output.includes('\u001b[?25h'), false);
+    output.output = '';
+    // 已经隐藏时不再重复发隐藏序列
+    terminal.render(['y'], null);
+    assert.ok(output.output.includes('\u001b[?25l'));
+    output.output = '';
+    terminal.render(['y'], null);
+    assert.equal(output.output.includes('\u001b[?25l'), false);
+  });
+
   it('进入和离开时切换焦点上报', () => {
     const output = new MockStream();
     const input = new MockStream();

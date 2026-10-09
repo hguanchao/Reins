@@ -36,6 +36,8 @@ export class Terminal {
   readonly out: NodeJS.WriteStream;
   readonly input: NodeJS.ReadStream;
   private previousFrame: string[] = [];
+  /** 上一帧的光标状态:undefined = 未知,null = 已隐藏。 */
+  private previousCursor: CursorPosition | null | undefined = undefined;
   private entered = false;
 
   constructor(out: NodeJS.WriteStream, input: NodeJS.ReadStream) {
@@ -64,6 +66,7 @@ export class Terminal {
     // 备用屏 + 隐藏光标 + 鼠标/焦点上报 + 括号粘贴
     this.out.write('\u001b[?1049h\u001b[?25l\u001b[?1000h\u001b[?1006h\u001b[?1004h\u001b[?2004h');
     this.previousFrame = [];
+    this.previousCursor = null;
   }
 
   /** 离开备用屏并恢复终端状态。 */
@@ -74,6 +77,7 @@ export class Terminal {
     this.entered = false;
     // 退出顺序与进入相反,确保异常路径下终端不留残余模式
     this.out.write('\u001b[?2004l\u001b[?1004l\u001b[?1006l\u001b[?1000l\u001b[?25h\u001b[?1049l');
+    this.previousCursor = undefined;
     if (this.input.isTTY === true) {
       this.input.setRawMode(false);
     }
@@ -83,6 +87,7 @@ export class Terminal {
   /** 使下一帧全量重绘(窗口尺寸变化时使用)。 */
   invalidate(): void {
     this.previousFrame = [];
+    this.previousCursor = undefined;
   }
 
   render(lines: readonly string[], cursor: CursorPosition | null): void {
@@ -91,11 +96,23 @@ export class Terminal {
     for (const diff of diffs) {
       chunks.push(`\u001b[${diff.row + 1};1H\u001b[2K`, diff.text);
     }
+    // 光标只在状态真正变化时才写:每帧重定位会把终端的闪烁计时重置,
+    // 光标看起来会一直亮着(不闪烁)
     if (cursor === null) {
-      chunks.push('\u001b[?25l');
+      if (this.previousCursor !== null) {
+        chunks.push('\u001b[?25l');
+      }
     } else {
-      chunks.push(`\u001b[${cursor.row + 1};${cursor.col + 1}H`, '\u001b[?25h');
+      const visible = this.previousCursor !== null && this.previousCursor !== undefined;
+      const moved = !visible || this.previousCursor?.row !== cursor.row || this.previousCursor?.col !== cursor.col;
+      if (moved) {
+        chunks.push(`\u001b[${cursor.row + 1};${cursor.col + 1}H`);
+      }
+      if (!visible) {
+        chunks.push('\u001b[?25h');
+      }
     }
+    this.previousCursor = cursor;
     this.previousFrame = [...lines];
     this.out.write(chunks.join(''));
   }
