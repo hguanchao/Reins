@@ -109,7 +109,7 @@ reins/
 | `compact_model` | `session/compaction.ts` | 省略用主模型 |
 | `review_model` | `permissions/approval.ts` | auto 审批的审查模型 |
 | `approval` | `permissions/approval.ts` | ask / auto / yolo |
-| `sandbox` | `permissions/sandbox.ts` | off / workspace / read-only;只约束文件类工具的路径,bash 由 `[permissions]` 规则约束 |
+| `sandbox` | `permissions/sandbox.ts` | off / workspace / read-only;只约束文件类工具的路径,判定前先解析真实路径(符号链接不能越界),bash 由 `[permissions]` 规则约束 |
 | `[permissions]` | `permissions/rules.ts` + `engine.ts` | 跨层 deny > ask > allow |
 | `[trust]` | `config/trust.ts` | 命中的目录才加载它的项目层配置与项目说明文件;只从全局层读取 |
 | `max_turns` | `agent/loop.ts` | 根会话不封顶 |

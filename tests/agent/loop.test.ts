@@ -12,6 +12,7 @@ import { Session } from '../../src/session/tree.ts';
 import type { SessionEntry, ToolResultEntry } from '../../src/session/store.ts';
 import { SpillStore } from '../../src/spill/store.ts';
 import { createDefaultRegistry } from '../../src/tools/defaults.ts';
+import { resolveRealPath } from '../../src/tools/realpath.ts';
 import type { Tool, ToolRegistry } from '../../src/tools/registry.ts';
 import { SilentUi } from '../../src/ui/printer.ts';
 import { pathExists } from '../../src/util/fsx.ts';
@@ -98,7 +99,7 @@ async function makeAgent(
     registry,
     session,
     engine: new PermissionEngine([config.permissions], config.approval),
-    sandbox: new Sandbox(config.sandbox, workspace),
+    sandbox: new Sandbox(config.sandbox, await resolveRealPath(workspace)),
     approval: new ApprovalGate(config.approval, { approver: options.approver }),
     spill: new SpillStore(join(home, 'spill')),
     ui: new SilentUi(),

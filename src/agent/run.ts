@@ -14,6 +14,7 @@ import { Sandbox } from '../permissions/sandbox.ts';
 import { Session } from '../session/tree.ts';
 import { SpillStore } from '../spill/store.ts';
 import { createDefaultRegistry } from '../tools/defaults.ts';
+import { resolveRealPath } from '../tools/realpath.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { ConfigError } from '../util/errors.ts';
 import { createCompactor } from './compactor.ts';
@@ -114,7 +115,9 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
       }
     }
     const engine = new PermissionEngine([options.config.permissions], options.config.approval);
-    const sandbox = new Sandbox(options.config.sandbox, options.workspace);
+    // 边界按真实路径判定:工作区自身若被符号链接指向,字面路径与真实路径不同,
+    // 拿字面路径当边界会把区内的正常写入误判成越界
+    const sandbox = new Sandbox(options.config.sandbox, await resolveRealPath(options.workspace));
     const gateOptions: ApprovalGateOptions = { ...options.approval };
     if (options.config.approval === 'auto' && gateOptions.reviewer === undefined) {
       gateOptions.reviewer = createReviewer({

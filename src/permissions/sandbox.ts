@@ -15,6 +15,11 @@ import type { Decision } from './engine.ts';
  * bash 不在其内——任意命令都可能写文件,静态判定做不到可靠,故交给 [permissions]
  * 的规则表达(例如 deny = ["bash(rm *)"])。需要绝对只读时,除设 sandbox 外还应
  * 用规则限制 bash。
+ *
+ * 路径契约:构造时的 workspace 与 checkPath 收到的 path 都必须是**真实路径**
+ * (符号链接已解析)。两侧都按真实路径比较,区内的符号链接才不能把操作引到区外,
+ * 而工作区自身是符号链接时也不会被误判为越界。解析由调用方在进沙箱前完成——
+ * 这里不做任何文件系统访问。
  */
 export class Sandbox {
   readonly mode: SandboxMode;
