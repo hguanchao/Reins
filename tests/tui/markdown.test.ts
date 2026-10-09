@@ -154,6 +154,36 @@ describe('markdown 渲染', () => {
     assert.ok(!flattened.includes('…'), '表格内容不应省略');
   });
 
+  it('表格:每行之间都有分隔线,每格都被框住', () => {
+    const lines = render(
+      ['| 特性 | 描述 |', '| --- | --- |', '| Grok | xAI 构建的助手 |', '| 工具 | run_terminal_command 等 |'].join('\n'),
+      60,
+    );
+    // 顶框、表头、分隔、数据、分隔、数据、底框
+    assert.equal(lines.length, 7);
+    const starts = (index: number): string => (lines[index] ?? '').trimStart().slice(0, 1);
+    assert.equal(starts(0), '┌');
+    assert.equal(starts(2), '├');
+    assert.equal(starts(4), '├');
+    assert.equal(starts(6), '└');
+    // 三条数据/表头行都夹在框线之间
+    for (const index of [1, 3, 5]) {
+      assert.ok((lines[index] ?? '').includes('│'), `第 ${index} 行应是单元格行`);
+    }
+  });
+
+  it('表格:单元格折行时,分隔线在整行之后只画一条', () => {
+    const lines = render(
+      ['| 名称 | 说明 |', '| --- | --- |', '| dev | 开发服务器,用于本地开发与热更新,内容较长需要折行 |'].join('\n'),
+      34,
+    );
+    // 顶框、表头、分隔、数据(多行)、底框:折行不额外插入分隔线
+    assert.equal(lines.filter((line) => line.trimStart().startsWith('├')).length, 1);
+    assert.equal(lines.filter((line) => line.trimStart().startsWith('└')).length, 1);
+    const last = lines.at(-1) ?? '';
+    assert.ok(last.trimStart().startsWith('└'), `底框应在折行之后:${lines.join('\n')}`);
+  });
+
   it('表格:折行续行保留边框,首列留空对齐', () => {
     const lines = render('| 名称 | 说明 |\n| --- | --- |\n| dev | 开发服务器,用于本地开发与热更新 |', 34);
     const text = lines.map(stripAnsi);

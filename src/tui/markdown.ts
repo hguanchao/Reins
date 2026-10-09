@@ -274,8 +274,8 @@ function renderTable(
     }
     return lines;
   };
-  // 全包边框:直角拐角,横线段比列宽多 2,
-  // 正好吃掉数据行 ' │ ' 里的空格,┬ ┼ ┴ 与竖线逐列对准
+  // 全包边框:直角拐角 + 每行之间都画分隔线,每格都被框住;
+  // 横线段比列宽多 2,正好吃掉数据行 ' │ ' 里的空格,┬ ┼ ┴ 与竖线逐列对准
   const frame = (left: string, middle: string, right: string): string =>
     `  ${theme.paint.muted(left)}${colWidth
       .map((columnWidth) => theme.paint.muted('─'.repeat(columnWidth + 2)))
@@ -285,6 +285,10 @@ function renderTable(
   out.push(frame('├', '┼', '┤'));
   for (let index = 1; index < table.length; index += 1) {
     out.push(...render(index, ''));
+    // 行与行之间同样分隔;最后一行交给底框收口
+    if (index < table.length - 1) {
+      out.push(frame('├', '┼', '┤'));
+    }
   }
   out.push(frame('└', '┴', '┘'));
   return out;
