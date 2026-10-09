@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  contentHeight,
   createBlockRenderer,
   renderBlock,
   renderBlockVerbose,
   renderTrustPage,
+  renderWindow,
+  scrollWindow,
   summarizeToolArgs,
   type RenderContext,
   type ScrollBlock,
@@ -204,6 +207,128 @@ describe('滚动区块渲染', () => {
     const second = renderer.render(block, 60);
     assert.notEqual(second, first);
     assert.ok(stripAnsi(second.join('\n')).includes('世界'));
+  });
+
+  it('区块渲染器:行数取自缓存,离屏区块回收后重新渲染', () => {
+    const renderer = createBlockRenderer(context);
+    const block: ScrollBlock = { kind: 'assistant', text: '第一行', streaming: false };
+    const lines = renderer.render(block, 60);
+    assert.equal(renderer.height(block, 60), lines.length);
+
+    // 区块变长后行数跟着变
+    block.text = '第一行\n\n第二行';
+    assert.ok(renderer.height(block, 60) > lines.length);
+
+    // 保留的区块复用同一份行
+    const kept = renderer.render(block, 60);
+    renderer.release([block], [block]);
+    assert.equal(renderer.render(block, 60), kept);
+
+    // 回收的区块只留行数:再次渲染会重算,内容不变
+    renderer.release([block], []);
+    const again = renderer.render(block, 60);
+    assert.notEqual(again, kept);
+    assert.deepEqual(again, kept);
+    assert.equal(renderer.height(block, 60), kept.length);
+  });
+
+  it('整段内容行数:区块之间空一行', () => {
+    assert.equal(contentHeight([]), 0);
+    assert.equal(contentHeight([3]), 3);
+    assert.equal(contentHeight([3, 2]), 6);
+    assert.equal(contentHeight([0, 3]), 3);
+    assert.equal(contentHeight([3, 0, 2]), 7);
+  });
+});
+
+describe('视口窗口', () => {
+  const width = 40;
+  const viewHeight = 8;
+
+  /** 未窗口化时的整段内容:窗口化的结果必须与它逐行一致。 */
+  function fullContent(blocks: readonly ScrollBlock[]): string[] {
+    const lines: string[] = [];
+    for (const block of blocks) {
+      if (lines.length > 0) {
+        lines.push('');
+      }
+      lines.push(...renderBlock(block, width, context));
+    }
+    return lines;
+  }
+
+  const blocks: ScrollBlock[] = [
+    { kind: 'user', text: '把登录页的错误提示改成中文' },
+    { kind: 'assistant', text: '好的\n\n我来改。', streaming: false },
+    { kind: 'tool', name: 'edit', summary: 'src/login.tsx', state: 'ok', elapsedMs: 12 },
+    { kind: 'assistant', text: '已改完。', streaming: false },
+    { kind: 'notice', text: '状态已更新', level: 'info' },
+    // 空区块:不画行,但仍然参与排版
+    { kind: 'assistant', text: '', streaming: false },
+    { kind: 'user', text: '再检查一下' },
+  ];
+
+  it('无区块时窗口为空', () => {
+    assert.deepEqual(scrollWindow([], 0, viewHeight), { start: 0, end: -1, total: 0, skip: 0 });
+    assert.deepEqual(renderWindow([], scrollWindow([], 0, viewHeight), () => ['x']), []);
+  });
+
+  it('窗口内物化的行与整段内容逐行一致', () => {
+    const heights = blocks.map((block) => renderBlock(block, width, context).length);
+    const full = fullContent(blocks);
+    assert.equal(contentHeight(heights), full.length);
+
+    for (let top = 0; top <= full.length; top += 1) {
+      const window = scrollWindow(heights, top, viewHeight);
+      const materialized = renderWindow(blocks, window, (block) => renderBlock(block, width, context));
+      const expected = full.slice(top, top + viewHeight);
+      while (expected.length < viewHeight) {
+        expected.push('');
+      }
+      const actual = materialized.slice(0, viewHeight);
+      while (actual.length < viewHeight) {
+        actual.push('');
+      }
+      assert.deepEqual(actual, expected, `top=${top} 时窗口内容与整段内容不一致`);
+    }
+  });
+
+  it('只物化视口附近的区块', () => {
+    const heights = blocks.map((block) => renderBlock(block, width, context).length);
+    const window = scrollWindow(heights, 0, viewHeight);
+    assert.equal(window.start, 0);
+    assert.ok(window.end < blocks.length - 1, '视口在顶部时不该物化到最后一个区块');
+    assert.equal(window.skip, 0);
+  });
+
+  it('内容不足一屏时整段物化且不裁切', () => {
+    const heights = blocks.map((block) => renderBlock(block, width, context).length);
+    const total = contentHeight(heights);
+    const window = scrollWindow(heights, 0, total + 20);
+    assert.equal(window.start, 0);
+    assert.equal(window.end, blocks.length - 1);
+    assert.equal(window.skip, 0);
+  });
+
+  it('滚到底部时裁掉头部偏移', () => {
+    const heights = blocks.map((block) => renderBlock(block, width, context).length);
+    const total = contentHeight(heights);
+    const top = total - viewHeight;
+    const window = scrollWindow(heights, top, viewHeight);
+    assert.equal(window.end, blocks.length - 1);
+    const materialized = renderWindow(blocks, window, (block) => renderBlock(block, width, context));
+    assert.ok(materialized.length >= viewHeight);
+    assert.deepEqual(materialized.slice(0, viewHeight), fullContent(blocks).slice(top));
+  });
+
+  it('视口越出内容范围时下标仍然合法', () => {
+    const heights = [3, 0, 2];
+    for (const top of [0, 1, 5, 99]) {
+      const window = scrollWindow(heights, top, 4);
+      assert.ok(window.start >= 0 && window.start < heights.length);
+      assert.ok(window.end >= window.start && window.end < heights.length);
+      assert.ok(window.skip >= 0);
+    }
   });
 });
 

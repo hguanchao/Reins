@@ -303,25 +303,166 @@ export function renderTrustPage(
   return lines;
 }
 
-/** 带缓存的区块渲染器:同区块同参数直接复用上一帧的行。 */
+/**
+ * 带缓存的区块渲染器。
+ *
+ * 历史区块全部留在内存里,但渲染行只保留视口附近的:滚出屏幕的区块只留行数,
+ * 滚回来时按需重渲染。这样每帧的工作量与占用都只跟视口相关,不随对话长度增长。
+ */
 export interface BlockRenderer {
+  /** 取区块的渲染行(必要时渲染并缓存)。 */
   render(block: ScrollBlock, width: number): string[];
+  /** 取区块的行数;缓存里有行数就直接用,不必保留渲染行。 */
+  height(block: ScrollBlock, width: number): number;
+  /** 回收渲染行:keep 之外的区块只留行数,已不在 blocks 中的条目整条删除。 */
+  release(blocks: readonly ScrollBlock[], keep: readonly ScrollBlock[]): void;
+}
+
+/** 缓存条目:行被回收后 lines 为 null,此时只有行数可信。 */
+interface CachedBlock {
+  stamp: string;
+  lines: string[] | null;
+  height: number;
 }
 
 export function createBlockRenderer(context: RenderContext): BlockRenderer {
-  const cache = new WeakMap<ScrollBlock, { stamp: string; lines: string[] }>();
+  const cache = new Map<ScrollBlock, CachedBlock>();
+
+  const render = (block: ScrollBlock, width: number): string[] => {
+    const stamp = cacheStamp(block, width, context);
+    const hit = cache.get(block);
+    if (hit !== undefined && hit.stamp === stamp && hit.lines !== null) {
+      return hit.lines;
+    }
+    const lines = renderBlock(block, width, context);
+    cache.set(block, { stamp, lines, height: lines.length });
+    return lines;
+  };
+
   return {
-    render(block: ScrollBlock, width: number): string[] {
-      const stamp = cacheStamp(block, width, context);
+    render,
+    height(block, width) {
       const hit = cache.get(block);
-      if (hit !== undefined && hit.stamp === stamp) {
-        return hit.lines;
+      if (hit !== undefined && hit.stamp === cacheStamp(block, width, context)) {
+        return hit.height;
       }
-      const lines = renderBlock(block, width, context);
-      cache.set(block, { stamp, lines });
-      return lines;
+      return render(block, width).length;
+    },
+    release(blocks, keep) {
+      const alive = new Set(blocks);
+      const live = new Set(keep);
+      for (const [block, entry] of cache) {
+        if (!alive.has(block)) {
+          cache.delete(block);
+        } else if (!live.has(block) && entry.lines !== null) {
+          cache.set(block, { stamp: entry.stamp, lines: null, height: entry.height });
+        }
+      }
     },
   };
+}
+
+/**
+ * 整段内容的行数:各区块行数之和,外加区块之间的空行。
+ *
+ * 空行的规则与物化时一致——已有内容才空行,否则开头的空区块会白占一行。
+ */
+export function contentHeight(heights: readonly number[]): number {
+  let total = 0;
+  for (const height of heights) {
+    if (total > 0) {
+      total += 1;
+    }
+    total += height;
+  }
+  return total;
+}
+
+/** 视口窗口:需要物化的区块区间与头部裁切量。 */
+export interface ScrollWindow {
+  /** 首个需要物化的区块下标;无区块时为 0。 */
+  start: number;
+  /** 最后一个需要物化的区块下标(含);无区块时为 -1。 */
+  end: number;
+  /** 整段内容的行数。 */
+  total: number;
+  /** 需从物化结果头部裁掉的行数,使首行恰好落在视口顶端。 */
+  skip: number;
+}
+
+/** 各区块首行在整段内容中的偏移(含区块之间的空行)。 */
+function blockOffsets(heights: readonly number[]): number[] {
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const height of heights) {
+    if (cursor > 0) {
+      cursor += 1;
+    }
+    offsets.push(cursor);
+    cursor += height;
+  }
+  return offsets;
+}
+
+/**
+ * 计算视口命中的区块范围。
+ *
+ * 区块占用的范围含它后面那条空行(空区块因此也可能占一行),这样按范围判断
+ * 「哪一行由谁画」不会漏掉空行,start 也就自然跳过开头的空区块。
+ */
+export function scrollWindow(
+  heights: readonly number[],
+  top: number,
+  viewHeight: number,
+): ScrollWindow {
+  const total = contentHeight(heights);
+  if (heights.length === 0) {
+    return { start: 0, end: -1, total, skip: 0 };
+  }
+  const offsets = blockOffsets(heights);
+  const bottom = top + Math.max(0, viewHeight);
+
+  let start = heights.length - 1;
+  for (let index = 0; index < heights.length; index += 1) {
+    const regionEnd = index + 1 < heights.length ? (offsets[index + 1] as number) : total;
+    if (regionEnd > top) {
+      start = index;
+      break;
+    }
+  }
+  let end = start;
+  for (let index = heights.length - 1; index > start; index -= 1) {
+    if ((offsets[index] as number) < bottom) {
+      end = index;
+      break;
+    }
+  }
+  return { start, end, total, skip: Math.max(0, top - (offsets[start] as number)) };
+}
+
+/**
+ * 物化窗口内的区块:按整段内容的排版拼接(区块之间空一行),再裁掉头部偏移。
+ *
+ * 返回行数可能少于视口高度(内容到底了),由调用方补白。
+ */
+export function renderWindow(
+  blocks: readonly ScrollBlock[],
+  window: ScrollWindow,
+  render: (block: ScrollBlock) => string[],
+): string[] {
+  const lines: string[] = [];
+  for (let index = window.start; index <= window.end; index += 1) {
+    const block = blocks[index];
+    if (block === undefined) {
+      continue;
+    }
+    // 窗口首块之前那条空行属于上一个区块的范围,不在这里补
+    if (index > window.start) {
+      lines.push('');
+    }
+    lines.push(...render(block));
+  }
+  return window.skip === 0 ? lines : lines.slice(window.skip);
 }
 
 /** 缓存键:覆盖所有会影响渲染结果的输入。 */

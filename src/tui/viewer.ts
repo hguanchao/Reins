@@ -15,7 +15,8 @@ import { fitPlain, truncatePlain, visibleWidth } from './layout.ts';
 export class Viewer {
   private index = -1;
   private scrollTop = 0;
-  private verboseCache = new WeakMap<ScrollBlock, { stamp: string; lines: string[] }>();
+  /** 只缓存当前查看区块的完整渲染:查看器一次只显示一个区块,旧条目没必要留着。 */
+  private verboseCache: { block: ScrollBlock; stamp: string; lines: string[] } | undefined;
 
   get isOpen(): boolean {
     return this.index >= 0;
@@ -115,12 +116,12 @@ export class Viewer {
   /** 当前区块的完整行(按宽度与主题缓存)。 */
   private verboseLines(block: ScrollBlock, width: number, context: RenderContext): string[] {
     const stamp = `${width}|${context.theme.name}|${context.theme.useColor}|${verboseStamp(block)}`;
-    const hit = this.verboseCache.get(block);
-    if (hit !== undefined && hit.stamp === stamp) {
+    const hit = this.verboseCache;
+    if (hit !== undefined && hit.block === block && hit.stamp === stamp) {
       return hit.lines;
     }
     const lines = renderBlockVerbose(block, width, context);
-    this.verboseCache.set(block, { stamp, lines });
+    this.verboseCache = { block, stamp, lines };
     return lines;
   }
 }

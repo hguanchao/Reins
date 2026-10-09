@@ -26,9 +26,12 @@ import { describeError } from '../util/errors.ts';
 import { absolutize, reinsHome } from '../util/paths.ts';
 import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
+  contentHeight,
   createBlockRenderer,
   formatElapsed,
   renderTrustPage,
+  renderWindow,
+  scrollWindow,
   summarizeToolArgs,
   type NoticeLevel,
   type RenderContext,
@@ -1171,25 +1174,37 @@ export class TuiApp implements AgentUi {
     // 顶部无 header、底部无分隔线:整屏只有内容区与输入区,行数全部给内容
     const mainHeight = Math.max(1, rows - footer.lines.length);
     // 右侧最后一列固定留给滚动条,内容按窄一列排版
-    const scrollback = this.renderScrollbackLines(cols - 1);
+    const width = cols - 1;
     // 欢迎面板独占屏幕时垂直居中;一旦有对话内容就回到顶部对齐,避免最新一行随长度跳动
-    const content =
-      this.blocks.length === 1 && this.blocks[0]?.kind === 'welcome'
-        ? centerVertically(scrollback, mainHeight)
-        : scrollback;
-    const maxTop = Math.max(0, content.length - mainHeight);
-    if (this.follow) {
-      this.scrollTop = maxTop;
+    const welcome = this.blocks.length === 1 && this.blocks[0]?.kind === 'welcome' ? this.blocks[0] : undefined;
+    let content: string[];
+    let total: number;
+    if (welcome !== undefined) {
+      this.scrollTop = 0;
+      content = centerVertically(this.renderer.render(welcome, width), mainHeight);
+      total = content.length;
+      this.renderer.release(this.blocks, this.blocks);
+    } else {
+      // 先取各区块行数(离屏区块只剩行数,没有渲染行),据此定视口,再物化视口内的区块
+      const heights = this.blocks.map((block) => this.renderer.height(block, width));
+      total = contentHeight(heights);
+      const maxTop = Math.max(0, total - mainHeight);
+      if (this.follow) {
+        this.scrollTop = maxTop;
+      }
+      const top = Math.min(this.scrollTop, maxTop);
+      this.scrollTop = top;
+      const window = scrollWindow(heights, top, mainHeight);
+      content = renderWindow(this.blocks, window, (block) => this.renderer.render(block, width));
+      this.renderer.release(this.blocks, this.blocks.slice(window.start, window.end + 1));
     }
-    const top = Math.min(this.scrollTop, maxTop);
-    this.scrollTop = top;
     this.lastMainHeight = mainHeight;
-    this.lastMaxTop = maxTop;
-    const main = content.slice(top, top + mainHeight);
+    this.lastMaxTop = Math.max(0, total - mainHeight);
+    const main = content.slice(0, mainHeight);
     while (main.length < mainHeight) {
       main.push('');
     }
-    const bar = scrollbarGeometry(top, mainHeight, content.length);
+    const bar = scrollbarGeometry(this.scrollTop, mainHeight, total);
     const scrollbarLines = main.map((_, index) => renderScrollbarLine(index, bar, theme));
     const mainLines = main.map((line, index) => `${padAnsi(line, cols - 1)}${scrollbarLines[index] ?? ''}`);
     const menuWidth = cols - 1;
@@ -1233,17 +1248,6 @@ export class TuiApp implements AgentUi {
       main.push('');
     }
     return [...main, separator, ...footer];
-  }
-
-  private renderScrollbackLines(width: number): string[] {
-    const lines: string[] = [];
-    for (const block of this.blocks) {
-      if (lines.length > 0) {
-        lines.push('');
-      }
-      lines.push(...this.renderer.render(block, width));
-    }
-    return lines;
   }
 
   private renderCompletionMenu(width: number, height: number): string[] {
