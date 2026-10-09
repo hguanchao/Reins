@@ -34,6 +34,21 @@ export function addUsage(left: Usage, right: Usage): Usage {
   };
 }
 
+/**
+ * 提示词总量:各端点的计数口径不同,这里统一成一个数。
+ *
+ * Anthropic 把缓存读、缓存写单列,inputTokens 不含它们;OpenAI 系与 Gemini 把
+ * 缓存读算在 inputTokens 之内(缓存读是它的子集)。判定依据是端点是否单列缓存写
+ * ——目前只有 Anthropic 会报缓存写。上下文占用与缓存命中率都按这个总量算,
+ * 否则同一份数据在两类端点下会差出一倍。
+ */
+export function promptTokens(usage: Usage): number {
+  if (usage.cacheWriteTokens === undefined) {
+    return usage.inputTokens;
+  }
+  return usage.inputTokens + (usage.cacheReadTokens ?? 0) + usage.cacheWriteTokens;
+}
+
 /** 生成一行可读的用量摘要。 */
 export function formatUsage(usage: Usage, cost: ModelCost | undefined): string {
   const parts = [`输入 ${usage.inputTokens}`, `输出 ${usage.outputTokens}`];
