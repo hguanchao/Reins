@@ -53,11 +53,11 @@ describe('主题', () => {
     // 只设背景会跟着终端默认前景走,条带里的文字可能看不清
     assert.ok(theme.codes.userBar.includes('38;'));
     assert.ok(theme.codes.userBar.includes('48;'));
-    assert.equal(theme.codes.scrollbar, '38;2;36;36;36');
     assert.equal(theme.codes.completionBg, '48;2;36;36;36');
     assert.equal(theme.codes.completionBorder, '38;2;36;36;36');
     assert.equal(theme.codes.userBar.split(';48;2;')[1], '36;36;36');
-    assert.equal(theme.codes.scrollbar.slice('38;2;'.length), '36;36;36');
+    // 滚动条比用户消息底色再暗一档
+    assert.equal(theme.codes.scrollbar, '38;2;28;28;28');
   });
 
   it('角色按表面分四组:每组都有取值,四组之并即全部角色', () => {
