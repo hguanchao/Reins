@@ -30,7 +30,6 @@ import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
   contentHeight,
   createBlockRenderer,
-  formatElapsed,
   renderTrustPage,
   renderWindow,
   scrollWindow,
@@ -76,8 +75,6 @@ const MIN_COLS = 40;
 const MIN_ROWS = 12;
 /** 输入流静止多久后把挂起的孤立 Esc 兜底吐出。 */
 const ESC_FLUSH_MS = 50;
-/** 状态条消息的驻留时长。 */
-const STATUS_MS = 3000;
 /** 分支名的重读间隔:只为状态栏一行字,不值得每次渲染都读盘。 */
 const BRANCH_TTL_MS = 5000;
 
@@ -172,7 +169,6 @@ export class TuiApp implements AgentUi {
   private running = false;
   private focused = true;
   private runController: AbortController | undefined;
-  private runStartedAt = 0;
   private spinnerIndex = 0;
 
   /** 最近一轮模型调用的用量:状态栏据此显示上下文占用与缓存命中率。 */
@@ -199,11 +195,9 @@ export class TuiApp implements AgentUi {
   /** 信任页当前选中的选项下标(0 = 信任并继续,1 = 退出)。 */
   private trustIndex = 0;
 
-  private statusMessage: { text: string; until: number } | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
   private ticker: NodeJS.Timeout | undefined;
   private escFlushTimer: NodeJS.Timeout | undefined;
-  private statusTimer: NodeJS.Timeout | undefined;
   private readonly onData = (chunk: Buffer): void => {
     this.dispatch(this.decoder.feed(chunk));
     if (this.decoder.hasPending()) {
@@ -318,10 +312,6 @@ export class TuiApp implements AgentUi {
     if (this.escFlushTimer !== undefined) {
       clearTimeout(this.escFlushTimer);
       this.escFlushTimer = undefined;
-    }
-    if (this.statusTimer !== undefined) {
-      clearTimeout(this.statusTimer);
-      this.statusTimer = undefined;
     }
     process.stdout.off('resize', this.onResize);
     process.stdin.off('data', this.onData);
@@ -676,7 +666,7 @@ export class TuiApp implements AgentUi {
   private handlePaste(text: string): void {
     const lines = this.editor.insertRaw(text);
     if (lines > 1) {
-      this.flashStatus(`已粘贴 ${lines} 行 · 回车发送`);
+      this.pushNotice(`已粘贴 ${lines} 行 · 回车发送`, 'info');
     }
     this.maybeRefreshFileIndex();
   }
@@ -708,7 +698,7 @@ export class TuiApp implements AgentUi {
         return;
       }
     }
-    this.flashStatus('没有可展开的工具输出');
+    this.pushNotice('没有可展开的工具输出', 'info');
   }
 
   private toggleViewer(): void {
@@ -728,23 +718,10 @@ export class TuiApp implements AgentUi {
       target = this.blocks.length - 1;
     }
     if (target === -1) {
-      this.flashStatus('还没有可查看的内容');
+      this.pushNotice('还没有可查看的内容', 'info');
       return;
     }
     this.viewer.open(target);
-  }
-
-  private flashStatus(text: string): void {
-    this.statusMessage = { text, until: Date.now() + STATUS_MS };
-    // 状态条到点后自动隐去;复用单个定时器,避免连按多次累积
-    if (this.statusTimer !== undefined) {
-      clearTimeout(this.statusTimer);
-    }
-    this.statusTimer = setTimeout(() => {
-      this.statusTimer = undefined;
-      this.scheduleRender();
-    }, STATUS_MS + 50);
-    this.scheduleRender();
   }
 
   private scrollBy(delta: number): void {
@@ -966,7 +943,6 @@ export class TuiApp implements AgentUi {
     this.hideWelcome();
     this.push({ kind: 'user', text });
     this.running = true;
-    this.runStartedAt = Date.now();
     this.follow = true;
     const controller = new AbortController();
     this.runController = controller;
@@ -1336,7 +1312,7 @@ export class TuiApp implements AgentUi {
       ...input.lines.map((line) => inputBoxLine(line, width, theme, this.focused)),
       frame.bottom,
     );
-    lines.push(this.renderHints(width));
+    lines.push(renderStatusBar(width, theme, this.statusInfo()));
     return {
       lines,
       // 失焦时不给光标:边框已经变色,光标再闪烁会让人以为还能直接输入
@@ -1420,32 +1396,7 @@ export class TuiApp implements AgentUi {
     return { lines, cursorLine, cursorColumn };
   }
 
-  /**
-   * 输入框下方那一行。
-   *
-   * 空闲时是状态栏;瞬时消息(通知、运行提示、滚动提示)临时占用这一行——
-   * 它们都是「现在就需要看见」的内容,压在状态栏下面反而会被忽略。
-   */
-  private renderHints(width: number): string {
-    const paint = this.renderContext.theme.paint;
-    let text: string;
-    const status = this.statusMessage;
-    if (status !== undefined && status.until > Date.now()) {
-      return paint.warn(` ${truncatePlain(status.text, Math.max(0, width - 2))}`);
-    }
-    if (this.approvalCard !== undefined) {
-      text = '';
-    } else if (this.running) {
-      text = `⏱ ${formatElapsed(Date.now() - this.runStartedAt)} · ^C/Esc 中断 · 滚轮/PgUp/PgDn 滚动 · ^O 查看`;
-    } else if (!this.follow) {
-      text = '⤓ End 回到底部 · 滚轮/PgUp/PgDn 滚动';
-    } else {
-      return renderStatusBar(width, this.renderContext.theme, this.statusInfo());
-    }
-    return paint.muted(` ${truncatePlain(text, Math.max(0, width - 2))}`);
-  }
-
-  /** 状态栏数据:配置与用量都还没有时留空,由渲染端退化成 — 。 */
+  /** 状态栏数据:配置与用量都还没有时留空,由渲染端退化成占位符。 */
   private statusInfo(): StatusBarInfo {
     const config = this.currentConfig;
     const usage = this.lastUsage;

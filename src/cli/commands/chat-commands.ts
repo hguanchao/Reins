@@ -127,4 +127,5 @@ export const CHAT_HELP_TEXT = [
   '',
   '快捷键:↑/↓ 历史 · @ 引用文件 · Tab 补全 · Ctrl+J 换行',
   '        Ctrl+O 全屏查看工具输出 · Ctrl+E 展开或折叠 · Ctrl+C/Esc 中断 · 空行 Ctrl+D 退出',
+  '        PgUp/PgDn/滚轮 滚动 · End 回到底部',
 ].join('\n');
