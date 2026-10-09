@@ -137,4 +137,18 @@ describe('Google Generative AI 适配器', () => {
     const chunks = await collect(adapter, fakeFetch);
     assert.equal(chunks.filter((chunk) => chunk.type === 'tool_call').length, 2);
   });
+
+  it('思考摘要(part.thought)不进正文', async () => {
+    const body =
+      frame({
+        candidates: [
+          { content: { parts: [{ text: '先想一下', thought: true }, { text: '这是回答' }] } },
+        ],
+      }) +
+      frame({ candidates: [{ finishReason: 'STOP' }] });
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const chunks = await collect(adapter, fakeFetch);
+    const texts = chunks.flatMap((chunk) => (chunk.type === 'text' ? [chunk.text] : []));
+    assert.deepEqual(texts, ['这是回答']);
+  });
 });

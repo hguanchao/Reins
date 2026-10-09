@@ -1,4 +1,3 @@
-import { ReinsError } from '../../util/errors.ts';
 import { parseSseStream } from '../../util/sse.ts';
 import type {
   AdapterRuntime,
@@ -7,7 +6,7 @@ import type {
   StreamRequest,
   Usage,
 } from '../types.ts';
-import { buildRequestInit, fetchWithRetry, readNumber, trimBaseUrl, tryParseObject } from './shared.ts';
+import { assertOkStreaming, buildRequestInit, fetchWithRetry, isRecord, readNumber, trimBaseUrl, tryParseObject } from './shared.ts';
 
 /**
  * Google Generative AI(Gemini)协议适配器(SSE 流式)。
@@ -39,15 +38,7 @@ export class GoogleGenerativeAiAdapter implements ProviderAdapter {
       proxy: runtime.proxy,
     });
     const response = await fetchWithRetry(fetchImpl, url, init, runtime);
-
-    if (!response.ok || response.body === null) {
-      const detail = await response.text().catch(() => '');
-      throw new ReinsError(
-        'llm',
-        `模型请求失败(HTTP ${response.status})`,
-        detail.slice(0, 500) || '请检查 baseUrl、apiKey 与模型名。',
-      );
-    }
+    const body = await assertOkStreaming(response);
 
     let callIndex = 0;
     let usage: Usage | undefined;
@@ -57,8 +48,8 @@ export class GoogleGenerativeAiAdapter implements ProviderAdapter {
     // 只在事件之间比对,同一事件内的两次相同调用是合法的,照常发出。
     let previousSignatures = new Set<string>();
 
-    for await (const event of parseSseStream(response.body)) {
-      if (event.data === '[DONE]') {
+    for await (const event of parseSseStream(body)) {
+      if (event.data.trim() === '[DONE]') {
         break;
       }
       const payload = tryParseObject(event.data);
@@ -84,6 +75,10 @@ export class GoogleGenerativeAiAdapter implements ProviderAdapter {
         if (Array.isArray(parts)) {
           for (const part of parts) {
             if (!isRecord(part)) {
+              continue;
+            }
+            // 思考摘要(part.thought === true)不是回答正文,混进 assistant 消息会污染上下文
+            if (part['thought'] === true) {
               continue;
             }
             if (typeof part['text'] === 'string' && part['text'] !== '') {
@@ -212,8 +207,4 @@ function mapUsage(raw: Record<string, unknown>): Usage {
     outputTokens: readNumber(raw['candidatesTokenCount']),
     cacheReadTokens: typeof cached === 'number' ? cached : undefined,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -152,4 +152,28 @@ describe('OpenAI Responses 适配器', () => {
       (error: unknown) => error instanceof ReinsError && error.message.includes('rate limited'),
     );
   });
+
+  it('response.incomplete 视为长度截断,且仍取出正文与函数调用', async () => {
+    const body =
+      frame({ type: 'response.output_text.delta', delta: '半句' }) +
+      frame({
+        type: 'response.incomplete',
+        response: {
+          status: 'incomplete',
+          output: [
+            { type: 'message', content: [{ type: 'output_text', text: '半句' }] },
+            { type: 'function_call', id: 'fc_9', call_id: 'call_9', name: 'read', arguments: '{"path":"a"}' },
+          ],
+        },
+      });
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const chunks = await collect(adapter, fakeFetch);
+    const done = chunks.find((chunk) => chunk.type === 'done');
+    assert.equal(
+      done === undefined ? undefined : (done as { finishReason: string }).finishReason,
+      'length',
+    );
+    const toolCalls = chunks.flatMap((chunk) => (chunk.type === 'tool_call' ? [chunk.toolCall] : []));
+    assert.deepEqual(toolCalls, [{ id: 'call_9', name: 'read', arguments: '{"path":"a"}' }]);
+  });
 });

@@ -38,4 +38,12 @@ describe('用量与费用', () => {
     assert.ok(text.includes('缓存读 5'));
     assert.ok(text.includes('$2.0000'));
   });
+
+  it('摘要展示缓存写,与计费口径一致', () => {
+    const text = formatUsage(
+      { inputTokens: 1, outputTokens: 1, cacheWriteTokens: 7 },
+      { input: 1, output: 1, cacheWrite: 1 },
+    );
+    assert.ok(text.includes('缓存写 7'));
+  });
 });

@@ -1,6 +1,11 @@
-import { ReinsError } from '../../util/errors.ts';
 import { parseSseStream } from '../../util/sse.ts';
-import { buildRequestInit, fetchWithRetry, trimBaseUrl, tryParseObject } from './shared.ts';
+import {
+  assertOkStreaming,
+  buildRequestInit,
+  fetchWithRetry,
+  trimBaseUrl,
+  tryParseObject,
+} from './shared.ts';
 import type {
   AdapterRuntime,
   ChatMessage,
@@ -43,22 +48,15 @@ export class OpenAiCompletionsAdapter implements ProviderAdapter {
       proxy: runtime.proxy,
     });
     const response = await fetchWithRetry(fetchImpl, url, init, runtime);
-
-    if (!response.ok || response.body === null) {
-      const detail = await response.text().catch(() => '');
-      throw new ReinsError(
-        'llm',
-        `模型请求失败(HTTP ${response.status})`,
-        detail.slice(0, 500) || '请检查 baseUrl、apiKey 与模型名。',
-      );
-    }
+    const body = await assertOkStreaming(response);
 
     const toolCalls = new Map<number, ToolCallAccumulator>();
+    const state = { nextIndex: 0 };
     let finishReason = '';
     let usage: Usage | undefined;
 
-    for await (const event of parseSseStream(response.body)) {
-      if (event.data === '[DONE]') {
+    for await (const event of parseSseStream(body)) {
+      if (event.data.trim() === '[DONE]') {
         break;
       }
       const payload = tryParseObject(event.data);
@@ -76,7 +74,7 @@ export class OpenAiCompletionsAdapter implements ProviderAdapter {
       const choice = choices[0] as Record<string, unknown>;
       const delta = choice['delta'];
       if (delta !== undefined && delta !== null) {
-        yield* handleDelta(delta as Record<string, unknown>, toolCalls);
+        yield* handleDelta(delta as Record<string, unknown>, toolCalls, state);
       }
       const reason = choice['finish_reason'];
       if (typeof reason === 'string' && reason !== '') {
@@ -105,6 +103,7 @@ export class OpenAiCompletionsAdapter implements ProviderAdapter {
 function* handleDelta(
   delta: Record<string, unknown>,
   toolCalls: Map<number, ToolCallAccumulator>,
+  state: { nextIndex: number },
 ): Generator<StreamChunk> {
   const content = delta['content'];
   if (typeof content === 'string' && content !== '') {
@@ -119,15 +118,16 @@ function* handleDelta(
       continue;
     }
     const record = item as Record<string, unknown>;
-    const index = typeof record['index'] === 'number' ? record['index'] : 0;
+    const index = resolveIndex(record, toolCalls, state);
     const acc = toolCalls.get(index) ?? { id: '', name: '', arguments: '' };
-    if (typeof record['id'] === 'string') {
+    // 空串 id 不能覆盖已拿到的有效 id,否则最后只能回退成合成名
+    if (typeof record['id'] === 'string' && record['id'] !== '') {
       acc.id = record['id'];
     }
     const fn = record['function'];
     if (typeof fn === 'object' && fn !== null) {
       const fnRecord = fn as Record<string, unknown>;
-      if (typeof fnRecord['name'] === 'string') {
+      if (typeof fnRecord['name'] === 'string' && fnRecord['name'] !== '') {
         acc.name = fnRecord['name'];
       }
       if (typeof fnRecord['arguments'] === 'string') {
@@ -136,6 +136,42 @@ function* handleDelta(
     }
     toolCalls.set(index, acc);
   }
+}
+
+/** 取工具调用下标;缺失时若只是「纯参数续片」则并入唯一的已有调用,否则分配新下标。 */
+function resolveIndex(
+  record: Record<string, unknown>,
+  toolCalls: Map<number, ToolCallAccumulator>,
+  state: { nextIndex: number },
+): number {
+  const raw = record['index'];
+  if (typeof raw === 'number') {
+    if (raw >= state.nextIndex) {
+      state.nextIndex = raw + 1;
+    }
+    return raw;
+  }
+  if (toolCalls.size === 1 && isArgumentContinuation(record)) {
+    return [...toolCalls.keys()][0] as number;
+  }
+  const allocated = state.nextIndex;
+  state.nextIndex += 1;
+  return allocated;
+}
+
+/** 该分片是否只是参数续片(既没有 id 也没有函数名)。 */
+function isArgumentContinuation(record: Record<string, unknown>): boolean {
+  if (typeof record['id'] === 'string' && record['id'] !== '') {
+    return false;
+  }
+  const fn = record['function'];
+  if (typeof fn === 'object' && fn !== null) {
+    const name = (fn as Record<string, unknown>)['name'];
+    if (typeof name === 'string' && name !== '') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function buildRequestBody(request: StreamRequest): Record<string, unknown> {

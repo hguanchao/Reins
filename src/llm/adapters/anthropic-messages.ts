@@ -8,7 +8,7 @@ import type {
   StreamRequest,
   Usage,
 } from '../types.ts';
-import { buildRequestInit, fetchWithRetry, readNumber, trimBaseUrl, tryParseObject } from './shared.ts';
+import { assertOkStreaming, buildRequestInit, fetchWithRetry, isRecord, readNumber, trimBaseUrl, tryParseObject } from './shared.ts';
 
 /**
  * Anthropic Messages 协议适配器(SSE 流式)。
@@ -48,15 +48,7 @@ export class AnthropicMessagesAdapter implements ProviderAdapter {
       proxy: runtime.proxy,
     });
     const response = await fetchWithRetry(fetchImpl, url, init, runtime);
-
-    if (!response.ok || response.body === null) {
-      const detail = await response.text().catch(() => '');
-      throw new ReinsError(
-        'llm',
-        `模型请求失败(HTTP ${response.status})`,
-        detail.slice(0, 500) || '请检查 baseUrl、apiKey 与模型名。',
-      );
-    }
+    const body = await assertOkStreaming(response);
 
     const toolUses = new Map<number, ToolUseAccumulator>();
     let inputTokens = 0;
@@ -65,7 +57,7 @@ export class AnthropicMessagesAdapter implements ProviderAdapter {
     let cacheWriteTokens: number | undefined;
     let finishReason = '';
 
-    for await (const event of parseSseStream(response.body)) {
+    for await (const event of parseSseStream(body)) {
       const payload = tryParseObject(event.data);
       if (payload === undefined) {
         continue;
@@ -100,7 +92,7 @@ export class AnthropicMessagesAdapter implements ProviderAdapter {
         if (!isRecord(delta)) {
           continue;
         }
-        if (delta['type'] === 'text_delta' && typeof delta['text'] === 'string') {
+        if (delta['type'] === 'text_delta' && typeof delta['text'] === 'string' && delta['text'] !== '') {
           yield { type: 'text', text: delta['text'] };
           continue;
         }
@@ -145,10 +137,6 @@ export class AnthropicMessagesAdapter implements ProviderAdapter {
     yield { type: 'usage', usage };
     yield { type: 'done', finishReason: finishReason !== '' ? finishReason : 'end_turn' };
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function buildRequestBody(request: StreamRequest): Record<string, unknown> {

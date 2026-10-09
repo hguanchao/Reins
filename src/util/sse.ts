@@ -54,7 +54,8 @@ function parseEventFrame(raw: string): SseEvent | null {
       continue;
     }
     if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart());
+      // 规范只允许去掉冒号后的一个空格,不能把有效的前导空白一并吞掉
+      dataLines.push(line.slice(5).replace(/^ /, ''));
       continue;
     }
     if (line.startsWith('event:')) {

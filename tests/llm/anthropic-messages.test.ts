@@ -140,6 +140,26 @@ describe('Anthropic Messages 适配器', () => {
     );
   });
 
+  it('空文本增量不产出空 text 块', async () => {
+    const body =
+      frame('message_start', { type: 'message_start', message: { usage: { input_tokens: 1 } } }) +
+      frame('content_block_delta', {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: '' },
+      }) +
+      frame('content_block_delta', {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: '有内容' },
+      }) +
+      frame('message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn' } });
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const chunks = await collect(adapter, fakeFetch);
+    const texts = chunks.flatMap((chunk) => (chunk.type === 'text' ? [chunk.text] : []));
+    assert.deepEqual(texts, ['有内容']);
+  });
+
   it('error 事件转为可读错误', async () => {
     const body = frame('error', { type: 'error', error: { message: 'overloaded_error' } });
     const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;

@@ -7,7 +7,7 @@ import type {
   StreamRequest,
   Usage,
 } from '../types.ts';
-import { buildRequestInit, fetchWithRetry, readNumber, trimBaseUrl, tryParseObject } from './shared.ts';
+import { assertOkStreaming, buildRequestInit, fetchWithRetry, isRecord, readNumber, trimBaseUrl, tryParseObject } from './shared.ts';
 
 /**
  * OpenAI Responses 协议适配器(SSE 流式)。
@@ -42,15 +42,7 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
       proxy: runtime.proxy,
     });
     const response = await fetchWithRetry(fetchImpl, url, init, runtime);
-
-    if (!response.ok || response.body === null) {
-      const detail = await response.text().catch(() => '');
-      throw new ReinsError(
-        'llm',
-        `模型请求失败(HTTP ${response.status})`,
-        detail.slice(0, 500) || '请检查 baseUrl、apiKey 与模型名。',
-      );
-    }
+    const body = await assertOkStreaming(response);
 
     const calls = new Map<string, FunctionCallAccumulator>();
     let usage: Usage | undefined;
@@ -86,8 +78,8 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
       }
     };
 
-    for await (const event of parseSseStream(response.body)) {
-      if (event.data === '[DONE]') {
+    for await (const event of parseSseStream(body)) {
+      if (event.data.trim() === '[DONE]') {
         break;
       }
       const payload = tryParseObject(event.data);
@@ -126,7 +118,7 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
         }
         continue;
       }
-      if (type === 'response.completed') {
+      if (type === 'response.completed' || type === 'response.incomplete') {
         const completed = payload['response'];
         if (isRecord(completed)) {
           const rawUsage = completed['usage'];
@@ -150,7 +142,8 @@ export class OpenAiResponsesAdapter implements ProviderAdapter {
               }
             }
           }
-          if (completed['status'] === 'incomplete') {
+          // incomplete 事件同样表示被截断,不能停在 'stop'
+          if (type === 'response.incomplete' || completed['status'] === 'incomplete') {
             finishReason = 'length';
           }
         }
@@ -266,8 +259,4 @@ function mapUsage(raw: Record<string, unknown>): Usage {
     outputTokens: readNumber(raw['output_tokens']),
     cacheReadTokens: typeof cached === 'number' ? cached : undefined,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

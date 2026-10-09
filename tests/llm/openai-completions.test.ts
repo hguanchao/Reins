@@ -141,4 +141,66 @@ describe('OpenAI 兼容适配器', () => {
       (error: unknown) => error instanceof ReinsError && error.message.includes('503'),
     );
   });
+
+  it('后到的空 id 不覆盖已拿到的有效 id', async () => {
+    const body = [
+      sseFrame({
+        choices: [
+          { delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'read', arguments: '{"path"' } }] } },
+        ],
+      }),
+      sseFrame({ choices: [{ delta: { tool_calls: [{ index: 0, id: '', function: { arguments: ':"a"}' } }] } }] }),
+      doneFrame,
+    ].join('');
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const chunks = await collect(adapter, fakeFetch);
+    const toolCall = chunks.find((chunk) => chunk.type === 'tool_call');
+    assert.equal(
+      toolCall === undefined ? undefined : (toolCall as { toolCall: { id: string } }).toolCall.id,
+      'call_1',
+    );
+  });
+
+  it('缺少 index 的多个调用不会被合并成一条', async () => {
+    const body = [
+      sseFrame({ choices: [{ delta: { tool_calls: [{ id: 'a', function: { name: 'read', arguments: '{}' } }] } }] }),
+      sseFrame({ choices: [{ delta: { tool_calls: [{ id: 'b', function: { name: 'write', arguments: '{}' } }] } }] }),
+      doneFrame,
+    ].join('');
+    const fakeFetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+    const chunks = await collect(adapter, fakeFetch);
+    const names = chunks.flatMap((chunk) =>
+      chunk.type === 'tool_call' ? [chunk.toolCall.name] : [],
+    );
+    assert.deepEqual(names, ['read', 'write']);
+  });
+
+  it('中止后立即停止重试,而不是等退避结束', async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const alwaysDown = (async () => {
+      calls += 1;
+      return new Response('busy', { status: 500 });
+    }) as typeof fetch;
+
+    await assert.rejects(
+      async () => {
+        for await (const _chunk of adapter.stream(
+          { ...request, signal: controller.signal },
+          {
+            maxRetries: 5,
+            fetchImpl: alwaysDown,
+            // 退避期间触发中止:应立刻结束,而不是再试一次
+            sleep: async () => {
+              controller.abort();
+            },
+          },
+        )) {
+          // 不需要产出
+        }
+      },
+      (error: unknown) => (error as { name?: string }).name === 'AbortError',
+    );
+    assert.equal(calls, 1);
+  });
 });

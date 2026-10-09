@@ -40,6 +40,10 @@ export function formatUsage(usage: Usage, cost: ModelCost | undefined): string {
   if (usage.cacheReadTokens !== undefined) {
     parts.push(`缓存读 ${usage.cacheReadTokens}`);
   }
+  // 与 estimateCost 的计费口径保持一致:缓存写也要展示,否则用户看不到这笔用量
+  if (usage.cacheWriteTokens !== undefined) {
+    parts.push(`缓存写 ${usage.cacheWriteTokens}`);
+  }
   const money = estimateCost(usage, cost);
   if (money !== undefined) {
     parts.push(`估算费用 $${money.toFixed(4)}`);
