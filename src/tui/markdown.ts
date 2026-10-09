@@ -274,19 +274,19 @@ function renderTable(
     }
     return lines;
   };
-  // 全包边框:圆角与输入框一致;横线段比列宽多 2,
+  // 全包边框:直角拐角,横线段比列宽多 2,
   // 正好吃掉数据行 ' │ ' 里的空格,┬ ┼ ┴ 与竖线逐列对准
   const frame = (left: string, middle: string, right: string): string =>
     `  ${theme.paint.muted(left)}${colWidth
       .map((columnWidth) => theme.paint.muted('─'.repeat(columnWidth + 2)))
       .join(theme.paint.muted(middle))}${theme.paint.muted(right)}`;
-  const out: string[] = [frame('╭', '┬', '╮')];
+  const out: string[] = [frame('┌', '┬', '┐')];
   out.push(...render(0, theme.codes.heading));
   out.push(frame('├', '┼', '┤'));
   for (let index = 1; index < table.length; index += 1) {
     out.push(...render(index, ''));
   }
-  out.push(frame('╰', '┴', '╯'));
+  out.push(frame('└', '┴', '┘'));
   return out;
 }
 

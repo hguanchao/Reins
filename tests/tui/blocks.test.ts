@@ -166,7 +166,7 @@ describe('滚动区块渲染', () => {
     const muted = `\u001b[${context.theme.codes.muted}m`;
     assert.ok(raw.every((line) => line.includes(muted)), '两行都该是灰(muted)');
     const text = raw.map(stripAnsi).join('\n');
-    assert.equal(/[╭╰│─]/.test(text), false, '欢迎页不该再有边框');
+    assert.equal(/[╭╰┌└│─]/.test(text), false, '欢迎页不该再有边框');
     assert.equal(text.includes('/help'), false);
     assert.equal(text.includes('Ctrl+'), false);
   });
