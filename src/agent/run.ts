@@ -58,6 +58,8 @@ export interface AgentRuntime {
   agent: Agent;
   session: Session;
   mcp: McpServerStatus[];
+  /** 已解析的模型(含上下文窗口):界面展示上下文占用时不必再解析一遍。 */
+  model: ResolvedModel;
   close(): Promise<void>;
 }
 
@@ -175,6 +177,7 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
       agent,
       session,
       mcp: mcpStatuses,
+      model,
       close: async () => {
         await mcpManager.close().catch(() => undefined);
       },

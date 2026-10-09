@@ -16,13 +16,15 @@ import { loadLayeredConfig } from '../config/layers.ts';
 import type { Config } from '../config/schema.ts';
 import { recordTrust, resolveProjectTrust, type TrustResolution } from '../config/trust.ts';
 import { existingProjectDocs } from '../context/agents-md.ts';
-import type { ToolCall } from '../llm/types.ts';
+import type { ToolCall, Usage } from '../llm/types.ts';
+import { promptTokens } from '../llm/usage.ts';
 import type { Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
 import type { RuleTarget } from '../permissions/rules.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { sanitizeTerminalText } from '../util/ansi.ts';
 import { describeError } from '../util/errors.ts';
+import { readGitBranch } from '../util/git.ts';
 import { absolutize, reinsHome } from '../util/paths.ts';
 import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
@@ -56,6 +58,7 @@ import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
 import { codePointWidth, padAnsi, softWrapRows, truncatePlain, visibleWidth, visualRowContains } from './layout.ts';
 import { Terminal } from './screen.ts';
+import { renderStatusBar, type StatusBarInfo } from './status.ts';
 import { createTheme, symbols, type Theme } from './theme.ts';
 import { Viewer } from './viewer.ts';
 
@@ -75,6 +78,8 @@ const MIN_ROWS = 12;
 const ESC_FLUSH_MS = 50;
 /** 状态条消息的驻留时长。 */
 const STATUS_MS = 3000;
+/** 分支名的重读间隔:只为状态栏一行字,不值得每次渲染都读盘。 */
+const BRANCH_TTL_MS = 5000;
 
 /**
  * 作用于输入框的按键。
@@ -169,6 +174,13 @@ export class TuiApp implements AgentUi {
   private runController: AbortController | undefined;
   private runStartedAt = 0;
   private spinnerIndex = 0;
+
+  /** 最近一轮模型调用的用量:状态栏据此显示上下文占用与缓存命中率。 */
+  private lastUsage: Usage | undefined;
+  /** 当前分支;不是 git 仓库时为 undefined。分支会被外部 git 操作改掉,故按 TTL 重读。 */
+  private branch: string | undefined;
+  private branchCheckedAt = 0;
+  private branchInFlight = false;
 
   private scrollTop = 0;
   private follow = true;
@@ -469,6 +481,12 @@ export class TuiApp implements AgentUi {
 
   onNotice(message: string): void {
     this.pushNotice(message, 'info');
+  }
+
+  /** 每轮模型调用结束后上报用量:状态栏的上下文占用与缓存命中率取自最近一轮。 */
+  onUsage(usage: Usage): void {
+    this.lastUsage = usage;
+    this.scheduleRender();
   }
 
   // —— 按键分发 ——
@@ -1042,6 +1060,8 @@ export class TuiApp implements AgentUi {
       options.freshSession === true ? undefined : (options.sessionFile ?? this.runtime?.session.path);
     await this.runtime?.close();
     this.runtime = undefined;
+    // 换会话(或换模型)后上一轮的用量不再代表当前上下文,先清掉避免显示残留数字
+    this.lastUsage = undefined;
     this.runtime = await createAgentRuntime({
       config: this.currentConfig,
       catalog: this.catalog,
@@ -1155,6 +1175,8 @@ export class TuiApp implements AgentUi {
   private render(): void {
     const cols = this.terminal.columns;
     const rows = this.terminal.rows;
+    // 状态栏要显示分支,而分支会被外部 git 操作改掉:按 TTL 重读,读到了再重绘
+    this.refreshBranch();
     if (cols < MIN_COLS || rows < MIN_ROWS) {
       this.terminal.render([truncatePlain(`窗口太小,请调整终端尺寸(至少 ${MIN_COLS}×${MIN_ROWS})`, cols)], null);
       return;
@@ -1398,6 +1420,12 @@ export class TuiApp implements AgentUi {
     return { lines, cursorLine, cursorColumn };
   }
 
+  /**
+   * 输入框下方那一行。
+   *
+   * 空闲时是状态栏;瞬时消息(通知、运行提示、滚动提示)临时占用这一行——
+   * 它们都是「现在就需要看见」的内容,压在状态栏下面反而会被忽略。
+   */
   private renderHints(width: number): string {
     const paint = this.renderContext.theme.paint;
     let text: string;
@@ -1412,9 +1440,43 @@ export class TuiApp implements AgentUi {
     } else if (!this.follow) {
       text = '⤓ End 回到底部 · 滚轮/PgUp/PgDn 滚动';
     } else {
-      text = '⏎ 发送 · ^J 换行 · @ 文件 · Tab 补全 · ↑↓ 历史 · ^E 展开 · ^O 查看 · ^C 中断 · /help';
+      return renderStatusBar(width, this.renderContext.theme, this.statusInfo());
     }
     return paint.muted(` ${truncatePlain(text, Math.max(0, width - 2))}`);
+  }
+
+  /** 状态栏数据:配置与用量都还没有时留空,由渲染端退化成 — 。 */
+  private statusInfo(): StatusBarInfo {
+    const config = this.currentConfig;
+    const usage = this.lastUsage;
+    return {
+      project: basename(this.options.workspace) || this.options.workspace,
+      branch: this.branch,
+      model: config?.model ?? this.runtime?.model.id,
+      reasoning: config?.reasoningEffort,
+      promptTokens: usage === undefined ? undefined : promptTokens(usage),
+      contextWindow: this.runtime?.model.contextWindow ?? config?.contextWindow,
+      cacheReadTokens: usage?.cacheReadTokens,
+    };
+  }
+
+  /** 分支名会被外部 git 操作改掉,按 TTL 重读一次;读不到就当不是仓库。 */
+  private refreshBranch(): void {
+    if (this.branchInFlight || Date.now() - this.branchCheckedAt < BRANCH_TTL_MS) {
+      return;
+    }
+    this.branchInFlight = true;
+    void readGitBranch(this.options.workspace)
+      .then((branch) => {
+        if (branch !== this.branch) {
+          this.branch = branch;
+          this.scheduleRender();
+        }
+      })
+      .finally(() => {
+        this.branchInFlight = false;
+        this.branchCheckedAt = Date.now();
+      });
   }
 
   // —— 基础工具 ——
