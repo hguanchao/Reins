@@ -257,7 +257,7 @@ function padDisplay(text: string, width: number): string {
 }
 
 /**
- * 信任页:居中提问 + 目录路径 + 会被采纳的内容 + 不信任的后果。
+ * 信任页:居中提问 + 目录路径 + 会被采纳的内容。
  *
  * 会被采纳的内容分两块:项目层对全局配置的覆盖(逐条给「改成什么」),
  * 以及会被读进系统提示词的说明文件。都为空时如实说明——按下 y 之前应当
@@ -269,7 +269,7 @@ export function renderTrustPage(
   input: { path: string; overrides: readonly TrustPageRow[]; docs: readonly string[] },
 ): string[] {
   const lines: string[] = [];
-  lines.push(centerLine('要信任这个目录的内容吗?', width, theme.paint.accent));
+  lines.push(centerLine('信任这个目录吗?', width, theme.paint.accent));
   lines.push('');
   lines.push(centerLine(input.path, width, theme.paint.muted));
   lines.push('');
@@ -287,10 +287,8 @@ export function renderTrustPage(
     if (entries.length > 0) {
       entries.push('');
     }
-    entries.push('注入项目说明文件:');
-    for (const doc of input.docs) {
-      entries.push(`  ${doc}`);
-    }
+    // 说明文件与标签同一行,不逐个换行
+    entries.push(`注入项目说明文件: ${input.docs.join('、')}`);
   }
   if (entries.length === 0) {
     entries.push('(该目录没有项目层配置,也没有说明文件)');
@@ -302,19 +300,7 @@ export function renderTrustPage(
   for (const row of entries) {
     lines.push(indent + truncatePlain(row, Math.max(0, width - indent.length)));
   }
-  lines.push('');
-
-  lines.push(centerLine('不信任时:只加载全局配置,项目层配置与说明文件都不生效', width, theme.paint.muted));
   return lines;
-}
-
-/** 信任页底部的两项按键;› 标出主选项。 */
-export function renderTrustMenu(theme: Theme): string[] {
-  const paint = theme.paint;
-  return [
-    `  ${paint.accent('› ')}${paint.ok('[y]')} 信任并继续`,
-    `    ${paint.fail('[n]')} 退出`,
-  ];
 }
 
 /** 带缓存的区块渲染器:同区块同参数直接复用上一帧的行。 */

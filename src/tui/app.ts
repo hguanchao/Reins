@@ -28,7 +28,6 @@ import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
   createBlockRenderer,
   formatElapsed,
-  renderTrustMenu,
   renderTrustPage,
   summarizeToolArgs,
   type NoticeLevel,
@@ -158,6 +157,8 @@ export class TuiApp implements AgentUi {
   private trustPrompt:
     | { resolution: TrustResolution; docs: string[]; resolve: (accepted: boolean) => void }
     | undefined;
+  /** 信任页当前选中的选项下标(0 = 信任并继续,1 = 退出)。 */
+  private trustIndex = 0;
 
   private statusMessage: { text: string; until: number } | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
@@ -318,21 +319,51 @@ export class TuiApp implements AgentUi {
   private async askTrust(resolution: TrustResolution): Promise<boolean> {
     const docs = (await existingProjectDocs(resolution.key)).map((file) => basename(file));
     return await new Promise<boolean>((resolve) => {
+      this.trustIndex = 0;
       this.trustPrompt = { resolution, docs, resolve };
       this.scheduleRender();
     });
   }
 
-  /** 信任页按键:y 信任并继续,n / Esc 退出。 */
+  /** 信任页按键:左右(或上下)切换选项,回车确认,y/n 作快捷键,Esc 退出。 */
   private handleTrustKey(key: TuiKey): void {
-    const pending = this.trustPrompt;
-    if (pending === undefined) {
+    if (this.trustPrompt === undefined) {
       return;
     }
-    const accepted = key.type === 'text' && key.text.trim().toLowerCase().startsWith('y');
-    const declined = key.type === 'escape' || key.type === 'ctrl-c';
-    const rejected = key.type === 'text' && key.text.trim().toLowerCase().startsWith('n');
-    if (!accepted && !declined && !rejected) {
+    const count = 2;
+    if (key.type === 'left' || key.type === 'up') {
+      this.trustIndex = (this.trustIndex + count - 1) % count;
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'right' || key.type === 'down') {
+      this.trustIndex = (this.trustIndex + 1) % count;
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'enter') {
+      this.finishTrust(this.trustIndex === 0);
+      return;
+    }
+    if (key.type === 'text') {
+      const first = key.text.trim().toLowerCase()[0];
+      if (first === 'y') {
+        this.finishTrust(true);
+        return;
+      }
+      if (first === 'n') {
+        this.finishTrust(false);
+        return;
+      }
+    }
+    if (key.type === 'escape' || key.type === 'ctrl-c') {
+      this.finishTrust(false);
+    }
+  }
+
+  private finishTrust(accepted: boolean): void {
+    const pending = this.trustPrompt;
+    if (pending === undefined) {
       return;
     }
     this.trustPrompt = undefined;
@@ -1156,10 +1187,9 @@ export class TuiApp implements AgentUi {
       return [];
     }
     const separator = theme.paint.muted(symbols.separator.repeat(cols));
-    const footer = [
-      ...renderTrustMenu(theme),
-      theme.paint.muted('  y/n 选择 · 信任后写入 ~/.reins/config.toml 的 [trust].trusted'),
-    ];
+    const options = [theme.paint.ok('[y] 信任并继续'), theme.paint.fail('[n] 退出')];
+    // 与审批卡片同一套横向选项:› 标当前项,左右键切换、回车确认
+    const footer = [`  ${renderApprovalOptions(options, this.trustIndex, theme)}`];
     const body = renderTrustPage(cols, theme, {
       // 信任页要看清是哪个目录,不做保留尾部的截断
       path: tildePath(pending.resolution.key),

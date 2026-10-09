@@ -221,14 +221,12 @@ describe('信任页渲染', () => {
       overrides: [{ label: '审批模式', detail: 'ask(默认) → yolo' }],
       docs: ['REINS.md', 'AGENTS.md'],
     });
-    assert.ok(text.includes('要信任这个目录的内容吗?'));
+    assert.ok(text.includes('信任这个目录吗?'));
     assert.ok(text.includes('E:/Projects/Reins'));
     assert.ok(text.includes('覆盖全局配置:'));
     assert.ok(text.includes('审批模式  ask(默认) → yolo'));
-    assert.ok(text.includes('注入项目说明文件:'));
-    assert.ok(text.includes('REINS.md'));
-    assert.ok(text.includes('AGENTS.md'));
-    assert.ok(text.includes('不信任时:只加载全局配置,项目层配置与说明文件都不生效'));
+    // 说明文件与标签同一行,不逐个换行
+    assert.ok(text.includes('注入项目说明文件: REINS.md、AGENTS.md'));
   });
 
   it('两者皆空时如实说明,不留空标题', () => {
@@ -241,7 +239,7 @@ describe('信任页渲染', () => {
   it('只有说明文件时不出现覆盖标题', () => {
     const text = page({ path: '/tmp/repo', overrides: [], docs: ['AGENTS.md'] });
     assert.equal(text.includes('覆盖全局配置'), false);
-    assert.ok(text.includes('注入项目说明文件:'));
+    assert.ok(text.includes('注入项目说明文件: AGENTS.md'));
   });
 
   it('窄终端下每一行都不超宽', () => {
