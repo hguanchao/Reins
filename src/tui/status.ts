@@ -35,7 +35,8 @@ export function renderStatusBar(width: number, theme: Theme, info: StatusBarInfo
   const groups = [
     first.join(' · '),
     [`🤖 ${info.model ?? '—'}`, `🧠 ${info.reasoning ?? '默认'}`].join(' · '),
-    `📊 ${formatTokens(info.promptTokens)} / ${formatTokens(info.contextWindow)}`,
+    // 用量还没有时按 0 显示:上下文是 0 而不是「未知」,空着反而像没在算
+    `📊 ${formatTokens(info.promptTokens ?? 0)} / ${formatTokens(info.contextWindow)}`,
     `⚡ ${formatHitRate(info)}`,
   ];
   return theme.paint.muted(` ${truncatePlain(groups.join(' | '), Math.max(0, width - 2))}`);
@@ -57,20 +58,26 @@ function formatHitRate(info: StatusBarInfo): string {
   return rate === undefined ? '—' : `${Math.round(rate * 100)}%`;
 }
 
-/** token 数按 1000 进制缩写:14500 → 14.5K、128000 → 128K、1000000 → 1M。 */
+/**
+ * token 数按 1000 进制缩写:0 → 0.0K、14500 → 14.5K、128000 → 128K、1500000 → 1.5M。
+ *
+ * 小数只在看得见差别时保留:千位以内与十万以内留一位(0.0K 让空上下文也读得出
+ * 「是 0」),十万到百万取整,到百万改用 M——再往上 K 的位数就不好读了。
+ */
 export function formatTokens(value: number | undefined): string {
   if (value === undefined) {
     return '—';
   }
   if (value < 1000) {
-    return String(value);
+    return `${(value / 1000).toFixed(1)}K`;
   }
-  // 十万以内留一位小数:14.5K 比 15K 更能说明上下文还剩多少
   if (value < 100_000) {
     return `${trimZero((value / 1000).toFixed(1))}K`;
   }
   if (value < 1_000_000) {
-    return `${Math.round(value / 1000)}K`;
+    const thousands = Math.round(value / 1000);
+    // 四舍五入可能正好凑到 1000K,那就直接进位成 1M,别出现「1000K」这种读不顺的数
+    return thousands < 1000 ? `${thousands}K` : '1M';
   }
   return `${trimZero((value / 1_000_000).toFixed(1))}M`;
 }

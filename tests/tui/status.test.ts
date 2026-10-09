@@ -37,14 +37,18 @@ describe('状态栏', () => {
     assert.equal(text, '📁 Reins | 🤖 deepseek · 🧠 max | 📊 100K / 1M | ⚡ 90%');
   });
 
-  it('拿不到的项退化成 — 而不是消失', () => {
+  it('拿不到的项退化成 —,上下文用量按 0 显示', () => {
     const text = bar({
       model: undefined,
       promptTokens: undefined,
       contextWindow: undefined,
       cacheReadTokens: undefined,
     });
-    assert.equal(text, '📁 Reins · 🌿 main | 🤖 — · 🧠 max | 📊 — / — | ⚡ —');
+    assert.equal(text, '📁 Reins · 🌿 main | 🤖 — · 🧠 max | 📊 0.0K / — | ⚡ —');
+  });
+
+  it('窗口已知而用量还没有时显示 0.0K', () => {
+    assert.ok(bar({ promptTokens: undefined }).includes('📊 0.0K / 1M'));
   });
 
   it('缓存命中率按统一口径的提示词总量算', () => {
@@ -77,14 +81,18 @@ describe('状态栏', () => {
   });
 
   it('token 数按 1000 进制缩写', () => {
-    assert.equal(formatTokens(0), '0');
-    assert.equal(formatTokens(999), '999');
+    assert.equal(formatTokens(0), '0.0K');
+    assert.equal(formatTokens(500), '0.5K');
+    assert.equal(formatTokens(999), '1.0K');
+    assert.equal(formatTokens(1000), '1K');
     assert.equal(formatTokens(14_500), '14.5K');
     assert.equal(formatTokens(100_000), '100K');
     assert.equal(formatTokens(128_000), '128K');
     assert.equal(formatTokens(500_000), '500K');
+    assert.equal(formatTokens(999_999), '1M');
     assert.equal(formatTokens(1_000_000), '1M');
     assert.equal(formatTokens(1_500_000), '1.5M');
+    assert.equal(formatTokens(14_500_000), '14.5M');
     assert.equal(formatTokens(undefined), '—');
   });
 
