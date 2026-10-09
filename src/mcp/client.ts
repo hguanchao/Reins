@@ -25,6 +25,10 @@ export interface McpTransport {
 const CONTROL_TIMEOUT_MS = 15_000;
 /** 工具调用的默认超时。 */
 const DEFAULT_CALL_TIMEOUT_MS = 120_000;
+/** stdio 行缓冲上限:server 持续输出无换行内容时的兜底。 */
+const MAX_LINE_BUFFER = 4_000_000;
+/** sse 在收到 endpoint 前的待发队列上限:异常 server 不发 endpoint 时的兜底。 */
+const MAX_PENDING_QUEUE = 1_000;
 
 interface Pending {
   resolve: (value: JsonRpcMessage) => void;
@@ -129,7 +133,14 @@ export class McpClient {
         reject(new ReinsError('mcp', `MCP 请求超时(${timeoutMs}ms):${method}`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      this.transport.send({ jsonrpc: '2.0', id, method, params });
+      try {
+        this.transport.send({ jsonrpc: '2.0', id, method, params });
+      } catch (error) {
+        // send 同步抛错时把刚登记的 pending 与定时器收掉,否则会残留到超时才清理
+        this.pending.delete(id);
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new ReinsError('mcp', `发送失败:${String(error)}`));
+      }
     });
   }
 
@@ -226,7 +237,7 @@ export class StdioTransport implements McpTransport {
     }
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
-        child.kill();
+        killTree(child);
         resolve();
       }, 1500);
       child.once('close', () => {
@@ -239,6 +250,10 @@ export class StdioTransport implements McpTransport {
 
   private consume(chunk: string): void {
     this.buffer += chunk;
+    // 单行缓冲设上限:server 持续输出无换行内容时不至于把内存吃光
+    if (this.buffer.length > MAX_LINE_BUFFER) {
+      this.buffer = this.buffer.slice(-MAX_LINE_BUFFER);
+    }
     let index = this.buffer.indexOf('\n');
     while (index !== -1) {
       const line = this.buffer.slice(0, index).trim();
@@ -387,7 +402,11 @@ export class SseTransport implements McpTransport {
       return;
     }
     if (this.postUrl === undefined) {
-      // endpoint 事件还没到,先排队
+      // endpoint 事件还没到,先排队;超过上限说明对端异常,直接判为断开
+      if (this.queue.length >= MAX_PENDING_QUEUE) {
+        this.markClosed('待发消息过多,endpoint 迟迟未到');
+        return;
+      }
       this.queue.push(message);
       return;
     }
@@ -462,6 +481,22 @@ export class SseTransport implements McpTransport {
     this.closed = true;
     this.closeHandler?.(reason);
   }
+}
+
+/** 终止 stdio 子进程:Windows 用 taskkill 连坐整棵树,其他平台直接 SIGKILL。 */
+function killTree(child: ChildProcess): void {
+  if (process.platform === 'win32' && child.pid !== undefined) {
+    try {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        windowsHide: true,
+        stdio: 'ignore',
+      });
+      return;
+    } catch {
+      // 落到下面的兜底 kill
+    }
+  }
+  child.kill('SIGKILL');
 }
 
 /** 为 cmd.exe 转义参数:普通字符原样,含特殊字符时整体加引号。 */

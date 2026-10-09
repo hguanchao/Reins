@@ -92,8 +92,9 @@ export class McpManager {
     if (config === undefined || config.disabled === true) {
       return;
     }
+    let client: McpClient | undefined;
     try {
-      const client = new McpClient(buildTransport(name, config, this.fetchImpl), {
+      client = new McpClient(buildTransport(name, config, this.fetchImpl), {
         callTimeoutMs: config.callTimeoutMs,
       });
       await client.initialize('reins', VERSION);
@@ -101,6 +102,9 @@ export class McpManager {
       this.clients.set(name, { client, tools });
       this.statusList.push({ name, ok: true, toolCount: tools.length });
     } catch (error) {
+      // 握手/列工具失败时 client 未入 map,close() 就再也碰不到它;
+      // 必须在这里收掉,否则 stdio 子进程会一直挂着
+      await client?.close().catch(() => undefined);
       this.statusList.push({ name, ok: false, error: describeError(error) });
     }
   }
