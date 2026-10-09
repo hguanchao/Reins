@@ -79,6 +79,13 @@ describe('布局宽度计算', () => {
     assert.deepEqual(wrapPlain('a\nb', 10), ['a', 'b']);
   });
 
+  it('折行保留零宽组合字符,不改变文本', () => {
+    // 'e' + 组合尖音符:零宽但必须留在基字符上
+    assert.deepEqual(wrapPlain('e\u0301x', 10), ['e\u0301x']);
+    const styled = wrapStyled([{ text: 'e\u0301x', codes: '' }], 10);
+    assert.equal(styled.flat().map((segment) => segment.text).join(''), 'e\u0301x');
+  });
+
   it('带样式折行:样式跟随片段,宽度按可见宽计算', () => {
     const segments = [
       { text: 'hello ', codes: '1' },

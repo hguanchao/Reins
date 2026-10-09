@@ -2,6 +2,36 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { createTheme } from '../../src/tui/theme.ts';
 
+/** 从 SGR 码串里取出 `48;2;r;g;b` 的背景色。 */
+function sgrBackground(codes: string): [number, number, number] | undefined {
+  const match = /48;2;(\d+);(\d+);(\d+)/.exec(codes);
+  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+/** 从 SGR 码串里取出 `38;2;r;g;b` 的前景色。 */
+function sgrForeground(codes: string): [number, number, number] | undefined {
+  const match = /38;2;(\d+);(\d+);(\d+)/.exec(codes);
+  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+/** WCAG 相对亮度。 */
+function relativeLuminance(rgb: [number, number, number]): number {
+  const [r, g, b] = rgb.map((value) => {
+    const channel = value / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG 对比度。 */
+function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  const lighter = Math.max(la, lb);
+  const darker = Math.min(la, lb);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 describe('主题', () => {
   it('默认 dark:角色取色可用', () => {
     const theme = createTheme({ color: true });
@@ -44,15 +74,29 @@ describe('主题', () => {
     assert.deepEqual([...Object.keys(theme.codes)].sort(), [...all].sort());
   });
 
-  it('light 预设与 dark 不同', () => {
+  it('light 预设与 dark 不同:表面用浅底,前景在浅底上可读', () => {
     const dark = createTheme({ preset: 'dark', color: true });
     const light = createTheme({ preset: 'light', color: true });
     assert.notEqual(light.codes.accent, dark.codes.accent);
     assert.equal(light.codes.accent, '38;2;63;107;156');
-    assert.equal(light.codes.scrollbar, '38;2;36;36;36');
-    assert.equal(light.codes.completionBg, '48;2;36;36;36');
-    assert.equal(light.codes.completionBorder, '38;2;36;36;36');
-    assert.equal(light.codes.userBar.split(';48;2;')[1], light.codes.scrollbar.slice('38;2;'.length));
+
+    // 用户消息条与补全菜单的底色必须是浅色:沿用深色底会让深色前景在浅色终端上不可读
+    const userBarBackground = sgrBackground(light.codes.userBar);
+    const completionBackground = sgrBackground(light.codes.completionBg);
+    assert.notEqual(userBarBackground, undefined, 'userBar 应同时给定前景与背景');
+    assert.notEqual(completionBackground, undefined, 'completionBg 应给定背景色');
+    if (userBarBackground === undefined || completionBackground === undefined) {
+      return; // 仅用于类型收窄;上面的断言已保证不可达
+    }
+    assert.ok(relativeLuminance(userBarBackground) > 0.5, 'light 的用户消息条应为浅底');
+    assert.ok(relativeLuminance(completionBackground) > 0.5, 'light 的补全菜单应为浅底');
+
+    // 深色前景落在浅底上的对比度需达到 WCAG AA(4.5)
+    const userBarForeground = sgrForeground(light.codes.userBar);
+    assert.notEqual(userBarForeground, undefined);
+    if (userBarForeground !== undefined) {
+      assert.ok(contrastRatio(userBarForeground, userBarBackground) >= 4.5);
+    }
   });
 
   it('mono 强制无颜色', () => {

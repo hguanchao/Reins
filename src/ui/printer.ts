@@ -1,4 +1,5 @@
 import type { ToolCall, Usage } from '../llm/types.ts';
+import { sanitizeTerminalText } from '../util/ansi.ts';
 
 /**
  * 界面呈现契约与最简实现。
@@ -25,21 +26,23 @@ export class ConsoleUi implements AgentUi {
   }
 
   onAssistantText(text: string): void {
-    this.out(text);
+    // 模型输出不可信:剥掉转义序列,避免污染终端(标题、清屏、剪贴板)
+    this.out(sanitizeTerminalText(text));
   }
 
   onToolCall(call: ToolCall): void {
-    this.out(`\n[工具] ${call.name} ${call.arguments}\n`);
+    this.out(`\n[工具] ${call.name} ${sanitizeTerminalText(call.arguments)}\n`);
   }
 
   onToolResult(name: string, content: string, isError: boolean): void {
-    const firstLine = content.split('\n')[0] ?? '';
-    const suffix = content.includes('\n') ? ' …' : '';
+    const clean = sanitizeTerminalText(content);
+    const firstLine = clean.split('\n')[0] ?? '';
+    const suffix = clean.includes('\n') ? ' …' : '';
     this.out(`[${isError ? '失败' : '完成'}] ${name}: ${firstLine}${suffix}\n`);
   }
 
   onNotice(message: string): void {
-    this.out(`[提示] ${message}\n`);
+    this.out(`[提示] ${sanitizeTerminalText(message)}\n`);
   }
 }
 

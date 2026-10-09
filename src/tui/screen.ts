@@ -20,9 +20,13 @@ export interface CursorPosition {
 /** 纯函数:对比前后两帧,输出需要重绘的行。 */
 export function computeFrameDiff(previous: readonly string[], next: readonly string[]): FrameDiffRow[] {
   const diffs: FrameDiffRow[] = [];
-  for (let row = 0; row < next.length; row += 1) {
-    if (previous[row] !== next[row]) {
-      diffs.push({ row, text: next[row] as string });
+  // 取两者较大长度:新帧变短时(如切到「窗口太小」页)也要把多出的行擦成空行,
+  // 否则旧内容会残留在屏幕上
+  const rows = Math.max(previous.length, next.length);
+  for (let row = 0; row < rows; row += 1) {
+    const text = next[row] ?? '';
+    if (previous[row] !== text) {
+      diffs.push({ row, text });
     }
   }
   return diffs;

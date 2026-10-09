@@ -5,14 +5,10 @@
  * 中英文混排必须按显示宽度而非字符数计算。
  */
 
-import { sgr } from '../util/ansi.ts';
+import { sgr, stripSgr } from '../util/ansi.ts';
 
-const ANSI_RE = /\u001b\[[0-9;]*m/g;
-
-/** 去掉 ANSI 样式序列。 */
-export function stripAnsi(text: string): string {
-  return text.replace(ANSI_RE, '');
-}
+/** 去掉 ANSI 样式序列;与 util/ansi 的 stripSgr 同义,这里保留 TUI 侧的命名。 */
+export const stripAnsi = stripSgr;
 
 /** 单个码点的显示宽度:东亚宽字符为 2,控制字符为 0,其余为 1。 */
 export function codePointWidth(codePoint: number): number {
@@ -165,7 +161,8 @@ export function truncateAnsi(text: string, width: number): string {
     used += charWidth;
     index += char.length;
   }
-  return `${out}…\u001b[0m`;
+  // 省略号前先复位:否则它会继承最后一段的颜色/下划线;末尾再复位一次收尾
+  return `${out}\u001b[0m…\u001b[0m`;
 }
 
 /** 把带样式的行补齐空格到指定显示宽度;超宽时按样式截断。 */
@@ -251,6 +248,8 @@ export function wrapPlain(text: string, width: number): string[] {
     for (const char of paragraph) {
       const charWidth = codePointWidth(char.codePointAt(0) ?? 0);
       if (charWidth === 0) {
+        // 组合字符(重音、变音符)零宽但必须保留:丢弃会改写文本内容
+        current += char;
         continue;
       }
       if (currentWidth + charWidth > width) {
@@ -290,9 +289,8 @@ function segmentUnits(segments: readonly StyledSegment[]): { char: string; codes
   for (const segment of segments) {
     for (const char of segment.text) {
       const width = codePointWidth(char.codePointAt(0) ?? 0);
-      if (width === 0 && char !== '\n') {
-        continue;
-      }
+      // 零宽字符(组合记号)保留为宽度 0 的单元,交给合并逻辑贴在基字符上,
+      // 直接丢弃会把 'e' + 重音 变成 'e',改变文本
       units.push({ char, codes: segment.codes, width });
     }
   }

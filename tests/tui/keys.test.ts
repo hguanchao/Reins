@@ -137,4 +137,18 @@ describe('输入解码', () => {
       { type: 'focus-out' },
     ]);
   });
+
+  it('Alt+emoji 不留下孤立代理项', () => {
+    // ESC + 一个代理对:必须整体吞掉,否则低代理项会被当成文本插进输入框
+    const events = decode('\u001b😀x');
+    assert.deepEqual(events, [
+      { type: 'unknown' },
+      { type: 'text', text: 'x' },
+    ]);
+    for (const event of events) {
+      if (event.type === 'text') {
+        assert.equal(/[\uD800-\uDFFF]/.test(event.text ?? ''), false);
+      }
+    }
+  });
 });

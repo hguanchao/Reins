@@ -271,7 +271,11 @@ export function createKeyDecoder(): KeyDecoder {
       return null;
     }
     if (buf.length >= 2) {
-      consume(2);
+      // 吞掉 ESC 与一个完整码点:Alt+emoji 时若按 UTF-16 码元切,会留下孤立代理项
+      // 被后续当成普通文本插进输入框
+      const codePoint = buf.codePointAt(1);
+      const units = codePoint !== undefined && codePoint > 0xffff ? 2 : 1;
+      consume(1 + units);
       return { type: 'unknown' };
     }
     return null;

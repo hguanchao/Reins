@@ -45,6 +45,14 @@ describe('帧差分', () => {
     assert.equal(diffs.length, 2);
   });
 
+  it('新帧变短时多出的行被擦成空行', () => {
+    const diffs = computeFrameDiff(['a', 'b', 'c'], ['a']);
+    assert.deepEqual(diffs, [
+      { row: 1, text: '' },
+      { row: 2, text: '' },
+    ]);
+  });
+
   it('进入和离开时切换焦点上报', () => {
     const output = new MockStream();
     const input = new MockStream();

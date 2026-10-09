@@ -80,17 +80,20 @@ const LIGHT_BASE: Readonly<Record<BaseRole, string>> = {
   fail: '38;2;163;79;79', // #a34f4f  5.54
 };
 
-const LIGHT_USER_BAR_FOREGROUND = '43;43;43';
-const LIGHT_USER_BAR_BACKGROUND = '36;36;36';
-const LIGHT_COMPLETION_BACKGROUND = '36;36;36';
-const LIGHT_COMPLETION_BORDER = '36;36;36';
+// 浅色表面不能照抄深色取值:用户消息条与补全菜单若沿用 #242424 深底,浅色终端上
+// 深底配深字几乎不可读,这里改用浅底 + 深字,并按浅底重新核对对比度
+const LIGHT_USER_BAR_FOREGROUND = '43;43;43'; // #2b2b2b 深色字
+const LIGHT_USER_BAR_BACKGROUND = '232;232;232'; // #e8e8e8 浅色底(对比度约 11.2)
+const LIGHT_COMPLETION_BACKGROUND = '240;240;240'; // #f0f0f0
+const LIGHT_COMPLETION_BORDER = '150;150;150'; // #969696 可见边框
+const LIGHT_SCROLLBAR = '176;176;176'; // #b0b0b0 浅底上的滚动条
 
 const LIGHT_TUI: Readonly<Record<TuiRole, string>> = {
   accent: '38;2;63;107;156', // #3f6b9c  5.53
-  userBar: `38;2;${LIGHT_USER_BAR_FOREGROUND};48;2;${LIGHT_USER_BAR_BACKGROUND}`, // #2b2b2b / #242424
-  scrollbar: `38;2;${LIGHT_USER_BAR_BACKGROUND}`, // 与用户消息背景同色
-  completionBg: `48;2;${LIGHT_COMPLETION_BACKGROUND}`, // #242424
-  completionBorder: `38;2;${LIGHT_COMPLETION_BORDER}`, // #242424
+  userBar: `38;2;${LIGHT_USER_BAR_FOREGROUND};48;2;${LIGHT_USER_BAR_BACKGROUND}`, // #2b2b2b / #e8e8e8
+  scrollbar: `38;2;${LIGHT_SCROLLBAR}`,
+  completionBg: `48;2;${LIGHT_COMPLETION_BACKGROUND}`, // #f0f0f0
+  completionBorder: `38;2;${LIGHT_COMPLETION_BORDER}`, // #969696
 };
 
 const LIGHT_MARKDOWN: Readonly<Record<MarkdownRole, string>> = {

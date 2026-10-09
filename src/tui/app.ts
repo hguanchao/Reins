@@ -21,6 +21,7 @@ import type { Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
 import type { RuleTarget } from '../permissions/rules.ts';
 import type { AgentUi } from '../ui/printer.ts';
+import { sanitizeTerminalText } from '../util/ansi.ts';
 import { describeError } from '../util/errors.ts';
 import { absolutize, reinsHome } from '../util/paths.ts';
 import type { CommandIo, ParsedArgs } from '../cli/args.ts';
@@ -100,8 +101,8 @@ export async function startTui(args: ParsedArgs, io: CommandIo, home = reinsHome
     if (flag !== undefined) {
       resumeFile =
         flag === true || flag === ''
-          ? await latestSessionFile(home)
-          : await resolveSessionFile(home, String(flag));
+          ? await latestSessionFile(home, workspace)
+          : await resolveSessionFile(home, String(flag), workspace);
       if (resumeFile === undefined) {
         io.err('未找到可恢复的会话,将开始新会话。');
       }
@@ -162,6 +163,7 @@ export class TuiApp implements AgentUi {
   private renderTimer: NodeJS.Timeout | undefined;
   private ticker: NodeJS.Timeout | undefined;
   private escFlushTimer: NodeJS.Timeout | undefined;
+  private statusTimer: NodeJS.Timeout | undefined;
   private readonly onData = (chunk: Buffer): void => {
     this.dispatch(this.decoder.feed(chunk));
     if (this.decoder.hasPending()) {
@@ -277,6 +279,10 @@ export class TuiApp implements AgentUi {
       clearTimeout(this.escFlushTimer);
       this.escFlushTimer = undefined;
     }
+    if (this.statusTimer !== undefined) {
+      clearTimeout(this.statusTimer);
+      this.statusTimer = undefined;
+    }
     process.stdout.off('resize', this.onResize);
     process.stdin.off('data', this.onData);
     this.terminal.leave();
@@ -362,11 +368,12 @@ export class TuiApp implements AgentUi {
   // —— AgentUi 事件(由代理循环驱动) ——
 
   onAssistantText(text: string): void {
+    const clean = sanitizeTerminalText(text);
     const last = this.blocks[this.blocks.length - 1];
     if (last !== undefined && last.kind === 'assistant' && last.streaming) {
-      last.text += text;
+      last.text += clean;
     } else {
-      this.blocks.push({ kind: 'assistant', text, streaming: true });
+      this.blocks.push({ kind: 'assistant', text: clean, streaming: true });
     }
     this.scheduleRender();
   }
@@ -375,7 +382,7 @@ export class TuiApp implements AgentUi {
     const block: ScrollBlock = {
       kind: 'tool',
       name: call.name,
-      summary: summarizeToolArgs(call.arguments),
+      summary: sanitizeTerminalText(summarizeToolArgs(call.arguments)),
       state: 'running',
     };
     this.blocks.push(block);
@@ -391,11 +398,12 @@ export class TuiApp implements AgentUi {
       return;
     }
     const started = this.toolStartTimes.get(block);
+    const clean = sanitizeTerminalText(content);
     block.state = isError ? 'fail' : 'ok';
     block.elapsedMs = started !== undefined ? Date.now() - started : undefined;
-    block.output = content;
+    block.output = clean;
     if (isError) {
-      block.detail = (content.split('\n')[0] ?? '').trim();
+      block.detail = (clean.split('\n')[0] ?? '').trim();
     }
     this.toolStartTimes.delete(block);
     this.scheduleRender();
@@ -648,8 +656,14 @@ export class TuiApp implements AgentUi {
 
   private flashStatus(text: string): void {
     this.statusMessage = { text, until: Date.now() + STATUS_MS };
-    // 状态条到点后自动隐去
-    setTimeout(() => this.scheduleRender(), STATUS_MS + 50);
+    // 状态条到点后自动隐去;复用单个定时器,避免连按多次累积
+    if (this.statusTimer !== undefined) {
+      clearTimeout(this.statusTimer);
+    }
+    this.statusTimer = setTimeout(() => {
+      this.statusTimer = undefined;
+      this.scheduleRender();
+    }, STATUS_MS + 50);
     this.scheduleRender();
   }
 
@@ -857,7 +871,7 @@ export class TuiApp implements AgentUi {
       return;
     }
     try {
-      await this.rebuild({ sessionFile: await resolveSessionFile(this.options.home, id) });
+      await this.rebuild({ sessionFile: await resolveSessionFile(this.options.home, id, this.options.workspace) });
       this.pushNotice(`已恢复会话:${this.runtime?.session.id ?? ''}`, 'info');
     } catch (error) {
       this.pushNotice(`错误:${describeError(error)}`, 'error');
@@ -1341,14 +1355,17 @@ export class TuiApp implements AgentUi {
   }
 
   private pushNotice(text: string, level: NoticeLevel): void {
-    this.push({ kind: 'notice', text, level });
+    // 通知里可能嵌着模型/工具输出,渲染前统一净化
+    this.push({ kind: 'notice', text: sanitizeTerminalText(text), level });
   }
 
   /** 运行结束(含中断)后的收尾:停掉流式光标,未完成的工具标记为已中断。 */
   private markRunStopped(aborted: boolean): void {
-    const last = this.blocks[this.blocks.length - 1];
-    if (last !== undefined && last.kind === 'assistant') {
-      last.streaming = false;
+    // 多轮运行会产出多个助手块,只收尾最后一块会让早先的块永久显示流式光标
+    for (const block of this.blocks) {
+      if (block.kind === 'assistant') {
+        block.streaming = false;
+      }
     }
     if (aborted) {
       for (const block of this.blocks) {
