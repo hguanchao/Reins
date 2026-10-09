@@ -73,6 +73,30 @@ const ESC_FLUSH_MS = 50;
 /** 状态条消息的驻留时长。 */
 const STATUS_MS = 3000;
 
+/**
+ * 作用于输入框的按键。
+ *
+ * 收到这些键即视为输入框重新获得焦点:鼠标点到别处会让输入框失焦,但键盘输入
+ * 始终进输入框,若不重新聚焦就会出现「有内容、却既没焦点也没光标」的矛盾状态。
+ */
+const INPUT_BOX_KEYS: ReadonlySet<TuiKey['type']> = new Set([
+  'text',
+  'paste',
+  'enter',
+  'ctrl-j',
+  'tab',
+  'backspace',
+  'delete',
+  'left',
+  'right',
+  'home',
+  'end',
+  'up',
+  'down',
+  'ctrl-u',
+  'ctrl-w',
+]);
+
 export interface TuiAppOptions {
   home: string;
   workspace: string;
@@ -474,6 +498,10 @@ export class TuiApp implements AgentUi {
       this.handleViewerKey(key);
       this.scheduleRender();
       return;
+    }
+    // 输入类按键重新聚焦输入框(见 INPUT_BOX_KEYS 的说明)
+    if (INPUT_BOX_KEYS.has(key.type)) {
+      this.focused = true;
     }
     if (key.type === 'paste') {
       this.handlePaste(key.text);
