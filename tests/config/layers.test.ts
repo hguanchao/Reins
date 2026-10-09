@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { loadLayeredConfig } from '../../src/config/layers.ts';
+import { deepMerge, loadLayeredConfig } from '../../src/config/layers.ts';
 import { ConfigError } from '../../src/util/errors.ts';
 import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 
@@ -79,5 +79,13 @@ describe('配置分层', () => {
     } finally {
       await removeTmpDir(badCwd);
     }
+  });
+
+  it('deepMerge 跳过 __proto__ 等危险键,不污染原型', () => {
+    const override = JSON.parse('{"__proto__":{"polluted":true},"ok":1}') as Record<string, unknown>;
+    const merged = deepMerge({}, override);
+    assert.equal(merged['ok'], 1);
+    assert.equal(({} as Record<string, unknown>)['polluted'], undefined);
+    assert.equal((Object.prototype as unknown as Record<string, unknown>)['polluted'], undefined);
   });
 });

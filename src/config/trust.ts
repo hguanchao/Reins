@@ -59,7 +59,9 @@ export function decideTrust(inputs: TrustInputs): 'trusted' | 'untrusted' | 'pro
  * 另外以 /** 结尾的模式同时命中该目录本身,否则「信任 work 下所有项目」会漏掉 work 自己。
  */
 export function trustPatternMatch(pattern: string, projectDir: string): boolean {
-  const expanded = normalizeSlashes(expandHome(pattern.trim()));
+  // 目标会被 absolutize 规范化(消冗余段、去尾斜杠);模式也必须同样处理,
+  // 否则 `E:/proj/` 这种带尾斜杠的合法写法永远匹配不上,信任形同虚设
+  const expanded = stripTrailingSlash(normalizeSlashes(expandHome(pattern.trim())));
   const target = normalizeSlashes(absolutize(projectDir));
   const options = { crossSeparator: false, caseInsensitive: process.platform === 'win32' };
   if (globToRegExp(expanded, options).test(target)) {
@@ -348,11 +350,23 @@ export async function resolveProjectTrust(options: ResolveTrustOptions): Promise
 /** 把路径写进全局 config.toml 的 [trust].trusted。 */
 export async function recordTrust(home: string, pattern: string): Promise<void> {
   const file = join(home, 'config.toml');
-  await writeTextFile(file, addTrustPattern(await readTextFile(file), pattern));
+  await writeTextFile(file, addTrustPattern(await readConfigTextOrEmpty(file), pattern));
 }
 
 /** 从全局 config.toml 的 [trust].trusted 移除路径。 */
 export async function forgetTrust(home: string, pattern: string): Promise<void> {
   const file = join(home, 'config.toml');
-  await writeTextFile(file, removeTrustPattern(await readTextFile(file), pattern));
+  const text = await readConfigTextOrEmpty(file);
+  if (text === '') {
+    return;
+  }
+  await writeTextFile(file, removeTrustPattern(text, pattern));
+}
+
+/** 读全局配置文本;文件不存在时按空文档处理,便于首次写入。 */
+async function readConfigTextOrEmpty(file: string): Promise<string> {
+  if (!(await pathExists(file))) {
+    return '';
+  }
+  return await readTextFile(file);
 }

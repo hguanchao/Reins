@@ -45,6 +45,13 @@ describe('信任判定', () => {
     // 至于 "**/repo" 这类过宽模式:匹配函数按通配语义如实命中,由配置校验要求绝对路径来挡
   });
 
+  it('模式匹配:结尾斜杠与目标规范化后一致', () => {
+    const dir = join(homedir(), 'work', 'repo');
+    // 目标会被 absolutize 去掉尾斜杠;模式也必须同样处理,否则这条信任永远不生效
+    assert.equal(trustPatternMatch(`${dir}/`, dir), true);
+    assert.equal(trustPatternMatch(`${join(homedir(), 'work')}/**/`, dir), true);
+  });
+
   it('模式匹配:Windows 下忽略大小写', () => {
     const dir = join(homedir(), 'Work', 'Repo');
     assert.equal(trustPatternMatch(join(homedir(), 'work', 'repo'), dir), win);

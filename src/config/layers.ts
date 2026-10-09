@@ -25,6 +25,10 @@ export function deepMerge(
 ): Record<string, unknown> {
   const result: Record<string, unknown> = { ...base };
   for (const [key, value] of Object.entries(override)) {
+    // 跳过原型链上的危险键:TOML 里写 __proto__ 会触发 setter,污染 Object.prototype
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      continue;
+    }
     const previous = result[key];
     if (isPlainObject(previous) && isPlainObject(value)) {
       result[key] = deepMerge(previous, value);

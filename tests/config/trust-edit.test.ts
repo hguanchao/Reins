@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { parse as parseToml } from 'smol-toml';
 import { addTrustPattern, removeTrustPattern, tomlString } from '../../src/config/trust-edit.ts';
 import { ConfigError } from '../../src/util/errors.ts';
 
 const BASE = ['provider = "demo"', 'model = "m"', '', '# 这是注释', '[ui]', 'theme = "dark"'].join('\n') + '\n';
+
+/** 解析写回后的文本,取出 [trust].trusted(避免依赖 smol-toml 的无原型对象)。 */
+function trusted(text: string): string[] {
+  const parsed = parseToml(text) as { trust?: { trusted?: string[] } };
+  return parsed.trust?.trusted ?? [];
+}
 
 describe('信任记录定点编辑', () => {
   it('没有 [trust] 段时在末尾追加,原有内容与注释逐字保留', () => {
@@ -23,6 +30,20 @@ describe('信任记录定点编辑', () => {
   it('多行数组在收尾 ] 前插一行,保留用户的多行风格', () => {
     const text = '[trust]\ntrusted = [\n  \'a\',\n]\n';
     assert.equal(addTrustPattern(text, 'b'), '[trust]\ntrusted = [\n  \'a\',\n  \'b\',\n]\n');
+  });
+
+  it('多行数组末项没有尾逗号时补上,写出的 TOML 仍合法', () => {
+    const text = "[trust]\ntrusted = [\n  'a'\n]\n";
+    const next = addTrustPattern(text, 'b');
+    assert.equal(next, "[trust]\ntrusted = [\n  'a',\n  'b',\n]\n");
+    // 结果必须能被解析器读回,否则后续所有加载都会失败
+    assert.deepEqual(trusted(next), ['a', 'b']);
+  });
+
+  it('收尾 ] 与最后一个元素同行时插入点仍正确', () => {
+    const text = "[trust]\ntrusted = [\n  'a']\n";
+    const next = addTrustPattern(text, 'b');
+    assert.deepEqual(trusted(next), ['a', 'b']);
   });
 
   it('已存在时原样返回(幂等)', () => {

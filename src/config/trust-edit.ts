@@ -37,6 +37,11 @@ function parseStringItem(line: string): string | undefined {
   return (basic[1] ?? '').replace(/\\(["\\])/g, '$1');
 }
 
+/** 数组项行是否已带尾逗号(逗号后只允许跟注释)。 */
+function hasTrailingComma(line: string): boolean {
+  return /,\s*(?:#.*)?$/.test(line);
+}
+
 /** 段头里的键名去掉包裹引号。 */
 function normalizeKey(raw: string): string {
   const trimmed = raw.trim();
@@ -85,7 +90,11 @@ function findTrusted(lines: readonly string[], section: Section): TrustedValue {
     const inline = (match[1] ?? '').trim();
     if (inline.startsWith('[') && !inline.includes(']')) {
       let close = index + 1;
-      while (close < section.end && !ARRAY_CLOSE.test(lines[close] ?? '')) {
+      while (close < section.end) {
+        // 收尾的 ] 可能与最后一个元素同行(如 `'a']`),两种写法都要认
+        if (ARRAY_CLOSE.test(lines[close] ?? '') || /\]\s*(?:#.*)?$/.test(lines[close] ?? '')) {
+          break;
+        }
         close += 1;
       }
       return { keyLine: index, valueEnd: close + 1, multiline: true };
@@ -196,7 +205,25 @@ export function addTrustPattern(text: string, pattern: string): string {
   const { split, lines, value } = ensureTrusted(text, next);
   if (value.multiline) {
     // 保留用户的多行风格,只在收尾 ] 前插一行
-    lines.splice(value.valueEnd - 1, 0, `  ${tomlString(pattern)},`);
+    const closeIndex = value.valueEnd - 1;
+    let insertAt = closeIndex;
+    if (!ARRAY_CLOSE.test(lines[closeIndex] ?? '')) {
+      // `]` 与最后一个元素同行:先拆成两行,插入点才有落脚处
+      const closeLine = lines[closeIndex] ?? '';
+      const bracket = closeLine.indexOf(']');
+      const elementPart = closeLine.slice(0, bracket).replace(/\s+$/, '');
+      const keyIndent = /^\s*/.exec(lines[value.keyLine] ?? '')?.[0] ?? '';
+      const element = hasTrailingComma(elementPart) ? elementPart : `${elementPart},`;
+      lines.splice(closeIndex, 1, element, `${keyIndent}]`);
+      insertAt = closeIndex + 1;
+    }
+    const previous = lines[insertAt - 1] ?? '';
+    // 用户的数组不一定带尾逗号:插在新行前的那个元素若没有逗号,必须补上,
+    // 否则写出的 TOML 非法,后续所有加载都会失败
+    if (parseStringItem(previous) !== undefined && !hasTrailingComma(previous)) {
+      lines[insertAt - 1] = `${previous.replace(/\s+$/, '')},`;
+    }
+    lines.splice(insertAt, 0, `  ${tomlString(pattern)},`);
     return joinLines(split, lines);
   }
   lines.splice(value.keyLine, value.valueEnd - value.keyLine, `trusted = [${next.map(tomlString).join(', ')}]`);
