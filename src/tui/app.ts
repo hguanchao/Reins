@@ -1282,7 +1282,10 @@ export class TuiApp implements AgentUi {
     lines.push(this.renderHints(width));
     return {
       lines,
-      cursor: { line: 1 + input.cursorLine, column: 2 + input.cursorColumn },
+      // 失焦时不给光标:边框已经变色,光标再闪烁会让人以为还能直接输入
+      cursor: this.focused
+        ? { line: 1 + input.cursorLine, column: 2 + input.cursorColumn }
+        : undefined,
     };
   }
 

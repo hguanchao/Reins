@@ -53,6 +53,19 @@ describe('帧差分', () => {
     ]);
   });
 
+  it('光标为 null 时隐藏,给位置时显示并移动', () => {
+    const output = new MockStream();
+    const input = new MockStream();
+    const terminal = new Terminal(output as never, input as never);
+    terminal.render(['x'], { row: 2, col: 5 });
+    assert.ok(output.output.includes('\u001b[?25h'), '应显示光标');
+    assert.ok(output.output.includes('\u001b[3;6H'), '应把光标移到指定位置');
+    output.output = '';
+    terminal.render(['x'], null);
+    assert.ok(output.output.includes('\u001b[?25l'), '应隐藏光标');
+    assert.equal(output.output.includes('\u001b[?25h'), false);
+  });
+
   it('进入和离开时切换焦点上报', () => {
     const output = new MockStream();
     const input = new MockStream();
