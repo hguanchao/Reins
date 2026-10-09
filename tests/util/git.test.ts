@@ -77,6 +77,12 @@ describe('读取 git 分支', () => {
     const empty = await makeRepo(join(root, 'empty-head'), '\n');
     assert.equal(await readGitBranch(empty), undefined);
 
+    // 引用写坏了(ref: 后面没有内容 / 只有前缀没有分支名)同样当作读不到
+    const blankRef = await makeRepo(join(root, 'blank-ref'), 'ref:   \n');
+    assert.equal(await readGitBranch(blankRef), undefined);
+    const noName = await makeRepo(join(root, 'no-name'), 'ref: refs/heads/\n');
+    assert.equal(await readGitBranch(noName), undefined);
+
     const broken = join(root, 'broken-gitdir');
     await mkdir(broken, { recursive: true });
     await writeFile(join(broken, '.git'), '不是 gitdir 行\n', 'utf8');

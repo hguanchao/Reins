@@ -30,13 +30,21 @@ export async function readGitBranch(workspace: string): Promise<string | undefin
   if (value === '') {
     return undefined;
   }
-  if (!value.startsWith(REF_PREFIX)) {
+  if (!value.startsWith(REF_KEY)) {
     // 分离头指针:HEAD 里是提交号,显示短号比显示 "HEAD" 有用
     return shorten(value);
   }
-  const ref = value.slice(REF_PREFIX.length).trim();
+  const ref = value.slice(REF_KEY.length).trim();
+  if (ref === '') {
+    return undefined;
+  }
   // 分支引用去掉前缀;其余引用(标签等)留短名
-  return ref.startsWith(BRANCH_PREFIX) ? ref.slice(BRANCH_PREFIX.length) : shorten(ref);
+  if (ref.startsWith(BRANCH_PREFIX)) {
+    const name = ref.slice(BRANCH_PREFIX.length);
+    // 名字为空说明 HEAD 被写坏了,宁可整项不显示也不要挂一个空的「🌿 」
+    return name === '' ? undefined : name;
+  }
+  return shorten(ref);
 }
 
 /** 解析 `.git` 文件里的 `gitdir:` 行;路径相对该文件所在目录。 */
@@ -51,7 +59,8 @@ export function parseGitDir(content: string): string | undefined {
   return undefined;
 }
 
-const REF_PREFIX = 'ref: ';
+/** HEAD 里指向引用的前缀;后面可能跟着空白,故只认冒号本身。 */
+const REF_KEY = 'ref:';
 const BRANCH_PREFIX = 'refs/heads/';
 const GITDIR_KEY = 'gitdir:';
 /** 分离头指针展示的提交号长度。 */

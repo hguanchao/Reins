@@ -96,8 +96,10 @@ export class Terminal {
     for (const diff of diffs) {
       chunks.push(`\u001b[${diff.row + 1};1H\u001b[2K`, diff.text);
     }
-    // 光标只在状态真正变化时才写:每帧重定位会把终端的闪烁计时重置,
-    // 光标看起来会一直亮着(不闪烁)
+    // 光标只在必要时才写:每帧重定位会把终端的闪烁计时重置,光标看起来会一直亮着(不闪烁)。
+    // 但写过行就一定得重定位——写行会把物理光标留在那一行末尾,不收回就会看到光标
+    // 停在内容区某行右端闪。
+    const wrote = diffs.length > 0;
     if (cursor === null) {
       if (this.previousCursor !== null) {
         chunks.push('\u001b[?25l');
@@ -105,7 +107,7 @@ export class Terminal {
     } else {
       const visible = this.previousCursor !== null && this.previousCursor !== undefined;
       const moved = !visible || this.previousCursor?.row !== cursor.row || this.previousCursor?.col !== cursor.col;
-      if (moved) {
+      if (wrote || moved) {
         chunks.push(`\u001b[${cursor.row + 1};${cursor.col + 1}H`);
       }
       if (!visible) {

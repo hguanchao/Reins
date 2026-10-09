@@ -66,16 +66,26 @@ describe('帧差分', () => {
     assert.equal(output.output.includes('\u001b[?25h'), false);
   });
 
-  it('光标未变化时不重复写,避免重置终端闪烁计时', () => {
+  it('整帧无改动且光标未变时什么都不写,避免重置终端闪烁计时', () => {
     const output = new MockStream();
     const input = new MockStream();
     const terminal = new Terminal(output as never, input as never);
     terminal.render(['x'], { row: 1, col: 3 });
     output.output = '';
-    // 内容变、光标位置没变:只重绘内容,不碰光标
+    terminal.render(['x'], { row: 1, col: 3 });
+    assert.equal(output.output, '');
+  });
+
+  it('重绘过行就要重定位光标,否则它会留在最后重绘的那一行末尾', () => {
+    const output = new MockStream();
+    const input = new MockStream();
+    const terminal = new Terminal(output as never, input as never);
+    terminal.render(['x'], { row: 1, col: 3 });
+    output.output = '';
+    // 内容变、光标位置没变:写行已经让物理光标跑了,必须把它收回原处
     terminal.render(['y'], { row: 1, col: 3 });
-    assert.equal(output.output.includes('\u001b[?25h'), false, '不应重复显示光标');
-    assert.equal(output.output.includes('\u001b[2;4H'), false, '不应重复定位光标');
+    assert.ok(output.output.includes('\u001b[2;4H'), '重绘后应把光标收回原处');
+    assert.equal(output.output.includes('\u001b[?25h'), false, '已显示时不必重复显示');
     output.output = '';
     // 光标位置变了:重新定位,但无需再发显示序列
     terminal.render(['y'], { row: 1, col: 4 });
