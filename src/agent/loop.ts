@@ -214,7 +214,7 @@ export class Agent {
       return;
     }
 
-    let decision = (await this.checkSandbox(tool, target)) ?? engine.evaluate(target);
+    let decision = (await this.checkSandbox(tool, target)) ?? engine.evaluate(target, tool.permissionKind);
     if (decision.verdict === 'ask') {
       decision = await approval.decide(target, decision);
     }

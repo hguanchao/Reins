@@ -52,6 +52,33 @@ describe('策略引擎', () => {
     assert.equal(new PermissionEngine([rules({})], 'yolo').evaluate(target).verdict, 'allow');
   });
 
+  it('只读工具未命中规则时直接放行,写类工具仍按审批模式', () => {
+    const engine = new PermissionEngine([rules({})], 'ask');
+    const read = engine.evaluate({ tool: 'read', path: '/a/b.txt' }, 'path-read');
+    assert.equal(read.verdict, 'allow');
+    assert.ok(read.reason.includes('只读工具'));
+    assert.equal(engine.evaluate({ tool: 'write', path: '/a/b.txt' }, 'path-write').verdict, 'ask');
+    assert.equal(engine.evaluate({ tool: 'bash', command: 'rm -rf x' }, 'bash').verdict, 'ask');
+  });
+
+  it('bash 只读命令未命中规则时直接放行', () => {
+    const engine = new PermissionEngine([rules({})], 'ask');
+    for (const command of ['ls -la', 'dir /b src', 'git status', 'cat a.txt | grep x']) {
+      const decision = engine.evaluate({ tool: 'bash', command }, 'bash');
+      assert.equal(decision.verdict, 'allow', `${command} 应放行`);
+      assert.ok(decision.reason.includes('只读命令'));
+    }
+    // 拼接命令里有一段不安全就整条询问
+    assert.equal(engine.evaluate({ tool: 'bash', command: 'ls && rm -rf x' }, 'bash').verdict, 'ask');
+  });
+
+  it('规则优先级高于只读兜底', () => {
+    const askRead = new PermissionEngine([rules({ ask: ['read(*)'] })], 'ask');
+    assert.equal(askRead.evaluate({ tool: 'read', path: '/a/b.txt' }, 'path-read').verdict, 'ask');
+    const denyList = new PermissionEngine([rules({ deny: ['bash(ls *)'] })], 'ask');
+    assert.equal(denyList.evaluate({ tool: 'bash', command: 'ls -la' }, 'bash').verdict, 'deny');
+  });
+
   it('deny 不被命令拼接绕过,allow 不因拼接而放宽', () => {
     const engine = new PermissionEngine(
       [rules({ allow: ['bash(git *)'], deny: ['bash(rm *)'] })],

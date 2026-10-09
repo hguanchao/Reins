@@ -1,10 +1,47 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ApprovalGate, type Approver, type Reviewer } from '../../src/permissions/approval.ts';
+import { approvalGrant, ApprovalGate, type Approver, type Reviewer } from '../../src/permissions/approval.ts';
 import type { Decision } from '../../src/permissions/engine.ts';
 
 const askDecision: Decision = { verdict: 'ask', rule: 'bash(git push *)', reason: '命中规则' };
 const target = { tool: 'bash', command: 'git push origin main' } as const;
+
+describe('会话内总是允许的范围', () => {
+  const fallback: Decision = { verdict: 'ask', reason: '未命中任何规则,按审批模式询问' };
+
+  it('命中规则时记规则本身', () => {
+    assert.deepEqual(approvalGrant(target, askDecision), {
+      key: 'bash(git push *)',
+      scope: 'bash(git push *)',
+    });
+  });
+
+  it('bash 记命令前缀而不是整条命令', () => {
+    // 记整条命令等于没记:换个参数又问一次
+    assert.deepEqual(approvalGrant({ tool: 'bash', command: 'dir /b codex-rs\\src' }, fallback), {
+      key: 'bash:dir *',
+      scope: 'dir *',
+    });
+    // 多词命令带上子命令,`git` 记成 `git status` 才不会连 push 一起放行
+    assert.deepEqual(approvalGrant({ tool: 'bash', command: 'git status --short' }, fallback), {
+      key: 'bash:git status *',
+      scope: 'git status *',
+    });
+  });
+
+  it('拼接命令不记前缀,只对同一条命令生效', () => {
+    // 否则 `ls && rm -rf x` 记住 `ls *` 之后,`ls && rm -rf y` 也不再问
+    assert.deepEqual(approvalGrant({ tool: 'bash', command: 'ls && rm -rf x' }, fallback), {
+      key: 'bash:ls && rm -rf x',
+    });
+  });
+
+  it('其余工具记具体目标', () => {
+    assert.equal(approvalGrant({ tool: 'write', path: '/a/b.txt' }, fallback).key, 'write:/a/b.txt');
+    assert.equal(approvalGrant({ tool: 'mcp', server: 'svc' }, fallback).key, 'mcp:svc');
+    assert.equal(approvalGrant({ tool: 'fetch', domain: 'x.com' }, fallback).key, 'fetch:x.com');
+  });
+});
 
 describe('审批门', () => {
   it('yolo 直接放行', async () => {

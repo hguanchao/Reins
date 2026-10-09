@@ -1,6 +1,7 @@
 import type { ApprovalMode } from '../config/schema.ts';
 import type { Decision } from './engine.ts';
 import type { RuleTarget } from './rules.ts';
+import { commandPrefix } from './safe-commands.ts';
 
 /**
  * 审批门:把「ask 裁决」转化为最终结论。
@@ -11,6 +12,35 @@ import type { RuleTarget } from './rules.ts';
  * - yolo:直接放行。
  * 没有可用通道时一律「保守拒绝」,保证非交互场景不会静默扩权。
  */
+
+/** 会话内「总是允许」记下的授权范围。 */
+export interface ApprovalGrant {
+  /** 用于比对后续请求的键。 */
+  key: string;
+  /** 展示给用户的授权范围;没有可展示的范围时为空。 */
+  scope?: string;
+}
+
+/**
+ * 算一次「总是允许」要记住的范围。
+ *
+ * 命中规则时记规则本身(那条规则覆盖的都能放行);bash 记命令前缀——记整条命令
+ * 等于没记(换个参数又问一次),记首词又太宽(`git` 会把 push 一起放行);
+ * 其余工具记具体目标。给不出前缀时退回整条命令,只对完全相同的调用生效。
+ */
+export function approvalGrant(target: RuleTarget, decision: Decision): ApprovalGrant {
+  if (decision.rule !== undefined) {
+    return { key: decision.rule, scope: decision.rule };
+  }
+  if (target.command !== undefined) {
+    const prefix = commandPrefix(target.command);
+    if (prefix !== undefined) {
+      return { key: `bash:${prefix} *`, scope: `${prefix} *` };
+    }
+    return { key: `bash:${target.command}` };
+  }
+  return { key: `${target.tool}:${target.path ?? target.server ?? target.domain ?? ''}` };
+}
 
 /** 人工审批通道(交互界面提供)。 */
 export interface Approver {

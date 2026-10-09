@@ -18,7 +18,7 @@ import { recordTrust, resolveProjectTrust, type TrustResolution } from '../confi
 import { existingProjectDocs } from '../context/agents-md.ts';
 import type { ToolCall, Usage } from '../llm/types.ts';
 import { promptTokens } from '../llm/usage.ts';
-import type { Approver } from '../permissions/approval.ts';
+import { approvalGrant, type Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
 import type { RuleTarget } from '../permissions/rules.ts';
 import type { AgentUi } from '../ui/printer.ts';
@@ -1067,8 +1067,7 @@ export class TuiApp implements AgentUi {
   };
 
   private askApproval(target: RuleTarget, decision: Decision): Promise<'allow' | 'deny'> {
-    const key = this.approvalKey(target, decision);
-    if (this.alwaysAllow.has(key)) {
+    if (this.alwaysAllow.has(approvalGrant(target, decision).key)) {
       return Promise.resolve('allow');
     }
     // 审批需要立即关注:把查看器收起,让审批卡片可见
@@ -1112,15 +1111,11 @@ export class TuiApp implements AgentUi {
       return;
     }
     if (index === 1) {
-      this.alwaysAllow.add(this.approvalKey(card.target, card.decision));
+      this.alwaysAllow.add(approvalGrant(card.target, card.decision).key);
     }
     this.approvalCard = undefined;
     this.approvalResolve = undefined;
     resolve(index === 2 ? 'deny' : 'allow');
-  }
-
-  private approvalKey(target: RuleTarget, decision: Decision): string {
-    return decision.rule ?? `${target.tool}:${target.command ?? target.path ?? target.server ?? ''}`;
   }
 
   // —— 渲染 ——
@@ -1290,12 +1285,15 @@ export class TuiApp implements AgentUi {
       // 命中规则时给规则原文;靠审批模式兜底时 rule 为空,此时说的是原因而非规则
       const basis =
         decision.rule !== undefined ? `触发规则:${decision.rule}` : `原因:${decision.reason}`;
+      // 「本会话总是允许」会记住什么范围,先让人看清再决定
+      const scope = approvalGrant(target, decision).scope;
+      const detail = scope === undefined ? basis : `${basis} · 总是允许:${scope}`;
       const lines = [
         // 与信任页同一条分割线,把审批块和上方对话内容分开
         theme.paint.separator(symbols.separator.repeat(width)),
         paint.warn(`  ${symbols.warn} 需要授权`),
         `    ${theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
-        paint.muted(`    ${basis}`),
+        paint.muted(`    ${truncatePlain(detail, Math.max(0, width - 4))}`),
         // 缩进 2 格:› 占两格,选项文字因此与上面的工具、依据左对齐
         `  ${renderApprovalOptions(options, this.approvalIndex, theme)}`,
         // 末尾留白:选项行落在倒数第二行,与信任页选项区同高

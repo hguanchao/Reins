@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, symlink } from 'node:fs/promises';
+import { readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { Agent } from '../../src/agent/loop.ts';
@@ -214,6 +214,37 @@ describe('代理循环', () => {
     } finally {
       await harness.cleanup();
       await removeTmpDir(outside);
+    }
+  });
+
+  it('ask 模式下只读操作不再逐条询问', async () => {
+    const asked: string[] = [];
+    const approver: Approver = {
+      async ask(target) {
+        asked.push(target.command ?? target.tool);
+        return 'allow';
+      },
+    };
+    const harness = await makeAgent(
+      [
+        [
+          toolCall('c1', 'read', { path: 'a.txt' }),
+          toolCall('c2', 'bash', { command: 'echo hi' }),
+          toolCall('c3', 'bash', { command: 'rm -rf build' }),
+          done('tool_calls'),
+        ],
+        [text('完成'), done()],
+      ],
+      { configRaw: { approval: 'ask' }, approver },
+    );
+    try {
+      await writeFile(join(harness.workspace, 'a.txt'), '内容', 'utf8');
+      const result = await harness.agent.run('看看');
+      assert.equal(result.text, '完成');
+      // 读文件与只读命令直接放行,只有会改东西的那条才问
+      assert.deepEqual(asked, ['rm -rf build']);
+    } finally {
+      await harness.cleanup();
     }
   });
 

@@ -23,6 +23,9 @@ spill_threshold = 8192          # 超长工具结果落盘阈值,0 = 关闭
 # max_turns = 20                # 模型轮数上限,省略 = 不封顶
 
 [permissions]                   # deny > ask > allow,先命中先定论
+                                # 未命中规则时:只读工具(read/glob/grep)与只读命令
+                                # (ls、cat、dir、git status…)直接放行,其余按 approval 询问。
+                                # 想连只读也问,写 ask = ["read(*)", "bash(*)"]
 deny = []                       # 例:["bash(rm *)", "read(*.env)"]
 ask = []                        # 例:["bash(git push *)"]
 allow = []                      # 例:["bash(git status)"]
