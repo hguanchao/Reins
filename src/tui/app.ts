@@ -1258,6 +1258,8 @@ export class TuiApp implements AgentUi {
       const basis =
         decision.rule !== undefined ? `触发规则:${decision.rule}` : `原因:${decision.reason}`;
       const lines = [
+        // 与信任页同一条分割线,把审批块和上方对话内容分开
+        theme.paint.separator(symbols.separator.repeat(width)),
         paint.warn(`  ${symbols.warn} 需要授权`),
         `    ${theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
         paint.muted(`    ${basis}`),
