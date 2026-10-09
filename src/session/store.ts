@@ -72,7 +72,13 @@ export function makeEntryId(): string {
   return randomUUID().slice(0, 12);
 }
 
-/** 把项目路径编码为会话目录名:如 E:\Projects\Reins → E--Projects-Reins。 */
+/**
+ * 把项目路径编码为会话目录名:如 E:\Projects\Reins → E--Projects-Reins。
+ *
+ * 注意:该映射把 `/ \ : * ? " < > |` 统一压成 `-`,因而不是单射——`E:\a\b` 与
+ * `E:\a-b` 会落到同一目录。因此按会话定位时不能只看目录名,必须再用 meta.cwd
+ * 过滤(见 sessions.ts),否则会取到别的项目的会话。
+ */
 export function encodeProjectDir(cwd: string): string {
   return cwd.replace(/[<>:"/\\|?*]/g, '-');
 }
@@ -140,12 +146,14 @@ export class SessionStore {
   /** 读取全部内容;损坏的行会指出具体行号。 */
   async readAll(): Promise<SessionFile> {
     const text = await readTextFile(this.file);
-    const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '');
-    if (lines.length === 0) {
+    // 保留原始行号:空行也要占位,否则报出的行号与编辑器里看到的不一致
+    const rawLines = text.split(/\r?\n/);
+    const firstIndex = rawLines.findIndex((line) => line.trim() !== '');
+    if (firstIndex === -1) {
       throw new ReinsError('session', `会话文件为空:${this.file}`);
     }
-    const meta = this.parseLine(lines[0] as string, 1) as SessionMeta;
-    if (meta.type !== 'meta' || typeof meta.v !== 'number') {
+    const meta = this.parseLine(rawLines[firstIndex] as string, firstIndex + 1);
+    if (!isMeta(meta)) {
       throw new ReinsError('session', `会话文件缺少有效的 meta 行:${this.file}`);
     }
     if (meta.v > SESSION_FORMAT_VERSION) {
@@ -156,8 +164,12 @@ export class SessionStore {
       );
     }
     const entries: SessionEntry[] = [];
-    for (let index = 1; index < lines.length; index += 1) {
-      entries.push(this.parseLine(lines[index] as string, index + 1) as SessionEntry);
+    for (let index = firstIndex + 1; index < rawLines.length; index += 1) {
+      const line = rawLines[index] as string;
+      if (line.trim() === '') {
+        continue;
+      }
+      entries.push(this.parseLine(line, index + 1) as SessionEntry);
     }
     return { meta, entries };
   }
@@ -169,6 +181,17 @@ export class SessionStore {
       throw new ReinsError('session', `会话文件第 ${lineNumber} 行不是合法 JSON:${this.file}`);
     }
   }
+}
+
+/** 判断解析结果是否是合法的 meta 行(解析出的 null 也要拦住,否则读属性会抛 TypeError)。 */
+function isMeta(value: unknown): value is SessionMeta {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>)['type'] === 'meta' &&
+    typeof (value as Record<string, unknown>)['v'] === 'number'
+  );
 }
 
 /** 会话文件摘要(用于列表展示)。 */

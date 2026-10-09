@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 import { Session } from '../../src/session/tree.ts';
 import type { SessionEntry } from '../../src/session/store.ts';
+import { writeTextFile } from '../../src/util/fsx.ts';
 
 function textOf(entry: SessionEntry): string | undefined {
   return 'text' in entry ? entry.text : undefined;
@@ -66,5 +68,16 @@ describe('会话树', () => {
     assert.equal(resumed.leaf, last.id);
     assert.equal(resumed.activeBranch().length, 2);
     assert.equal(resumed.id, session.id);
+  });
+
+  it('文件被篡改出父子环时不会死循环', async () => {
+    const file = join(dir, 'cyclic.jsonl');
+    const meta = { v: 1, type: 'meta', sessionId: 's-cycle', createdAt: '', cwd: '' };
+    const e1 = { id: 'e1', parentId: 'e2', ts: '', type: 'user', text: 'a' };
+    const e2 = { id: 'e2', parentId: 'e1', ts: '', type: 'assistant', text: 'b', toolCalls: [] };
+    await writeTextFile(file, `${JSON.stringify(meta)}\n${JSON.stringify(e1)}\n${JSON.stringify(e2)}\n`);
+    const session = await Session.resume(file);
+    // 若没有环检测,这里会一直向上追溯;有检测则正常终止
+    assert.equal(session.activeBranch().length, 2);
   });
 });

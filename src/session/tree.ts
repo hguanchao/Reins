@@ -77,8 +77,14 @@ export class Session {
   activeBranch(): SessionEntry[] {
     const byId = new Map(this.entries.map((entry) => [entry.id, entry]));
     const branch: SessionEntry[] = [];
+    const seen = new Set<string>();
     let cursor = this.leafId;
     while (cursor !== null) {
+      // 文件被外部篡改出环时,visited 集合避免死循环
+      if (seen.has(cursor)) {
+        break;
+      }
+      seen.add(cursor);
       const entry = byId.get(cursor);
       if (entry === undefined) {
         break;

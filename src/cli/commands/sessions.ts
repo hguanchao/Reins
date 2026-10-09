@@ -2,7 +2,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { encodeProjectDir, summarizeSessionFile, type SessionSummary } from '../../session/store.ts';
 import { ReinsError } from '../../util/errors.ts';
-import { reinsHome } from '../../util/paths.ts';
+import { absolutize, normalizeSlashes, reinsHome } from '../../util/paths.ts';
 import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
 
 /**
@@ -71,9 +71,9 @@ export async function listSessionSummaries(home: string): Promise<SessionSummary
   return summaries;
 }
 
-/** 最近一次更新的会话文件(按文件修改时间)。 */
-export async function latestSessionFile(home: string): Promise<string | undefined> {
-  const files = await collectSessionFiles(home);
+/** 最近一次更新的会话文件(按文件修改时间);传入 cwd 时只在该项目内挑选。 */
+export async function latestSessionFile(home: string, cwd?: string): Promise<string | undefined> {
+  const files = await filterByCwd(await collectSessionFiles(home), cwd);
   if (files.length === 0) {
     return undefined;
   }
@@ -88,6 +88,34 @@ export async function latestSessionFile(home: string): Promise<string | undefine
   );
   entries.sort((left, right) => right.time - left.time);
   return entries[0]?.file;
+}
+
+/**
+ * 按项目目录过滤会话文件。
+ *
+ * 会话目录名由路径编码而来且不是单射(见 encodeProjectDir),同一目录可能混着
+ * 多个项目的会话;只按目录定位会取到别人的会话,所以这里回到 meta.cwd 上比对。
+ */
+async function filterByCwd(files: string[], cwd: string | undefined): Promise<string[]> {
+  if (cwd === undefined) {
+    return files;
+  }
+  const wanted = normalizeSlashes(absolutize(cwd));
+  const caseInsensitive = process.platform === 'win32';
+  const kept: string[] = [];
+  for (const file of files) {
+    try {
+      const summary = await summarizeSessionFile(file);
+      const actual = normalizeSlashes(absolutize(summary.cwd));
+      const same = caseInsensitive ? actual.toLowerCase() === wanted.toLowerCase() : actual === wanted;
+      if (same) {
+        kept.push(file);
+      }
+    } catch {
+      // 损坏文件跳过
+    }
+  }
+  return kept;
 }
 
 async function listSessions(home: string, args: ParsedArgs, io: CommandIo): Promise<number> {
@@ -107,13 +135,17 @@ async function listSessions(home: string, args: ParsedArgs, io: CommandIo): Prom
   return 0;
 }
 
-/** 把会话引用(id 前缀或文件路径)解析为会话文件路径。 */
-export async function resolveSessionFile(home: string, reference: string): Promise<string> {
+/** 把会话引用(id 前缀或文件路径)解析为会话文件路径;cwd 用于限定项目。 */
+export async function resolveSessionFile(
+  home: string,
+  reference: string,
+  cwd?: string,
+): Promise<string> {
   if (reference.includes('/') || reference.includes('\\') || reference.endsWith('.jsonl')) {
     return reference;
   }
   const matches: string[] = [];
-  for (const file of await collectSessionFiles(home)) {
+  for (const file of await filterByCwd(await collectSessionFiles(home), cwd)) {
     const stem = basename(file).replace(/\.jsonl$/, '');
     if (stem === reference || stem.startsWith(reference)) {
       matches.push(file);

@@ -86,9 +86,9 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
     const flag = args.flags['resume'];
     if (flag !== undefined) {
       if (flag === true || flag === '') {
-        resumeFile = await latestSessionFile(home);
+        resumeFile = await latestSessionFile(home, workspace);
       } else {
-        resumeFile = await resolveSessionFile(home, String(flag));
+        resumeFile = await resolveSessionFile(home, String(flag), workspace);
       }
       if (resumeFile === undefined) {
         io.err('未找到可恢复的会话,将开始新会话。');
@@ -347,7 +347,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
           continue;
         }
         try {
-          await rebuild({ sessionFile: await resolveSessionFile(home, command.id) });
+          await rebuild({ sessionFile: await resolveSessionFile(home, command.id, workspace) });
           io.err(`已恢复会话:${runtime?.session.id}`);
         } catch (error) {
           io.err(`错误:${describeError(error)}`);

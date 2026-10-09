@@ -75,6 +75,21 @@ describe('会话存储', () => {
     await assert.rejects(() => store.readAll(), /第 2 行/);
   });
 
+  it('文件里有空行时行号仍与编辑器一致', async () => {
+    const file = join(dir, 'blank-lines.jsonl');
+    const meta = { v: 1, type: 'meta', sessionId: 's-x', createdAt: '', cwd: '' };
+    await writeTextFile(file, `${JSON.stringify(meta)}\n\nnot-json\n`);
+    const store = new SessionStore(file);
+    await assert.rejects(() => store.readAll(), /第 3 行/);
+  });
+
+  it('meta 行是 null 时报可读错误,而不是 TypeError', async () => {
+    const file = join(dir, 'null-meta.jsonl');
+    await writeTextFile(file, 'null\n');
+    const store = new SessionStore(file);
+    await assert.rejects(() => store.readAll(), /meta/);
+  });
+
   it('格式版本过高时拒绝打开', async () => {
     const file = join(dir, 'future.jsonl');
     const meta = { v: 99, type: 'meta', sessionId: 's-x', createdAt: '', cwd: '' };

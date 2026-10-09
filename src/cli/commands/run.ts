@@ -44,7 +44,7 @@ export async function runCommand(
   const resume = typeof args.flags['resume'] === 'string' ? args.flags['resume'] : undefined;
   const sessionFile =
     resume !== undefined
-      ? await resolveSessionFile(home, resume)
+      ? await resolveSessionFile(home, resume, workspace)
       : typeof args.flags['session'] === 'string'
         ? absolutize(args.flags['session'])
         : undefined;

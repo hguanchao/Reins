@@ -19,7 +19,8 @@ let sequence = 0;
 
 /** 生成一个 UUID v7:36 字符、小写、`8-4-4-4-12` 分组。 */
 export function uuidv7(now: number = Date.now()): string {
-  const stamp = Math.max(0, Math.floor(now));
+  // 传入非有限值时回退到当前时刻,否则 writeUIntBE 会抛 RangeError
+  const stamp = Number.isFinite(now) ? Math.max(0, Math.floor(now)) : Date.now();
   if (stamp <= lastMillis) {
     // 时钟停滞或回拨:靠序号继续前进;序号用尽就把时间往后推一毫秒,保证只朝前
     sequence += 1;

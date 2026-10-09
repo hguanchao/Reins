@@ -83,4 +83,31 @@ describe('sessions 子命令', () => {
       await removeTmpDir(isolated);
     }
   });
+
+  it('按项目过滤:目录名碰撞时不会取到别的项目的会话', async () => {
+    const isolated = await createTmpDir();
+    try {
+      const dir = join(isolated, 'sessions');
+      // 这两个 cwd 编码后落到同一个目录(C--a-b),正是目录名不单射的场景
+      const dash = await Session.create(dir, 'C:/a-b');
+      await dash.append({ type: 'user', text: 'dash 项目' });
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const nested = await Session.create(dir, 'C:/a/b');
+      await nested.append({ type: 'user', text: 'nested 项目' });
+
+      // 不做项目过滤时最近的是 nested;指定项目后各自取回自己的会话
+      assert.equal(await latestSessionFile(isolated), nested.path);
+      assert.equal(await latestSessionFile(isolated, 'C:/a-b'), dash.path);
+      assert.equal(await latestSessionFile(isolated, 'C:/a/b'), nested.path);
+
+      // 前缀解析同样限定在指定项目内:nested 的会话在 dash 项目里应找不到
+      assert.equal(await resolveSessionFile(isolated, nested.id, 'C:/a/b'), nested.path);
+      await assert.rejects(
+        () => resolveSessionFile(isolated, nested.id, 'C:/a-b'),
+        /找不到会话/,
+      );
+    } finally {
+      await removeTmpDir(isolated);
+    }
+  });
 });
