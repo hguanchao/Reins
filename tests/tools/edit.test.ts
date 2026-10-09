@@ -74,4 +74,27 @@ describe('编辑工具', () => {
     assert.equal(result.isError, false);
     assert.equal(await readFile(file, 'utf8'), 'hello\r\nreins\r\n');
   });
+
+  it('混合行尾文件只改目标行,其余行尾逐字保留', async () => {
+    const file = join(dir, 'edit6.txt');
+    // 第一行 LF、第二行 CRLF:不能因为含 CRLF 就把整份文件改写成 CRLF
+    await writeFile(file, 'a\nb\r\nc\n');
+    const result = await tool.execute(
+      { path: 'edit6.txt', oldText: 'b', newText: 'B' },
+      { workspace: dir },
+    );
+    assert.equal(result.isError, false);
+    assert.equal(await readFile(file, 'utf8'), 'a\nB\r\nc\n');
+  });
+
+  it('替换多行文本时沿用命中处的行尾风格', async () => {
+    const file = join(dir, 'edit7.txt');
+    await writeFile(file, 'a\r\nb\r\n');
+    const result = await tool.execute(
+      { path: 'edit7.txt', oldText: 'b', newText: 'x\ny' },
+      { workspace: dir },
+    );
+    assert.equal(result.isError, false);
+    assert.equal(await readFile(file, 'utf8'), 'a\r\nx\r\ny\r\n');
+  });
 });

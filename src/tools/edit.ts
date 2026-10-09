@@ -44,12 +44,13 @@ export class EditTool implements Tool {
       return { content: `文件不存在:${file}`, isError: true };
     }
     const text = await readTextFile(file);
-    // read 工具按 \r?\n 拆行,模型看到的文本一律是 \n;CRLF 文件必须先归一,
-    // 否则多行 oldText 在 Windows 上永远匹配不到
-    const crlf = text.includes('\r\n');
-    const haystack = crlf ? text.replace(/\r\n/g, '\n') : text;
+    // read 工具按 \r?\n 拆行,模型看到的文本一律是 \n;匹配时把 oldText 的 \n
+    // 视为「任意行尾」,直接在原文上替换——这样未改动的行保持各自原本的行尾,
+    // 混合行尾的文件不会被整体改写成 CRLF
     const needle = oldText.replace(/\r\n/g, '\n');
-    const occurrences = countOccurrences(haystack, needle);
+    const pattern = buildPattern(needle);
+    const matches = text.match(pattern);
+    const occurrences = matches === null ? 0 : matches.length;
     if (occurrences === 0) {
       return { content: `未找到匹配的 oldText,未做修改:${file}`, isError: true };
     }
@@ -62,21 +63,20 @@ export class EditTool implements Tool {
     // 替换值走函数形式:字符串形式会把 newText 里的 $&、$$ 当替换模式展开,
     // 静默写坏文件(写 shell 脚本与模板时很常见)
     const replacement = newText.replace(/\r\n/g, '\n');
-    const updated = haystack.replace(needle, () => replacement);
-    await writeTextFile(file, crlf ? updated.replace(/\n/g, '\r\n') : updated);
+    // 命中片段自带换行时沿用它的行尾;只替换单行内容时退回文件的主流行尾,
+    // 否则往 CRLF 文件里插入多行会混进裸 LF
+    const dominantEol = text.includes('\r\n') ? '\r\n' : '\n';
+    const updated = text.replace(pattern, (matched) => {
+      const eol = matched.includes('\r\n') ? '\r\n' : dominantEol;
+      return replacement.replace(/\n/g, eol);
+    });
+    await writeTextFile(file, updated);
     return { content: `已修改 ${file}(替换 1 处)`, isError: false };
   }
 }
 
-function countOccurrences(text: string, needle: string): number {
-  if (needle === '') {
-    return 0;
-  }
-  let count = 0;
-  let index = text.indexOf(needle);
-  while (index !== -1) {
-    count += 1;
-    index = text.indexOf(needle, index + needle.length);
-  }
-  return count;
+/** 把 oldText 编译成「换行符无关」的全局正则:字面量转义,`\n` 匹配 \n 或 \r\n。 */
+function buildPattern(needle: string): RegExp {
+  const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(escaped.replace(/\n/g, '\\r?\\n'), 'g');
 }

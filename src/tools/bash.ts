@@ -76,31 +76,52 @@ export function runShell(command: string, options: RunShellOptions): Promise<She
       shell: true,
       windowsHide: true,
       signal: options.signal,
+      // POSIX 下自成进程组,终止时才能连同子进程一起杀掉(shell 的子进程会挂住管道)
+      detached: process.platform !== 'win32',
     });
     let stdout = '';
     let stderr = '';
     let timedOut = false;
     let settled = false;
+    const timers: NodeJS.Timeout[] = [];
 
     // 自行管理超时:必须终止整棵进程树,否则 shell 的子进程会挂住管道导致 close 迟迟不来
     const timer = setTimeout(() => {
       timedOut = true;
       terminateTree(child);
+      // 兜底:极端情况下 close 仍不来(如孙进程霸占 stdout),不能让 Promise 永久挂起
+      timers.push(
+        setTimeout(() => {
+          finish({ content: `执行超时(${options.timeoutMs}ms),进程未能及时退出`, failed: true });
+        }, 2000),
+      );
     }, options.timeoutMs);
+    timers.push(timer);
 
     const finish = (outcome: ShellOutcome) => {
       if (!settled) {
         settled = true;
-        clearTimeout(timer);
+        for (const pending of timers) {
+          clearTimeout(pending);
+        }
+        options.signal?.removeEventListener('abort', onAbort);
         resolve(outcome);
       }
     };
 
-    child.stdout?.on('data', (data: Buffer) => {
-      stdout = clip(stdout + data.toString());
+    // 中止时同样要连坐整棵进程树:spawn 的 signal 只终止直接子进程
+    const onAbort = (): void => {
+      terminateTree(child);
+    };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (data: string) => {
+      stdout = clip(stdout + data);
     });
-    child.stderr?.on('data', (data: Buffer) => {
-      stderr = clip(stderr + data.toString());
+    child.stderr?.on('data', (data: string) => {
+      stderr = clip(stderr + data);
     });
     child.on('error', (error) => {
       finish({ content: `命令执行失败:${error.message}`, failed: true });
@@ -126,7 +147,7 @@ export function runShell(command: string, options: RunShellOptions): Promise<She
   });
 }
 
-/** 终止进程树:Windows 用 taskkill /T,其他平台直接 SIGKILL。 */
+/** 终止进程树:Windows 用 taskkill /T,其他平台对进程组发 SIGKILL。 */
 function terminateTree(child: ChildProcess): void {
   if (child.pid === undefined) {
     child.kill();
@@ -142,7 +163,12 @@ function terminateTree(child: ChildProcess): void {
       child.kill();
     }
   } else {
-    child.kill('SIGKILL');
+    try {
+      // 负 pid 表示整个进程组(spawn 时已 detached)
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      child.kill('SIGKILL');
+    }
   }
 }
 

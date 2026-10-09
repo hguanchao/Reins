@@ -38,6 +38,7 @@ export async function* walkFiles(root: string, options: WalkOptions = {}): Async
       continue;
     }
     entries.sort((left, right) => left.name.localeCompare(right.name));
+    const subdirs: string[] = [];
     for (const entry of entries) {
       if (options.signal?.aborted) {
         return;
@@ -45,7 +46,7 @@ export async function* walkFiles(root: string, options: WalkOptions = {}): Async
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
         if (!ignored.has(entry.name)) {
-          stack.push(fullPath);
+          subdirs.push(fullPath);
         }
         continue;
       }
@@ -61,6 +62,10 @@ export async function* walkFiles(root: string, options: WalkOptions = {}): Async
         continue;
       }
       yield fullPath;
+    }
+    // 逆序入栈:stack.pop() 取出时才是名称升序,遍历顺序在平台间保持一致
+    for (let index = subdirs.length - 1; index >= 0; index -= 1) {
+      stack.push(subdirs[index] as string);
     }
   }
 }

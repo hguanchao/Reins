@@ -49,12 +49,3 @@ export async function isFile(target: string): Promise<boolean> {
     return false;
   }
 }
-
-/** 判断是否目录。 */
-export async function isDirectory(target: string): Promise<boolean> {
-  try {
-    return (await stat(target)).isDirectory();
-  } catch {
-    return false;
-  }
-}

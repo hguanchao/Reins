@@ -51,7 +51,11 @@ export class GlobTool implements Tool {
     const results: string[] = [];
     let truncated = false;
 
-    for await (const file of walkFiles(root, { signal: ctx.signal })) {
+    // glob 只看文件名,与体积无关:不设上限,否则大文件会永远搜不到
+    for await (const file of walkFiles(root, {
+      signal: ctx.signal,
+      maxFileSize: Number.POSITIVE_INFINITY,
+    })) {
       const relative = displayPath(file, ctx.workspace);
       const target = byFileName ? relative.slice(relative.lastIndexOf('/') + 1) : relative;
       if (regex.test(target)) {

@@ -38,4 +38,12 @@ describe('文件查找工具', () => {
     const result = await tool.execute({ pattern: 'nope/*.xyz' }, { workspace: dir });
     assert.ok(result.content.includes('未找到'));
   });
+
+  it('超过 walk 默认体积上限的大文件也能被找到', async () => {
+    // glob 只看文件名,不应受「把文件读进内存」的体积保护影响
+    const big = join(dir, 'big.json');
+    await writeFile(big, 'x'.repeat(1_200_000));
+    const result = await tool.execute({ pattern: '*.json' }, { workspace: dir });
+    assert.ok(result.content.includes('big.json'));
+  });
 });
