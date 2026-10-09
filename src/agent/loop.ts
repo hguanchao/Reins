@@ -16,6 +16,7 @@ import { formatTranscript, shouldCompact } from '../session/compaction.ts';
 import type { Session } from '../session/tree.ts';
 import { buildPreview, buildSpillNotice, shouldSpill } from '../spill/policy.ts';
 import type { SpillStore } from '../spill/store.ts';
+import { resolveRealPath } from '../tools/realpath.ts';
 import type { Tool, ToolRegistry } from '../tools/registry.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { describeError } from '../util/errors.ts';
@@ -213,7 +214,7 @@ export class Agent {
       return;
     }
 
-    let decision = this.checkSandbox(tool, target) ?? engine.evaluate(target);
+    let decision = (await this.checkSandbox(tool, target)) ?? engine.evaluate(target);
     if (decision.verdict === 'ask') {
       decision = await approval.decide(target, decision);
     }
@@ -254,17 +255,18 @@ export class Agent {
     }
   }
 
-  private checkSandbox(tool: Tool, target: RuleTarget): Decision | null {
+  private async checkSandbox(tool: Tool, target: RuleTarget): Promise<Decision | null> {
     if (target.path === undefined) {
       return null;
     }
-    if (tool.permissionKind === 'path-write') {
-      return this.options.sandbox.checkPath('write', target.path);
+    const action =
+      tool.permissionKind === 'path-write' ? 'write' : tool.permissionKind === 'path-read' ? 'read' : undefined;
+    if (action === undefined) {
+      return null;
     }
-    if (tool.permissionKind === 'path-read') {
-      return this.options.sandbox.checkPath('read', target.path);
-    }
-    return null;
+    // 判定前先解析真实路径:工作区内的符号链接可以把写操作引到工作区之外,
+    // 只按字面路径判定等于边界形同虚设
+    return this.options.sandbox.checkPath(action, await resolveRealPath(target.path));
   }
 
   /** 立即压缩上下文(手动触发);内容过少或压缩器不可用时返回 false。 */

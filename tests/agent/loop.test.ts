@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { Agent } from '../../src/agent/loop.ts';
@@ -190,6 +190,29 @@ describe('代理循环', () => {
       assert.ok(toolResult !== undefined && toolResult.content.includes('操作被拒绝'));
     } finally {
       await harness.cleanup();
+    }
+  });
+
+  it('工作区内的符号链接指向区外时被沙箱拦下', async () => {
+    const harness = await makeAgent(
+      [
+        [toolCall('c1', 'write', { path: 'escape/secret.txt', content: 'no' }), done('tool_calls')],
+        [text('已处理'), done()],
+      ],
+      { configRaw: { sandbox: 'workspace' } },
+    );
+    const outside = await createTmpDir();
+    try {
+      // 链接本身在工作区内,字面路径也就在工作区内,只有解析真实路径才看得出越界
+      await symlink(outside, join(harness.workspace, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+      const result = await harness.agent.run('尝试绕过沙箱');
+      assert.equal(result.text, '已处理');
+      assert.equal(await pathExists(join(outside, 'secret.txt')), false);
+      const toolResult = harness.session.activeBranch().find(isToolResult);
+      assert.ok(toolResult !== undefined && toolResult.content.includes('sandbox = workspace'));
+    } finally {
+      await harness.cleanup();
+      await removeTmpDir(outside);
     }
   });
 
