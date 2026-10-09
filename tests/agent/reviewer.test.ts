@@ -81,6 +81,26 @@ describe('审查模型', () => {
     assert.equal(await reviewer.review(target, decision), 'deny');
   });
 
+  it('否定句不算放行:子串匹配会让 "not allowed" 蒙混过关', async () => {
+    for (const reply of ['not allowed', 'disallow', 'I cannot allow this', 'allowed?']) {
+      const reviewer = createReviewer({
+        adapter: new CannedAdapter([reply]),
+        runtime: { maxRetries: 0 },
+        model,
+      });
+      assert.equal(await reviewer.review(target, decision), 'deny', `回复 "${reply}" 不应放行`);
+    }
+  });
+
+  it('整条回复就是 ALLOW(可带标点空白)时放行', async () => {
+    const reviewer = createReviewer({
+      adapter: new CannedAdapter(['  ALLOW.\n']),
+      runtime: { maxRetries: 0 },
+      model,
+    });
+    assert.equal(await reviewer.review(target, decision), 'allow');
+  });
+
   it('调用异常时保守拒绝', async () => {
     const reviewer = createReviewer({
       adapter: new FailingAdapter(),

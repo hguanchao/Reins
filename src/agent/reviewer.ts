@@ -28,11 +28,10 @@ export function createReviewer(params: {
             maxTokens: 16,
           },
         });
-        const text = turn.text.toLowerCase();
-        if (text.includes('allow') && !text.includes('deny')) {
-          return 'allow';
-        }
-        return 'deny';
+        // 只认「整条回复就是 ALLOW」这一种放行形态:子串匹配会把 "not allowed"、
+        // "I cannot allow this" 之类的否定句判成放行,审查门就成了摆设
+        const verdict = turn.text.toLowerCase().replace(/[^a-z]/g, '');
+        return verdict === 'allow' ? 'allow' : 'deny';
       } catch {
         return 'deny';
       }

@@ -105,17 +105,32 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
   const registry = createDefaultRegistry();
   const mcpManager = new McpManager(options.config.mcpServers, { fetchImpl: options.fetchImpl });
   const mcpStatuses = await mcpManager.connectAll();
-  registerMcpTools(registry, mcpManager);
-  for (const status of mcpStatuses) {
-    if (!status.ok) {
-      options.ui.onNotice(`MCP ${status.name} 未连接:${status.error ?? '未知原因'}`);
+  // 连接已建立:之后任何一步失败都要把 MCP 连接收掉,否则子进程会泄漏
+  try {
+    registerMcpTools(registry, mcpManager);
+    for (const status of mcpStatuses) {
+      if (!status.ok) {
+        options.ui.onNotice(`MCP ${status.name} 未连接:${status.error ?? '未知原因'}`);
+      }
     }
-  }
-  const engine = new PermissionEngine([options.config.permissions], options.config.approval);
-  const sandbox = new Sandbox(options.config.sandbox, options.workspace);
-  const gateOptions: ApprovalGateOptions = { ...options.approval };
-  if (options.config.approval === 'auto' && gateOptions.reviewer === undefined) {
-    gateOptions.reviewer = createReviewer({
+    const engine = new PermissionEngine([options.config.permissions], options.config.approval);
+    const sandbox = new Sandbox(options.config.sandbox, options.workspace);
+    const gateOptions: ApprovalGateOptions = { ...options.approval };
+    if (options.config.approval === 'auto' && gateOptions.reviewer === undefined) {
+      gateOptions.reviewer = createReviewer({
+        adapter,
+        runtime,
+        model: resolveNamedModel({
+          config: options.config,
+          provider,
+          providerName,
+          mainModel: model,
+          modelId: options.config.reviewModel,
+        }),
+      });
+    }
+    const approval = new ApprovalGate(options.config.approval, gateOptions);
+    const compactor = createCompactor({
       adapter,
       runtime,
       model: resolveNamedModel({
@@ -123,57 +138,48 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
         provider,
         providerName,
         mainModel: model,
-        modelId: options.config.reviewModel,
+        modelId: options.config.compactModel,
       }),
     });
-  }
-  const approval = new ApprovalGate(options.config.approval, gateOptions);
-  const compactor = createCompactor({
-    adapter,
-    runtime,
-    model: resolveNamedModel({
+    const spill = new SpillStore(join(dirname(session.path), `${session.id}.spill`));
+
+    // 未信任的目录不注入说明文件:它与项目配置同源,都来自仓库
+    const projectDoc = projectTrusted ? await discoverProjectDoc(options.workspace) : null;
+    const systemPrompt = buildSystemPrompt({
+      workspace: options.workspace,
+      model: `${providerName}/${model.id}`,
+      projectDoc,
+    });
+
+    const agent = new Agent({
       config: options.config,
-      provider,
-      providerName,
-      mainModel: model,
-      modelId: options.config.compactModel,
-    }),
-  });
-  const spill = new SpillStore(join(dirname(session.path), `${session.id}.spill`));
+      adapter,
+      model,
+      registry,
+      session,
+      engine,
+      sandbox,
+      approval,
+      spill,
+      ui: options.ui,
+      workspace: options.workspace,
+      systemPrompt,
+      runtime,
+      compactor,
+    });
 
-  // 未信任的目录不注入说明文件:它与项目配置同源,都来自仓库
-  const projectDoc = projectTrusted ? await discoverProjectDoc(options.workspace) : null;
-  const systemPrompt = buildSystemPrompt({
-    workspace: options.workspace,
-    model: `${providerName}/${model.id}`,
-    projectDoc,
-  });
-
-  const agent = new Agent({
-    config: options.config,
-    adapter,
-    model,
-    registry,
-    session,
-    engine,
-    sandbox,
-    approval,
-    spill,
-    ui: options.ui,
-    workspace: options.workspace,
-    systemPrompt,
-    runtime,
-    compactor,
-  });
-
-  return {
-    agent,
-    session,
-    mcp: mcpStatuses,
-    close: async () => {
-      await mcpManager.close().catch(() => undefined);
-    },
-  };
+    return {
+      agent,
+      session,
+      mcp: mcpStatuses,
+      close: async () => {
+        await mcpManager.close().catch(() => undefined);
+      },
+    };
+  } catch (error) {
+    await mcpManager.close().catch(() => undefined);
+    throw error;
+  }
 }
 
 /** 执行一次任务:创建运行时、跑一轮、关闭运行时。 */
