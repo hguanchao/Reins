@@ -1267,16 +1267,16 @@ export class TuiApp implements AgentUi {
       return false;
     }
     const input = this.renderInputLines(this.terminal.columns);
-    // 页脚 = 输入框(上下边框 + 内容行)+ 状态栏 + 末尾留白;下方行数取同一处定义,免得两处各写一个数
+    // 页脚 = 输入框(上下边框 + 内容行)+ 状态栏;下方行数取同一处定义,免得两处各写一个数
     const footerHeight = input.lines.length + 2 + this.footerBelowInput(this.terminal.columns).length;
     const mainHeight = Math.max(1, this.terminal.rows - footerHeight);
     const range = inputBoxRowRange(mainHeight, input.lines.length);
     return row >= range.top && row <= range.bottom;
   }
 
-  /** 输入框下方的行:状态栏与末尾留白。 */
+  /** 输入框下方的行:状态栏。 */
   private footerBelowInput(width: number): string[] {
-    return [renderStatusBar(width, this.renderContext.theme, this.statusInfo()), ''];
+    return [renderStatusBar(width, this.renderContext.theme, this.statusInfo())];
   }
 
   private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
