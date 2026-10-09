@@ -1176,9 +1176,10 @@ export class TuiApp implements AgentUi {
   }
 
   /**
-   * 信任页整屏:居中的信任内容 + 底部按键。
+   * 信任页整屏:顶部对齐的正文 + 底部居中的选项。
    *
-   * 与欢迎页同一条居中规则;正文过长(矮终端)时保留顶部——提问与路径比清单更要紧。
+   * 页脚与命令审批卡片等高(含分隔线共 4 行),主区高度因此与审批卡片一致,
+   * 两个状态切换时内容不跳动。正文过长(矮终端)时保留顶部——提问与路径比清单更要紧。
    */
   private renderTrustFrame(cols: number, rows: number): string[] {
     const theme = this.renderContext.theme;
@@ -1188,8 +1189,10 @@ export class TuiApp implements AgentUi {
     }
     const separator = theme.paint.muted(symbols.separator.repeat(cols));
     const options = [theme.paint.ok('[y] 信任并继续'), theme.paint.fail('[n] 退出')];
-    // 与审批卡片同一套横向选项:› 标当前项,左右键切换、回车确认
-    const footer = [`  ${renderApprovalOptions(options, this.trustIndex, theme)}`];
+    const optionsText = renderApprovalOptions(options, this.trustIndex, theme);
+    const optionsPad = Math.max(0, Math.floor((cols - visibleWidth(optionsText)) / 2));
+    // 选项水平居中;余下两行留白补足页脚高度,让主区与审批卡片等高
+    const footer = [' '.repeat(optionsPad) + optionsText, '', ''];
     const body = renderTrustPage(cols, theme, {
       // 信任页要看清是哪个目录,不做保留尾部的截断
       path: tildePath(pending.resolution.key),
@@ -1197,7 +1200,8 @@ export class TuiApp implements AgentUi {
       docs: pending.docs,
     });
     const mainHeight = Math.max(1, rows - 1 - footer.length);
-    const main = centerVertically(body, mainHeight).slice(0, mainHeight);
+    // 顶部留一行再排正文,不再垂直居中
+    const main = ['', ...body].slice(0, mainHeight);
     while (main.length < mainHeight) {
       main.push('');
     }
