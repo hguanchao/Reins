@@ -6,6 +6,7 @@ import {
   inputBoxFrame,
   inputBoxLine,
   inputBoxRowRange,
+  moveApprovalIndex,
   overlayLines,
   paintSlashCommand,
   renderApprovalOptions,
@@ -49,6 +50,20 @@ describe('输入框边框', () => {
     const options = renderApprovalOptions(['[y] 允许', '[a] 始终允许', '[n] 拒绝'], 1, theme);
     assert.ok(options.includes(`\u001b[${theme.codes.accent}m› `));
     assert.equal(stripAnsi(options), '  [y] 允许   › [a] 始终允许     [n] 拒绝');
+  });
+
+  it('审批选项只用左右切换,且两端回环', () => {
+    assert.equal(moveApprovalIndex({ type: 'right' }, 0), 1);
+    assert.equal(moveApprovalIndex({ type: 'right' }, 2), 0);
+    assert.equal(moveApprovalIndex({ type: 'left' }, 0), 2);
+    assert.equal(moveApprovalIndex({ type: 'left' }, 2), 1);
+  });
+
+  it('审批卡片上上下键、回车与文字键都不切换选项', () => {
+    for (const type of ['up', 'down', 'enter', 'escape', 'tab'] as const) {
+      assert.equal(moveApprovalIndex({ type }, 1), undefined, `${type} 不该切换选项`);
+    }
+    assert.equal(moveApprovalIndex({ type: 'text', text: 'y' }, 1), undefined);
   });
 
   it('斜杠命令着色但不影响参数与显示宽度', () => {

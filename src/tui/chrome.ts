@@ -1,4 +1,5 @@
 import { fitPlain, padAnsi, paintRow, truncatePlain, visibleWidth } from './layout.ts';
+import type { TuiKey } from './keys.ts';
 import type { Theme } from './theme.ts';
 
 /**
@@ -33,6 +34,25 @@ export function renderApprovalOptions(options: readonly string[], selected: numb
   return options
     .map((option, index) => `${index === selected ? theme.paint.accent('› ') : '  '}${option}`)
     .join('   ');
+}
+
+/** 审批选项个数:允许 / 本会话总是允许 / 拒绝。 */
+export const APPROVAL_OPTION_COUNT = 3;
+
+/**
+ * 审批选项的左右切换:返回新的选中下标,undefined 表示该键不改变选中项。
+ *
+ * 选项是横排的,所以只有左右参与切换;上下不响应,免得与输入框的历史、
+ * 光标移动混在一起——审批是模态的,按错键比没反应更糟。
+ */
+export function moveApprovalIndex(key: TuiKey, index: number): number | undefined {
+  if (key.type === 'left') {
+    return (index + APPROVAL_OPTION_COUNT - 1) % APPROVAL_OPTION_COUNT;
+  }
+  if (key.type === 'right') {
+    return (index + 1) % APPROVAL_OPTION_COUNT;
+  }
+  return undefined;
 }
 
 /** 给输入框首行的斜杠命令着色,参数与普通文本保持原样。 */

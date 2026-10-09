@@ -45,6 +45,7 @@ import {
   inputBoxFrame,
   inputBoxLine,
   inputBoxRowRange,
+  moveApprovalIndex,
   overlayLines,
   paintSlashCommand,
   renderApprovalOptions,
@@ -1084,13 +1085,9 @@ export class TuiApp implements AgentUi {
     if (this.approvalCard === undefined || this.approvalResolve === undefined) {
       return;
     }
-    if (key.type === 'up' || key.type === 'left') {
-      this.approvalIndex = (this.approvalIndex + 2) % 3;
-      this.scheduleRender();
-      return;
-    }
-    if (key.type === 'down' || key.type === 'right') {
-      this.approvalIndex = (this.approvalIndex + 1) % 3;
+    const moved = moveApprovalIndex(key, this.approvalIndex);
+    if (moved !== undefined) {
+      this.approvalIndex = moved;
       this.scheduleRender();
       return;
     }
