@@ -1176,7 +1176,7 @@ export class TuiApp implements AgentUi {
   }
 
   /**
-   * 信任页整屏:顶部对齐的正文 + 底部居中的选项。
+   * 信任页整屏:垂直居中的正文 + 底部居中的选项。
    *
    * 页脚与命令审批卡片等高(含分隔线共 4 行),选项落在最后一行——与审批卡片的
    * 选项同高,主区高度也与审批卡片一致,两个状态切换时内容不跳动。
@@ -1201,8 +1201,7 @@ export class TuiApp implements AgentUi {
       docs: pending.docs,
     });
     const mainHeight = Math.max(1, rows - 1 - footer.length);
-    // 顶部留一行再排正文,不再垂直居中
-    const main = ['', ...body].slice(0, mainHeight);
+    const main = centerVertically(body, mainHeight).slice(0, mainHeight);
     while (main.length < mainHeight) {
       main.push('');
     }
