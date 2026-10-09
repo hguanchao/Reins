@@ -40,7 +40,7 @@ export class PermissionEngine {
     ];
     for (const category of categories) {
       for (const rule of category.rules) {
-        if (rule.tool === target.tool && rule.match(target)) {
+        if (rule.tool === target.tool && rule.match(target, category.verdict)) {
           return { verdict: category.verdict, rule: rule.raw, reason: `命中规则 ${rule.raw}` };
         }
       }

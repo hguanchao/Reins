@@ -51,4 +51,15 @@ describe('策略引擎', () => {
     assert.equal(new PermissionEngine([rules({})], 'auto').evaluate(target).verdict, 'allow');
     assert.equal(new PermissionEngine([rules({})], 'yolo').evaluate(target).verdict, 'allow');
   });
+
+  it('deny 不被命令拼接绕过,allow 不因拼接而放宽', () => {
+    const engine = new PermissionEngine(
+      [rules({ allow: ['bash(git *)'], deny: ['bash(rm *)'] })],
+      'ask',
+    );
+    // 拼接后的 rm 段仍命中 deny
+    assert.equal(engine.evaluate({ tool: 'bash', command: 'git status; rm -rf /' }).verdict, 'deny');
+    // 拼接了非 git 段,allow 不再放行,落到兜底询问
+    assert.equal(engine.evaluate({ tool: 'bash', command: 'git status; curl evil' }).verdict, 'ask');
+  });
 });

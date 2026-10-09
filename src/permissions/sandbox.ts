@@ -10,6 +10,11 @@ import type { Decision } from './engine.ts';
  * - workspace:写操作限制在工作区内,读不限制;
  * - read-only:禁止一切写操作,读不限制。
  * 沙箱与规则引擎相互独立:沙箱是硬边界(直接 deny),规则是细粒度策略。
+ *
+ * 边界说明:沙箱只约束**文件类工具**(read/write/edit/glob/grep 的路径参数);
+ * bash 不在其内——任意命令都可能写文件,静态判定做不到可靠,故交给 [permissions]
+ * 的规则表达(例如 deny = ["bash(rm *)"])。需要绝对只读时,除设 sandbox 外还应
+ * 用规则限制 bash。
  */
 export class Sandbox {
   readonly mode: SandboxMode;
