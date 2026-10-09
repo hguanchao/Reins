@@ -66,7 +66,7 @@ describe('滚动区块渲染', () => {
     assert.equal(assistantText.indexOf('好的'), userText.indexOf('任务'), '回复应与用户消息正文对齐');
   });
 
-  it('助手消息:markdown 渲染且流式光标只在末尾', () => {
+  it('助手消息:markdown 渲染,正文缩进两格且不画光标', () => {
     const streaming = renderBlock(
       { kind: 'assistant', text: '# 标题\n正文', streaming: true },
       60,
@@ -75,11 +75,11 @@ describe('滚动区块渲染', () => {
     assert.equal(streaming.some((line) => line.trim() === '助手'), false);
     // 正文缩进两格,与用户消息正文对齐
     assert.ok(streaming.some((line) => line === '  标题'));
-    assert.ok(streaming[streaming.length - 1]?.includes('▏'));
-    const idle = renderBlock({ kind: 'assistant', text: '完成', streaming: false }, 60, context)
-      .map(stripAnsi)
-      .join('\n');
-    assert.equal(idle.includes('▏'), false);
+    // 流式与否渲染一致:不追加任何光标字形(静态竖线看着像卡住的光标)
+    const idle = renderBlock({ kind: 'assistant', text: '# 标题\n正文', streaming: false }, 60, context)
+      .map(stripAnsi);
+    assert.deepEqual(streaming, idle);
+    assert.equal(streaming.join('\n').includes('▏'), false);
   });
 
   it('助手消息 markdown:粗体与代码栅栏上样式', () => {

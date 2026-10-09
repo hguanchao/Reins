@@ -126,22 +126,9 @@ function renderUser(text: string, width: number, theme: Theme): string[] {
   return [blank, ...body, blank];
 }
 
-function renderAssistant(
-  block: { text: string; streaming: boolean },
-  width: number,
-  theme: Theme,
-): string[] {
+function renderAssistant(block: { text: string }, width: number, theme: Theme): string[] {
   // 正文左缩进与用户消息正文对齐,不标注角色
-  const body = renderMarkdown(block.text, width, theme, ASSISTANT_INDENT);
-  if (block.streaming) {
-    if (body.length === 0) {
-      body.push(`${' '.repeat(ASSISTANT_INDENT)}${theme.paint.muted(symbols.cursor)}`);
-    } else {
-      const last = body.length - 1;
-      body[last] = `${body[last]}${theme.paint.muted(symbols.cursor)}`;
-    }
-  }
-  return body;
+  return renderMarkdown(block.text, width, theme, ASSISTANT_INDENT);
 }
 
 function renderTool(
@@ -472,7 +459,7 @@ function cacheStamp(block: ScrollBlock, width: number, context: RenderContext): 
     case 'user':
       return `${base}|u|${block.text}`;
     case 'assistant':
-      return `${base}|a|${block.streaming}|${block.text.length}|${block.text.slice(-80)}`;
+      return `${base}|a|${block.text.length}|${block.text.slice(-80)}`;
     case 'tool':
       return `${base}|t|${block.state}|${block.elapsedMs ?? ''}|${block.expanded === true}|${
         block.output?.length ?? 0

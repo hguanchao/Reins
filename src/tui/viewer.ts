@@ -131,7 +131,7 @@ function verboseStamp(block: ScrollBlock): string {
     case 'user':
       return `u|${block.text.length}|${block.text.slice(-80)}`;
     case 'assistant':
-      return `a|${block.streaming}|${block.text.length}|${block.text.slice(-80)}`;
+      return `a|${block.text.length}|${block.text.slice(-80)}`;
     case 'tool':
       return `t|${block.state}|${block.elapsedMs ?? ''}|${block.output?.length ?? 0}|${block.detail ?? ''}`;
     case 'notice':

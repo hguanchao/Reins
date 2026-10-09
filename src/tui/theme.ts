@@ -198,7 +198,6 @@ export const symbols = {
   ok: '√',
   fail: '×',
   warn: '!',
-  cursor: '▏',
   inputPrompt: '› ',
   separator: '─',
 };
