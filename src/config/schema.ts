@@ -24,6 +24,19 @@ export function isReasoningEffort(value: string): value is ReasoningEffort {
   return (REASONING_EFFORTS as readonly string[]).includes(value);
 }
 
+/**
+ * 把用户输入解析为档位:精确命中直接采纳,否则取唯一前缀命中(如 x → xhigh)。
+ *
+ * 前缀有歧义(m 同时命中 medium 与 max)或无人命中时返回 undefined,交由调用方报错。
+ */
+export function resolveReasoningEffort(value: string): ReasoningEffort | undefined {
+  if (isReasoningEffort(value)) {
+    return value;
+  }
+  const matches = REASONING_EFFORTS.filter((level) => level.startsWith(value));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 /** 主题预设:只切换配色方案,具体取值固定定义在 tui/theme.ts。 */
 export const THEME_PRESETS = ['dark', 'light', 'mono'] as const;
 export type ThemePreset = (typeof THEME_PRESETS)[number];

@@ -13,7 +13,7 @@ import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../
 import { ignoredNotice } from '../cli/trust.ts';
 import { ensureHomeConfig } from '../config/ensure.ts';
 import { loadLayeredConfig } from '../config/layers.ts';
-import { isReasoningEffort, REASONING_EFFORTS, type Config, type ReasoningEffort } from '../config/schema.ts';
+import { resolveReasoningEffort, REASONING_EFFORTS, type Config, type ReasoningEffort } from '../config/schema.ts';
 import { recordTrust, resolveProjectTrust, type TrustResolution } from '../config/trust.ts';
 import { existingProjectDocs } from '../context/agents-md.ts';
 import type { ToolCall, Usage } from '../llm/types.ts';
@@ -964,15 +964,17 @@ export class TuiApp implements AgentUi {
       this.openPicker('effort', rows, current !== undefined ? REASONING_EFFORTS.indexOf(current) : 0);
       return;
     }
-    if (!isReasoningEffort(value)) {
+    // 手打前缀按行尾提示补全后回车(xh → xhigh);歧义或无命中仍报错
+    const level = resolveReasoningEffort(value);
+    if (level === undefined) {
       this.pushNotice(`未知思考强度:${value}(可选:${REASONING_EFFORTS.join('|')})`, 'warn');
       return;
     }
-    this.effortOverride = value;
+    this.effortOverride = level;
     if (this.currentConfig !== undefined) {
-      this.currentConfig.reasoningEffort = value;
+      this.currentConfig.reasoningEffort = level;
     }
-    this.pushNotice(`思考强度已切换:${value}`, 'info');
+    this.pushNotice(`思考强度已切换:${level}`, 'info');
   }
 
   private async commandNew(): Promise<void> {
@@ -1511,7 +1513,7 @@ export class TuiApp implements AgentUi {
       return undefined;
     }
     const text = this.editor.text;
-    // 子菜单打开:提示参数的剩余部分(如 /effort x → 行尾补出 high)
+    // 菜单打开:按菜单载荷提示
     const picker = this.picker;
     if (picker !== undefined) {
       const prefix = `/${picker.kind} `;
@@ -1519,6 +1521,13 @@ export class TuiApp implements AgentUi {
         return undefined;
       }
       return prefixRemainder(picker.payloads, text.slice(prefix.length));
+    }
+    // 没开菜单也要能提示:手打 /effort xh、/model gpt 同样补出行尾
+    if (text.startsWith('/effort ')) {
+      return prefixRemainder(REASONING_EFFORTS, text.slice('/effort '.length));
+    }
+    if (text.startsWith('/model ')) {
+      return prefixRemainder(this.modelPayloads(), text.slice('/model '.length));
     }
     if (text === '/effort') {
       const effort = this.currentConfig?.reasoningEffort;
@@ -1530,6 +1539,17 @@ export class TuiApp implements AgentUi {
       return provider !== undefined && model !== undefined ? ` ${provider}/${model}` : undefined;
     }
     return undefined;
+  }
+
+  /** /model 的全部候选:与二级菜单同一口径。 */
+  private modelPayloads(): string[] {
+    const payloads: string[] = [];
+    for (const [name, spec] of Object.entries(this.catalog?.providers ?? {})) {
+      for (const model of spec.models) {
+        payloads.push(`${name}/${model.id}`);
+      }
+    }
+    return payloads;
   }
 
   private renderInputLines(width: number): {

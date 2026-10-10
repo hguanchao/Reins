@@ -5,7 +5,7 @@ import { findModelTarget, loadCatalogFile } from '../../catalog/load.ts';
 import type { Catalog } from '../../catalog/schema.ts';
 import { ensureHomeConfig } from '../../config/ensure.ts';
 import { loadLayeredConfig } from '../../config/layers.ts';
-import { isReasoningEffort, REASONING_EFFORTS, type Config, type ReasoningEffort } from '../../config/schema.ts';
+import { resolveReasoningEffort, REASONING_EFFORTS, type Config, type ReasoningEffort } from '../../config/schema.ts';
 import { createAgentRuntime, type AgentRuntime } from '../../agent/run.ts';
 import { formatUsage } from '../../llm/usage.ts';
 import { ConsoleUi } from '../../ui/printer.ts';
@@ -323,15 +323,16 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
           io.err(`用法:/effort <${REASONING_EFFORTS.join('|')}>`);
           continue;
         }
-        if (!isReasoningEffort(command.value)) {
+        const level = resolveReasoningEffort(command.value);
+        if (level === undefined) {
           io.err(`未知思考强度:${command.value}(可选:${REASONING_EFFORTS.join('|')})`);
           continue;
         }
-        effortOverride = command.value;
+        effortOverride = level;
         if (currentConfig !== undefined) {
-          currentConfig.reasoningEffort = effortOverride;
+          currentConfig.reasoningEffort = level;
         }
-        io.err(`思考强度已切换:${effortOverride}`);
+        io.err(`思考强度已切换:${level}`);
         continue;
       }
       if (command.type === 'resume') {

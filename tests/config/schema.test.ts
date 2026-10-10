@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ConfigError } from '../../src/util/errors.ts';
-import { DEFAULT_MAX_RETRIES, DEFAULT_SPILL_THRESHOLD, isReasoningEffort, parseConfig } from '../../src/config/schema.ts';
+import { DEFAULT_MAX_RETRIES, DEFAULT_SPILL_THRESHOLD, isReasoningEffort, parseConfig, resolveReasoningEffort } from '../../src/config/schema.ts';
 
 describe('config.toml 校验', () => {
   it('思考强度档位守卫:六个合法值通过,其余拒绝', () => {
@@ -11,6 +11,16 @@ describe('config.toml 校验', () => {
     for (const value of ['default', 'HIGH', 'xhigh ', '', 'me dium']) {
       assert.equal(isReasoningEffort(value), false, `${value} 应为非法档位`);
     }
+  });
+
+  it('输入解析:精确命中与唯一前缀命中,歧义或无命中拒绝', () => {
+    assert.equal(resolveReasoningEffort('high'), 'high');
+    assert.equal(resolveReasoningEffort('xh'), 'xhigh');
+    assert.equal(resolveReasoningEffort('o'), 'off');
+    // m 同时命中 medium 与 max,前缀歧义不采纳
+    assert.equal(resolveReasoningEffort('m'), undefined);
+    assert.equal(resolveReasoningEffort('z'), undefined);
+    assert.equal(resolveReasoningEffort(''), undefined);
   });
 
   it('最小配置应用默认值', () => {
