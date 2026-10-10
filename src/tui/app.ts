@@ -771,8 +771,11 @@ export class TuiApp implements AgentUi {
     if (this.running) {
       return;
     }
+    // 菜单打开时回车只应用选中项:回显到输入框,再按一次才发送,免得误发没确认的命令
     if (this.editor.completionState !== null) {
       this.editor.applyCompletion();
+      this.scheduleRender();
+      return;
     }
     const text = this.editor.submit();
     if (text.trim() === '') {
