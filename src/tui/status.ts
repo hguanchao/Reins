@@ -38,7 +38,7 @@ export function renderStatusBar(width: number, theme: Theme, info: StatusBarInfo
     info.reasoning !== undefined
       ? `🤖 ${info.model ?? '—'} · 🧠 ${info.reasoning}`
       : `🤖 ${info.model ?? '—'}`,
-    // 用量为 undefined 说明端点没回传 usage(0 由上层在「还没跑过」时给出),如实显示未知
+    // 用量为 undefined 说明还没有回传过真实用量(端点没报或还没跑过),如实显示未知
     `📊 ${formatTokens(info.promptTokens)} / ${formatTokens(info.contextWindow)}`,
     `⚡ ${formatHitRate(info)}`,
   ];

@@ -49,8 +49,7 @@ describe('状态栏', () => {
     assert.equal(text, '📁 Reins · 🌿 main | 🤖 — · 🧠 max | 📊 — / — | ⚡ —');
   });
 
-  it('上下文用量:还没跑过是真的 0,端点未回传显示未知', () => {
-    assert.ok(bar({ promptTokens: 0 }).includes('📊 0.0K / 1M'));
+  it('上下文用量没有真实回传时显示未知', () => {
     assert.ok(bar({ promptTokens: undefined }).includes('📊 — / 1M'));
   });
 
