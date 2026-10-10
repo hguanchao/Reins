@@ -9,7 +9,7 @@ import {
   CHAT_HELP_TEXT,
   parseChatCommand,
 } from '../cli/commands/chat-commands.ts';
-import { latestSessionFile, resolveSessionFile } from '../cli/commands/sessions.ts';
+import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../cli/commands/sessions.ts';
 import { ignoredNotice } from '../cli/trust.ts';
 import { ensureHomeConfig } from '../config/ensure.ts';
 import { loadLayeredConfig } from '../config/layers.ts';
@@ -780,6 +780,9 @@ export class TuiApp implements AgentUi {
     this.scheduleRender();
     const command = parseChatCommand(text);
     switch (command.type) {
+      case 'exit':
+        this.requestExit();
+        return;
       case 'empty':
         return;
       case 'help':
@@ -787,6 +790,9 @@ export class TuiApp implements AgentUi {
         break;
       case 'mcp':
         this.printMcp();
+        break;
+      case 'new':
+        await this.commandNew();
         break;
       case 'compact':
         await this.commandCompact();
@@ -796,6 +802,9 @@ export class TuiApp implements AgentUi {
         break;
       case 'effort':
         this.commandEffort(command.value);
+        break;
+      case 'resume':
+        await this.commandResume(command.id);
         break;
       case 'prompt':
         await this.runPrompt(command.text);
@@ -892,6 +901,38 @@ export class TuiApp implements AgentUi {
     this.pushNotice(`思考强度已切换:${value}`, 'info');
   }
 
+  private async commandNew(): Promise<void> {
+    try {
+      await this.rebuild({ freshSession: true });
+      this.pushNotice(`已开始新会话:${this.runtime?.session.id ?? ''}`, 'info');
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
+    }
+  }
+
+  private async commandResume(id: string | undefined): Promise<void> {
+    if (id === undefined) {
+      const summaries = await listSessionSummaries(this.options.home);
+      if (summaries.length === 0) {
+        this.pushNotice('还没有任何会话。', 'info');
+      }
+      for (const summary of summaries.slice(0, 10)) {
+        this.pushNotice(
+          `${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`,
+          'info',
+        );
+      }
+      this.pushNotice('用法:/sessions <会话 id>(或 reins resume 恢复最近一次)', 'info');
+      return;
+    }
+    try {
+      await this.rebuild({ sessionFile: await resolveSessionFile(this.options.home, id, this.options.workspace) });
+      this.pushNotice(`已恢复会话:${this.runtime?.session.id ?? ''}`, 'info');
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
+    }
+  }
+
   private async runPrompt(text: string): Promise<void> {
     if (this.running) {
       return;
@@ -953,7 +994,12 @@ export class TuiApp implements AgentUi {
     return this.trust?.projectAllowed === true;
   }
 
-  private async rebuild(options: { provider?: string; model?: string }): Promise<void> {
+  private async rebuild(options: {
+    provider?: string;
+    model?: string;
+    sessionFile?: string;
+    freshSession?: boolean;
+  }): Promise<void> {
     const layered = await loadLayeredConfig({
       home: this.options.home,
       cwd: this.options.workspace,
@@ -966,7 +1012,8 @@ export class TuiApp implements AgentUi {
     });
     this.applyTheme();
     this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
-    const sessionFile = this.runtime?.session.path;
+    const sessionFile =
+      options.freshSession === true ? undefined : (options.sessionFile ?? this.runtime?.session.path);
     await this.runtime?.close();
     this.runtime = undefined;
     // 换会话(或换模型)后上一轮的用量不再代表当前上下文,先清掉避免显示残留数字

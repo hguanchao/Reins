@@ -5,16 +5,28 @@
  */
 
 export type ChatCommand =
+  | { type: 'exit' }
   | { type: 'help' }
+  | { type: 'new' }
   | { type: 'compact' }
   | { type: 'mcp' }
   | { type: 'model'; target: string | undefined }
   | { type: 'effort'; value: string | undefined }
+  | { type: 'resume'; id: string | undefined }
   | { type: 'empty' }
   | { type: 'prompt'; text: string };
 
 /** 可补全的斜杠命令集合。 */
-export const CHAT_COMMANDS: readonly string[] = ['/compact', '/effort', '/help', '/mcp', '/model'];
+export const CHAT_COMMANDS: readonly string[] = [
+  '/compact',
+  '/effort',
+  '/help',
+  '/mcp',
+  '/model',
+  '/new',
+  '/quit',
+  '/sessions',
+];
 
 /**
  * 斜杠命令的说明,供补全菜单逐条展示。
@@ -27,6 +39,9 @@ export const CHAT_COMMAND_DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/help': '显示帮助',
   '/mcp': '显示 MCP 服务器状态',
   '/model': '查看或切换模型',
+  '/new': '开始新会话',
+  '/quit': '退出',
+  '/sessions': '恢复会话;无 id 时列出',
 };
 
 /** 解析一行输入:斜杠命令或普通任务文本(未知斜杠按普通文本处理)。 */
@@ -41,9 +56,13 @@ export function parseChatCommand(input: string): ChatCommand {
   const [name, ...rest] = trimmed.slice(1).split(/\s+/);
   const arg = rest.join(' ').trim() === '' ? undefined : rest.join(' ').trim();
   switch ((name ?? '').toLowerCase()) {
+    case 'quit':
+      return { type: 'exit' };
     case 'help':
     case 'hotkeys':
       return { type: 'help' };
+    case 'new':
+      return { type: 'new' };
     case 'compact':
       return { type: 'compact' };
     case 'mcp':
@@ -54,6 +73,8 @@ export function parseChatCommand(input: string): ChatCommand {
       return { type: 'model', target: arg };
     case 'effort':
       return { type: 'effort', value: arg };
+    case 'sessions':
+      return { type: 'resume', id: arg };
     default:
       return { type: 'prompt', text: trimmed };
   }
@@ -83,8 +104,11 @@ export const CHAT_HELP_TEXT = [
   '/help                 显示帮助',
   '/model [provider/model-id]  查看或切换模型',
   '/effort [off|low|medium|high|xhigh|max]  查看或切换思考强度',
+  '/new                  开始新会话',
+  '/sessions [会话 id]   恢复会话;无 id 时列出',
   '/compact              立即压缩上下文',
   '/mcp(/mcps)           显示 MCP 服务器状态',
+  '/quit                 退出',
   '',
   '快捷键:↑/↓ 历史 · @ 引用文件 · Tab 补全 · Ctrl+J 换行',
   '        Ctrl+O 全屏查看工具输出 · Ctrl+E 展开或折叠 · Ctrl+C/Esc 中断 · 空行 Ctrl+D 退出',

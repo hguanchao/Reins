@@ -12,7 +12,7 @@ import { ConsoleUi } from '../../ui/printer.ts';
 import { describeError } from '../../util/errors.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
 import { startTui } from '../../tui/app.ts';
-import { latestSessionFile, resolveSessionFile } from './sessions.ts';
+import { latestSessionFile, listSessionSummaries, resolveSessionFile } from './sessions.ts';
 import {
   CHAT_COMMANDS,
   CHAT_HELP_TEXT,
@@ -147,7 +147,12 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
     resumeFile = undefined;
   };
 
-  const rebuild = async (options: { provider?: string; model?: string }): Promise<void> => {
+  const rebuild = async (options: {
+    provider?: string;
+    model?: string;
+    sessionFile?: string;
+    freshSession?: boolean;
+  }): Promise<void> => {
     const layered = await loadLayeredConfig({ home, cwd: workspace, projectLayer });
     currentConfig = {
       ...layered.config,
@@ -156,7 +161,8 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
       ...(effortOverride !== undefined ? { reasoningEffort: effortOverride } : {}),
     };
     catalog = await loadCatalogFile(join(home, 'providers.json'));
-    const sessionFile = runtime?.session.path;
+    const sessionFile =
+      options.freshSession === true ? undefined : (options.sessionFile ?? runtime?.session.path);
     await runtime?.close();
     runtime = undefined;
     runtime = await createAgentRuntime({
@@ -215,7 +221,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
     });
 
     io.err(`Reins 交互模式${runtime !== undefined ? ` · 会话 ${runtime.session.id}` : ''}`);
-    io.err('输入任务开始对话;/help 查看命令,空行 Ctrl+D 退出。');
+    io.err('输入任务开始对话;/help 查看命令,/quit 退出。');
     io.err('');
 
     for (;;) {
@@ -227,6 +233,9 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
       }
       const command = parseChatCommand(line);
 
+      if (command.type === 'exit') {
+        break;
+      }
       if (command.type === 'empty') {
         continue;
       }
@@ -247,6 +256,15 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
                 : `  × ${status.name} · ${status.error ?? '未知原因'}`,
             );
           }
+        }
+        continue;
+      }
+      if (command.type === 'new') {
+        try {
+          await rebuild({ freshSession: true });
+          io.err(`已开始新会话:${runtime?.session.id}`);
+        } catch (error) {
+          io.err(`错误:${describeError(error)}`);
         }
         continue;
       }
@@ -314,6 +332,26 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
           currentConfig.reasoningEffort = effortOverride;
         }
         io.err(`思考强度已切换:${effortOverride}`);
+        continue;
+      }
+      if (command.type === 'resume') {
+        if (command.id === undefined) {
+          const summaries = await listSessionSummaries(home);
+          if (summaries.length === 0) {
+            io.err('还没有任何会话。');
+          }
+          for (const summary of summaries.slice(0, 10)) {
+            io.err(`  ${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`);
+          }
+          io.err('用法:/sessions <会话 id>(或 reins resume 恢复最近一次)');
+          continue;
+        }
+        try {
+          await rebuild({ sessionFile: await resolveSessionFile(home, command.id, workspace) });
+          io.err(`已恢复会话:${runtime?.session.id}`);
+        } catch (error) {
+          io.err(`错误:${describeError(error)}`);
+        }
         continue;
       }
 

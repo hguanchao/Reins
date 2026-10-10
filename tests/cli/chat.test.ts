@@ -12,8 +12,10 @@ describe('交互模式输入解析', () => {
   it('空行与斜杠命令', () => {
     assert.equal(parseChatCommand('').type, 'empty');
     assert.equal(parseChatCommand('   ').type, 'empty');
+    assert.equal(parseChatCommand('/quit').type, 'exit');
     assert.equal(parseChatCommand('/help').type, 'help');
     assert.equal(parseChatCommand('/hotkeys').type, 'help');
+    assert.equal(parseChatCommand('/new').type, 'new');
     assert.equal(parseChatCommand('/compact').type, 'compact');
     assert.equal(parseChatCommand('/mcp').type, 'mcp');
     assert.equal(parseChatCommand('/mcps').type, 'mcp');
@@ -34,6 +36,13 @@ describe('交互模式输入解析', () => {
     const bareEffort = parseChatCommand('/effort');
     assert.equal(bareEffort.type, 'effort');
     assert.equal(bareEffort.type === 'effort' ? bareEffort.value : 'x', undefined);
+
+    const resume = parseChatCommand('/sessions s-abc');
+    assert.equal(resume.type, 'resume');
+    assert.equal(resume.type === 'resume' ? resume.id : undefined, 's-abc');
+    const bareResume = parseChatCommand('/sessions');
+    assert.equal(bareResume.type, 'resume');
+    assert.equal(bareResume.type === 'resume' ? bareResume.id : 'x', undefined);
   });
 
   it('普通文本作为任务,首尾空白被裁剪', () => {
@@ -45,8 +54,8 @@ describe('交互模式输入解析', () => {
   it('未知斜杠输入按普通文本处理', () => {
     assert.equal(parseChatCommand('/unknown cmd').type, 'prompt');
     assert.equal(parseChatCommand('/tmp/file.txt').type, 'prompt');
-    // 已移除的会话管理命令不再特殊化,按普通文本交给模型
-    for (const removed of ['/exit', '/quit', '/new', '/clear', '/resume', '/sessions', '/session', '/status']) {
+    // 已移除的命令(/exit、/clear、/resume、/session、/status)不再特殊化,按普通文本交给模型
+    for (const removed of ['/exit', '/clear', '/resume', '/session', '/status']) {
       assert.equal(parseChatCommand(removed).type, 'prompt', `${removed} 应按普通文本处理`);
     }
   });
