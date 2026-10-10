@@ -19,6 +19,11 @@ export const SANDBOX_MODES: readonly SandboxMode[] = ['off', 'workspace', 'read-
 export const NOTIFY_MODES: readonly NotifyMode[] = ['auto', 'bell', 'desktop', 'off'];
 export const REASONING_EFFORTS: readonly ReasoningEffort[] = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
 
+/** 判断一个字符串是否是合法的思考强度档位;配置解析与 /effort 共用这一份口径。 */
+export function isReasoningEffort(value: string): value is ReasoningEffort {
+  return (REASONING_EFFORTS as readonly string[]).includes(value);
+}
+
 /** 主题预设:只切换配色方案,具体取值固定定义在 tui/theme.ts。 */
 export const THEME_PRESETS = ['dark', 'light', 'mono'] as const;
 export type ThemePreset = (typeof THEME_PRESETS)[number];

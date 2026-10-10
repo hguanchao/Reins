@@ -5,7 +5,7 @@ import { findModelTarget, loadCatalogFile } from '../../catalog/load.ts';
 import type { Catalog } from '../../catalog/schema.ts';
 import { ensureHomeConfig } from '../../config/ensure.ts';
 import { loadLayeredConfig } from '../../config/layers.ts';
-import type { Config } from '../../config/schema.ts';
+import { isReasoningEffort, REASONING_EFFORTS, type Config, type ReasoningEffort } from '../../config/schema.ts';
 import { createAgentRuntime, type AgentRuntime } from '../../agent/run.ts';
 import { formatUsage } from '../../llm/usage.ts';
 import { ConsoleUi } from '../../ui/printer.ts';
@@ -111,6 +111,8 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
   let runtime: AgentRuntime | undefined;
   let catalog: Catalog | undefined;
   let currentConfig: Config | undefined;
+  /** /effort 的会话内覆盖;undefined = 跟随配置文件。单独留存,保证重建后仍然生效。 */
+  let effortOverride: ReasoningEffort | undefined;
   let running = false;
   let activeRun: AbortController | undefined;
 
@@ -127,7 +129,10 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
 
   const startup = async (): Promise<void> => {
     const layered = await loadLayeredConfig({ home, cwd: workspace, projectLayer });
-    currentConfig = layered.config;
+    currentConfig =
+      effortOverride !== undefined
+        ? { ...layered.config, reasoningEffort: effortOverride }
+        : layered.config;
     catalog = await loadCatalogFile(join(home, 'providers.json'));
     runtime = await createAgentRuntime({
       config: currentConfig,
@@ -153,6 +158,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
       ...layered.config,
       ...(options.provider !== undefined ? { provider: options.provider } : {}),
       ...(options.model !== undefined ? { model: options.model } : {}),
+      ...(effortOverride !== undefined ? { reasoningEffort: effortOverride } : {}),
     };
     catalog = await loadCatalogFile(join(home, 'providers.json'));
     const sessionFile =
@@ -332,6 +338,24 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
         } else {
           io.err(`未找到模型:${command.target}(用 /model 查看可选)`);
         }
+        continue;
+      }
+      // 切换时原地写入当前配置:代理循环每轮都从创建时持有的引用读取,不必重建运行时
+      if (command.type === 'effort') {
+        if (command.value === undefined) {
+          io.err(`当前思考强度:${currentConfig?.reasoningEffort ?? '未设置(请求不带参数,跟随上游默认)'}`);
+          io.err(`用法:/effort <${REASONING_EFFORTS.join('|')}>`);
+          continue;
+        }
+        if (!isReasoningEffort(command.value)) {
+          io.err(`未知思考强度:${command.value}(可选:${REASONING_EFFORTS.join('|')})`);
+          continue;
+        }
+        effortOverride = command.value;
+        if (currentConfig !== undefined) {
+          currentConfig.reasoningEffort = effortOverride;
+        }
+        io.err(`思考强度已切换:${effortOverride}`);
         continue;
       }
       if (command.type === 'resume') {

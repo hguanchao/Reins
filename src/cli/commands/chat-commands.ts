@@ -13,6 +13,7 @@ export type ChatCommand =
   | { type: 'compact' }
   | { type: 'mcp' }
   | { type: 'model'; target: string | undefined }
+  | { type: 'effort'; value: string | undefined }
   | { type: 'resume'; id: string | undefined }
   | { type: 'empty' }
   | { type: 'prompt'; text: string };
@@ -21,6 +22,7 @@ export type ChatCommand =
 export const CHAT_COMMANDS: readonly string[] = [
   '/clear',
   '/compact',
+  '/effort',
   '/exit',
   '/help',
   '/mcp',
@@ -41,6 +43,7 @@ export const CHAT_COMMANDS: readonly string[] = [
 export const CHAT_COMMAND_DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/clear': '开始新会话',
   '/compact': '立即压缩上下文',
+  '/effort': '查看或切换思考强度',
   '/exit': '退出',
   '/help': '显示帮助',
   '/mcp': '显示 MCP 服务器状态',
@@ -86,6 +89,8 @@ export function parseChatCommand(input: string): ChatCommand {
     case 'model':
     case 'm':
       return { type: 'model', target: arg };
+    case 'effort':
+      return { type: 'effort', value: arg };
     case 'resume':
     case 'sessions':
       return { type: 'resume', id: arg };
@@ -118,6 +123,7 @@ export const CHAT_HELP_TEXT = [
   '/help                 显示帮助',
   '/new(/clear)          开始新会话',
   '/model [provider/model-id]  查看或切换模型',
+  '/effort [off|low|medium|high|xhigh|max]  查看或切换思考强度',
   '/compact              立即压缩上下文',
   '/status               显示会话与模型状态',
   '/mcp(/mcps)           显示 MCP 服务器状态',

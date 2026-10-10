@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  CHAT_COMMANDS,
   completeChatInput,
   decideInterrupt,
   parseChatCommand,
 } from '../../src/cli/commands/chat.ts';
+import { CHAT_COMMAND_DESCRIPTIONS } from '../../src/cli/commands/chat-commands.ts';
 
 describe('交互模式输入解析', () => {
   it('空行与斜杠命令', () => {
@@ -20,6 +22,7 @@ describe('交互模式输入解析', () => {
     assert.equal(parseChatCommand('/compact').type, 'compact');
     assert.equal(parseChatCommand('/mcp').type, 'mcp');
     assert.equal(parseChatCommand('/mcps').type, 'mcp');
+    assert.equal(parseChatCommand('/effort').type, 'effort');
   });
 
   it('带参数的命令', () => {
@@ -29,6 +32,13 @@ describe('交互模式输入解析', () => {
     const bare = parseChatCommand('/model');
     assert.equal(bare.type, 'model');
     assert.equal(bare.type === 'model' ? bare.target : 'x', undefined);
+
+    const effort = parseChatCommand('/effort high');
+    assert.equal(effort.type, 'effort');
+    assert.equal(effort.type === 'effort' ? effort.value : undefined, 'high');
+    const bareEffort = parseChatCommand('/effort');
+    assert.equal(bareEffort.type, 'effort');
+    assert.equal(bareEffort.type === 'effort' ? bareEffort.value : 'x', undefined);
 
     const resume = parseChatCommand('/resume s-abc');
     assert.equal(resume.type, 'resume');
@@ -61,6 +71,13 @@ describe('中断决策', () => {
 });
 
 describe('斜杠命令补全', () => {
+  it('/effort 已注册且补全菜单有说明', () => {
+    assert.ok(CHAT_COMMANDS.includes('/effort'));
+    assert.equal(CHAT_COMMAND_DESCRIPTIONS['/effort'], '查看或切换思考强度');
+    const [matches] = completeChatInput('/ef');
+    assert.deepEqual(matches, ['/effort']);
+  });
+
   it('斜杠前缀补全命令', () => {
     const [matches, line] = completeChatInput('/mo');
     assert.deepEqual(matches, ['/model']);

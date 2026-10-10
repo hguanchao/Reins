@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ConfigError } from '../../src/util/errors.ts';
-import { DEFAULT_MAX_RETRIES, DEFAULT_SPILL_THRESHOLD, parseConfig } from '../../src/config/schema.ts';
+import { DEFAULT_MAX_RETRIES, DEFAULT_SPILL_THRESHOLD, isReasoningEffort, parseConfig } from '../../src/config/schema.ts';
 
 describe('config.toml 校验', () => {
+  it('思考强度档位守卫:六个合法值通过,其余拒绝', () => {
+    for (const value of ['off', 'low', 'medium', 'high', 'xhigh', 'max']) {
+      assert.equal(isReasoningEffort(value), true, `${value} 应为合法档位`);
+    }
+    for (const value of ['default', 'HIGH', 'xhigh ', '', 'me dium']) {
+      assert.equal(isReasoningEffort(value), false, `${value} 应为非法档位`);
+    }
+  });
+
   it('最小配置应用默认值', () => {
     const config = parseConfig({ provider: 'p', model: 'm' });
     assert.equal(config.provider, 'p');

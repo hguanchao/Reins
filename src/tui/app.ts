@@ -13,7 +13,7 @@ import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../
 import { ignoredNotice } from '../cli/trust.ts';
 import { ensureHomeConfig } from '../config/ensure.ts';
 import { loadLayeredConfig } from '../config/layers.ts';
-import type { Config } from '../config/schema.ts';
+import { isReasoningEffort, REASONING_EFFORTS, type Config, type ReasoningEffort } from '../config/schema.ts';
 import { recordTrust, resolveProjectTrust, type TrustResolution } from '../config/trust.ts';
 import { existingProjectDocs } from '../context/agents-md.ts';
 import type { ToolCall, Usage } from '../llm/types.ts';
@@ -167,6 +167,8 @@ export class TuiApp implements AgentUi {
   private runtime: AgentRuntime | undefined;
   private catalog: Catalog | undefined;
   private currentConfig: Config | undefined;
+  /** /effort 的会话内覆盖;undefined = 跟随配置文件。单独留存,保证 /model、/new 重建后仍然生效。 */
+  private effortOverride: ReasoningEffort | undefined;
 
   private running = false;
   private focused = true;
@@ -807,6 +809,9 @@ export class TuiApp implements AgentUi {
       case 'model':
         await this.commandModel(command.target);
         break;
+      case 'effort':
+        this.commandEffort(command.value);
+        break;
       case 'resume':
         await this.commandResume(command.id);
         break;
@@ -914,6 +919,32 @@ export class TuiApp implements AgentUi {
     }
   }
 
+  /**
+   * /effort:查看或切换思考强度。
+   *
+   * 切换时原地写入当前配置:代理循环每轮都从创建时持有的 config 引用读取该值,
+   * 没必要为这一个字段重建运行时、把 MCP 连接白白断一遍。
+   */
+  private commandEffort(value: string | undefined): void {
+    if (value === undefined) {
+      this.pushNotice(
+        `当前思考强度:${this.currentConfig?.reasoningEffort ?? '未设置(请求不带参数,跟随上游默认)'}`,
+        'info',
+      );
+      this.pushNotice(`用法:/effort <${REASONING_EFFORTS.join('|')}>`, 'info');
+      return;
+    }
+    if (!isReasoningEffort(value)) {
+      this.pushNotice(`未知思考强度:${value}(可选:${REASONING_EFFORTS.join('|')})`, 'warn');
+      return;
+    }
+    this.effortOverride = value;
+    if (this.currentConfig !== undefined) {
+      this.currentConfig.reasoningEffort = value;
+    }
+    this.pushNotice(`思考强度已切换:${value}`, 'info');
+  }
+
   private async commandResume(id: string | undefined): Promise<void> {
     if (id === undefined) {
       const summaries = await listSessionSummaries(this.options.home);
@@ -973,7 +1004,7 @@ export class TuiApp implements AgentUi {
       cwd: this.options.workspace,
       projectLayer: this.projectLayer(),
     });
-    this.currentConfig = layered.config;
+    this.currentConfig = this.applyEffort(layered.config);
     this.applyTheme();
     this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
     this.runtime = await createAgentRuntime({
@@ -1027,11 +1058,11 @@ export class TuiApp implements AgentUi {
       cwd: this.options.workspace,
       projectLayer: this.projectLayer(),
     });
-    this.currentConfig = {
+    this.currentConfig = this.applyEffort({
       ...layered.config,
       ...(options.provider !== undefined ? { provider: options.provider } : {}),
       ...(options.model !== undefined ? { model: options.model } : {}),
-    };
+    });
     this.applyTheme();
     this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
     const sessionFile =
@@ -1050,6 +1081,13 @@ export class TuiApp implements AgentUi {
       projectTrusted: this.projectAllowed(),
       approval: { approver: this.approver },
     });
+  }
+
+  /** 装配生效配置:/effort 的会话内覆盖要压过配置文件,且在重建后继续生效。 */
+  private applyEffort(config: Config): Config {
+    return this.effortOverride !== undefined
+      ? { ...config, reasoningEffort: this.effortOverride }
+      : config;
   }
 
   private async ensureRuntime(): Promise<AgentRuntime> {
