@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { collectModelTurn } from '../../agent/turn.ts';
 import {
   loadCatalogFile,
   resolveAuth,
@@ -6,10 +7,10 @@ import {
   resolveProvider,
   type ResolvedAuth,
 } from '../../catalog/load.ts';
-import type { Catalog } from '../../catalog/schema.ts';
+import type { Catalog, ModelSpec, ProviderSpec } from '../../catalog/schema.ts';
 import { loadLayeredConfig } from '../../config/layers.ts';
 import type { Config } from '../../config/schema.ts';
-import { supportedApis } from '../../llm/stream.ts';
+import { createAdapter, supportedApis } from '../../llm/stream.ts';
 import { McpManager } from '../../mcp/servers.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
 import { describeError } from '../../util/errors.ts';
@@ -17,7 +18,7 @@ import { defaultIo, type CommandIo, type ParsedArgs } from '../args.ts';
 import { ignoredNotice, resolveTrustForCli, trustLine } from '../trust.ts';
 
 /**
- * doctor 子命令:自检配置、目录、模型解析、密钥与端点连通性。
+ * doctor 子命令:自检配置、目录、模型解析、密钥、端点连通性与流式用量回传。
  *
  * 设计意图:把「第一次跑不起来」的各种原因逐项检查并给出可行动的结论;
  * 任一硬性问题都会让退出码为 1,便于脚本化校验。
@@ -129,9 +130,65 @@ async function checkModel(
         issues.push(`端点连通性检查失败:${describeError(error)}`);
       }
     }
+
+    if (
+      !skipNetwork &&
+      /^https?:\/\//.test(provider.baseUrl) &&
+      supportedApis().includes(provider.api)
+    ) {
+      try {
+        const reported = await probeStreamUsage(config, provider, model, auth);
+        if (reported) {
+          passes.push('流式用量回传正常(状态栏上下文用量可用)');
+        } else {
+          issues.push(
+            '端点未回传流式 usage(常见于忽略 stream_options 的兼容网关):状态栏上下文用量与缓存命中率不可用',
+          );
+        }
+      } catch (error) {
+        issues.push(`流式用量检查失败:${describeError(error)}`);
+      }
+    }
   } catch (error) {
     issues.push(describeError(error));
   }
+}
+
+/**
+ * 发一个最小的流式请求,检查端点是否回传 usage。
+ *
+ * 状态栏的上下文用量与缓存命中率完全依赖流式 usage 块;不少 OpenAI 兼容网关
+ * 会忽略 stream_options 让块永不出现,在自检时就把这个问题暴露出来。
+ */
+async function probeStreamUsage(
+  config: Config,
+  provider: ProviderSpec,
+  model: ModelSpec,
+  auth: ResolvedAuth,
+): Promise<boolean> {
+  const turn = await collectModelTurn({
+    adapter: createAdapter(provider.api),
+    runtime: { maxRetries: 1, proxy: config.proxy },
+    request: {
+      model: {
+        provider: config.provider,
+        id: model.id,
+        api: provider.api,
+        baseUrl: provider.baseUrl,
+        contextWindow: model.contextWindow ?? config.contextWindow ?? 0,
+        maxTokens: model.maxTokens,
+        reasoning: model.reasoning,
+        cost: model.cost,
+        headers: { ...auth.headers },
+        apiKey: auth.apiKey,
+      },
+      messages: [{ role: 'user', content: 'ping' }],
+      tools: [],
+      signal: AbortSignal.timeout(15000),
+    },
+  });
+  // 适配器收到 usage 块才会填 inputTokens;缺省值是 0,而真实请求不可能为 0
+  return turn.usage.inputTokens > 0;
 }
 
 async function probeEndpoint(baseUrl: string, auth: ResolvedAuth): Promise<number> {
