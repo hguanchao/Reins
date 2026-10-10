@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { InputEditor } from '../../src/tui/editor.ts';
+import { tokenAt, tokenKind } from '../../src/tui/chrome.ts';
 import { createFileIndex, needsFileScan, rankFileCandidates } from '../../src/tui/files.ts';
 import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 
@@ -85,19 +85,15 @@ describe('@ 文件索引', () => {
 
   it('首次输入 @ 就能触发扫描并给出候选', async () => {
     const index = createFileIndex(dir);
-    const editor = new InputEditor({ commands: [], files: () => index.list() });
-    editor.insert('看看 @');
+    const text = '看看 @';
+    const token = tokenAt(text, text.length);
+    const query = token !== undefined && tokenKind(token, text) === 'mention' ? token.text.slice(1) : null;
     // 旧实现拿「已出现 mention 补全」当刷新条件,而空索引下补全恒为空,于是永远不扫描
-    const beforeScan = editor.completionState;
-    assert.equal(beforeScan, null);
-    // 走上层的真实判断与流程
-    if (needsFileScan(editor.mentionQuery(), index.stale())) {
-      await index.refresh();
-      editor.refreshCompletion();
-    }
-    const completion = editor.completionState;
-    if (completion === null) throw new Error('扫描后应出现候选');
-    assert.ok(completion.items.includes('src/app.ts'), completion.items.join(','));
+    assert.equal(needsFileScan(query, index.stale()), true);
+    await index.refresh();
+    assert.equal(index.stale(), false);
+    const ranked = rankFileCandidates(index.list(), query ?? '', 20);
+    assert.ok(ranked.includes('src/app.ts'), ranked.join(','));
   });
 });
 

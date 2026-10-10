@@ -252,6 +252,29 @@ function padDisplay(text: string, width: number): string {
 }
 
 /**
+ * 快捷键页:两列(键 / 作用),整块居中,顶部一行标题。
+ *
+ * 键位表由调用方传入(与 /help 共用同一份),这里只负责排版——键列按最宽的一项对齐。
+ */
+export function renderHelpPage(
+  width: number,
+  theme: Theme,
+  keys: readonly { keys: string; action: string }[],
+): string[] {
+  const keyWidth = keys.reduce((max, row) => Math.max(max, visibleWidth(row.keys)), 0) + 2;
+  const lines = ['快捷键', ''];
+  for (const row of keys) {
+    lines.push(`${padDisplay(row.keys, keyWidth)}${row.action}`);
+  }
+  lines.push('', '命令列表见 /help');
+  const blockWidth = lines.reduce((max, row) => Math.max(max, visibleWidth(row)), 0);
+  const indent = ' '.repeat(Math.max(0, Math.floor((width - blockWidth) / 2)));
+  return lines.map((row, index) =>
+    index === 0 ? `${indent}${theme.paint.accent(row)}` : `${indent}${row}`,
+  );
+}
+
+/**
  * 信任页:居中提问 + 目录路径 + 会被采纳的内容。
  *
  * 会被采纳的内容分两块:项目层对全局配置的覆盖(逐条给「改成什么」),

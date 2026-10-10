@@ -1,4 +1,5 @@
 import { isFile, readTextFile, writeTextFile } from '../util/fsx.ts';
+import { formatDiff, lineDiff } from './diff.ts';
 import { absolutize } from '../util/paths.ts';
 import {
   requireString,
@@ -31,6 +32,19 @@ export class EditTool implements Tool {
 
   targetOf(input: Record<string, unknown>, ctx: ToolContext) {
     return { path: absolutize(requireString(input, 'path', this.name), ctx.workspace) };
+  }
+
+  /** 审批前预览:把 oldText → newText 的改动摊成几行。 */
+  previewOf(input: Record<string, unknown>): string[] | undefined {
+    const oldText = typeof input['oldText'] === 'string' ? input['oldText'] : undefined;
+    const newText = typeof input['newText'] === 'string' ? input['newText'] : undefined;
+    if (oldText === undefined || newText === undefined) {
+      return undefined;
+    }
+    const before = oldText.split('\r\n').join('\n');
+    const after = newText.split('\r\n').join('\n');
+    const diff = formatDiff(lineDiff(before, after));
+    return diff === '' ? undefined : diff.split('\n');
   }
 
   async execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
@@ -71,7 +85,13 @@ export class EditTool implements Tool {
       return replacement.replace(/\n/g, eol);
     });
     await writeTextFile(file, updated);
-    return { content: `已修改 ${file}(替换 1 处)`, isError: false };
+    // 结果带上紧凑差异:界面里一眼看到改了什么,模型也据此确认(几行,不占多少上下文)
+    const diff = formatDiff(lineDiff(needle, replacement));
+    return {
+      content: diff === '' ? `已修改 ${file}(替换 1 处)` : `已修改 ${file}(替换 1 处)
+${diff}`,
+      isError: false,
+    };
   }
 }
 

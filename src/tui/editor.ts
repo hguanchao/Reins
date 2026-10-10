@@ -1,49 +1,20 @@
-import { isDirectoryEntry, rankFileCandidates } from './files.ts';
-
 import { codePointWidth, softWrapRows } from './layout.ts';
 
 /**
- * 输入行编辑器:光标、历史、斜杠命令与 @ 文件补全。
+ * 输入行编辑器:光标、历史与文本编辑。
  *
- * 设计意图:纯状态机、不碰终端;文本按码点维护,避免拆断代理对;
- * 文件候选由上层注入(同步快照),编辑器自己不做任何 IO。
+ * 设计意图:纯状态机、不碰终端;文本按码点维护,避免拆断代理对。
+ * 候选(斜杠命令、@ 文件、子菜单参数)一律不在这里算——菜单由应用层统一管,
+ * 编辑器只报出「文本 + 光标」,免得同一套补全规则在两层各长一份。
  */
-
-export type CompletionKind = 'slash' | 'mention';
-
-export interface EditorCompletion {
-  kind: CompletionKind;
-  items: string[];
-  index: number;
-}
-
-export interface EditorOptions {
-  /** 可补全的斜杠命令。 */
-  commands?: readonly string[];
-  /** @ 引用的候选文件路径(由上层维护缓存与刷新)。 */
-  files?: () => readonly string[];
-  /** mention 补全的最大条数。 */
-  mentionLimit?: number;
-}
-
 export class InputEditor {
   private chars: string[] = [];
   private cursorIndex = 0;
   private history: string[] = [];
   private historyPos: number | null = null;
   private draftChars: string[] = [];
-  private completion: EditorCompletion | null = null;
-  private readonly commands: readonly string[];
-  private readonly files: (() => readonly string[]) | undefined;
-  private readonly mentionLimit: number;
   /** 软折行宽度(显示列),由视图层在渲染时同步;未设置时 ↑↓ 按逻辑行移动。 */
   private wrapWidth: number | undefined;
-
-  constructor(options: EditorOptions = {}) {
-    this.commands = options.commands ?? [];
-    this.files = options.files;
-    this.mentionLimit = options.mentionLimit ?? 8;
-  }
 
   get text(): string {
     return this.chars.join('');
@@ -60,10 +31,6 @@ export class InputEditor {
   /** 光标是否在最末尾:行尾的灰色预选只在此时刻显示与接受。 */
   get cursorAtEnd(): boolean {
     return this.cursorIndex === this.chars.length;
-  }
-
-  get completionState(): EditorCompletion | null {
-    return this.completion;
   }
 
   /** 插入可打印文本(控制字符被忽略,换行由 insertNewline / insertRaw 处理)。 */
@@ -194,33 +161,25 @@ export class InputEditor {
   moveLeft(): void {
     if (this.cursorIndex > 0) {
       this.cursorIndex -= 1;
-      this.recomputeCompletion();
     }
   }
 
   moveRight(): void {
     if (this.cursorIndex < this.chars.length) {
       this.cursorIndex += 1;
-      this.recomputeCompletion();
     }
   }
 
   moveHome(): void {
     this.cursorIndex = this.currentLineStart();
-    this.recomputeCompletion();
   }
 
   moveEnd(): void {
     this.cursorIndex = this.currentLineEnd();
-    this.recomputeCompletion();
   }
 
-  /** 上:优先补全菜单;有折行宽度时按视觉行上移(最顶视觉行才接历史);否则逻辑行上移、最后历史。 */
+  /** 上:有折行宽度时按视觉行上移(最顶视觉行才接历史);否则逻辑行上移、最后历史。 */
   moveUp(): boolean {
-    if (this.completion !== null) {
-      this.completionStep(-1);
-      return true;
-    }
     if (this.wrapWidth !== undefined && this.wrapWidth > 0) {
       const rows = this.visualRows();
       const rowIndex = this.currentVisualRow(rows);
@@ -230,7 +189,6 @@ export class InputEditor {
       const column = this.rowColumn(rows[rowIndex]!);
       const previous = rows[rowIndex - 1]!;
       this.cursorIndex = this.indexAtColumn(previous, column);
-      this.recomputeCompletion();
       return true;
     }
     const lineStart = this.currentLineStart();
@@ -239,7 +197,6 @@ export class InputEditor {
       const previousStart = this.chars.lastIndexOf('\n', lineStart - 2) + 1;
       const previousEnd = lineStart - 1;
       this.cursorIndex = Math.min(previousStart + column, previousEnd);
-      this.recomputeCompletion();
       return true;
     }
     return this.historyPrev();
@@ -247,10 +204,6 @@ export class InputEditor {
 
   /** 下:与上对称。 */
   moveDown(): boolean {
-    if (this.completion !== null) {
-      this.completionStep(1);
-      return true;
-    }
     if (this.wrapWidth !== undefined && this.wrapWidth > 0) {
       const rows = this.visualRows();
       const rowIndex = this.currentVisualRow(rows);
@@ -260,7 +213,6 @@ export class InputEditor {
       const column = this.rowColumn(rows[rowIndex]!);
       const next = rows[rowIndex + 1]!;
       this.cursorIndex = this.indexAtColumn(next, column);
-      this.recomputeCompletion();
       return true;
     }
     const lineEnd = this.currentLineEnd();
@@ -270,7 +222,6 @@ export class InputEditor {
       const nextEnd = this.chars.indexOf('\n', nextStart);
       const limit = nextEnd === -1 ? this.chars.length : nextEnd;
       this.cursorIndex = Math.min(nextStart + column, limit);
-      this.recomputeCompletion();
       return true;
     }
     return this.historyNext();
@@ -305,62 +256,17 @@ export class InputEditor {
     return true;
   }
 
-  /** 应用当前补全项(回车或 Tab);无补全时返回 false。 */
-  applyCompletion(): boolean {
-    if (this.completion === null) {
-      return false;
-    }
-    const item = this.completion.items[this.completion.index];
-    if (item === undefined) {
-      return false;
-    }
-    if (this.completion.kind === 'mention') {
-      const token = this.tokenAtCursor();
-      if (token === undefined) {
-        return false;
-      }
-      // 目录不带尾随空格:插入后查询词变成该目录前缀,菜单继续列出其下内容(逐级下钻);
-      // 文件带尾随空格表示引用结束,菜单随之关闭
-      const suffix = isDirectoryEntry(item) ? '' : ' ';
-      const replacement = [...`@${item}${suffix}`];
-      this.chars.splice(token.start, token.end - token.start, ...replacement);
-      this.cursorIndex = token.start + replacement.length;
-      this.afterEdit();
-      return true;
-    }
-    this.setChars(`${item} `);
-    return true;
-  }
-
-  /** 手动关闭补全菜单(Esc)。 */
-  closeCompletion(): void {
-    this.completion = null;
-  }
-
-  /** 整体替换输入内容并把光标移到末尾;供命令子菜单改写参数用。 */
+  /** 整体替换输入内容并把光标移到末尾;供菜单接受候选后改写词条用。 */
   replaceWith(text: string): void {
     this.setChars(text);
   }
 
-  /** 文件候选快照更新后由上层调用,重算当前补全。 */
-  refreshCompletion(): void {
-    this.recomputeCompletion();
-  }
-
-  /**
-   * 光标所在 @ 词条的查询文本(不含 @);不在 @ 词条内时返回 null。
-   *
-   * 上层据此决定要不要刷新文件索引:判定依据必须是输入文本,
-   * 因为索引为空时根本不会产生候选,拿补全当触发条件就永远等不到。
-   */
-  mentionQuery(): string | null {
-    const token = this.tokenAtCursor();
-    if (token === undefined || !token.text.startsWith('@')) {
-      return null;
-    }
-    // @ 必须成词出现(行首或空白后),否则邮箱之类会被误触
-    const wordStart = token.start === 0 || isWhitespace(this.chars[token.start - 1] ?? '');
-    return wordStart ? token.text.slice(1) : null;
+  /** 用文本替换 [start, end) 这段码点,并把光标停在替换内容之后。 */
+  replaceRange(start: number, end: number, text: string): void {
+    const replacement = [...text];
+    this.chars.splice(start, end - start, ...replacement);
+    this.cursorIndex = start + replacement.length;
+    this.afterEdit();
   }
 
   /** 提交:返回文本并清空(非空文本进入历史)。 */
@@ -400,61 +306,15 @@ export class InputEditor {
     return index === -1 ? this.chars.length : index;
   }
 
-  /** 光标所在的连续非空白 token;光标在空白上时返回 undefined。 */
-  private tokenAtCursor(): { start: number; end: number; text: string } | undefined {
-    if (this.cursorIndex > 0 && isWhitespace(this.chars[this.cursorIndex - 1] ?? '')) {
-      return undefined;
-    }
-    let start = this.cursorIndex;
-    while (start > 0 && !isWhitespace(this.chars[start - 1] ?? '')) {
-      start -= 1;
-    }
-    return { start, end: this.cursorIndex, text: this.chars.slice(start, this.cursorIndex).join('') };
-  }
-
-  private completionStep(delta: number): void {
-    if (this.completion === null) {
-      return;
-    }
-    const count = this.completion.items.length;
-    this.completion.index = (this.completion.index + delta + count) % count;
-  }
-
   private setChars(text: string, keepHistory = false): void {
     this.chars = [...text];
     this.cursorIndex = this.chars.length;
     if (!keepHistory) {
       this.historyPos = null;
     }
-    this.recomputeCompletion();
   }
 
   private afterEdit(): void {
     this.historyPos = null;
-    this.recomputeCompletion();
   }
-
-  private recomputeCompletion(): void {
-    const before = this.chars.slice(0, this.cursorIndex).join('');
-
-    // 斜杠命令:仅当光标之前是纯粹的命令前缀
-    if (before.startsWith('/') && !before.includes(' ') && !before.includes('\n')) {
-      const items = this.commands.filter((command) => command.startsWith(before) && command !== before);
-      this.completion = items.length > 0 ? { kind: 'slash', items, index: 0 } : null;
-      return;
-    }
-
-    // @ 引用:光标在 @ 词条内就按查询词给候选
-    const query = this.mentionQuery();
-    if (query !== null) {
-      const items = rankFileCandidates(this.files?.() ?? [], query, this.mentionLimit);
-      this.completion = items.length > 0 ? { kind: 'mention', items, index: 0 } : null;
-      return;
-    }
-    this.completion = null;
-  }
-}
-
-function isWhitespace(char: string): boolean {
-  return char === ' ' || char === '\n' || char === '\t' || char === '\r';
 }

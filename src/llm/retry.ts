@@ -11,6 +11,12 @@ export interface RetryOptions {
   delayMs?: (attempt: number) => number;
   /** 等待实现;默认真实计时,测试可注入空实现。 */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * 即将重试时上报一次(attempt 是刚失败的第几次)。
+   *
+   * 重试是「在等」而不是「卡住」,界面靠它把等待说清楚,否则用户只看到没有输出。
+   */
+  onRetry?: (info: { attempt: number; attempts: number; delayMs: number; error: unknown }) => void;
 }
 
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
@@ -28,7 +34,9 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
       if (attempt >= attempts || !retriable(error)) {
         break;
       }
-      await sleep(delayMs(attempt));
+      const wait = delayMs(attempt);
+      options.onRetry?.({ attempt, attempts, delayMs: wait, error });
+      await sleep(wait);
     }
   }
   throw lastError;

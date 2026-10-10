@@ -146,7 +146,7 @@ describe('代理循环', () => {
     const approver: Approver = {
       async ask(target) {
         asked.push(target.tool);
-        return 'allow';
+        return { verdict: 'allow' };
       },
     };
     const harness = await makeAgent(
@@ -170,7 +170,7 @@ describe('代理循环', () => {
     const approver: Approver = {
       async ask(target) {
         asked.push(target.tool);
-        return 'allow';
+        return { verdict: 'allow' };
       },
     };
     const harness = await makeAgent(
@@ -222,7 +222,7 @@ describe('代理循环', () => {
     const approver: Approver = {
       async ask(target) {
         asked.push(target.command ?? target.tool);
-        return 'allow';
+        return { verdict: 'allow' };
       },
     };
     const harness = await makeAgent(
@@ -375,7 +375,7 @@ describe('代理循环', () => {
         configRaw: { approval: 'ask', permissions: { deny: [], ask: [], allow: ['mcp(svc)'] } },
         approver: {
           async ask() {
-            return 'deny';
+            return { verdict: 'deny', reason: '测试理由' };
           },
         },
         extraTools: [mcpishTool],

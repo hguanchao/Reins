@@ -94,6 +94,8 @@ export async function fetchWithRetry(
         // max_retries 表示首次失败后的重试次数,0 = 失败即停
         attempts: Math.max(1, runtime.maxRetries + 1),
         retriable: (error: unknown) => (error as { name?: string })?.name !== 'AbortError',
+        onRetry: (info) =>
+          runtime.onRetry?.({ attempt: info.attempt, attempts: info.attempts, delayMs: info.delayMs }),
         sleep: (ms: number) => sleepWithSignal(ms, init.signal ?? undefined, sleep),
       },
     );

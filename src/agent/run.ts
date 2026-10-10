@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path';
 import { resolveAuth, resolveModel, resolveProvider } from '../catalog/load.ts';
 import type { Catalog, ModelSpec, ProviderSpec } from '../catalog/schema.ts';
-import type { Config } from '../config/schema.ts';
+import type { ApprovalMode, Config } from '../config/schema.ts';
 import { discoverProjectDoc } from '../context/agents-md.ts';
 import { buildSystemPrompt } from '../context/system.ts';
 import { createAdapter } from '../llm/stream.ts';
@@ -60,6 +60,8 @@ export interface AgentRuntime {
   mcp: McpServerStatus[];
   /** 已解析的模型(含上下文窗口):界面展示上下文占用时不必再解析一遍。 */
   model: ResolvedModel;
+  /** 会话内切换审批模式(ask / auto / yolo);只影响后续裁决。 */
+  setApprovalMode(mode: ApprovalMode): void;
   close(): Promise<void>;
 }
 
@@ -103,6 +105,7 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
     proxy: options.config.proxy,
     fetchImpl: options.fetchImpl,
     sleep: options.sleep,
+    onRetry: (info) => options.ui.onRetry?.(info),
   };
 
   const registry = createDefaultRegistry();
@@ -178,6 +181,11 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
       session,
       mcp: mcpStatuses,
       model,
+      // 会话内切换审批模式:引擎的兜底裁决与审批门一起换,不重建运行时
+      setApprovalMode: (mode) => {
+        engine.setApprovalMode(mode);
+        approval.setMode(mode);
+      },
       close: async () => {
         await mcpManager.close().catch(() => undefined);
       },

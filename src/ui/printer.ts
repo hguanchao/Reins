@@ -15,6 +15,8 @@ export interface AgentUi {
   onNotice(message: string): void;
   /** 用量事件:每轮模型调用结束后上报,供界面展示上下文占用。 */
   onUsage?(usage: Usage): void;
+  /** 上游请求即将重试:让用户知道是在退避等待,不是卡住了。 */
+  onRetry?(info: { attempt: number; attempts: number; delayMs: number }): void;
 }
 
 /** 控制台渲染:文本原样流出,工具事件折叠成单行摘要。 */
@@ -28,6 +30,11 @@ export class ConsoleUi implements AgentUi {
   onAssistantText(text: string): void {
     // 模型输出不可信:剥掉转义序列,避免污染终端(标题、清屏、剪贴板)
     this.out(sanitizeTerminalText(text));
+  }
+
+  onRetry(info: { attempt: number; attempts: number; delayMs: number }): void {
+    this.out(`· 上游请求失败,${Math.round(info.delayMs / 1000)} 秒后重试(${info.attempt}/${info.attempts - 1})
+`);
   }
 
   onToolCall(call: ToolCall): void {

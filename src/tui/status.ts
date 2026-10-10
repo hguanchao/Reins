@@ -24,9 +24,16 @@ export interface StatusBarInfo {
   contextWindow?: number;
   /** 缓存读取 token;端点不报缓存时留空。 */
   cacheReadTokens?: number;
+  /** 审批模式;为默认的 ask 时留空,免得常态占位。 */
+  approval?: string;
 }
 
-/** 渲染状态栏:一行,按显示宽度截断。 */
+/**
+ * 渲染状态栏:一行,按显示宽度截断。
+ *
+ * 靠右的用量与缓存命中率会先被截掉,所以「需要一直看得见」的东西(审批模式这种
+ * 会改变安全边界的)放在左侧组里,不跟用量挤在末尾。
+ */
 export function renderStatusBar(width: number, theme: Theme, info: StatusBarInfo): string {
   const first = [`📁 ${info.project}`];
   if (info.branch !== undefined) {
@@ -38,6 +45,8 @@ export function renderStatusBar(width: number, theme: Theme, info: StatusBarInfo
     info.reasoning !== undefined
       ? `🤖 ${info.model ?? '—'} · 🧠 ${info.reasoning}`
       : `🤖 ${info.model ?? '—'}`,
+    // 审批模式不是默认的 ask 时才占位:它决定后面还问不问你,得一直看得见
+    ...(info.approval !== undefined ? [`🔓 ${info.approval}`] : []),
     // 用量为 undefined 说明还没有回传过真实用量(端点没报或还没跑过),如实显示未知
     `📊 ${formatTokens(info.promptTokens)} / ${formatTokens(info.contextWindow)}`,
     `⚡ ${formatHitRate(info)}`,

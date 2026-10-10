@@ -36,6 +36,13 @@ export interface Tool {
   readonly ruleToolName?: string;
   /** 从模型输入中提取规则匹配目标(路径/命令等)。 */
   targetOf(input: Record<string, unknown>, ctx: ToolContext): ToolInvocationTarget;
+  /**
+   * 审批前预览:把这次调用的改动摊成几行给人看。
+   *
+   * 审批批的是「这个改动」而不是一条路径,所以由工具自己给出——它最懂自己的参数。
+   * 返回 undefined 表示没什么可预览的。
+   */
+  previewOf?(input: Record<string, unknown>, ctx: ToolContext): string[] | undefined;
   execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult>;
 }
 

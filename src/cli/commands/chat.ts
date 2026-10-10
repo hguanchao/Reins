@@ -117,13 +117,26 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
   let activeRun: AbortController | undefined;
 
   const approver = {
-    async ask(target: { tool: string; command?: string; path?: string; server?: string; domain?: string }, decision: { reason: string }) {
+    async ask(
+      target: { tool: string; command?: string; path?: string; server?: string; domain?: string },
+      decision: { reason: string },
+      preview?: readonly string[],
+    ) {
       const what = target.command ?? target.path ?? target.server ?? target.domain ?? '';
       const suffix = what === '' ? '' : ` ${what}`;
-      const answer = await rl.question(
-        `\n[审批] ${target.tool}${suffix}(${decision.reason})——允许? [y/N] `,
-      );
-      return answer.trim().toLowerCase().startsWith('y') ? ('allow' as const) : ('deny' as const);
+      // 改动先摊开再问:批的是这次改动,不是一条路径
+      for (const line of preview ?? []) {
+        io.err(`  ${line}`);
+      }
+      const answer = (await rl.question(
+        `\n[审批] ${target.tool}${suffix}(${decision.reason})——允许? [y/N,拒绝可写理由] `,
+      )).trim();
+      if (answer.toLowerCase().startsWith('y')) {
+        return { verdict: 'allow' as const };
+      }
+      // 拒绝时把 n 之后的内容当作理由回灌给模型;只敲 n 或回车就是无理由拒绝
+      const reason = answer.replace(/^n\b\s*/i, '').trim();
+      return reason === '' ? { verdict: 'deny' as const } : { verdict: 'deny' as const, reason };
     },
   };
 
@@ -337,9 +350,9 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
       }
       if (command.type === 'resume') {
         if (command.id === undefined) {
-          const summaries = await listSessionSummaries(home);
+          const summaries = await listSessionSummaries(home, workspace);
           if (summaries.length === 0) {
-            io.err('还没有任何会话。');
+            io.err('当前项目还没有会话(`reins sessions list` 可查看全部项目)。');
           }
           for (const summary of summaries.slice(0, 10)) {
             io.err(`  ${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`);

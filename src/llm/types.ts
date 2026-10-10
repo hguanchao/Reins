@@ -79,6 +79,8 @@ export interface AdapterRuntime {
   fetchImpl?: typeof fetch;
   /** 重试等待实现;默认真实计时,测试可注入空实现。 */
   sleep?: (ms: number) => Promise<void>;
+  /** 即将重试时上报,供界面显示「第几次重试、还要等多久」。 */
+  onRetry?: (info: { attempt: number; attempts: number; delayMs: number }) => void;
 }
 
 export interface ProviderAdapter {

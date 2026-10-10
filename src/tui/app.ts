@@ -7,18 +7,19 @@ import {
   CHAT_COMMANDS,
   CHAT_COMMAND_DESCRIPTIONS,
   CHAT_HELP_TEXT,
+  CHAT_KEY_HELP,
   parseChatCommand,
 } from '../cli/commands/chat-commands.ts';
 import { latestSessionFile, listSessionSummaries, resolveSessionFile } from '../cli/commands/sessions.ts';
 import { ignoredNotice } from '../cli/trust.ts';
 import { ensureHomeConfig } from '../config/ensure.ts';
 import { loadLayeredConfig } from '../config/layers.ts';
-import { resolveReasoningEffort, REASONING_EFFORTS, type Config, type ReasoningEffort } from '../config/schema.ts';
+import { APPROVAL_MODES, resolveReasoningEffort, REASONING_EFFORTS, type ApprovalMode, type Config, type ReasoningEffort } from '../config/schema.ts';
 import { recordTrust, resolveProjectTrust, type TrustResolution } from '../config/trust.ts';
 import { existingProjectDocs } from '../context/agents-md.ts';
 import type { ToolCall, Usage } from '../llm/types.ts';
 import { promptTokens } from '../llm/usage.ts';
-import { approvalGrant, type Approver } from '../permissions/approval.ts';
+import { approvalGrant, type ApprovalAnswer, type Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
 import type { RuleTarget } from '../permissions/rules.ts';
 import type { AgentUi } from '../ui/printer.ts';
@@ -31,6 +32,7 @@ import {
   contentHeight,
   createBlockRenderer,
   noticeDismissesWelcome,
+  renderHelpPage,
   renderTrustPage,
   renderWindow,
   scrollWindow,
@@ -40,24 +42,30 @@ import {
   type ScrollBlock,
 } from './blocks.ts';
 import {
+  candidateRemainder,
   centerVertically,
   COMPLETION_MENU_ROWS,
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
   inputBoxRowRange,
+  menuInsertion,
   moveApprovalIndex,
-  movePickerIndex,
+  moveMenuIndex,
   overlayLines,
+  paintPreviewLine,
   paintSlashCommand,
-  prefixRemainder,
   renderApprovalOptions,
   renderScrollbarLine,
   scrollbarGeometry,
   splitPathLabel,
+  tokenAt,
+  tokenKind,
+  type CursorToken,
   type MenuRow,
 } from './chrome.ts';
 import { createFileIndex, needsFileScan, type FileIndex } from './files.ts';
+import { rankFileCandidates } from './files.ts';
 import { InputEditor } from './editor.ts';
 import { createKeyDecoder, type TuiKey } from './keys.ts';
 import { codePointWidth, padAnsi, softWrapRows, truncatePlain, visibleWidth, visualRowContains } from './layout.ts';
@@ -81,13 +89,83 @@ const MIN_ROWS = 12;
 /** 输入流静止多久后把挂起的孤立 Esc 兜底吐出。 */
 const ESC_FLUSH_MS = 50;
 
+/** 二级菜单的种类;候选来源与提交动作都按它分派。 */
+type SubmenuKind = 'model' | 'effort' | 'sessions';
+
 /**
- * 选中后直接进入二级菜单的命令。
+ * 菜单候选的来源:斜杠命令名、子菜单参数、@ 文件引用。
  *
- * 它们的菜单就是「无参数用法」,回显到输入框只会多一次回车;菜单打开时
- * 行内不可能有参数(斜杠补全不覆盖带空格的行),所以直接按无参数执行。
+ * 三个来源共用同一份菜单状态、同一套按键与同一个渲染器,只有「候选怎么算」和
+ * 「接受后做什么」不同——规则只有一份,不再各长一套。
  */
-const SUBMENU_COMMANDS = new Set(['/model', '/effort', '/sessions']);
+type MenuSource = 'command' | 'argument' | 'file';
+
+/** 一条候选:写进输入框的值 + 菜单里两列的显示文本。 */
+interface MenuItem {
+  /** 接受时写进输入框的值(命令名带 /,@ 引用不带 @)。 */
+  payload: string;
+  label: string;
+  detail?: string;
+  /** 目录项:接受后不带尾空格,菜单继续列出其下内容。 */
+  directory?: boolean;
+  /** 当前生效项(模型 / 思考强度 / 当前会话):参数菜单默认高亮它。 */
+  current?: boolean;
+}
+
+/** 菜单状态;三个来源共用。 */
+interface MenuState {
+  source: MenuSource;
+  /** 参数菜单的命令种类。 */
+  kind?: SubmenuKind;
+  /** 已按输入过滤后的候选。 */
+  items: MenuItem[];
+  index: number;
+}
+
+/** 菜单顶栏的按键提示:三个来源的语义不同,提示也跟着变。 */
+const MENU_HINTS: Readonly<Record<MenuSource, string>> = {
+  command: 'Tab/↵ 补全 · Esc 取消',
+  argument: 'Tab 补全 · ↵ 执行 · Esc 取消',
+  file: 'Tab/↵ 引用 · Esc 取消',
+};
+
+/** 思考强度的中文说明,参数菜单的第二列。 */
+const EFFORT_LABELS: Readonly<Record<ReasoningEffort, string>> = {
+  off: '关闭',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '超高',
+  max: '极致',
+};
+
+/** 审批模式切换时的回执说明:切到哪一档、那一档意味着什么,一句话说清。 */
+const APPROVAL_NOTES: Readonly<Record<ApprovalMode, string>> = {
+  ask: '(需要授权时逐条询问)',
+  auto: '(交由审查模型裁决;未配置 review_model 时保守拒绝)',
+  yolo: '(全部自动放行,不再询问)',
+};
+
+/** 审批卡里最多摊几行改动;再多只给总行数,避免把对话区挤没。 */
+const APPROVAL_PREVIEW_LINES = 10;
+
+/** 拒绝理由那一行的前缀,光标列要按它算。 */
+const REASON_LABEL = '拒绝理由: ';
+
+/** 审批选项下标:与审批卡的选项顺序一一对应。 */
+const APPROVAL_DENY_INDEX = 2;
+const APPROVAL_REASON_INDEX = 3;
+
+/** @ 文件候选上限:菜单会开窗显示,取够用即可。 */
+const FILE_CANDIDATE_LIMIT = 20;
+
+/** 带二级菜单的命令,顺序即匹配顺序。 */
+const SUBMENU_KINDS: readonly SubmenuKind[] = ['model', 'effort', 'sessions'];
+
+/** 命令名 → 菜单种类。 */
+const SUBMENU_BY_COMMAND = new Map<string, SubmenuKind>(
+  SUBMENU_KINDS.map((kind) => [`/${kind}`, kind]),
+);
 /** 分支名的重读间隔:只为状态栏一行字,不值得每次渲染都读盘。 */
 const BRANCH_TTL_MS = 5000;
 
@@ -180,6 +258,10 @@ export class TuiApp implements AgentUi {
   private currentConfig: Config | undefined;
   /** /effort 的会话内覆盖;undefined = 跟随配置文件。单独留存,保证 /model、/new 重建后仍然生效。 */
   private effortOverride: ReasoningEffort | undefined;
+  /** Shift+Tab 的审批模式覆盖;undefined = 跟随配置文件。同样要跨重建留存。 */
+  private approvalOverride: ApprovalMode | undefined;
+  /** 快捷键页是否开着;只读整屏,任何键收起。 */
+  private helpOpen = false;
 
   private running = false;
   private focused = true;
@@ -198,19 +280,17 @@ export class TuiApp implements AgentUi {
   private lastMainHeight = 1;
   private lastMaxTop = 0;
 
-  private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
-  private approvalIndex = 0;
-  private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
-  /** 命令子菜单(/model、/effort、/sessions 无参数时弹出):模态,回车执行选中项。 */
-  private picker:
-    | {
-        kind: 'model' | 'effort' | 'sessions';
-        rows: MenuRow[];
-        /** 与 rows 一一对应的载荷,回车时交给对应命令执行。 */
-        payloads: string[];
-        index: number;
-      }
+  private approvalCard:
+    | { target: RuleTarget; decision: Decision; preview?: readonly string[] }
     | undefined;
+  private approvalIndex = 0;
+  private approvalResolve: ((answer: ApprovalAnswer) => void) | undefined;
+  /** 拒绝理由的编辑内容;undefined = 停在选项上。 */
+  private approvalReason: string | undefined;
+  /** 候选菜单(命令名 / 子菜单参数 / @ 文件):模态,↑↓ 移动高亮,Tab 补全,↵ 执行。 */
+  private menu: MenuState | undefined;
+  /** 参数菜单的全部候选;会话列表要读盘,取到后缓存,免得每次按键都扫一遍。 */
+  private submenuItems: { kind: SubmenuKind; items: MenuItem[] } | undefined;
   /** 目录信任判定结果;启动时先于会话确定。 */
   private trust: TrustResolution | undefined;
   /** 待回答的信任页;有值时整屏只显示它。docs 是会被注入的说明文件。 */
@@ -249,7 +329,7 @@ export class TuiApp implements AgentUi {
     this.renderContext = { spinner: symbols.spinner[0] as string, theme: createTheme() };
     this.renderer = createBlockRenderer(this.renderContext);
     this.fileIndex = createFileIndex(options.workspace);
-    this.editor = new InputEditor({ commands: CHAT_COMMANDS, files: () => this.fileIndex.list() });
+    this.editor = new InputEditor();
   }
 
   async start(): Promise<number> {
@@ -500,6 +580,14 @@ export class TuiApp implements AgentUi {
     this.pushNotice(message, 'info');
   }
 
+  /** 上游重试:退避等待时说清「第几次、等多久」,免得看着像卡住。 */
+  onRetry(info: { attempt: number; attempts: number; delayMs: number }): void {
+    this.pushNotice(
+      `上游请求失败,${Math.round(info.delayMs / 1000)} 秒后重试(${info.attempt}/${info.attempts - 1})`,
+      'warn',
+    );
+  }
+
   /** 每轮模型调用结束后上报用量:状态栏的上下文占用与缓存命中率取自最近一轮。 */
   onUsage(usage: Usage): void {
     this.lastUsage = usage;
@@ -532,9 +620,15 @@ export class TuiApp implements AgentUi {
       this.scheduleRender();
       return;
     }
-    // 命令子菜单也是模态的:拦截所有按键,不让它们落进输入框
-    if (this.picker !== undefined) {
-      this.handlePickerKey(key);
+    // 快捷键页是只读的:任何键都把它收起,不落到别处
+    if (this.helpOpen) {
+      this.helpOpen = false;
+      this.scheduleRender();
+      return;
+    }
+    // 候选菜单也是模态的:拦截所有按键,不让它们落进输入框
+    if (this.menu !== undefined) {
+      this.handleMenuKey(key);
       return;
     }
     if (this.viewer.isOpen) {
@@ -546,28 +640,41 @@ export class TuiApp implements AgentUi {
     this.feedEditorKey(key);
   }
 
-  /** 编辑区按键:聚焦、粘贴、打字、光标移动与快捷键;命令子菜单复用其中的编辑部分。 */
+  /** 编辑区按键:处理完重算菜单——输入变了,候选与预选都得跟着变。 */
   private feedEditorKey(key: TuiKey): void {
+    this.applyEditorKey(key);
+    this.refreshMenu();
+    this.scheduleRender();
+  }
+
+  /** 编辑区按键的原始处理:聚焦、粘贴、打字、光标移动与快捷键;菜单打开时复用其中的编辑部分。 */
+  private applyEditorKey(key: TuiKey): void {
     if (INPUT_BOX_KEYS.has(key.type)) {
       this.focused = true;
     }
     if (key.type === 'paste') {
       this.handlePaste(key.text);
-      this.scheduleRender();
       return;
     }
     if (key.type === 'wheel') {
       this.scrollBy(key.delta);
-      this.scheduleRender();
       return;
     }
     if (key.type === 'text') {
+      // 输入框为空时的 ? 是「看快捷键」,不是打字:打问号要在已有内容后面打
+      if (key.text === '?' && this.editor.isEmpty) {
+        this.helpOpen = true;
+        return;
+      }
       this.editor.insert(key.text);
       this.maybeRefreshFileIndex();
-      this.scheduleRender();
       return;
     }
     switch (key.type) {
+      case 'shift-tab':
+        // 会话内循环审批模式:切到哪一档决定后面还问不问你,每次都给回执
+        this.cycleApprovalMode();
+        break;
       case 'ctrl-c':
         if (this.running) {
           this.interrupt();
@@ -578,10 +685,8 @@ export class TuiApp implements AgentUi {
         }
         break;
       case 'escape':
-        // Esc 优先收起补全菜单,其次中断/清空
-        if (this.editor.completionState !== null) {
-          this.editor.closeCompletion();
-        } else if (this.running) {
+        // 菜单由 handleMenuKey 收;这里处理无菜单时的中断 / 清空
+        if (this.running) {
           this.interrupt();
         } else if (!this.editor.isEmpty) {
           this.editor.clear();
@@ -600,9 +705,6 @@ export class TuiApp implements AgentUi {
       case 'ctrl-j':
         this.editor.insertNewline();
         break;
-      case 'tab':
-        this.editor.applyCompletion();
-        break;
       case 'backspace':
         this.editor.backspace();
         break;
@@ -613,14 +715,6 @@ export class TuiApp implements AgentUi {
         this.editor.moveLeft();
         break;
       case 'right':
-        // 光标在行尾且有灰色预选时,→ 先接受预选(同 shell 自动建议的肌肉记忆)
-        if (this.editor.cursorAtEnd) {
-          const ghost = this.ghostSuggestion();
-          if (ghost !== undefined) {
-            this.editor.insert(ghost);
-            break;
-          }
-        }
         this.editor.moveRight();
         break;
       case 'home':
@@ -660,8 +754,8 @@ export class TuiApp implements AgentUi {
       default:
         break;
     }
-    this.scheduleRender();
   }
+
 
   private handleViewerKey(key: TuiKey): void {
     const rows = this.terminal.rows;
@@ -723,16 +817,26 @@ export class TuiApp implements AgentUi {
    * 否则索引为空时永远等不到第一次扫描。
    */
   private maybeRefreshFileIndex(): void {
-    if (!needsFileScan(this.editor.mentionQuery(), this.fileIndex.stale())) {
+    if (!needsFileScan(this.mentionQuery(), this.fileIndex.stale())) {
       return;
     }
     void this.fileIndex
       .refresh()
       .then(() => {
-        this.editor.refreshCompletion();
+        // 快照换了,候选跟着换:重算菜单,预选也就指向新的候选
+        this.refreshMenu();
         this.scheduleRender();
       })
       .catch(() => undefined);
+  }
+
+  /** 光标处 @ 词条的查询文本(不含 @);不在 @ 词条内时返回 null。 */
+  private mentionQuery(): string | null {
+    const token = tokenAt(this.editor.text, this.editor.cursor);
+    if (token === undefined || tokenKind(token, this.editor.text) !== 'mention') {
+      return null;
+    }
+    return token.text.slice(1);
   }
 
   private toggleToolExpand(): void {
@@ -810,28 +914,6 @@ export class TuiApp implements AgentUi {
     if (this.running) {
       return;
     }
-    // 菜单打开时回车只应用选中项,不直接发送,免得误发没确认的命令;
-    // 例外是带二级菜单的命令:把命令留在输入框并打开菜单,参数就地编辑
-    const completion = this.editor.completionState;
-    if (completion !== null) {
-      const item = completion.items[completion.index];
-      if (item !== undefined && SUBMENU_COMMANDS.has(item)) {
-        // 整体替换成完整命令:补全菜单打开时输入的可能只是前缀(如 /ef)
-        this.editor.replaceWith(`${item} `);
-        this.scheduleRender();
-        if (item === '/model') {
-          await this.commandModel(undefined);
-        } else if (item === '/effort') {
-          this.commandEffort(undefined);
-        } else {
-          await this.commandResume(undefined);
-        }
-        return;
-      }
-      this.editor.applyCompletion();
-      this.scheduleRender();
-      return;
-    }
     const text = this.editor.submit();
     if (text.trim() === '') {
       this.scheduleRender();
@@ -901,25 +983,311 @@ export class TuiApp implements AgentUi {
     }
   }
 
-  private async commandModel(target: string | undefined): Promise<void> {
-    if (this.catalog === undefined) {
-      this.pushNotice('(尚未就绪:产商目录未加载)', 'warn');
+  // —— 候选菜单 ——
+  //
+  // 三个来源(命令名 / 子菜单参数 / @ 文件引用)共用这一份状态、这一套按键与同一个渲染器:
+  //   ↑↓ 移动高亮(不写输入框)· Tab 把候选补进输入框 · Esc 收起菜单但保留输入 ·
+  //   ↵ 命令名与 @ 只补不执行,参数菜单直接执行(整条命令就是「命令 + 参数」,选中即确认)。
+  // 灰色预选 = 按 Tab 会补进来的那段文本:菜单里看到什么,按下 Tab 就得到什么。
+
+  /** 菜单按键。 */
+  private handleMenuKey(key: TuiKey): void {
+    const menu = this.menu;
+    if (menu === undefined) {
       return;
     }
+    const moved = moveMenuIndex(key, menu.index, menu.items.length);
+    if (moved !== undefined) {
+      if (moved !== menu.index) {
+        menu.index = moved;
+        this.scheduleRender();
+      }
+      return;
+    }
+    if (key.type === 'tab') {
+      this.acceptMenuCandidate();
+      return;
+    }
+    if (key.type === 'right') {
+      // → 在行尾先接受灰色预选(同 shell 自动建议的肌肉记忆),没有预选才移动光标
+      if (!this.editor.cursorAtEnd || !this.acceptMenuCandidate()) {
+        this.applyEditorKey(key);
+        this.refreshMenu();
+        this.scheduleRender();
+      }
+      return;
+    }
+    if (key.type === 'enter') {
+      const payload = menu.items[menu.index]?.payload;
+      if (payload === undefined) {
+        return;
+      }
+      if (menu.source === 'argument') {
+        void this.runSubmenuCommand(menu, payload);
+        return;
+      }
+      this.acceptMenuCandidate();
+      return;
+    }
+    if (key.type === 'escape') {
+      // 收起菜单但保留输入:再按一次才是清空(与无菜单时的 Esc 阶梯接上)
+      this.closeMenu();
+      this.scheduleRender();
+      return;
+    }
+    // 菜单是模态编辑态,视图切换键不放行:叠加查看器会让按键路由错乱
+    if (key.type === 'ctrl-o' || key.type === 'ctrl-e') {
+      this.scheduleRender();
+      return;
+    }
+    // 其余按键交给编辑器:输入框始终可编辑,菜单只是候选视图
+    this.applyEditorKey(key);
+    this.refreshMenu();
+    this.scheduleRender();
+  }
+
+  /**
+   * 把高亮候选补进输入框(替换光标处的词条),不执行。
+   *
+   * 返回 false 表示没有候选、或候选与已输入内容不相容——那种情况下补全不是「接着打」
+   * 而是替换,拿无关候选顶替用户打的字(比如 /sessions 里换成别的会话)还不如不动。
+   */
+  private acceptMenuCandidate(): boolean {
+    const menu = this.menu;
+    const target = this.completionTarget();
+    const item = menu?.items[menu.index];
+    if (menu === undefined || target === undefined || item === undefined) {
+      return false;
+    }
+    if (!item.payload.startsWith(target.typed)) {
+      return false;
+    }
+    this.editor.replaceRange(target.token.start, target.token.end, this.menuReplacement(item, menu.source));
+    this.refreshMenu();
+    this.scheduleRender();
+    return true;
+  }
+
+  /** 执行参数菜单选中的候选:关菜单、清输入框,再按种类落到对应命令上。 */
+  private async runSubmenuCommand(menu: MenuState, payload: string): Promise<void> {
+    const kind = menu.kind;
+    this.closeMenu();
+    this.editor.clear();
+    this.scheduleRender();
+    if (kind === undefined) {
+      return;
+    }
+    if (kind === 'model') {
+      await this.commandModel(payload);
+    } else if (kind === 'effort') {
+      this.commandEffort(payload);
+    } else {
+      await this.commandResume(payload);
+    }
+  }
+
+  /** 输入变化后重算菜单:来源由光标处的词条决定,没有候选就收起菜单。 */
+  private refreshMenu(): void {
+    const target = this.completionTarget();
     if (target === undefined) {
-      const rows: MenuRow[] = [];
-      let current = 0;
+      this.closeMenu();
+      return;
+    }
+    if (target.source === 'argument') {
+      const kind = this.argumentKind();
+      if (kind === undefined) {
+        this.closeMenu();
+        return;
+      }
+      // 参数菜单的候选要读盘(会话列表),拿到之前先收起旧菜单:否则高亮、预选会
+      // 拿着上一份候选去配新词条,画出一段对不上的预选
+      this.dropStaleMenu('argument', kind);
+      void this.showArgumentMenu(kind, target.typed);
+      return;
+    }
+    this.dropStaleMenu(target.source);
+    const items =
+      target.source === 'command' ? this.commandItems(target.typed) : this.fileItems(target.typed);
+    this.showMenu(target.source, items);
+  }
+
+  /** 词条换了来源(或换了菜单种类)就收起旧菜单:候选与词条必须来自同一次判定。 */
+  private dropStaleMenu(source: MenuSource, kind?: SubmenuKind): void {
+    const menu = this.menu;
+    if (menu !== undefined && (menu.source !== source || menu.kind !== kind)) {
+      this.closeMenu();
+    }
+  }
+
+  /** 参数菜单:候选可能要读盘(会话列表),取到后再按当前输入过滤显示。 */
+  private async showArgumentMenu(kind: SubmenuKind, typed: string): Promise<void> {
+    const all = await this.submenuItemsFor(kind);
+    if (all === undefined) {
+      this.closeMenu();
+      return;
+    }
+    // 取候选期间用户可能改了输入:只有仍停在同一个参数菜单上才显示
+    if (this.argumentKind() !== kind) {
+      return;
+    }
+    this.showMenu('argument', all.filter((item) => item.payload.startsWith(typed)), kind);
+  }
+
+  /** 摆出菜单并挑高亮:优先沿用上一次的高亮,其次当前生效项,最后首项。 */
+  private showMenu(source: MenuSource, items: MenuItem[], kind?: SubmenuKind): void {
+    if (items.length === 0) {
+      this.closeMenu();
+      return;
+    }
+    const previous = this.menu?.items[this.menu.index]?.payload;
+    const kept = previous === undefined ? -1 : items.findIndex((item) => item.payload === previous);
+    const current = items.findIndex((item) => item.current === true);
+    this.menu = { source, kind, items, index: kept >= 0 ? kept : current >= 0 ? current : 0 };
+    this.scheduleRender();
+  }
+
+  private closeMenu(): void {
+    this.menu = undefined;
+  }
+
+  /**
+   * 当前要补全的词条、来源与已输入的部分;没有可补的返回 undefined。
+   *
+   * 参数菜单取「命令之后」的整段——可能是空的(`/effort ` 后面还没打字),空词条也算
+   * 一个位置,接受时就在那里插入候选。
+   */
+  private completionTarget(): { token: CursorToken; source: MenuSource; typed: string } | undefined {
+    const text = this.editor.text;
+    const kind = this.argumentKind();
+    if (kind !== undefined) {
+      const start = kind.length + 2;
+      return {
+        token: { start, end: text.length, text: text.slice(start) },
+        source: 'argument',
+        typed: text.slice(start).trim(),
+      };
+    }
+    const token = tokenAt(text, this.editor.cursor);
+    if (token === undefined) {
+      return undefined;
+    }
+    const kindOfToken = tokenKind(token, text);
+    if (kindOfToken === 'command') {
+      return { token, source: 'command', typed: token.text };
+    }
+    if (kindOfToken === 'mention') {
+      return { token, source: 'file', typed: token.text.slice(1) };
+    }
+    return undefined;
+  }
+
+  /** 输入框是否正停在某个参数菜单上(整行读作「/<命令> …」)。 */
+  private argumentKind(): SubmenuKind | undefined {
+    const text = this.editor.text;
+    const cut = text.search(/\s/);
+    return cut <= 0 ? undefined : SUBMENU_BY_COMMAND.get(text.slice(0, cut));
+  }
+
+  /**
+   * 候选写进输入框的完整文本(词条要替换成什么)。
+   *
+   * 尾空格表示「后面还要接着写」:命令名后面接参数、@ 引用后面接句子,都留一个空格;
+   * 目录要下钻、参数是行尾最后一个词,补完即完,不留——留了下次打字会另起一个词。
+   */
+  private menuReplacement(item: MenuItem, source: MenuSource): string {
+    if (source === 'file') {
+      return `@${menuInsertion(item.payload, item.directory === true)}`;
+    }
+    return source === 'argument' ? item.payload : menuInsertion(item.payload);
+  }
+
+  /** 命令名候选:前缀命中;已完整输入的那个不再出现(该去补参数了)。 */
+  private commandItems(typed: string): MenuItem[] {
+    return CHAT_COMMANDS.filter((command) => command.startsWith(typed) && command !== typed).map(
+      (command) => ({ payload: command, label: command, detail: CHAT_COMMAND_DESCRIPTIONS[command] }),
+    );
+  }
+
+  /** @ 文件候选:按路径相关度排序,目录项以 '/' 结尾。 */
+  private fileItems(typed: string): MenuItem[] {
+    return rankFileCandidates(this.fileIndex.list(), typed, FILE_CANDIDATE_LIMIT).map((path) => ({
+      payload: path,
+      directory: path.endsWith('/'),
+      ...splitPathLabel(path),
+    }));
+  }
+
+  /** 参数菜单的全部候选;会话列表要读盘,取到后缓存,免得每次按键都扫一遍。 */
+  private async submenuItemsFor(kind: SubmenuKind): Promise<MenuItem[] | undefined> {
+    const cached = this.submenuItems;
+    if (cached !== undefined && cached.kind === kind) {
+      return cached.items;
+    }
+    const items = await this.loadSubmenuItems(kind);
+    if (items === undefined) {
+      return undefined;
+    }
+    this.submenuItems = { kind, items };
+    return items;
+  }
+
+  private async loadSubmenuItems(kind: SubmenuKind): Promise<MenuItem[] | undefined> {
+    if (kind === 'model') {
+      if (this.catalog === undefined) {
+        this.pushNotice('(尚未就绪:产商目录未加载)', 'warn');
+        return undefined;
+      }
+      const items: MenuItem[] = [];
       for (const [name, spec] of Object.entries(this.catalog.providers)) {
         for (const model of spec.models) {
           const active =
             this.currentConfig?.provider === name && this.currentConfig.model === model.id;
-          if (active) {
-            current = rows.length;
-          }
-          rows.push({ label: `${name}/${model.id}`, detail: active ? '当前使用' : undefined });
+          items.push({
+            payload: `${name}/${model.id}`,
+            label: `${name}/${model.id}`,
+            detail: active ? '当前使用' : undefined,
+            current: active,
+          });
         }
       }
-      this.openPicker('model', rows, current);
+      return items;
+    }
+    if (kind === 'effort') {
+      const active = this.currentConfig?.reasoningEffort;
+      return REASONING_EFFORTS.map((level) => ({
+        payload: level,
+        label: level,
+        detail: EFFORT_LABELS[level],
+        current: level === active,
+      }));
+    }
+    const summaries = await listSessionSummaries(this.options.home, this.options.workspace);
+    if (summaries.length === 0) {
+      this.pushNotice('当前项目还没有会话(`reins sessions list` 可查看全部项目)。', 'info');
+      return undefined;
+    }
+    const activeId = this.runtime?.session.id;
+    return summaries.map((summary) => ({
+      payload: summary.sessionId,
+      label: summary.sessionId,
+      detail: `${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`,
+      current: summary.sessionId === activeId,
+    }));
+  }
+
+  /** 裸命令回车:补上参数位的空格,参数菜单随之摆出来。 */
+  private openSubmenuFor(kind: SubmenuKind): void {
+    this.editor.replaceWith(`/${kind} `);
+    this.refreshMenu();
+  }
+
+  private async commandModel(target: string | undefined): Promise<void> {
+    if (target === undefined) {
+      this.openSubmenuFor('model');
+      return;
+    }
+    if (this.catalog === undefined) {
+      this.pushNotice('(尚未就绪:产商目录未加载)', 'warn');
       return;
     }
     const match = findModelTarget(this.catalog, target);
@@ -948,20 +1316,7 @@ export class TuiApp implements AgentUi {
    */
   private commandEffort(value: string | undefined): void {
     if (value === undefined) {
-      const details: Record<ReasoningEffort, string> = {
-        off: '关闭',
-        low: '低',
-        medium: '中',
-        high: '高',
-        xhigh: '超高',
-        max: '极致',
-      };
-      const rows: MenuRow[] = REASONING_EFFORTS.map((level) => ({
-        label: level,
-        detail: details[level],
-      }));
-      const current = this.currentConfig?.reasoningEffort;
-      this.openPicker('effort', rows, current !== undefined ? REASONING_EFFORTS.indexOf(current) : 0);
+      this.openSubmenuFor('effort');
       return;
     }
     // 手打前缀按行尾提示补全后回车(xh → xhigh);歧义或无命中仍报错
@@ -988,16 +1343,7 @@ export class TuiApp implements AgentUi {
 
   private async commandResume(id: string | undefined): Promise<void> {
     if (id === undefined) {
-      const summaries = await listSessionSummaries(this.options.home);
-      if (summaries.length === 0) {
-        this.pushNotice('还没有任何会话。', 'info');
-        return;
-      }
-      const rows: MenuRow[] = summaries.map((summary) => ({
-        label: summary.sessionId,
-        detail: `${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`,
-      }));
-      this.openPicker('sessions', rows);
+      this.openSubmenuFor('sessions');
       return;
     }
     try {
@@ -1044,7 +1390,7 @@ export class TuiApp implements AgentUi {
       cwd: this.options.workspace,
       projectLayer: this.projectLayer(),
     });
-    this.currentConfig = this.applyEffort(layered.config);
+    this.currentConfig = this.applyOverrides(layered.config);
     this.applyTheme();
     this.catalog = await loadCatalogFile(join(this.options.home, 'providers.json'));
     this.runtime = await createAgentRuntime({
@@ -1080,7 +1426,7 @@ export class TuiApp implements AgentUi {
       cwd: this.options.workspace,
       projectLayer: this.projectLayer(),
     });
-    this.currentConfig = this.applyEffort({
+    this.currentConfig = this.applyOverrides({
       ...layered.config,
       ...(options.provider !== undefined ? { provider: options.provider } : {}),
       ...(options.model !== undefined ? { model: options.model } : {}),
@@ -1105,11 +1451,27 @@ export class TuiApp implements AgentUi {
     });
   }
 
-  /** 装配生效配置:/effort 的会话内覆盖要压过配置文件,且在重建后继续生效。 */
-  private applyEffort(config: Config): Config {
-    return this.effortOverride !== undefined
-      ? { ...config, reasoningEffort: this.effortOverride }
-      : config;
+  /** 装配生效配置:/effort 与审批模式的会话内覆盖要压过配置文件,且在重建后继续生效。 */
+  private applyOverrides(config: Config): Config {
+    return {
+      ...config,
+      ...(this.effortOverride !== undefined ? { reasoningEffort: this.effortOverride } : {}),
+      ...(this.approvalOverride !== undefined ? { approval: this.approvalOverride } : {}),
+    };
+  }
+
+  /** Shift+Tab:循环切换审批模式。每次都给回执——切到哪一档直接决定后面还问不问你。 */
+  private cycleApprovalMode(): void {
+    const current = this.currentConfig?.approval ?? 'ask';
+    const index = APPROVAL_MODES.indexOf(current);
+    const next = APPROVAL_MODES[(index + 1) % APPROVAL_MODES.length] ?? 'ask';
+    this.approvalOverride = next;
+    if (this.currentConfig !== undefined) {
+      this.currentConfig.approval = next;
+    }
+    // 运行时里的引擎与审批门各存了一份模式,一起换;不重建,免得断掉 MCP 与当前回合
+    this.runtime?.setApprovalMode(next);
+    this.pushNotice(`审批模式:${next}${APPROVAL_NOTES[next]}`, next === 'yolo' ? 'warn' : 'info');
   }
 
   private async ensureRuntime(): Promise<AgentRuntime> {
@@ -1124,25 +1486,35 @@ export class TuiApp implements AgentUi {
   }
 
   private readonly approver: Approver = {
-    ask: (target, decision) => this.askApproval(target, decision),
+    ask: (target, decision, preview) => this.askApproval(target, decision, preview),
   };
 
-  private askApproval(target: RuleTarget, decision: Decision): Promise<'allow' | 'deny'> {
+  private askApproval(
+    target: RuleTarget,
+    decision: Decision,
+    preview?: readonly string[],
+  ): Promise<ApprovalAnswer> {
     if (this.alwaysAllow.has(approvalGrant(target, decision).key)) {
-      return Promise.resolve('allow');
+      return Promise.resolve({ verdict: 'allow' });
     }
     // 审批需要立即关注:把查看器收起,让审批卡片可见
     this.viewer.close();
     this.approvalIndex = 0;
-    this.approvalCard = { target, decision };
+    this.approvalReason = undefined;
+    this.approvalCard = { target, decision, preview };
     this.scheduleRender();
-    return new Promise<'allow' | 'deny'>((resolve) => {
+    return new Promise<ApprovalAnswer>((resolve) => {
       this.approvalResolve = resolve;
     });
   }
 
   private handleApprovalKey(key: TuiKey): void {
     if (this.approvalCard === undefined || this.approvalResolve === undefined) {
+      return;
+    }
+    // 正在写拒绝理由:这一段只编辑文字,回车落定,Esc 退回选项
+    if (this.approvalReason !== undefined) {
+      this.editApprovalReason(key);
       return;
     }
     const moved = moveApprovalIndex(key, this.approvalIndex);
@@ -1155,17 +1527,80 @@ export class TuiApp implements AgentUi {
       this.finishApproval(this.approvalIndex);
       return;
     }
-    if (key.type === 'text' && ['y', 'a', 'n'].includes(key.text.toLowerCase())) {
+    if (key.type === 'text') {
       const choice = key.text.toLowerCase();
-      this.finishApproval(choice === 'y' ? 0 : choice === 'a' ? 1 : 2);
-      return;
+      if (choice === 'y') {
+        this.finishApproval(0);
+        return;
+      }
+      if (choice === 'a') {
+        this.finishApproval(1);
+        return;
+      }
+      if (choice === 'n') {
+        this.finishApproval(APPROVAL_DENY_INDEX);
+        return;
+      }
+      if (choice === 'r') {
+        // 拒绝并说明:理由随裁决进入工具结果,模型据此改法而不是重试
+        this.approvalReason = '';
+        this.approvalIndex = APPROVAL_REASON_INDEX;
+        this.scheduleRender();
+        return;
+      }
     }
     if (key.type === 'escape' || key.type === 'ctrl-c') {
-      this.finishApproval(2);
+      this.finishApproval(APPROVAL_DENY_INDEX);
     }
   }
 
-  private finishApproval(index: number): void {
+  /**
+   * 审批卡里的改动预览:工具给的几行 diff,超过上限就截断并说明总行数。
+   *
+   * 预览行数与卡片高度联动(页脚按行数撑开),所以这里只做上限约束,不压缩布局。
+   */
+  private approvalPreviewLines(width: number): string[] {
+    const preview = this.approvalCard?.preview;
+    if (preview === undefined || preview.length === 0) {
+      return [];
+    }
+    const limit = APPROVAL_PREVIEW_LINES;
+    const shown = preview.slice(0, limit);
+    const lines = shown.map((line) => paintPreviewLine(line, width, this.renderContext.theme));
+    if (preview.length > limit) {
+      lines.push(this.renderContext.theme.paint.muted(`    … 共 ${preview.length} 行改动,已省略`));
+    }
+    return lines;
+  }
+
+  /** 拒绝理由的编辑:只认文本与退格;回车落定,Esc 退回选项(理由留着)。 */
+  private editApprovalReason(key: TuiKey): void {
+    const text = this.approvalReason;
+    if (text === undefined) {
+      return;
+    }
+    if (key.type === 'text') {
+      const typed = [...key.text].filter((char) => (char.codePointAt(0) ?? 0) >= 32).join('');
+      this.approvalReason = text + typed;
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'backspace') {
+      this.approvalReason = [...text].slice(0, -1).join('');
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'enter') {
+      this.finishApproval(APPROVAL_DENY_INDEX, text.trim());
+      return;
+    }
+    if (key.type === 'escape') {
+      this.approvalReason = undefined;
+      this.scheduleRender();
+    }
+  }
+
+  private finishApproval(index: number, reason?: string): void {
     const card = this.approvalCard;
     const resolve = this.approvalResolve;
     if (card === undefined || resolve === undefined) {
@@ -1175,120 +1610,12 @@ export class TuiApp implements AgentUi {
       this.alwaysAllow.add(approvalGrant(card.target, card.decision).key);
     }
     this.approvalCard = undefined;
+    this.approvalReason = undefined;
     this.approvalResolve = undefined;
-    resolve(index === 2 ? 'deny' : 'allow');
+    const verdict: 'allow' | 'deny' = index >= APPROVAL_DENY_INDEX ? 'deny' : 'allow';
+    resolve(reason === undefined || reason === '' ? { verdict } : { verdict, reason });
   }
 
-  /**
-   * 打开命令子菜单:输入框预填「命令 + 当前值」,光标落在参数末尾。
-   *
-   * 菜单期间输入框是真实可编辑的,参数涂灰表示未提交;回车执行输入框内容。
-   */
-  private openPicker(kind: 'model' | 'effort' | 'sessions', rows: MenuRow[], index = 0): void {
-    const prefix = `/${kind} `;
-    const payloads = rows.map((row) => row.label);
-    const text = this.editor.text;
-    // 参数位空着(从补全菜单或裸命令进来)才覆写,已有的参数原样保留
-    if (!text.startsWith(prefix) || text.slice(prefix.length).trim() === '') {
-      this.editor.replaceWith(`${prefix}${payloads[index] ?? ''}`);
-    }
-    this.picker = { kind, rows, payloads, index };
-    this.scheduleRender();
-  }
-
-  /**
-   * 命令子菜单按键:输入框就是编辑区,菜单是它的候选视图。
-   *
-   * 打字交给编辑器,随后同步菜单选中项;↑/↓ 直接改写输入框的参数,
-   * 光标始终停在参数末尾。回车执行当前输入,Esc 收起。
-   */
-  private handlePickerKey(key: TuiKey): void {
-    const picker = this.picker;
-    if (picker === undefined) {
-      return;
-    }
-    if (key.type === 'up' || key.type === 'down') {
-      const moved = movePickerIndex(key, picker.index, picker.rows.length);
-      if (moved !== undefined && moved !== picker.index) {
-        this.replacePickerArgument(picker.payloads[moved] ?? '');
-        picker.index = moved;
-        this.scheduleRender();
-      }
-      return;
-    }
-    if (key.type === 'enter') {
-      // 输入框里有参数就执行参数;只有前缀时按菜单高亮项补全(接受灰色预选)
-      const prefix = `/${picker.kind} `;
-      let typed = this.editor.text.startsWith(prefix)
-        ? this.editor.text.slice(prefix.length).trim()
-        : '';
-      if (typed !== '') {
-        const selected = picker.payloads[picker.index] ?? '';
-        if (selected !== typed && selected.startsWith(typed)) {
-          typed = selected;
-        }
-      }
-      const value = typed !== '' ? typed : (picker.payloads[picker.index] ?? '');
-      this.picker = undefined;
-      this.editor.clear();
-      this.scheduleRender();
-      if (value === '') {
-        return;
-      }
-      if (picker.kind === 'model') {
-        void this.commandModel(value);
-      } else if (picker.kind === 'effort') {
-        this.commandEffort(value);
-      } else {
-        void this.commandResume(value);
-      }
-      return;
-    }
-    if (key.type === 'escape' || key.type === 'ctrl-c') {
-      this.picker = undefined;
-      this.editor.clear();
-      this.scheduleRender();
-      return;
-    }
-    // 菜单是模态编辑态,视图切换键不放行:叠加查看器会让按键路由错乱
-    if (key.type === 'ctrl-o' || key.type === 'ctrl-e') {
-      this.scheduleRender();
-      return;
-    }
-    // 其余按键交给编辑器:菜单期间输入框可自由编辑,菜单只是候选视图
-    this.feedEditorKey(key);
-    this.syncPickerSelection();
-    // 删空命令(如连按退格去掉 /effort)时菜单一并收起,不留孤儿菜单
-    if (this.editor.isEmpty) {
-      this.picker = undefined;
-    }
-    this.scheduleRender();
-  }
-
-  /** ↑/↓ 选中候选后,直接改写输入框里的参数(命令前缀保持不动)。 */
-  private replacePickerArgument(value: string): void {
-    const prefix = `/${this.picker?.kind ?? ''} `;
-    this.editor.replaceWith(`${prefix}${value}`);
-  }
-
-  /** 输入变化后,把菜单选中项对准新参数:完全匹配就跟随,无匹配则选中首项(off)。 */
-  private syncPickerSelection(): void {
-    const picker = this.picker;
-    if (picker === undefined) {
-      return;
-    }
-    const text = this.editor.text;
-    // 命令本身被删改就收起菜单,免得菜单跟着一截残缺命令走
-    if (text !== `/${picker.kind}` && !text.startsWith(`/${picker.kind} `)) {
-      this.picker = undefined;
-      return;
-    }
-    const value = text.slice(picker.kind.length + 2).trim();
-    // 完全匹配跟随该行;只有前缀命中时也选中它(键入 x 预选 xhigh),
-    // 无人命中(含参数为空)停在首项
-    const matched = picker.payloads.find((payload) => payload.startsWith(value) && value !== '');
-    picker.index = matched !== undefined ? picker.payloads.indexOf(matched) : 0;
-  }
 
   // —— 渲染 ——
 
@@ -1324,6 +1651,11 @@ export class TuiApp implements AgentUi {
     // 信任页独占整屏:它决定后面加载哪些配置,先问清楚再谈别的
     if (this.trustPrompt !== undefined) {
       this.terminal.render(this.renderTrustFrame(cols, rows), null);
+      return;
+    }
+    // 快捷键页独占整屏:任何键收起
+    if (this.helpOpen) {
+      this.terminal.render(this.renderHelpFrame(cols, rows), null);
       return;
     }
     // 全屏查看器独占整屏;返回时靠帧差分自然重绘
@@ -1381,6 +1713,22 @@ export class TuiApp implements AgentUi {
   }
 
   /**
+   * 快捷键页整屏:与信任页同一套「独占整屏 + 垂直居中」的排版。
+   *
+   * 键位表来自 CHAT_KEY_HELP,与 /help 是同一份数据,不会两处走样。
+   */
+  private renderHelpFrame(cols: number, rows: number): string[] {
+    const theme = this.renderContext.theme;
+    const mainHeight = Math.max(1, rows - 2);
+    const body = renderHelpPage(cols, theme, CHAT_KEY_HELP);
+    const main = centerVertically(body, mainHeight).slice(0, mainHeight);
+    while (main.length < mainHeight) {
+      main.push('');
+    }
+    return [...main, '', theme.paint.muted(' 按任意键返回')];
+  }
+
+  /**
    * 信任页整屏:垂直居中的正文 + 分隔线下方居中的选项。
    *
    * 页脚与命令审批卡片等高(含分隔线共 4 行),选项落在分隔线以下三行的中间,
@@ -1412,23 +1760,22 @@ export class TuiApp implements AgentUi {
     return [...main, separator, ...footer];
   }
 
+  /** 候选菜单:三个来源共用同一个渲染器,顶栏挂按键提示。 */
   private renderCompletionMenu(width: number, height: number): string[] {
-    // 命令子菜单与输入补全互斥:子菜单打开时输入框是空的,直接用它占住这块区域
-    if (this.picker !== undefined) {
-      const count = Math.min(COMPLETION_MENU_ROWS, Math.max(0, height - 2), this.picker.rows.length);
-      return completionMenu(this.picker.rows, this.picker.index, width, this.renderContext.theme, count);
-    }
-    const completion = this.editor.completionState;
-    if (completion === null || this.approvalCard !== undefined) {
+    const menu = this.menu;
+    if (menu === undefined || this.approvalCard !== undefined) {
       return [];
     }
-    const count = Math.min(COMPLETION_MENU_ROWS, Math.max(0, height - 2), completion.items.length);
-    const menu = completion.items.map((item) =>
-      completion.kind === 'slash'
-        ? { label: item, detail: CHAT_COMMAND_DESCRIPTIONS[item] }
-        : splitPathLabel(item),
+    const count = Math.min(COMPLETION_MENU_ROWS, Math.max(0, height - 2), menu.items.length);
+    const rows: MenuRow[] = menu.items.map((item) => ({ label: item.label, detail: item.detail }));
+    return completionMenu(
+      rows,
+      menu.index,
+      width,
+      this.renderContext.theme,
+      count,
+      MENU_HINTS[menu.source],
     );
-    return completionMenu(menu, completion.index, width, this.renderContext.theme, count);
   }
 
   private isInputBoxRow(row: number): boolean {
@@ -1458,6 +1805,7 @@ export class TuiApp implements AgentUi {
         paint.ok('[y] 允许'),
         paint.ok('[a] 本会话总是允许'),
         paint.fail('[n] 拒绝'),
+        paint.fail('[r] 拒绝并说明'),
       ];
       // 命中规则时给规则原文;靠审批模式兜底时 rule 为空,此时说的是原因而非规则
       const basis =
@@ -1465,20 +1813,25 @@ export class TuiApp implements AgentUi {
       // 「本会话总是允许」会记住什么范围,先让人看清再决定
       const scope = approvalGrant(target, decision).scope;
       const detail = scope === undefined ? basis : `${basis} · 总是允许:${scope}`;
-      // 选项行与信任页同一套排布:水平居中,分隔线 + 居中选项构成同一种模态卡
+      // 选项缩进 2 格:› 占两格,选项文字因此与上面的工具、依据同一条左基准线
       const optionsText = renderApprovalOptions(options, this.approvalIndex, theme);
-      const optionsPad = Math.max(0, Math.floor((width - visibleWidth(optionsText)) / 2));
+      const reason = this.approvalReason;
       const lines = [
         // 与信任页同一条分割线,把审批块和上方对话内容分开
         theme.paint.separator(symbols.separator.repeat(width)),
         paint.warn(`  ${symbols.warn} 需要授权`),
         `    ${theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
         paint.muted(`    ${truncatePlain(detail, Math.max(0, width - 4))}`),
-        ' '.repeat(optionsPad) + optionsText,
+        ...this.approvalPreviewLines(width),
+        reason === undefined ? `  ${optionsText}` : `  拒绝理由: ${reason}`,
         // 末尾留白:选项行落在倒数第二行,与信任页选项区同高
         '',
       ];
-      return { lines };
+      // 写理由时把光标放到理由末尾,让人知道字往哪里落;选项行永远是倒数第二行
+      const optionsRow = lines.length - 2;
+      return reason === undefined
+        ? { lines }
+        : { lines, cursor: { line: optionsRow, column: 4 + visibleWidth(REASON_LABEL) + visibleWidth(reason) } };
     }
 
     const theme = this.renderContext.theme;
@@ -1503,53 +1856,21 @@ export class TuiApp implements AgentUi {
   }
 
   /**
-   * 输入框行尾的灰色预选:子菜单命令提示它的当前值。
+   * 灰色预选:高亮候选接在已输入内容之后的那一段,也就是按 Tab 会补进来的文本。
    *
-   * 只在光标于行尾、补全菜单未打开时出现;→ 在行尾接受,继续打字自然消失。
-   * /sessions 的候选随会话增长,没有「当前值」可预选,不参与。
+   * 只在光标于行尾时显示与接受(光标在句中时预选会挤到别的文字中间)。预选不进输入框:
+   * 回车执行它,打字直接把它换掉,Tab/→ 才把它落进去。
    */
   private ghostSuggestion(): string | undefined {
-    if (this.editor.completionState !== null || !this.editor.cursorAtEnd) {
+    if (!this.editor.cursorAtEnd) {
       return undefined;
     }
-    const text = this.editor.text;
-    // 菜单打开:按菜单载荷提示
-    const picker = this.picker;
-    if (picker !== undefined) {
-      const prefix = `/${picker.kind} `;
-      if (!text.startsWith(prefix)) {
-        return undefined;
-      }
-      return prefixRemainder(picker.payloads, text.slice(prefix.length));
+    const target = this.completionTarget();
+    const item = this.menu?.items[this.menu.index];
+    if (target === undefined || item === undefined) {
+      return undefined;
     }
-    // 没开菜单也要能提示:手打 /effort xh、/model gpt 同样补出行尾
-    if (text.startsWith('/effort ')) {
-      return prefixRemainder(REASONING_EFFORTS, text.slice('/effort '.length));
-    }
-    if (text.startsWith('/model ')) {
-      return prefixRemainder(this.modelPayloads(), text.slice('/model '.length));
-    }
-    if (text === '/effort') {
-      const effort = this.currentConfig?.reasoningEffort;
-      return effort !== undefined ? ` ${effort}` : undefined;
-    }
-    if (text === '/model') {
-      const provider = this.currentConfig?.provider;
-      const model = this.currentConfig?.model;
-      return provider !== undefined && model !== undefined ? ` ${provider}/${model}` : undefined;
-    }
-    return undefined;
-  }
-
-  /** /model 的全部候选:与二级菜单同一口径。 */
-  private modelPayloads(): string[] {
-    const payloads: string[] = [];
-    for (const [name, spec] of Object.entries(this.catalog?.providers ?? {})) {
-      for (const model of spec.models) {
-        payloads.push(`${name}/${model.id}`);
-      }
-    }
-    return payloads;
+    return candidateRemainder(this.menuReplacement(item, target.source), target.token.text);
   }
 
   private renderInputLines(width: number): {
@@ -1614,14 +1935,9 @@ export class TuiApp implements AgentUi {
         break;
       }
       const prefix = rowIndex === 0 ? paint.accent(symbols.inputPrompt) : '  ';
+      // 参数按普通输入文本着色:子菜单预填的候选也在输入框里、回车就会执行,
+      // 涂灰会与「还没落进输入框的行尾预选」混为一谈,让人以为补全没生效
       let body = rowIndex === 0 ? paintSlashCommand(row.text, paint.accent) : row.text;
-      // 子菜单打开时参数还没提交,整段参数涂灰,与灰色预选保持同一语义
-      if (this.picker !== undefined && rowIndex === 0) {
-        const splitAt = row.text.indexOf(' ');
-        if (splitAt >= 0) {
-          body = `${paint.accent(row.text.slice(0, splitAt))}${paint.muted(row.text.slice(splitAt))}`;
-        }
-      }
       if (ghost !== undefined && rowIndex === rows.length - 1) {
         const room = Math.max(0, available - visibleWidth(row.text));
         body += paint.muted(truncatePlain(ghost, room));
@@ -1653,6 +1969,8 @@ export class TuiApp implements AgentUi {
       promptTokens: usage !== undefined && usage.inputTokens > 0 ? promptTokens(usage) : undefined,
       contextWindow: this.runtime?.model.contextWindow ?? config?.contextWindow,
       cacheReadTokens: usage?.cacheReadTokens,
+      // 默认的 ask 不占位;切到 auto/yolo 就常显,提醒安全边界已经放宽
+      approval: config?.approval !== undefined && config.approval !== 'ask' ? config.approval : undefined,
     };
   }
 

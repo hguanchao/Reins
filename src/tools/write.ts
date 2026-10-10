@@ -1,4 +1,5 @@
 import { writeTextFile } from '../util/fsx.ts';
+import { formatDiff, lineDiff } from './diff.ts';
 import { absolutize } from '../util/paths.ts';
 import {
   requireString,
@@ -33,10 +34,26 @@ export class WriteTool implements Tool {
     return { path: absolutize(requireString(input, 'path', this.name), ctx.workspace) };
   }
 
+  /** 审批前预览:新建或覆盖看不出「改了什么」,给出前几行内容。 */
+  previewOf(input: Record<string, unknown>): string[] | undefined {
+    const content = typeof input['content'] === 'string' ? input['content'] : undefined;
+    if (content === undefined) {
+      return undefined;
+    }
+    const preview = formatDiff(lineDiff('', content, { context: 0, maxLines: 8 }));
+    return preview === '' ? undefined : preview.split('\n');
+  }
+
   async execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const file = absolutize(requireString(input, 'path', this.name), ctx.workspace);
     const content = requireStringAllowEmpty(input, 'content', this.name);
     await writeTextFile(file, content);
-    return { content: `已写入 ${file}(${content.length} 字符)`, isError: false };
+    // 新建/覆盖看不出「改了什么」,给出前几行内容当预览
+    const preview = formatDiff(lineDiff('', content, { context: 0, maxLines: 12 }));
+    return {
+      content: preview === '' ? `已写入 ${file}(${content.length} 字符)` : `已写入 ${file}(${content.length} 字符)
+${preview}`,
+      isError: false,
+    };
   }
 }

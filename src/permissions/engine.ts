@@ -25,12 +25,17 @@ export class PermissionEngine {
   readonly deny: ParsedRule[];
   readonly ask: ParsedRule[];
   readonly allow: ParsedRule[];
-  readonly fallback: Verdict;
+  private fallback: Verdict;
 
   constructor(layers: PermissionRules[], approval: ApprovalMode) {
     this.deny = layers.flatMap((layer) => layer.deny).map(parseRule);
     this.ask = layers.flatMap((layer) => layer.ask).map(parseRule);
     this.allow = layers.flatMap((layer) => layer.allow).map(parseRule);
+    this.fallback = approval === 'ask' ? 'ask' : 'allow';
+  }
+
+  /** 会话内切换审批模式:只影响未命中规则时的兜底裁决,规则本身不动。 */
+  setApprovalMode(approval: ApprovalMode): void {
     this.fallback = approval === 'ask' ? 'ask' : 'allow';
   }
 

@@ -1,21 +1,25 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  candidateRemainder,
   centerVertically,
   completionMenu,
   inputBoxFrame,
   inputBoxLine,
   inputBoxRowRange,
+  menuInsertion,
   moveApprovalIndex,
-  movePickerIndex,
+  moveMenuIndex,
   overlayLines,
+  paintPreviewLine,
   paintSlashCommand,
-  prefixRemainder,
   renderApprovalOptions,
   renderScrollbarLine,
   scrollbarChar,
   scrollbarGeometry,
   splitPathLabel,
+  tokenAt,
+  tokenKind,
 } from '../../src/tui/chrome.ts';
 import { createTheme } from '../../src/tui/theme.ts';
 import { stripAnsi, visibleWidth } from '../../src/tui/layout.ts';
@@ -56,9 +60,9 @@ describe('输入框边框', () => {
 
   it('审批选项只用左右切换,且到两端停住不回环', () => {
     assert.equal(moveApprovalIndex({ type: 'right' }, 0), 1);
-    assert.equal(moveApprovalIndex({ type: 'right' }, 2), 2);
+    assert.equal(moveApprovalIndex({ type: 'right' }, 3), 3);
     assert.equal(moveApprovalIndex({ type: 'left' }, 0), 0);
-    assert.equal(moveApprovalIndex({ type: 'left' }, 2), 1);
+    assert.equal(moveApprovalIndex({ type: 'left' }, 3), 2);
   });
 
   it('审批卡片上上下键、回车与文字键都不切换选项', () => {
@@ -68,24 +72,64 @@ describe('输入框边框', () => {
     assert.equal(moveApprovalIndex({ type: 'text', text: 'y' }, 1), undefined);
   });
 
-  it('命令子菜单用上下选择,到两端停住不回环', () => {
-    assert.equal(movePickerIndex({ type: 'down' }, 0, 3), 1);
-    assert.equal(movePickerIndex({ type: 'up' }, 0, 3), 0);
-    assert.equal(movePickerIndex({ type: 'down' }, 2, 3), 2);
+  it('菜单用上下选择,到两端停住不回环', () => {
+    assert.equal(moveMenuIndex({ type: 'down' }, 0, 3), 1);
+    assert.equal(moveMenuIndex({ type: 'up' }, 0, 3), 0);
+    assert.equal(moveMenuIndex({ type: 'down' }, 2, 3), 2);
     for (const type of ['left', 'right', 'enter', 'escape', 'tab'] as const) {
-      assert.equal(movePickerIndex({ type }, 1, 3), undefined, `${type} 不该切换选中项`);
+      assert.equal(moveMenuIndex({ type }, 1, 3), undefined, `${type} 不该移动高亮`);
     }
   });
 
-  it('参数行尾预选:补出首个前缀命中的剩余部分', () => {
-    const levels = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
-    assert.equal(prefixRemainder(levels, 'x'), 'high');
-    assert.equal(prefixRemainder(levels, 'h'), 'igh');
-    assert.equal(prefixRemainder(levels, 'me'), 'dium');
-    // 已完整匹配、空串、无命中都无增量可补
-    assert.equal(prefixRemainder(levels, 'xhigh'), undefined);
-    assert.equal(prefixRemainder(levels, ''), undefined);
-    assert.equal(prefixRemainder(levels, 'z'), undefined);
+  it('取光标处的词条:两侧都是空白时没有词条', () => {
+    assert.deepEqual(tokenAt('/model', 3), { text: '/model', start: 0, end: 6 });
+    assert.deepEqual(tokenAt('看下 @src 文件', 7), { text: '@src', start: 3, end: 7 });
+    // 光标贴在词尾:算在词内
+    assert.deepEqual(tokenAt('abc def', 3), { text: 'abc', start: 0, end: 3 });
+    // 光标落在两侧都是空白的位置、或文本为空:没有词条
+    assert.equal(tokenAt('abc  def', 4), undefined);
+    assert.equal(tokenAt('', 0), undefined);
+  });
+
+  it('词条种类:命令要整行,引用要成词', () => {
+    const of = (text: string, cursor: number) => {
+      const token = tokenAt(text, cursor);
+      return token === undefined ? 'plain' : tokenKind(token, text);
+    };
+    assert.equal(of('/mo', 3), 'command');
+    assert.equal(of('看下 /model', 8), 'plain');
+    assert.equal(of('@src', 4), 'mention');
+    assert.equal(of('看下 @src', 6), 'mention');
+    // 邮箱之类不该被当成引用
+    assert.equal(of('me@example.com', 14), 'plain');
+    assert.equal(of('普通文本', 4), 'plain');
+  });
+
+  it('接受候选的文本:目录不带尾空格,其余带一个', () => {
+    assert.equal(menuInsertion('/model'), '/model ');
+    assert.equal(menuInsertion('src/main.ts'), 'src/main.ts ');
+    assert.equal(menuInsertion('src/', true), 'src/');
+  });
+
+  it('预选 = 接受后写入的文本里、已输入部分之后剩下的内容', () => {
+    assert.equal(candidateRemainder('/model ', '/mo'), 'del ');
+    assert.equal(candidateRemainder('xhigh ', 'xh'), 'igh ');
+    // 参数位空着:整个候选都是增量
+    assert.equal(candidateRemainder('off ', ''), 'off ');
+    // 已完整匹配、或候选不接在已输入内容之后:没有增量
+    assert.equal(candidateRemainder('/model ', '/model '), undefined);
+    assert.equal(candidateRemainder('xhigh ', 'zz'), undefined);
+  });
+
+
+  it('改动预览行:增删分别上色,缩进与卡片同一左基准', () => {
+    const added = paintPreviewLine('+const a = 1;', 40, theme);
+    const removed = paintPreviewLine('-const a = 1;', 40, theme);
+    const context = paintPreviewLine(' const a = 1;', 40, theme);
+    assert.ok(added.startsWith(`    [${theme.codes.ok}m`), JSON.stringify(added));
+    assert.ok(removed.startsWith(`    [${theme.codes.fail}m`), JSON.stringify(removed));
+    assert.ok(context.startsWith(`    [${theme.codes.muted}m`), JSON.stringify(context));
+    assert.equal(stripAnsi(added).slice(0, 4), '    ');
   });
 
   it('斜杠命令着色但不影响参数与显示宽度', () => {

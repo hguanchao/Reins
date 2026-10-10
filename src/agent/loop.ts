@@ -216,7 +216,8 @@ export class Agent {
 
     let decision = (await this.checkSandbox(tool, target)) ?? engine.evaluate(target, tool.permissionKind);
     if (decision.verdict === 'ask') {
-      decision = await approval.decide(target, decision);
+      // 审批批的是「这次改动」,把工具给出的预览一并交给界面
+      decision = await approval.decide(target, decision, tool.previewOf?.(input, { workspace }));
     }
     if (decision.verdict !== 'allow') {
       ui.onNotice(`${call.name} 被拒绝:${decision.reason}`);

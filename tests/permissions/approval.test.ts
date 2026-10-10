@@ -36,8 +36,14 @@ describe('会话内总是允许的范围', () => {
     });
   });
 
-  it('其余工具记具体目标', () => {
-    assert.equal(approvalGrant({ tool: 'write', path: '/a/b.txt' }, fallback).key, 'write:/a/b.txt');
+  it('带路径的工具记所在目录:同目录换个文件不再问一遍', () => {
+    assert.equal(approvalGrant({ tool: 'write', path: '/a/b.txt' }, fallback).key, 'write:/a/*');
+    assert.equal(approvalGrant({ tool: 'edit', path: 'src/tui/app.ts' }, fallback).key, 'edit:src/tui/*');
+    // Windows 的反斜杠同样按目录切开
+    assert.equal(approvalGrant({ tool: 'edit', path: 'src\\tui\\app.ts' }, fallback).key, 'edit:src\\tui\\*');
+    // 根目录下给不出目录前缀:退回整条路径
+    assert.equal(approvalGrant({ tool: 'read', path: 'b.txt' }, fallback).key, 'read:b.txt');
+    // 没有路径的目标照旧记具体目标
     assert.equal(approvalGrant({ tool: 'mcp', server: 'svc' }, fallback).key, 'mcp:svc');
     assert.equal(approvalGrant({ tool: 'fetch', domain: 'x.com' }, fallback).key, 'fetch:x.com');
   });
@@ -71,9 +77,17 @@ describe('审批门', () => {
   });
 
   it('ask 模式交由人工通道', async () => {
-    const approver: Approver = { async ask() { return 'allow'; } };
+    const approver: Approver = { async ask() { return { verdict: 'allow' }; } };
     const gate = new ApprovalGate('ask', { approver });
     assert.equal((await gate.decide(target, askDecision)).verdict, 'allow');
+  });
+
+  it('拒绝时用户写的理由进入裁决原因,回灌给模型', async () => {
+    const approver: Approver = { async ask() { return { verdict: 'deny', reason: '别动生产库' }; } };
+    const gate = new ApprovalGate('ask', { approver });
+    const result = await gate.decide(target, askDecision);
+    assert.equal(result.verdict, 'deny');
+    assert.match(result.reason, /别动生产库/);
   });
 
   it('ask 模式无通道时保守拒绝', async () => {

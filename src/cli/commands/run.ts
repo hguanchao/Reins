@@ -107,13 +107,23 @@ function createTerminalApprover(): Approver | undefined {
   }
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   return {
-    async ask(target, decision) {
+    async ask(target, decision, preview) {
       const what = target.command ?? target.path ?? target.server ?? target.domain ?? '';
       const suffix = what === '' ? '' : ` ${what}`;
+      // 改动先摊开再问:批的是这次改动,不是一条路径
+      for (const line of preview ?? []) {
+        process.stderr.write(`  ${line}
+`);
+      }
       const answer = await rl.question(
-        `\n[审批] ${target.tool}${suffix}(${decision.reason})——允许? [y/N] `,
+        `\n[审批] ${target.tool}${suffix}(${decision.reason})——允许? [y/N,拒绝可写理由] `,
       );
-      return answer.trim().toLowerCase().startsWith('y') ? 'allow' : 'deny';
+      if (answer.trim().toLowerCase().startsWith('y')) {
+        return { verdict: 'allow' };
+      }
+      // 拒绝时把 n 之后的内容当作理由回灌给模型;只敲 n 或回车就是无理由拒绝
+      const reason = answer.trim().replace(/^n\b\s*/i, '').trim();
+      return reason === '' ? { verdict: 'deny' } : { verdict: 'deny', reason };
     },
   };
 }

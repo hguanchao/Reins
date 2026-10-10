@@ -31,6 +31,28 @@ describe('重试工具', () => {
     assert.ok((waits[0] ?? 0) > 0);
   });
 
+  it('每次重试都上报一次:第几次、等多久', async () => {
+    const seen: { attempt: number; attempts: number; delayMs: number }[] = [];
+    let calls = 0;
+    await assert.rejects(() =>
+      withRetry(async () => {
+        calls += 1;
+        throw new Error('上游 500');
+      }, {
+        attempts: 3,
+        delayMs: () => 100,
+        sleep: async () => {},
+        onRetry: (info) => seen.push({ attempt: info.attempt, attempts: info.attempts, delayMs: info.delayMs }),
+      }),
+    );
+    assert.equal(calls, 3);
+    // 最后一次不再上报:已经放弃了,不该显示「即将重试」
+    assert.deepEqual(seen, [
+      { attempt: 1, attempts: 3, delayMs: 100 },
+      { attempt: 2, attempts: 3, delayMs: 100 },
+    ]);
+  });
+
   it('不可重试的错误立即抛出', async () => {
     let calls = 0;
     await assert.rejects(

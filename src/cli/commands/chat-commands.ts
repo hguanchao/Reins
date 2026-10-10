@@ -100,6 +100,28 @@ export function decideInterrupt(state: { running: boolean; hasInput: boolean }):
   return 'exit';
 }
 
+/**
+ * 快捷键速查:`?` 页与 /help 共用这一份,免得两处各写一份键位表、日后走样。
+ *
+ * keys 只用单宽字符,这样 /help 的纯文本列能用 padEnd 对齐。
+ */
+export const CHAT_KEY_HELP: readonly { keys: string; action: string }[] = [
+  { keys: '↑ / ↓', action: '输入历史;候选菜单开着时移动高亮' },
+  { keys: 'Tab', action: '把高亮候选补进输入框' },
+  { keys: 'Enter', action: '提交;参数菜单里是选定并执行' },
+  { keys: '@', action: '引用工作区文件' },
+  { keys: 'Ctrl+J', action: '输入框内换行' },
+  { keys: 'Shift+Tab', action: '循环切换审批模式(ask / auto / yolo)' },
+  { keys: 'y / a / n', action: '审批:允许 / 本会话总是允许 / 拒绝' },
+  { keys: 'Ctrl+O', action: '全屏查看工具输出' },
+  { keys: 'Ctrl+E', action: '展开或折叠工具输出' },
+  { keys: 'PgUp / PgDn', action: '滚动对话(鼠标滚轮同)' },
+  { keys: 'End', action: '回到底部并继续跟随' },
+  { keys: 'Ctrl+C', action: '运行中中断;否则清空输入' },
+  { keys: 'Ctrl+D', action: '输入为空时退出' },
+  { keys: '?', action: '显示本页(输入框为空时)' },
+];
+
 export const CHAT_HELP_TEXT = [
   '/help                 显示帮助',
   '/model [provider/model-id]  查看或切换模型',
@@ -110,7 +132,6 @@ export const CHAT_HELP_TEXT = [
   '/mcp(/mcps)           显示 MCP 服务器状态',
   '/quit                 退出',
   '',
-  '快捷键:↑/↓ 历史 · @ 引用文件 · Tab 补全 · Ctrl+J 换行',
-  '        Ctrl+O 全屏查看工具输出 · Ctrl+E 展开或折叠 · Ctrl+C/Esc 中断 · 空行 Ctrl+D 退出',
-  '        PgUp/PgDn/滚轮 滚动 · End 回到底部',
+  '快捷键(按 ? 可随时查看):',
+  ...CHAT_KEY_HELP.map((row) => `  ${row.keys.padEnd(12)}${row.action}`),
 ].join('\n');
