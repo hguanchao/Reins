@@ -1276,14 +1276,16 @@ export class TuiApp implements AgentUi {
       // 「本会话总是允许」会记住什么范围,先让人看清再决定
       const scope = approvalGrant(target, decision).scope;
       const detail = scope === undefined ? basis : `${basis} · 总是允许:${scope}`;
+      // 选项行与信任页同一套排布:水平居中,分隔线 + 居中选项构成同一种模态卡
+      const optionsText = renderApprovalOptions(options, this.approvalIndex, theme);
+      const optionsPad = Math.max(0, Math.floor((width - visibleWidth(optionsText)) / 2));
       const lines = [
         // 与信任页同一条分割线,把审批块和上方对话内容分开
         theme.paint.separator(symbols.separator.repeat(width)),
         paint.warn(`  ${symbols.warn} 需要授权`),
         `    ${theme.bold(target.tool)}: ${truncatePlain(what, Math.max(0, width - 12))}`,
         paint.muted(`    ${truncatePlain(detail, Math.max(0, width - 4))}`),
-        // 缩进 2 格:› 占两格,选项文字因此与上面的工具、依据左对齐
-        `  ${renderApprovalOptions(options, this.approvalIndex, theme)}`,
+        ' '.repeat(optionsPad) + optionsText,
         // 末尾留白:选项行落在倒数第二行,与信任页选项区同高
         '',
       ];
