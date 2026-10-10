@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  APPROVAL_ALLOW_INDEX,
+  APPROVAL_ALWAYS_INDEX,
+  APPROVAL_DENY_INDEX,
+  APPROVAL_REASON_INDEX,
+  approvalEnterAction,
   candidateRemainder,
   centerVertically,
   completionMenu,
@@ -71,6 +76,15 @@ describe('输入框边框', () => {
       assert.equal(moveApprovalIndex({ type }, 1), undefined, `${type} 不该切换选项`);
     }
     assert.equal(moveApprovalIndex({ type: 'text', text: 'y' }, 1), undefined);
+  });
+
+  it('审批卡回车:选到「拒绝并说明」是先写理由,其余选项才落定裁决', () => {
+    assert.equal(approvalEnterAction(APPROVAL_ALLOW_INDEX), 'decide');
+    assert.equal(approvalEnterAction(APPROVAL_ALWAYS_INDEX), 'decide');
+    assert.equal(approvalEnterAction(APPROVAL_DENY_INDEX), 'decide');
+    assert.equal(approvalEnterAction(APPROVAL_REASON_INDEX), 'reason');
+    // 方向键能走到「拒绝并说明」,所以这条路径必须能进理由编辑
+    assert.equal(moveApprovalIndex({ type: 'right' }, APPROVAL_REASON_INDEX - 1), APPROVAL_REASON_INDEX);
   });
 
   it('菜单用上下选择,到两端停住不回环', () => {

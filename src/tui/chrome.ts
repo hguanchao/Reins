@@ -39,6 +39,22 @@ export function renderApprovalOptions(options: readonly string[], selected: numb
 /** 审批选项个数:允许 / 本会话总是允许 / 拒绝 / 拒绝并说明。 */
 export const APPROVAL_OPTION_COUNT = 4;
 
+/** 审批选项下标:与审批卡的选项顺序一一对应。 */
+export const APPROVAL_ALLOW_INDEX = 0;
+export const APPROVAL_ALWAYS_INDEX = 1;
+export const APPROVAL_DENY_INDEX = 2;
+export const APPROVAL_REASON_INDEX = 3;
+
+/**
+ * 审批卡上回车该做什么。
+ *
+ * 选到「拒绝并说明」时回车是「开始写理由」,不是「就这么拒绝」——否则用方向键选到
+ * 这一项再回车,理由还没打就把裁决发出去了,那个选项也就白给了。
+ */
+export function approvalEnterAction(index: number): 'reason' | 'decide' {
+  return index === APPROVAL_REASON_INDEX ? 'reason' : 'decide';
+}
+
 /**
  * 审批选项的左右切换:返回新的选中下标,undefined 表示该键不改变选中项。
  *

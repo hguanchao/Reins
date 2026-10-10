@@ -43,6 +43,11 @@ import {
   type ScrollBlock,
 } from './blocks.ts';
 import {
+  APPROVAL_ALLOW_INDEX,
+  APPROVAL_ALWAYS_INDEX,
+  APPROVAL_DENY_INDEX,
+  APPROVAL_REASON_INDEX,
+  approvalEnterAction,
   candidateRemainder,
   centerVertically,
   COMPLETION_MENU_ROWS,
@@ -172,10 +177,6 @@ const APPROVAL_PREVIEW_LINES = 10;
 
 /** 拒绝理由那一行的前缀,光标列要按它算。 */
 const REASON_LABEL = '拒绝理由: ';
-
-/** 审批选项下标:与审批卡的选项顺序一一对应。 */
-const APPROVAL_DENY_INDEX = 2;
-const APPROVAL_REASON_INDEX = 3;
 
 /** @ 文件候选上限:菜单会开窗显示,取够用即可。 */
 const FILE_CANDIDATE_LIMIT = 20;
@@ -1841,17 +1842,22 @@ export class TuiApp implements AgentUi {
       return;
     }
     if (key.type === 'enter') {
+      // 选到「拒绝并说明」时回车是「开始写理由」,不能就这么把裁决发出去
+      if (approvalEnterAction(this.approvalIndex) === 'reason') {
+        this.beginApprovalReason();
+        return;
+      }
       this.finishApproval(this.approvalIndex);
       return;
     }
     if (key.type === 'text') {
       const choice = key.text.toLowerCase();
       if (choice === 'y') {
-        this.finishApproval(0);
+        this.finishApproval(APPROVAL_ALLOW_INDEX);
         return;
       }
       if (choice === 'a') {
-        this.finishApproval(1);
+        this.finishApproval(APPROVAL_ALWAYS_INDEX);
         return;
       }
       if (choice === 'n') {
@@ -1859,16 +1865,20 @@ export class TuiApp implements AgentUi {
         return;
       }
       if (choice === 'r') {
-        // 拒绝并说明:理由随裁决进入工具结果,模型据此改法而不是重试
-        this.approvalReason = '';
-        this.approvalIndex = APPROVAL_REASON_INDEX;
-        this.scheduleRender();
+        this.beginApprovalReason();
         return;
       }
     }
     if (key.type === 'escape' || key.type === 'ctrl-c') {
       this.finishApproval(APPROVAL_DENY_INDEX);
     }
+  }
+
+  /** 进入理由编辑:理由随裁决进入工具结果,模型据此改法而不是重试。 */
+  private beginApprovalReason(): void {
+    this.approvalReason = '';
+    this.approvalIndex = APPROVAL_REASON_INDEX;
+    this.scheduleRender();
   }
 
   /**
@@ -1923,7 +1933,7 @@ export class TuiApp implements AgentUi {
     if (card === undefined || resolve === undefined) {
       return;
     }
-    if (index === 1) {
+    if (index === APPROVAL_ALWAYS_INDEX) {
       this.alwaysAllow.add(approvalGrant(card.target, card.decision).key);
     }
     this.approvalCard = undefined;
