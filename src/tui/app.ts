@@ -931,12 +931,12 @@ export class TuiApp implements AgentUi {
   private commandEffort(value: string | undefined): void {
     if (value === undefined) {
       const details: Record<ReasoningEffort, string> = {
-        off: '请求不带思考参数',
-        low: '浅度思考',
-        medium: '中等思考',
-        high: '深度思考',
-        xhigh: '超深思考',
-        max: '最大思考预算',
+        off: '关闭',
+        low: '低',
+        medium: '中',
+        high: '高',
+        xhigh: '超高',
+        max: '极致',
       };
       const rows: MenuRow[] = REASONING_EFFORTS.map((level) => ({
         label: level,
