@@ -1446,11 +1446,39 @@ export class TuiApp implements AgentUi {
     return undefined;
   }
 
+  /**
+   * 子菜单打开时的输入框:命令 + 灰色预选值,随选中项移动而变化。
+   *
+   * 菜单是模态的,编辑器实际为空;这行是合成显示,让「我在回答哪个命令、
+   * 回车会应用什么」始终可见。
+   */
+  private renderPickerInputLine(width: number): {
+    lines: string[];
+    cursorLine: number;
+    cursorColumn: number;
+  } {
+    const picker = this.picker;
+    const paint = this.renderContext.theme.paint;
+    const command = picker !== undefined ? `/${picker.kind}` : '';
+    const selected = picker?.payloads[picker.index] ?? '';
+    const available = Math.max(4, width - 8);
+    const ghostRoom = Math.max(0, available - visibleWidth(command));
+    const ghost = paint.muted(truncatePlain(` ${selected}`, ghostRoom));
+    return {
+      lines: [`${paint.accent(symbols.inputPrompt)}${paintSlashCommand(command, paint.accent)}${ghost}`],
+      cursorLine: 0,
+      cursorColumn: visibleWidth(symbols.inputPrompt) + visibleWidth(command),
+    };
+  }
+
   private renderInputLines(width: number): {
     lines: string[];
     cursorLine: number;
     cursorColumn: number;
   } {
+    if (this.picker !== undefined) {
+      return this.renderPickerInputLine(width);
+    }
     const text = this.editor.text;
     const { line: cursorLineRaw, column: cursorColumnRaw } = this.editor.cursorLineColumn();
     // 框内内容区 = 宽度 - 4(两侧竖线与留白),再扣除提示符与续行缩进
