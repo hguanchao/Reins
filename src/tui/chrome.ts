@@ -195,9 +195,9 @@ export function completionMenu(
   theme: Theme,
   height: number = COMPLETION_MENU_ROWS,
 ): string[] {
-  // 主次两列之间留 6 格:说明与路径离标签太近会显得挤,留出呼吸感也更好扫读
+  // 主次两列之间留 12 格:说明与路径离标签太近会显得挤,留出呼吸感也更好扫读
   const labelColumn = Math.min(
-    rows.reduce((max, row) => Math.max(max, visibleWidth(row.label)), 0) + 6,
+    rows.reduce((max, row) => Math.max(max, visibleWidth(row.label)), 0) + 12,
     Math.max(0, width - 6),
   );
   const detailRoom = Math.max(0, width - 4 - labelColumn);
