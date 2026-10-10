@@ -50,6 +50,7 @@ import {
   movePickerIndex,
   overlayLines,
   paintSlashCommand,
+  prefixRemainder,
   renderApprovalOptions,
   renderScrollbarLine,
   scrollbarGeometry,
@@ -1214,11 +1215,17 @@ export class TuiApp implements AgentUi {
       return;
     }
     if (key.type === 'enter') {
-      // 输入框里有参数就执行参数;参数位空着则执行菜单高亮项
+      // 输入框里有参数就执行参数;只有前缀时按菜单高亮项补全(接受灰色预选)
       const prefix = `/${picker.kind} `;
-      const typed = this.editor.text.startsWith(prefix)
+      let typed = this.editor.text.startsWith(prefix)
         ? this.editor.text.slice(prefix.length).trim()
         : '';
+      if (typed !== '') {
+        const selected = picker.payloads[picker.index] ?? '';
+        if (selected !== typed && selected.startsWith(typed)) {
+          typed = selected;
+        }
+      }
       const value = typed !== '' ? typed : (picker.payloads[picker.index] ?? '');
       this.picker = undefined;
       this.editor.clear();
@@ -1275,8 +1282,10 @@ export class TuiApp implements AgentUi {
       return;
     }
     const value = text.slice(picker.kind.length + 2).trim();
-    const matched = picker.payloads.indexOf(value);
-    picker.index = matched >= 0 ? matched : 0;
+    // 完全匹配跟随该行;只有前缀命中时也选中它(键入 x 预选 xhigh),
+    // 无人命中(含参数为空)停在首项
+    const matched = picker.payloads.find((payload) => payload.startsWith(value) && value !== '');
+    picker.index = matched !== undefined ? picker.payloads.indexOf(matched) : 0;
   }
 
   // —— 渲染 ——
@@ -1498,11 +1507,19 @@ export class TuiApp implements AgentUi {
    * /sessions 的候选随会话增长,没有「当前值」可预选,不参与。
    */
   private ghostSuggestion(): string | undefined {
-    // 菜单打开时参数区本身就是灰色预选态,ghost 不再叠一层
-    if (this.picker !== undefined || this.editor.completionState !== null || !this.editor.cursorAtEnd) {
+    if (this.editor.completionState !== null || !this.editor.cursorAtEnd) {
       return undefined;
     }
     const text = this.editor.text;
+    // 子菜单打开:提示参数的剩余部分(如 /effort x → 行尾补出 high)
+    const picker = this.picker;
+    if (picker !== undefined) {
+      const prefix = `/${picker.kind} `;
+      if (!text.startsWith(prefix)) {
+        return undefined;
+      }
+      return prefixRemainder(picker.payloads, text.slice(prefix.length));
+    }
     if (text === '/effort') {
       const effort = this.currentConfig?.reasoningEffort;
       return effort !== undefined ? ` ${effort}` : undefined;

@@ -71,6 +71,20 @@ export function movePickerIndex(key: TuiKey, index: number, count: number): numb
   return undefined;
 }
 
+/**
+ * 行尾灰色预选:已输入部分参数时,补出第一个前缀命中的候选的剩余部分。
+ *
+ * 返回的是「还需要输入的字符」(如键入 x 补出 high),不是完整候选;
+ * 键入为空、已完整匹配或无人命中时返回 undefined——此时没有可提示的增量。
+ */
+export function prefixRemainder(payloads: readonly string[], typed: string): string | undefined {
+  if (typed === '') {
+    return undefined;
+  }
+  const match = payloads.find((payload) => payload.startsWith(typed) && payload !== typed);
+  return match === undefined ? undefined : match.slice(typed.length);
+}
+
 /** 给输入框首行的斜杠命令着色,参数与普通文本保持原样。 */
 export function paintSlashCommand(text: string, paint: (value: string) => string): string {
   if (!text.startsWith('/')) {

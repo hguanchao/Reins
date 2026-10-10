@@ -10,6 +10,7 @@ import {
   movePickerIndex,
   overlayLines,
   paintSlashCommand,
+  prefixRemainder,
   renderApprovalOptions,
   renderScrollbarLine,
   scrollbarChar,
@@ -74,6 +75,17 @@ describe('输入框边框', () => {
     for (const type of ['left', 'right', 'enter', 'escape', 'tab'] as const) {
       assert.equal(movePickerIndex({ type }, 1, 3), undefined, `${type} 不该切换选中项`);
     }
+  });
+
+  it('参数行尾预选:补出首个前缀命中的剩余部分', () => {
+    const levels = ['off', 'low', 'medium', 'high', 'xhigh', 'max'];
+    assert.equal(prefixRemainder(levels, 'x'), 'high');
+    assert.equal(prefixRemainder(levels, 'h'), 'igh');
+    assert.equal(prefixRemainder(levels, 'me'), 'dium');
+    // 已完整匹配、空串、无命中都无增量可补
+    assert.equal(prefixRemainder(levels, 'xhigh'), undefined);
+    assert.equal(prefixRemainder(levels, ''), undefined);
+    assert.equal(prefixRemainder(levels, 'z'), undefined);
   });
 
   it('斜杠命令着色但不影响参数与显示宽度', () => {
