@@ -358,18 +358,18 @@ export class TuiApp implements AgentUi {
     });
   }
 
-  /** 信任页按键:左右(或上下)切换选项,回车确认,y/n 作快捷键,Esc 退出。 */
+  /** 信任页按键:只有左右切换、回车确认与 y/n 快捷键;Ctrl+C 作兜底退出。 */
   private handleTrustKey(key: TuiKey): void {
     if (this.trustPrompt === undefined) {
       return;
     }
     const count = 2;
-    if (key.type === 'left' || key.type === 'up') {
+    if (key.type === 'left') {
       this.trustIndex = (this.trustIndex + count - 1) % count;
       this.scheduleRender();
       return;
     }
-    if (key.type === 'right' || key.type === 'down') {
+    if (key.type === 'right') {
       this.trustIndex = (this.trustIndex + 1) % count;
       this.scheduleRender();
       return;
@@ -389,7 +389,8 @@ export class TuiApp implements AgentUi {
         return;
       }
     }
-    if (key.type === 'escape' || key.type === 'ctrl-c') {
+    // 兜底退出:raw 模式下 Ctrl+C 不产生信号,不接住会把用户困在信任页
+    if (key.type === 'ctrl-c') {
       this.finishTrust(false);
     }
   }
