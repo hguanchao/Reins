@@ -79,6 +79,14 @@ const MIN_COLS = 40;
 const MIN_ROWS = 12;
 /** 输入流静止多久后把挂起的孤立 Esc 兜底吐出。 */
 const ESC_FLUSH_MS = 50;
+
+/**
+ * 选中后直接进入二级菜单的命令。
+ *
+ * 它们的菜单就是「无参数用法」,回显到输入框只会多一次回车;菜单打开时
+ * 行内不可能有参数(斜杠补全不覆盖带空格的行),所以直接按无参数执行。
+ */
+const SUBMENU_COMMANDS = new Set(['/model', '/effort', '/sessions']);
 /** 分支名的重读间隔:只为状态栏一行字,不值得每次渲染都读盘。 */
 const BRANCH_TTL_MS = 5000;
 
@@ -788,10 +796,22 @@ export class TuiApp implements AgentUi {
     if (this.running) {
       return;
     }
-    // 菜单打开时回车只应用选中项:回显到输入框,再按一次才发送,免得误发没确认的命令
-    if (this.editor.completionState !== null) {
+    // 菜单打开时回车只应用选中项,不直接发送,免得误发没确认的命令;
+    // 例外是带二级菜单的命令:回车直接进菜单,不在输入框回显
+    const completion = this.editor.completionState;
+    if (completion !== null) {
+      const item = completion.items[completion.index];
       this.editor.applyCompletion();
       this.scheduleRender();
+      if (item !== undefined && SUBMENU_COMMANDS.has(item)) {
+        if (item === '/model') {
+          await this.commandModel(undefined);
+        } else if (item === '/effort') {
+          this.commandEffort(undefined);
+        } else {
+          await this.commandResume(undefined);
+        }
+      }
       return;
     }
     const text = this.editor.submit();
