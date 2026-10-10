@@ -7,6 +7,7 @@ import {
   inputBoxLine,
   inputBoxRowRange,
   moveApprovalIndex,
+  movePickerIndex,
   overlayLines,
   paintSlashCommand,
   renderApprovalOptions,
@@ -64,6 +65,15 @@ describe('输入框边框', () => {
       assert.equal(moveApprovalIndex({ type }, 1), undefined, `${type} 不该切换选项`);
     }
     assert.equal(moveApprovalIndex({ type: 'text', text: 'y' }, 1), undefined);
+  });
+
+  it('命令子菜单用上下选择,到两端停住不回环', () => {
+    assert.equal(movePickerIndex({ type: 'down' }, 0, 3), 1);
+    assert.equal(movePickerIndex({ type: 'up' }, 0, 3), 0);
+    assert.equal(movePickerIndex({ type: 'down' }, 2, 3), 2);
+    for (const type of ['left', 'right', 'enter', 'escape', 'tab'] as const) {
+      assert.equal(movePickerIndex({ type }, 1, 3), undefined, `${type} 不该切换选中项`);
+    }
   });
 
   it('斜杠命令着色但不影响参数与显示宽度', () => {

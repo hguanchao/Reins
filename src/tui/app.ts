@@ -47,12 +47,14 @@ import {
   inputBoxLine,
   inputBoxRowRange,
   moveApprovalIndex,
+  movePickerIndex,
   overlayLines,
   paintSlashCommand,
   renderApprovalOptions,
   renderScrollbarLine,
   scrollbarGeometry,
   splitPathLabel,
+  type MenuRow,
 } from './chrome.ts';
 import { createFileIndex, needsFileScan, type FileIndex } from './files.ts';
 import { InputEditor } from './editor.ts';
@@ -190,6 +192,16 @@ export class TuiApp implements AgentUi {
   private approvalCard: { target: RuleTarget; decision: Decision } | undefined;
   private approvalIndex = 0;
   private approvalResolve: ((verdict: 'allow' | 'deny') => void) | undefined;
+  /** 命令子菜单(/model、/effort、/sessions 无参数时弹出):模态,回车执行选中项。 */
+  private picker:
+    | {
+        kind: 'model' | 'effort' | 'sessions';
+        rows: MenuRow[];
+        /** 与 rows 一一对应的载荷,回车时交给对应命令执行。 */
+        payloads: string[];
+        index: number;
+      }
+    | undefined;
   /** 目录信任判定结果;启动时先于会话确定。 */
   private trust: TrustResolution | undefined;
   /** 待回答的信任页;有值时整屏只显示它。docs 是会被注入的说明文件。 */
@@ -509,6 +521,11 @@ export class TuiApp implements AgentUi {
     if (this.approvalCard !== undefined) {
       this.handleApprovalKey(key);
       this.scheduleRender();
+      return;
+    }
+    // 命令子菜单也是模态的:拦截所有按键,不让它们落进输入框
+    if (this.picker !== undefined) {
+      this.handlePickerKey(key);
       return;
     }
     if (this.viewer.isOpen) {
@@ -852,14 +869,19 @@ export class TuiApp implements AgentUi {
       return;
     }
     if (target === undefined) {
+      const rows: MenuRow[] = [];
+      let current = 0;
       for (const [name, spec] of Object.entries(this.catalog.providers)) {
         for (const model of spec.models) {
-          const current =
+          const active =
             this.currentConfig?.provider === name && this.currentConfig.model === model.id;
-          this.pushNotice(`${current ? '› ' : '  '}${name}/${model.id}`, 'info');
+          if (active) {
+            current = rows.length;
+          }
+          rows.push({ label: `${name}/${model.id}`, detail: active ? '当前使用' : undefined });
         }
       }
-      this.pushNotice('用法:/model <provider/model-id>', 'info');
+      this.openPicker('model', rows, current);
       return;
     }
     const match = findModelTarget(this.catalog, target);
@@ -888,11 +910,20 @@ export class TuiApp implements AgentUi {
    */
   private commandEffort(value: string | undefined): void {
     if (value === undefined) {
-      this.pushNotice(
-        `当前思考强度:${this.currentConfig?.reasoningEffort ?? '未设置(请求不带参数,跟随上游默认)'}`,
-        'info',
-      );
-      this.pushNotice(`用法:/effort <${REASONING_EFFORTS.join('|')}>`, 'info');
+      const details: Record<ReasoningEffort, string> = {
+        off: '请求不带思考参数',
+        low: '浅度思考',
+        medium: '中等思考',
+        high: '深度思考',
+        xhigh: '超深思考',
+        max: '最大思考预算',
+      };
+      const rows: MenuRow[] = REASONING_EFFORTS.map((level) => ({
+        label: level,
+        detail: details[level],
+      }));
+      const current = this.currentConfig?.reasoningEffort;
+      this.openPicker('effort', rows, current !== undefined ? REASONING_EFFORTS.indexOf(current) : 0);
       return;
     }
     if (!isReasoningEffort(value)) {
@@ -920,14 +951,13 @@ export class TuiApp implements AgentUi {
       const summaries = await listSessionSummaries(this.options.home);
       if (summaries.length === 0) {
         this.pushNotice('还没有任何会话。', 'info');
+        return;
       }
-      for (const summary of summaries.slice(0, 10)) {
-        this.pushNotice(
-          `${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`,
-          'info',
-        );
-      }
-      this.pushNotice('用法:/sessions <会话 id>(或 reins resume 恢复最近一次)', 'info');
+      const rows: MenuRow[] = summaries.map((summary) => ({
+        label: summary.sessionId,
+        detail: `${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`,
+      }));
+      this.openPicker('sessions', rows);
       return;
     }
     try {
@@ -1109,6 +1139,47 @@ export class TuiApp implements AgentUi {
     resolve(index === 2 ? 'deny' : 'allow');
   }
 
+  /** 打开命令子菜单:标签即载荷,回车时交给对应命令执行。 */
+  private openPicker(kind: 'model' | 'effort' | 'sessions', rows: MenuRow[], index = 0): void {
+    this.picker = { kind, rows, payloads: rows.map((row) => row.label), index };
+    this.scheduleRender();
+  }
+
+  /** 命令子菜单按键:上下选择,回车执行选中项,Esc 取消;模态,其余键一律忽略。 */
+  private handlePickerKey(key: TuiKey): void {
+    const picker = this.picker;
+    if (picker === undefined) {
+      return;
+    }
+    const moved = movePickerIndex(key, picker.index, picker.rows.length);
+    if (moved !== undefined) {
+      picker.index = moved;
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'enter') {
+      const value = picker.payloads[picker.index];
+      this.picker = undefined;
+      this.scheduleRender();
+      if (value === undefined) {
+        return;
+      }
+      if (picker.kind === 'model') {
+        void this.commandModel(value);
+      } else if (picker.kind === 'effort') {
+        this.commandEffort(value);
+      } else {
+        void this.commandResume(value);
+      }
+      return;
+    }
+    // Ctrl+C 在这里是收起菜单而不是退出:和审批卡一样,别让兜底键夹带副作用
+    if (key.type === 'escape' || key.type === 'ctrl-c') {
+      this.picker = undefined;
+      this.scheduleRender();
+    }
+  }
+
   // —— 渲染 ——
 
   private scheduleRender(): void {
@@ -1232,6 +1303,11 @@ export class TuiApp implements AgentUi {
   }
 
   private renderCompletionMenu(width: number, height: number): string[] {
+    // 命令子菜单与输入补全互斥:子菜单打开时输入框是空的,直接用它占住这块区域
+    if (this.picker !== undefined) {
+      const count = Math.min(COMPLETION_MENU_ROWS, Math.max(0, height - 2), this.picker.rows.length);
+      return completionMenu(this.picker.rows, this.picker.index, width, this.renderContext.theme, count);
+    }
     const completion = this.editor.completionState;
     if (completion === null || this.approvalCard !== undefined) {
       return [];

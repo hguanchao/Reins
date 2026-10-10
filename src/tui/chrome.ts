@@ -56,6 +56,21 @@ export function moveApprovalIndex(key: TuiKey, index: number): number | undefine
   return undefined;
 }
 
+/**
+ * 命令子菜单的上下选择:返回新下标,undefined 表示该键不改变选中项。
+ *
+ * 纵向列表用上下键,与编辑器的补全菜单一致;到两端停住不回环。
+ */
+export function movePickerIndex(key: TuiKey, index: number, count: number): number | undefined {
+  if (key.type === 'up') {
+    return Math.max(0, index - 1);
+  }
+  if (key.type === 'down') {
+    return Math.min(count - 1, index + 1);
+  }
+  return undefined;
+}
+
 /** 给输入框首行的斜杠命令着色,参数与普通文本保持原样。 */
 export function paintSlashCommand(text: string, paint: (value: string) => string): string {
   if (!text.startsWith('/')) {
