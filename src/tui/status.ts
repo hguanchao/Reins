@@ -38,8 +38,8 @@ export function renderStatusBar(width: number, theme: Theme, info: StatusBarInfo
     info.reasoning !== undefined
       ? `🤖 ${info.model ?? '—'} · 🧠 ${info.reasoning}`
       : `🤖 ${info.model ?? '—'}`,
-    // 用量还没有时按 0 显示:上下文是 0 而不是「未知」,空着反而像没在算
-    `📊 ${formatTokens(info.promptTokens ?? 0)} / ${formatTokens(info.contextWindow)}`,
+    // 用量为 undefined 说明端点没回传 usage(0 由上层在「还没跑过」时给出),如实显示未知
+    `📊 ${formatTokens(info.promptTokens)} / ${formatTokens(info.contextWindow)}`,
     `⚡ ${formatHitRate(info)}`,
   ];
   return theme.paint.muted(` ${truncatePlain(groups.join(' | '), Math.max(0, width - 2))}`);

@@ -39,18 +39,19 @@ describe('状态栏', () => {
     assert.equal(text, '📁 Reins | 🤖 deepseek · 🧠 max | 📊 100K / 1M | ⚡ 90%');
   });
 
-  it('拿不到的项退化成 —,上下文用量按 0 显示', () => {
+  it('拿不到的项退化成 —', () => {
     const text = bar({
       model: undefined,
       promptTokens: undefined,
       contextWindow: undefined,
       cacheReadTokens: undefined,
     });
-    assert.equal(text, '📁 Reins · 🌿 main | 🤖 — · 🧠 max | 📊 0.0K / — | ⚡ —');
+    assert.equal(text, '📁 Reins · 🌿 main | 🤖 — · 🧠 max | 📊 — / — | ⚡ —');
   });
 
-  it('窗口已知而用量还没有时显示 0.0K', () => {
-    assert.ok(bar({ promptTokens: undefined }).includes('📊 0.0K / 1M'));
+  it('上下文用量:还没跑过是真的 0,端点未回传显示未知', () => {
+    assert.ok(bar({ promptTokens: 0 }).includes('📊 0.0K / 1M'));
+    assert.ok(bar({ promptTokens: undefined }).includes('📊 — / 1M'));
   });
 
   it('缓存命中率按统一口径的提示词总量算', () => {

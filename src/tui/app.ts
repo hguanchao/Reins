@@ -1392,7 +1392,9 @@ export class TuiApp implements AgentUi {
       branch: this.branch,
       model: config?.model ?? this.runtime?.model.id,
       reasoning: config?.reasoningEffort,
-      promptTokens: usage === undefined ? undefined : promptTokens(usage),
+      // 真实请求至少含系统提示词,输入不可能为 0:全零用量说明端点没回传 usage,
+      // 显示成未知而不是谎报 0;一次都没跑过的会话才是真的 0
+      promptTokens: usage === undefined ? 0 : usage.inputTokens > 0 ? promptTokens(usage) : undefined,
       contextWindow: this.runtime?.model.contextWindow ?? config?.contextWindow,
       cacheReadTokens: usage?.cacheReadTokens,
     };
