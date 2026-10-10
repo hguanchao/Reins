@@ -52,10 +52,10 @@ describe('输入框边框', () => {
     assert.equal(stripAnsi(options), '  [y] 允许   › [a] 始终允许     [n] 拒绝');
   });
 
-  it('审批选项只用左右切换,且两端回环', () => {
+  it('审批选项只用左右切换,且到两端停住不回环', () => {
     assert.equal(moveApprovalIndex({ type: 'right' }, 0), 1);
-    assert.equal(moveApprovalIndex({ type: 'right' }, 2), 0);
-    assert.equal(moveApprovalIndex({ type: 'left' }, 0), 2);
+    assert.equal(moveApprovalIndex({ type: 'right' }, 2), 2);
+    assert.equal(moveApprovalIndex({ type: 'left' }, 0), 0);
     assert.equal(moveApprovalIndex({ type: 'left' }, 2), 1);
   });
 

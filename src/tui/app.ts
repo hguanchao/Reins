@@ -364,13 +364,14 @@ export class TuiApp implements AgentUi {
       return;
     }
     const count = 2;
+    // 到两端就停住不回环:绕圈会让人在连按时错过另一头的选项
     if (key.type === 'left') {
-      this.trustIndex = (this.trustIndex + count - 1) % count;
+      this.trustIndex = Math.max(0, this.trustIndex - 1);
       this.scheduleRender();
       return;
     }
     if (key.type === 'right') {
-      this.trustIndex = (this.trustIndex + 1) % count;
+      this.trustIndex = Math.min(count - 1, this.trustIndex + 1);
       this.scheduleRender();
       return;
     }

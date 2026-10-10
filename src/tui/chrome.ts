@@ -44,13 +44,14 @@ export const APPROVAL_OPTION_COUNT = 3;
  *
  * 选项是横排的,所以只有左右参与切换;上下不响应,免得与输入框的历史、
  * 光标移动混在一起——审批是模态的,按错键比没反应更糟。
+ * 到两端就停住不回环:绕圈会让人在连按时错过中间项。
  */
 export function moveApprovalIndex(key: TuiKey, index: number): number | undefined {
   if (key.type === 'left') {
-    return (index + APPROVAL_OPTION_COUNT - 1) % APPROVAL_OPTION_COUNT;
+    return Math.max(0, index - 1);
   }
   if (key.type === 'right') {
-    return (index + 1) % APPROVAL_OPTION_COUNT;
+    return Math.min(APPROVAL_OPTION_COUNT - 1, index + 1);
   }
   return undefined;
 }
