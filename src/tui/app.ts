@@ -607,6 +607,14 @@ export class TuiApp implements AgentUi {
         this.editor.moveLeft();
         break;
       case 'right':
+        // 光标在行尾且有灰色预选时,→ 先接受预选(同 shell 自动建议的肌肉记忆)
+        if (this.editor.cursorAtEnd) {
+          const ghost = this.ghostSuggestion();
+          if (ghost !== undefined) {
+            this.editor.insert(ghost);
+            break;
+          }
+        }
         this.editor.moveRight();
         break;
       case 'home':
@@ -797,13 +805,13 @@ export class TuiApp implements AgentUi {
       return;
     }
     // 菜单打开时回车只应用选中项,不直接发送,免得误发没确认的命令;
-    // 例外是带二级菜单的命令:回车直接进菜单,不在输入框回显
+    // 例外是带二级菜单的命令:清空输入直接进菜单,不回显命令
     const completion = this.editor.completionState;
     if (completion !== null) {
       const item = completion.items[completion.index];
-      this.editor.applyCompletion();
-      this.scheduleRender();
       if (item !== undefined && SUBMENU_COMMANDS.has(item)) {
+        this.editor.clear();
+        this.scheduleRender();
         if (item === '/model') {
           await this.commandModel(undefined);
         } else if (item === '/effort') {
@@ -811,7 +819,10 @@ export class TuiApp implements AgentUi {
         } else {
           await this.commandResume(undefined);
         }
+        return;
       }
+      this.editor.applyCompletion();
+      this.scheduleRender();
       return;
     }
     const text = this.editor.submit();
@@ -1412,6 +1423,29 @@ export class TuiApp implements AgentUi {
     };
   }
 
+  /**
+   * 输入框行尾的灰色预选:子菜单命令提示它的当前值。
+   *
+   * 只在光标于行尾、补全菜单未打开时出现;→ 在行尾接受,继续打字自然消失。
+   * /sessions 的候选随会话增长,没有「当前值」可预选,不参与。
+   */
+  private ghostSuggestion(): string | undefined {
+    if (this.editor.completionState !== null || !this.editor.cursorAtEnd) {
+      return undefined;
+    }
+    const text = this.editor.text;
+    if (text === '/effort') {
+      const effort = this.currentConfig?.reasoningEffort;
+      return effort !== undefined ? ` ${effort}` : undefined;
+    }
+    if (text === '/model') {
+      const provider = this.currentConfig?.provider;
+      const model = this.currentConfig?.model;
+      return provider !== undefined && model !== undefined ? ` ${provider}/${model}` : undefined;
+    }
+    return undefined;
+  }
+
   private renderInputLines(width: number): {
     lines: string[];
     cursorLine: number;
@@ -1462,6 +1496,8 @@ export class TuiApp implements AgentUi {
     }
 
     const paint = this.renderContext.theme.paint;
+    // 灰色预选只标在最后一个视觉行,并截断到剩余宽度,溢出会撑破输入框
+    const ghost = this.ghostSuggestion();
     const lines: string[] = [];
     let cursorLine = 0;
     let cursorColumn = 0;
@@ -1472,7 +1508,11 @@ export class TuiApp implements AgentUi {
         break;
       }
       const prefix = rowIndex === 0 ? paint.accent(symbols.inputPrompt) : '  ';
-      const body = rowIndex === 0 ? paintSlashCommand(row.text, paint.accent) : row.text;
+      let body = rowIndex === 0 ? paintSlashCommand(row.text, paint.accent) : row.text;
+      if (ghost !== undefined && rowIndex === rows.length - 1) {
+        const room = Math.max(0, available - visibleWidth(row.text));
+        body += paint.muted(truncatePlain(ghost, room));
+      }
       lines.push(`${prefix}${body}`);
       if (rowIndex === cursorRow) {
         cursorLine = index;

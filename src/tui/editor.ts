@@ -57,6 +57,11 @@ export class InputEditor {
     return this.chars.length === 0;
   }
 
+  /** 光标是否在最末尾:行尾的灰色预选只在此时刻显示与接受。 */
+  get cursorAtEnd(): boolean {
+    return this.cursorIndex === this.chars.length;
+  }
+
   get completionState(): EditorCompletion | null {
     return this.completion;
   }
