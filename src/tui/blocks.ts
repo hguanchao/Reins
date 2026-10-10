@@ -217,6 +217,14 @@ function renderNotice(
 const BRAND = 'Reins';
 const BRAND_DESC = '可控优先的编程智能体';
 
+/**
+ * 哪些通知会让欢迎页退场:警告与错误意味着环境需要用户处理,
+ * 欢迎语继续占屏会把注意力从问题上引开;info 属轻量回执,不打扰。
+ */
+export function noticeDismissesWelcome(level: NoticeLevel): boolean {
+  return level === 'warn' || level === 'error';
+}
+
 function renderWelcome(width: number, theme: Theme): string[] {
   // 两行都居中且同取灰:欢迎页是启动时唯一占屏的东西,不该比它介绍的家伙更抢眼
   return [

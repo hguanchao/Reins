@@ -30,6 +30,7 @@ import type { CommandIo, ParsedArgs } from '../cli/args.ts';
 import {
   contentHeight,
   createBlockRenderer,
+  noticeDismissesWelcome,
   renderTrustPage,
   renderWindow,
   scrollWindow,
@@ -409,7 +410,7 @@ export class TuiApp implements AgentUi {
     }
   }
 
-  /** 输入框一旦有内容就撤掉欢迎面板;单向,清空输入也不找回来。 */
+  /** 输入是欢迎页退场的另一路信号;单向,清空输入也不找回来。警告/错误那一路见 pushNotice。 */
   private hideWelcomeOnInput(): void {
     if (this.editor.isEmpty) {
       return;
@@ -1448,6 +1449,9 @@ export class TuiApp implements AgentUi {
   private pushNotice(text: string, level: NoticeLevel): void {
     // 通知里可能嵌着模型/工具输出,渲染前统一净化
     this.push({ kind: 'notice', text: sanitizeTerminalText(text), level });
+    if (noticeDismissesWelcome(level)) {
+      this.hideWelcome();
+    }
   }
 
   /** 运行结束(含中断)后的收尾:停掉流式光标,未完成的工具标记为已中断。 */

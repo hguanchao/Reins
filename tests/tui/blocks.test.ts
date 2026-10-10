@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   contentHeight,
   createBlockRenderer,
+  noticeDismissesWelcome,
   renderBlock,
   renderBlockVerbose,
   renderTrustPage,
@@ -179,6 +180,12 @@ describe('滚动区块渲染', () => {
         assert.ok(visibleWidth(line) <= width, `宽${width} 超宽:${stripAnsi(line)}`);
       }
     }
+  });
+
+  it('欢迎页退场策略:警告与错误退场,info 不打扰', () => {
+    assert.equal(noticeDismissesWelcome('warn'), true);
+    assert.equal(noticeDismissesWelcome('error'), true);
+    assert.equal(noticeDismissesWelcome('info'), false);
   });
 
   it('渲染结果不超过给定宽度(含 CJK 与 emoji)', () => {
