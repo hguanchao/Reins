@@ -7,6 +7,7 @@ import {
   inputBoxFrame,
   inputBoxLine,
   inputBoxRowRange,
+  matchesArgument,
   menuInsertion,
   moveApprovalIndex,
   moveMenuIndex,
@@ -119,6 +120,19 @@ describe('输入框边框', () => {
     // 已完整匹配、或候选不接在已输入内容之后:没有增量
     assert.equal(candidateRemainder('/model ', '/model '), undefined);
     assert.equal(candidateRemainder('xhigh ', 'zz'), undefined);
+  });
+
+  it('参数候选过滤:普通参数按前缀,带检索文本的按子串且忽略大小写', () => {
+    const effort = { payload: 'xhigh' };
+    assert.equal(matchesArgument(effort, 'xh'), true);
+    assert.equal(matchesArgument(effort, 'high'), false, '前缀口径不认中间片段');
+    assert.equal(matchesArgument(effort, ''), true);
+
+    const session = { payload: '01J-abc', search: '01J-abc 排查登录超时 帮我看下登录接口' };
+    assert.equal(matchesArgument(session, '登录'), true, '标题与首条消息都能命中');
+    assert.equal(matchesArgument(session, 'ABC'), true, '会话 id 大小写不敏感');
+    assert.equal(matchesArgument(session, '01J-abc'), true);
+    assert.equal(matchesArgument(session, 'zzz'), false);
   });
 
 

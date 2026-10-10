@@ -5,10 +5,14 @@ import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 import {
   SESSION_FORMAT_VERSION,
   SessionStore,
+  deleteSession,
   encodeProjectDir,
+  renameSession,
+  summarizeSessionFile,
   type SessionEntry,
 } from '../../src/session/store.ts';
-import { readTextFile, writeTextFile } from '../../src/util/fsx.ts';
+import { spillDirFor } from '../../src/spill/store.ts';
+import { pathExists, readTextFile, writeTextFile } from '../../src/util/fsx.ts';
 
 /** 会话 id 是裸 UUID v7:版本位 7、variant 8/9/a/b。 */
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -107,5 +111,44 @@ describe('会话存储', () => {
     const store = await SessionStore.create(dir, 'C:/work/demo');
     assert.ok(store.file.includes('C--work-demo'));
     assert.ok(store.file.endsWith(`${store.sessionId}.jsonl`), '文件名就是会话 id');
+  });
+
+  it('重命名只改 meta 行,条目与后续追加都不受影响', async () => {
+    const store = await SessionStore.create(dir, process.cwd());
+    await store.append(makeEntry({ id: 'e1', type: 'user', text: '你好' }));
+    const entryLine = (await readTextFile(store.file)).split('\n')[1];
+
+    await renameSession(store.file, '  排查登录超时  ');
+    assert.equal((await summarizeSessionFile(store.file)).title, '排查登录超时', '标题去掉首尾空白');
+    assert.equal((await readTextFile(store.file)).split('\n')[1], entryLine, '条目行原样保留');
+
+    await store.append(makeEntry({ id: 'e2', type: 'assistant', text: '收到', parentId: 'e1' }));
+    assert.equal((await store.readAll()).entries.length, 2);
+  });
+
+  it('空标题即清除,列表退回显示首条消息', async () => {
+    const store = await SessionStore.create(dir, process.cwd());
+    await renameSession(store.file, '临时名字');
+    await renameSession(store.file, '   ');
+    assert.equal((await summarizeSessionFile(store.file)).title, undefined);
+    const meta = JSON.parse((await readTextFile(store.file)).split('\n')[0] as string) as Record<string, unknown>;
+    assert.equal('title' in meta, false, '清除要真的把字段删掉,而不是留个空串');
+  });
+
+  it('重命名损坏文件时报可读错误', async () => {
+    const file = join(dir, 'rename-broken.jsonl');
+    await writeTextFile(file, 'not-json\n');
+    await assert.rejects(() => renameSession(file, 'x'), /不是合法 JSON/);
+  });
+
+  it('删除会话时连落盘目录一起清掉', async () => {
+    const store = await SessionStore.create(dir, process.cwd());
+    await store.append(makeEntry({ id: 'e1', type: 'user', text: 'hi' }));
+    const spillDir = spillDirFor(store.file, store.sessionId);
+    await writeTextFile(join(spillDir, 'result.txt'), '很长的工具输出');
+
+    await deleteSession(store.file);
+    assert.equal(await pathExists(store.file), false);
+    assert.equal(await pathExists(spillDir), false, '落盘目录不能留下孤儿');
   });
 });

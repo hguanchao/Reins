@@ -1,4 +1,4 @@
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { resolveAuth, resolveModel, resolveProvider } from '../catalog/load.ts';
 import type { Catalog, ModelSpec, ProviderSpec } from '../catalog/schema.ts';
 import type { ApprovalMode, Config } from '../config/schema.ts';
@@ -12,7 +12,7 @@ import { ApprovalGate, type ApprovalGateOptions } from '../permissions/approval.
 import { PermissionEngine } from '../permissions/engine.ts';
 import { Sandbox } from '../permissions/sandbox.ts';
 import { Session } from '../session/tree.ts';
-import { SpillStore } from '../spill/store.ts';
+import { SpillStore, spillDirFor } from '../spill/store.ts';
 import { createDefaultRegistry } from '../tools/defaults.ts';
 import { resolveRealPath } from '../tools/realpath.ts';
 import type { AgentUi } from '../ui/printer.ts';
@@ -149,7 +149,7 @@ export async function createAgentRuntime(options: RunTaskOptions): Promise<Agent
         modelId: options.config.compactModel,
       }),
     });
-    const spill = new SpillStore(join(dirname(session.path), `${session.id}.spill`));
+    const spill = new SpillStore(spillDirFor(session.path, session.id));
 
     // 未信任的目录不注入说明文件:它与项目配置同源,都来自仓库
     const projectDoc = projectTrusted ? await discoverProjectDoc(options.workspace) : null;

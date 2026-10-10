@@ -118,7 +118,8 @@ export const CHAT_KEY_HELP: readonly { keys: string; action: string }[] = [
   { keys: 'PgUp / PgDn', action: '滚动对话(鼠标滚轮同)' },
   { keys: 'End', action: '回到底部并继续跟随' },
   { keys: 'Ctrl+C', action: '运行中中断;否则清空输入' },
-  { keys: 'Ctrl+D', action: '输入为空时退出' },
+  { keys: 'Ctrl+D', action: '输入为空时退出;会话菜单里是删除(按两次)' },
+  { keys: 'Ctrl+R / Ctrl+N', action: '会话菜单:反转时间排序 / 重命名会话' },
   { keys: '?', action: '显示本页(输入框为空时)' },
 ];
 

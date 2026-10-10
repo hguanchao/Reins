@@ -43,6 +43,8 @@ describe('输入解码', () => {
     assert.deepEqual(decode('\u0017'), [{ type: 'ctrl-w' }]);
     assert.deepEqual(decode('\u0005'), [{ type: 'ctrl-e' }]);
     assert.deepEqual(decode('\u000f'), [{ type: 'ctrl-o' }]);
+    assert.deepEqual(decode('\u000e'), [{ type: 'ctrl-n' }]);
+    assert.deepEqual(decode('\u0012'), [{ type: 'ctrl-r' }]);
   });
 
   it('方向键、翻页与 Home/End', () => {

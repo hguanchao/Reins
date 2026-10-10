@@ -136,6 +136,20 @@ export function candidateRemainder(insertion: string, typed: string): string | u
   return insertion.slice(typed.length);
 }
 
+/**
+ * 参数候选的过滤口径。
+ *
+ * 命令参数是补全语义,按前缀匹配——补出来的东西必须接着已输入的部分;
+ * 带 search 的候选(会话列表)是检索语义,按子串匹配 id、标题与首条消息,
+ * 不必先想起会话 id。
+ */
+export function matchesArgument(item: { payload: string; search?: string }, typed: string): boolean {
+  if (item.search === undefined) {
+    return item.payload.startsWith(typed);
+  }
+  return typed === '' || item.search.toLowerCase().includes(typed.toLowerCase());
+}
+
 function isBlank(char: string): boolean {
   return char === ' ' || char === '\n' || char === '\t' || char === '\r';
 }

@@ -30,6 +30,8 @@ export type TuiKey =
   | { type: 'ctrl-w' }
   | { type: 'ctrl-e' }
   | { type: 'ctrl-o' }
+  | { type: 'ctrl-n' }
+  | { type: 'ctrl-r' }
   /** 括号粘贴的整段文本;换行已归一为 \n。 */
   | { type: 'paste'; text: string }
   /** 鼠标滚轮;正数向下、负数向上,单位为行。 */
@@ -119,6 +121,8 @@ const CONTROLS: Readonly<Record<string, TuiKey>> = {
   '\u0017': { type: 'ctrl-w' },
   '\u0005': { type: 'ctrl-e' },
   '\u000f': { type: 'ctrl-o' },
+  '\u000e': { type: 'ctrl-n' },
+  '\u0012': { type: 'ctrl-r' },
 };
 
 export interface KeyDecoder {

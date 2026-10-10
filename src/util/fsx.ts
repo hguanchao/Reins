@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 /**
@@ -57,4 +57,14 @@ export async function isDirectory(target: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** 删除文件;不存在时视为已删除,调用方不必先探测。 */
+export async function removeFile(target: string): Promise<void> {
+  await rm(target, { force: true });
+}
+
+/** 递归删除目录;不存在时视为已删除。 */
+export async function removeDir(target: string): Promise<void> {
+  await rm(target, { recursive: true, force: true });
 }

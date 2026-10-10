@@ -22,6 +22,7 @@ import { promptTokens } from '../llm/usage.ts';
 import { approvalGrant, type ApprovalAnswer, type Approver } from '../permissions/approval.ts';
 import type { Decision } from '../permissions/engine.ts';
 import type { RuleTarget } from '../permissions/rules.ts';
+import { deleteSession as deleteSessionFile, renameSession } from '../session/store.ts';
 import type { AgentUi } from '../ui/printer.ts';
 import { sanitizeTerminalText } from '../util/ansi.ts';
 import { describeError } from '../util/errors.ts';
@@ -49,6 +50,7 @@ import {
   inputBoxFrame,
   inputBoxLine,
   inputBoxRowRange,
+  matchesArgument,
   menuInsertion,
   moveApprovalIndex,
   moveMenuIndex,
@@ -110,6 +112,10 @@ interface MenuItem {
   directory?: boolean;
   /** 当前生效项(模型 / 思考强度 / 当前会话):参数菜单默认高亮它。 */
   current?: boolean;
+  /** 供检索的附加文本:有值时该候选按子串匹配(会话列表用),否则按前缀补全。 */
+  search?: string;
+  /** 候选项对应的会话文件;重命名与删除要按它落盘。 */
+  file?: string;
 }
 
 /** 菜单状态;三个来源共用。 */
@@ -128,6 +134,15 @@ const MENU_HINTS: Readonly<Record<MenuSource, string>> = {
   argument: 'Tab 补全 · ↵ 执行 · Esc 取消',
   file: 'Tab/↵ 引用 · Esc 取消',
 };
+
+/** 会话菜单的提示:除了补全与恢复,还挂着三个管理动作。 */
+const SESSION_MENU_HINT = 'Tab 补全 · ↵ 恢复 · Ctrl+R 排序 · Ctrl+N 重命名 · Ctrl+D 删除 · Esc 取消';
+
+/** 重命名会话的输入行前缀,光标列要按它算。 */
+const TITLE_LABEL = '标题: ';
+
+/** 会话标题长度上限:再长在菜单里也显示不下,只会把列表挤乱。 */
+const MAX_SESSION_TITLE = 60;
 
 /** 思考强度的中文说明,参数菜单的第二列。 */
 const EFFORT_LABELS: Readonly<Record<ReasoningEffort, string>> = {
@@ -291,6 +306,12 @@ export class TuiApp implements AgentUi {
   private menu: MenuState | undefined;
   /** 参数菜单的全部候选;会话列表要读盘,取到后缓存,免得每次按键都扫一遍。 */
   private submenuItems: { kind: SubmenuKind; items: MenuItem[] } | undefined;
+  /** 会话列表的排序方向:默认最新的在最前。 */
+  private sessionSort: 'newest' | 'oldest' = 'newest';
+  /** 已按过一次删除、等第二次确认的会话 id;动别的键即放弃。 */
+  private sessionPendingDelete: string | undefined;
+  /** 正在重命名的会话;有值时页脚换成一行输入框。 */
+  private renamePrompt: { file: string; sessionId: string; text: string } | undefined;
   /** 目录信任判定结果;启动时先于会话确定。 */
   private trust: TrustResolution | undefined;
   /** 待回答的信任页;有值时整屏只显示它。docs 是会被注入的说明文件。 */
@@ -627,6 +648,11 @@ export class TuiApp implements AgentUi {
     if (this.approvalCard !== undefined) {
       this.handleApprovalKey(key);
       this.scheduleRender();
+      return;
+    }
+    // 重命名也是一行输入:它开着的时候输入框不显示,按键只认它
+    if (this.renamePrompt !== undefined) {
+      this.handleRenameKey(key);
       return;
     }
     // 快捷键页是只读的:任何键都把它收起,不落到别处
@@ -1005,6 +1031,25 @@ export class TuiApp implements AgentUi {
     if (menu === undefined) {
       return;
     }
+    // 会话菜单多三个管理动作:排序 / 重命名 / 删除
+    if (menu.kind === 'sessions') {
+      if (key.type === 'ctrl-d') {
+        this.requestSessionDelete(menu);
+        return;
+      }
+      if (key.type === 'ctrl-r') {
+        this.clearSessionPendingDelete();
+        this.toggleSessionSort();
+        return;
+      }
+      if (key.type === 'ctrl-n') {
+        this.clearSessionPendingDelete();
+        this.beginSessionRename(menu);
+        return;
+      }
+    }
+    // 待确认的删除只认紧邻的下一次 ^D:中间动了别的键就撤销,免得手滑删掉会话
+    this.clearSessionPendingDelete();
     const moved = moveMenuIndex(key, menu.index, menu.items.length);
     if (moved !== undefined) {
       if (moved !== menu.index) {
@@ -1095,6 +1140,130 @@ export class TuiApp implements AgentUi {
     }
   }
 
+  /** 会话列表排序:最新在前 ⇄ 最旧在前。候选顺序变了,缓存作废后重摆菜单。 */
+  private toggleSessionSort(): void {
+    this.sessionSort = this.sessionSort === 'newest' ? 'oldest' : 'newest';
+    this.submenuItems = undefined;
+    const typed = this.completionTarget()?.typed ?? '';
+    void this.showArgumentMenu('sessions', typed);
+  }
+
+  /** 待确认的删除只认紧邻的下一次 ^D;这里在别的按键到来时撤销它。 */
+  private clearSessionPendingDelete(): void {
+    if (this.sessionPendingDelete !== undefined) {
+      this.sessionPendingDelete = undefined;
+      this.scheduleRender();
+    }
+  }
+
+  /** 删除会话:第一次 ^D 只是举手(提示改成「再按一次」),再按一次才真删。 */
+  private requestSessionDelete(menu: MenuState): void {
+    const item = menu.items[menu.index];
+    if (item === undefined) {
+      return;
+    }
+    if (this.sessionPendingDelete !== item.payload) {
+      this.sessionPendingDelete = item.payload;
+      this.scheduleRender();
+      return;
+    }
+    this.sessionPendingDelete = undefined;
+    void this.deleteSession(item);
+  }
+
+  private async deleteSession(item: MenuItem): Promise<void> {
+    const file = item.file;
+    if (file === undefined) {
+      return;
+    }
+    if (item.current === true) {
+      // 正在用的会话随时会被追加:删掉文件,下一次写入又把它建回来
+      this.pushNotice('当前会话不能删除,先 /new 开一个新会话再删它。', 'warn');
+      return;
+    }
+    try {
+      await deleteSessionFile(file);
+      this.submenuItems = undefined;
+      this.pushNotice(`已删除会话:${item.label}`, 'info');
+      this.refreshMenu();
+      this.scheduleRender();
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
+    }
+  }
+
+  /** 开始重命名:收起菜单,页脚换成一行输入框,预填现有标题。 */
+  private beginSessionRename(menu: MenuState): void {
+    const item = menu.items[menu.index];
+    if (item === undefined || item.file === undefined) {
+      return;
+    }
+    this.closeMenu();
+    this.renamePrompt = {
+      file: item.file,
+      sessionId: item.payload,
+      // 没起过名的会话在列表里显示的是 id,此时输入框留空而不是预填 id
+      text: item.label === item.payload ? '' : item.label,
+    };
+    this.scheduleRender();
+  }
+
+  /** 重命名输入:只认文本与退格;回车保存,Esc 放弃并退回列表。 */
+  private handleRenameKey(key: TuiKey): void {
+    const prompt = this.renamePrompt;
+    if (prompt === undefined) {
+      return;
+    }
+    // 这一行是当前唯一的输入位:不管刚才点过哪里,按键进来就重新聚焦
+    this.focused = true;
+    if (key.type === 'text') {
+      const typed = [...key.text].filter((char) => (char.codePointAt(0) ?? 0) >= 32).join('');
+      const room = MAX_SESSION_TITLE - [...prompt.text].length;
+      this.renamePrompt = { ...prompt, text: prompt.text + typed.slice(0, Math.max(0, room)) };
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'backspace') {
+      this.renamePrompt = { ...prompt, text: [...prompt.text].slice(0, -1).join('') };
+      this.scheduleRender();
+      return;
+    }
+    if (key.type === 'enter') {
+      void this.finishRename(prompt.text);
+      return;
+    }
+    if (key.type === 'escape' || key.type === 'ctrl-c') {
+      this.renamePrompt = undefined;
+      this.refreshMenu();
+      this.scheduleRender();
+    }
+  }
+
+  /** 落盘标题:空标题即清除,列表退回显示首条消息。 */
+  private async finishRename(title: string): Promise<void> {
+    const prompt = this.renamePrompt;
+    if (prompt === undefined) {
+      return;
+    }
+    this.renamePrompt = undefined;
+    try {
+      await renameSession(prompt.file, title);
+      // 缓存里还带着旧标题,必须重取
+      this.submenuItems = undefined;
+      const clean = title.trim();
+      this.pushNotice(
+        clean === ''
+          ? `已清除会话标题:${prompt.sessionId}`
+          : `会话 ${prompt.sessionId} 已命名为「${clean}」`,
+        'info',
+      );
+    } catch (error) {
+      this.pushNotice(`错误:${describeError(error)}`, 'error');
+    }
+    this.refreshMenu();
+    this.scheduleRender();
+  }
+
   /** 输入变化后重算菜单:来源由光标处的词条决定,没有候选就收起菜单。 */
   private refreshMenu(): void {
     const target = this.completionTarget();
@@ -1139,7 +1308,7 @@ export class TuiApp implements AgentUi {
     if (this.argumentKind() !== kind) {
       return;
     }
-    this.showMenu('argument', all.filter((item) => item.payload.startsWith(typed)), kind);
+    this.showMenu('argument', all.filter((item) => matchesArgument(item, typed)), kind);
   }
 
   /** 摆出菜单并挑高亮:优先沿用上一次的高亮,其次当前生效项,最后首项。 */
@@ -1276,12 +1445,23 @@ export class TuiApp implements AgentUi {
       return undefined;
     }
     const activeId = this.runtime?.session.id;
-    return summaries.map((summary) => ({
-      payload: summary.sessionId,
-      label: summary.sessionId,
-      detail: `${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`,
-      current: summary.sessionId === activeId,
-    }));
+    const ordered = this.sessionSort === 'newest' ? summaries : [...summaries].reverse();
+    return ordered.map((summary) => {
+      const when = summary.createdAt.replace('T', ' ').slice(0, 19);
+      return {
+        payload: summary.sessionId,
+        // 起过名就显示名字;此时 id 挪到第二列,否则列表里就再没有 id 可认了
+        label: summary.title ?? summary.sessionId,
+        detail:
+          summary.title === undefined
+            ? `${when}  ${summary.preview}`
+            : `${when}  ${summary.sessionId}  ${summary.preview}`,
+        // 检索文本:id、标题与首条消息都能命中
+        search: `${summary.sessionId} ${summary.title ?? ''} ${summary.preview}`,
+        file: summary.file,
+        current: summary.sessionId === activeId,
+      };
+    });
   }
 
   /** 裸命令回车:补上参数位的空格,参数菜单随之摆出来。 */
@@ -1783,12 +1963,27 @@ export class TuiApp implements AgentUi {
       width,
       this.renderContext.theme,
       count,
-      MENU_HINTS[menu.source],
+      this.menuHint(menu),
     );
   }
 
+  /** 菜单顶栏提示:会话菜单挂管理动作;待确认删除时改成「再按一次」,把话说在动作旁边。 */
+  private menuHint(menu: MenuState): string {
+    if (menu.kind !== 'sessions') {
+      return MENU_HINTS[menu.source];
+    }
+    return this.sessionPendingDelete === undefined
+      ? SESSION_MENU_HINT
+      : `再按一次 Ctrl+D 删除 ${this.sessionPendingDelete} · 其他键取消`;
+  }
+
   private isInputBoxRow(row: number): boolean {
-    if (this.trustPrompt !== undefined || this.approvalCard !== undefined || this.viewer.isOpen) {
+    if (
+      this.trustPrompt !== undefined ||
+      this.approvalCard !== undefined ||
+      this.renamePrompt !== undefined ||
+      this.viewer.isOpen
+    ) {
       return false;
     }
     const input = this.renderInputLines(this.terminal.columns);
@@ -1805,6 +2000,21 @@ export class TuiApp implements AgentUi {
   }
 
   private renderFooter(width: number): { lines: string[]; cursor?: { line: number; column: number } } {
+    if (this.renamePrompt !== undefined) {
+      const theme = this.renderContext.theme;
+      const { sessionId, text } = this.renamePrompt;
+      const lines = [
+        theme.paint.separator(symbols.separator.repeat(width)),
+        theme.paint.muted(truncatePlain(`  重命名会话 ${sessionId} · 留空恢复默认 · ↵ 保存 · Esc 取消`, width)),
+        `  ${TITLE_LABEL}${text}`,
+        '',
+      ];
+      return {
+        lines,
+        // 光标落在标题末尾,与拒绝理由那一行的算法一致
+        cursor: { line: 2, column: 2 + visibleWidth(TITLE_LABEL) + visibleWidth(text) },
+      };
+    }
     if (this.approvalCard !== undefined) {
       const theme = this.renderContext.theme;
       const paint = theme.paint;
@@ -1840,7 +2050,11 @@ export class TuiApp implements AgentUi {
       const optionsRow = lines.length - 2;
       return reason === undefined
         ? { lines }
-        : { lines, cursor: { line: optionsRow, column: 4 + visibleWidth(REASON_LABEL) + visibleWidth(reason) } };
+        : {
+            lines,
+            // 缩进 2 格 + 标签宽度,再往后才是理由正文
+            cursor: { line: optionsRow, column: 2 + visibleWidth(REASON_LABEL) + visibleWidth(reason) },
+          };
     }
 
     const theme = this.renderContext.theme;

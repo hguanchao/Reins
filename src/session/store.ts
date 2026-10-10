@@ -1,8 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { spillDirFor } from '../spill/store.ts';
 import { ReinsError } from '../util/errors.ts';
 import { uuidv7 } from '../util/ids.ts';
-import { appendLine, ensureDir, pathExists, readTextFile } from '../util/fsx.ts';
+import {
+  appendLine,
+  ensureDir,
+  pathExists,
+  readTextFile,
+  removeDir,
+  removeFile,
+  writeTextFile,
+} from '../util/fsx.ts';
 
 /**
  * 会话存储:JSONL 追加写入。
@@ -60,6 +69,8 @@ export interface SessionMeta {
   cwd: string;
   /** 本次会话是否在受信任的项目里创建;审计用,旧文件缺此字段。 */
   trusted?: boolean;
+  /** 人工起的会话名;列表里代替 id 显示,缺省表示没起过名。 */
+  title?: string;
 }
 
 export interface SessionFile {
@@ -202,6 +213,8 @@ export interface SessionSummary {
   cwd: string;
   entryCount: number;
   preview: string;
+  /** 人工起的会话名;缺省时列表退回显示 preview。 */
+  title?: string;
 }
 
 /** 读取会话文件的轻量摘要。 */
@@ -220,5 +233,52 @@ export async function summarizeSessionFile(file: string): Promise<SessionSummary
     cwd: meta.cwd,
     entryCount: entries.length,
     preview,
+    title: meta.title,
   };
+}
+
+/**
+ * 给会话起名或清除名字。
+ *
+ * 标题写在 meta 行(文件首行),所以只需重写这一行,后面的条目原样保留——会话
+ * 存储「只追加」的用意是条目不可篡改,而标题属于元信息,原地改写不影响审计。
+ * 传空标题即清除,列表退回显示首条消息。
+ */
+export async function renameSession(file: string, title: string): Promise<void> {
+  const lines = (await readTextFile(file)).split(/\r?\n/);
+  const index = lines.findIndex((line) => line.trim() !== '');
+  if (index === -1) {
+    throw new ReinsError('session', `会话文件为空:${file}`);
+  }
+  const raw = lines[index] as string;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    throw new ReinsError('session', `会话文件第 ${index + 1} 行不是合法 JSON:${file}`);
+  }
+  if (!isMeta(parsed)) {
+    throw new ReinsError('session', `会话文件缺少有效的 meta 行:${file}`);
+  }
+  const next: SessionMeta = { ...parsed };
+  const clean = title.trim();
+  if (clean === '') {
+    delete next.title;
+  } else {
+    next.title = clean;
+  }
+  lines[index] = JSON.stringify(next);
+  await writeTextFile(file, lines.join('\n'));
+}
+
+/**
+ * 删除会话:会话文件连同它的落盘目录一起清掉。
+ *
+ * 落盘目录按会话 id 命名,只删 jsonl 会留下孤儿文件,越攒越多。
+ */
+export async function deleteSession(file: string): Promise<void> {
+  const store = new SessionStore(file);
+  const { meta } = await store.readAll();
+  await removeFile(file);
+  await removeDir(spillDirFor(file, meta.sessionId));
 }

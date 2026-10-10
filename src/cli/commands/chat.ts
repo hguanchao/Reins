@@ -355,7 +355,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
             io.err('当前项目还没有会话(`reins sessions list` 可查看全部项目)。');
           }
           for (const summary of summaries.slice(0, 10)) {
-            io.err(`  ${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`);
+            io.err(`  ${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.title ?? summary.preview}`);
           }
           io.err('用法:/sessions <会话 id>(或 reins resume 恢复最近一次)');
           continue;

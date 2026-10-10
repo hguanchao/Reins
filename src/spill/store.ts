@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { ensureDir, writeTextFile } from '../util/fsx.ts';
 
 /**
@@ -7,6 +7,15 @@ import { ensureDir, writeTextFile } from '../util/fsx.ts';
  * 设计意图:文件按会话隔离,便于清理与审计;
  * 文件名带来源工具与时间戳,便于人工排查。
  */
+
+/**
+ * 会话对应的落盘目录:与会话文件同级,名字是 `<会话 id>.spill`。
+ *
+ * 目录名里带会话 id 而不是「共用一个大目录」,删会话时才能连带清干净、不留孤儿文件。
+ */
+export function spillDirFor(sessionFile: string, sessionId: string): string {
+  return join(dirname(sessionFile), `${sessionId}.spill`);
+}
 export class SpillStore {
   readonly dir: string;
 

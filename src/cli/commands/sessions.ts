@@ -134,7 +134,9 @@ async function listSessions(home: string, args: ParsedArgs, io: CommandIo): Prom
   for (const summary of summaries.slice(0, limit)) {
     const when = summary.createdAt.replace('T', ' ').slice(0, 19);
     const project = encodeProjectDir(summary.cwd);
-    io.out(`${summary.sessionId}  ${when}  ${summary.entryCount} 条  ${project}  ${summary.preview}`);
+    io.out(
+      `${summary.sessionId}  ${when}  ${summary.entryCount} 条  ${project}  ${summary.title ?? summary.preview}`,
+    );
   }
   io.out(`共 ${summaries.length} 个会话;用 reins run --resume <会话 id> 继续。`);
   return 0;
