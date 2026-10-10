@@ -45,7 +45,11 @@ const PASTE_END = '\u001b[201~';
 /** 单次粘贴的字符上限:超过即截断,避免一次粘贴拖垮内存与渲染。 */
 export const MAX_PASTE_CHARS = 100_000;
 /** 每格滚轮滚动的行数。 */
+/** 滚轮基础步长:一格滚多少行。 */
 const WHEEL_STEP = 3;
+/** 连续滚动的判定间隔与最大加速倍数:一波之内步长逐格递增,停手即复位。 */
+const WHEEL_BURST_MS = 120;
+const WHEEL_MAX_BURST = 5;
 
 interface ControlDef {
   sequence: string;
@@ -126,10 +130,21 @@ export interface KeyDecoder {
   hasPending(): boolean;
 }
 
-export function createKeyDecoder(): KeyDecoder {
+export function createKeyDecoder(now: () => number = Date.now): KeyDecoder {
   const textDecoder = new TextDecoder('utf-8');
   let buf = '';
   let pasting = false;
+  // 滚轮加速状态:连续滚动时步长递增,停手或敲了别的键就复位
+  let lastWheelAt = 0;
+  let wheelBurst = 0;
+
+  /** 一格滚轮实际走多少行:连滚越快走得越多,长历史才不用一直滚。 */
+  const wheelStep = (): number => {
+    const at = now();
+    wheelBurst = at - lastWheelAt <= WHEEL_BURST_MS ? Math.min(wheelBurst + 1, WHEEL_MAX_BURST) : 1;
+    lastWheelAt = at;
+    return WHEEL_STEP * wheelBurst;
+  };
 
   const consume = (length: number): void => {
     buf = buf.slice(length);
@@ -207,7 +222,7 @@ export function createKeyDecoder(): KeyDecoder {
       const y = Number.parseInt(sgr[3] ?? '0', 10);
       const wheel = wheelFromButton(button);
       if (wheel !== 0 && sgr[4] === 'M') {
-        return { type: 'wheel', delta: wheel * WHEEL_STEP };
+        return { type: 'wheel', delta: wheel * wheelStep() };
       }
       return sgr[4] === 'M' ? { type: 'mouse-down', x, y } : { type: 'unknown' };
     }
@@ -222,7 +237,7 @@ export function createKeyDecoder(): KeyDecoder {
       consume(6);
       const wheel = wheelFromButton(button);
       return wheel !== 0
-        ? { type: 'wheel', delta: wheel * WHEEL_STEP }
+        ? { type: 'wheel', delta: wheel * wheelStep() }
         : { type: 'mouse-down', x, y };
     }
 

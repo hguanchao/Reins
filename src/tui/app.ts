@@ -606,6 +606,15 @@ export class TuiApp implements AgentUi {
       return;
     }
     if (key.type === 'mouse-down') {
+      // 点在滚动条那一列:按点在轨道上的比例跳转,与滑块位置用同一套映射
+      if (key.x >= this.terminal.columns && this.lastMaxTop > 0) {
+        const travel = Math.max(1, this.lastMainHeight - 1);
+        const ratio = Math.min(1, Math.max(0, (key.y - 1) / travel));
+        this.follow = ratio >= 1;
+        this.scrollTop = Math.round(ratio * this.lastMaxTop);
+        this.scheduleRender();
+        return;
+      }
       this.focused = this.isInputBoxRow(key.y);
       this.scheduleRender();
       return;

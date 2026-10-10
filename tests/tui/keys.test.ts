@@ -9,6 +9,23 @@ function decode(input: string): { type: string; text?: string; delta?: number }[
   return [...events, ...decoder.flush()] as { type: string }[];
 }
 
+describe('滚轮加速', () => {
+  it('连滚时步长递增,停手后复位', () => {
+    let clock = 0;
+    const decoder = createKeyDecoder(() => clock);
+    const step = (at: number): number => {
+      clock = at;
+      const [event] = decoder.feed('[<65;1;1M');
+      return (event as { delta: number }).delta;
+    };
+    assert.equal(step(0), 3);
+    assert.equal(step(50), 6);
+    assert.equal(step(100), 9);
+    // 停手超过间隔:回到基础步长
+    assert.equal(step(1000), 3);
+  });
+});
+
 describe('输入解码', () => {
   it('普通文本与中文', () => {
     assert.deepEqual(decode('ab'), [{ type: 'text', text: 'ab' }]);
