@@ -52,7 +52,7 @@ describe('输入行编辑器', () => {
   });
 
   it('斜杠补全:过滤、选择与应用', () => {
-    const editor = new InputEditor({ commands: ['/help', '/model', '/mcp', '/new'] });
+    const editor = new InputEditor({ commands: ['/help', '/model', '/mcp', '/effort'] });
     editor.insert('/m');
     const initial = editor.completionState;
     if (initial === null) throw new Error('应出现补全菜单');

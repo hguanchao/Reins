@@ -5,55 +5,28 @@
  */
 
 export type ChatCommand =
-  | { type: 'exit' }
   | { type: 'help' }
-  | { type: 'session' }
-  | { type: 'status' }
-  | { type: 'new' }
   | { type: 'compact' }
   | { type: 'mcp' }
   | { type: 'model'; target: string | undefined }
   | { type: 'effort'; value: string | undefined }
-  | { type: 'resume'; id: string | undefined }
   | { type: 'empty' }
   | { type: 'prompt'; text: string };
 
 /** 可补全的斜杠命令集合。 */
-export const CHAT_COMMANDS: readonly string[] = [
-  '/clear',
-  '/compact',
-  '/effort',
-  '/exit',
-  '/help',
-  '/mcp',
-  '/model',
-  '/new',
-  '/quit',
-  '/resume',
-  '/session',
-  '/sessions',
-  '/status',
-];
+export const CHAT_COMMANDS: readonly string[] = ['/compact', '/effort', '/help', '/mcp', '/model'];
 
 /**
  * 斜杠命令的说明,供补全菜单逐条展示。
  *
- * 别名(/clear、/quit、/sessions)与主命令共用同一句说明,菜单里不区分。
+ * 别名(/mcps)与主命令共用同一句说明,菜单里不区分。
  */
 export const CHAT_COMMAND_DESCRIPTIONS: Readonly<Record<string, string>> = {
-  '/clear': '开始新会话',
   '/compact': '立即压缩上下文',
   '/effort': '查看或切换思考强度',
-  '/exit': '退出',
   '/help': '显示帮助',
   '/mcp': '显示 MCP 服务器状态',
   '/model': '查看或切换模型',
-  '/new': '开始新会话',
-  '/quit': '退出',
-  '/resume': '恢复会话;无 id 时列出',
-  '/session': '显示当前会话文件',
-  '/sessions': '恢复会话;无 id 时列出',
-  '/status': '显示会话与模型状态',
 };
 
 /** 解析一行输入:斜杠命令或普通任务文本(未知斜杠按普通文本处理)。 */
@@ -68,19 +41,9 @@ export function parseChatCommand(input: string): ChatCommand {
   const [name, ...rest] = trimmed.slice(1).split(/\s+/);
   const arg = rest.join(' ').trim() === '' ? undefined : rest.join(' ').trim();
   switch ((name ?? '').toLowerCase()) {
-    case 'exit':
-    case 'quit':
-      return { type: 'exit' };
     case 'help':
     case 'hotkeys':
       return { type: 'help' };
-    case 'session':
-      return { type: 'session' };
-    case 'status':
-      return { type: 'status' };
-    case 'new':
-    case 'clear':
-      return { type: 'new' };
     case 'compact':
       return { type: 'compact' };
     case 'mcp':
@@ -91,9 +54,6 @@ export function parseChatCommand(input: string): ChatCommand {
       return { type: 'model', target: arg };
     case 'effort':
       return { type: 'effort', value: arg };
-    case 'resume':
-    case 'sessions':
-      return { type: 'resume', id: arg };
     default:
       return { type: 'prompt', text: trimmed };
   }
@@ -121,15 +81,10 @@ export function decideInterrupt(state: { running: boolean; hasInput: boolean }):
 
 export const CHAT_HELP_TEXT = [
   '/help                 显示帮助',
-  '/new(/clear)          开始新会话',
   '/model [provider/model-id]  查看或切换模型',
   '/effort [off|low|medium|high|xhigh|max]  查看或切换思考强度',
   '/compact              立即压缩上下文',
-  '/status               显示会话与模型状态',
   '/mcp(/mcps)           显示 MCP 服务器状态',
-  '/resume(/sessions) [会话 id]  恢复会话;无 id 时列出',
-  '/session              显示当前会话文件',
-  '/exit(/quit)          退出',
   '',
   '快捷键:↑/↓ 历史 · @ 引用文件 · Tab 补全 · Ctrl+J 换行',
   '        Ctrl+O 全屏查看工具输出 · Ctrl+E 展开或折叠 · Ctrl+C/Esc 中断 · 空行 Ctrl+D 退出',

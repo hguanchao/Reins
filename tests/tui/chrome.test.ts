@@ -168,8 +168,8 @@ describe('垂直居中', () => {
 describe('补全菜单', () => {
   const rows = [
     { label: '/help', detail: '显示帮助' },
-    { label: '/new', detail: '开始新会话' },
-    { label: '/resume', detail: '恢复会话;无 id 时列出' },
+    { label: '/model', detail: '查看或切换模型' },
+    { label: '/effort', detail: '查看或切换思考强度' },
   ];
 
   it('上下有浅灰边框,候选区铺灰色背景且高度固定', () => {
@@ -186,8 +186,8 @@ describe('补全菜单', () => {
     const menu = completionMenu(rows, 0, 60, theme, 3).map(stripAnsi);
     assert.ok(menu[1]?.startsWith('  › /help  '), menu[1]);
     const column = menu[1]?.indexOf('显示帮助');
-    assert.equal(menu[2]?.indexOf('开始新会话'), column);
-    assert.equal(menu[3]?.indexOf('恢复会话;无 id 时列出'), column);
+    assert.equal(menu[2]?.indexOf('查看或切换模型'), column);
+    assert.equal(menu[3]?.indexOf('查看或切换思考强度'), column);
   });
 
   it('候选超出高度时选中项始终落在窗口内', () => {

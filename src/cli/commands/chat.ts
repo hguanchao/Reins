@@ -12,7 +12,7 @@ import { ConsoleUi } from '../../ui/printer.ts';
 import { describeError } from '../../util/errors.ts';
 import { absolutize, reinsHome } from '../../util/paths.ts';
 import { startTui } from '../../tui/app.ts';
-import { latestSessionFile, listSessionSummaries, resolveSessionFile } from './sessions.ts';
+import { latestSessionFile, resolveSessionFile } from './sessions.ts';
 import {
   CHAT_COMMANDS,
   CHAT_HELP_TEXT,
@@ -147,12 +147,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
     resumeFile = undefined;
   };
 
-  const rebuild = async (options: {
-    provider?: string;
-    model?: string;
-    sessionFile?: string;
-    freshSession?: boolean;
-  }): Promise<void> => {
+  const rebuild = async (options: { provider?: string; model?: string }): Promise<void> => {
     const layered = await loadLayeredConfig({ home, cwd: workspace, projectLayer });
     currentConfig = {
       ...layered.config,
@@ -161,8 +156,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
       ...(effortOverride !== undefined ? { reasoningEffort: effortOverride } : {}),
     };
     catalog = await loadCatalogFile(join(home, 'providers.json'));
-    const sessionFile =
-      options.freshSession === true ? undefined : (options.sessionFile ?? runtime?.session.path);
+    const sessionFile = runtime?.session.path;
     await runtime?.close();
     runtime = undefined;
     runtime = await createAgentRuntime({
@@ -221,7 +215,7 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
     });
 
     io.err(`Reins 交互模式${runtime !== undefined ? ` · 会话 ${runtime.session.id}` : ''}`);
-    io.err('输入任务开始对话;/help 查看命令,/exit 退出。');
+    io.err('输入任务开始对话;/help 查看命令,空行 Ctrl+D 退出。');
     io.err('');
 
     for (;;) {
@@ -233,38 +227,11 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
       }
       const command = parseChatCommand(line);
 
-      if (command.type === 'exit') {
-        break;
-      }
       if (command.type === 'empty') {
         continue;
       }
       if (command.type === 'help') {
         io.err(CHAT_HELP_TEXT);
-        continue;
-      }
-      if (command.type === 'session') {
-        io.err(runtime !== undefined ? `会话文件:${runtime.session.path}` : '(暂无会话)');
-        continue;
-      }
-      if (command.type === 'status') {
-        if (runtime === undefined || currentConfig === undefined) {
-          io.err('(尚未就绪:配置未加载)');
-        } else {
-          const entries = runtime.session.activeBranch().length;
-          const mcp =
-            runtime.mcp.length === 0
-              ? '未配置'
-              : runtime.mcp
-                  .map((status) => `${status.name}(${status.ok ? `${status.toolCount ?? 0} 工具` : '未连接'})`)
-                  .join('、');
-          io.err(`会话   ${runtime.session.id} · ${entries} 条记录`);
-          io.err(`模型   ${currentConfig.provider}/${currentConfig.model}`);
-          io.err(`工作区 ${workspace}`);
-          io.err(`审批   ${currentConfig.approval} · 沙箱 ${currentConfig.sandbox}`);
-          io.err(`MCP    ${mcp}`);
-          io.err(`文件   ${runtime.session.path}`);
-        }
         continue;
       }
       if (command.type === 'mcp') {
@@ -280,15 +247,6 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
                 : `  × ${status.name} · ${status.error ?? '未知原因'}`,
             );
           }
-        }
-        continue;
-      }
-      if (command.type === 'new') {
-        try {
-          await rebuild({ freshSession: true });
-          io.err(`已开始新会话:${runtime?.session.id}`);
-        } catch (error) {
-          io.err(`错误:${describeError(error)}`);
         }
         continue;
       }
@@ -358,29 +316,8 @@ async function runPlainChat(args: ParsedArgs, io: CommandIo, home: string): Prom
         io.err(`思考强度已切换:${effortOverride}`);
         continue;
       }
-      if (command.type === 'resume') {
-        if (command.id === undefined) {
-          const summaries = await listSessionSummaries(home);
-          if (summaries.length === 0) {
-            io.err('还没有任何会话。');
-          }
-          for (const summary of summaries.slice(0, 10)) {
-            io.err(`  ${summary.sessionId}  ${summary.createdAt.replace('T', ' ').slice(0, 19)}  ${summary.preview}`);
-          }
-          io.err('用法:/resume <会话 id>(或 reins resume 恢复最近一次)');
-          continue;
-        }
-        try {
-          await rebuild({ sessionFile: await resolveSessionFile(home, command.id, workspace) });
-          io.err(`已恢复会话:${runtime?.session.id}`);
-        } catch (error) {
-          io.err(`错误:${describeError(error)}`);
-        }
-        continue;
-      }
 
-      // 普通任务
-      running = true;
+      // 普通任务      running = true;
       const controller = new AbortController();
       activeRun = controller;
       try {
