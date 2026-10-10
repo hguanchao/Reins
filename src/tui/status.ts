@@ -6,7 +6,7 @@ import type { Theme } from './theme.ts';
  *
  * 设计意图:与 chrome 同样的纯函数思路——数据由应用层凑齐,这里只负责排版与
  * 数字缩写,便于单测。缺数据的项退化成 `—` 而不是消失,免得同一行在不同时刻
- * 一会儿有一会儿没有、看着像抖动。
+ * 一会儿有一会儿没有、看着像抖动;例外是分支与思考强度,不适用时整段省略。
  */
 
 /** 状态栏的数据;拿不到的项留空。 */
@@ -17,7 +17,7 @@ export interface StatusBarInfo {
   branch?: string;
   /** 模型 id。 */
   model?: string;
-  /** 思考强度;未配置时显示「默认」。 */
+  /** 思考强度;未配置时整段省略。 */
   reasoning?: string;
   /** 最近一轮的提示词 token 与模型上下文窗口。 */
   promptTokens?: number;
@@ -34,7 +34,10 @@ export function renderStatusBar(width: number, theme: Theme, info: StatusBarInfo
   }
   const groups = [
     first.join(' · '),
-    [`🤖 ${info.model ?? '—'}`, `🧠 ${info.reasoning ?? '默认'}`].join(' · '),
+    // 思考强度未配置就不占位:没显式配置的东西不在状态栏上占一格
+    info.reasoning !== undefined
+      ? `🤖 ${info.model ?? '—'} · 🧠 ${info.reasoning}`
+      : `🤖 ${info.model ?? '—'}`,
     // 用量还没有时按 0 显示:上下文是 0 而不是「未知」,空着反而像没在算
     `📊 ${formatTokens(info.promptTokens ?? 0)} / ${formatTokens(info.contextWindow)}`,
     `⚡ ${formatHitRate(info)}`,

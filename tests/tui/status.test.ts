@@ -27,8 +27,10 @@ describe('状态栏', () => {
     assert.equal(bar(), '📁 Reins · 🌿 main | 🤖 deepseek · 🧠 max | 📊 100K / 1M | ⚡ 90%');
   });
 
-  it('思考强度未配置时显示默认', () => {
-    assert.ok(bar({ reasoning: undefined }).includes('🧠 默认'));
+  it('思考强度未配置时整段省略', () => {
+    const text = bar({ reasoning: undefined });
+    assert.equal(text.includes('🧠'), false);
+    assert.ok(text.includes('🤖 deepseek'));
   });
 
   it('不是 git 仓库时整项省略', () => {
