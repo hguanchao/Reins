@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { latestSessionFile, resolveSessionFile, sessionsCommand } from '../../src/cli/commands/sessions.ts';
+import { latestSessionFile, listSessionSummaries, resolveSessionFile, sessionsCommand } from '../../src/cli/commands/sessions.ts';
 import { Session } from '../../src/session/tree.ts';
 import { createTmpDir, removeTmpDir } from '../helpers/tmp.ts';
 
@@ -82,6 +82,30 @@ describe('sessions 子命令', () => {
     } finally {
       await removeTmpDir(isolated);
     }
+  });
+
+  it('listSessionSummaries 不传 cwd 时列出全部项目', async () => {
+    const summaries = await listSessionSummaries(home);
+    assert.equal(summaries.length, 2);
+    assert.deepEqual(
+      [...summaries.map((summary) => summary.cwd)].sort(),
+      ['C:/work/a', 'C:/work/b'],
+    );
+  });
+
+  it('listSessionSummaries 按项目过滤后,列出的会话必定可恢复', async () => {
+    const scoped = await listSessionSummaries(home, 'C:/work/a');
+    assert.equal(scoped.length, 1);
+    const mine = scoped[0];
+    assert.ok(mine);
+    assert.equal(mine.cwd, 'C:/work/a');
+    // 同一个 id:在本项目里解析得到,在另一个项目里就该报找不到——
+    // 菜单若不做这层过滤,列出来的正是这种点了报错的会话
+    assert.equal(await resolveSessionFile(home, mine.sessionId, 'C:/work/a'), mine.file);
+    await assert.rejects(
+      () => resolveSessionFile(home, mine.sessionId, 'C:/work/b'),
+      /找不到会话/,
+    );
   });
 
   it('按项目过滤:目录名碰撞时不会取到别的项目的会话', async () => {

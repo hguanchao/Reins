@@ -57,10 +57,15 @@ async function collectSessionFiles(home: string): Promise<string[]> {
   return files;
 }
 
-/** 扫描全部会话并生成摘要,按创建时间从新到旧排序(损坏文件跳过)。 */
-export async function listSessionSummaries(home: string): Promise<SessionSummary[]> {
+/**
+ * 扫描会话并生成摘要,按创建时间从新到旧排序(损坏文件跳过)。
+ *
+ * 传入 cwd 时只列该项目的会话:恢复按 meta.cwd 限定项目,列表若不过滤就会列出
+ * 别的项目、点了却报「找不到会话」。全局视图(如 `reins sessions list`)不传 cwd。
+ */
+export async function listSessionSummaries(home: string, cwd?: string): Promise<SessionSummary[]> {
   const summaries: SessionSummary[] = [];
-  for (const file of await collectSessionFiles(home)) {
+  for (const file of await filterByCwd(await collectSessionFiles(home), cwd)) {
     try {
       summaries.push(await summarizeSessionFile(file));
     } catch {
