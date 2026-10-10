@@ -542,6 +542,11 @@ export class TuiApp implements AgentUi {
       return;
     }
     // 输入类按键重新聚焦输入框(见 INPUT_BOX_KEYS 的说明)
+    this.feedEditorKey(key);
+  }
+
+  /** 编辑区按键:聚焦、粘贴、打字、光标移动与快捷键;命令子菜单复用其中的编辑部分。 */
+  private feedEditorKey(key: TuiKey): void {
     if (INPUT_BOX_KEYS.has(key.type)) {
       this.focused = true;
     }
@@ -805,12 +810,13 @@ export class TuiApp implements AgentUi {
       return;
     }
     // 菜单打开时回车只应用选中项,不直接发送,免得误发没确认的命令;
-    // 例外是带二级菜单的命令:清空输入直接进菜单,不回显命令
+    // 例外是带二级菜单的命令:把命令留在输入框并打开菜单,参数就地编辑
     const completion = this.editor.completionState;
     if (completion !== null) {
       const item = completion.items[completion.index];
       if (item !== undefined && SUBMENU_COMMANDS.has(item)) {
-        this.editor.clear();
+        // 整体替换成完整命令:补全菜单打开时输入的可能只是前缀(如 /ef)
+        this.editor.replaceWith(`${item} `);
         this.scheduleRender();
         if (item === '/model') {
           await this.commandModel(undefined);
@@ -1170,29 +1176,54 @@ export class TuiApp implements AgentUi {
     resolve(index === 2 ? 'deny' : 'allow');
   }
 
-  /** 打开命令子菜单:标签即载荷,回车时交给对应命令执行。 */
+  /**
+   * 打开命令子菜单:输入框预填「命令 + 当前值」,光标落在参数末尾。
+   *
+   * 菜单期间输入框是真实可编辑的,参数涂灰表示未提交;回车执行输入框内容。
+   */
   private openPicker(kind: 'model' | 'effort' | 'sessions', rows: MenuRow[], index = 0): void {
-    this.picker = { kind, rows, payloads: rows.map((row) => row.label), index };
+    const prefix = `/${kind} `;
+    const payloads = rows.map((row) => row.label);
+    const text = this.editor.text;
+    // 参数位空着(从补全菜单或裸命令进来)才覆写,已有的参数原样保留
+    if (!text.startsWith(prefix) || text.slice(prefix.length).trim() === '') {
+      this.editor.replaceWith(`${prefix}${payloads[index] ?? ''}`);
+    }
+    this.picker = { kind, rows, payloads, index };
     this.scheduleRender();
   }
 
-  /** 命令子菜单按键:上下选择,回车执行选中项,Esc 取消;模态,其余键一律忽略。 */
+  /**
+   * 命令子菜单按键:输入框就是编辑区,菜单是它的候选视图。
+   *
+   * 打字交给编辑器,随后同步菜单选中项;↑/↓ 直接改写输入框的参数,
+   * 光标始终停在参数末尾。回车执行当前输入,Esc 收起。
+   */
   private handlePickerKey(key: TuiKey): void {
     const picker = this.picker;
     if (picker === undefined) {
       return;
     }
-    const moved = movePickerIndex(key, picker.index, picker.rows.length);
-    if (moved !== undefined) {
-      picker.index = moved;
-      this.scheduleRender();
+    if (key.type === 'up' || key.type === 'down') {
+      const moved = movePickerIndex(key, picker.index, picker.rows.length);
+      if (moved !== undefined && moved !== picker.index) {
+        this.replacePickerArgument(picker.payloads[moved] ?? '');
+        picker.index = moved;
+        this.scheduleRender();
+      }
       return;
     }
     if (key.type === 'enter') {
-      const value = picker.payloads[picker.index];
+      // 输入框里有参数就执行参数;参数位空着则执行菜单高亮项
+      const prefix = `/${picker.kind} `;
+      const typed = this.editor.text.startsWith(prefix)
+        ? this.editor.text.slice(prefix.length).trim()
+        : '';
+      const value = typed !== '' ? typed : (picker.payloads[picker.index] ?? '');
       this.picker = undefined;
+      this.editor.clear();
       this.scheduleRender();
-      if (value === undefined) {
+      if (value === '') {
         return;
       }
       if (picker.kind === 'model') {
@@ -1204,11 +1235,48 @@ export class TuiApp implements AgentUi {
       }
       return;
     }
-    // Ctrl+C 在这里是收起菜单而不是退出:和审批卡一样,别让兜底键夹带副作用
     if (key.type === 'escape' || key.type === 'ctrl-c') {
       this.picker = undefined;
+      this.editor.clear();
       this.scheduleRender();
+      return;
     }
+    // 菜单是模态编辑态,视图切换键不放行:叠加查看器会让按键路由错乱
+    if (key.type === 'ctrl-o' || key.type === 'ctrl-e') {
+      this.scheduleRender();
+      return;
+    }
+    // 其余按键交给编辑器:菜单期间输入框可自由编辑,菜单只是候选视图
+    this.feedEditorKey(key);
+    this.syncPickerSelection();
+    // 删空命令(如连按退格去掉 /effort)时菜单一并收起,不留孤儿菜单
+    if (this.editor.isEmpty) {
+      this.picker = undefined;
+    }
+    this.scheduleRender();
+  }
+
+  /** ↑/↓ 选中候选后,直接改写输入框里的参数(命令前缀保持不动)。 */
+  private replacePickerArgument(value: string): void {
+    const prefix = `/${this.picker?.kind ?? ''} `;
+    this.editor.replaceWith(`${prefix}${value}`);
+  }
+
+  /** 输入变化后,把菜单选中项对准新参数:完全匹配就跟随,无匹配则选中首项(off)。 */
+  private syncPickerSelection(): void {
+    const picker = this.picker;
+    if (picker === undefined) {
+      return;
+    }
+    const text = this.editor.text;
+    // 命令本身被删改就收起菜单,免得菜单跟着一截残缺命令走
+    if (text !== `/${picker.kind}` && !text.startsWith(`/${picker.kind} `)) {
+      this.picker = undefined;
+      return;
+    }
+    const value = text.slice(picker.kind.length + 2).trim();
+    const matched = picker.payloads.indexOf(value);
+    picker.index = matched >= 0 ? matched : 0;
   }
 
   // —— 渲染 ——
@@ -1430,7 +1498,8 @@ export class TuiApp implements AgentUi {
    * /sessions 的候选随会话增长,没有「当前值」可预选,不参与。
    */
   private ghostSuggestion(): string | undefined {
-    if (this.editor.completionState !== null || !this.editor.cursorAtEnd) {
+    // 菜单打开时参数区本身就是灰色预选态,ghost 不再叠一层
+    if (this.picker !== undefined || this.editor.completionState !== null || !this.editor.cursorAtEnd) {
       return undefined;
     }
     const text = this.editor.text;
@@ -1446,39 +1515,11 @@ export class TuiApp implements AgentUi {
     return undefined;
   }
 
-  /**
-   * 子菜单打开时的输入框:命令 + 灰色预选值,随选中项移动而变化。
-   *
-   * 菜单是模态的,编辑器实际为空;这行是合成显示,让「我在回答哪个命令、
-   * 回车会应用什么」始终可见。
-   */
-  private renderPickerInputLine(width: number): {
-    lines: string[];
-    cursorLine: number;
-    cursorColumn: number;
-  } {
-    const picker = this.picker;
-    const paint = this.renderContext.theme.paint;
-    const command = picker !== undefined ? `/${picker.kind}` : '';
-    const selected = picker?.payloads[picker.index] ?? '';
-    const available = Math.max(4, width - 8);
-    const ghostRoom = Math.max(0, available - visibleWidth(command));
-    const ghost = paint.muted(truncatePlain(` ${selected}`, ghostRoom));
-    return {
-      lines: [`${paint.accent(symbols.inputPrompt)}${paintSlashCommand(command, paint.accent)}${ghost}`],
-      cursorLine: 0,
-      cursorColumn: visibleWidth(symbols.inputPrompt) + visibleWidth(command),
-    };
-  }
-
   private renderInputLines(width: number): {
     lines: string[];
     cursorLine: number;
     cursorColumn: number;
   } {
-    if (this.picker !== undefined) {
-      return this.renderPickerInputLine(width);
-    }
     const text = this.editor.text;
     const { line: cursorLineRaw, column: cursorColumnRaw } = this.editor.cursorLineColumn();
     // 框内内容区 = 宽度 - 4(两侧竖线与留白),再扣除提示符与续行缩进
@@ -1537,6 +1578,13 @@ export class TuiApp implements AgentUi {
       }
       const prefix = rowIndex === 0 ? paint.accent(symbols.inputPrompt) : '  ';
       let body = rowIndex === 0 ? paintSlashCommand(row.text, paint.accent) : row.text;
+      // 子菜单打开时参数还没提交,整段参数涂灰,与灰色预选保持同一语义
+      if (this.picker !== undefined && rowIndex === 0) {
+        const splitAt = row.text.indexOf(' ');
+        if (splitAt >= 0) {
+          body = `${paint.accent(row.text.slice(0, splitAt))}${paint.muted(row.text.slice(splitAt))}`;
+        }
+      }
       if (ghost !== undefined && rowIndex === rows.length - 1) {
         const room = Math.max(0, available - visibleWidth(row.text));
         body += paint.muted(truncatePlain(ghost, room));

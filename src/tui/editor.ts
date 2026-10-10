@@ -337,6 +337,11 @@ export class InputEditor {
     this.completion = null;
   }
 
+  /** 整体替换输入内容并把光标移到末尾;供命令子菜单改写参数用。 */
+  replaceWith(text: string): void {
+    this.setChars(text);
+  }
+
   /** 文件候选快照更新后由上层调用,重算当前补全。 */
   refreshCompletion(): void {
     this.recomputeCompletion();
