@@ -95,16 +95,16 @@ const ESC_FLUSH_MS = 50;
 type SubmenuKind = 'model' | 'effort' | 'sessions';
 
 /**
- * 菜单候选的来源:斜杠命令名、子菜单参数、@ 文件引用。
+ * 菜单候选的来源:斜杠命令名、子菜单参数、@ 文件引用、命令面板。
  *
- * 三个来源共用同一份菜单状态、同一套按键与同一个渲染器,只有「候选怎么算」和
+ * 四个来源共用同一份菜单状态、同一套按键与同一个渲染器,只有「候选怎么算」和
  * 「接受后做什么」不同——规则只有一份,不再各长一套。
  */
-type MenuSource = 'command' | 'argument' | 'file';
+type MenuSource = 'command' | 'argument' | 'file' | 'palette';
 
 /** 一条候选:写进输入框的值 + 菜单里两列的显示文本。 */
 interface MenuItem {
-  /** 接受时写进输入框的值(命令名带 /,@ 引用不带 @)。 */
+  /** 接受时写进输入框的值(命令名带 /,@ 引用不带 @,纯动作为空串)。 */
   payload: string;
   label: string;
   detail?: string;
@@ -112,13 +112,15 @@ interface MenuItem {
   directory?: boolean;
   /** 当前生效项(模型 / 思考强度 / 当前会话):参数菜单默认高亮它。 */
   current?: boolean;
-  /** 供检索的附加文本:有值时该候选按子串匹配(会话列表用),否则按前缀补全。 */
+  /** 供检索的附加文本:有值时该候选按子串匹配(会话列表与命令面板用),否则按前缀补全。 */
   search?: string;
   /** 候选项对应的会话文件;重命名与删除要按它落盘。 */
   file?: string;
+  /** 没有命令入口的纯动作(命令面板用);有值时回车直接执行它。 */
+  run?: () => void;
 }
 
-/** 菜单状态;三个来源共用。 */
+/** 菜单状态;四个来源共用。 */
 interface MenuState {
   source: MenuSource;
   /** 参数菜单的命令种类。 */
@@ -128,15 +130,19 @@ interface MenuState {
   index: number;
 }
 
-/** 菜单顶栏的按键提示:三个来源的语义不同,提示也跟着变。 */
+/** 菜单顶栏的按键提示:各来源的语义不同,提示也跟着变。 */
 const MENU_HINTS: Readonly<Record<MenuSource, string>> = {
   command: 'Tab/↵ 补全 · Esc 取消',
   argument: 'Tab 补全 · ↵ 执行 · Esc 取消',
   file: 'Tab/↵ 引用 · Esc 取消',
+  palette: '↑↓ 选择 · Tab 写进输入框 · ↵ 执行 · Esc 取消',
 };
 
 /** 会话菜单的提示:除了补全与恢复,还挂着三个管理动作。 */
 const SESSION_MENU_HINT = 'Tab 补全 · ↵ 恢复 · Ctrl+R 排序 · Ctrl+N 重命名 · Ctrl+D 删除 · Esc 取消';
+
+/** 面板无匹配时的占位行:面板不能因为空结果就收起,否则刚打的检索词会跟着消失。 */
+const PALETTE_EMPTY: MenuItem = { payload: '', label: '没有匹配的命令或动作' };
 
 /** 重命名会话的输入行前缀,光标列要按它算。 */
 const TITLE_LABEL = '标题: ';
@@ -312,6 +318,8 @@ export class TuiApp implements AgentUi {
   private sessionPendingDelete: string | undefined;
   /** 正在重命名的会话;有值时页脚换成一行输入框。 */
   private renamePrompt: { file: string; sessionId: string; text: string } | undefined;
+  /** 打开命令面板前的输入内容:面板把输入框当检索框,关闭时原样还回去。 */
+  private paletteInput: string | undefined;
   /** 目录信任判定结果;启动时先于会话确定。 */
   private trust: TrustResolution | undefined;
   /** 待回答的信任页;有值时整屏只显示它。docs 是会被注入的说明文件。 */
@@ -659,6 +667,11 @@ export class TuiApp implements AgentUi {
     if (this.helpOpen) {
       this.helpOpen = false;
       this.scheduleRender();
+      return;
+    }
+    // 命令面板:任何输入状态下都能叫出来,开着别的菜单也直接换过去
+    if (key.type === 'ctrl-p') {
+      this.openPalette();
       return;
     }
     // 候选菜单也是模态的:拦截所有按键,不让它们落进输入框
@@ -1059,6 +1072,10 @@ export class TuiApp implements AgentUi {
       return;
     }
     if (key.type === 'tab') {
+      if (menu.source === 'palette') {
+        this.acceptPaletteCommand(menu.items[menu.index]);
+        return;
+      }
       this.acceptMenuCandidate();
       return;
     }
@@ -1072,12 +1089,16 @@ export class TuiApp implements AgentUi {
       return;
     }
     if (key.type === 'enter') {
-      const payload = menu.items[menu.index]?.payload;
-      if (payload === undefined) {
+      const item = menu.items[menu.index];
+      if (item === undefined) {
+        return;
+      }
+      if (menu.source === 'palette') {
+        void this.runPaletteItem(item);
         return;
       }
       if (menu.source === 'argument') {
-        void this.runSubmenuCommand(menu, payload);
+        void this.runSubmenuCommand(menu, item.payload);
         return;
       }
       this.acceptMenuCandidate();
@@ -1138,6 +1159,96 @@ export class TuiApp implements AgentUi {
     } else {
       await this.commandResume(payload);
     }
+  }
+
+  /**
+   * 打开命令面板。
+   *
+   * 输入框临时充当检索框(所以打字、退格这些编辑键一个字都不用另接),原内容先记下,
+   * 关闭时原样还回去。想不起某个操作叫什么、或只有快捷键没有命令时,按 Ctrl+P 找。
+   */
+  private openPalette(): void {
+    if (this.menu?.source === 'palette') {
+      return;
+    }
+    this.paletteInput = this.editor.text;
+    this.editor.clear();
+    // 检索框就是输入框:面板一开就把焦点给它
+    this.focused = true;
+    this.showMenu('palette', this.paletteItems(''));
+  }
+
+  /**
+   * 面板候选:全部斜杠命令,加上只有快捷键、没有命令入口的那几个动作。
+   *
+   * 动作的第二列写着对应的键,面板因此也当一张键位表用。
+   */
+  private paletteItems(query: string): MenuItem[] {
+    const items: MenuItem[] = CHAT_COMMANDS.map((command) => ({
+      payload: command,
+      label: command,
+      detail: CHAT_COMMAND_DESCRIPTIONS[command],
+    }));
+    items.push(
+      { payload: '', label: '切换审批模式', detail: 'Shift+Tab', run: () => this.cycleApprovalMode() },
+      { payload: '', label: '展开/折叠工具输出', detail: 'Ctrl+E', run: () => this.toggleToolExpand() },
+      { payload: '', label: '全屏查看工具输出', detail: 'Ctrl+O', run: () => this.toggleViewer() },
+      {
+        payload: '',
+        label: '回到底部并继续跟随',
+        detail: 'End',
+        run: () => {
+          this.follow = true;
+        },
+      },
+      {
+        payload: '',
+        label: '查看快捷键',
+        detail: '?',
+        run: () => {
+          this.helpOpen = true;
+        },
+      },
+    );
+    // 命令名与说明、动作名与键位都参与检索:中文与英文写法都能找到同一条
+    return items
+      .map((item) => ({ ...item, search: `${item.label} ${item.detail ?? ''}` }))
+      .filter((item) => matchesArgument(item, query));
+  }
+
+  /** 面板里 Tab = 把命令写进输入框(留着继续补参数);纯动作没有可写的文本。 */
+  private acceptPaletteCommand(item: MenuItem | undefined): void {
+    if (item === undefined || item.payload === '') {
+      return;
+    }
+    // 输入框要换成命令,别再还原成打开面板前的内容
+    this.paletteInput = undefined;
+    this.closeMenu();
+    // 与命令菜单同一套写法:带尾空格,补完接着打参数
+    this.editor.replaceWith(menuInsertion(item.payload));
+    // 命令可能自带参数菜单(/model 之类):顺手摆出来
+    this.refreshMenu();
+    this.scheduleRender();
+  }
+
+  /** 面板里回车 = 立刻执行:命令走提交路径(与手打完全同一条),动作直接跑。 */
+  private async runPaletteItem(item: MenuItem | undefined): Promise<void> {
+    if (item === undefined) {
+      return;
+    }
+    if (item.payload === '' && item.run === undefined) {
+      return;
+    }
+    this.paletteInput = undefined;
+    this.closeMenu();
+    this.editor.clear();
+    if (item.run !== undefined) {
+      item.run();
+      this.scheduleRender();
+      return;
+    }
+    this.editor.replaceWith(item.payload);
+    await this.submit();
   }
 
   /** 会话列表排序:最新在前 ⇄ 最旧在前。候选顺序变了,缓存作废后重摆菜单。 */
@@ -1266,6 +1377,13 @@ export class TuiApp implements AgentUi {
 
   /** 输入变化后重算菜单:来源由光标处的词条决定,没有候选就收起菜单。 */
   private refreshMenu(): void {
+    const palette = this.menu?.source === 'palette';
+    if (palette) {
+      // 面板是「钉住」的:输入框此刻就是检索框,输入变了只重筛候选,不换来源
+      const items = this.paletteItems(this.editor.text.trim());
+      this.showMenu('palette', items.length === 0 ? [PALETTE_EMPTY] : items);
+      return;
+    }
     const target = this.completionTarget();
     if (target === undefined) {
       this.closeMenu();
@@ -1318,14 +1436,24 @@ export class TuiApp implements AgentUi {
       return;
     }
     const previous = this.menu?.items[this.menu.index]?.payload;
-    const kept = previous === undefined ? -1 : items.findIndex((item) => item.payload === previous);
+    // 空 payload 的纯动作行不参与高亮延续:面板里这样的行有好几条,互相顶替会乱跳
+    const kept =
+      previous === undefined || previous === ''
+        ? -1
+        : items.findIndex((item) => item.payload === previous);
     const current = items.findIndex((item) => item.current === true);
     this.menu = { source, kind, items, index: kept >= 0 ? kept : current >= 0 ? current : 0 };
     this.scheduleRender();
   }
 
   private closeMenu(): void {
+    // 面板把输入框借去当检索框:收起时把原来的内容还回去,不然用户打的字就没了
+    const restoring = this.menu?.source === 'palette' ? this.paletteInput : undefined;
     this.menu = undefined;
+    if (restoring !== undefined) {
+      this.paletteInput = undefined;
+      this.editor.replaceWith(restoring);
+    }
   }
 
   /**

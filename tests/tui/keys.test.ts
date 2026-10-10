@@ -44,6 +44,7 @@ describe('输入解码', () => {
     assert.deepEqual(decode('\u0005'), [{ type: 'ctrl-e' }]);
     assert.deepEqual(decode('\u000f'), [{ type: 'ctrl-o' }]);
     assert.deepEqual(decode('\u000e'), [{ type: 'ctrl-n' }]);
+    assert.deepEqual(decode('\u0010'), [{ type: 'ctrl-p' }]);
     assert.deepEqual(decode('\u0012'), [{ type: 'ctrl-r' }]);
   });
 

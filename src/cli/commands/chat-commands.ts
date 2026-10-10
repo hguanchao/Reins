@@ -110,6 +110,7 @@ export const CHAT_KEY_HELP: readonly { keys: string; action: string }[] = [
   { keys: 'Tab', action: '把高亮候选补进输入框' },
   { keys: 'Enter', action: '提交;参数菜单里是选定并执行' },
   { keys: '@', action: '引用工作区文件' },
+  { keys: 'Ctrl+P', action: '命令面板:搜命令与动作(第二列是对应键位)' },
   { keys: 'Ctrl+J', action: '输入框内换行' },
   { keys: 'Shift+Tab', action: '循环切换审批模式(ask / auto / yolo)' },
   { keys: 'y / a / n', action: '审批:允许 / 本会话总是允许 / 拒绝' },

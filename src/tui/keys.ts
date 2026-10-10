@@ -31,6 +31,7 @@ export type TuiKey =
   | { type: 'ctrl-e' }
   | { type: 'ctrl-o' }
   | { type: 'ctrl-n' }
+  | { type: 'ctrl-p' }
   | { type: 'ctrl-r' }
   /** 括号粘贴的整段文本;换行已归一为 \n。 */
   | { type: 'paste'; text: string }
@@ -122,6 +123,7 @@ const CONTROLS: Readonly<Record<string, TuiKey>> = {
   '\u0005': { type: 'ctrl-e' },
   '\u000f': { type: 'ctrl-o' },
   '\u000e': { type: 'ctrl-n' },
+  '\u0010': { type: 'ctrl-p' },
   '\u0012': { type: 'ctrl-r' },
 };
 
