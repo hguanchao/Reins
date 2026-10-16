@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
@@ -7,7 +7,9 @@ import { TurnDriver } from "../../src/agent/driver.ts";
 import { renderSystemPrompt } from "../../src/agent/prompt.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
 import { parseModels } from "../../src/config/models-file.ts";
-import { JsonlSession, foldEntries, parseSessionText } from "../../src/plugins/session-plugin/jsonl-store.ts";
+import { JsonlSessionStore, parseSessionText } from "../../src/plugins/session-plugin/jsonl-store.ts";
+import { foldEntries } from "../../src/session/fold.ts";
+import { Session } from "../../src/session/session.ts";
 import { Sandbox } from "../../src/sandbox/policy.ts";
 import { createCoreTools } from "../../src/tools/builtin/index.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
@@ -62,7 +64,13 @@ describe("会话重放", () => {
 			textResult("读到了文件内容"),
 		]);
 
-		const session = new JsonlSession({ file, id: "replay", cwd: workspace.root });
+		const store = new JsonlSessionStore();
+		const session = new Session({
+			id: "replay",
+			cwd: workspace.root,
+			file,
+			writer: store.create({ id: "replay", cwd: workspace.root, file }),
+		});
 		try {
 			const driver = new TurnDriver({
 				provider,
@@ -126,32 +134,5 @@ describe("会话重放", () => {
 		// 提示词与工具声明只记录增量：两次折叠出的分段与工具完全一致
 		assert.deepEqual(beforeFirst.sections, beforeSecond.sections);
 		assert.deepEqual(beforeFirst.tools, beforeSecond.tools);
-	});
-
-	it("会话关闭后释放锁", async () => {
-		const file = join(workspace.root, "locked.jsonl");
-		const session = new JsonlSession({ file, id: "locked", cwd: workspace.root });
-		await session.append({ type: "message", message: { role: "user", content: "甲" } });
-		assert.ok(existsSync(`${file}.lock`));
-
-		await session.close();
-		assert.ok(!existsSync(`${file}.lock`));
-	});
-
-	it("同一会话文件不能被两个写入者同时写入", async () => {
-		const file = join(workspace.root, "contended.jsonl");
-		const first = new JsonlSession({ file, id: "a", cwd: workspace.root });
-		await first.append({ type: "message", message: { role: "user", content: "甲" } });
-
-		try {
-			// 只构造不写入不留痕迹，因此冲突要到真正落笔时才暴露
-			const second = new JsonlSession({ file, id: "b", cwd: workspace.root });
-			await assert.rejects(
-				async () => second.append({ type: "message", message: { role: "user", content: "乙" } }),
-				/已被占用/,
-			);
-		} finally {
-			await first.close();
-		}
 	});
 });

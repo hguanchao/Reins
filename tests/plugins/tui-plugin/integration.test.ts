@@ -10,8 +10,9 @@ import type { Config } from "../../../src/config/config-file.ts";
 import type { ModelEntry, ProviderEntry } from "../../../src/config/models-file.ts";
 import { PermissionGate, PermissionPolicy, type Confirmer } from "../../../src/permission/policy.ts";
 import { TerminalFrontend } from "../../../src/plugins/tui-plugin/frontend.ts";
-import { JsonlSession } from "../../../src/plugins/session-plugin/jsonl-store.ts";
+import { JsonlSessionStore } from "../../../src/plugins/session-plugin/jsonl-store.ts";
 import { createSandbox } from "../../../src/sandbox/setup.ts";
+import { Session } from "../../../src/session/session.ts";
 import { createCoreTools } from "../../../src/tools/builtin/index.ts";
 import { ToolRegistry } from "../../../src/tools/registry.ts";
 import { ResultSpiller } from "../../../src/tools/spill.ts";
@@ -78,7 +79,7 @@ const config: Config = {
 
 interface Harness {
 	readonly terminal: MemoryTerminal;
-	readonly session: JsonlSession;
+	readonly session: Session;
 	/** 屏幕上出现过的所有文字，含已经滚出可视区的部分 */
 	readonly seen: () => string[];
 	readonly confirmations: string[];
@@ -107,10 +108,13 @@ async function start(client: ScriptedClient): Promise<Harness> {
 	for (const tool of createCoreTools()) registry.register(tool, "core");
 
 	const setup = createSandbox(config.sandbox, work, []);
-	const session = new JsonlSession({
-		file: join(sessions, `s${counter}.jsonl`),
-		id: `s${counter}`,
+	const file = join(sessions, `s${counter}.jsonl`);
+	const id = `s${counter}`;
+	const session = new Session({
+		id,
 		cwd: work,
+		file,
+		writer: new JsonlSessionStore().create({ id, cwd: work, file }),
 	});
 	const workspace = new WorkspaceBoundary(work);
 

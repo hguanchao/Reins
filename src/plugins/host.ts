@@ -1,5 +1,6 @@
 import type { PermissionPolicy, PermissionRule } from "../permission/policy.ts";
 import type { SandboxBackend } from "../sandbox/policy.ts";
+import type { SessionStore } from "../session/store.ts";
 import type { AnyToolDefinition } from "../tools/contract.ts";
 import type { ToolRegistry } from "../tools/registry.ts";
 import type { InteractiveFrontend } from "../tui/frontend.ts";
@@ -24,6 +25,8 @@ export interface PluginApi {
 	registerPermissionRule(rule: PermissionRule): void;
 	/** 提供一个交互形态。只能有一个：两套界面同时抢终端，谁也画不清楚。 */
 	registerFrontend(frontend: InteractiveFrontend): void;
+	/** 提供会话的落盘方式。只能有一个，否则条目该写到哪里就没有定论。 */
+	registerSessionStore(store: SessionStore): void;
 }
 
 export interface Plugin {
@@ -63,10 +66,12 @@ export class PluginHost {
 	readonly #commands = new Map<string, PluginCommand>();
 	readonly #backends: SandboxBackend[] = [];
 	#frontend: InteractiveFrontend | undefined;
+	#sessionStore: SessionStore | undefined;
 	/** 装载期间先放在这里，等 setup 正常返回再一起交出去 */
 	#pendingTools: PendingTool[] = [];
 	#pendingRules: PermissionRule[] = [];
 	#pendingBackends: SandboxBackend[] = [];
+	#pendingStore: SessionStore | undefined;
 	#current = "";
 
 	constructor(tools: ToolRegistry, policy: PermissionPolicy) {
@@ -112,6 +117,11 @@ export class PluginHost {
 		return this.#frontend;
 	}
 
+	/** 会话存储。没有插件提供时返回 undefined，调用方据此退回内存会话并明确说出来。 */
+	sessionStore(): SessionStore | undefined {
+		return this.#sessionStore;
+	}
+
 	commands(): readonly PluginCommand[] {
 		return [...this.#commands.values()];
 	}
@@ -145,6 +155,12 @@ export class PluginHost {
 				}
 				this.#frontend = frontend;
 			},
+			registerSessionStore: (store) => {
+				if (this.#pendingStore !== undefined || this.#sessionStore !== undefined) {
+					throw new Error("会话存储已经注册过了，只能有一个");
+				}
+				this.#pendingStore = store;
+			},
 		};
 	}
 
@@ -159,11 +175,17 @@ export class PluginHost {
 
 		for (const rule of this.#pendingRules) this.#policy.addRule(rule);
 		this.#pendingRules = [];
+
+		if (this.#pendingStore !== undefined) {
+			this.#sessionStore = this.#pendingStore;
+			this.#pendingStore = undefined;
+		}
 	}
 
 	#discard(): void {
 		this.#pendingTools = [];
 		this.#pendingBackends = [];
 		this.#pendingRules = [];
+		this.#pendingStore = undefined;
 	}
 }

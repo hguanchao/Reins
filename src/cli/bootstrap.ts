@@ -24,7 +24,8 @@ import { PermissionGate, PermissionPolicy, type Confirmer } from "../permission/
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PluginHost } from "../plugins/host.ts";
 import { bundledPlugins } from "../plugins/registry.ts";
-import { JsonlSession } from "../plugins/session-plugin/jsonl-store.ts";
+import { Session } from "../session/session.ts";
+import type { SessionStore } from "../session/store.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -159,11 +160,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 		return 1;
 	}
 
-	const session = new JsonlSession({
-		file: sessionFilePath(workRoot),
-		id: randomBytes(8).toString("hex"),
-		cwd: workRoot,
-	});
+	const session = createSession(workRoot, host.sessionStore());
 
 	try {
 		return await runPrintMode({
@@ -252,11 +249,7 @@ async function runChat(options: CliOptions): Promise<number> {
 		return 1;
 	}
 
-	const session = new JsonlSession({
-		file: sessionFilePath(workRoot),
-		id: randomBytes(8).toString("hex"),
-		cwd: workRoot,
-	});
+	const session = createSession(workRoot, host.sessionStore());
 
 	const runtime: InteractiveRuntime = {
 		cwd: workRoot,
@@ -414,7 +407,7 @@ function createDriverFor(
 	context: { readonly config: Config; readonly selection: ModelSelection },
 	shared: {
 		readonly registry: ToolRegistry;
-		readonly session: JsonlSession;
+		readonly session: Session;
 		readonly workspace: WorkspaceBoundary;
 		readonly sandbox: SandboxView;
 	},
@@ -450,6 +443,22 @@ function createReviewer(
 		maxTokens: reviewModel.maxTokens ?? config.maxTokens,
 		workspaceRoot: workRoot,
 	});
+}
+
+/**
+ * 建立本次会话。
+ *
+ * 会话存储由插件提供，因此必须显式处理它缺席的情形：这时会话只留在内存里，并且要说出来。
+ * 使用者以为历史留在磁盘上、事后去找却发现什么都没有，是最难查的一种失败。
+ */
+function createSession(workRoot: string, store: SessionStore | undefined): Session {
+	const id = randomBytes(8).toString("hex");
+	if (store === undefined) {
+		writeStderr("没有会话存储（session-plugin 被禁用或装载失败），本次会话不会保存到文件。\n");
+		return new Session({ id, cwd: workRoot, file: null });
+	}
+	const file = sessionFilePath(workRoot);
+	return new Session({ id, cwd: workRoot, file, writer: store.create({ id, cwd: workRoot, file }) });
 }
 
 /**

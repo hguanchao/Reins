@@ -1,4 +1,5 @@
 import sandboxPlugin from "./sandbox-plugin/index.ts";
+import sessionPlugin from "./session-plugin/index.ts";
 import toolsPlugin from "./tools-plugin/index.ts";
 import tuiPlugin from "./tui-plugin/index.ts";
 import type { Plugin } from "./host.ts";
@@ -11,7 +12,7 @@ import type { Plugin } from "./host.ts";
  * 反过来一次都没有。
  */
 export function bundledPlugins(): readonly Plugin[] {
-	return [toolsPlugin, sandboxPlugin, tuiPlugin];
+	return [toolsPlugin, sessionPlugin, sandboxPlugin, tuiPlugin];
 }
 
-export { sandboxPlugin, toolsPlugin, tuiPlugin };
+export { sandboxPlugin, sessionPlugin, toolsPlugin, tuiPlugin };

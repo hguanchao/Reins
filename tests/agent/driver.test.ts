@@ -6,7 +6,7 @@ import type { AgentEvent } from "../../src/agent/events.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
 import { parseModels } from "../../src/config/models-file.ts";
 import type { LlmResult } from "../../src/llm/client.ts";
-import { JsonlSession } from "../../src/plugins/session-plugin/jsonl-store.ts";
+import { Session } from "../../src/session/session.ts";
 import { Sandbox } from "../../src/sandbox/policy.ts";
 import { createCoreTools } from "../../src/tools/builtin/index.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
@@ -23,7 +23,7 @@ after(() => {
 
 function fixtures(script: readonly LlmResult[]): {
 	readonly client: ScriptedClient;
-	readonly session: JsonlSession;
+	readonly session: Session;
 	readonly events: AgentEvent[];
 	readonly driver: TurnDriver;
 } {
@@ -46,7 +46,7 @@ function fixtures(script: readonly LlmResult[]): {
 	for (const tool of createCoreTools()) tools.register(tool, "core");
 
 	const client = new ScriptedClient(script);
-	const session = new JsonlSession({ file: null, id: "test", cwd: workspace.root });
+	const session = new Session({ file: null, id: "test", cwd: workspace.root });
 	const events: AgentEvent[] = [];
 
 	const driver = new TurnDriver({

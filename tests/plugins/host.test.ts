@@ -253,3 +253,42 @@ describe("插件提供的交互界面", () => {
 		assert.equal(host.frontend(), frontend);
 	});
 });
+
+describe("插件提供的会话存储", () => {
+	const store = {
+		create() {
+			return { write() {}, end() {} };
+		},
+	};
+
+	it("没有任何插件提供存储时返回 undefined，调用方据此退回内存会话", async () => {
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
+		await host.load([{ name: "empty-plugin", setup() {} }]);
+		assert.equal(host.sessionStore(), undefined);
+	});
+
+	it("存储由插件提供，宿主只取用", async () => {
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
+		await host.load([{ name: "store-plugin", setup: (api) => api.registerSessionStore(store) }]);
+		assert.equal(host.sessionStore(), store);
+	});
+
+	it("第二个存储会被记为该插件装载失败，装载失败的插件也不会留下存储", async () => {
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
+		const failures = await host.load([
+			{
+				name: "half-plugin",
+				setup(api) {
+					api.registerSessionStore(store);
+					throw new Error("装不下去了");
+				},
+			},
+			{ name: "a-plugin", setup: (api) => api.registerSessionStore(store) },
+			{ name: "b-plugin", setup: (api) => api.registerSessionStore(store) },
+		]);
+
+		assert.equal(failures.length, 2);
+		assert.match(failures[1].message, /只能有一个/);
+		assert.equal(host.sessionStore(), store);
+	});
+});
