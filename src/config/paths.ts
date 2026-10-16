@@ -46,3 +46,21 @@ function encodeWorkRoot(workRoot: string): string {
 	const normalized = workRoot.replaceAll(/[/\\:]/g, "-");
 	return normalized.startsWith("-") ? normalized.slice(1) : normalized;
 }
+
+/**
+ * 工作区里的配置目录。
+ *
+ * 与用户配置目录同名但位置不同：一个是使用者的全局设置，一个是这个项目自带的设置。后者
+ * 需要先取得信任才会被读取，因此不能混在同一个位置。
+ */
+export function projectDirPath(workRoot: string): string {
+	return join(workRoot, CONFIG_DIR_NAME);
+}
+
+export function projectConfigFilePath(workRoot: string): string {
+	return join(projectDirPath(workRoot), CONFIG_FILE_NAME);
+}
+
+export function projectModelsFilePath(workRoot: string): string {
+	return join(projectDirPath(workRoot), MODELS_FILE_NAME);
+}
