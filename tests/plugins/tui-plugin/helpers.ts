@@ -66,7 +66,7 @@ export function makeRuntime(script: RuntimeScript = {}): FakeRuntime {
 			commandCalls.push({ name, args });
 			return script.runCommand === undefined ? [] : script.runCommand(name, args);
 		},
-		sessionUsage: () => script.usage ?? { requests: 0, compactions: 0, subagents: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		sessionUsage: () => script.usage ?? { requests: 0, compactions: 0, subagents: 0, cost: undefined, unpriced: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		createDriver: (onEvent) =>
 			({
 				run: async (prompt: string, signal: AbortSignal): Promise<void> => {

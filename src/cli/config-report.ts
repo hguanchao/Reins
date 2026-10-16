@@ -1,5 +1,5 @@
 import type { Config } from "../config/config-file.ts";
-import type { ModelEntry, ProvidersConfig } from "../config/providers-file.ts";
+import type { ModelCost, ModelEntry, ProvidersConfig } from "../config/providers-file.ts";
 import type { ModelSelection } from "../config/selection.ts";
 import { displayWidth } from "../tui/text/width.ts";
 
@@ -20,9 +20,19 @@ function padTo(columns: number): number {
 function describeModel(providerId: string, model: ModelEntry): string {
 	const parts = [`${providerId}/${model.id}`, model.api, model.baseUrl];
 	if (model.reasoning) parts.push("支持思考等级");
+	if (model.input.includes("image")) parts.push("支持图片");
 	if (model.contextWindow !== undefined) parts.push(`上下文 ${model.contextWindow}`);
 	if (model.maxTokens !== undefined) parts.push(`输出上限 ${model.maxTokens}`);
 	return `  ${parts.join("  ·  ")}`;
+}
+
+/** 单价按每百万 token 报，与配置文件里的口径一致。 */
+function describeCost(cost: ModelCost | undefined): string {
+	if (cost === undefined) return `${UNKNOWN}（只报 token，不报金额）`;
+	return (
+		`输入 $${cost.input}　输出 $${cost.output}　` +
+		`缓存读 $${cost.cacheRead}　缓存写 $${cost.cacheWrite}　每百万 token`
+	);
 }
 
 function describeOptional(model: ModelEntry | undefined): string {
@@ -63,6 +73,8 @@ export function formatConfigReport(input: {
 		row("上下文窗口", windowReport(selection.model.contextWindow ?? config.contextWindow)),
 	);
 	lines.push(row("输出上限", formatNumber(selection.model.maxTokens ?? config.maxTokens)));
+	lines.push(row("单价", describeCost(selection.model.cost)));
+	lines.push(row("输入形态", selection.model.input.join("、")));
 	lines.push(row("压缩模型", describeOptional(selection.compactModel)));
 	lines.push(row("审查模型", describeOptional(selection.reviewModel)));
 	lines.push("");

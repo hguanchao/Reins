@@ -20,6 +20,8 @@ const model: ModelEntry = {
 	baseUrl: "https://x",
 	reasoning: true,
 	thinkingLevelMap: {},
+	input: ["text"],
+	cost: undefined,
 	contextWindow: 1000,
 	maxTokens: 512,
 	headers: {},

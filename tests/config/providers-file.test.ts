@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ConfigError } from "../../src/config/config-error.ts";
-import { parseProviders } from "../../src/config/providers-file.ts";
+import { computeCost, parseProviders } from "../../src/config/providers-file.ts";
 
 const FILE = "providers.json";
 
@@ -126,9 +126,76 @@ describe("providers.json 解析", () => {
 		);
 		assert.equal(providersConfig.providers[0].id, "p");
 	});
+
+	it("没声明输入形态时按只收文本算：不替使用者猜它能看图", () => {
+		const model = parseModel({ id: "m" });
+		assert.deepEqual(model.input, ["text"]);
+		assert.equal(model.cost, undefined);
+	});
+
+	it("声明输入形态", () => {
+		assert.deepEqual(parseModel({ id: "m", input: ["text", "image"] }).input, ["text", "image"]);
+		assert.deepEqual(parseModel({ id: "m", input: ["image"] }).input, ["image"]);
+	});
+
+	it("读单价，四项都要写", () => {
+		const model = parseModel({
+			id: "m",
+			cost: { input: 0.15, output: 0.6, cacheRead: 0.075, cacheWrite: 0.3 },
+		});
+		assert.deepEqual(model.cost, { input: 0.15, output: 0.6, cacheRead: 0.075, cacheWrite: 0.3 });
+	});
+
+	it("按单价算金额，没配单价时给 undefined 而不是 0", () => {
+		const usage = { input: 1_000_000, output: 500_000, cacheRead: 2_000_000, cacheWrite: 0, total: 3_500_000 };
+		const cost = { input: 0.15, output: 0.6, cacheRead: 0.075, cacheWrite: 0.3 };
+
+		// 0.15 + 0.3 + 0.15 = 0.6
+		assert.equal(computeCost(cost, usage), 0.6);
+		// 0 会被读成「这次不要钱」，而事实是「不知道」
+		assert.equal(computeCost(undefined, usage), undefined);
+	});
 });
 
+/** 只关心模型级字段时用它，省得每个用例都写一遍 provider 外壳。 */
+function parseModel(model: Record<string, unknown>) {
+	return parseProviders(
+		JSON.stringify({ providers: { p: { baseUrl: "https://x", api: "a", models: [model] } } }),
+		FILE,
+	).providers[0].models[0];
+}
+
 describe("providers.json 严格校验", () => {
+	it("输入形态写错或写重复时报错", () => {
+		expectError(
+			'{ "providers": { "p": { "baseUrl": "x", "api": "a", "models": [{ "id": "m", "input": ["audio"] }] } } }',
+			"元素只能是 text、image 之一",
+		);
+		expectError(
+			'{ "providers": { "p": { "baseUrl": "x", "api": "a", "models": [{ "id": "m", "input": [] }] } } }',
+			"至少要声明一种输入形态",
+		);
+		expectError(
+			'{ "providers": { "p": { "baseUrl": "x", "api": "a", "models": [{ "id": "m", "input": ["text", "text"] }] } } }',
+			"有重复的取值",
+		);
+	});
+
+	it("单价只写一半时报错：半张单价表算出来的金额是错的", () => {
+		expectError(
+			'{ "providers": { "p": { "baseUrl": "x", "api": "a", "models": [{ "id": "m", "cost": { "input": 1 } }] } } }',
+			"缺少 output、cacheRead、cacheWrite",
+		);
+		expectError(
+			'{ "providers": { "p": { "baseUrl": "x", "api": "a", "models": [{ "id": "m", "cost": { "input": -1, "output": 1, "cacheRead": 1, "cacheWrite": 1 } }] } } }',
+			"不能小于 0",
+		);
+		expectError(
+			'{ "providers": { "p": { "baseUrl": "x", "api": "a", "models": [{ "id": "m", "cost": { "input": 1, "output": 1, "cacheRead": 1, "cacheWrite": 1, "tiers": [] } }] } } }',
+			"无法识别的键",
+		);
+	});
+
 	it("缺少 providers 或为空时报错", () => {
 		expectError("{}", "缺少 providers");
 		expectError('{ "providers": {} }', "至少要声明一个 provider");

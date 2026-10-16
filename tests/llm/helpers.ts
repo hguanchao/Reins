@@ -25,6 +25,8 @@ export function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		baseUrl: "https://api.example.com",
 		reasoning: false,
 		thinkingLevelMap: {},
+		input: ["text"],
+		cost: undefined,
 		contextWindow: undefined,
 		maxTokens: undefined,
 		headers: {},

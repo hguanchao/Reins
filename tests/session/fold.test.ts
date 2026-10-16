@@ -130,6 +130,7 @@ describe("压缩条目", () => {
 				model: "m",
 				kind: "turn",
 				usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, total: 3 },
+				cost: undefined,
 			},
 		];
 		assert.equal(foldEntries(entries).messages.length, 1);

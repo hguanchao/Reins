@@ -11,13 +11,16 @@ import {
 	assertNoUnknownKeys,
 	describePath,
 	readBoolean,
+	readEnumArray,
 	readInteger,
+	readNumber,
 	readString,
 	readStringMap,
 	readTable,
 	type ConfigSource,
 } from "./reader.ts";
 import { isConfigTable, type ConfigPath } from "./value.ts";
+import type { LlmUsage } from "../llm/messages.ts";
 
 /**
  * 端点与模型的声明。
@@ -29,6 +32,41 @@ import { isConfigTable, type ConfigPath } from "./value.ts";
 /** 等级到 provider 原生取值的映射。null 表示该等级不支持，省略表示交给 provider 默认。 */
 export type ThinkingLevelMap = Readonly<Partial<Record<ThinkingLevel, string | null>>>;
 
+/** 模型能接收的输入形态。 */
+export type ModelModality = "text" | "image";
+
+export const MODEL_MODALITIES: readonly ModelModality[] = ["text", "image"];
+
+/**
+ * 单价，美元每百万 token。
+ *
+ * 四项都必填：只写一半的单价表算出来的金额是错的，而错金额比没有金额更容易骗人。不知道
+ * 缓存价就照实际计费写，别拿 0 填——0 的含义是「这一项不收费」。
+ */
+export interface ModelCost {
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+}
+
+const COST_KEYS: readonly string[] = ["input", "output", "cacheRead", "cacheWrite"];
+
+/**
+ * 按单价算一次请求的金额。
+ *
+ * 没配单价时返回 undefined 而不是 0：0 会被读成「这次不要钱」，而事实是「不知道」。
+ */
+export function computeCost(cost: ModelCost | undefined, usage: LlmUsage): number | undefined {
+	if (cost === undefined) return undefined;
+	const perMillion =
+		usage.input * cost.input +
+		usage.output * cost.output +
+		usage.cacheRead * cost.cacheRead +
+		usage.cacheWrite * cost.cacheWrite;
+	return perMillion / 1_000_000;
+}
+
 export interface ModelEntry {
 	readonly id: string;
 	readonly name: string;
@@ -38,6 +76,10 @@ export interface ModelEntry {
 	/** 是否支持思考等级控制 */
 	readonly reasoning: boolean;
 	readonly thinkingLevelMap: ThinkingLevelMap;
+	/** 能接收的输入形态。省略时按只收文本算——没声明就不替它猜 */
+	readonly input: readonly ModelModality[];
+	/** 单价。省略时只报 token，不报金额 */
+	readonly cost: ModelCost | undefined;
 	/** 未声明时为 undefined，不代填默认值 */
 	readonly contextWindow: number | undefined;
 	readonly maxTokens: number | undefined;
@@ -69,6 +111,8 @@ const MODEL_KEYS: readonly string[] = [
 	"baseUrl",
 	"reasoning",
 	"thinkingLevelMap",
+	"input",
+	"cost",
 	"contextWindow",
 	"maxTokens",
 	"headers",
@@ -177,6 +221,8 @@ function readModelList(
 			baseUrl,
 			reasoning: readBoolean(source, [...path, "reasoning"]) ?? false,
 			thinkingLevelMap: readThinkingLevelMap(source, [...path, "thinkingLevelMap"]),
+			input: readModalities(source, [...path, "input"]),
+			cost: readCost(source, [...path, "cost"]),
 			contextWindow: readInteger(source, [...path, "contextWindow"], 1),
 			maxTokens: readInteger(source, [...path, "maxTokens"], 1),
 			headers: readStringMap(source, [...path, "headers"]) ?? {},
@@ -209,4 +255,45 @@ function readThinkingLevelMap(source: ConfigSource, path: ConfigPath): ThinkingL
 		result[key as ThinkingLevel] = item;
 	}
 	return result;
+}
+
+/**
+ * 能接收的输入形态。
+ *
+ * 省略时按只收文本算：没有声明就说明写配置的人没想过这件事，替它加上图片只会让请求在
+ * 端点那里失败。
+ */
+function readModalities(source: ConfigSource, path: ConfigPath): readonly ModelModality[] {
+	const declared = readEnumArray(source, path, MODEL_MODALITIES);
+	if (declared === undefined) return ["text"];
+	if (declared.length === 0) {
+		throw new ConfigError(`${describePath(path)} 至少要声明一种输入形态`, source.locationOf(path) ?? {});
+	}
+	// 重复声明说明写的人不清楚自己要什么，报错比默默去重好
+	const unique = [...new Set(declared)];
+	if (unique.length !== declared.length) {
+		throw new ConfigError(`${describePath(path)} 里有重复的取值`, source.locationOf(path) ?? {});
+	}
+	return unique;
+}
+
+function readCost(source: ConfigSource, path: ConfigPath): ModelCost | undefined {
+	const table = readTable(source, path);
+	if (table === undefined) return undefined;
+
+	assertNoUnknownKeys(source, path, COST_KEYS);
+	const missing = COST_KEYS.filter((key) => table[key] === undefined);
+	if (missing.length > 0) {
+		throw new ConfigError(
+			`${describePath(path)} 缺少 ${missing.join("、")}：只写一半的单价表算出来的金额是错的`,
+			source.locationOf(path) ?? {},
+		);
+	}
+
+	return {
+		input: readNumber(source, [...path, "input"], 0) ?? 0,
+		output: readNumber(source, [...path, "output"], 0) ?? 0,
+		cacheRead: readNumber(source, [...path, "cacheRead"], 0) ?? 0,
+		cacheWrite: readNumber(source, [...path, "cacheWrite"], 0) ?? 0,
+	};
 }

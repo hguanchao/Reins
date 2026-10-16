@@ -1,6 +1,6 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
-import type { ModelEntry } from "../config/providers-file.ts";
+import { computeCost, type ModelEntry } from "../config/providers-file.ts";
 import type { LlmClient } from "../llm/client.ts";
 import { assistantText, type LlmMessage, type LlmUsage } from "../llm/messages.ts";
 
@@ -44,7 +44,13 @@ export interface CompactorDeps {
 }
 
 export type CompactionResult =
-	| { readonly ok: true; readonly summary: string; readonly usage: LlmUsage | undefined }
+	| {
+			readonly ok: true;
+			readonly summary: string;
+			readonly usage: LlmUsage | undefined;
+			/** 这次摘要请求的金额。摘要可能用另一个模型，单价按它自己算 */
+			readonly cost: number | undefined;
+	  }
 	| { readonly ok: false; readonly message: string };
 
 export class Compactor {
@@ -118,7 +124,12 @@ export class Compactor {
 
 		const summary = assistantText({ role: "assistant", content: result.content }).trim();
 		if (summary.length === 0) return { ok: false, message: "压缩模型没有返回任何内容" };
-		return { ok: true, summary, usage: result.usage };
+		return {
+			ok: true,
+			summary,
+			usage: result.usage,
+			cost: result.usage === undefined ? undefined : computeCost(this.#deps.model.cost, result.usage),
+		};
 	}
 }
 

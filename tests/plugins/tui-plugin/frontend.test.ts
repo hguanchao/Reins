@@ -235,7 +235,7 @@ describe("交互界面", () => {
 
 	it("退出时把用量一并报出来", async () => {
 		const { terminal, done } = await start({
-			usage: { requests: 3, compactions: 1, subagents: 0, input: 900, output: 120, cacheRead: 40, cacheWrite: 0, total: 1060 },
+			usage: { requests: 3, compactions: 1, subagents: 0, cost: undefined, unpriced: 0, input: 900, output: 120, cacheRead: 40, cacheWrite: 0, total: 1060 },
 		});
 		terminal.feedInput("\x04");
 		await done;

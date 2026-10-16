@@ -12,7 +12,12 @@ import { describeUsage, sumUsage } from "../../src/session/usage.ts";
  * 当前上下文（压缩点单独标出来，读的人才分得清「模型看到什么」与「当时发生了什么」）。
  */
 
-function usageEntry(id: string, kind: "turn" | "compact" | "subagent", total: number): SessionEntry {
+function usageEntry(
+	id: string,
+	kind: "turn" | "compact" | "subagent",
+	total: number,
+	cost?: number,
+): SessionEntry {
 	return {
 		type: "usage",
 		id,
@@ -22,6 +27,7 @@ function usageEntry(id: string, kind: "turn" | "compact" | "subagent", total: nu
 		model: "m",
 		kind,
 		usage: { input: total - 10, output: 10, cacheRead: 0, cacheWrite: 0, total },
+		cost,
 	};
 }
 
@@ -71,6 +77,8 @@ describe("用量统计", () => {
 			cacheRead: 0,
 			cacheWrite: 0,
 			total: 0,
+			cost: undefined,
+			unpriced: 0,
 		});
 	});
 
@@ -78,6 +86,30 @@ describe("用量统计", () => {
 		const text = describeUsage(sumUsage([usageEntry("1", "turn", 100), usageEntry("2", "compact", 50)]));
 		assert.ok(text.includes("请求 2 次（其中压缩 1 次）"));
 		assert.ok(text.includes("合计 150 token"));
+		// 一笔单价都没有时不出现金额：一个 $0 会被读成「没花钱」
+		assert.ok(!text.includes("费用"));
+	});
+
+	it("配了单价就报金额", () => {
+		const text = describeUsage(sumUsage([usageEntry("1", "turn", 100, 0.0123), usageEntry("2", "turn", 50, 0.0001)]));
+
+		assert.ok(text.includes("费用 $0.0124"), text);
+		assert.ok(!text.includes("未配单价"), text);
+	});
+
+	it("只有部分请求配了单价时，金额只算配了的，并说明有几笔没算", () => {
+		const totals = sumUsage([usageEntry("1", "turn", 100, 0.5), usageEntry("2", "turn", 50), usageEntry("3", "turn", 30)]);
+
+		assert.equal(totals.cost, 0.5);
+		assert.equal(totals.unpriced, 2);
+		const text = describeUsage(totals);
+		assert.ok(text.includes("费用 $0.5000"), text);
+		assert.ok(text.includes("另有 2 次未配单价，未计入"), text);
+	});
+
+	it("小额金额用更多小数位，不显示成 0", () => {
+		const text = describeUsage(sumUsage([usageEntry("1", "turn", 100, 0.000012)]));
+		assert.ok(text.includes("费用 $0.000012"), text);
 	});
 });
 

@@ -53,6 +53,8 @@ const model: ModelEntry = {
 	baseUrl: "http://127.0.0.1:1",
 	reasoning: false,
 	thinkingLevelMap: {},
+	input: ["text"],
+	cost: undefined,
 	contextWindow: undefined,
 	maxTokens: undefined,
 	headers: {},

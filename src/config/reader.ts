@@ -79,6 +79,18 @@ export function readInteger(source: ConfigSource, path: ConfigPath, minimum: num
 	return value;
 }
 
+export function readNumber(source: ConfigSource, path: ConfigPath, minimum: number): number | undefined {
+	const value = source.get(path);
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		throw new ConfigError(`${describePath(path)} 应当是数字`, locate(source, path));
+	}
+	if (value < minimum) {
+		throw new ConfigError(`${describePath(path)} 不能小于 ${minimum}`, locate(source, path));
+	}
+	return value;
+}
+
 export function readEnum<T extends string>(
 	source: ConfigSource,
 	path: ConfigPath,
@@ -90,6 +102,28 @@ export function readEnum<T extends string>(
 		throw new ConfigError(`${describePath(path)} 只能是 ${allowed.join("、")} 之一`, locate(source, path));
 	}
 	return value as T;
+}
+
+/** 取值受限的字符串数组。重复项在这一层不管，由调用方决定要不要当成错误。 */
+export function readEnumArray<T extends string>(
+	source: ConfigSource,
+	path: ConfigPath,
+	allowed: readonly T[],
+): readonly T[] | undefined {
+	const value = source.get(path);
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) {
+		throw new ConfigError(`${describePath(path)} 应当是数组`, locate(source, path));
+	}
+	const result: T[] = [];
+	for (const item of value) {
+		const match = allowed.find((candidate) => candidate === item);
+		if (match === undefined) {
+			throw new ConfigError(`${describePath(path)} 的元素只能是 ${allowed.join("、")} 之一`, locate(source, path));
+		}
+		result.push(match);
+	}
+	return result;
 }
 
 export function readStringArray(source: ConfigSource, path: ConfigPath): readonly string[] | undefined {

@@ -84,6 +84,12 @@ export interface SessionUsageEntry extends SessionEntryBase {
 	/** 这笔用量是哪个环节产生的 */
 	readonly kind: "turn" | "compact" | "subagent";
 	readonly usage: LlmUsage;
+	/**
+	 * 这次请求的金额（美元）。模型没配单价时为空。
+	 *
+	 * 金额随用量一起落盘，而不是事后再按当前单价算：钱是当时花掉的，不该被后来改的单价改写。
+	 */
+	readonly cost: number | undefined;
 }
 
 /**

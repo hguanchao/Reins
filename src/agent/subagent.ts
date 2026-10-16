@@ -1,5 +1,5 @@
 import type { Config } from "../config/config-file.ts";
-import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
+import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient } from "../llm/client.ts";
 import { clampEffort } from "../llm/effort.ts";
 import {
@@ -112,6 +112,7 @@ export class Subagent {
 					model: this.#deps.model.id,
 					kind: "subagent",
 					usage: result.usage,
+					cost: computeCost(this.#deps.model.cost, result.usage),
 				});
 			}
 
