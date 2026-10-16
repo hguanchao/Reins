@@ -150,6 +150,7 @@ export class TurnDriver {
 			name: call.name,
 			isError: outcome.isError,
 			durationMs: outcome.durationMs,
+			summary: firstLine(outcome.content),
 		});
 		return {
 			callId: call.id,
@@ -240,6 +241,12 @@ export class TurnDriver {
 			signal,
 		};
 	}
+}
+
+/** 取首行作为摘要。整段结果可能很长，而界面上要的只是「它到底做成了没有、为什么没做成」。 */
+function firstLine(content: string): string {
+	const line = content.split("\n", 1)[0] ?? "";
+	return line.length > 200 ? `${line.slice(0, 200)}…` : line;
 }
 
 interface ToolOutcome {

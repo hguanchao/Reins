@@ -7,12 +7,12 @@ import { parseConfig } from "../../src/config/config-file.ts";
 import { parseModels } from "../../src/config/models-file.ts";
 import type { LlmResult } from "../../src/llm/client.ts";
 import { JsonlSession } from "../../src/plugins/session-plugin/jsonl-store.ts";
-import { UnrestrictedSandbox } from "../../src/sandbox/policy.ts";
+import { Sandbox } from "../../src/sandbox/policy.ts";
 import { createCoreTools } from "../../src/tools/builtin/index.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
 import { WorkspaceBoundary } from "../../src/workspace/boundary.ts";
-import { createTestWorkspace, type TestWorkspace } from "../tools/helpers.ts";
+import { allowAllGate, createTestWorkspace, type TestWorkspace } from "../tools/helpers.ts";
 import { ScriptedClient, errorResult, textResult, toolCallResult } from "./scripted-client.ts";
 
 const workspace: TestWorkspace = createTestWorkspace();
@@ -42,7 +42,7 @@ function fixtures(script: readonly LlmResult[]): {
 	const provider = models.providers[0];
 	const model = provider.models[0];
 
-	const tools = new ToolRegistry(new ResultSpiller(0, workspace.root));
+	const tools = new ToolRegistry(new ResultSpiller(0, workspace.root), allowAllGate);
 	for (const tool of createCoreTools()) tools.register(tool, "core");
 
 	const client = new ScriptedClient(script);
@@ -57,7 +57,7 @@ function fixtures(script: readonly LlmResult[]): {
 		tools,
 		session,
 		workspace: new WorkspaceBoundary(workspace.root),
-		sandbox: new UnrestrictedSandbox(),
+		sandbox: new Sandbox({ mode: "off", root: workspace.root }, undefined),
 		onEvent: (event) => {
 			events.push(event);
 		},

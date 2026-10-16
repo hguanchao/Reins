@@ -1,3 +1,4 @@
+import sandboxPlugin from "./sandbox-plugin/index.ts";
 import toolsPlugin from "./tools-plugin/index.ts";
 import type { Plugin } from "./host.ts";
 
@@ -9,7 +10,7 @@ import type { Plugin } from "./host.ts";
  * 反过来一次都没有。
  */
 export function bundledPlugins(): readonly Plugin[] {
-	return [toolsPlugin];
+	return [toolsPlugin, sandboxPlugin];
 }
 
-export { toolsPlugin };
+export { sandboxPlugin, toolsPlugin };

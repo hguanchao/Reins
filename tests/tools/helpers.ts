@@ -2,9 +2,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { UnrestrictedSandbox, type SandboxView } from "../../src/sandbox/policy.ts";
+import { Sandbox, type SandboxView } from "../../src/sandbox/policy.ts";
 import type { SessionReadView } from "../../src/session/port.ts";
 import type { ToolContext } from "../../src/tools/contract.ts";
+import type { GateOutcome, ToolGate } from "../../src/tools/registry.ts";
 import { WorkspaceBoundary } from "../../src/workspace/boundary.ts";
 
 /**
@@ -28,7 +29,8 @@ export interface TestWorkspace {
 export function createTestWorkspace(): TestWorkspace {
 	const root = mkdtempSync(join(tmpdir(), "reins-tools-"));
 	const workspace = new WorkspaceBoundary(root);
-	const sandbox = new UnrestrictedSandbox();
+	// 不隔离的沙箱不需要后端：后端只用于平台层面的命令隔离
+	const sandbox = new Sandbox({ mode: "off", root }, undefined);
 	const session: SessionReadView = { id: "test-session", path: null };
 
 	return {
@@ -67,6 +69,13 @@ export function createTestWorkspace(): TestWorkspace {
 		},
 	};
 }
+
+/** 一律放行的判定，供不关心审批的用例使用。 */
+export const allowAllGate: ToolGate = {
+	async check(): Promise<GateOutcome> {
+		return { allowed: true, reason: "" };
+	},
+};
 
 /** 断言结果是错误，并返回内容便于进一步检查。 */
 export function expectFailure(result: { readonly content: string; readonly isError?: boolean }, part: string): string {

@@ -137,8 +137,50 @@ const MCP_SERVER_KEYS: readonly string[] = [
 	"disabled",
 ];
 
-/** 解析并校验 config.toml 的内容。纯函数，便于单测直接喂字符串。 */
+/**
+ * 一份配置文件的解析结果。
+ *
+ * 除了值本身，还保留原文与逐键的「写过没有」。合并用户级与项目级配置时要靠后者判断某个值
+ * 是使用者显式写的，还是取了默认值——只看最终值会把「项目没写、用默认值」错当成「项目要求
+ * 用默认值」，从而盖掉用户的设置。
+ */
+export class ConfigFile {
+	readonly config: Config;
+	readonly document: TomlDocument;
+	readonly file: string;
+
+	/** 只允许本模块构造：值已经过校验，别处绕过来会得到没校验过的配置。 */
+	constructor(config: Config, document: TomlDocument, file: string) {
+		this.config = config;
+		this.document = document;
+		this.file = file;
+	}
+
+	static parse(source: string, file: string): ConfigFile {
+		return parseConfigFile(source, file);
+	}
+
+	static load(file: string = configFilePath()): ConfigFile {
+		return parseConfigFile(readTextFile(file), file);
+	}
+
+	/** 该键在原文里是否被显式写过。 */
+	has(path: readonly string[]): boolean {
+		return this.document.get(path) !== undefined;
+	}
+
+	/** 键在原文中的位置，用于把「项目配置不许放宽某项」这类错误指到具体行列。 */
+	locationOf(path: readonly string[]): { line?: number; column?: number } {
+		return this.document.locationOf(path) ?? {};
+	}
+}
+
+/** 解析并校验 config.toml 的内容。 */
 export function parseConfig(source: string, file: string): Config {
+	return ConfigFile.parse(source, file).config;
+}
+
+function parseConfigFile(source: string, file: string): ConfigFile {
 	// 解析与校验两阶段的错误都要带上文件路径：缺了它使用者只能看到「第 3 行」，不知道是哪个文件
 	return wrapParseErrors(file, () => {
 		const document = new TomlDocument(source);
@@ -150,7 +192,7 @@ export function parseConfig(source: string, file: string): Config {
 		if (provider === undefined) throw new ConfigError("缺少 provider");
 		if (model === undefined) throw new ConfigError("缺少 model");
 
-		return {
+		const config: Config = {
 			provider,
 			model,
 			reasoningEffort: readEnum(document, ["reasoning_effort"], THINKING_LEVELS) ?? DEFAULT_REASONING_EFFORT,
@@ -168,6 +210,7 @@ export function parseConfig(source: string, file: string): Config {
 			mcpServers: readMcpServers(document),
 			plugins: readPlugins(document),
 		};
+		return new ConfigFile(config, document, file);
 	});
 }
 

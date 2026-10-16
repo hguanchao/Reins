@@ -7,7 +7,7 @@ import { after, describe, it } from "node:test";
 import type { AnyToolDefinition } from "../../src/tools/contract.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
-import { createTestWorkspace, expectFailure, type TestWorkspace } from "./helpers.ts";
+import { allowAllGate, createTestWorkspace, expectFailure, type TestWorkspace } from "./helpers.ts";
 
 const spillDirectory = mkdtempSync(join(tmpdir(), "reins-registry-spill-"));
 const workspace: TestWorkspace = createTestWorkspace();
@@ -36,7 +36,7 @@ function echoTool(overrides: Partial<AnyToolDefinition> = {}): AnyToolDefinition
 }
 
 function registry(spillThreshold = 0): ToolRegistry {
-	return new ToolRegistry(new ResultSpiller(spillThreshold, spillDirectory));
+	return new ToolRegistry(new ResultSpiller(spillThreshold, spillDirectory), allowAllGate);
 }
 
 describe("工具注册", () => {
@@ -151,6 +151,71 @@ describe("调用管线", () => {
 			workspace.context(undefined),
 		);
 		expectFailure(outcome, "工具执行失败：炸了");
+	});
+
+	it("判定不通过时工具不执行，理由写进结果", async () => {
+		let executed = false;
+		const tools = new ToolRegistry(new ResultSpiller(0, spillDirectory), {
+			async check() {
+				return { allowed: false, reason: "这类命令要先问过使用者" };
+			},
+		});
+		tools.register(
+			echoTool({
+				async execute() {
+					executed = true;
+					return { content: "不该走到这里" };
+				},
+			}),
+			"core",
+		);
+
+		const outcome = await tools.call(
+			{ callId: "c1", name: "echo", args: { text: "x" } },
+			workspace.context(undefined),
+		);
+		expectFailure(outcome, "未执行：这类命令要先问过使用者");
+		assert.equal(executed, false);
+	});
+
+	it("判定本身出错时按拒绝处理", async () => {
+		let executed = false;
+		const tools = new ToolRegistry(new ResultSpiller(0, spillDirectory), {
+			async check() {
+				throw new Error("判定器坏了");
+			},
+		});
+		tools.register(
+			echoTool({
+				async execute() {
+					executed = true;
+					return { content: "不该走到这里" };
+				},
+			}),
+			"core",
+		);
+
+		const outcome = await tools.call(
+			{ callId: "c1", name: "echo", args: { text: "x" } },
+			workspace.context(undefined),
+		);
+		expectFailure(outcome, "审批判定失败，已拒绝");
+		assert.equal(executed, false);
+	});
+
+	it("判定在参数校验之后：参数写错时先报参数", async () => {
+		let asked = false;
+		const tools = new ToolRegistry(new ResultSpiller(0, spillDirectory), {
+			async check() {
+				asked = true;
+				return { allowed: true, reason: "" };
+			},
+		});
+		tools.register(echoTool(), "core");
+
+		const outcome = await tools.call({ callId: "c1", name: "echo", args: {} }, workspace.context(undefined));
+		expectFailure(outcome, "缺少必填的 text");
+		assert.equal(asked, false);
 	});
 
 	it("超过阈值的结果被落盘", async () => {

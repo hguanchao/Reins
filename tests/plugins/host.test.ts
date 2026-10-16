@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
+import { PermissionPolicy } from "../../src/permission/policy.ts";
 import { PluginHost, type Plugin } from "../../src/plugins/host.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
 import type { AnyToolDefinition } from "../../src/tools/contract.ts";
+import { allowAllGate } from "../tools/helpers.ts";
 
 const directory = mkdtempSync(join(tmpdir(), "reins-host-"));
 
@@ -28,13 +30,13 @@ function echoTool(name: string): AnyToolDefinition {
 }
 
 function makeRegistry(): ToolRegistry {
-	return new ToolRegistry(new ResultSpiller(0, directory));
+	return new ToolRegistry(new ResultSpiller(0, directory), allowAllGate);
 }
 
 describe("插件装载", () => {
 	it("装载成功后工具进入注册表", async () => {
 		const tools = makeRegistry();
-		const host = new PluginHost(tools);
+		const host = new PluginHost(tools, new PermissionPolicy("ask"));
 		const failures = await host.load([
 			{
 				name: "demo-plugin",
@@ -51,7 +53,7 @@ describe("插件装载", () => {
 
 	it("插件抛错时不留半注册状态", async () => {
 		const tools = makeRegistry();
-		const host = new PluginHost(tools);
+		const host = new PluginHost(tools, new PermissionPolicy("ask"));
 		const failures = await host.load([
 			{
 				name: "broken-plugin",
@@ -73,7 +75,7 @@ describe("插件装载", () => {
 		const tools = makeRegistry();
 		tools.register({ ...echoTool("read"), description: "核心的 read" }, "core");
 
-		const host = new PluginHost(tools);
+		const host = new PluginHost(tools, new PermissionPolicy("ask"));
 		const failures = await host.load([
 			{
 				name: "shadow-plugin",
@@ -90,7 +92,7 @@ describe("插件装载", () => {
 
 	it("一个插件失败不影响其余插件", async () => {
 		const tools = makeRegistry();
-		const host = new PluginHost(tools);
+		const host = new PluginHost(tools, new PermissionPolicy("ask"));
 		const failures = await host.load([
 			{
 				name: "bad-plugin",
@@ -112,7 +114,7 @@ describe("插件装载", () => {
 
 	it("异步的 setup 会被等待", async () => {
 		const tools = makeRegistry();
-		const host = new PluginHost(tools);
+		const host = new PluginHost(tools, new PermissionPolicy("ask"));
 		await host.load([
 			{
 				name: "async-plugin",
@@ -126,9 +128,59 @@ describe("插件装载", () => {
 	});
 });
 
+describe("插件贡献的规则与后端", () => {
+	it("审批规则进入策略", async () => {
+		const policy = new PermissionPolicy("yolo");
+		const host = new PluginHost(makeRegistry(), policy);
+		await host.load([
+			{
+				name: "rule-plugin",
+				setup(api) {
+					api.registerPermissionRule({
+						decision: "deny",
+						reason: "工作目录里的凭据不许读",
+						matches: (tool) => tool === "read",
+					});
+				},
+			},
+		]);
+
+		assert.equal(policy.ruleCount(), 1);
+		const decision = policy.decide("read", { readOnly: true, destructive: false, openWorld: false }, {});
+		assert.equal(decision.kind, "deny");
+	});
+
+	it("装载失败的插件不会留下规则", async () => {
+		const policy = new PermissionPolicy("yolo");
+		const host = new PluginHost(makeRegistry(), policy);
+		const failures = await host.load([
+			{
+				name: "half-plugin",
+				setup(api) {
+					api.registerPermissionRule({ decision: "deny", reason: "x", matches: () => true });
+					throw new Error("装到一半坏了");
+				},
+			},
+		]);
+
+		assert.equal(failures.length, 1);
+		assert.equal(policy.ruleCount(), 0);
+	});
+
+	it("沙箱后端被收集起来", async () => {
+		const backend = { id: "demo", available: false, wrap: () => undefined };
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
+		await host.load([{ name: "backend-plugin", setup: (api) => api.registerSandboxBackend(backend) }]);
+		assert.deepEqual(
+			host.backends().map((item) => item.id),
+			["demo"],
+		);
+	});
+});
+
 describe("插件命令", () => {
 	it("注册并执行命令", async () => {
-		const host = new PluginHost(makeRegistry());
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
 		const plugin: Plugin = {
 			name: "demo-plugin",
 			setup(api) {
@@ -154,7 +206,7 @@ describe("插件命令", () => {
 	});
 
 	it("重复的命令名会被记为该插件装载失败", async () => {
-		const host = new PluginHost(makeRegistry());
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
 		const command = { name: "dup", description: "重复的", async run() {} };
 		const failures = await host.load([
 			{ name: "a-plugin", setup: (api) => api.registerCommand(command) },
@@ -166,7 +218,7 @@ describe("插件命令", () => {
 	});
 
 	it("执行不存在的命令时报错", async () => {
-		const host = new PluginHost(makeRegistry());
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
 		await assert.rejects(
 			() => host.runCommand("missing", "", { cwd: "/tmp", print: () => undefined }),
 			/没有 \/missing/,

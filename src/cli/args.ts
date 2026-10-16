@@ -14,6 +14,14 @@ export interface CliOptions {
 	readonly prompt: string;
 	readonly configPath: string | undefined;
 	readonly modelsPath: string | undefined;
+	/**
+	 * 把「需要征求同意」的调用一律视为同意。
+	 *
+	 * 它只解决「没有人可以问」这一种情形：拒绝规则与审查模型都照旧生效。
+	 */
+	readonly assumeYes: boolean;
+	/** 对当前工作区信任与否给出的明确结论；没给就是 undefined */
+	readonly trust: boolean | undefined;
 }
 
 /**
@@ -27,6 +35,8 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	let configPath: string | undefined;
 	let modelsPath: string | undefined;
 	let explicitPrint = false;
+	let assumeYes = false;
+	let trust: boolean | undefined;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
@@ -36,6 +46,18 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 
 		if (argument === "--print" || argument === "-p") {
 			explicitPrint = true;
+			continue;
+		}
+		if (argument === "--yes" || argument === "-y") {
+			assumeYes = true;
+			continue;
+		}
+		if (argument === "--trust") {
+			trust = true;
+			continue;
+		}
+		if (argument === "--no-trust") {
+			trust = false;
 			continue;
 		}
 		if (argument === "--config" || argument === "--models") {
@@ -69,10 +91,19 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		prompt: command === "print" ? positionals.join(" ") : "",
 		configPath,
 		modelsPath,
+		assumeYes,
+		trust,
 	};
 
 	function options(special: CliCommand): CliOptions {
-		return { command: special, prompt: "", configPath: undefined, modelsPath: undefined };
+		return {
+			command: special,
+			prompt: "",
+			configPath: undefined,
+			modelsPath: undefined,
+			assumeYes: false,
+			trust: undefined,
+		};
 	}
 }
 
@@ -98,6 +129,9 @@ export const HELP_TEXT = `Reins —— 终端编码智能体
   reins --version           显示版本
 
 选项:
+  --yes                      凡是要征求同意的调用一律视为同意；拒绝规则与审查模型照旧生效
+  --trust                    读取当前工作区自带的配置，并把这一决定记下来
+  --no-trust                 不读取当前工作区自带的配置，并把这一决定记下来
   --config <路径>            指定 config.toml，默认取配置目录下的同名文件
   --models <路径>            指定 models.json，默认取配置目录下的同名文件
 

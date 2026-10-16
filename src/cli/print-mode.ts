@@ -31,7 +31,12 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				deps.stderr(`\n· ${event.name} ${summarizeArgs(event.args)}\n`);
 				return;
 			case "tool_end":
-				deps.stderr(`  ${event.isError ? "失败" : "完成"} ${event.durationMs}ms\n`);
+				// 成功只报耗时；失败要把原因说出来，否则使用者只知道「没做成」，不知道该改什么
+				deps.stderr(
+					event.isError
+						? `  失败 ${event.durationMs}ms：${event.summary}\n`
+						: `  完成 ${event.durationMs}ms\n`,
+				);
 				return;
 			case "turn_end":
 				state.finished = true;

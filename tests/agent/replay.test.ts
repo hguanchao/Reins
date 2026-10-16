@@ -8,12 +8,12 @@ import { renderSystemPrompt } from "../../src/agent/prompt.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
 import { parseModels } from "../../src/config/models-file.ts";
 import { JsonlSession, foldEntries, parseSessionText } from "../../src/plugins/session-plugin/jsonl-store.ts";
-import { UnrestrictedSandbox } from "../../src/sandbox/policy.ts";
+import { Sandbox } from "../../src/sandbox/policy.ts";
 import { createCoreTools } from "../../src/tools/builtin/index.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
 import { WorkspaceBoundary } from "../../src/workspace/boundary.ts";
-import { createTestWorkspace, type TestWorkspace } from "../tools/helpers.ts";
+import { allowAllGate, createTestWorkspace, type TestWorkspace } from "../tools/helpers.ts";
 import { ScriptedClient, textResult, toolCallResult } from "./scripted-client.ts";
 
 /**
@@ -54,7 +54,7 @@ describe("会话重放", () => {
 		const provider = models.providers[0];
 		const model = provider.models[0];
 
-		const registry = new ToolRegistry(new ResultSpiller(0, workspace.root));
+		const registry = new ToolRegistry(new ResultSpiller(0, workspace.root), allowAllGate);
 		for (const tool of createCoreTools()) registry.register(tool, "core");
 
 		const client = new ScriptedClient([
@@ -72,7 +72,7 @@ describe("会话重放", () => {
 				tools: registry,
 				session,
 				workspace: new WorkspaceBoundary(workspace.root),
-				sandbox: new UnrestrictedSandbox(),
+				sandbox: new Sandbox({ mode: "off", root: workspace.root }, undefined),
 				onEvent: () => undefined,
 			});
 			await driver.run("看看 target.txt", new AbortController().signal);

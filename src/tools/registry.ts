@@ -1,7 +1,7 @@
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionReadView } from "../session/port.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
-import type { AnyToolDefinition, ToolResult } from "./contract.ts";
+import type { AnyToolDefinition, ToolAnnotations, ToolResult } from "./contract.ts";
 import { validateToolArguments } from "./schema.ts";
 import type { ResultSpiller } from "./spill.ts";
 
@@ -30,6 +30,29 @@ export interface ToolCallOutcome {
 	readonly durationMs: number;
 }
 
+/**
+ * 审批判定。
+ *
+ * 由宿主提供实现，注册表只知道它能在执行之前给出一个允不允许的结论。抽成接口而不是直接
+ * 依赖权限模块，是为了让「工具层需要一次外部判定」这件事与「判定怎么做」各自独立。
+ */
+export interface ToolGate {
+	check(request: GateRequest): Promise<GateOutcome>;
+}
+
+export interface GateRequest {
+	readonly tool: string;
+	readonly annotations: ToolAnnotations;
+	readonly args: Record<string, unknown>;
+	readonly signal: AbortSignal;
+}
+
+export interface GateOutcome {
+	readonly allowed: boolean;
+	/** 拒绝的理由，会写进工具结果让模型知道为什么没做成 */
+	readonly reason: string;
+}
+
 /** 一次调用需要的运行环境，由装配处提供。 */
 export interface ToolRunContext {
 	readonly workspace: WorkspaceBoundary;
@@ -47,9 +70,11 @@ interface Registration {
 export class ToolRegistry {
 	readonly #tools = new Map<string, Registration>();
 	readonly #spiller: ResultSpiller;
+	readonly #gate: ToolGate;
 
-	constructor(spiller: ResultSpiller) {
+	constructor(spiller: ResultSpiller, gate: ToolGate) {
 		this.#spiller = spiller;
+		this.#gate = gate;
 	}
 
 	/**
@@ -99,7 +124,23 @@ export class ToolRegistry {
 			return error(`参数有误：\n${validated.message}\n收到的参数：${JSON.stringify(prepared)}`);
 		}
 
-		// 审批判定将插在这里：校验之后、执行之前
+		// 审批判定：校验之后、执行之前。放在校验之后的理由是模型把参数写错时应当直接告诉它，
+		// 而不是先弹一次确认再报参数错
+		let gateOutcome: GateOutcome;
+		try {
+			gateOutcome = await this.#gate.check({
+				tool: tool.name,
+				annotations: tool.annotations,
+				args: validated.value,
+				signal: context.signal,
+			});
+		} catch (cause) {
+			// 判定本身失败时按拒绝处理：检查环节出问题不该等于放行
+			return error(`审批判定失败，已拒绝：${describeError(cause)}`);
+		}
+		if (!gateOutcome.allowed) {
+			return error(`未执行：${gateOutcome.reason}`);
+		}
 
 		const startedAt = performance.now();
 		let result: ToolResult;

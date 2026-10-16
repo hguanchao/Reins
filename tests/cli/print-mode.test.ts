@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -100,13 +100,21 @@ function answerChunks(): unknown[] {
 
 const workDir = mkdtempSync(join(tmpdir(), "reins-e2e-work-"));
 const homeDir = mkdtempSync(join(tmpdir(), "reins-e2e-home-"));
-let server: Server | undefined;
+/** 所有起过的服务都记下来，结束时统一关掉：漏一个就会让测试进程一直挂着 */
+const servers: Server[] = [];
 
 after(() => {
-	server?.close();
+	for (const server of servers) server.close();
 	rmSync(workDir, { recursive: true, force: true });
 	rmSync(homeDir, { recursive: true, force: true });
 });
+
+/** 起一个服务并登记，保证之后一定会被关掉。 */
+async function serve(): Promise<Awaited<ReturnType<typeof startFakeEndpoint>>> {
+	const started = await startFakeEndpoint();
+	servers.push(started.server);
+	return started;
+}
 
 interface RunResult {
 	readonly code: number;
@@ -165,11 +173,11 @@ function writeConfig(port: number): { readonly workRoot: string } {
 
 describe("reins 的整条链路", () => {
 	it("连上端点、执行工具、给出回答并落盘会话", async () => {
-		const started = await startFakeEndpoint();
-		server = started.server;
+		const started = await serve();
 		const { workRoot } = writeConfig(started.port);
 
-		const result = await run(["把问候写进 hello.txt"], { workRoot });
+		// 默认审批方式是 ask，非交互模式下没人可问，因此这里显式同意
+		const result = await run(["--yes", "把问候写进 hello.txt"], { workRoot });
 
 		assert.equal(result.code, 0, `退出码 ${result.code}
 标准输出：${JSON.stringify(result.stdout)}
@@ -202,6 +210,20 @@ describe("reins 的整条链路", () => {
 		assert.equal(lines.length, 8);
 	});
 
+	it("没有 --yes 时改动类操作被拒，且说明怎么办", async () => {
+		const started = await serve();
+		const { workRoot } = writeConfig(started.port);
+
+		const result = await run(["把问候写进 hello.txt"], { workRoot });
+
+		// 这一轮本身是正常结束的：模型收到了「没执行」的结果并据此作答，只是工具确实没跑
+		assert.equal(result.code, 0, `标准错误：${result.stderr}`);
+		assert.ok(result.stderr.includes("未执行"), `标准错误：${result.stderr}`);
+		assert.ok(result.stderr.includes("--yes"));
+		// 关键的一条：工具没有真的执行
+		assert.ok(!existsSync(join(workRoot, "hello.txt")));
+	});
+
 	it("端点报错时以非零退出码结束，并说明原因", async () => {
 		const failing = createServer((_request, response) => {
 			response.writeHead(401, { "content-type": "application/json" });
@@ -211,6 +233,7 @@ describe("reins 的整条链路", () => {
 		const port = (failing.address() as AddressInfo).port;
 		const { workRoot } = writeConfig(port);
 
+		servers.push(failing);
 		try {
 			const result = await run(["随便做点什么"], { workRoot });
 			assert.equal(result.code, 1, `标准错误：${JSON.stringify(result.stderr)}`);
