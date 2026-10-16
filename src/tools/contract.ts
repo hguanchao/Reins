@@ -46,6 +46,12 @@ export interface ToolContext<P> {
 	readonly session: SessionReadView;
 }
 
+/**
+ * 工具定义。
+ *
+ * 参数类型由各工具自己声明（如 `ToolDefinition<ReadArgs>`），注册表统一按 `AnyToolDefinition`
+ * 保存。这里不把参数约束成带索引签名的类型，否则每个参数接口都得写一条索引签名才能放进来。
+ */
 export interface ToolDefinition<P = Record<string, unknown>> extends ToolDeclaration {
 	readonly annotations: ToolAnnotations;
 	/**
@@ -58,5 +64,5 @@ export interface ToolDefinition<P = Record<string, unknown>> extends ToolDeclara
 	execute(context: ToolContext<P>): Promise<ToolResult>;
 }
 
-/** 注册表保存工具时用的类型。各工具带自己的参数类型，方法参数按双变处理所以可以放进同一个表。 */
+/** 注册表保存工具时用的类型。 */
 export type AnyToolDefinition = ToolDefinition<Record<string, unknown>>;
