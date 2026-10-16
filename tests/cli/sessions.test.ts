@@ -30,7 +30,7 @@ writeFileSync(
 	"utf8",
 );
 writeFileSync(
-	join(home, "models.json"),
+	join(home, "providers.json"),
 	JSON.stringify({
 		providers: { local: { baseUrl: "https://example.com", api: "openai-completions", models: [{ id: "fake-model" }] } },
 	}),

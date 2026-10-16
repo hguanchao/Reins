@@ -1,4 +1,4 @@
-import type { ModelEntry, ProviderEntry } from "../config/models-file.ts";
+import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
 import { AnthropicMessagesClient } from "./adapters/anthropic-messages.ts";
 import { OpenAiCompletionsClient } from "./adapters/openai-completions.ts";
 import type { LlmClient } from "./client.ts";

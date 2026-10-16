@@ -8,7 +8,7 @@ import {
 } from "./config-file.ts";
 import { ConfigFile } from "./config-file.ts";
 import { ConfigError } from "./config-error.ts";
-import type { ModelsConfig, ProviderEntry } from "./models-file.ts";
+import type { ProvidersConfig, ProviderEntry } from "./providers-file.ts";
 
 /**
  * 合并用户级与项目级配置。
@@ -106,7 +106,7 @@ function mergeMcpServers(
  * 同名的 provider 整体替换而不是逐字段合并：半新半旧的 provider 定义很难看出最终长什么样，
  * 而 provider 本身就相当于一个整体（端点、协议、密钥、模型清单是一套的）。
  */
-export function mergeModels(user: ModelsConfig, project: ModelsConfig): ModelsConfig {
+export function mergeProviders(user: ProvidersConfig, project: ProvidersConfig): ProvidersConfig {
 	const merged: ProviderEntry[] = user.providers.map(
 		(provider) => project.providers.find((item) => item.id === provider.id) ?? provider,
 	);

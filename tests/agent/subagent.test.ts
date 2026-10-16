@@ -7,7 +7,7 @@ import { TurnDriver } from "../../src/agent/driver.ts";
 import { DEFAULT_SUBAGENT_STEPS, Subagent, createSubagentTool } from "../../src/agent/subagent.ts";
 import type { Config } from "../../src/config/config-file.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
-import { parseModels, type ModelEntry, type ProviderEntry } from "../../src/config/models-file.ts";
+import { parseProviders, type ModelEntry, type ProviderEntry } from "../../src/config/providers-file.ts";
 import type { LlmResult } from "../../src/llm/client.ts";
 import { assistantText } from "../../src/llm/messages.ts";
 import { Sandbox, type SandboxView } from "../../src/sandbox/policy.ts";
@@ -48,13 +48,13 @@ interface Fixture {
 
 function fixtures(configText: string, script: readonly LlmResult[]): Fixture {
 	const config = parseConfig(configText, "config.toml");
-	const models = parseModels(
+	const providersConfig = parseProviders(
 		JSON.stringify({
 			providers: { p: { baseUrl: "https://x", api: "openai-completions", models: [{ id: "test-model" }] } },
 		}),
-		"models.json",
+		"providers.json",
 	);
-	const provider = models.providers[0];
+	const provider = providersConfig.providers[0];
 	const model = provider.models[0];
 
 	const client = new ScriptedClient(script);

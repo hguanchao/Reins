@@ -53,7 +53,7 @@ export interface LlmStream extends AsyncIterable<LlmEvent> {
 }
 
 export interface LlmClient {
-	/** 线上协议名，对应 models.json 里的 api 字段 */
+	/** 线上协议名，对应 providers.json 里的 api 字段 */
 	readonly api: string;
 	/**
 	 * 发起一次流式请求。

@@ -3,7 +3,7 @@ model = "gpt-5.2"
 # reasoning_effort = "medium"    # off | low | medium | high | xhigh | max
 
 # ── 模型与请求 ────────────────────────────────────────────────────────────────
-# context_window = 256000        # 模型上下文窗口;models.json 里模型未声明时在这里兜底
+# context_window = 256000        # 模型上下文窗口;providers.json 里模型未声明时在这里兜底
 # max_tokens = 8192              # 单次输出上限
 # max_retries = 10               # 上游失败重试次数;0 = 失败即停
 # httpProxy = ""                 # 出站代理 http(s);显式空串 = 强制直连

@@ -9,7 +9,7 @@ const COMMAND_TIMEOUT_MS = 10_000;
 const ENV_REFERENCE = /\$(?:\{(\w+)\}|(\w+))/g;
 
 /**
- * 解析 models.json 里写的 apiKey。
+ * 解析 providers.json 里写的 apiKey。
  *
  * 支持三种写法：以 `!` 开头的命令、含 `$NAME` 或 `${NAME}` 的环境变量插值、字面值。
  * 命令形式让密钥可以来自凭据管理器或临时令牌，不必落进配置文件。

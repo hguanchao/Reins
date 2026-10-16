@@ -1,11 +1,11 @@
 import { ConfigError } from "./config-error.ts";
 import type { Config } from "./config-file.ts";
-import type { ModelEntry, ModelsConfig, ProviderEntry } from "./models-file.ts";
+import type { ModelEntry, ProvidersConfig, ProviderEntry } from "./providers-file.ts";
 
 /**
- * 把 config.toml 选的 provider 与模型对应到 models.json 里的具体条目。
+ * 把 config.toml 选的 provider 与模型对应到 providers.json 里的具体条目。
  *
- * 这是两份配置之间唯一的交叉约束：config.toml 负责「用哪一个」，models.json 负责
+ * 这是两份配置之间唯一的交叉约束：config.toml 负责「用哪一个」，providers.json 负责
  * 「那一个长什么样」。写错名字时把可选项列出来，省去使用者来回对照两份文件。
  */
 export interface ModelSelection {
@@ -19,15 +19,15 @@ export interface ModelSelection {
 
 export function resolveSelection(
 	config: Config,
-	models: ModelsConfig,
+	providersConfig: ProvidersConfig,
 	configFile: string,
-	modelsFile: string,
+	providersFile: string,
 ): ModelSelection {
-	const provider = models.providers.find((item) => item.id === config.provider);
+	const provider = providersConfig.providers.find((item) => item.id === config.provider);
 	if (provider === undefined) {
 		throw new ConfigError(
-			`models.json 里没有 provider ${config.provider}，可选项：${listProviders(models)}`,
-			{ file: modelsFile },
+			`providers.json 里没有 provider ${config.provider}，可选项：${listProviders(providersConfig)}`,
+			{ file: providersFile },
 		);
 	}
 
@@ -35,8 +35,8 @@ export function resolveSelection(
 	if (model === undefined) {
 		throw new ConfigError(
 			`provider ${config.provider} 下没有模型 ${config.model}，可选项：${listModels(provider)}。` +
-				`provider 与模型分别写在 ${configFile} 与 ${modelsFile} 里`,
-			{ file: modelsFile },
+				`provider 与模型分别写在 ${configFile} 与 ${providersFile} 里`,
+			{ file: providersFile },
 		);
 	}
 
@@ -66,8 +66,8 @@ function resolveWithinProvider(
 	return model;
 }
 
-function listProviders(models: ModelsConfig): string {
-	return models.providers.map((item) => item.id).join("、");
+function listProviders(providersConfig: ProvidersConfig): string {
+	return providersConfig.providers.map((item) => item.id).join("、");
 }
 
 function listModels(provider: ProviderEntry): string {

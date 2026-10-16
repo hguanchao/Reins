@@ -45,7 +45,7 @@ function writeUserFiles(): void {
 	mkdirSync(home, { recursive: true });
 	writeFileSync(join(home, "config.toml"), USER_CONFIG, "utf8");
 	writeFileSync(
-		join(home, "models.json"),
+		join(home, "providers.json"),
 		JSON.stringify({
 			providers: {
 				local: { baseUrl: "http://127.0.0.1:1", api: "openai-completions", models: [{ id: "m" }] },
@@ -151,8 +151,8 @@ describe("工作区自带的配置", () => {
 			"check",
 			"--config",
 			join(home, "config.toml"),
-			"--models",
-			join(home, "models.json"),
+			"--providers",
+			join(home, "providers.json"),
 		]);
 
 		assert.equal(result.code, 0);

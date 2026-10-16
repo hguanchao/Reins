@@ -135,7 +135,7 @@ function assertHeaderEncodable(headers: Readonly<Record<string, string>>): void 
 			if (value.charCodeAt(index) <= 0xff) continue;
 			throw new Error(
 				`请求头 ${name} 的第 ${index + 1} 个字符不在 HTTP 头部可用的范围内（只允许 latin-1）。` +
-					"请检查 models.json 里该 provider 的 apiKey 与 headers。",
+					"请检查 providers.json 里该 provider 的 apiKey 与 headers。",
 			);
 		}
 	}

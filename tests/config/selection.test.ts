@@ -3,13 +3,13 @@ import { describe, it } from "node:test";
 
 import { ConfigError } from "../../src/config/config-error.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
-import { parseModels } from "../../src/config/models-file.ts";
+import { parseProviders } from "../../src/config/providers-file.ts";
 import { resolveSelection } from "../../src/config/selection.ts";
 
 const CONFIG_FILE = "config.toml";
-const MODELS_FILE = "models.json";
+const PROVIDERS_FILE = "providers.json";
 
-const MODELS_SOURCE = JSON.stringify({
+const PROVIDERS_SOURCE = JSON.stringify({
 	providers: {
 		local: {
 			baseUrl: "http://localhost:8000/v1",
@@ -27,9 +27,9 @@ const MODELS_SOURCE = JSON.stringify({
 function resolve(configSource: string): ReturnType<typeof resolveSelection> {
 	return resolveSelection(
 		parseConfig(configSource, CONFIG_FILE),
-		parseModels(MODELS_SOURCE, MODELS_FILE),
+		parseProviders(PROVIDERS_SOURCE, PROVIDERS_FILE),
 		CONFIG_FILE,
-		MODELS_FILE,
+		PROVIDERS_FILE,
 	);
 }
 

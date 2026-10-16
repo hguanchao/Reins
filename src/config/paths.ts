@@ -5,7 +5,7 @@ import { join } from "node:path";
 export const CONFIG_DIR_NAME = ".reins";
 
 export const CONFIG_FILE_NAME = "config.toml";
-export const MODELS_FILE_NAME = "models.json";
+export const PROVIDERS_FILE_NAME = "providers.json";
 
 /** 配置目录，可用环境变量覆盖，便于测试与多套配置并存。 */
 export function configDir(): string {
@@ -18,8 +18,8 @@ export function configFilePath(): string {
 	return join(configDir(), CONFIG_FILE_NAME);
 }
 
-export function modelsFilePath(): string {
-	return join(configDir(), MODELS_FILE_NAME);
+export function providersFilePath(): string {
+	return join(configDir(), PROVIDERS_FILE_NAME);
 }
 
 /**
@@ -70,6 +70,6 @@ export function projectConfigFilePath(workRoot: string): string {
 	return join(projectDirPath(workRoot), CONFIG_FILE_NAME);
 }
 
-export function projectModelsFilePath(workRoot: string): string {
-	return join(projectDirPath(workRoot), MODELS_FILE_NAME);
+export function projectProvidersFilePath(workRoot: string): string {
+	return join(projectDirPath(workRoot), PROVIDERS_FILE_NAME);
 }

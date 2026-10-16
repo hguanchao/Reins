@@ -1,4 +1,4 @@
-import type { ModelEntry, ProviderEntry } from "../../config/models-file.ts";
+import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
 import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";

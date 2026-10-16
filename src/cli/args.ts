@@ -20,7 +20,7 @@ export interface CliOptions {
 	/** 交给模型的句子；仅 print 模式使用 */
 	readonly prompt: string;
 	readonly configPath: string | undefined;
-	readonly modelsPath: string | undefined;
+	readonly providersPath: string | undefined;
 	/**
 	 * 把「需要征求同意」的调用一律视为同意。
 	 *
@@ -48,7 +48,7 @@ export interface CliOptions {
 export function parseArgs(argv: readonly string[]): CliOptions {
 	const positionals: string[] = [];
 	let configPath: string | undefined;
-	let modelsPath: string | undefined;
+	let providersPath: string | undefined;
 	let explicitPrint = false;
 	let assumeYes = false;
 	let trust: boolean | undefined;
@@ -103,20 +103,20 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 			else forkAt = value;
 			continue;
 		}
-		if (argument === "--config" || argument === "--models") {
+		if (argument === "--config" || argument === "--providers") {
 			const value = argv[index + 1];
 			if (value === undefined || value.startsWith("-")) throw new UsageError(`${argument} 需要一个路径`);
 			if (argument === "--config") configPath = value;
-			else modelsPath = value;
+			else providersPath = value;
 			index += 1;
 			continue;
 		}
-		if (argument.startsWith("--config=") || argument.startsWith("--models=")) {
+		if (argument.startsWith("--config=") || argument.startsWith("--providers=")) {
 			const separator = argument.indexOf("=");
 			const value = argument.slice(separator + 1);
 			if (value.length === 0) throw new UsageError(`${argument.slice(0, separator)} 需要一个路径`);
 			if (argument.startsWith("--config=")) configPath = value;
-			else modelsPath = value;
+			else providersPath = value;
 			continue;
 		}
 		if (argument === "--") {
@@ -142,7 +142,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		sessionRef: undefined,
 		prompt: command === "print" ? positionals.join(" ") : "",
 		configPath,
-		modelsPath,
+		providersPath,
 		assumeYes,
 		trust,
 		continueSession,
@@ -158,7 +158,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 			sessionRef: undefined,
 			prompt: "",
 			configPath: undefined,
-			modelsPath: undefined,
+			providersPath: undefined,
 			assumeYes: false,
 			trust: undefined,
 			continueSession: false,
@@ -220,7 +220,7 @@ export const HELP_TEXT = `Reins —— 终端编码智能体
   --trust                    读取当前工作区自带的配置，并把这一决定记下来
   --no-trust                 不读取当前工作区自带的配置，并把这一决定记下来
   --config <路径>            指定 config.toml，默认取配置目录下的同名文件
-  --models <路径>            指定 models.json，默认取配置目录下的同名文件
+  --providers <路径>            指定 providers.json，默认取配置目录下的同名文件
 
 配置目录由环境变量 REINS_HOME 覆盖，默认为用户主目录下的 .reins。
 `;

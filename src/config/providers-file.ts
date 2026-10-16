@@ -6,7 +6,7 @@ import {
 	type ThinkingLevel,
 } from "./config-file.ts";
 import { JsonDocument } from "./json/index.ts";
-import { modelsFilePath } from "./paths.ts";
+import { providersFilePath } from "./paths.ts";
 import {
 	assertNoUnknownKeys,
 	describePath,
@@ -20,8 +20,10 @@ import {
 import { isConfigTable, type ConfigPath } from "./value.ts";
 
 /**
- * 模型配置。这里没有任何内置的 provider 或模型：能连什么端点、端点上有哪些模型、
- * 各自的能力与上限，全部由使用者声明，程序只负责校验与解析。
+ * 端点与模型的声明。
+ *
+ * 这里没有任何内置的 provider 或模型：能连什么端点、端点上有哪些模型、各自的能力与上限，
+ * 全部由使用者声明，程序只负责校验与解析。
  */
 
 /** 等级到 provider 原生取值的映射。null 表示该等级不支持，省略表示交给 provider 默认。 */
@@ -54,7 +56,7 @@ export interface ProviderEntry {
 	readonly models: readonly ModelEntry[];
 }
 
-export interface ModelsConfig {
+export interface ProvidersConfig {
 	readonly providers: readonly ProviderEntry[];
 }
 
@@ -72,8 +74,8 @@ const MODEL_KEYS: readonly string[] = [
 	"headers",
 ];
 
-/** 解析并校验 models.json 的内容。纯函数，便于单测直接喂字符串。 */
-export function parseModels(source: string, file: string): ModelsConfig {
+/** 解析并校验 providers.json 的内容。纯函数，便于单测直接喂字符串。 */
+export function parseProviders(source: string, file: string): ProvidersConfig {
 	// 解析与校验两阶段的错误都要带上文件路径：缺了它使用者只能看到「第 3 行」，不知道是哪个文件
 	return wrapParseErrors(file, () => {
 		const document = new JsonDocument(source);
@@ -89,8 +91,8 @@ export function parseModels(source: string, file: string): ModelsConfig {
 	});
 }
 
-export function loadModels(file: string = modelsFilePath()): ModelsConfig {
-	return parseModels(readTextFile(file), file);
+export function loadProviders(file: string = providersFilePath()): ProvidersConfig {
+	return parseProviders(readTextFile(file), file);
 }
 
 function readProvider(source: ConfigSource, id: string): ProviderEntry {

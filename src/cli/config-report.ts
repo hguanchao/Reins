@@ -1,5 +1,5 @@
 import type { Config } from "../config/config-file.ts";
-import type { ModelEntry, ModelsConfig } from "../config/models-file.ts";
+import type { ModelEntry, ProvidersConfig } from "../config/providers-file.ts";
 import type { ModelSelection } from "../config/selection.ts";
 import { displayWidth } from "../tui/text/width.ts";
 
@@ -37,19 +37,19 @@ function describeOptional(model: ModelEntry | undefined): string {
  */
 export function formatConfigReport(input: {
 	readonly configFile: string;
-	readonly modelsFile: string;
+	readonly providersFile: string;
 	/** 环境变量覆盖值；未设置时传 undefined，由调用方读取，保持本函数可测 */
 	readonly reinsHome: string | undefined;
 	readonly config: Config;
-	readonly models: ModelsConfig;
+	readonly providersConfig: ProvidersConfig;
 	readonly selection: ModelSelection;
 }): string {
-	const { config, models, selection } = input;
+	const { config, providersConfig, selection } = input;
 	const lines: string[] = [];
 
 	lines.push("配置文件");
 	lines.push(row("config", input.configFile));
-	lines.push(row("models", input.modelsFile));
+	lines.push(row("providers", input.providersFile));
 	lines.push(row("REINS_HOME", input.reinsHome ?? "（未设置）"));
 	lines.push("");
 
@@ -76,8 +76,8 @@ export function formatConfigReport(input: {
 	lines.push(row("代理", config.httpProxy === undefined ? UNKNOWN : config.httpProxy || "强制直连"));
 	lines.push("");
 
-	lines.push(`可选模型（共 ${models.providers.reduce((total, item) => total + item.models.length, 0)} 个）`);
-	for (const provider of models.providers) {
+	lines.push(`可选模型（共 ${providersConfig.providers.reduce((total, item) => total + item.models.length, 0)} 个）`);
+	for (const provider of providersConfig.providers) {
 		for (const model of provider.models) {
 			const mark = provider.id === config.provider && model.id === config.model ? "*" : " ";
 			lines.push(`${mark}${describeModel(provider.id, model)}`);

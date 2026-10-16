@@ -6,14 +6,14 @@ import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
 import { ConfigFile, type Config } from "../config/config-file.ts";
-import { mergeConfigs, mergeModels } from "../config/merge.ts";
-import { loadModels, type ModelsConfig } from "../config/models-file.ts";
+import { mergeConfigs, mergeProviders } from "../config/merge.ts";
+import { loadProviders, type ProvidersConfig } from "../config/providers-file.ts";
 import {
 	configFilePath,
-	modelsFilePath,
+	providersFilePath,
 	pluginsDir,
 	projectConfigFilePath,
-	projectModelsFilePath,
+	projectProvidersFilePath,
 	spillDir,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
@@ -88,7 +88,7 @@ export async function main(argv: readonly string[]): Promise<number> {
 /**
  * `reins sessions`。
  *
- * 只需要配置与插件清单：列出与查看会话不碰模型，因此不要求 model 能在 models.json 里对上，
+ * 只需要配置与插件清单：列出与查看会话不碰模型，因此不要求 model 能在 providers.json 里对上，
  * 配置本身有问题时才报错。工作区自带的配置照旧要信任才读，插件清单也从那里来。
  */
 async function runSessionsCommand(options: CliOptions): Promise<number> {
@@ -120,18 +120,18 @@ async function runSessionsCommand(options: CliOptions): Promise<number> {
 
 async function runConfigCheck(options: CliOptions): Promise<number> {
 	const configFile = options.configPath ?? configFilePath();
-	const modelsFile = options.modelsPath ?? modelsFilePath();
+	const providersFile = options.providersPath ?? providersFilePath();
 
 	try {
-		const { config, models, sources } = await loadEffectiveConfig(options);
-		const selection = resolveSelection(config, models, configFile, modelsFile);
+		const { config, providersConfig, sources } = await loadEffectiveConfig(options);
+		const selection = resolveSelection(config, providersConfig, configFile, providersFile);
 		writeStdout(
 			formatConfigReport({
 				configFile: sources.join(" + "),
-				modelsFile,
+				providersFile,
 				reinsHome: process.env["REINS_HOME"],
 				config,
-				models,
+				providersConfig,
 				selection,
 			}),
 		);
@@ -147,16 +147,16 @@ async function runConfigCheck(options: CliOptions): Promise<number> {
 
 async function runPrint(options: CliOptions): Promise<number> {
 	const configFile = options.configPath ?? configFilePath();
-	const modelsFile = options.modelsPath ?? modelsFilePath();
+	const providersFile = options.providersPath ?? providersFilePath();
 
 	let config: Config;
-	let models: ModelsConfig;
+	let providersConfig: ProvidersConfig;
 	let selection: ModelSelection;
 	try {
 		const effective = await loadEffectiveConfig(options);
 		config = effective.config;
-		models = effective.models;
-		selection = resolveSelection(config, models, configFile, modelsFile);
+		providersConfig = effective.providersConfig;
+		selection = resolveSelection(config, providersConfig, configFile, providersFile);
 	} catch (error) {
 		if (error instanceof ConfigError) {
 			writeStderr(`${error.display}\n`);
@@ -244,13 +244,13 @@ async function runChat(options: CliOptions): Promise<number> {
 	}
 
 	const configFile = options.configPath ?? configFilePath();
-	const modelsFile = options.modelsPath ?? modelsFilePath();
+	const providersFile = options.providersPath ?? providersFilePath();
 
 	let effective: Awaited<ReturnType<typeof loadEffectiveConfig>>;
 	let selection: ModelSelection;
 	try {
 		effective = await loadEffectiveConfig(options, askTrust);
-		selection = resolveSelection(effective.config, effective.models, configFile, modelsFile);
+		selection = resolveSelection(effective.config, effective.providersConfig, configFile, providersFile);
 	} catch (error) {
 		if (error instanceof ConfigError) {
 			writeStderr(`${error.display}\n`);
@@ -378,7 +378,7 @@ async function loadEffectiveConfig(
 	ask?: () => Promise<boolean>,
 ): Promise<{
 	readonly config: Config;
-	readonly models: ModelsConfig;
+	readonly providersConfig: ProvidersConfig;
 	/** 实际参与合并的配置文件，按优先级从低到高 */
 	readonly sources: readonly string[];
 	readonly trust: TrustDecision;
@@ -387,15 +387,15 @@ async function loadEffectiveConfig(
 }> {
 	const workRoot = process.cwd();
 	const userConfigPath = options.configPath ?? configFilePath();
-	const userModelsPath = options.modelsPath ?? modelsFilePath();
+	const userProvidersPath = options.providersPath ?? providersFilePath();
 	const userConfig = ConfigFile.load(userConfigPath);
-	const userModels = loadModels(userModelsPath);
+	const userProviders = loadProviders(userProvidersPath);
 	const resources = findProjectResources(workRoot).files;
 
 	if (options.configPath !== undefined) {
 		return {
 			config: userConfig.config,
-			models: userModels,
+			providersConfig: userProviders,
 			sources: [userConfigPath],
 			trust: { trusted: false, source: "none" },
 			resources,
@@ -424,7 +424,7 @@ async function loadEffectiveConfig(
 		}
 		return {
 			config: userConfig.config,
-			models: userModels,
+			providersConfig: userProviders,
 			sources: [userConfigPath],
 			trust: decision,
 			resources,
@@ -432,17 +432,17 @@ async function loadEffectiveConfig(
 	}
 
 	const projectConfigPath = projectConfigFilePath(workRoot);
-	const projectModelsPath = projectModelsFilePath(workRoot);
+	const projectProvidersPath = projectProvidersFilePath(workRoot);
 	const config = resources.includes(projectConfigPath)
 		? mergeConfigs(userConfig, ConfigFile.load(projectConfigPath))
 		: userConfig.config;
-	const models = resources.includes(projectModelsPath)
-		? mergeModels(userModels, loadModels(projectModelsPath))
-		: userModels;
+	const providersConfig = resources.includes(projectProvidersPath)
+		? mergeProviders(userProviders, loadProviders(projectProvidersPath))
+		: userProviders;
 	const sources = resources.includes(projectConfigPath)
 		? [userConfigPath, projectConfigPath]
 		: [userConfigPath];
-	return { config, models, sources, trust: decision, resources };
+	return { config, providersConfig, sources, trust: decision, resources };
 }
 
 /**
@@ -482,7 +482,7 @@ function createClient(config: Config, selection: ModelSelection): ReturnType<Llm
 /**
  * 建立压缩器。
  *
- * 上下文上限必须由使用者声明：models.json 的 contextWindow 或 config.toml 的 context_window，
+ * 上下文上限必须由使用者声明：providers.json 的 contextWindow 或 config.toml 的 context_window，
  * 两处都没有就不压缩，并且明确说出来——没有上限就没有「快满了」这回事，使用者会以为程序在管
  * 上下文，其实没有。
  */
@@ -493,7 +493,7 @@ function createCompactor(
 	const contextWindow = selection.model.contextWindow ?? config.contextWindow;
 	if (contextWindow === undefined) {
 		writeStderr(
-			"没有上下文上限（models.json 未声明 contextWindow，config.toml 也未设 context_window），" +
+			"没有上下文上限（providers.json 未声明 contextWindow，config.toml 也未设 context_window），" +
 				"本次不会自动压缩上下文。\n",
 		);
 		return undefined;

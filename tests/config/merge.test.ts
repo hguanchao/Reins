@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 
 import { ConfigError } from "../../src/config/config-error.ts";
 import { ConfigFile } from "../../src/config/config-file.ts";
-import { mergeConfigs, mergeModels } from "../../src/config/merge.ts";
-import { parseModels } from "../../src/config/models-file.ts";
+import { mergeConfigs, mergeProviders } from "../../src/config/merge.ts";
+import { parseProviders } from "../../src/config/providers-file.ts";
 
 const USER = "user/config.toml";
 const PROJECT = "project/config.toml";
@@ -120,27 +120,27 @@ describe("安全姿态只能加严", () => {
 });
 
 describe("模型配置合并", () => {
-	const user = parseModels(
+	const user = parseProviders(
 		JSON.stringify({
 			providers: {
 				a: { baseUrl: "https://a", api: "openai-completions", models: [{ id: "m1" }] },
 				b: { baseUrl: "https://b", api: "openai-completions", models: [{ id: "m2" }] },
 			},
 		}),
-		"user/models.json",
+		"user/providers.json",
 	);
-	const project = parseModels(
+	const project = parseProviders(
 		JSON.stringify({
 			providers: {
 				a: { baseUrl: "https://a-project", api: "openai-completions", models: [{ id: "m1" }] },
 				c: { baseUrl: "https://c", api: "openai-completions", models: [{ id: "m3" }] },
 			},
 		}),
-		"project/models.json",
+		"project/providers.json",
 	);
 
 	it("同名的整体替换，其余补上", () => {
-		const merged = mergeModels(user, project);
+		const merged = mergeProviders(user, project);
 		assert.deepEqual(
 			merged.providers.map((provider) => provider.id),
 			["a", "b", "c"],

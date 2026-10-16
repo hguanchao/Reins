@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { Compactor, estimateTokens } from "../../src/agent/compactor.ts";
-import type { ModelEntry } from "../../src/config/models-file.ts";
+import type { ModelEntry } from "../../src/config/providers-file.ts";
 import type { LlmMessage } from "../../src/llm/messages.ts";
 import { ScriptedClient, errorResult, textResult } from "./scripted-client.ts";
 

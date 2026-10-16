@@ -1,6 +1,6 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
-import type { ModelEntry } from "../config/models-file.ts";
+import type { ModelEntry } from "../config/providers-file.ts";
 import type { LlmClient } from "../llm/client.ts";
 import { assistantText, type LlmMessage, type LlmUsage } from "../llm/messages.ts";
 
@@ -38,7 +38,7 @@ export interface CompactorDeps {
 	readonly client: LlmClient;
 	readonly provider: string;
 	readonly model: ModelEntry;
-	/** 上下文上限：models.json 的 contextWindow 或 config.toml 的 context_window */
+	/** 上下文上限：providers.json 的 contextWindow 或 config.toml 的 context_window */
 	readonly contextWindow: number;
 	readonly maxTokens: number | undefined;
 }

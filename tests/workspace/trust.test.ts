@@ -44,7 +44,7 @@ describe("工作区里的受保护资源", () => {
 		const directory = join(work, ".reins");
 		mkdirSync(directory, { recursive: true });
 		writeFileSync(join(directory, "config.toml"), 'provider = "p"\nmodel = "m"\n');
-		writeFileSync(join(directory, "models.json"), "{}");
+		writeFileSync(join(directory, "providers.json"), "{}");
 
 		const resources = findProjectResources(work);
 		assert.equal(resources.files.length, 2);

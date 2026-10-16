@@ -1,4 +1,4 @@
-import type { ModelEntry, ProviderEntry } from "../../src/config/models-file.ts";
+import type { ModelEntry, ProviderEntry } from "../../src/config/providers-file.ts";
 import type { RetryPolicy } from "../../src/llm/retry.ts";
 
 /** 不重试的策略，用于只关心单次请求行为的用例。 */

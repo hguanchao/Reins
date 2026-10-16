@@ -1,4 +1,4 @@
-import type { ModelEntry, ProviderEntry } from "../../config/models-file.ts";
+import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
 import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
@@ -16,7 +16,7 @@ import { createLlmStream, joinUrl } from "./stream-runner.ts";
  * 连续的工具结果要合并成一条消息，否则会散成好几轮。
  */
 
-/** 这套协议的版本头是必填的，端点若不接受默认值可在 models.json 的 headers 里覆盖。 */
+/** 这套协议的版本头是必填的，端点若不接受默认值可在 providers.json 的 headers 里覆盖。 */
 const DEFAULT_API_VERSION = "2023-06-01";
 
 interface WireBlock {
@@ -148,7 +148,7 @@ export class AnthropicMessagesClient implements LlmClient {
 			// 这套协议要求必须给出输出上限，凭空选一个数字会让花费与截断行为变得不可预期
 			throw new Error(
 				`模型 ${this.#provider.id}/${this.#model.id} 没有声明 maxTokens，` +
-					"这套协议要求必须给出输出上限，请在 models.json 里补上",
+					"这套协议要求必须给出输出上限，请在 providers.json 里补上",
 			);
 		}
 

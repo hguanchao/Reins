@@ -1,5 +1,5 @@
 import type { Config } from "../config/config-file.ts";
-import type { ModelEntry, ProviderEntry } from "../config/models-file.ts";
+import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient } from "../llm/client.ts";
 import { clampEffort } from "../llm/effort.ts";
 import {

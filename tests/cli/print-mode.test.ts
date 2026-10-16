@@ -175,7 +175,7 @@ function writeConfig(port: number, extra: readonly string[] = []): { readonly wo
 		"utf8",
 	);
 	writeFileSync(
-		join(homeDir, "models.json"),
+		join(homeDir, "providers.json"),
 		JSON.stringify({
 			providers: {
 				local: {

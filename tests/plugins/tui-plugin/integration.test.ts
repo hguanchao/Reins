@@ -7,7 +7,7 @@ import { after, describe, it } from "node:test";
 import { TurnDriver } from "../../../src/agent/driver.ts";
 import type { AgentEventListener } from "../../../src/agent/events.ts";
 import type { Config } from "../../../src/config/config-file.ts";
-import type { ModelEntry, ProviderEntry } from "../../../src/config/models-file.ts";
+import type { ModelEntry, ProviderEntry } from "../../../src/config/providers-file.ts";
 import { PermissionGate, PermissionPolicy, type Confirmer } from "../../../src/permission/policy.ts";
 import { TerminalFrontend } from "../../../src/plugins/tui-plugin/frontend.ts";
 import { JsonlSessionStore } from "../../../src/plugins/session-plugin/jsonl-store.ts";

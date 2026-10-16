@@ -33,23 +33,23 @@ describe("parseArgs 命令", () => {
 });
 
 describe("parseArgs 路径覆盖", () => {
-	it("接受 --config 与 --models 的两种写法", () => {
+	it("接受 --config 与 --providers 的两种写法", () => {
 		assert.equal(parseArgs(["--config", "/a.toml"]).configPath, "/a.toml");
 		assert.equal(parseArgs(["--config=/a.toml"]).configPath, "/a.toml");
-		assert.equal(parseArgs(["--models", "/b.json"]).modelsPath, "/b.json");
-		assert.equal(parseArgs(["--models=/b.json"]).modelsPath, "/b.json");
+		assert.equal(parseArgs(["--providers", "/b.json"]).providersPath, "/b.json");
+		assert.equal(parseArgs(["--providers=/b.json"]).providersPath, "/b.json");
 	});
 
 	it("可以与子命令同时使用", () => {
-		const options = parseArgs(["config", "check", "--config", "/a.toml", "--models=/b.json"]);
+		const options = parseArgs(["config", "check", "--config", "/a.toml", "--providers=/b.json"]);
 		assert.equal(options.command, "config-check");
 		assert.equal(options.configPath, "/a.toml");
-		assert.equal(options.modelsPath, "/b.json");
+		assert.equal(options.providersPath, "/b.json");
 	});
 
 	it("缺少路径时按用法错误处理", () => {
 		assert.throws(() => parseArgs(["--config"]), UsageError);
-		assert.throws(() => parseArgs(["--config", "--models"]), UsageError);
+		assert.throws(() => parseArgs(["--config", "--providers"]), UsageError);
 		assert.throws(() => parseArgs(["--config="]), UsageError);
 	});
 });

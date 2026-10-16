@@ -6,7 +6,7 @@ import { after, describe, it } from "node:test";
 import { TurnDriver } from "../../src/agent/driver.ts";
 import { renderSystemPrompt } from "../../src/agent/prompt.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
-import { parseModels } from "../../src/config/models-file.ts";
+import { parseProviders } from "../../src/config/providers-file.ts";
 import { JsonlSessionStore, parseSessionText } from "../../src/plugins/session-plugin/jsonl-store.ts";
 import { foldEntries } from "../../src/session/fold.ts";
 import { Session } from "../../src/session/session.ts";
@@ -41,7 +41,7 @@ describe("会话重放", () => {
 			'provider = "p"\nmodel = "test-model"\nreasoning_effort = "high"\nspill_threshold = 0\n',
 			"config.toml",
 		);
-		const models = parseModels(
+		const providersConfig = parseProviders(
 			JSON.stringify({
 				providers: {
 					p: {
@@ -51,9 +51,9 @@ describe("会话重放", () => {
 					},
 				},
 			}),
-			"models.json",
+			"providers.json",
 		);
-		const provider = models.providers[0];
+		const provider = providersConfig.providers[0];
 		const model = provider.models[0];
 
 		const registry = new ToolRegistry(new ResultSpiller(0, workspace.root), allowAllGate);

@@ -9,7 +9,7 @@ import { after, describe, it } from "node:test";
 const PROJECT_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const ENTRY = join(PROJECT_ROOT, "src", "cli", "index.ts");
 
-const MODELS = JSON.stringify({
+const PROVIDERS = JSON.stringify({
 	providers: {
 		"example-openai": {
 			name: "示例端点",
@@ -58,9 +58,9 @@ function writeFixture(name: string, content: string): string {
 describe("reins config check", () => {
 	it("校验通过时列出解析结果并以 0 退出", () => {
 		const config = writeFixture("ok.toml", 'provider = "example-openai"\nmodel = "gpt-5.2"\n');
-		const models = writeFixture("ok-models.json", MODELS);
+		const providersFile = writeFixture("ok-providers.json", PROVIDERS);
 
-		const result = run(["config", "check", "--config", config, "--models", models]);
+		const result = run(["config", "check", "--config", config, "--providers", providersFile]);
 
 		assert.equal(result.code, 0);
 		assert.ok(result.stdout.includes("当前模型"));
@@ -75,9 +75,9 @@ describe("reins config check", () => {
 
 	it("把实际生效的默认值写出来", () => {
 		const config = writeFixture("defaults.toml", 'provider = "example-openai"\nmodel = "gpt-5.2"\n');
-		const models = writeFixture("defaults-models.json", MODELS);
+		const providersFile = writeFixture("defaults-providers.json", PROVIDERS);
 
-		const result = run(["config", "check", "--config", config, "--models", models]);
+		const result = run(["config", "check", "--config", config, "--providers", providersFile]);
 
 		assert.ok(result.stdout.includes("ask"));
 		assert.ok(result.stdout.includes("off"));
@@ -86,9 +86,9 @@ describe("reins config check", () => {
 
 	it("配置写错时以 1 退出，并按文件:行:列 报错", () => {
 		const config = writeFixture("bad.toml", 'provider = "example-openai"\nmodel = "gpt-5.2"\napproval = "always"\n');
-		const models = writeFixture("bad-models.json", MODELS);
+		const providersFile = writeFixture("bad-providers.json", PROVIDERS);
 
-		const result = run(["config", "check", "--config", config, "--models", models]);
+		const result = run(["config", "check", "--config", config, "--providers", providersFile]);
 
 		assert.equal(result.code, 1);
 		assert.ok(result.stderr.includes("bad.toml:3:1"));
@@ -97,9 +97,9 @@ describe("reins config check", () => {
 
 	it("模型对不上时以 1 退出并列出可选项", () => {
 		const config = writeFixture("mismatch.toml", 'provider = "example-openai"\nmodel = "nope"\n');
-		const models = writeFixture("mismatch-models.json", MODELS);
+		const providersFile = writeFixture("mismatch-providers.json", PROVIDERS);
 
-		const result = run(["config", "check", "--config", config, "--models", models]);
+		const result = run(["config", "check", "--config", config, "--providers", providersFile]);
 
 		assert.equal(result.code, 1);
 		assert.ok(result.stderr.includes("没有模型 nope"));
@@ -112,7 +112,7 @@ describe("reins config check", () => {
 			"check",
 			"--config",
 			join(workDir, "missing.toml"),
-			"--models",
+			"--providers",
 			join(workDir, "missing.json"),
 		]);
 

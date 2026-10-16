@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ConfigError } from "../../src/config/config-error.ts";
-import { parseModels } from "../../src/config/models-file.ts";
+import { parseProviders } from "../../src/config/providers-file.ts";
 
-const FILE = "models.json";
+const FILE = "providers.json";
 
 function expectError(source: string, messagePart: string, line?: number): ConfigError {
 	try {
-		parseModels(source, FILE);
+		parseProviders(source, FILE);
 	} catch (error) {
 		assert.ok(error instanceof ConfigError, `期望 ConfigError，实际是 ${String(error)}`);
 		assert.ok(
@@ -21,9 +21,9 @@ function expectError(source: string, messagePart: string, line?: number): Config
 	throw new Error("期望校验失败，但通过了");
 }
 
-describe("models.json 解析", () => {
+describe("providers.json 解析", () => {
 	it("读 provider 与模型，模型继承 provider 的 api 与 baseUrl", () => {
-		const models = parseModels(
+		const providersConfig = parseProviders(
 			JSON.stringify({
 				providers: {
 					local: {
@@ -38,8 +38,8 @@ describe("models.json 解析", () => {
 			FILE,
 		);
 
-		assert.equal(models.providers.length, 1);
-		const provider = models.providers[0];
+		assert.equal(providersConfig.providers.length, 1);
+		const provider = providersConfig.providers[0];
 		assert.equal(provider.id, "local");
 		assert.equal(provider.name, "本地端点");
 		assert.equal(provider.apiKey, "not-needed");
@@ -55,7 +55,7 @@ describe("models.json 解析", () => {
 	});
 
 	it("模型级设置覆盖 provider 级", () => {
-		const models = parseModels(
+		const providersConfig = parseProviders(
 			JSON.stringify({
 				providers: {
 					gateway: {
@@ -71,7 +71,7 @@ describe("models.json 解析", () => {
 			FILE,
 		);
 
-		const provider = models.providers[0];
+		const provider = providersConfig.providers[0];
 		assert.equal(provider.models[0].baseUrl, "https://b");
 		assert.equal(provider.models[0].api, "anthropic-messages");
 		assert.equal(provider.models[1].baseUrl, "https://a");
@@ -79,18 +79,18 @@ describe("models.json 解析", () => {
 	});
 
 	it("provider 未声明 name 时用 id 顶替显示名", () => {
-		const models = parseModels(
+		const providersConfig = parseProviders(
 			JSON.stringify({
 				providers: { p: { baseUrl: "https://x", api: "a", models: [{ id: "m" }] } },
 			}),
 			FILE,
 		);
-		assert.equal(models.providers[0].name, "p");
-		assert.equal(models.providers[0].models[0].name, "m");
+		assert.equal(providersConfig.providers[0].name, "p");
+		assert.equal(providersConfig.providers[0].models[0].name, "m");
 	});
 
 	it("读思考等级映射，null 表示该等级不支持", () => {
-		const models = parseModels(
+		const providersConfig = parseProviders(
 			JSON.stringify({
 				providers: {
 					p: {
@@ -109,13 +109,13 @@ describe("models.json 解析", () => {
 			FILE,
 		);
 
-		const model = models.providers[0].models[0];
+		const model = providersConfig.providers[0].models[0];
 		assert.equal(model.reasoning, true);
 		assert.deepEqual(model.thinkingLevelMap, { low: "low", high: "high", xhigh: null });
 	});
 
 	it("允许注释", () => {
-		const models = parseModels(
+		const providersConfig = parseProviders(
 			`{
 				// 本地推理
 				"providers": {
@@ -124,11 +124,11 @@ describe("models.json 解析", () => {
 			}`,
 			FILE,
 		);
-		assert.equal(models.providers[0].id, "p");
+		assert.equal(providersConfig.providers[0].id, "p");
 	});
 });
 
-describe("models.json 严格校验", () => {
+describe("providers.json 严格校验", () => {
 	it("缺少 providers 或为空时报错", () => {
 		expectError("{}", "缺少 providers");
 		expectError('{ "providers": {} }', "至少要声明一个 provider");

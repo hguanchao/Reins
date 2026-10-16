@@ -1,5 +1,5 @@
 import type { ThinkingLevel } from "../config/config-file.ts";
-import type { ThinkingLevelMap } from "../config/models-file.ts";
+import type { ThinkingLevelMap } from "../config/providers-file.ts";
 
 /**
  * 思考等级在请求层的形态。
@@ -57,7 +57,7 @@ export function clampEffort(
 /**
  * 等级在 provider 那边的取值。
  *
- * models.json 里写了映射就用映射值，没写就透传等级名——两条主流线上协议的思考等级取值
+ * providers.json 里写了映射就用映射值，没写就透传等级名——两条主流线上协议的思考等级取值
  * 与这里同名，所以透传在大多数端点上直接可用；取值确实不同的端点由使用者写映射修正。
  */
 export function providerEffortValue(effort: ReasoningEffort, map: ThinkingLevelMap): string {

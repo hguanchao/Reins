@@ -3,14 +3,14 @@ import { describe, it } from "node:test";
 
 import { formatConfigReport } from "../../src/cli/config-report.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
-import { parseModels } from "../../src/config/models-file.ts";
+import { parseProviders } from "../../src/config/providers-file.ts";
 import { resolveSelection } from "../../src/config/selection.ts";
 import { displayWidth } from "../../src/tui/text/width.ts";
 
 const CONFIG_FILE = "config.toml";
-const MODELS_FILE = "models.json";
+const PROVIDERS_FILE = "providers.json";
 
-const MODELS_SOURCE = JSON.stringify({
+const PROVIDERS_SOURCE = JSON.stringify({
 	providers: {
 		local: {
 			baseUrl: "http://localhost:8000/v1",
@@ -22,14 +22,14 @@ const MODELS_SOURCE = JSON.stringify({
 
 function report(configSource: string): string {
 	const config = parseConfig(configSource, CONFIG_FILE);
-	const models = parseModels(MODELS_SOURCE, MODELS_FILE);
+	const providersConfig = parseProviders(PROVIDERS_SOURCE, PROVIDERS_FILE);
 	return formatConfigReport({
 		configFile: CONFIG_FILE,
-		modelsFile: MODELS_FILE,
+		providersFile: PROVIDERS_FILE,
 		reinsHome: undefined,
 		config,
-		models,
-		selection: resolveSelection(config, models, CONFIG_FILE, MODELS_FILE),
+		providersConfig,
+		selection: resolveSelection(config, providersConfig, CONFIG_FILE, PROVIDERS_FILE),
 	});
 }
 
@@ -51,7 +51,7 @@ describe("config check 的报告", () => {
 	});
 
 	it("上下文窗口未声明时说清后果：不会自动压缩上下文", () => {
-		const models = parseModels(
+		const providersConfig = parseProviders(
 			JSON.stringify({
 				providers: {
 					local: {
@@ -61,16 +61,16 @@ describe("config check 的报告", () => {
 					},
 				},
 			}),
-			MODELS_FILE,
+			PROVIDERS_FILE,
 		);
 		const config = parseConfig('provider = "local"\nmodel = "no-window"\n', CONFIG_FILE);
 		const text = formatConfigReport({
 			configFile: CONFIG_FILE,
-			modelsFile: MODELS_FILE,
+			providersFile: PROVIDERS_FILE,
 			reinsHome: undefined,
 			config,
-			models,
-			selection: resolveSelection(config, models, CONFIG_FILE, MODELS_FILE),
+			providersConfig,
+			selection: resolveSelection(config, providersConfig, CONFIG_FILE, PROVIDERS_FILE),
 		});
 		assert.ok(text.includes("未声明（不会自动压缩上下文）"), text);
 	});

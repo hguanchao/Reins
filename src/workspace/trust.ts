@@ -25,7 +25,7 @@ export interface ProjectResources {
 /** 找出工作区里需要信任才能读取的东西。没有就不必问。 */
 export function findProjectResources(root: string): ProjectResources {
 	const directory = projectDirPath(root);
-	const candidates = [projectConfigFilePath(root), join(directory, "models.json")];
+	const candidates = [projectConfigFilePath(root), join(directory, "providers.json")];
 	// 只列出确有其物的文件：让使用者为不存在的东西做决定没有意义
 	const files = candidates.filter((path) => existsSync(path) && statSync(path).isFile());
 	return { directory, files };

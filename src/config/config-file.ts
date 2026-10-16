@@ -71,7 +71,7 @@ export interface Config {
 	readonly provider: string;
 	readonly model: string;
 	readonly reasoningEffort: ThinkingLevel;
-	/** models.json 里模型没声明时可以在这里兜底；两处都没有则无法计算压缩阈值 */
+	/** providers.json 里模型没声明时可以在这里兜底；两处都没有则无法计算压缩阈值 */
 	readonly contextWindow: number | undefined;
 	readonly maxTokens: number | undefined;
 	readonly maxRetries: number;

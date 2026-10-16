@@ -5,7 +5,7 @@ import { TurnDriver } from "../../src/agent/driver.ts";
 import { Compactor } from "../../src/agent/compactor.ts";
 import type { AgentEvent } from "../../src/agent/events.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
-import { parseModels } from "../../src/config/models-file.ts";
+import { parseProviders } from "../../src/config/providers-file.ts";
 import type { LlmResult } from "../../src/llm/client.ts";
 import { Session } from "../../src/session/session.ts";
 import { Sandbox } from "../../src/sandbox/policy.ts";
@@ -36,15 +36,15 @@ function fixtures(
 		options.configText ?? 'provider = "p"\nmodel = "test-model"\nspill_threshold = 0\n',
 		"config.toml",
 	);
-	const models = parseModels(
+	const providersConfig = parseProviders(
 		JSON.stringify({
 			providers: {
 				p: { baseUrl: "https://x", api: "openai-completions", models: [{ id: "test-model" }] },
 			},
 		}),
-		"models.json",
+		"providers.json",
 	);
-	const provider = models.providers[0];
+	const provider = providersConfig.providers[0];
 	const model = provider.models[0];
 
 	const tools = new ToolRegistry(new ResultSpiller(0, workspace.root), allowAllGate);
