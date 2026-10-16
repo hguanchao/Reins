@@ -311,6 +311,27 @@ describe("上下文压缩", () => {
 		assert.ok(!types.includes("compaction_failed"));
 	});
 
+	it("接续来的长会话在第一次请求之前就先压缩：没有回报的用量可参考，只能靠估算", async () => {
+		const script: LlmResult[] = [textResult("先前读了很长的内容"), textResult("接着说")];
+		const { session, client, events, driver } = fixtures(script, { configText: config, withCompactor: true });
+
+		// 承接一份很长的历史：这模拟的就是 --continue 进来的情形
+		for (let index = 0; index < 6; index += 1) {
+			await session.append({ type: "message", message: { role: "user", content: `第 ${index} 段：${"字".repeat(120)}` } });
+		}
+
+		await driver.run("接着来", new AbortController().signal);
+
+		// 第一次请求是摘要，第二次才是正式请求；正式请求以摘要开头
+		assert.equal(client.requests.length, 2);
+		assert.equal(client.requests[1].messages.length, 2);
+		assert.match(JSON.stringify(client.requests[1].messages[0]), /摘要/);
+
+		const types = events.map((event) => event.type);
+		assert.ok(types.indexOf("compaction_start") < types.indexOf("turn_start"), types.join("、"));
+		assert.ok(types.includes("compaction_end"));
+	});
+
 	it("压缩失败时如实说明，上下文照原样继续", async () => {
 		workspace.writeFile("big.txt", "字".repeat(200));
 		const script: LlmResult[] = [
