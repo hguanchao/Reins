@@ -1,5 +1,5 @@
 import { formatTimestamp } from "../session/export.ts";
-import type { SessionEntry, SessionHeaderEntry } from "../session/port.ts";
+import type { SessionEntry, SessionHeaderEntry, SessionUsageEntry } from "../session/port.ts";
 import type { SessionListing } from "../session/store.ts";
 import { describeUsage, sumUsage } from "../session/usage.ts";
 
@@ -104,9 +104,21 @@ export function summarize(entry: SessionEntry): string {
 		case "effort_change":
 			return `思考等级 → ${entry.effort}`;
 		case "usage":
-			return `${entry.kind === "compact" ? "压缩用量" : "用量"} ${entry.model}：${entry.usage.total} token`;
+			return `${usageLabel(entry.kind)} ${entry.model}：${entry.usage.total} token`;
 		case "compaction":
 			return `压缩 ${entry.covered.length} 条消息（约 ${entry.tokensBefore} token）：${clip(entry.summary)}`;
+	}
+}
+
+/** 用量条目的来源在界面上怎么称呼。 */
+function usageLabel(kind: SessionUsageEntry["kind"]): string {
+	switch (kind) {
+		case "turn":
+			return "用量";
+		case "compact":
+			return "压缩用量";
+		case "subagent":
+			return "子代理用量";
 	}
 }
 

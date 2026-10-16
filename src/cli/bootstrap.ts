@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { TurnDriver } from "../agent/driver.ts";
 import { Compactor } from "../agent/compactor.ts";
+import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
 import { ConfigFile, type Config } from "../config/config-file.ts";
@@ -492,12 +493,27 @@ function createDriverFor(
 	},
 	onEvent: AgentEventListener,
 ): TurnDriver {
+	// 主对话与子代理共用同一个客户端：它们只是同一个端点的两次请求，客户端本身没有连接状态
+	const client = createClient(context.config, context.selection);
+	const tools = shared.registry.withExtraTool(
+		createSubagentTool({
+			provider: context.selection.provider,
+			model: context.selection.model,
+			config: context.config,
+			client,
+			// 交给子代理的是不含子代理工具的那一份，因此子代理不会再派子代理
+			tools: shared.registry,
+			session: shared.session,
+			maxSteps: context.config.maxTurns ?? DEFAULT_SUBAGENT_STEPS,
+		}),
+	);
+
 	return new TurnDriver({
 		provider: context.selection.provider,
 		model: context.selection.model,
 		config: context.config,
-		client: createClient(context.config, context.selection),
-		tools: shared.registry,
+		client,
+		tools,
 		session: shared.session,
 		workspace: shared.workspace,
 		sandbox: shared.sandbox,

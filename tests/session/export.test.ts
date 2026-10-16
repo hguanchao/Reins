@@ -12,7 +12,7 @@ import { describeUsage, sumUsage } from "../../src/session/usage.ts";
  * 当前上下文（压缩点单独标出来，读的人才分得清「模型看到什么」与「当时发生了什么」）。
  */
 
-function usageEntry(id: string, kind: "turn" | "compact", total: number): SessionEntry {
+function usageEntry(id: string, kind: "turn" | "compact" | "subagent", total: number): SessionEntry {
 	return {
 		type: "usage",
 		id,
@@ -65,6 +65,7 @@ describe("用量统计", () => {
 		assert.deepEqual(sumUsage([message("m1", "甲")]), {
 			requests: 0,
 			compactions: 0,
+			subagents: 0,
 			input: 0,
 			output: 0,
 			cacheRead: 0,

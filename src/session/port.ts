@@ -82,7 +82,7 @@ export interface SessionUsageEntry extends SessionEntryBase {
 	readonly provider: string;
 	readonly model: string;
 	/** 这笔用量是哪个环节产生的 */
-	readonly kind: "turn" | "compact";
+	readonly kind: "turn" | "compact" | "subagent";
 	readonly usage: LlmUsage;
 }
 

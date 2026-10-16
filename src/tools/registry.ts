@@ -95,6 +95,25 @@ export class ToolRegistry {
 		throw new Error(`工具 ${definition.name} 重复注册`);
 	}
 
+	/**
+	 * 在现有工具之上再挂一个，得到本次运行用的注册表。
+	 *
+	 * 需要它是因为有些工具要绑定本次运行才存在的东西（比如子代理要绑定本次运行的会话，
+	 * 好把用量记进去），而会话是在插件装载之后才建起来的，赶不上「先于插件注册」那一批。
+	 * 复制一份注册表既保住了核心工具不被插件遮蔽，也保住了所有工具仍只走同一条管线。
+	 *
+	 * 名字已经被占用时直接抛错：静默顶掉一个同名工具，它的作者会以为自己注册成功了。
+	 */
+	withExtraTool(tool: AnyToolDefinition): ToolRegistry {
+		if (this.#tools.has(tool.name)) {
+			throw new Error(`工具 ${tool.name} 已经被注册过了，不能再挂一个同名的`);
+		}
+		const copy = new ToolRegistry(this.#spiller, this.#gate);
+		for (const [name, item] of this.#tools) copy.#tools.set(name, item);
+		copy.#tools.set(tool.name, { definition: tool, source: "core" });
+		return copy;
+	}
+
 	get(name: string): AnyToolDefinition | undefined {
 		return this.#tools.get(name)?.definition;
 	}
