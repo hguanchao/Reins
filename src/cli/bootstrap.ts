@@ -205,6 +205,8 @@ async function runPrint(options: CliOptions): Promise<number> {
 		return 1;
 	}
 
+	warnUnsandboxedMcpServers(config);
+
 	const session = openSessionFor(options, workRoot, host.sessionStore());
 	if (session === undefined) return 1;
 	const compactor = createCompactor(config, selection);
@@ -301,6 +303,8 @@ async function runChat(options: CliOptions): Promise<number> {
 		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
 	}
+
+	warnUnsandboxedMcpServers(config);
 
 	const session = openSessionFor(options, workRoot, host.sessionStore());
 	if (session === undefined) return 1;
@@ -439,6 +443,23 @@ async function loadEffectiveConfig(
 		? [userConfigPath, projectConfigPath]
 		: [userConfigPath];
 	return { config, models, sources, trust: decision, resources };
+}
+
+/**
+ * 说清楚沙箱管不到哪些东西。
+ *
+ * 沙箱管的是本程序发出的命令，管不到 MCP server 进程：它是使用者自己配置的本地程序，与插件
+ * 同级。这件事不吭声就会被当成「开了沙箱就什么都隔离了」——而按沙箱的语义，`read-only` 是
+ * 「不允许写」这样一个承诺。
+ */
+function warnUnsandboxedMcpServers(config: Config): void {
+	if (config.sandbox === "off") return;
+	const stdio = config.mcpServers.filter((server) => !server.disabled && server.type === "stdio");
+	if (stdio.length === 0) return;
+	writeStderr(
+		`注意：沙箱模式是 ${config.sandbox}，但下列 MCP server 是本程序启动的本地进程，不受沙箱约束：` +
+			`${stdio.map((server) => server.name).join("、")}\n`,
+	);
 }
 
 function disabledPlugins(config: Config): ReadonlySet<string> {
