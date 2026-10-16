@@ -1,5 +1,6 @@
 import type { SessionEntry, SessionHeaderEntry } from "../session/port.ts";
 import type { SessionListing } from "../session/store.ts";
+import { describeUsage, sumUsage } from "../session/usage.ts";
 
 /**
  * 会话的几个文字报告：清单、详情、条目摘要。
@@ -59,6 +60,12 @@ export function formatSessionDetail(header: SessionHeaderEntry | undefined, entr
 
 	const leaf = entries[entries.length - 1];
 	if (leaf !== undefined) lines.push(`  当前位置：${leaf.id}（分叉或接续从这里开始）`);
+
+	const usage = sumUsage(entries);
+	if (usage.requests > 0) {
+		// 被压缩掉的历史同样计在里面：那些 token 确实花掉了
+		lines.push(`  用量：${describeUsage(usage)}`);
+	}
 
 	lines.push("", "标识      时间       类型        内容");
 	for (const entry of entries) {

@@ -9,7 +9,7 @@ export class UsageError extends Error {
 export type CliCommand = "print" | "chat" | "config-check" | "sessions" | "help" | "version";
 
 /** sessions 子命令。 */
-export type SessionsAction = "list" | "show";
+export type SessionsAction = "list" | "show" | "export";
 
 export interface CliOptions {
 	readonly command: CliCommand;
@@ -170,8 +170,8 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 
 	function sessionsOptions(args: readonly string[]): CliOptions {
 		const action = args[1];
-		if (action !== "list" && action !== "show") {
-			throw new UsageError("sessions 支持 list 与 show 两个子命令");
+		if (action !== "list" && action !== "show" && action !== "export") {
+			throw new UsageError("sessions 支持 list、show、export 三个子命令");
 		}
 		const ref = args[2];
 		if (action !== "list" && ref === undefined) throw new UsageError(`sessions ${action} 需要一个会话标识`);
@@ -204,6 +204,7 @@ export const HELP_TEXT = `Reins —— 终端编码智能体
   reins -p <句子>           同上，显式指定非交互模式
   reins sessions list       列出当前目录下的会话
   reins sessions show <标识> 显示一个会话的条目与用量
+  reins sessions export <标识> 导出成 Markdown 写到标准输出（可重定向到文件）
   reins config check        校验配置文件并列出解析结果
   reins --help              显示本帮助
   reins --version           显示版本

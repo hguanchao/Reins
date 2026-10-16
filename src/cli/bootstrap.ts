@@ -24,6 +24,7 @@ import { PluginHost } from "../plugins/host.ts";
 import { bundledPlugins } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
+import { sumUsage } from "../session/usage.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -311,6 +312,7 @@ async function runChat(options: CliOptions): Promise<number> {
 		},
 		createDriver: (onEvent) =>
 			createDriverFor({ config, selection, compactor }, { registry, session, workspace, sandbox }, onEvent),
+		sessionUsage: () => sumUsage(session.entries()),
 		setConfirmer: (value) => {
 			confirmer = value;
 		},

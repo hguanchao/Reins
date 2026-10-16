@@ -131,6 +131,40 @@ describe("reins sessions", () => {
 		assert.ok(result.stdout.includes("分叉自：aaaa1111 的 e2"), result.stdout);
 	});
 
+	it("导出成 Markdown，含完整历史与用量", () => {
+		const result = run(["sessions", "export", "aaaa1111"]);
+		assert.equal(result.code, 0, result.stderr);
+		assert.ok(result.stdout.startsWith("# 会话 aaaa1111"), result.stdout);
+		assert.ok(result.stdout.includes("### 使用者"));
+		assert.ok(result.stdout.includes("把配置改一下"));
+		assert.ok(result.stdout.includes("改好了"));
+		assert.ok(result.stdout.includes("## 用量"));
+	});
+
+	it("详情与导出都带上用量汇总", () => {
+		writeSession("eeee4444", [
+			message("h1", null, "user", "跑一下测试"),
+			{
+				type: "usage",
+				id: "h2",
+				parentId: "h1",
+				timestamp: "2026-10-16T02:00:02.000Z",
+				provider: "local",
+				model: "fake-model",
+				kind: "turn",
+				usage: { input: 900, output: 100, cacheRead: 0, cacheWrite: 0, total: 1000 },
+			},
+		]);
+
+		const show = run(["sessions", "show", "eeee4444"]);
+		assert.equal(show.code, 0, show.stderr);
+		assert.ok(show.stdout.includes("请求 1 次"), show.stdout);
+		assert.ok(show.stdout.includes("合计 1000 token"), show.stdout);
+
+		const exported = run(["sessions", "export", "eeee4444"]);
+		assert.ok(exported.stdout.includes("合计 1000 token"), exported.stdout);
+	});
+
 	it("标识前缀唯一时认得出来，找不到时报错", () => {
 		const byPrefix = run(["sessions", "show", "bbbb"]);
 		assert.equal(byPrefix.code, 0, byPrefix.stderr);

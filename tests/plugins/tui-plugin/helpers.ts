@@ -3,6 +3,7 @@ import type { AgentEvent, AgentEventListener } from "../../../src/agent/events.t
 import type { ApprovalMode, NotifyMode, SandboxMode } from "../../../src/config/config-file.ts";
 import type { Confirmer } from "../../../src/permission/policy.ts";
 import type { PluginCommand } from "../../../src/plugins/host.ts";
+import type { UsageTotals } from "../../../src/session/usage.ts";
 import type { InteractiveRuntime, SessionView, TrustView } from "../../../src/tui/frontend.ts";
 
 /**
@@ -27,6 +28,7 @@ export interface RuntimeScript {
 	readonly notify?: NotifyMode;
 	readonly trust?: TrustView;
 	readonly commands?: readonly PluginCommand[];
+	readonly usage?: UsageTotals;
 	readonly runCommand?: (name: string, args: string) => Promise<readonly string[]>;
 }
 
@@ -64,6 +66,7 @@ export function makeRuntime(script: RuntimeScript = {}): FakeRuntime {
 			commandCalls.push({ name, args });
 			return script.runCommand === undefined ? [] : script.runCommand(name, args);
 		},
+		sessionUsage: () => script.usage ?? { requests: 0, compactions: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		createDriver: (onEvent) =>
 			({
 				run: async (prompt: string, signal: AbortSignal): Promise<void> => {

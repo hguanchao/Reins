@@ -91,8 +91,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 		} finally {
 			this.#restoreTerminal();
 			runtime.setConfirmer(undefined);
-			// 说出会话标识与文件位置：使用者才知道去哪儿接着聊、去哪儿找这次记录
-			this.#terminal.write(`会话 ${runtime.session.id} 已保存：${runtime.session.path ?? "（只留在内存里）"}\n`);
+			// 说出会话标识、文件位置与用量：使用者才知道去哪儿接着聊、花了多少
+			const usage = runtime.sessionUsage();
+			const spent = usage.requests === 0 ? "" : `　共 ${usage.total} token（${usage.requests} 次请求）`;
+			this.#terminal.write(
+				`会话 ${runtime.session.id} 已保存：${runtime.session.path ?? "（只留在内存里）"}${spent}\n`,
+			);
 			this.#runtime = undefined;
 		}
 	}

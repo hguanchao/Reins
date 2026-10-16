@@ -233,6 +233,18 @@ describe("交互界面", () => {
 		await quit(terminal, done);
 	});
 
+	it("退出时把用量一并报出来", async () => {
+		const { terminal, done } = await start({
+			usage: { requests: 3, compactions: 1, input: 900, output: 120, cacheRead: 40, cacheWrite: 0, total: 1060 },
+		});
+		terminal.feedInput("\x04");
+		await done;
+		await tick();
+
+		const text = terminal.writes.join("");
+		assert.ok(text.includes("共 1060 token（3 次请求）"), text);
+	});
+
 	it("不整屏清空：滚动区里的历史不会被擦掉", async () => {
 		const { terminal, done } = await start();
 		terminal.feedInput("随便\r");

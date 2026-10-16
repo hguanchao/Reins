@@ -60,7 +60,7 @@ export function formatConfigReport(input: {
 	lines.push(row("baseUrl", selection.model.baseUrl));
 	lines.push(row("思考等级", config.reasoningEffort));
 	lines.push(
-		row("上下文窗口", formatNumber(selection.model.contextWindow ?? config.contextWindow)),
+		row("上下文窗口", windowReport(selection.model.contextWindow ?? config.contextWindow)),
 	);
 	lines.push(row("输出上限", formatNumber(selection.model.maxTokens ?? config.maxTokens)));
 	lines.push(row("压缩模型", describeOptional(selection.compactModel)));
@@ -105,4 +105,12 @@ export function formatConfigReport(input: {
 
 function formatNumber(value: number | undefined): string {
 	return value === undefined ? UNKNOWN : String(value);
+}
+
+/**
+ * 上下文窗口除了数值，还要说清它有没有用：上限未知时无法判断「快满了」，自动压缩也就无从
+ * 触发，而这件事只看一个「未声明」是看不出来的。
+ */
+function windowReport(value: number | undefined): string {
+	return value === undefined ? `${UNKNOWN}（不会自动压缩上下文）` : String(value);
 }

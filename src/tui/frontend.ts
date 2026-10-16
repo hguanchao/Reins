@@ -3,6 +3,7 @@ import type { AgentEventListener } from "../agent/events.ts";
 import type { ApprovalMode, NotifyMode, SandboxMode } from "../config/config-file.ts";
 import type { Confirmer } from "../permission/policy.ts";
 import type { PluginCommand } from "../plugins/host.ts";
+import type { UsageTotals } from "../session/usage.ts";
 
 /**
  * 交互式界面的接缝。
@@ -51,6 +52,8 @@ export interface InteractiveRuntime {
 	runCommand(name: string, args: string): Promise<readonly string[]>;
 	/** 建一次运行的驱动；事件监听由界面提供 */
 	createDriver(onEvent: AgentEventListener): TurnDriver;
+	/** 本次会话到目前为止的用量。界面在自己的出口处报出来，免得使用者还得再去查一次 */
+	sessionUsage(): UsageTotals;
 	/** 界面接管后把审批确认接到界面上；undefined 表示交还给宿主。 */
 	setConfirmer(confirmer: Confirmer | undefined): void;
 	/** 改通知方式：写回用户配置，本次运行立刻生效。 */

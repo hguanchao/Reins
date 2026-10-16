@@ -133,10 +133,16 @@ describe("parseArgs 的会话选项", () => {
 		assert.equal(show.sessionsAction, "show");
 		assert.equal(show.sessionRef, "abc123");
 
-		assert.throws(() => parseArgs(["sessions"]), /支持 list 与 show/);
-		assert.throws(() => parseArgs(["sessions", "rm", "abc"]), /支持 list 与 show/);
+		const exported = parseArgs(["sessions", "export", "abc123"]);
+		assert.equal(exported.sessionsAction, "export");
+		assert.equal(exported.sessionRef, "abc123");
+
+		assert.throws(() => parseArgs(["sessions"]), /支持 list、show、export/);
+		assert.throws(() => parseArgs(["sessions", "rm", "abc"]), /支持 list、show、export/);
 		assert.throws(() => parseArgs(["sessions", "show"]), /需要一个会话标识/);
+		assert.throws(() => parseArgs(["sessions", "export"]), /需要一个会话标识/);
 		assert.throws(() => parseArgs(["sessions", "list", "多余"]), /不接受额外参数/);
+		assert.throws(() => parseArgs(["sessions", "export", "abc", "多余"]), /不接受额外参数/);
 	});
 
 	it("帮助文本写明了会话相关的用法", () => {

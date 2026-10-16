@@ -50,6 +50,31 @@ describe("config check 的报告", () => {
 		assert.ok(text.includes("子代理上限    子代理默认"));
 	});
 
+	it("上下文窗口未声明时说清后果：不会自动压缩上下文", () => {
+		const models = parseModels(
+			JSON.stringify({
+				providers: {
+					local: {
+						api: "openai-completions",
+						baseUrl: "https://example.com",
+						models: [{ id: "no-window" }],
+					},
+				},
+			}),
+			MODELS_FILE,
+		);
+		const config = parseConfig('provider = "local"\nmodel = "no-window"\n', CONFIG_FILE);
+		const text = formatConfigReport({
+			configFile: CONFIG_FILE,
+			modelsFile: MODELS_FILE,
+			reinsHome: undefined,
+			config,
+			models,
+			selection: resolveSelection(config, models, CONFIG_FILE, MODELS_FILE),
+		});
+		assert.ok(text.includes("未声明（不会自动压缩上下文）"), text);
+	});
+
 	it("落盘阈值为 0 时写「关闭」", () => {
 		assert.ok(report('provider = "local"\nmodel = "qwen2.5-coder:7b"\nspill_threshold = 0\n').includes("落盘阈值      关闭"));
 	});
