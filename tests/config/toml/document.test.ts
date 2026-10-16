@@ -151,6 +151,16 @@ describe("TomlDocument 定点回写", () => {
 		);
 	});
 
+	it("插入新行时沿用文件既有的行尾", () => {
+		const document = new TomlDocument('provider = "x"\r\n');
+		document.set(["max_retries"], 3);
+		assert.equal(document.source, 'provider = "x"\r\nmax_retries = 3\r\n');
+
+		const withNewTable = new TomlDocument('provider = "x"\r\n');
+		withNewTable.set(["plugins", "trusted"], ["/root"]);
+		assert.equal(withNewTable.source, 'provider = "x"\r\n\r\n[plugins]\r\ntrusted = ["/root"]\r\n');
+	});
+
 	it("拒绝空路径", () => {
 		assert.throws(() => new TomlDocument("").set([], 1), /路径不能为空/);
 	});

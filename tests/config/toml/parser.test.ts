@@ -238,3 +238,25 @@ describe("TomlParser 拒绝非法输入", () => {
 		assert.equal(error.column, 5);
 	});
 });
+
+describe("TomlParser 行尾", () => {
+	it("接受 CRLF 行尾", () => {
+		const root = parseRoot('provider = "x"\r\n\r\n[ui]\r\nnotify = "auto"\r\n');
+		assert.deepEqual(root, { provider: "x", ui: { notify: "auto" } });
+	});
+
+	it("CRLF 下多行字符串的折行按一行算", () => {
+		// 行尾反斜杠连同行尾一起吃掉，但闭合定界符前那个换行属于内容，按原文的 CRLF 保留
+		assert.deepEqual(parseRoot('a = """\r\n折行 \\\r\n     接上\r\n"""'), { a: "折行 接上\r\n" });
+	});
+
+	it("CRLF 下报错的行号仍然正确", () => {
+		const error = expectError('a = "x"\r\nb = @\r\n', "无法识别的值");
+		assert.equal(error.line, 2);
+	});
+
+	it("区分 CRLF 与 LF 混用时的空白行", () => {
+		const result = new TomlParser('provider = "x"\r\n[ui]\r\nnotify = "auto"\r\n').parse();
+		assert.equal(result.sections[0].bodyEnd, 'provider = "x"\r\n'.length);
+	});
+});

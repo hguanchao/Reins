@@ -70,6 +70,7 @@ export class TomlDocument implements ConfigSource {
 	}
 
 	#render(path: readonly string[], value: ConfigValue): string {
+		const newline = this.#lineEnding();
 		const assignment = this.#assignments.find((item) => samePath(item.path, path));
 		if (assignment !== undefined) {
 			return (
@@ -79,7 +80,7 @@ export class TomlDocument implements ConfigSource {
 			);
 		}
 
-		const line = `${serializeKey(path[path.length - 1])} = ${serializeValue(value)}\n`;
+		const line = `${serializeKey(path[path.length - 1])} = ${serializeValue(value)}${newline}`;
 		const tablePath = path.slice(0, -1);
 		const section = this.#sections.find((item) => samePath(item.path, tablePath));
 		if (section !== undefined) {
@@ -87,15 +88,26 @@ export class TomlDocument implements ConfigSource {
 		}
 
 		const header = `[${tablePath.map(serializeKey).join(".")}]`;
-		return `${this.#withTrailingBlankLine()}${header}\n${line}`;
+		return `${this.#withTrailingBlankLine()}${header}${newline}${line}`;
+	}
+
+	/**
+	 * 插入新行时沿用文件既有的行尾。
+	 *
+	 * 配置文件在 Windows 上多半是 CRLF，固定写 LF 会让同一个文件混用两种行尾，
+	 * 之后的 diff 会满屏都是空白变更。
+	 */
+	#lineEnding(): string {
+		return this.#source.includes("\r\n") ? "\r\n" : "\n";
 	}
 
 	/** 追加新表之前留一个空行，避免与文件末尾的既有内容粘在一起。 */
 	#withTrailingBlankLine(): string {
+		const newline = this.#lineEnding();
 		if (this.#source.length === 0) return "";
-		if (this.#source.endsWith("\n\n")) return this.#source;
-		if (this.#source.endsWith("\n")) return `${this.#source}\n`;
-		return `${this.#source}\n\n`;
+		if (this.#source.endsWith(`${newline}${newline}`)) return this.#source;
+		if (this.#source.endsWith(newline)) return `${this.#source}${newline}`;
+		return `${this.#source}${newline}${newline}`;
 	}
 
 	#load(source: string): void {
