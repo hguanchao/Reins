@@ -177,6 +177,109 @@ describe("TomlParser 表", () => {
 	});
 });
 
+describe("TomlParser 表定义语义", () => {
+	it("表头路径穿过的表可以先被隐式建出来，之后补成显式定义", () => {
+		assert.deepEqual(parseRoot("[a.b.c]\nanswer = 42\n\n[a]\nbetter = 43\n"), {
+			a: { b: { c: { answer: 42 } }, better: 43 },
+		});
+	});
+
+	it("只写深层表头再补父表也合法", () => {
+		assert.deepEqual(parseRoot("[x.y.z.w]\nq = 1\n[x]\nr = 2\n"), {
+			x: { y: { z: { w: { q: 1 } } }, r: 2 },
+		});
+	});
+
+	it("数组表上的子表挂在最后一个元素下", () => {
+		assert.deepEqual(parseRoot("[[arr]]\n[arr.subtab]\nval = 1\n\n[[arr]]\n[arr.subtab]\nval = 2\n"), {
+			arr: [{ subtab: { val: 1 } }, { subtab: { val: 2 } }],
+		});
+	});
+
+	it("数组表里再嵌数组表", () => {
+		const root = parseRoot(
+			'[[fruits]]\nname = "apple"\n[fruits.physical]\ncolor = "red"\n' +
+				'[[fruits.varieties]]\nname = "red delicious"\n[[fruits.varieties]]\nname = "granny smith"\n' +
+				'[[fruits]]\nname = "banana"\n',
+		);
+		assert.deepEqual(root, {
+			fruits: [
+				{
+					name: "apple",
+					physical: { color: "red" },
+					varieties: [{ name: "red delicious" }, { name: "granny smith" }],
+				},
+				{ name: "banana" },
+			],
+		});
+	});
+
+	it("数组表的隐式父表可以后补", () => {
+		assert.deepEqual(parseRoot("[[a.b]]\nx = 1\n\n[a]\ny = 2\n"), {
+			a: { b: [{ x: 1 }], y: 2 },
+		});
+	});
+
+	it("数组表套数组表时的深层子表", () => {
+		assert.deepEqual(parseRoot('[[a]]\n[[a.b]]\n[a.b.c]\nd = 1\n[[a.b]]\n[a.b.c]\nd = 2\n'), {
+			a: [{ b: [{ c: { d: 1 } }, { c: { d: 2 } }] }],
+		});
+	});
+
+	it("表头可以穿过已经显式定义过的表", () => {
+		assert.deepEqual(parseRoot("[a]\nx = 1\n[a.b]\ny = 2\n"), { a: { x: 1, b: { y: 2 } } });
+	});
+
+	it("内联表写出来就是完整的，之后不能再往里添加内容", () => {
+		expectError("a = {}\n[a.b]\n", "是内联表");
+		expectError('[product]\ntype = { name = "Nail" }\ntype.edible = false\n', "是内联表");
+		expectError('tbl = { fruit = { apple.color = "red" }, fruit.apple.texture = { smooth = true } }\n', "是内联表");
+	});
+
+	it("字面量数组写出来就是完整的，之后不能再往里添加内容", () => {
+		expectError("a = [{ b = 1 }]\n[a.c]\nfoo = 1\n", "是数组");
+	});
+
+	it("点分键不能给已用表头定义过的表追加内容", () => {
+		expectError('[a.b.c]\nz = 9\n\n[a]\nb.c.t = "x"\n', "不能再通过点分键添加内容");
+		expectError('[a.b.c.d]\nz = 9\n\n[a]\nb.c.d.k.t = "x"\n', "不能再通过点分键添加内容");
+	});
+
+	it("点分键不能往数组表里追加内容", () => {
+		expectError("[[a.b]]\n\n[a]\nb.y = 2\n", "是数组表");
+		expectError("[[tab.arr]]\n[tab]\narr.val1 = 1\n", "是数组表");
+	});
+});
+
+describe("TomlParser 数字的书写规则", () => {
+	it("下划线只能夹在数字之间", () => {
+		assert.equal(parseRoot("a = 1_000_000")["a"], 1000000);
+		assert.equal(parseRoot("a = 0xdead_beef")["a"], 0xdeadbeef);
+		assert.equal(parseRoot("a = 1_0.5_0e1_0")["a"], 1.05e11);
+
+		expectError("a = 1_\n", "无法识别的值");
+		expectError("a = _1\n", "无法识别的值");
+		expectError("a = 1__0\n", "无法识别的值");
+		expectError("a = 1_.5\n", "无法识别的值");
+		expectError("a = 1._5\n", "无法识别的值");
+		expectError("a = 1.5_e3\n", "无法识别的值");
+		expectError("a = 1e_3\n", "无法识别的值");
+		expectError("a = 0x_ff\n", "无法识别的值");
+		expectError("a = inf_\n", "无法识别的值");
+	});
+
+	it("非十进制整数不能带符号", () => {
+		expectError("a = -0xff\n", "无法识别的值");
+		expectError("a = +0b1\n", "无法识别的值");
+		expectError("a = -0o7\n", "无法识别的值");
+	});
+
+	it("拒绝代理区的 Unicode 转义", () => {
+		expectError('a = "\\uD801"\n', "必须是有效码位");
+		expectError('a = """\\uDFFF"""\n', "必须是有效码位");
+	});
+});
+
 describe("TomlParser 拒绝非法输入", () => {
 	it("拒绝重复的键", () => {
 		expectError("a = 1\na = 2\n", "重复定义", 2);
@@ -184,10 +287,18 @@ describe("TomlParser 拒绝非法输入", () => {
 
 	it("拒绝重复定义的表", () => {
 		expectError("[ui]\nnotify = \"a\"\n[ui]\n", "重复定义", 3);
+		expectError("[a]\n[a.b]\n[a]\n", "重复定义", 3);
+	});
+
+	it("拒绝把普通表当成数组表或反过来", () => {
+		expectError("[a]\nx = 1\n[[a]]\n", "与已有定义冲突", 3);
+		expectError("[[a]]\nx = 1\n[a]\n", "已定义为数组表", 3);
 	});
 
 	it("拒绝把已存在的路径当表头", () => {
-		expectError("[a.b]\nx = 1\n[a]\n", "重复定义", 3);
+		expectError("a = 1\n[a.b]\n", "已被非表的值占用");
+		// 由点分键建出来的表不能再被表头定义
+		expectError("apple.color = \"red\"\n[apple]\n", "重复定义");
 	});
 
 	it("拒绝用表头覆盖普通值", () => {
@@ -236,6 +347,23 @@ describe("TomlParser 拒绝非法输入", () => {
 		const error = expectError("a = 1\nb = @\n", "无法识别的值");
 		assert.equal(error.line, 2);
 		assert.equal(error.column, 5);
+	});
+
+	it("拒绝注释里的控制字符", () => {
+		expectError("# 注释里有垂直制表符 \u000b\na = 1\n", "不允许的控制字符");
+		expectError('a = 1  # 删除符 \u007f\n', "不允许的控制字符");
+		expectError("# 单独的 CR \ra = 1\n", "不允许的控制字符");
+	});
+
+	it("拒绝字符串里的控制字符", () => {
+		expectError('a = "含 \u0000 空字符"\n', "不允许的控制字符");
+		expectError("a = '含 \u001f 分隔符'\n", "不允许的控制字符");
+		expectError('a = """含 \u000c 换页"""\n', "不允许的控制字符");
+		expectError("a = '''含 \u007f 删除符'''\n", "不允许的控制字符");
+	});
+
+	it("制表符在注释与字符串里都允许", () => {
+		assert.deepEqual(parseRoot('# 注释里有制表符\t\na = "值里有制表符\t"\n'), { a: "值里有制表符\t" });
 	});
 });
 

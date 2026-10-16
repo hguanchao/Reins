@@ -42,9 +42,32 @@ interface TableHeader {
 }
 
 const BARE_KEY_CHAR = /[A-Za-z0-9_-]/;
-const DECIMAL_INTEGER = /^[+-]?(0|[1-9]\d*)$/;
-const FLOAT_WITH_FRACTION = /^[+-]?(0|[1-9]\d*)\.\d+([eE][+-]?\d+)?$/;
-const FLOAT_WITH_EXPONENT = /^[+-]?(0|[1-9]\d*)[eE][+-]?\d+$/;
+
+// 数字的组成规则直接写进正则，而不是先去掉下划线再校验：下划线只能夹在数字之间，
+// 先去掉就再也看不出 1_ 或 1__0 这类写法错在哪了。
+const INTEGER_PART = "(?:0|[1-9](?:_?\\d)*)";
+const DIGIT_PART = "\\d(?:_?\\d)*";
+const DECIMAL_INTEGER = new RegExp(`^[+-]?${INTEGER_PART}$`);
+const FLOAT_WITH_FRACTION = new RegExp(`^[+-]?${INTEGER_PART}\\.${DIGIT_PART}(?:[eE][+-]?${DIGIT_PART})?$`);
+const FLOAT_WITH_EXPONENT = new RegExp(`^[+-]?${INTEGER_PART}[eE][+-]?${DIGIT_PART}$`);
+const SPECIAL_FLOAT = /^[+-]?(inf|nan)$/;
+// 非十进制整数不允许带符号，这是 TOML 的明确规定
+const HEX_INTEGER = /^0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*$/;
+const OCT_INTEGER = /^0o[0-7](?:_?[0-7])*$/;
+const BIN_INTEGER = /^0b[01](?:_?[01])*$/;
+
+/** 容器是怎么产生的，决定它之后还能不能被继续写入。 */
+type ContainerState =
+	/** 表头路径穿过的表：可以被之后的表头补成显式定义 */
+	| "implicit"
+	/** 赋值里的点分键建出来的表：不能再被表头定义 */
+	| "dotted"
+	/** 已被表头定义过：不能再定义第二次，也不能用点分键往里追加 */
+	| "explicit"
+	/** [[...]] 建出来的数组表：可以继续追加元素 */
+	| "table-array"
+	/** 内联表与字面量数组：写出来就是完整的，之后不能再添加内容 */
+	| "closed";
 
 /**
  * TOML 1.0 的解析器，不支持日期与时间。
@@ -56,6 +79,8 @@ const FLOAT_WITH_EXPONENT = /^[+-]?(0|[1-9]\d*)[eE][+-]?\d+$/;
 export class TomlParser {
 	readonly #source: string;
 	#pos = 0;
+	/** 每个表与数组是怎么来的，见 ContainerState */
+	readonly #tableStates = new WeakMap<object, ContainerState>();
 
 	constructor(source: string) {
 		this.#source = source;
@@ -101,7 +126,7 @@ export class TomlParser {
 			const valueStart = this.#pos;
 			const value = this.#parseValue();
 			const valueEnd = this.#pos;
-			this.#assign(table, path, value);
+			this.#assign(table, path, value, pathStart);
 			// 记录完整路径：解析用的是相对当前表的键，但回写要按完整路径才能定位到这一行
 			assignments.push({
 				path: section.path === null ? path : [...section.path, ...path],
@@ -134,71 +159,111 @@ export class TomlParser {
 	}
 
 	/**
-	 * 解析表头并落位。表头的路径不允许已经存在：重复定义表、或把已被值占用的路径声明成表，
-	 * 都会让先写入的内容被后来者覆盖，因此一律报错而不是放任。
+	 * 从根出发沿路径下行，返回路径末端所在的表。
+	 *
+	 * 表头与点分键的下行规则不同，所以由 traversal 决定两件事：中途缺表时建出的表算哪种
+	 * （表头路径穿过的表可以被之后的表头补成显式定义），以及能不能穿过已显式定义过的表。
+	 * 表头可以穿过——`[a]` 之后再写 `[a.b]` 是合法的；点分键不行，那等于两处语法同时改写同一个表。
+	 *
+	 * 另有两条禁止往里走的规则：内联表与字面量数组一旦写出来就是完整的，之后不能再添加内容。
 	 */
-	#defineTable(root: ConfigTable, path: readonly string[], isArrayOfTables: boolean, start: number): ConfigTable {
+	#descend(
+		root: ConfigTable,
+		path: readonly string[],
+		start: number,
+		traversal: "header" | "dotted",
+	): ConfigTable {
 		let table = root;
-		for (let index = 0; index < path.length - 1; index += 1) {
+		for (let index = 0; index < path.length; index += 1) {
 			const key = path[index];
+			const where = path.slice(0, index + 1).join(".");
 			const existing = table[key];
 			if (existing === undefined) {
 				const created: ConfigTable = {};
 				table[key] = created;
+				this.#tableStates.set(created, traversal === "header" ? "implicit" : "dotted");
 				table = created;
 				continue;
 			}
-			if (!isConfigTable(existing)) {
-				throw this.#errorAt(`${path.slice(0, index + 1).join(".")} 已被非表的值占用`, start);
-			}
-			table = existing;
-		}
-
-		const last = path[path.length - 1];
-		const existing = table[last];
-		if (isArrayOfTables) {
-			if (existing !== undefined) {
-				if (!Array.isArray(existing) || existing.length === 0 || !existing.every(isConfigTable)) {
-					throw this.#errorAt(`数组表 ${path.join(".")} 与已有定义冲突`, start);
+			if (isConfigTable(existing)) {
+				const state = this.#tableStates.get(existing);
+				if (state === "closed") {
+					throw this.#errorAt(`${where} 是内联表，不能再往里添加内容`, start);
 				}
-				const appended: ConfigTable = {};
-				existing.push(appended);
-				return appended;
-			}
-			const created: ConfigTable = {};
-			table[last] = [created];
-			return created;
-		}
-
-		if (existing !== undefined) {
-			throw this.#errorAt(`表 ${path.join(".")} 重复定义`, start);
-		}
-		const created: ConfigTable = {};
-		table[last] = created;
-		return created;
-	}
-
-	/** 把值写进当前表；点分键会展开成嵌套的表。 */
-	#assign(table: ConfigTable, path: readonly string[], value: ConfigValue): void {
-		let target = table;
-		for (let index = 0; index < path.length - 1; index += 1) {
-			const key = path[index];
-			const existing = target[key];
-			if (existing === undefined) {
-				const created: ConfigTable = {};
-				target[key] = created;
-				target = created;
+				if (state === "explicit" && traversal === "dotted") {
+					throw this.#errorAt(`${where} 已用表头定义过，不能再通过点分键添加内容`, start);
+				}
+				table = existing;
 				continue;
 			}
-			if (!isConfigTable(existing)) {
-				throw this.#error(`${path.slice(0, index + 1).join(".")} 已被非表的值占用`);
+			if (Array.isArray(existing)) {
+				if (this.#tableStates.get(existing) !== "table-array") {
+					throw this.#errorAt(`${where} 是数组，不能当作表使用`, start);
+				}
+				// 数组表上的子表挂在最后一个元素下。这条只对表头成立：点分键往数组表里追加
+				// 会让「数组有几个元素」取决于写法，读的时候拼不出最终形态。
+				if (traversal === "dotted") {
+					throw this.#errorAt(`${where} 是数组表，不能用点分键添加内容`, start);
+				}
+				table = existing[existing.length - 1] as ConfigTable;
+				continue;
 			}
-			target = existing;
+			throw this.#errorAt(`${where} 已被非表的值占用`, start);
+		}
+		return table;
+	}
+
+	/** 表头落位。隐式的父表可以在这里被补成显式，其余情况重复定义一律报错。 */
+	#defineTable(
+		root: ConfigTable,
+		path: readonly string[],
+		isArrayOfTables: boolean,
+		start: number,
+	): ConfigTable {
+		const parent = this.#descend(root, path.slice(0, -1), start, "header");
+		const last = path[path.length - 1];
+		const existing = parent[last];
+
+		if (isArrayOfTables) {
+			if (existing === undefined) {
+				const created: ConfigTable = {};
+				const array = [created];
+				parent[last] = array;
+				this.#tableStates.set(array, "table-array");
+				this.#tableStates.set(created, "explicit");
+				return created;
+			}
+			if (Array.isArray(existing) && this.#tableStates.get(existing) === "table-array") {
+				const appended: ConfigTable = {};
+				existing.push(appended);
+				this.#tableStates.set(appended, "explicit");
+				return appended;
+			}
+			throw this.#errorAt(`数组表 ${path.join(".")} 与已有定义冲突`, start);
 		}
 
+		if (existing === undefined) {
+			const created: ConfigTable = {};
+			parent[last] = created;
+			this.#tableStates.set(created, "explicit");
+			return created;
+		}
+		if (isConfigTable(existing) && this.#tableStates.get(existing) === "implicit") {
+			this.#tableStates.set(existing, "explicit");
+			return existing;
+		}
+		if (Array.isArray(existing)) {
+			throw this.#errorAt(`${path.join(".")} 已定义为数组表`, start);
+		}
+		throw this.#errorAt(`表 ${path.join(".")} 重复定义`, start);
+	}
+
+	/** 把值写进当前表；点分键会展开成嵌套的表，这类表之后不能再被表头定义。 */
+	#assign(table: ConfigTable, path: readonly string[], value: ConfigValue, start: number): void {
+		const target = this.#descend(table, path.slice(0, -1), start, "dotted");
 		const last = path[path.length - 1];
 		if (target[last] !== undefined) {
-			throw this.#error(`键 ${path.join(".")} 重复定义`);
+			throw this.#errorAt(`键 ${path.join(".")} 重复定义`, start);
 		}
 		target[last] = value;
 	}
@@ -266,19 +331,19 @@ export class TomlParser {
 	}
 
 	#parseNumber(raw: string, start: number): number {
-		const cleaned = raw.replaceAll("_", "");
-
-		if (/^[+-]?(inf|nan)$/.test(cleaned)) {
-			const negative = cleaned.startsWith("-");
-			if (cleaned.includes("inf")) return negative ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+		if (SPECIAL_FLOAT.test(raw)) {
+			const negative = raw.startsWith("-");
+			if (raw.includes("inf")) return negative ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
 			return Number.NaN;
 		}
-		if (/^[+-]?0x[0-9A-Fa-f]+$/.test(cleaned)) return Number.parseInt(cleaned.replace("0x", ""), 16);
-		if (/^[+-]?0o[0-7]+$/.test(cleaned)) return Number.parseInt(cleaned.replace("0o", ""), 8);
-		if (/^[+-]?0b[01]+$/.test(cleaned)) return Number.parseInt(cleaned.replace("0b", ""), 2);
-		if (DECIMAL_INTEGER.test(cleaned)) return Number.parseInt(cleaned, 10);
-		if (FLOAT_WITH_FRACTION.test(cleaned) || FLOAT_WITH_EXPONENT.test(cleaned)) {
-			return Number.parseFloat(cleaned);
+		if (HEX_INTEGER.test(raw)) return Number.parseInt(raw.slice(2).replaceAll("_", ""), 16);
+		if (OCT_INTEGER.test(raw)) return Number.parseInt(raw.slice(2).replaceAll("_", ""), 8);
+		if (BIN_INTEGER.test(raw)) return Number.parseInt(raw.slice(2).replaceAll("_", ""), 2);
+
+		const digitsOnly = raw.replaceAll("_", "");
+		if (DECIMAL_INTEGER.test(raw)) return Number.parseInt(digitsOnly, 10);
+		if (FLOAT_WITH_FRACTION.test(raw) || FLOAT_WITH_EXPONENT.test(raw)) {
+			return Number.parseFloat(digitsOnly);
 		}
 		throw this.#errorAt(`无法识别的值 ${raw}`, start);
 	}
@@ -304,6 +369,7 @@ export class TomlParser {
 				out += this.#readEscape();
 				continue;
 			}
+			this.#assertTextCharacter(char, false);
 			out += char;
 			this.#pos += 1;
 		}
@@ -339,6 +405,7 @@ export class TomlParser {
 				return out;
 			}
 
+			this.#assertTextCharacter(this.#source[this.#pos], true);
 			out += this.#source[this.#pos];
 			this.#pos += 1;
 		}
@@ -361,6 +428,7 @@ export class TomlParser {
 				this.#pos += 1;
 				return out;
 			}
+			this.#assertTextCharacter(char, false);
 			out += char;
 			this.#pos += 1;
 		}
@@ -380,6 +448,7 @@ export class TomlParser {
 				this.#pos += quotes;
 				return out;
 			}
+			this.#assertTextCharacter(this.#source[this.#pos], true);
 			out += this.#source[this.#pos];
 			this.#pos += 1;
 		}
@@ -423,7 +492,10 @@ export class TomlParser {
 		}
 		this.#pos += digits;
 		const code = Number.parseInt(hex, 16);
-		if (code > 0x10ffff) throw this.#errorAt("Unicode 转义超出范围", start);
+		// 代理区不是有效码位，放行会得到无法编码的半个字符
+		if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
+			throw this.#errorAt("Unicode 转义必须是有效码位", start);
+		}
 		return String.fromCodePoint(code);
 	}
 
@@ -437,6 +509,7 @@ export class TomlParser {
 			if (this.#atEnd()) throw this.#errorAt("数组没有闭合", start);
 			if (this.#peek() === "]") {
 				this.#pos += 1;
+				this.#closeContainer(items);
 				return items;
 			}
 			items.push(this.#parseValue());
@@ -447,6 +520,7 @@ export class TomlParser {
 			}
 			if (this.#peek() === "]") {
 				this.#pos += 1;
+				this.#closeContainer(items);
 				return items;
 			}
 			throw this.#errorAt("数组元素之间需要逗号", start);
@@ -461,6 +535,7 @@ export class TomlParser {
 		this.#skipHorizontalWhitespace();
 		if (this.#peek() === "}") {
 			this.#pos += 1;
+			this.#closeContainer(table);
 			return table;
 		}
 
@@ -469,11 +544,12 @@ export class TomlParser {
 			if (this.#atNewline() || this.#atEnd()) {
 				throw this.#error("内联表不能跨行，且必须以 } 结束");
 			}
+			const keyStart = this.#pos;
 			const path = this.#parseKeyPath();
 			this.#skipHorizontalWhitespace();
 			this.#expectCharacter("=", "键之后需要等号");
 			this.#skipHorizontalWhitespace();
-			this.#assign(table, path, this.#parseValue());
+			this.#assign(table, path, this.#parseValue(), keyStart);
 			this.#skipHorizontalWhitespace();
 
 			if (this.#peek() === ",") {
@@ -482,10 +558,21 @@ export class TomlParser {
 			}
 			if (this.#peek() === "}") {
 				this.#pos += 1;
+				this.#closeContainer(table);
 				return table;
 			}
 			throw this.#errorAt("内联表里只允许用逗号分隔键值对，且不能跨行", start);
 		}
+	}
+
+	/**
+	 * 内联表与字面量数组写出来就是完整的。
+	 *
+	 * 之后任何语法都不该再往里添加内容：允许的话，同一个容器会被两处互相不知道的写法同时
+	 * 改写，读起来要跳好几屏才能拼出最终形态。
+	 */
+	#closeContainer(container: ConfigTable | ConfigValue[]): void {
+		this.#tableStates.set(container, "closed");
 	}
 
 	/** 收尾一行：只允许空白与注释，随后必须是换行或文件结尾。 */
@@ -524,8 +611,26 @@ export class TomlParser {
 		while (this.#pos < this.#source.length) {
 			const char = this.#source[this.#pos];
 			if (char === "\n") return;
+			// CRLF 里的 \r 属于行尾而不是注释内容，留给 #consumeNewline 处理
+			if (char === "\r" && this.#peekAt(1) === "\n") return;
+			this.#assertTextCharacter(char, false);
 			this.#pos += 1;
 		}
+	}
+
+	/**
+	 * 断言一个字符可以出现在注释或字符串里。
+	 *
+	 * 控制字符在 TOML 里是禁止的：它们让「这一行到底写了什么」变得不可靠，同一个配置在不同
+	 * 终端上显示得也不一样。tab 在注释与字符串里都允许；换行只在多行字符串里允许，
+	 * 且必须成对出现（CRLF）或为 LF，单独的 CR 不算换行。
+	 */
+	#assertTextCharacter(char: string, allowNewline: boolean): void {
+		const code = char.codePointAt(0) ?? 0;
+		if (code > 0x1f && code !== 0x7f) return;
+		if (char === "\t") return;
+		if (allowNewline && (char === "\n" || (char === "\r" && this.#peekAt(1) === "\n"))) return;
+		throw this.#error(`不允许的控制字符 U+${code.toString(16).toUpperCase().padStart(4, "0")}`);
 	}
 
 	#atComment(): boolean {
