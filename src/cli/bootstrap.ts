@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
+import { Compactor } from "../agent/compactor.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
 import { ConfigFile, type Config } from "../config/config-file.ts";
@@ -161,12 +162,13 @@ async function runPrint(options: CliOptions): Promise<number> {
 	}
 
 	const session = createSession(workRoot, host.sessionStore());
+	const compactor = createCompactor(config, selection);
 
 	try {
 		return await runPrintMode({
 			prompt: options.prompt,
 			createDriver: (onEvent) =>
-				createDriverFor({ config, selection }, { registry, session, workspace, sandbox }, onEvent),
+				createDriverFor({ config, selection, compactor }, { registry, session, workspace, sandbox }, onEvent),
 			stdout: writeStdout,
 			stderr: writeStderr,
 		});
@@ -250,6 +252,7 @@ async function runChat(options: CliOptions): Promise<number> {
 	}
 
 	const session = createSession(workRoot, host.sessionStore());
+	const compactor = createCompactor(config, selection);
 
 	const runtime: InteractiveRuntime = {
 		cwd: workRoot,
@@ -271,7 +274,7 @@ async function runChat(options: CliOptions): Promise<number> {
 			return lines;
 		},
 		createDriver: (onEvent) =>
-			createDriverFor({ config, selection }, { registry, session, workspace, sandbox }, onEvent),
+			createDriverFor({ config, selection, compactor }, { registry, session, workspace, sandbox }, onEvent),
 		setConfirmer: (value) => {
 			confirmer = value;
 		},
@@ -402,9 +405,47 @@ function createClient(config: Config, selection: ModelSelection): ReturnType<Llm
 	});
 }
 
+/**
+ * 建立压缩器。
+ *
+ * 上下文上限必须由使用者声明：models.json 的 contextWindow 或 config.toml 的 context_window，
+ * 两处都没有就不压缩，并且明确说出来——没有上限就没有「快满了」这回事，使用者会以为程序在管
+ * 上下文，其实没有。
+ */
+function createCompactor(
+	config: Config,
+	selection: ModelSelection,
+): Compactor | undefined {
+	const contextWindow = selection.model.contextWindow ?? config.contextWindow;
+	if (contextWindow === undefined) {
+		writeStderr(
+			"没有上下文上限（models.json 未声明 contextWindow，config.toml 也未设 context_window），" +
+				"本次不会自动压缩上下文。\n",
+		);
+		return undefined;
+	}
+
+	// 摘要用 compact_model；它省略时用主模型。两者都在同一个 provider 内，配置层已校验
+	const model = selection.compactModel ?? selection.model;
+	return new Compactor({
+		client: createBuiltinLlmRegistry().create(selection.provider, model, {
+			maxRetries: config.maxRetries,
+			baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+		}),
+		provider: selection.provider.id,
+		model,
+		contextWindow,
+		maxTokens: config.maxTokens,
+	});
+}
+
 /** 一次运行的驱动。交互模式每次提交都要新建一个：它的生命周期就是一轮对话。 */
 function createDriverFor(
-	context: { readonly config: Config; readonly selection: ModelSelection },
+	context: {
+		readonly config: Config;
+		readonly selection: ModelSelection;
+		readonly compactor: Compactor | undefined;
+	},
 	shared: {
 		readonly registry: ToolRegistry;
 		readonly session: Session;
@@ -423,6 +464,7 @@ function createDriverFor(
 		workspace: shared.workspace,
 		sandbox: shared.sandbox,
 		onEvent,
+		...(context.compactor === undefined ? {} : { compactor: context.compactor }),
 	});
 }
 

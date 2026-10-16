@@ -137,6 +137,31 @@ describe("会话显示状态", () => {
 		transcript.resize(6);
 		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 4);
 	});
+
+	it("压缩上下文时说明为什么停下来，结束与失败各留一行", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "text_delta", text: "先说到这。" }, NOW);
+
+		// 开始压缩前先把写好的回答交出去：它会等到摘要写完，留在活动块里看起来像卡住了
+		const started = transcript.handle({ type: "compaction_start", messages: 12, tokensBefore: 9000 }, NOW);
+		assert.deepEqual(texts(started), [
+			"先说到这。",
+			"上下文偏长，正在把前面 12 条换成摘要（约 9000 token）",
+		]);
+
+		const ended = transcript.handle(
+			{ type: "compaction_end", covered: 12, tokensBefore: 9000, tokensAfter: 800 },
+			NOW,
+		);
+		assert.ok(texts(ended)[0].includes("已压缩上下文"));
+		assert.ok(texts(ended)[0].includes("历史仍在会话文件里"));
+
+		assert.ok(
+			texts(transcript.handle({ type: "compaction_failed", message: "端点连不上" }, NOW))[0].includes(
+				"压缩没有成功",
+			),
+		);
+	});
 });
 
 describe("工具调用的参数摘要", () => {

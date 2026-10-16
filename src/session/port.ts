@@ -1,4 +1,4 @@
-import type { LlmMessage } from "../llm/messages.ts";
+import type { LlmMessage, LlmUsage } from "../llm/messages.ts";
 
 /**
  * 会话端口的契约。
@@ -60,17 +60,56 @@ export interface SessionEffortChangeEntry extends SessionEntryBase {
 	readonly effort: string;
 }
 
+/**
+ * 一次请求的用量。
+ *
+ * 单独记条目而不是挂在消息上：一次请求不一定产出消息（出错与中止就是），而没有用量的请求
+ * 也不该在统计里凭空少掉。它不进上下文，只用于统计。
+ */
+export interface SessionUsageEntry extends SessionEntryBase {
+	readonly type: "usage";
+	readonly provider: string;
+	readonly model: string;
+	/** 这笔用量是哪个环节产生的 */
+	readonly kind: "turn" | "compact";
+	readonly usage: LlmUsage;
+}
+
+/**
+ * 上下文压缩的检查点。
+ *
+ * 它把先前那些消息换成一份摘要：折叠时 covered 里的消息不再进入上下文，但条目本身仍留在
+ * 文件里，因此用量统计与导出看得到完整历史。covered 记条目 id 而不是条数——条数会随上下文
+ * 变化失去意义，id 永远指向同一批消息。
+ */
+export interface SessionCompactionEntry extends SessionEntryBase {
+	readonly type: "compaction";
+	readonly summary: string;
+	readonly covered: readonly string[];
+	/** 产出摘要的 provider 与模型 */
+	readonly provider: string;
+	readonly model: string;
+	/** 压缩前的上下文规模（token）：提供方回报的实际值，没有回报时为估算 */
+	readonly tokensBefore: number;
+	/** 摘要那次请求的用量；提供方没回报时为空 */
+	readonly usage: LlmUsage | undefined;
+}
+
 export type SessionEntry =
 	| SessionMessageEntry
 	| SessionSystemEntry
 	| SessionModelChangeEntry
-	| SessionEffortChangeEntry;
+	| SessionEffortChangeEntry
+	| SessionUsageEntry
+	| SessionCompactionEntry;
 
 export type NewSessionEntry =
 	| Omit<SessionMessageEntry, keyof SessionEntryBase>
 	| Omit<SessionSystemEntry, keyof SessionEntryBase>
 	| Omit<SessionModelChangeEntry, keyof SessionEntryBase>
-	| Omit<SessionEffortChangeEntry, keyof SessionEntryBase>;
+	| Omit<SessionEffortChangeEntry, keyof SessionEntryBase>
+	| Omit<SessionUsageEntry, keyof SessionEntryBase>
+	| Omit<SessionCompactionEntry, keyof SessionEntryBase>;
 
 /** 重放条目得到的状态，也就是下一次请求要用的全部信息。 */
 export interface SessionState {
@@ -78,6 +117,8 @@ export interface SessionState {
 	readonly sections: Readonly<Record<string, string>>;
 	readonly tools: readonly SessionToolDeclaration[];
 	readonly messages: readonly LlmMessage[];
+	/** 与 messages 一一对应。压缩要按条目记录覆盖范围，而消息本身不带 id。 */
+	readonly messageIds: readonly string[];
 	readonly model: { readonly provider: string; readonly model: string } | undefined;
 	readonly effort: string | undefined;
 }

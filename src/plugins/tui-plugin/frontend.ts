@@ -349,6 +349,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 			case "tool_end":
 				this.#activity = "正在思考";
 				break;
+			case "compaction_start":
+				this.#activity = "正在压缩上下文";
+				break;
+			case "compaction_end":
+			case "compaction_failed":
+				this.#activity = "正在思考";
+				break;
 			default:
 				break;
 		}

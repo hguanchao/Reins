@@ -32,6 +32,22 @@ export type AgentEvent =
 	  }
 	/** 一轮结束；stopReason 说明为什么停 */
 	| { readonly type: "turn_end"; readonly stopReason: LlmStopReason }
+	/** 上下文太长，开始把前面一段换成摘要 */
+	| {
+			readonly type: "compaction_start";
+			/** 要摘要掉的消息条数 */
+			readonly messages: number;
+			readonly tokensBefore: number;
+	  }
+	/** 摘要已经写进会话，后续请求用的是压缩后的上下文 */
+	| {
+			readonly type: "compaction_end";
+			readonly covered: number;
+			readonly tokensBefore: number;
+			readonly tokensAfter: number;
+	  }
+	/** 压缩没有成功：接下来的请求仍带着完整上下文 */
+	| { readonly type: "compaction_failed"; readonly message: string }
 	/** 模型返回出错或连接中断。整个回合到此为止。 */
 	| { readonly type: "error"; readonly message: string }
 	/** 用户中止 */

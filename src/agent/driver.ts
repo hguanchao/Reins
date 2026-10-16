@@ -11,6 +11,7 @@ import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionPort } from "../session/port.ts";
 import type { ToolRegistry } from "../tools/registry.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
+import { estimateTokens, type Compactor } from "./compactor.ts";
 import type { AgentEvent, AgentEventListener } from "./events.ts";
 import { buildPromptSections, renderSystemPrompt, toSessionTools } from "./prompt.ts";
 
@@ -20,6 +21,8 @@ import { buildPromptSections, renderSystemPrompt, toSessionTools } from "./promp
  * 一次运行由若干回合组成：每个回合向模型发一次请求，执行它要求的工具，把结果写回会话，
  * 然后判断要不要再来一回合。回合之间没有隐藏状态——下一次请求要用的历史、提示词与工具
  * 声明全部来自会话记录，所以「重放会话能得到同样的请求」这件事是成立的。
+ *
+ * 每轮回报的用量记进会话（它不进上下文，只用于统计），上下文接近上限时先压缩再发请求。
  */
 
 export interface DriverDeps {
@@ -32,10 +35,19 @@ export interface DriverDeps {
 	readonly workspace: WorkspaceBoundary;
 	readonly sandbox: SandboxView;
 	readonly onEvent: AgentEventListener;
+	/** 上下文压缩。没有它（上限未知或未配置）就不压缩，请求照原样发出去 */
+	readonly compactor?: Compactor;
 }
 
 export class TurnDriver {
 	readonly #deps: DriverDeps;
+	/**
+	 * 上一次请求的上下文规模。
+	 *
+	 * 提供方回报的用量最准，但它只在一次请求之后才知道；重启或续聊后的第一次请求只能靠估算，
+	 * 因此这里为空时由压缩逻辑自己估。
+	 */
+	#contextTokens: number | undefined;
 
 	constructor(deps: DriverDeps) {
 		this.#deps = deps;
@@ -51,6 +63,7 @@ export class TurnDriver {
 
 		try {
 			for (;;) {
+				await this.#compactIfNeeded(signal);
 				const next = await this.#runTurn(signal);
 				if (next === "end") break;
 			}
@@ -76,6 +89,18 @@ export class TurnDriver {
 
 		const result = await stream.result();
 		await this.emit({ type: "turn_end", stopReason: result.stopReason });
+
+		// 规模与用量都以提供方回报为准：这是唯一能反映真实上下文大小的数字
+		if (result.usage !== undefined) {
+			this.#contextTokens = result.usage.input + result.usage.cacheRead + result.usage.output;
+			await this.#deps.session.append({
+				type: "usage",
+				provider: this.#deps.provider.id,
+				model: this.#deps.model.id,
+				kind: "turn",
+				usage: result.usage,
+			});
+		}
 
 		if (result.stopReason === "aborted") {
 			await this.emit({ type: "aborted" });
@@ -160,8 +185,60 @@ export class TurnDriver {
 		};
 	}
 
-	async #recordFailures(calls: readonly LlmToolCallBlock[], content: string): Promise<void> {
-		for (const call of calls) {
+	/**
+	 * 上下文太长时先压缩再发请求。
+	 *
+	 * 判断与压缩都在请求之前：等到端点拒绝就已经晚了。压缩失败不改变本轮的处理——上下文照原
+	 * 样发出去，但失败原因要说出来，否则使用者只会看到「莫名其妙被拒绝」。
+	 */
+	async #compactIfNeeded(signal: AbortSignal): Promise<void> {
+		const compactor = this.#deps.compactor;
+		if (compactor === undefined) return;
+
+		const state = this.#deps.session.state();
+		const tokensBefore = this.#contextTokens ?? estimateTokens(state.messages);
+		if (!compactor.shouldCompact(tokensBefore)) return;
+
+		const cut = compactor.plan(state.messages);
+		if (cut === 0) return;
+
+		await this.emit({ type: "compaction_start", messages: cut, tokensBefore });
+		const result = await compactor.summarize(state.messages.slice(0, cut), signal);
+		if (!result.ok) {
+			await this.emit({ type: "compaction_failed", message: result.message });
+			return;
+		}
+
+		await this.#deps.session.append({
+			type: "compaction",
+			summary: result.summary,
+			covered: state.messageIds.slice(0, cut),
+			provider: compactor.provider,
+			model: compactor.model,
+			tokensBefore,
+			usage: result.usage,
+		});
+		if (result.usage !== undefined) {
+			await this.#deps.session.append({
+				type: "usage",
+				provider: compactor.provider,
+				model: compactor.model,
+				kind: "compact",
+				usage: result.usage,
+			});
+		}
+
+		// 压缩后的规模只能靠估算：下一次请求发出去之前没有人回报它
+		this.#contextTokens = undefined;
+		await this.emit({
+			type: "compaction_end",
+			covered: cut,
+			tokensBefore,
+			tokensAfter: estimateTokens(this.#deps.session.state().messages),
+		});
+	}
+
+	async #recordFailures(calls: readonly LlmToolCallBlock[], content: string): Promise<void> {		for (const call of calls) {
 			await this.#deps.session.append({
 				type: "message",
 				message: {

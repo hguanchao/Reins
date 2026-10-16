@@ -95,8 +95,12 @@ describe("会话重放", () => {
 		assert.equal(parsed.header?.cwd, workspace.root);
 		assert.deepEqual(
 			parsed.entries.map((entry) => entry.type),
-			["system", "model_change", "effort_change", "message", "message", "message", "message"],
+			["system", "model_change", "effort_change", "message", "message", "message", "usage", "message"],
 		);
+		// 用量记的是这一次请求的规模，它不进上下文，只用于统计
+		const usage = parsed.entries[6];
+		assert.equal(usage.type === "usage" ? usage.kind : "", "turn");
+		assert.equal(usage.type === "usage" ? usage.usage.total : 0, 15);
 		assert.equal(parsed.entries[0].parentId, null);
 		for (let index = 1; index < parsed.entries.length; index += 1) {
 			assert.equal(parsed.entries[index].parentId, parsed.entries[index - 1].id);

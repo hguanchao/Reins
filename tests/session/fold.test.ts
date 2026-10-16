@@ -73,3 +73,65 @@ describe("会话折叠", () => {
 		assert.deepEqual(foldEntries(session.entries()), session.state());
 	});
 });
+
+describe("压缩条目", () => {
+	function compaction(covered: readonly string[]): SessionEntry {
+		return {
+			type: "compaction",
+			...base("3", "2"),
+			summary: "先前读过了 a.txt",
+			covered,
+			provider: "p",
+			model: "compact",
+			tokensBefore: 900,
+			usage: undefined,
+		};
+	}
+
+	const history: SessionEntry[] = [
+		{ type: "message", ...base("1", null), message: { role: "user", content: "读一下 a.txt" } },
+		{ type: "message", ...base("2", "1"), message: { role: "assistant", content: [{ type: "text", text: "好" }] } },
+		{ type: "message", ...base("4", "3"), message: { role: "user", content: "接着来" } },
+	];
+
+	it("覆盖到的消息换成摘要，摘要排在最前面", () => {
+		const entries = [...history.slice(0, 2), compaction(["1", "2"]), history[2]];
+		const state = foldEntries(entries);
+
+		assert.equal(state.messages.length, 2);
+		assert.match(JSON.stringify(state.messages[0]), /先前读过了 a\.txt/);
+		assert.equal(state.messages[1].role, "user");
+		assert.deepEqual(state.messageIds, ["3", "4"]);
+	});
+
+	it("只覆盖一部分时，保留下来的消息排在摘要之后", () => {
+		const entries = [...history.slice(0, 2), compaction(["1"]), history[2]];
+		const state = foldEntries(entries);
+
+		assert.equal(state.messages.length, 3);
+		assert.deepEqual(state.messageIds, ["3", "2", "4"]);
+		assert.match(JSON.stringify(state.messages[0]), /摘要/);
+	});
+
+	it("条目一条都不删：完整历史仍在文件里，用量也照旧计入", () => {
+		const entries = [...history.slice(0, 2), compaction(["1", "2"]), history[2]];
+		// 被覆盖的消息仍然在条目里，导出与统计看得到
+		assert.equal(entries.filter((entry) => entry.type === "message").length, 3);
+		assert.equal(foldEntries(entries).messages.length, 2);
+	});
+
+	it("用量条目不进上下文", () => {
+		const entries: SessionEntry[] = [
+			...history.slice(0, 1),
+			{
+				type: "usage",
+				...base("9", "1"),
+				provider: "p",
+				model: "m",
+				kind: "turn",
+				usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, total: 3 },
+			},
+		];
+		assert.equal(foldEntries(entries).messages.length, 1);
+	});
+});

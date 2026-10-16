@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 
 import { TurnDriver } from "../../src/agent/driver.ts";
+import { Compactor } from "../../src/agent/compactor.ts";
 import type { AgentEvent } from "../../src/agent/events.ts";
 import { parseConfig } from "../../src/config/config-file.ts";
 import { parseModels } from "../../src/config/models-file.ts";
@@ -21,14 +22,18 @@ after(() => {
 	workspace.remove();
 });
 
-function fixtures(script: readonly LlmResult[]): {
+/** 装配一份测试用的驱动。默认没有压缩器：压缩要显式开口，免得别的用例悄悄被它影响。 */
+function fixtures(
+	script: readonly LlmResult[],
+	options: { readonly configText?: string; readonly withCompactor?: boolean } = {},
+): {
 	readonly client: ScriptedClient;
 	readonly session: Session;
 	readonly events: AgentEvent[];
 	readonly driver: TurnDriver;
 } {
 	const config = parseConfig(
-		'provider = "p"\nmodel = "test-model"\nspill_threshold = 0\n',
+		options.configText ?? 'provider = "p"\nmodel = "test-model"\nspill_threshold = 0\n',
 		"config.toml",
 	);
 	const models = parseModels(
@@ -49,6 +54,18 @@ function fixtures(script: readonly LlmResult[]): {
 	const session = new Session({ file: null, id: "test", cwd: workspace.root });
 	const events: AgentEvent[] = [];
 
+	// 摘要也走这个脚本：压缩请求与正式请求共用一份脚本，顺序就是实际发生的顺序
+	const compactor =
+		options.withCompactor === true
+			? new Compactor({
+					client,
+					provider: "p",
+					model,
+					contextWindow: config.contextWindow ?? 1000,
+					maxTokens: config.maxTokens,
+				})
+			: undefined;
+
 	const driver = new TurnDriver({
 		provider,
 		model,
@@ -61,6 +78,7 @@ function fixtures(script: readonly LlmResult[]): {
 		onEvent: (event) => {
 			events.push(event);
 		},
+		...(compactor === undefined ? {} : { compactor }),
 	});
 
 	return { client, session, events, driver };
@@ -216,5 +234,119 @@ describe("回合驱动", () => {
 		assert.equal(systemEntries.length, 1);
 		assert.equal(modelEntries.length, 1);
 		assert.ok(session.entries().length > afterFirst);
+	});
+});
+
+describe("用量记录", () => {
+	it("每轮把用量记成条目，它不进上下文", async () => {
+		const { session, client, driver } = fixtures([textResult("你好")]);
+		await driver.run("打个招呼", new AbortController().signal);
+
+		const usageEntries = session.entries().filter((entry) => entry.type === "usage");
+		assert.equal(usageEntries.length, 1);
+		assert.equal(usageEntries[0].type === "usage" ? usageEntries[0].kind : "", "turn");
+		assert.equal(usageEntries[0].type === "usage" ? usageEntries[0].usage.total : 0, 15);
+
+		// 上下文里只有那两句对话
+		assert.equal(session.state().messages.length, 2);
+		// 第二次请求带的是同一份上下文，用量条目没有混进去
+		assert.equal(client.requests.length, 1);
+	});
+
+	it("端点没有回报用量时不记空账", async () => {
+		const { session, driver } = fixtures([{ ...textResult("你好"), usage: undefined }]);
+		await driver.run("打个招呼", new AbortController().signal);
+		assert.equal(session.entries().filter((entry) => entry.type === "usage").length, 0);
+	});
+});
+
+describe("上下文压缩", () => {
+	/** 上限 400：超过 320 就压；保留额度 100，只留得下最近的一点内容。 */
+	const config =
+		'provider = "p"\nmodel = "test-model"\ncontext_window = 400\ncompact_model = "test-model"\nspill_threshold = 0\n';
+
+	it("接近上限时先压缩再请求，被摘要掉的消息仍在条目里", async () => {
+		workspace.writeFile("big.txt", "字".repeat(200));
+		const script: LlmResult[] = [
+			{
+				...toolCallResult({ id: "call_1", name: "read", arguments: { path: "big.txt" } }),
+				usage: { input: 400, output: 20, cacheRead: 0, cacheWrite: 0, total: 420 },
+			},
+			textResult("上下文已经交代清楚"),
+			textResult("读到了"),
+		];
+		const { session, client, events, driver } = fixtures(script, { configText: config, withCompactor: true });
+
+		await driver.run("读一下 big.txt", new AbortController().signal);
+
+		// 三次请求：工具那一轮、摘要、压缩后的正式请求
+		assert.equal(client.requests.length, 3);
+		const summarized = client.requests[1];
+		assert.equal(summarized.model, "test-model");
+		assert.deepEqual(summarized.tools, []);
+		const after = client.requests[2].messages;
+		assert.equal(after[0].role, "user");
+		assert.match(JSON.stringify(after[0]), /摘要/);
+
+		// 摘要写进了会话，被覆盖的消息退出上下文但条目还在
+		const compaction = session.entries().find((entry) => entry.type === "compaction");
+		assert.ok(compaction !== undefined);
+		assert.equal(compaction.type === "compaction" ? compaction.summary : "", "上下文已经交代清楚");
+		assert.deepEqual(compaction.type === "compaction" ? compaction.covered : [], [
+			session.entries().find((entry) => entry.type === "message")?.id ?? "",
+		]);
+		const state = session.state();
+		assert.ok(!JSON.stringify(state.messages).includes("读一下 big.txt"), "被摘要掉的消息不该还在上下文里");
+		// 摘要占着原来那条消息的位置，条目本身仍在文件里
+		assert.equal(state.messageIds[0], compaction.id);
+		assert.ok(session.entries().some((entry) => entry.type === "message" && JSON.stringify(entry).includes("读一下 big.txt")));
+
+		// 摘要那次请求的用量也记下来，夹在两次正式请求之间
+		const kinds = session.entries().flatMap((entry) => (entry.type === "usage" ? [entry.kind] : []));
+		assert.deepEqual(kinds, ["turn", "compact", "turn"]);
+
+		const types = events.map((event) => event.type);
+		assert.ok(types.includes("compaction_start"));
+		assert.ok(types.includes("compaction_end"));
+		assert.ok(!types.includes("compaction_failed"));
+	});
+
+	it("压缩失败时如实说明，上下文照原样继续", async () => {
+		workspace.writeFile("big.txt", "字".repeat(200));
+		const script: LlmResult[] = [
+			{
+				...toolCallResult({ id: "call_1", name: "read", arguments: { path: "big.txt" } }),
+				usage: { input: 400, output: 20, cacheRead: 0, cacheWrite: 0, total: 420 },
+			},
+			errorResult("端点连不上"),
+			textResult("读到了"),
+		];
+		const { session, client, events, driver } = fixtures(script, { configText: config, withCompactor: true });
+
+		await driver.run("读一下 big.txt", new AbortController().signal);
+
+		assert.equal(session.entries().filter((entry) => entry.type === "compaction").length, 0);
+		// 第二次请求带着完整上下文，没有被削掉
+		assert.equal(client.requests[2].messages.length, 3);
+		assert.match(JSON.stringify(client.requests[2].messages[0]), /读一下 big\.txt/);
+		const failed = events.find((event) => event.type === "compaction_failed");
+		assert.match(failed?.type === "compaction_failed" ? failed.message : "", /端点连不上/);
+	});
+
+	it("没有声明上下文上限时不压缩，历史照原样发出去", async () => {
+		workspace.writeFile("big.txt", "字".repeat(200));
+		const script: LlmResult[] = [
+			{
+				...toolCallResult({ id: "call_1", name: "read", arguments: { path: "big.txt" } }),
+				usage: { input: 400, output: 20, cacheRead: 0, cacheWrite: 0, total: 420 },
+			},
+			textResult("读到了"),
+		];
+		const { session, client, driver } = fixtures(script);
+
+		await driver.run("读一下 big.txt", new AbortController().signal);
+
+		assert.equal(client.requests.length, 2);
+		assert.equal(session.entries().filter((entry) => entry.type === "compaction").length, 0);
 	});
 });

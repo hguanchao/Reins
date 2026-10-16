@@ -41,6 +41,15 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 			case "turn_end":
 				state.finished = true;
 				return;
+			case "compaction_start":
+				deps.stderr(`\n· 压缩上下文：把前面 ${event.messages} 条换成摘要（约 ${event.tokensBefore} token）\n`);
+				return;
+			case "compaction_end":
+				deps.stderr(`  完成：约 ${event.tokensBefore} → ${event.tokensAfter} token\n`);
+				return;
+			case "compaction_failed":
+				deps.stderr(`  压缩没有成功，上下文照原样继续：${event.message}\n`);
+				return;
 			case "error":
 				deps.stderr(`\n出错：${event.message}\n`);
 				state.failed = true;

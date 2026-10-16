@@ -109,6 +109,23 @@ export class Transcript {
 				return [...this.#drainStream(), ...this.#wrap(styled(`出错：${event.message}`, BAD))];
 			case "aborted":
 				return [...this.#drainStream(), ...this.#wrap(styled("已中止", WARN))];
+			case "compaction_start":
+				// 摘要要花一会儿，先把已经写出来的回答定下来，再说明为什么停下来
+				return [
+					...this.#drainStream(),
+					...this.#wrap(
+						styled(
+							`上下文偏长，正在把前面 ${event.messages} 条换成摘要（约 ${event.tokensBefore} token）`,
+							WARN,
+						),
+					),
+				];
+			case "compaction_end":
+				return this.#wrap(
+					styled(`已压缩上下文：约 ${event.tokensBefore} → ${event.tokensAfter} token，历史仍在会话文件里`, DIM),
+				);
+			case "compaction_failed":
+				return this.#wrap(styled(`压缩没有成功，上下文照原样继续：${event.message}`, WARN));
 			case "run_end":
 				return this.flush();
 			default:

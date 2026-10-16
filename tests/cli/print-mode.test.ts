@@ -27,7 +27,11 @@ interface Recorded {
 }
 
 /** 一个按次序应答的服务：第一次要求调用工具，第二次给出最终回答。 */
-function startFakeEndpoint(): Promise<{ server: Server; port: number; requests: Recorded[] }> {
+function startFakeEndpoint(options: { readonly firstTurnInputTokens?: number } = {}): Promise<{
+	server: Server;
+	port: number;
+	requests: Recorded[];
+}> {
 	const requests: Recorded[] = [];
 	const server = createServer((request, response) => {
 		let body = "";
@@ -43,7 +47,9 @@ function startFakeEndpoint(): Promise<{ server: Server; port: number; requests: 
 				body,
 			});
 			response.writeHead(200, { "content-type": "text/event-stream" });
-			for (const payload of requests.length === 1 ? toolCallChunks() : answerChunks()) {
+			const chunks =
+				requests.length === 1 ? toolCallChunks(options.firstTurnInputTokens) : answerChunks();
+			for (const payload of chunks) {
 				response.write(`data: ${JSON.stringify(payload)}\n\n`);
 			}
 			response.write("data: [DONE]\n\n");
@@ -58,8 +64,8 @@ function startFakeEndpoint(): Promise<{ server: Server; port: number; requests: 
 	});
 }
 
-function toolCallChunks(): unknown[] {
-	return [
+function toolCallChunks(inputTokens?: number): unknown[] {
+	const chunks: unknown[] = [
 		{
 			choices: [
 				{
@@ -88,6 +94,14 @@ function toolCallChunks(): unknown[] {
 		},
 		{ choices: [{ delta: {}, finish_reason: "tool_calls" }] },
 	];
+	// 需要触发压缩的用例就让这一轮报一个接近上限的用量
+	if (inputTokens !== undefined) {
+		chunks.push({
+			choices: [],
+			usage: { prompt_tokens: inputTokens, completion_tokens: 5, total_tokens: inputTokens + 5 },
+		});
+	}
+	return chunks;
 }
 
 function answerChunks(): unknown[] {
@@ -110,8 +124,10 @@ after(() => {
 });
 
 /** 起一个服务并登记，保证之后一定会被关掉。 */
-async function serve(): Promise<Awaited<ReturnType<typeof startFakeEndpoint>>> {
-	const started = await startFakeEndpoint();
+async function serve(
+	options: { readonly firstTurnInputTokens?: number } = {},
+): Promise<Awaited<ReturnType<typeof startFakeEndpoint>>> {
+	const started = await startFakeEndpoint(options);
 	servers.push(started.server);
 	return started;
 }
@@ -145,13 +161,13 @@ async function run(args: readonly string[], options: { readonly workRoot: string
 	}
 }
 
-function writeConfig(port: number): { readonly workRoot: string } {
+function writeConfig(port: number, extra: readonly string[] = []): { readonly workRoot: string } {
 	const workRoot = join(workDir, String(port));
 	mkdirSync(workRoot, { recursive: true });
 
 	writeFileSync(
 		join(homeDir, "config.toml"),
-		['provider = "local"', 'model = "fake-model"', "max_retries = 0", ""].join("\n"),
+		['provider = "local"', 'model = "fake-model"', "max_retries = 0", ...extra, ""].join("\n"),
 		"utf8",
 	);
 	writeFileSync(
@@ -200,14 +216,52 @@ describe("reins 的整条链路", () => {
 			["system", "user", "assistant", "tool"],
 		);
 
-		// 会话落盘，且能解析
+		// 会话落盘，且能解析：头 + 8 条条目（含一条只用于统计的用量记录）
 		const sessionFiles = findSessionFiles();
 		assert.equal(sessionFiles.length, 1);
 		const lines = readFileSync(sessionFiles[0], "utf8").trim().split("\n");
 		const header = JSON.parse(lines[0]) as { type: string; version: number; cwd: string };
 		assert.equal(header.type, "session");
 		assert.equal(header.cwd, workRoot);
-		assert.equal(lines.length, 8);
+		assert.equal(lines.length, 9);
+	});
+
+	it("没有声明上下文上限时明确说明本次不会自动压缩", async () => {
+		const started = await serve();
+		const { workRoot } = writeConfig(started.port);
+
+		const result = await run(["--yes", "把问候写进 hello.txt"], { workRoot });
+
+		assert.equal(result.code, 0, `标准错误：${result.stderr}`);
+		assert.ok(result.stderr.includes("不会自动压缩上下文"), `标准错误：${result.stderr}`);
+	});
+
+	it("上下文接近上限时先压缩再继续，压缩过程写在标准错误里", async () => {
+		const started = await serve({ firstTurnInputTokens: 900 });
+		const { workRoot } = writeConfig(started.port, [
+			"context_window = 120",
+			'compact_model = "fake-model"',
+		]);
+
+		const result = await run(["--yes", "把问候写进 hello.txt"], { workRoot });
+
+		assert.equal(result.code, 0, `标准错误：${result.stderr}`);
+		assert.ok(result.stderr.includes("压缩上下文"), `标准错误：${result.stderr}`);
+		assert.ok(result.stderr.includes("完成：约"), `标准错误：${result.stderr}`);
+
+		// 三次请求：工具那一轮、摘要、压缩后的正式请求；最后一次的上下文以摘要开头
+		assert.equal(started.requests.length, 3);
+		const third = JSON.parse(started.requests[2].body) as { messages: { role: string; content: string }[] };
+		// 第一条是系统提示词，随后就是摘要
+		assert.equal(third.messages[0].role, "system");
+		assert.equal(third.messages[1].role, "user");
+		assert.match(third.messages[1].content, /摘要/);
+
+		// 被摘要掉的原始消息仍在会话文件里，用量也留着
+		const lines = readFileSync(findSessionFiles(workRoot)[0], "utf8").trim().split("\n");
+		const entries = lines.slice(1).map((line) => JSON.parse(line) as { type: string });
+		assert.ok(entries.some((entry) => entry.type === "compaction"));
+		assert.ok(entries.some((entry) => entry.type === "message"));
 	});
 
 	it("没有 --yes 时改动类操作被拒，且说明怎么办", async () => {
@@ -251,13 +305,23 @@ describe("reins 的整条链路", () => {
 	});
 });
 
-function findSessionFiles(): readonly string[] {
+/** 找出这次运行留下的会话文件。多个用例共用一个配置目录，因此按工作根挑出自己的那些。 */
+function findSessionFiles(workRoot?: string): readonly string[] {
 	const root = join(homeDir, "sessions");
 	const found: string[] = [];
 	for (const directory of readdirSync(root)) {
 		for (const name of readdirSync(join(root, directory))) {
-			if (name.endsWith(".jsonl")) found.push(join(root, directory, name));
+			if (!name.endsWith(".jsonl")) continue;
+			const file = join(root, directory, name);
+			if (workRoot !== undefined && sessionCwdOf(file) !== workRoot) continue;
+			found.push(file);
 		}
 	}
 	return found;
+}
+
+/** 会话文件首行里的工作根。 */
+function sessionCwdOf(file: string): string | undefined {
+	const header = JSON.parse(readFileSync(file, "utf8").split("\n", 1)[0] ?? "") as { cwd?: string };
+	return header.cwd;
 }
