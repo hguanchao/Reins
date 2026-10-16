@@ -2,6 +2,7 @@ import type { PermissionPolicy, PermissionRule } from "../permission/policy.ts";
 import type { SandboxBackend } from "../sandbox/policy.ts";
 import type { AnyToolDefinition } from "../tools/contract.ts";
 import type { ToolRegistry } from "../tools/registry.ts";
+import type { InteractiveFrontend } from "../tui/frontend.ts";
 
 /**
  * 插件宿主。
@@ -21,6 +22,8 @@ export interface PluginApi {
 	registerSandboxBackend(backend: SandboxBackend): void;
 	/** 注册一条审批规则。规则只能加严，不能放行。 */
 	registerPermissionRule(rule: PermissionRule): void;
+	/** 提供一个交互形态。只能有一个：两套界面同时抢终端，谁也画不清楚。 */
+	registerFrontend(frontend: InteractiveFrontend): void;
 }
 
 export interface Plugin {
@@ -59,6 +62,7 @@ export class PluginHost {
 	readonly #policy: PermissionPolicy;
 	readonly #commands = new Map<string, PluginCommand>();
 	readonly #backends: SandboxBackend[] = [];
+	#frontend: InteractiveFrontend | undefined;
 	/** 装载期间先放在这里，等 setup 正常返回再一起交出去 */
 	#pendingTools: PendingTool[] = [];
 	#pendingRules: PermissionRule[] = [];
@@ -103,6 +107,11 @@ export class PluginHost {
 		return [...this.#backends];
 	}
 
+	/** 交互形态。没有任何插件提供时返回 undefined，调用方据此明确报错。 */
+	frontend(): InteractiveFrontend | undefined {
+		return this.#frontend;
+	}
+
 	commands(): readonly PluginCommand[] {
 		return [...this.#commands.values()];
 	}
@@ -129,6 +138,12 @@ export class PluginHost {
 			},
 			registerPermissionRule: (rule) => {
 				this.#pendingRules.push(rule);
+			},
+			registerFrontend: (frontend) => {
+				if (this.#frontend !== undefined) {
+					throw new Error("交互界面已经注册过了，只能有一个");
+				}
+				this.#frontend = frontend;
 			},
 		};
 	}

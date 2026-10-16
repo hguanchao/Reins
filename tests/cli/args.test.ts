@@ -4,8 +4,13 @@ import { describe, it } from "node:test";
 import { parseArgs, UsageError, HELP_TEXT } from "../../src/cli/args.ts";
 
 describe("parseArgs 命令", () => {
-	it("没有参数时显示帮助", () => {
-		assert.equal(parseArgs([]).command, "help");
+	it("没有参数时进入交互模式", () => {
+		assert.equal(parseArgs([]).command, "chat");
+	});
+
+	it("给了句子就是非交互模式", () => {
+		assert.equal(parseArgs(["做事"]).command, "print");
+		assert.equal(parseArgs(["-p", "做事"]).command, "print");
 	});
 
 	it("识别 config check", () => {
@@ -23,6 +28,7 @@ describe("parseArgs 命令", () => {
 
 	it("帮助文本说明了用法", () => {
 		assert.ok(HELP_TEXT.includes("reins config check"));
+		assert.ok(HELP_TEXT.includes("reins                     进入交互界面"));
 	});
 });
 

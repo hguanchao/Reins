@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
+import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
 import { ConfigFile, type Config } from "../config/config-file.ts";
 import { mergeConfigs, mergeModels } from "../config/merge.ts";
@@ -16,23 +17,27 @@ import {
 	spillDir,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
+import { updateUserConfigValue } from "../config/write-back.ts";
 import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
-import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
+import { PermissionGate, PermissionPolicy, type Confirmer } from "../permission/policy.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PluginHost } from "../plugins/host.ts";
 import { bundledPlugins } from "../plugins/registry.ts";
 import { JsonlSession } from "../plugins/session-plugin/jsonl-store.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
+import type { TrustDecision } from "../workspace/trust.ts";
 import { createCoreTools } from "../tools/builtin/index.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
+import type { InteractiveRuntime } from "../tui/frontend.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { formatConfigReport } from "./config-report.ts";
 import { runPrintMode } from "./print-mode.ts";
+import { askYesNo } from "./prompt.ts";
 
 /**
  * 运行时装配。
@@ -41,6 +46,9 @@ import { runPrintMode } from "./print-mode.ts";
  * 插件可以往策略里加规则，所以策略必须先存在，插件在装载时才能往它里面放东西。工具注册表
  * 再建，它持有审批入口。插件最后装载——在信任与工作区之后，因此插件在结构上无法影响这两件
  * 事。沙箱要等插件装载完，因为平台手段由插件提供。
+ *
+ * 交互模式还多一步：界面由插件提供，因此它在插件装载之后才存在；界面起来之前没有人可以问，
+ * 审批确认这时按拒绝处理。
  */
 export async function main(argv: readonly string[]): Promise<number> {
 	let options: CliOptions;
@@ -65,15 +73,17 @@ export async function main(argv: readonly string[]): Promise<number> {
 			return runConfigCheck(options);
 		case "print":
 			return runPrint(options);
+		case "chat":
+			return runChat(options);
 	}
 }
 
-function runConfigCheck(options: CliOptions): number {
+async function runConfigCheck(options: CliOptions): Promise<number> {
 	const configFile = options.configPath ?? configFilePath();
 	const modelsFile = options.modelsPath ?? modelsFilePath();
 
 	try {
-		const { config, models, sources } = loadEffectiveConfig(options);
+		const { config, models, sources } = await loadEffectiveConfig(options);
 		const selection = resolveSelection(config, models, configFile, modelsFile);
 		writeStdout(
 			formatConfigReport({
@@ -103,7 +113,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 	let models: ModelsConfig;
 	let selection: ModelSelection;
 	try {
-		const effective = loadEffectiveConfig(options);
+		const effective = await loadEffectiveConfig(options);
 		config = effective.config;
 		models = effective.models;
 		selection = resolveSelection(config, models, configFile, modelsFile);
@@ -134,9 +144,8 @@ async function runPrint(options: CliOptions): Promise<number> {
 	);
 	for (const tool of createCoreTools()) registry.register(tool, "core");
 
-	const disabled = new Set(config.plugins.disabled);
 	const host = new PluginHost(registry, policy);
-	const failures = await host.load(bundledPlugins().filter((plugin) => !disabled.has(plugin.name)));
+	const failures = await host.load(bundledPlugins().filter((plugin) => !disabledPlugins(config).has(plugin.name)));
 	for (const failure of failures) {
 		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
 		writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
@@ -144,9 +153,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 
 	let sandbox: SandboxView;
 	try {
-		const setup = createSandbox(config.sandbox, workRoot, host.backends());
-		sandbox = setup.sandbox;
-		for (const warning of setup.warnings) writeStderr(`${warning}\n`);
+		sandbox = createSandboxFor(config, workRoot, host);
 	} catch (error) {
 		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
@@ -162,26 +169,146 @@ async function runPrint(options: CliOptions): Promise<number> {
 		return await runPrintMode({
 			prompt: options.prompt,
 			createDriver: (onEvent) =>
-				new TurnDriver({
-					provider: selection.provider,
-					model: selection.model,
-					config,
-					client: createBuiltinLlmRegistry().create(selection.provider, selection.model, {
-						maxRetries: config.maxRetries,
-						baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
-					}),
-					tools: registry,
-					session,
-					workspace,
-					sandbox,
-					onEvent,
-				}),
+				createDriverFor({ config, selection }, { registry, session, workspace, sandbox }, onEvent),
 			stdout: writeStdout,
 			stderr: writeStderr,
 		});
 	} finally {
 		await session.close();
 	}
+}
+
+/**
+ * 交互模式。
+ *
+ * 与非交互模式共用同一套装配，区别只有三处：审批确认接到界面上；界面由插件提供，没有界面就
+ * 明确报错而不是退回到别的方式；退出时把会话文件位置说出来，使用者才知道东西存在哪。
+ */
+async function runChat(options: CliOptions): Promise<number> {
+	if (options.assumeYes) {
+		// 界面上随时可以选「允许」，这个开关在这里没有意义。静默忽略会让人以为它生效了
+		writeStderr(
+			"交互界面下 --yes 没有意义：界面本身就会询问。要去掉询问请把 config.toml 里的 approval 设为 yolo。\n",
+		);
+		return 2;
+	}
+	if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+		writeStderr("交互界面需要终端。执行一句话请用 reins -p <句子>，用法见 reins --help。\n");
+		return 2;
+	}
+
+	const configFile = options.configPath ?? configFilePath();
+	const modelsFile = options.modelsPath ?? modelsFilePath();
+
+	let effective: Awaited<ReturnType<typeof loadEffectiveConfig>>;
+	let selection: ModelSelection;
+	try {
+		effective = await loadEffectiveConfig(options, askTrust);
+		selection = resolveSelection(effective.config, effective.models, configFile, modelsFile);
+	} catch (error) {
+		if (error instanceof ConfigError) {
+			writeStderr(`${error.display}\n`);
+			return 1;
+		}
+		throw error;
+	}
+	const { config } = effective;
+
+	const workRoot = process.cwd();
+	const workspace = new WorkspaceBoundary(workRoot);
+
+	// 审批确认先留一个空位：界面接管终端之后由界面填上；在那之前没有人可以问，按拒绝处理
+	let confirmer: Confirmer | undefined;
+	const policy = new PermissionPolicy(config.approval);
+	const gate = new PermissionGate({
+		policy,
+		reviewer: config.approval === "auto" ? createReviewer(config, selection, workRoot) : undefined,
+		confirmer: async (question, detail) => (confirmer === undefined ? false : confirmer(question, detail)),
+	});
+
+	const registry = new ToolRegistry(
+		new ResultSpiller(config.spillThreshold, spillDir()),
+		gate,
+	);
+	for (const tool of createCoreTools()) registry.register(tool, "core");
+
+	const host = new PluginHost(registry, policy);
+	const failures = await host.load(bundledPlugins().filter((plugin) => !disabledPlugins(config).has(plugin.name)));
+	for (const failure of failures) writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
+
+	const frontend = host.frontend();
+	if (frontend === undefined) {
+		writeStderr(
+			"没有可用的交互界面：界面插件被禁用或装载失败了。执行一句话请用 reins -p <句子>。\n",
+		);
+		return 1;
+	}
+
+	let sandbox: SandboxView;
+	try {
+		sandbox = createSandboxFor(config, workRoot, host);
+	} catch (error) {
+		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
+	}
+
+	const session = new JsonlSession({
+		file: sessionFilePath(workRoot),
+		id: randomBytes(8).toString("hex"),
+		cwd: workRoot,
+	});
+
+	const runtime: InteractiveRuntime = {
+		cwd: workRoot,
+		session: { id: session.id, path: session.path },
+		provider: selection.provider.id,
+		model: selection.model.id,
+		approval: config.approval,
+		sandbox: config.sandbox,
+		notify: config.ui.notify,
+		trust: {
+			trusted: effective.trust.trusted,
+			root: workRoot,
+			files: effective.resources,
+		},
+		commands: host.commands(),
+		runCommand: async (name, args) => {
+			const lines: string[] = [];
+			await host.runCommand(name, args, { cwd: workRoot, print: (line) => lines.push(line) });
+			return lines;
+		},
+		createDriver: (onEvent) =>
+			createDriverFor({ config, selection }, { registry, session, workspace, sandbox }, onEvent),
+		setConfirmer: (value) => {
+			confirmer = value;
+		},
+		// 通知方式与信任清单写回用户级配置；界面只负责显示与触发，写文件这件事由宿主做
+		setNotify: (mode) => updateUserConfigValue(["ui", "notify"], () => mode, configFile),
+		setTrusted: (trusted) => recordTrust(workRoot, trusted),
+	};
+
+	try {
+		await frontend.run(runtime);
+		return 0;
+	} catch (error) {
+		writeStderr(`界面出错：${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
+	} finally {
+		await session.close();
+	}
+}
+
+/**
+ * 进入交互界面之前的信任询问。
+ *
+ * 问在界面起来之前：答案决定哪些配置生效，而配置决定界面按什么规矩跑。项目配置里的
+ * 危险项已经被合并规则挡住（只能更严，不能放宽），所以先读不构成安全缺口。
+ */
+async function askTrust(): Promise<boolean> {
+	const workRoot = process.cwd();
+	const resources = findProjectResources(workRoot);
+	const files = resources.files.join("、");
+	return askYesNo(`工作区里自带的配置会影响本次运行：${files}。要读取它们吗？`);
 }
 
 /**
@@ -193,59 +320,117 @@ async function runPrint(options: CliOptions): Promise<number> {
  * 命令行显式指定了配置文件时跳过工作区配置：使用者已经指明了要看哪一份，再去叠加一份
  * 目录里的配置只会让「到底生效了什么」变得说不清。
  */
-function loadEffectiveConfig(options: CliOptions): {
+async function loadEffectiveConfig(
+	options: CliOptions,
+	ask?: () => Promise<boolean>,
+): Promise<{
 	readonly config: Config;
 	readonly models: ModelsConfig;
 	/** 实际参与合并的配置文件，按优先级从低到高 */
 	readonly sources: readonly string[];
-} {
+	readonly trust: TrustDecision;
+	/** 工作区里需要信任才会读取的文件 */
+	readonly resources: readonly string[];
+}> {
 	const workRoot = process.cwd();
 	const userConfigPath = options.configPath ?? configFilePath();
 	const userModelsPath = options.modelsPath ?? modelsFilePath();
 	const userConfig = ConfigFile.load(userConfigPath);
 	const userModels = loadModels(userModelsPath);
+	const resources = findProjectResources(workRoot).files;
 
 	if (options.configPath !== undefined) {
-		return { config: userConfig.config, models: userModels, sources: [userConfigPath] };
+		return {
+			config: userConfig.config,
+			models: userModels,
+			sources: [userConfigPath],
+			trust: { trusted: false, source: "none" },
+			resources,
+		};
 	}
 
-	const resources = findProjectResources(workRoot);
-	const decision = resolveTrust({
+	const decision = await resolveTrust({
 		root: workRoot,
 		override: options.trust,
 		trustedRoots: userConfig.config.plugins.trusted,
 		// 非交互模式没有人可以问，因此不给询问入口，结论按不信任处理
-		ask: undefined,
-		hasProtectedResources: resources.files.length > 0,
+		ask,
+		hasProtectedResources: resources.length > 0,
 	});
 
-	if (decision.source === "flag" && options.trust !== undefined) {
-		// 命令行给出的结论会被记下来，下次不必再给
-		recordTrust(workRoot, options.trust);
-		writeStderr(`已把 ${workRoot} 记为${options.trust ? "信任" : "不信任"}。
-`);
+	if (decision.source === "flag" || decision.source === "asked") {
+		// 命令行给出的结论与询问得到的结论都会被记下来，下次不必再给
+		recordTrust(workRoot, decision.trusted);
+		writeStderr(`已把 ${workRoot} 记为${decision.trusted ? "信任" : "不信任"}。\n`);
 	}
 
 	if (!decision.trusted) {
-		if (resources.files.length > 0) {
-			const skipped = resources.files.join("、");
-			writeStderr(`工作区里有需要信任才能读取的配置，已跳过：${skipped}\n要使用它们请加 --trust。\n`);
+		if (resources.length > 0) {
+			const how = ask === undefined ? "要使用它们请加 --trust。" : "要使用它们可以在界面里用 /trust 改。";
+			writeStderr(`工作区里有需要信任才能读取的配置，已跳过：${resources.join("、")}\n${how}\n`);
 		}
-		return { config: userConfig.config, models: userModels, sources: [userConfigPath] };
+		return {
+			config: userConfig.config,
+			models: userModels,
+			sources: [userConfigPath],
+			trust: decision,
+			resources,
+		};
 	}
 
 	const projectConfigPath = projectConfigFilePath(workRoot);
 	const projectModelsPath = projectModelsFilePath(workRoot);
-	const config = resources.files.includes(projectConfigPath)
+	const config = resources.includes(projectConfigPath)
 		? mergeConfigs(userConfig, ConfigFile.load(projectConfigPath))
 		: userConfig.config;
-	const models = resources.files.includes(projectModelsPath)
+	const models = resources.includes(projectModelsPath)
 		? mergeModels(userModels, loadModels(projectModelsPath))
 		: userModels;
-	const sources = resources.files.includes(projectConfigPath)
+	const sources = resources.includes(projectConfigPath)
 		? [userConfigPath, projectConfigPath]
 		: [userConfigPath];
-	return { config, models, sources };
+	return { config, models, sources, trust: decision, resources };
+}
+
+function disabledPlugins(config: Config): ReadonlySet<string> {
+	return new Set(config.plugins.disabled);
+}
+
+function createSandboxFor(config: Config, workRoot: string, host: PluginHost): SandboxView {
+	const setup = createSandbox(config.sandbox, workRoot, host.backends());
+	for (const warning of setup.warnings) writeStderr(`${warning}\n`);
+	return setup.sandbox;
+}
+
+function createClient(config: Config, selection: ModelSelection): ReturnType<LlmRegistry["create"]> {
+	return createBuiltinLlmRegistry().create(selection.provider, selection.model, {
+		maxRetries: config.maxRetries,
+		baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+	});
+}
+
+/** 一次运行的驱动。交互模式每次提交都要新建一个：它的生命周期就是一轮对话。 */
+function createDriverFor(
+	context: { readonly config: Config; readonly selection: ModelSelection },
+	shared: {
+		readonly registry: ToolRegistry;
+		readonly session: JsonlSession;
+		readonly workspace: WorkspaceBoundary;
+		readonly sandbox: SandboxView;
+	},
+	onEvent: AgentEventListener,
+): TurnDriver {
+	return new TurnDriver({
+		provider: context.selection.provider,
+		model: context.selection.model,
+		config: context.config,
+		client: createClient(context.config, context.selection),
+		tools: shared.registry,
+		session: shared.session,
+		workspace: shared.workspace,
+		sandbox: shared.sandbox,
+		onEvent,
+	});
 }
 
 /** 审查模型省略时用主模型。它只是判断一次调用该不该放行，不需要额外配置。 */

@@ -100,6 +100,21 @@ export class LineEditor {
 		this.#resetHistoryCursor();
 	}
 
+	/** 删掉光标之前的内容（readline 的 Ctrl+U）。 */
+	deleteToStart(): void {
+		if (this.#cursor === 0) return;
+		this.#clusters = this.#clusters.slice(this.#cursor);
+		this.#cursor = 0;
+		this.#resetHistoryCursor();
+	}
+
+	/** 删掉光标之后的内容（readline 的 Ctrl+K）。 */
+	deleteToEnd(): void {
+		if (this.#cursor >= this.#clusters.length) return;
+		this.#clusters = this.#clusters.slice(0, this.#cursor);
+		this.#resetHistoryCursor();
+	}
+
 	moveLeft(): void {
 		this.#cursor = Math.max(0, this.#cursor - 1);
 	}

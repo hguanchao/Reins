@@ -1,9 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-import { ConfigError } from "../config/config-error.ts";
-import { configFilePath, projectConfigFilePath, projectDirPath } from "../config/paths.ts";
-import { TomlDocument } from "../config/toml/index.ts";
+import { updateUserConfigValue } from "../config/write-back.ts";
+import { projectConfigFilePath, projectDirPath } from "../config/paths.ts";
 
 /**
  * 工作区信任。
@@ -35,7 +34,7 @@ export function findProjectResources(root: string): ProjectResources {
 export interface TrustDecision {
 	readonly trusted: boolean;
 	/** 结论来自哪里，用于告诉使用者为什么是这个结果 */
-	readonly source: "flag" | "saved" | "default" | "none";
+	readonly source: "flag" | "saved" | "asked" | "default" | "none";
 }
 
 /**
@@ -58,25 +57,28 @@ export function findSavedDecision(trustedRoots: readonly string[], root: string)
 /**
  * 定下这次运行的信任结果。
  *
- * 链条是：命令行给出的一票 → 已记录的清单 → 没有人可问时按不信任处理。默认不信任是刻意的：
- * 从别处拿来的目录默认让它的配置生效，等于让一个目录在没人同意的情况下改变程序的行为。
+ * 链条是：命令行给出的一票 → 已记录的清单 → 有人可问就问 → 没有人可问时按不信任处理。
+ * 默认不信任是刻意的：从别处拿来的目录默认让它的配置生效，等于让一个目录在没人同意的情况下
+ * 改变程序的行为。
+ *
+ * 询问可以是异步的（要等使用者在终端上敲一个键），因此这个函数也是异步的。
  */
-export function resolveTrust(options: {
+export async function resolveTrust(options: {
 	readonly root: string;
 	/** 命令行给出的结论 */
 	readonly override: boolean | undefined;
 	readonly trustedRoots: readonly string[];
 	/** 有交互界面时才会去问 */
-	readonly ask: (() => boolean) | undefined;
+	readonly ask: (() => boolean | Promise<boolean>) | undefined;
 	readonly hasProtectedResources: boolean;
-}): TrustDecision {
+}): Promise<TrustDecision> {
 	if (!options.hasProtectedResources) return { trusted: false, source: "none" };
 	if (options.override !== undefined) return { trusted: options.override, source: "flag" };
 
 	const saved = findSavedDecision(options.trustedRoots, options.root);
 	if (saved !== undefined) return { trusted: saved, source: "saved" };
 
-	if (options.ask !== undefined) return { trusted: options.ask(), source: "default" };
+	if (options.ask !== undefined) return { trusted: await options.ask(), source: "asked" };
 	return { trusted: false, source: "default" };
 }
 
@@ -87,32 +89,17 @@ export function resolveTrust(options: {
  * 所以清单只写在用户级配置里。
  */
 export function recordTrust(root: string, trusted: boolean): void {
-	const file = configFilePath();
-	const source = existsSync(file) ? readFileSync(file, "utf8") : "";
-	const document = new TomlDocument(source);
 	const canonical = resolve(root);
-
-	const current = readTrustedRoots(document);
-	const next = trusted
-		? [...current.filter((entry) => !samePath(entry, canonical)), canonical]
-		: current.filter((entry) => !samePath(entry, canonical));
-
-	try {
-		mkdirSync(dirname(file), { recursive: true });
-		// 定点回写：使用者写在配置文件里的注释与排版原样保留
-		document.set(["plugins", "trusted"], next);
-		writeFileSync(file, document.source, "utf8");
-	} catch (error) {
-		throw new ConfigError(
-			`写入信任清单失败：${error instanceof Error ? error.message : String(error)}`,
-			{ file },
-		);
-	}
+	updateUserConfigValue(["plugins", "trusted"], (current) => {
+		const roots = readTrustedRoots(current);
+		return trusted
+			? [...roots.filter((entry) => !samePath(entry, canonical)), canonical]
+			: roots.filter((entry) => !samePath(entry, canonical));
+	});
 }
 
-/** 读已记录的信任清单。 */
-export function readTrustedRoots(document: TomlDocument): readonly string[] {
-	const value = document.get(["plugins", "trusted"]);
+/** 读已记录的信任清单。值来自配置文件，因此先按 unknown 收窄。 */
+export function readTrustedRoots(value: unknown): readonly string[] {
 	if (!Array.isArray(value)) return [];
 	return value.filter((item): item is string => typeof item === "string");
 }

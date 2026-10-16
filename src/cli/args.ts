@@ -6,7 +6,7 @@ export class UsageError extends Error {
 	}
 }
 
-export type CliCommand = "print" | "config-check" | "help" | "version";
+export type CliCommand = "print" | "chat" | "config-check" | "help" | "version";
 
 export interface CliOptions {
 	readonly command: CliCommand;
@@ -113,8 +113,8 @@ function resolveCommand(positionals: readonly string[], explicitPrint: boolean):
 		if (positionals.length > 2) throw new UsageError(`config check 不接受额外参数：${positionals.slice(2).join(" ")}`);
 		return "config-check";
 	}
-	// 没有句子就没有可执行的事，此时显示帮助比报错更省事
-	if (!explicitPrint && positionals.length === 0) return "help";
+	// 没有句子、也没有要求非交互，就是进交互界面
+	if (!explicitPrint && positionals.length === 0) return "chat";
 	if (positionals.length === 0) throw new UsageError("-p 后面需要给出要执行的句子");
 	return "print";
 }
@@ -122,6 +122,7 @@ function resolveCommand(positionals: readonly string[], explicitPrint: boolean):
 export const HELP_TEXT = `Reins —— 终端编码智能体
 
 用法:
+  reins                     进入交互界面
   reins <句子>              执行一句话，结果写到标准输出
   reins -p <句子>           同上，显式指定非交互模式
   reins config check        校验配置文件并列出解析结果

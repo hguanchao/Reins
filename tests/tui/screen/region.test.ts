@@ -75,6 +75,26 @@ describe("LiveRegion", () => {
 		assert.deepEqual(screen.scrolled(), ["第 0 条", "第 1 条", "第 2 条"]);
 	});
 
+	it("光标停在活动区中间时，重画不会擦到上面的历史", () => {
+		const { terminal, region } = createRegion();
+		region.commit([plain("历史")]);
+		region.draw({ lines: [plain("输入"), plain("状态")], cursor: { row: 0, col: 2 } });
+
+		region.draw({ lines: [plain("输入改了"), plain("状态")], cursor: { row: 0, col: 4 } });
+
+		const screen = screenOf(terminal);
+		assert.deepEqual(screen.visible().slice(0, 3), ["历史", "输入改了", "状态"]);
+	});
+
+	it("提交长内容时由活动区自己折行，行数才对得上", () => {
+		const { terminal, region } = createRegion({ rows: 6, cols: 10 });
+		region.commit([plain("一二三四五六七八九十一二三四五六")]);
+		region.draw({ lines: [plain("输入")] });
+
+		const screen = screenOf(terminal);
+		assert.deepEqual(screen.visible().slice(0, 3), ["一二三四五", "六七八九十", "一二三四五"]);
+	});
+
 	it("内容没变就不写任何字节", () => {
 		const { terminal, region } = createRegion();
 		region.draw({ lines: [plain("一样的内容")] });

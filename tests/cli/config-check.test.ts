@@ -128,8 +128,14 @@ describe("reins config check", () => {
 });
 
 describe("reins 帮助与版本", () => {
-	it("无参数时打印帮助并以 0 退出", () => {
+	it("无参数时要求终端：测试里的标准输出不是终端", () => {
 		const result = run([]);
+		assert.equal(result.code, 2);
+		assert.ok(result.stderr.includes("交互界面需要终端"));
+	});
+
+	it("打印帮助", () => {
+		const result = run(["--help"]);
 		assert.equal(result.code, 0);
 		assert.ok(result.stdout.includes("用法"));
 	});

@@ -72,42 +72,51 @@ describe("已记录的信任", () => {
 describe("信任结论", () => {
 	const base = { root: work, trustedRoots: [], ask: undefined, hasProtectedResources: true };
 
-	it("没有受保护资源时直接跳过", () => {
-		assert.deepEqual(resolveTrust({ ...base, override: undefined, hasProtectedResources: false }), {
+	it("没有受保护资源时直接跳过", async () => {
+		assert.deepEqual(await resolveTrust({ ...base, override: undefined, hasProtectedResources: false }), {
 			trusted: false,
 			source: "none",
 		});
 	});
 
-	it("命令行给出的结论优先于已记录的决定", () => {
-		assert.deepEqual(resolveTrust({ ...base, override: true }), { trusted: true, source: "flag" });
-		assert.deepEqual(resolveTrust({ ...base, override: false, trustedRoots: [work] }), {
+	it("命令行给出的结论优先于已记录的决定", async () => {
+		assert.deepEqual(await resolveTrust({ ...base, override: true }), { trusted: true, source: "flag" });
+		assert.deepEqual(await resolveTrust({ ...base, override: false, trustedRoots: [work] }), {
 			trusted: false,
 			source: "flag",
 		});
 	});
 
-	it("已记录的决定在命令行没给结论时生效", () => {
-		assert.deepEqual(resolveTrust({ ...base, override: undefined, trustedRoots: [work] }), {
+	it("已记录的决定在命令行没给结论时生效", async () => {
+		assert.deepEqual(await resolveTrust({ ...base, override: undefined, trustedRoots: [work] }), {
 			trusted: true,
 			source: "saved",
 		});
 	});
 
-	it("没有人可以问时按不信任处理", () => {
-		assert.deepEqual(resolveTrust({ ...base, override: undefined }), {
+	it("没有人可以问时按不信任处理", async () => {
+		assert.deepEqual(await resolveTrust({ ...base, override: undefined }), {
 			trusted: false,
 			source: "default",
 		});
 	});
 
-	it("有交互界面时按询问的结果定", () => {
-		assert.equal(resolveTrust({ ...base, override: undefined, ask: () => true }).trusted, true);
-		assert.equal(resolveTrust({ ...base, override: undefined, ask: () => false }).trusted, false);
+	it("有交互界面时按询问的结果定", async () => {
+		assert.equal((await resolveTrust({ ...base, override: undefined, ask: () => true })).trusted, true);
+		assert.equal((await resolveTrust({ ...base, override: undefined, ask: () => false })).trusted, false);
+		assert.equal(
+			(await resolveTrust({ ...base, override: undefined, ask: async () => true })).source,
+			"asked",
+		);
 	});
 });
 
 describe("把信任结论写回配置", () => {
+	/** 从写好的配置里把清单读回来。 */
+	function rootsIn(source: string): readonly string[] {
+		return readTrustedRoots(new TomlDocument(source).get(["plugins", "trusted"]));
+	}
+
 	it("写入清单，并保留原有的注释与排版", () => {
 		const file = join(home, "config.toml");
 		mkdirSync(home, { recursive: true });
@@ -133,24 +142,21 @@ describe("把信任结论写回配置", () => {
 		assert.ok(written.includes("# ── 插件 ──"));
 		assert.ok(written.includes("# [plugins]"));
 
-		const roots = readTrustedRoots(new TomlDocument(written));
-		assert.deepEqual(roots, [resolve(work)]);
+		assert.deepEqual(rootsIn(written), [resolve(work)]);
 	});
 
 	it("取消信任时从清单里去掉", () => {
 		mkdirSync(home, { recursive: true });
 		recordTrust(work, true);
 		recordTrust(work, false);
-		const roots = readTrustedRoots(new TomlDocument(readFileSync(join(home, "config.toml"), "utf8")));
-		assert.deepEqual(roots, []);
+		assert.deepEqual(rootsIn(readFileSync(join(home, "config.toml"), "utf8")), []);
 	});
 
 	it("重复信任同一个目录不会写出两条", () => {
 		mkdirSync(home, { recursive: true });
 		recordTrust(work, true);
 		recordTrust(work, true);
-		const roots = readTrustedRoots(new TomlDocument(readFileSync(join(home, "config.toml"), "utf8")));
-		assert.equal(roots.length, 1);
+		assert.equal(rootsIn(readFileSync(join(home, "config.toml"), "utf8")).length, 1);
 	});
 
 	it("配置文件不存在时新建出来", () => {

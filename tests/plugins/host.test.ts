@@ -225,3 +225,31 @@ describe("插件命令", () => {
 		);
 	});
 });
+
+describe("插件提供的交互界面", () => {
+	const frontend = { async run(): Promise<void> {} };
+
+	it("没有任何插件提供界面时返回 undefined", async () => {
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
+		await host.load([{ name: "empty-plugin", setup() {} }]);
+		assert.equal(host.frontend(), undefined);
+	});
+
+	it("界面由插件提供，宿主只取用", async () => {
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
+		await host.load([{ name: "ui-plugin", setup: (api) => api.registerFrontend(frontend) }]);
+		assert.equal(host.frontend(), frontend);
+	});
+
+	it("第二个界面会被记为该插件装载失败：两套界面同时抢终端谁也画不清楚", async () => {
+		const host = new PluginHost(makeRegistry(), new PermissionPolicy("ask"));
+		const failures = await host.load([
+			{ name: "a-plugin", setup: (api) => api.registerFrontend(frontend) },
+			{ name: "b-plugin", setup: (api) => api.registerFrontend(frontend) },
+		]);
+
+		assert.equal(failures.length, 1);
+		assert.match(failures[0].message, /只能有一个/);
+		assert.equal(host.frontend(), frontend);
+	});
+});

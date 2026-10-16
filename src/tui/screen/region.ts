@@ -1,4 +1,6 @@
-import type { Line } from "../text/line.ts";
+import { lineWidth, type Line } from "../text/line.ts";
+import { truncateLine } from "../text/truncate.ts";
+import { wrapLine } from "../text/wrap.ts";
 import type { TerminalDevice } from "../terminal/terminal.ts";
 import { serializeLine } from "./style.ts";
 
@@ -38,8 +40,11 @@ export class LiveRegion {
 	/** 画一帧。内容与上一帧一致时一个字节都不写——重复写入正是闪烁的来源。 */
 	draw(frame: LiveFrame): void {
 		if (sameFrame(this.#live, frame)) return;
+
+		// 擦除要按上一帧的光标位置回退，所以先擦后换
+		const erase = this.#erase();
 		this.#live = frame;
-		this.#device.write(this.#erase() + this.#render(frame));
+		this.#device.write(erase + this.#render(frame));
 	}
 
 	/** 把内容永久写进滚动区，随后把当前活动区重画在它下面。 */
@@ -47,7 +52,12 @@ export class LiveRegion {
 		if (lines.length === 0) return;
 
 		let text = this.#erase();
-		for (const line of lines) text += `${serializeLine(line, this.#colors)}\r\n`;
+		for (const line of lines) {
+			// 提交的内容由这里折到当前宽度：擦除时按行数回退，行数不准就会擦错地方
+			for (const wrapped of wrapLine(line, { width: this.#width() })) {
+				text += `${serializeLine(wrapped, this.#colors)}\r\n`;
+			}
+		}
 		this.#device.write(text + this.#render(this.#live));
 	}
 
@@ -60,17 +70,27 @@ export class LiveRegion {
 	#erase(): string {
 		if (this.#drawn === 0) return "";
 
+		let text = "";
+		// 上一帧把光标停在了活动区中间（输入框那一行就是），先回到最后一行再往上擦；
+		// 少回这一步就会多擦一行，把上面已经提交的历史擦掉
+		const rest = this.#drawn - 1 - (this.#live.cursor?.row ?? this.#drawn - 1);
+		if (rest > 0) text += `\x1b[${rest}B`;
+
 		// 先清当前行，再逐行上移并清空，最后光标停在活动区第一列
-		let text = "\r\x1b[2K";
+		text += "\r\x1b[2K";
 		for (let index = 1; index < this.#drawn; index += 1) text += "\x1b[1A\r\x1b[2K";
 		this.#drawn = 0;
 		return text;
 	}
 
 	#render(frame: LiveFrame): string {
+		const width = this.#width();
 		let text = "";
 		frame.lines.forEach((line, index) => {
-			text += `\r\x1b[2K${serializeLine(line, this.#colors)}`;
+			// 调用方应当已经按宽度折好（光标位置是按折行后的结果算的）。万一没折，这里截断：
+			// 让终端自动折行会把物理行数与记录的行数弄岔，之后每次擦除都会擦错地方
+			const fitted = lineWidth(line) > width ? truncateLine(line, width) : line;
+			text += `\r\x1b[2K${serializeLine(fitted, this.#colors)}`;
 			if (index < frame.lines.length - 1) text += "\r\n";
 		});
 
@@ -84,6 +104,10 @@ export class LiveRegion {
 
 		this.#drawn = frame.lines.length;
 		return text;
+	}
+
+	#width(): number {
+		return Math.max(1, this.#device.size().cols);
 	}
 }
 

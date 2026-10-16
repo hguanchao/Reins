@@ -17,6 +17,8 @@ export class MemoryTerminal implements Terminal {
 	readonly cursorVisibility: boolean[] = [];
 	readonly pasteModes: boolean[] = [];
 	readonly focusModes: boolean[] = [];
+	/** 每次缩放发生在第几次写入之后，供重放时按当时的几何尺寸还原 */
+	readonly resizes: { readonly at: number; readonly size: TerminalSize }[] = [];
 
 	#size: TerminalSize;
 	#inputListener: ((chunk: string) => void) | undefined;
@@ -65,6 +67,7 @@ export class MemoryTerminal implements Terminal {
 
 	/** 模拟窗口缩放。 */
 	resize(size: TerminalSize): void {
+		this.resizes.push({ at: this.writes.length, size });
 		this.#size = size;
 		this.#resizeListener?.();
 	}
@@ -83,8 +86,8 @@ interface Cursor {
  * 自动折行的普通字符。认不出来的序列一律跳过，与终端的行为一致。
  */
 export class ScreenEmulator {
-	readonly cols: number;
-	readonly rows: number;
+	#cols: number;
+	#rows: number;
 
 	#grid: string[][];
 	#cursor: Cursor = { row: 0, col: 0 };
@@ -93,9 +96,40 @@ export class ScreenEmulator {
 	#scrolled: string[] = [];
 
 	constructor(rows: number, cols: number) {
-		this.rows = rows;
-		this.cols = cols;
+		this.#rows = rows;
+		this.#cols = cols;
 		this.#grid = Array.from({ length: rows }, () => new Array<string>(cols).fill(" "));
+	}
+
+	get rows(): number {
+		return this.#rows;
+	}
+
+	get cols(): number {
+		return this.#cols;
+	}
+
+	/**
+	 * 改变尺寸。
+	 *
+	 * 已有内容按「不回流的终端」处理：行数多了补空行，少了丢掉底部；列宽变化时右侧内容被裁掉。
+	 * 真实终端里有的会重排已有的行，但那属于终端自己的行为，界面只保证新画的内容按新宽度排版。
+	 */
+	resize(rows: number, cols: number): void {
+		const grid = Array.from({ length: rows }, (_, row) => {
+			const source = this.#grid[row] ?? [];
+			const line = new Array<string>(cols).fill(" ");
+			for (let col = 0; col < Math.min(cols, source.length); col += 1) line[col] = source[col];
+			return line;
+		});
+		this.#grid = grid;
+		this.#rows = rows;
+		this.#cols = cols;
+		this.#cursor = {
+			row: Math.min(this.#cursor.row, rows - 1),
+			col: Math.min(this.#cursor.col, cols - 1),
+		};
+		this.#pendingWrap = false;
 	}
 
 	/** 写入一段字节并即时生效。 */
@@ -170,11 +204,11 @@ export class ScreenEmulator {
 				this.#pendingWrap = false;
 				break;
 			case "B":
-				this.#cursor.row = Math.min(this.rows - 1, this.#cursor.row + (Number.isNaN(value) ? 1 : value));
+				this.#cursor.row = Math.min(this.#rows - 1, this.#cursor.row + (Number.isNaN(value) ? 1 : value));
 				this.#pendingWrap = false;
 				break;
 			case "G":
-				this.#cursor.col = Math.min(this.cols - 1, Math.max(0, (Number.isNaN(value) ? 1 : value) - 1));
+				this.#cursor.col = Math.min(this.#cols - 1, Math.max(0, (Number.isNaN(value) ? 1 : value) - 1));
 				this.#pendingWrap = false;
 				break;
 			default:
@@ -187,13 +221,13 @@ export class ScreenEmulator {
 
 	#lineFeed(): void {
 		this.#cursor.row += 1;
-		if (this.#cursor.row < this.rows) return;
+		if (this.#cursor.row < this.#rows) return;
 
 		// 到底了：整屏上移一行，被顶出去的那行进回滚缓冲
 		const [first, ...rest] = this.#grid;
 		this.#scrolled.push((first ?? []).join("").replace(/\s+$/, ""));
-		this.#grid = [...rest, new Array<string>(this.cols).fill(" ")];
-		this.#cursor.row = this.rows - 1;
+		this.#grid = [...rest, new Array<string>(this.#cols).fill(" ")];
+		this.#cursor.row = this.#rows - 1;
 	}
 
 	#put(char: string): void {
@@ -206,7 +240,7 @@ export class ScreenEmulator {
 			this.#pendingWrap = false;
 		}
 		// 宽字符放不下当前行时也会折行，与真实终端的自动折行一致
-		if (this.#cursor.col + width > this.cols) {
+		if (this.#cursor.col + width > this.#cols) {
 			this.#cursor.col = 0;
 			this.#lineFeed();
 		}
@@ -217,17 +251,23 @@ export class ScreenEmulator {
 			if (width === 2) row[this.#cursor.col + 1] = "";
 		}
 		this.#cursor.col += width;
-		if (this.#cursor.col >= this.cols) {
-			this.#cursor.col = this.cols - 1;
+		if (this.#cursor.col >= this.#cols) {
+			this.#cursor.col = this.#cols - 1;
 			this.#pendingWrap = true;
 		}
 	}
 }
 
-/** 把假终端写过的所有字节重放到一块屏幕上。 */
+/** 把假终端写过的所有字节重放到一块屏幕上，途中遇到缩放就按新尺寸继续。 */
 export function screenOf(terminal: MemoryTerminal, size?: TerminalSize): ScreenEmulator {
 	const current = size ?? terminal.size();
 	const screen = new ScreenEmulator(current.rows, current.cols);
-	for (const chunk of terminal.writes) screen.feed(chunk);
+
+	terminal.writes.forEach((chunk, index) => {
+		for (const resize of terminal.resizes) {
+			if (resize.at === index) screen.resize(resize.size.rows, resize.size.cols);
+		}
+		screen.feed(chunk);
+	});
 	return screen;
 }
