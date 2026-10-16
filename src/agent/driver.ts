@@ -172,6 +172,15 @@ export class TurnDriver {
 					isError: true,
 				},
 			});
+			// 也要告诉界面：不发声的话，使用者只看到这一轮突然停下，不知道工具根本没执行
+			await this.emit({
+				type: "tool_end",
+				callId: call.id,
+				name: call.name,
+				isError: true,
+				durationMs: 0,
+				summary: firstLine(content),
+			});
 		}
 	}
 

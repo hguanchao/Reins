@@ -134,10 +134,17 @@ describe("reins 帮助与版本", () => {
 		assert.ok(result.stderr.includes("交互界面需要终端"));
 	});
 
+	it("交互界面下 --yes 没有意义，直接报用法错误", () => {
+		const result = run(["--yes"]);
+		assert.equal(result.code, 2);
+		assert.ok(result.stderr.includes("--yes 没有意义"));
+	});
+
 	it("打印帮助", () => {
 		const result = run(["--help"]);
 		assert.equal(result.code, 0);
 		assert.ok(result.stdout.includes("用法"));
+		assert.ok(result.stdout.includes("进入交互界面"));
 	});
 
 	it("打印版本号", () => {

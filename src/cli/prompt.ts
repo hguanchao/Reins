@@ -1,4 +1,5 @@
 import { createInterface } from "node:readline";
+import type { Readable, Writable } from "node:stream";
 
 /**
  * 进入交互界面之前的那一句询问。
@@ -9,8 +10,14 @@ import { createInterface } from "node:readline";
  *
  * 读不到答案（输入结束、被中断）时按「不」处理：没人明确同意过的事，不能替人同意。
  */
-export async function askYesNo(question: string): Promise<boolean> {
-	const terminal = createInterface({ input: process.stdin, output: process.stderr });
+export async function askYesNo(
+	question: string,
+	io: { readonly input: Readable; readonly output: Writable } = {
+		input: process.stdin,
+		output: process.stderr,
+	},
+): Promise<boolean> {
+	const terminal = createInterface({ input: io.input, output: io.output });
 
 	try {
 		return await new Promise<boolean>((resolve) => {

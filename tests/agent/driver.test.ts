@@ -135,7 +135,7 @@ describe("回合驱动", () => {
 			...toolCallResult({ id: "call_1", name: "read", arguments: { path: "c.txt" } }),
 			stopReason: "length",
 		};
-		const { session, driver } = fixtures([truncated, textResult("好的")]);
+		const { session, driver, events } = fixtures([truncated, textResult("好的")]);
 
 		await driver.run("读一下", new AbortController().signal);
 
@@ -144,6 +144,12 @@ describe("回合驱动", () => {
 		assert.equal(result.role === "toolResult" ? result.isError : false, true);
 		assert.match(result.role === "toolResult" ? result.content : "", /被长度上限截断/);
 		assert.ok(!session.state().messages.some((message) => message.role === "toolResult" && message.content === "不该被读到"));
+
+		// 界面上也要看得到这件事：否则使用者只看到这一轮突然停下
+		const ended = events.filter((event) => event.type === "tool_end");
+		assert.equal(ended.length, 1);
+		assert.equal(ended[0].type === "tool_end" ? ended[0].isError : false, true);
+		assert.match(ended[0].type === "tool_end" ? ended[0].summary : "", /被长度上限截断/);
 	});
 
 	it("参数不是合法 JSON 时不拿空对象去执行", async () => {
