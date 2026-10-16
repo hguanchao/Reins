@@ -16,6 +16,22 @@ const DIALOG_HEADING = "## 对话";
 const COMPACTION_HEADING = "## 上下文压缩";
 const USAGE_HEADING = "## 用量";
 
+/**
+ * 时间按本地时间写。
+ *
+ * 文件里存的是标准时间，但读的人只关心「什么时候」；会话清单也用它，于是几处看到的时间格式
+ * 是同一个。
+ */
+export function formatTimestamp(iso: string): string {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return iso;
+	const pad = (value: number): string => String(value).padStart(2, "0");
+	return (
+		`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+		`${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+	);
+}
+
 export function renderSessionMarkdown(
 	header: SessionHeaderEntry | undefined,
 	entries: readonly SessionEntry[],
@@ -25,7 +41,7 @@ export function renderSessionMarkdown(
 	lines.push(`# 会话 ${header?.id ?? "（缺少会话头）"}`);
 	lines.push("");
 	if (header !== undefined) {
-		lines.push(`- 开始：${header.timestamp}`);
+		lines.push(`- 开始：${formatTimestamp(header.timestamp)}`);
 		lines.push(`- 目录：${header.cwd}`);
 		if (header.forkedFrom !== undefined) {
 			lines.push(`- 分叉自：${header.forkedFrom.session} 的 ${header.forkedFrom.entry}`);
@@ -50,7 +66,7 @@ export function renderSessionMarkdown(
 		lines.push(COMPACTION_HEADING, "");
 		for (const entry of compactions) {
 			if (entry.type !== "compaction") continue;
-			lines.push(`### ${entry.timestamp}　${entry.provider}/${entry.model}`);
+			lines.push(`### ${formatTimestamp(entry.timestamp)}　${entry.provider}/${entry.model}`);
 			lines.push("");
 			lines.push(`覆盖 ${entry.covered.length} 条消息，压缩前约 ${entry.tokensBefore} token。`);
 			lines.push("");

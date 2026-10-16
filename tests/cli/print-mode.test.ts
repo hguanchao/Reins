@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { sessionsDir } from "../../src/config/paths.ts";
 import { after, describe, it } from "node:test";
 import { promisify } from "node:util";
 
@@ -114,6 +116,8 @@ function answerChunks(): unknown[] {
 
 const workDir = mkdtempSync(join(tmpdir(), "reins-e2e-work-"));
 const homeDir = mkdtempSync(join(tmpdir(), "reins-e2e-home-"));
+// 测试进程与子进程必须看同一个配置目录：会话目录是从它推出来的，接续才找得到刚造的那些会话
+process.env["REINS_HOME"] = homeDir;
 /** 所有起过的服务都记下来，结束时统一关掉：漏一个就会让测试进程一直挂着 */
 const servers: Server[] = [];
 
@@ -262,6 +266,48 @@ describe("reins 的整条链路", () => {
 		const entries = lines.slice(1).map((line) => JSON.parse(line) as { type: string });
 		assert.ok(entries.some((entry) => entry.type === "compaction"));
 		assert.ok(entries.some((entry) => entry.type === "message"));
+	});
+
+	it("--resume 接着原来的会话继续，历史进了下一次请求", async () => {
+		const started = await serve();
+		const { workRoot } = writeConfig(started.port);
+
+		// 先造一个有历史的会话：文件就放在这个工作根对应的会话目录里
+		const file = join(sessionsDir(workRoot), "past1234.jsonl");
+		mkdirSync(dirname(file), { recursive: true });
+		const lines = [
+			JSON.stringify({ type: "session", version: 1, id: "past1234", timestamp: "2026-10-16T00:00:00.000Z", cwd: workRoot }),
+			JSON.stringify({
+				type: "message",
+				id: "e1",
+				parentId: null,
+				timestamp: "2026-10-16T00:00:01.000Z",
+				message: { role: "user", content: "先读一下 hello.txt" },
+			}),
+			JSON.stringify({
+				type: "message",
+				id: "e2",
+				parentId: "e1",
+				timestamp: "2026-10-16T00:00:02.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: "读完了" }] },
+			}),
+		];
+		writeFileSync(file, `${lines.join("\n")}\n`, "utf8");
+
+		const result = await run(["--resume", "past1234", "--yes", "接着改一下"], { workRoot });
+
+		assert.equal(result.code, 0, `标准错误：${result.stderr}`);
+		// 第二次请求里带着上一次的上下文：使用者说了什么、助手答了什么都在
+		const request = JSON.parse(started.requests[0].body) as { messages: { role: string; content: string }[] };
+		const text = JSON.stringify(request.messages);
+		assert.ok(text.includes("先读一下 hello.txt"), text);
+		assert.ok(text.includes("读完了"), text);
+
+		// 写回的是同一个文件，旧条目在前面
+		const written = readFileSync(file, "utf8").trim().split("\n");
+		assert.equal(JSON.parse(written[0]).id, "past1234");
+		assert.ok(written.length > lines.length);
+		assert.ok(written[1].includes("先读一下 hello.txt"));
 	});
 
 	it("没有 --yes 时改动类操作被拒，且说明怎么办", async () => {
