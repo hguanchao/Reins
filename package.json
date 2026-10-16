@@ -18,6 +18,7 @@
 		"typescript": "^5.9.0"
 	},
 	"dependencies": {
+		"eventsource-parser": "4.1.2",
 		"get-east-asian-width": "1.7.0"
 	}
 }
