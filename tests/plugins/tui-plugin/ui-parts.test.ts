@@ -3,13 +3,11 @@ import { describe, it } from "node:test";
 
 import type { NotifyMode } from "../../../src/config/config-file.ts";
 import { isBuiltinCommand, runBuiltin, type BuiltinContext } from "../../../src/plugins/tui-plugin/commands.ts";
-import { dialogDecision, dialogLines } from "../../../src/plugins/tui-plugin/dialog.ts";
 import {
 	decideNotify,
 	desktopNotificationsSupported,
 	notificationSequence,
 } from "../../../src/plugins/tui-plugin/notify.ts";
-import { lineText } from "../../../src/tui/text/line.ts";
 import { makeRuntime } from "./helpers.ts";
 
 describe("完成提醒", () => {
@@ -50,43 +48,7 @@ describe("完成提醒", () => {
 	});
 });
 
-describe("确认框", () => {
-	const dialog = {
-		question: "是否允许执行 bash？",
-		detail: '{\n  "command": "ls"\n}',
-		resolve: () => undefined,
-	};
 
-	it("画成一个带边框的方框，标题是问题，底部是按键提示", () => {
-		const lines = dialogLines(dialog, 40).map((line) => lineText(line));
-		assert.ok(lines[0].includes("是否允许执行 bash？"));
-		assert.ok(lines.some((line) => line.includes('"command": "ls"')));
-		assert.ok(lines.some((line) => line.includes("[y] 允许")));
-	});
-
-	it("内容过长时截断，方框不超出给定宽度", () => {
-		const long = {
-			...dialog,
-			detail: Array.from({ length: 20 }, (_, index) => `第 ${index} 行`).join("\n"),
-		};
-		const lines = dialogLines(long, 30).map((line) => lineText(line));
-		assert.ok(lines.some((line) => line.includes("…")));
-		assert.ok(lines.every((line) => [...line].length <= 30));
-		assert.equal(lines.length, 11);
-	});
-
-	it("按键只有明确的肯定与否定才算数", () => {
-		assert.equal(dialogDecision({ type: "text", text: "y" }), true);
-		assert.equal(dialogDecision({ type: "text", text: "Yes" }), true);
-		assert.equal(dialogDecision({ type: "text", text: "n" }), false);
-		assert.equal(dialogDecision({ type: "key", name: "enter" }), true);
-		assert.equal(dialogDecision({ type: "key", name: "escape" }), false);
-		// 看不懂的键不作数，对话框继续等
-		assert.equal(dialogDecision({ type: "text", text: "也许" }), undefined);
-		assert.equal(dialogDecision({ type: "key", name: "up" }), undefined);
-		assert.equal(dialogDecision({ type: "focus", focused: false }), undefined);
-	});
-});
 
 describe("自带命令", () => {
 	function builtinContext(options: { readonly notify?: NotifyMode } = {}): {

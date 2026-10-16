@@ -5,7 +5,6 @@ import {
 	colorSupport,
 	KeyDecoder,
 	LineEditor,
-	lineWidth,
 	plain,
 	ScreenRegion,
 	spinnerLine,
@@ -19,7 +18,7 @@ import {
 import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
 import { describeUsage } from "../../session/usage.ts";
 import { isBuiltinCommand, runBuiltin } from "./commands.ts";
-import { dialogDecision, dialogLines, type ConfirmDialog } from "./dialog.ts";
+import { dialogDecision, type ConfirmDialog } from "./dialog.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { Transcript } from "./transcript.ts";
 
@@ -44,8 +43,11 @@ const USER_INDENT = "  ";
 const PROMPT: Line = [...plain(USER_INDENT), ...styled("› ", { color: "cyan" })];
 const PLACEHOLDER = "说点什么；/help 看命令";
 
-/** 输入区的上下实线。两端接进外框，因此铺满整屏宽。 */
-const inputRule = (width: number): Line => plain(`├${"─".repeat(Math.max(1, width - 2))}┤`);
+/** 输入区的上下实线：铺满整屏宽，两端不留边框。 */
+const inputRule = (width: number): Line => plain("─".repeat(Math.max(1, width)));
+
+/** 状态行、信息行与确认框整体缩进两列，与上面会话里的内容对齐。 */
+const indented = (line: Line): Line => [...plain("  "), ...line];
 
 export interface FrontendOptions {
 	readonly terminal: Terminal;
@@ -504,12 +506,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const width = Math.max(8, size.cols);
 		const height = Math.max(FOOTER_ROWS + 3, size.rows);
 
-		const editor = this.#editor.render({ width: width - 4, prompt: PROMPT, placeholder: PLACEHOLDER });
+		const editor = this.#editor.render({ width: width - 2, prompt: PROMPT, placeholder: PLACEHOLDER });
 		// 确认框顶掉整个 Footer；两种形态等高，所以 Main 的高度不随它变
-		const dialog = this.#dialog === undefined ? undefined : dialogLines(this.#dialog, width - 4);
+		const dialog = this.#dialog;
 		const footer =
-			dialog === undefined ? this.#footerRows(editor, width) : this.#confirmFooterRows(dialog, width);
-		const mainRows = Math.max(1, height - footer.rows.length - 2);
+			dialog === undefined ? this.#footerRows(editor, width) : this.#confirmFooterRows(dialog.question, width);
+		const mainRows = Math.max(1, height - footer.rows.length);
 
 		const transcript = [...this.#history, ...this.#transcript.live({ maxLines: mainRows, now: Date.now() })];
 		const maxStart = Math.max(0, transcript.length - mainRows);
@@ -522,15 +524,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const visible = transcript.slice(start, start + mainRows);
 		while (visible.length < mainRows) visible.push(plain(""));
 
-		const rows: Line[] = [plain(`┌${"─".repeat(width - 2)}┐`)];
-		for (const line of visible) rows.push(frameRow(line, width));
-		rows.push(...footer.rows);
-		rows.push(plain(`└${"─".repeat(width - 2)}┘`));
+		const rows: Line[] = [...visible, ...footer.rows];
 
-		// 光标在输入那一行：上面隔着顶框与整块 Main
+		// 光标在输入那一行：上面是整块 Main
 		this.#region.draw({
 			lines: rows,
-			cursor: { row: 1 + mainRows + footer.editorAt + editor.cursor.row, col: 2 + editor.cursor.col },
+			cursor: { row: mainRows + footer.editorAt + editor.cursor.row, col: editor.cursor.col },
 		});
 	}
 
@@ -541,29 +540,33 @@ export class TerminalFrontend implements InteractiveFrontend {
 	} {
 		return {
 			rows: [
-				frameRow(plain(""), width),
-				frameRow(this.#statusLine(width - 4), width),
+				plain(""),
+				indented(this.#statusLine(width - 2)),
 				inputRule(width),
-				...editor.lines.map((line) => frameRow(line, width)),
+				...editor.lines,
 				inputRule(width),
-				frameRow(this.#infoLine(width - 4), width),
+				indented(this.#infoLine(width - 2)),
 			],
 			editorAt: 3,
 		};
 	}
 
-	/** 确认框顶掉整个 Footer：实线 / 空 / 问题 / 空 / 选项 / 实线。 */
+	/**
+	 * 确认框顶掉整个 Footer：实线 / 空 / 问题 / 空 / 选项 / 实线。
+	 *
+	 * 框里不重复命令——它完整显示在上面那条工具调用里，这里只问一句「允许吗」。
+	 */
 	#confirmFooterRows(
-		dialog: readonly Line[],
+		question: string,
 		width: number,
 	): { readonly rows: readonly Line[]; readonly editorAt: number } {
 		return {
 			rows: [
 				inputRule(width),
-				frameRow(plain(""), width),
-				...dialog.map((line) => frameRow(line, width)),
-				frameRow(plain(""), width),
-				frameRow(plain("  y 允许　n 拒绝　a 本次全部允许"), width),
+				plain(""),
+				indented(truncateLine(plain(question), width - 2)),
+				plain(""),
+				indented(plain("y 允许　n 拒绝　a 本次全部允许")),
 				inputRule(width),
 			],
 			editorAt: 0,
@@ -605,12 +608,4 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 		return truncateLine(parts, width);
 	}
-}
-
-/** 给一行补上左右外框：内容居左，右侧补空格到边。 */
-function frameRow(line: Line, width: number): Line {
-	const inner = Math.max(1, width - 2);
-	const fitted = lineWidth(line) > inner ? truncateLine(line, inner) : line;
-	const gap = Math.max(0, inner - lineWidth(fitted));
-	return [...plain("│"), ...fitted, ...plain(`${" ".repeat(gap)}│`)];
 }

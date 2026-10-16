@@ -31,8 +31,9 @@ async function start(
 		visible: () =>
 			screenOf(terminal)
 				.visible()
-				.filter((line) => !line.startsWith("┌") && !line.startsWith("├") && !line.startsWith("└"))
-				.map((line) => line.replace(/^│/, "").replace(/│\s*$/, "").trim())
+				// 输入区的上下两条实线不是内容，断言里不关心
+				.filter((line) => !/^─+$/.test(line))
+				.map((line) => line.trim())
 				.filter((line) => line.length > 0),
 	};
 }
@@ -318,7 +319,7 @@ describe("交互界面", () => {
 		const answer = fake.confirm("是否允许执行 bash？", "{}");
 		await tick();
 		assert.ok(visible().some((line) => line.includes("是否允许执行 bash？")));
-		assert.ok(visible().some((line) => line.includes("[y] 允许")));
+		assert.ok(visible().some((line) => line.includes("y 允许")));
 
 		terminal.feedInput("y");
 		assert.equal(await answer, true);

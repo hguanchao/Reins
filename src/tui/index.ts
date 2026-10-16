@@ -16,5 +16,4 @@ export * from "./text/line.ts";
 export * from "./text/truncate.ts";
 export * from "./text/width.ts";
 export * from "./text/wrap.ts";
-export * from "./widgets/box.ts";
 export * from "./widgets/spinner.ts";

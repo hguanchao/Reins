@@ -34,8 +34,8 @@ const OK: Style = { color: "green" };
 const BAD: Style = { color: "red" };
 const WARN: Style = { color: "yellow" };
 
-/** 模型产出的缩进：使用者的问题在两列，回答与工具调用整体再缩进两列。 */
-const MODEL_INDENT = "  ";
+/** 模型产出的缩进：使用者的问题从两列起，回答与工具调用整体再缩进两列。 */
+const MODEL_INDENT = "    ";
 
 export interface LiveOptions {
 	/**
@@ -152,11 +152,10 @@ export class Transcript {
 		}
 
 		if (this.#streaming.length > 0) {
-			const rendered = renderMarkdown(this.#streaming, { width: this.#width });
-			lines.push(...rendered.lines.slice(this.#committedStreamLines));
+			lines.push(...this.#renderStream().slice(this.#committedStreamLines));
 		}
 
-		for (const tool of this.#running) lines.push(this.#runningToolLine(tool, options.now));
+		for (const tool of this.#running) lines.push(...this.#wrap(this.#runningToolLine(tool, options.now)));
 
 		// 顶部溢出时丢上面：正在写的内容与正在跑的工具比早先的预览更值得看
 		if (options.maxLines !== undefined && lines.length > options.maxLines) {
@@ -179,11 +178,18 @@ export class Transcript {
 
 	#drainStream(): readonly Line[] {
 		if (this.#streaming.length === 0) return [];
-		const rendered = renderMarkdown(this.#streaming, { width: this.#width });
-		const rest = rendered.lines.slice(this.#committedStreamLines);
+		const rest = this.#renderStream().slice(this.#committedStreamLines);
 		this.#streaming = "";
 		this.#committedStreamLines = 0;
 		return rest;
+	}
+
+	/** 把还没定型的回答画出来。缩进在渲染之后补上，markdown 因此按剩余宽度排版。 */
+	#renderStream(): readonly Line[] {
+		const rendered = renderMarkdown(this.#streaming, {
+			width: Math.max(1, this.#width - MODEL_INDENT.length),
+		});
+		return rendered.lines.map((line) => [...plain(MODEL_INDENT), ...line]);
 	}
 
 	#runningToolLine(tool: RunningTool, now: number): Line {

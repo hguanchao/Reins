@@ -89,7 +89,7 @@ describe("会话显示状态", () => {
 	it("推理内容只做预览，不写进滚动区", () => {
 		const transcript = new Transcript(30);
 		transcript.handle({ type: "reasoning_delta", text: "想一想\n再想一想" }, NOW);
-		assert.deepEqual(texts(transcript.live({ maxLines: 5, now: NOW })), ["·   想一想", "再想一想"]);
+		assert.deepEqual(texts(transcript.live({ maxLines: 5, now: NOW })), ["·     想一想", "再想一想"]);
 
 		// 本轮结束时推理内容被丢掉
 		assert.deepEqual(texts(transcript.flush()), []);
@@ -101,9 +101,9 @@ describe("会话显示状态", () => {
 		transcript.handle({ type: "reasoning_delta", text: "推理" }, NOW);
 		transcript.handle({ type: "text_delta", text: "一二三四五六七八九十" }, NOW);
 
-		// 三行（推理一行、回答两行）压到两行：丢掉最上面那行，留一个记号提示
+		// 推理一行加回答两行压到两行：丢掉最上面那行，留一个记号提示
 		const live = texts(transcript.live({ maxLines: 2, now: NOW }));
-		assert.deepEqual(live, ["…", "六七八九十"]);
+		assert.deepEqual(live, ["…", "十"]);
 	});
 
 	it("中止与出错都会留下明确的一行", () => {
@@ -131,10 +131,11 @@ describe("会话显示状态", () => {
 	it("换宽度后重新排版", () => {
 		const transcript = new Transcript(20);
 		transcript.handle({ type: "text_delta", text: "一二三四五六七八九十" }, NOW);
-		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 1);
+		// 20 列扣掉 4 列缩进还剩 16 列，十个汉字折成两行
+		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 2);
 
-		transcript.resize(6);
-		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 4);
+		transcript.resize(8);
+		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 5);
 	});
 
 	it("压缩上下文时说明为什么停下来，结束与失败各留一行", () => {
