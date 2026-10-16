@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { UnrestrictedSandbox, type SandboxView } from "../../src/sandbox/policy.ts";
 import type { SessionReadView } from "../../src/session/port.ts";
@@ -49,11 +49,13 @@ export function createTestWorkspace(): TestWorkspace {
 		},
 		writeFile(relativePath: string, content: string): string {
 			const absolute = join(root, relativePath);
+			mkdirSync(dirname(absolute), { recursive: true });
 			writeFileSync(absolute, content, "utf8");
 			return absolute;
 		},
 		writeBytes(relativePath: string, bytes: Buffer): string {
 			const absolute = join(root, relativePath);
+			mkdirSync(dirname(absolute), { recursive: true });
 			writeFileSync(absolute, bytes);
 			return absolute;
 		},

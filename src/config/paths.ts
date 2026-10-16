@@ -31,3 +31,18 @@ export function modelsFilePath(): string {
 export function spillDir(): string {
 	return join(tmpdir(), "reins-spill");
 }
+
+/**
+ * 会话文件所在目录。
+ *
+ * 按工作根分目录，同一个目录下的会话聚在一起，换目录工作时各自看到自己的历史。
+ */
+export function sessionsDir(workRoot: string): string {
+	return join(configDir(), "sessions", encodeWorkRoot(workRoot));
+}
+
+/** 把工作根编码成合法的目录名：去掉分隔符与盘符冒号，保留可读的部分。 */
+function encodeWorkRoot(workRoot: string): string {
+	const normalized = workRoot.replaceAll(/[/\\:]/g, "-");
+	return normalized.startsWith("-") ? normalized.slice(1) : normalized;
+}

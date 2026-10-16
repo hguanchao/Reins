@@ -1,4 +1,4 @@
-/** 命令行用法错误。与配置错误区分开：这类问题不是使用者写错了配置，而是命令形式不对。 */
+/** 命令行用法错误。与配置错误区分开：这不是配置写错了，而是命令形式不对。 */
 export class UsageError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -6,40 +6,41 @@ export class UsageError extends Error {
 	}
 }
 
-export type CliCommand = "config-check" | "help" | "version";
+export type CliCommand = "print" | "config-check" | "help" | "version";
 
 export interface CliOptions {
 	readonly command: CliCommand;
-	/** 覆盖 config.toml 的位置；未指定时用配置目录下的默认位置 */
+	/** 交给模型的句子；仅 print 模式使用 */
+	readonly prompt: string;
 	readonly configPath: string | undefined;
-	/** 覆盖 models.json 的位置 */
 	readonly modelsPath: string | undefined;
 }
 
 /**
  * 解析命令行参数。
  *
- * 只接受当前确实存在的选项：把无法识别的选项直接报错，比默默忽略更容易发现问题。
+ * 只接受当前确实存在的选项：无法识别的选项直接报错，比默默忽略更容易发现问题。位置参数
+ * 拼成要执行的句子，因此 `reins 看看这个项目` 与 `reins -p 看看这个项目` 等价。
  */
 export function parseArgs(argv: readonly string[]): CliOptions {
-	let command: CliCommand | undefined;
+	const positionals: string[] = [];
 	let configPath: string | undefined;
 	let modelsPath: string | undefined;
+	let explicitPrint = false;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
 
-		if (argument === "--help" || argument === "-h") {
-			return { command: "help", configPath: undefined, modelsPath: undefined };
-		}
-		if (argument === "--version" || argument === "-v") {
-			return { command: "version", configPath: undefined, modelsPath: undefined };
+		if (argument === "--help" || argument === "-h") return options("help");
+		if (argument === "--version" || argument === "-v") return options("version");
+
+		if (argument === "--print" || argument === "-p") {
+			explicitPrint = true;
+			continue;
 		}
 		if (argument === "--config" || argument === "--models") {
 			const value = argv[index + 1];
-			if (value === undefined || value.startsWith("-")) {
-				throw new UsageError(`${argument} 需要一个路径`);
-			}
+			if (value === undefined || value.startsWith("-")) throw new UsageError(`${argument} 需要一个路径`);
 			if (argument === "--config") configPath = value;
 			else modelsPath = value;
 			index += 1;
@@ -53,30 +54,45 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 			else modelsPath = value;
 			continue;
 		}
-		if (argument.startsWith("-")) {
-			throw new UsageError(`无法识别的选项 ${argument}`);
+		if (argument === "--") {
+			positionals.push(...argv.slice(index + 1));
+			break;
 		}
+		if (argument.startsWith("-")) throw new UsageError(`无法识别的选项 ${argument}`);
 
-		if (argument === "config") {
-			const sub = argv[index + 1];
-			if (sub !== "check") {
-				throw new UsageError("config 目前只支持 check 子命令");
-			}
-			command = "config-check";
-			index += 1;
-			continue;
-		}
-
-		throw new UsageError(`无法识别的参数 ${argument}`);
+		positionals.push(argument);
 	}
 
-	return { command: command ?? "help", configPath, modelsPath };
+	const command = resolveCommand(positionals, explicitPrint);
+	return {
+		command,
+		prompt: command === "print" ? positionals.join(" ") : "",
+		configPath,
+		modelsPath,
+	};
+
+	function options(special: CliCommand): CliOptions {
+		return { command: special, prompt: "", configPath: undefined, modelsPath: undefined };
+	}
+}
+
+function resolveCommand(positionals: readonly string[], explicitPrint: boolean): CliCommand {
+	if (positionals[0] === "config") {
+		if (positionals[1] !== "check") throw new UsageError("config 目前只支持 check 子命令");
+		if (positionals.length > 2) throw new UsageError(`config check 不接受额外参数：${positionals.slice(2).join(" ")}`);
+		return "config-check";
+	}
+	// 没有句子就没有可执行的事，此时显示帮助比报错更省事
+	if (!explicitPrint && positionals.length === 0) return "help";
+	if (positionals.length === 0) throw new UsageError("-p 后面需要给出要执行的句子");
+	return "print";
 }
 
 export const HELP_TEXT = `Reins —— 终端编码智能体
 
 用法:
-  reins                     进入交互界面
+  reins <句子>              执行一句话，结果写到标准输出
+  reins -p <句子>           同上，显式指定非交互模式
   reins config check        校验配置文件并列出解析结果
   reins --help              显示本帮助
   reins --version           显示版本

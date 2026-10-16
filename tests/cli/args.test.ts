@@ -48,15 +48,45 @@ describe("parseArgs 路径覆盖", () => {
 	});
 });
 
+describe("parseArgs 的句子模式", () => {
+	it("位置参数拼成要执行的句子", () => {
+		const options = parseArgs(["看看", "这个项目"]);
+		assert.equal(options.command, "print");
+		assert.equal(options.prompt, "看看 这个项目");
+	});
+
+	it("-p 与直接给句子等价", () => {
+		assert.equal(parseArgs(["-p", "做事"]).prompt, "做事");
+		assert.equal(parseArgs(["--print", "做事"]).prompt, "做事");
+		assert.equal(parseArgs(["做事"]).prompt, "做事");
+	});
+
+	it("-p 后面没有句子时报用法错误", () => {
+		assert.throws(() => parseArgs(["-p"]), /需要给出要执行的句子/);
+	});
+
+	it("-- 之后的短横线开头内容当作句子", () => {
+		const options = parseArgs(["--", "--help"]);
+		assert.equal(options.command, "print");
+		assert.equal(options.prompt, "--help");
+	});
+
+	it("显式给出的选项不会混进句子", () => {
+		const options = parseArgs(["做事", "--config", "/a.toml"]);
+		assert.equal(options.prompt, "做事");
+		assert.equal(options.configPath, "/a.toml");
+	});
+});
+
 describe("parseArgs 拒绝非法输入", () => {
 	it("拒绝无法识别的选项", () => {
 		assert.throws(() => parseArgs(["--nope"]), UsageError);
 		assert.throws(() => parseArgs(["-x"]), UsageError);
 	});
 
-	it("拒绝无法识别的参数与子命令", () => {
-		assert.throws(() => parseArgs(["whatever"]), UsageError);
+	it("config 子命令的形式写错时报错", () => {
 		assert.throws(() => parseArgs(["config"]), /只支持 check/);
 		assert.throws(() => parseArgs(["config", "list"]), /只支持 check/);
+		assert.throws(() => parseArgs(["config", "check", "多余"]), /不接受额外参数/);
 	});
 });

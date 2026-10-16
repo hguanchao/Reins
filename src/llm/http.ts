@@ -73,13 +73,16 @@ function describeError(error: unknown): string {
 }
 
 async function postSseOnce(request: SseRequest, onData: (data: string) => void): Promise<void> {
+	const headers = {
+		"content-type": "application/json",
+		accept: "text/event-stream",
+		...request.headers,
+	};
+	assertHeaderEncodable(headers);
+
 	const response = await fetch(request.url, {
 		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			accept: "text/event-stream",
-			...request.headers,
-		},
+		headers,
 		body: JSON.stringify(request.body),
 		signal: request.signal,
 	});
@@ -118,4 +121,22 @@ async function readErrorBody(response: Response): Promise<string> {
 	}
 	const trimmed = text.length > ERROR_BODY_LIMIT ? `${text.slice(0, ERROR_BODY_LIMIT)}…` : text;
 	return `HTTP ${response.status}${trimmed.length > 0 ? ` ${trimmed}` : ""}`;
+}
+
+/**
+ * 检查请求头能否按 HTTP 的规定编码。
+ *
+ * 头部只能携带 latin-1 范围内的字符。密钥或自定义表头里出现中文时会在这里被拦下：底层抛出
+ * 的原话是「无法转换成长字节串」，既看不出是哪个头部，也看不出该改什么。
+ */
+function assertHeaderEncodable(headers: Readonly<Record<string, string>>): void {
+	for (const [name, value] of Object.entries(headers)) {
+		for (let index = 0; index < value.length; index += 1) {
+			if (value.charCodeAt(index) <= 0xff) continue;
+			throw new Error(
+				`请求头 ${name} 的第 ${index + 1} 个字符不在 HTTP 头部可用的范围内（只允许 latin-1）。` +
+					"请检查 models.json 里该 provider 的 apiKey 与 headers。",
+			);
+		}
+	}
 }

@@ -40,3 +40,6 @@ export function delay(ms: number, signal: AbortSignal): Promise<void> {
 		signal.addEventListener("abort", onAbort, { once: true });
 	});
 }
+
+/** 退避的起始间隔。config.toml 里只有重试次数，间隔按一个不会让人以为卡死的值取。 */
+export const DEFAULT_RETRY_BASE_DELAY_MS = 2000;
