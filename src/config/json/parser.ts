@@ -1,0 +1,271 @@
+import { ConfigError, offsetToLineColumn, type LineColumn } from "../config-error.ts";
+import type { ConfigTable, ConfigValue } from "../value.ts";
+
+/** JSON 与 TOML 共用同一套值模型，见 config/value.ts。 */
+export type JsonValue = ConfigValue;
+export type JsonObject = ConfigTable;
+
+export interface JsonParseResult {
+	readonly value: JsonValue;
+	/** 每个键与数组元素在原文中的位置；键是路径的 JSON 编码 */
+	readonly locations: ReadonlyMap<string, LineColumn>;
+}
+
+/** 把键路径编码成 Map 的键。用 JSON 编码是为了避免分隔符与键名本身冲突。 */
+export function jsonPathKey(path: readonly (string | number)[]): string {
+	return JSON.stringify(path);
+}
+
+/**
+ * JSON 解析器，额外记录每个键的位置，并允许行注释与块注释。
+ *
+ * 允许注释是因为这两个配置文件都是手写的：需要临时停用某一项时，注释掉比删掉更安全。
+ * 记录位置是为了让校验错误能像 TOML 那边一样指到行列，两种配置文件的报错体验保持一致。
+ */
+export class JsonParser {
+	readonly #source: string;
+	#pos = 0;
+	readonly #locations = new Map<string, LineColumn>();
+
+	constructor(source: string) {
+		this.#source = source;
+	}
+
+	parse(): JsonParseResult {
+		this.#skipTrivia();
+		if (this.#atEnd()) throw this.#error("文件为空，需要一个 JSON 对象");
+		const value = this.#parseValue([]);
+		this.#skipTrivia();
+		if (!this.#atEnd()) throw this.#error("顶层值之后还有多余内容");
+		return { value, locations: this.#locations };
+	}
+
+	#parseValue(path: readonly (string | number)[]): JsonValue {
+		const char = this.#peek();
+		if (char === "{") return this.#parseObject(path);
+		if (char === "[") return this.#parseArray(path);
+		if (char === '"') return this.#parseString();
+		return this.#parseLiteral();
+	}
+
+	#parseObject(path: readonly (string | number)[]): JsonObject {
+		const start = this.#pos;
+		this.#pos += 1;
+		const result: JsonObject = {};
+
+		this.#skipTrivia();
+		if (this.#peek() === "}") {
+			this.#pos += 1;
+			return result;
+		}
+
+		for (;;) {
+			this.#skipTrivia();
+			const keyStart = this.#pos;
+			// 能走到循环体里说明前面出现过逗号，此时遇到 } 就是多余的尾随逗号
+			if (this.#peek() === "}") throw this.#error("对象里不能有多余的逗号");
+			if (this.#peek() !== '"') throw this.#error("对象的键必须是双引号字符串");
+			const key = this.#parseString();
+
+			if (Object.hasOwn(result, key)) {
+				throw this.#errorAt(`键 ${key} 重复定义`, keyStart);
+			}
+
+			this.#skipTrivia();
+			this.#expectCharacter(":", `键 ${key} 之后需要冒号`);
+			this.#skipTrivia();
+
+			this.#locations.set(jsonPathKey([...path, key]), offsetToLineColumn(this.#source, keyStart));
+			result[key] = this.#parseValue([...path, key]);
+
+			this.#skipTrivia();
+			const char = this.#peek();
+			if (char === ",") {
+				this.#pos += 1;
+				continue;
+			}
+			if (char === "}") {
+				this.#pos += 1;
+				return result;
+			}
+			throw this.#errorAt("对象里只允许用逗号分隔键值对", start);
+		}
+	}
+
+	#parseArray(path: readonly (string | number)[]): JsonValue[] {
+		const start = this.#pos;
+		this.#pos += 1;
+		const items: JsonValue[] = [];
+
+		this.#skipTrivia();
+		if (this.#peek() === "]") {
+			this.#pos += 1;
+			return items;
+		}
+
+		for (;;) {
+			this.#skipTrivia();
+			// 能走到循环体里说明前面出现过逗号，此时遇到 ] 就是多余的尾随逗号
+			if (this.#peek() === "]") throw this.#error("数组里不能有多余的逗号");
+			this.#locations.set(
+				jsonPathKey([...path, items.length]),
+				offsetToLineColumn(this.#source, this.#pos),
+			);
+			items.push(this.#parseValue([...path, items.length]));
+
+			this.#skipTrivia();
+			const char = this.#peek();
+			if (char === ",") {
+				this.#pos += 1;
+				continue;
+			}
+			if (char === "]") {
+				this.#pos += 1;
+				return items;
+			}
+			throw this.#errorAt("数组元素之间需要逗号", start);
+		}
+	}
+
+	#parseString(): string {
+		const start = this.#pos;
+		this.#pos += 1;
+		let out = "";
+
+		for (;;) {
+			const char = this.#peek();
+			if (char === undefined) throw this.#errorAt("字符串没有闭合", start);
+			if (char === '"') {
+				this.#pos += 1;
+				return out;
+			}
+			if (char === "\\") {
+				out += this.#readEscape(start);
+				continue;
+			}
+			if (char < " ") throw this.#errorAt("字符串里不能直接出现控制字符", this.#pos);
+			out += char;
+			this.#pos += 1;
+		}
+	}
+
+	#readEscape(start: number): string {
+		const escapeStart = this.#pos;
+		this.#pos += 1;
+		const char = this.#peek();
+		if (char === undefined) throw this.#errorAt("转义符后缺少内容", escapeStart);
+		this.#pos += 1;
+
+		switch (char) {
+			case '"':
+				return '"';
+			case "\\":
+				return "\\";
+			case "/":
+				return "/";
+			case "b":
+				return "\u0008";
+			case "f":
+				return "\f";
+			case "n":
+				return "\n";
+			case "r":
+				return "\r";
+			case "t":
+				return "\t";
+			case "u": {
+				const hex = this.#source.slice(this.#pos, this.#pos + 4);
+				if (hex.length !== 4 || !/^[0-9A-Fa-f]{4}$/.test(hex)) {
+					throw this.#errorAt("\\u 转义需要 4 位十六进制", escapeStart);
+				}
+				this.#pos += 4;
+				return String.fromCharCode(Number.parseInt(hex, 16));
+			}
+			default:
+				throw this.#errorAt(`不支持的转义 \\${char}`, escapeStart);
+		}
+	}
+
+	#parseLiteral(): JsonValue {
+		const start = this.#pos;
+		while (!this.#atEnd()) {
+			const char = this.#peek();
+			if (
+				char === "," ||
+				char === "}" ||
+				char === "]" ||
+				char === " " ||
+				char === "\t" ||
+				char === "\n" ||
+				char === "\r" ||
+				char === "/"
+			) {
+				break;
+			}
+			this.#pos += 1;
+		}
+
+		const raw = this.#source.slice(start, this.#pos);
+		if (raw === "true") return true;
+		if (raw === "false") return false;
+		if (raw === "null") return null;
+		if (/^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/.test(raw)) return Number.parseFloat(raw);
+
+		if (raw.length === 0) throw this.#errorAt("缺少值", start);
+		throw this.#errorAt(`无法识别的值 ${raw}`, start);
+	}
+
+	/** 跳过空白与注释。JSON 本身没有注释，这里是为了让手写的配置文件能临时停用某一项。 */
+	#skipTrivia(): void {
+		for (;;) {
+			const char = this.#peek();
+			if (char === " " || char === "\t" || char === "\n" || char === "\r") {
+				this.#pos += 1;
+				continue;
+			}
+			if (char === "/" && this.#peekAt(1) === "/") {
+				while (!this.#atEnd() && this.#peek() !== "\n") this.#pos += 1;
+				continue;
+			}
+			if (char === "/" && this.#peekAt(1) === "*") {
+				const start = this.#pos;
+				this.#pos += 2;
+				for (;;) {
+					if (this.#atEnd()) throw this.#errorAt("块注释没有闭合", start);
+					if (this.#peek() === "*" && this.#peekAt(1) === "/") {
+						this.#pos += 2;
+						break;
+					}
+					this.#pos += 1;
+				}
+				continue;
+			}
+			return;
+		}
+	}
+
+	#expectCharacter(expected: string, message: string): void {
+		if (this.#peek() !== expected) throw this.#error(message);
+		this.#pos += 1;
+	}
+
+	#atEnd(): boolean {
+		return this.#pos >= this.#source.length;
+	}
+
+	#peek(): string | undefined {
+		return this.#peekAt(0);
+	}
+
+	#peekAt(offset: number): string | undefined {
+		return this.#source[this.#pos + offset];
+	}
+
+	#error(message: string): ConfigError {
+		return this.#errorAt(message, this.#pos);
+	}
+
+	#errorAt(message: string, offset: number): ConfigError {
+		return new ConfigError(message, offsetToLineColumn(this.#source, offset));
+	}
+}
