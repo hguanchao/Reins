@@ -61,7 +61,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#abort: AbortController | undefined;
 	#ticker: NodeJS.Timeout | undefined;
 	#escapeTimer: NodeJS.Timeout | undefined;
-	#startedAt = 0;
+	/** 本轮开始的时刻。事件里没有耗时，指示器按它算「这一轮跑了多久」。 */
+	#turnStartedAt = 0;
 	#done: (() => void) | undefined;
 	/** 终端已经交还，此后不再往屏幕上写任何东西 */
 	#stopped = false;
@@ -109,7 +110,6 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#terminal.onResize(() => this.#onResize());
 		// 进程被别的方式结束（信号、崩溃）时也要把终端还原，否则 shell 会留在原始模式里
 		process.once("exit", this.#restoreOnExit);
-		this.#startedAt = Date.now();
 	}
 
 	#restoreTerminal(): void {
@@ -315,6 +315,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 	async #runTurn(runtime: InteractiveRuntime, prompt: string): Promise<void> {
 		this.#running = true;
 		this.#activity = "正在思考";
+		this.#turnStartedAt = Date.now();
 		const controller = new AbortController();
 		this.#abort = controller;
 		this.#startTicker();
@@ -461,7 +462,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (this.#dialog !== undefined) {
 			parts.push(...styled("　等待你的选择", { color: "yellow" }));
 		} else if (this.#running) {
-			parts.push(...spinnerLine(this.#activity, Date.now() - this.#startedAt));
+			parts.push(...spinnerLine(this.#activity, Date.now() - this.#turnStartedAt));
 			parts.push(...styled("　Ctrl+C 中止", { dim: true }));
 		} else {
 			parts.push(...styled(`　approval=${runtime.approval}　sandbox=${runtime.sandbox}`, { dim: true }));

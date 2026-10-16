@@ -58,7 +58,3 @@ export const findTool: ToolDefinition<FindArgs> = {
 		return { content: parts.join("\n\n"), details: { pattern: args.pattern, matched: matched.length } };
 	},
 };
-
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

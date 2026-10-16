@@ -39,7 +39,6 @@ export type KeyEvent =
 	| { readonly type: "key"; readonly name: KeyName };
 
 const ESCAPE = "\x1b";
-const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 
 /** CSI 序列的终止字符到按键。 */

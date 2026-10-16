@@ -1,4 +1,4 @@
-import type { LlmMessage, LlmStopReason, LlmUsage } from "../llm/messages.ts";
+import type { LlmMessage } from "../llm/messages.ts";
 
 /**
  * 会话端口的契约。

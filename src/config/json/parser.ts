@@ -144,7 +144,7 @@ export class JsonParser {
 				return out;
 			}
 			if (char === "\\") {
-				out += this.#readEscape(start);
+				out += this.#readEscape();
 				continue;
 			}
 			if (char < " ") throw this.#errorAt("字符串里不能直接出现控制字符", this.#pos);
@@ -153,7 +153,7 @@ export class JsonParser {
 		}
 	}
 
-	#readEscape(start: number): string {
+	#readEscape(): string {
 		const escapeStart = this.#pos;
 		this.#pos += 1;
 		const char = this.#peek();

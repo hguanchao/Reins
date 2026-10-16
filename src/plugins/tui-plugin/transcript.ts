@@ -1,7 +1,6 @@
 import type { AgentEvent } from "../../agent/events.ts";
 import {
 	concat,
-	lineWidth,
 	mapLine,
 	mergeStyles,
 	plain,

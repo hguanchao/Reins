@@ -7,10 +7,6 @@ import { displayWidth } from "../../../src/tui/text/width.ts";
 
 const PROMPT = [{ text: "› ", style: { color: "cyan" } }] as const;
 
-function renderText(editor: LineEditor, width = 20): string[] {
-	return editor.render({ width, prompt: [...PROMPT] }).lines.map((line) => lineText(line));
-}
-
 describe("LineEditor", () => {
 	it("插入与取回内容", () => {
 		const editor = new LineEditor();

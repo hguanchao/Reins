@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 
 import type { AgentEvent } from "../../../src/agent/events.ts";
 import { Transcript } from "../../../src/plugins/tui-plugin/transcript.ts";
-import { lineText } from "../../../src/tui/text/line.ts";
 
 function texts(lines: readonly (readonly { readonly text: string }[])[]): string[] {
 	return lines.map((line) => line.map((span) => span.text).join(""));
