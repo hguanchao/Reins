@@ -5,8 +5,9 @@ import {
 	colorSupport,
 	KeyDecoder,
 	LineEditor,
-	LiveRegion,
+	lineWidth,
 	plain,
+	ScreenRegion,
 	spinnerLine,
 	styled,
 	truncateLine,
@@ -16,6 +17,7 @@ import {
 	type Terminal,
 } from "../../tui/index.ts";
 import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
+import { describeUsage } from "../../session/usage.ts";
 import { isBuiltinCommand, runBuiltin } from "./commands.ts";
 import { dialogDecision, dialogLines, type ConfirmDialog } from "./dialog.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
@@ -24,20 +26,26 @@ import { Transcript } from "./transcript.ts";
 /**
  * 交互式界面。
  *
- * 屏幕上只有两块：已经提交的历史留在终端的滚动区里，活动区放还没定型的内容——正在写的回答、
- * 正在跑的工具、输入框与状态行。提交过的内容不再重画，所以历史长了也不会变慢，使用者还能用
- * 终端自带的回滚、复制与搜索。
+ * 界面运行在终端的备用屏里，整块屏幕都归它：外框、会话区、底部六行（状态行、输入框、信息行）
+ * 每一帧从头画到尾。因为整屏都是自己的，回看历史不能再靠终端的滚动区，得自己翻——PageUp
+ * 与 PageUp 翻页，End 回到底部恢复跟尾。
  *
  * 界面接管终端期间，按键全部由这里解释，因此 Ctrl+C 不再产生信号，而是「中止当前这一轮」；
- * 空闲时它才用来清空输入或退出。退出前必须把终端恢复原状——留在原始模式里，使用者的
- * shell 会连回显都没有。
+ * 空闲时它才用来清空输入或退出。退出前必须把备用屏交还、终端恢复原状——留在原始模式里，
+ * 使用者的 shell 会连回显都没有。
  */
 
-/** 状态行与输入框之间不留空行，活动区与它们之间留一行的呼吸空间。 */
-const RESERVED_LINES = 1;
+/** Footer 固定六行，确认框与常态输入区等高，所以两者切换时 Main 一行都不跳。 */
+const FOOTER_ROWS = 6;
 
-const PROMPT: Line = styled("› ", { color: "cyan" });
+/** 使用者的消息顶格在两列；模型的产出（工具调用与回答）整体再缩进两列。 */
+const USER_INDENT = "  ";
+
+const PROMPT: Line = [...plain(USER_INDENT), ...styled("› ", { color: "cyan" })];
 const PLACEHOLDER = "说点什么；/help 看命令";
+
+/** 输入区的上下实线。两端接进外框，因此铺满整屏宽。 */
+const inputRule = (width: number): Line => plain(`├${"─".repeat(Math.max(1, width - 2))}┤`);
 
 export interface FrontendOptions {
 	readonly terminal: Terminal;
@@ -46,11 +54,15 @@ export interface FrontendOptions {
 
 export class TerminalFrontend implements InteractiveFrontend {
 	readonly #terminal: Terminal;
-	readonly #region: LiveRegion;
+	readonly #region: ScreenRegion;
 	readonly #desktopNotify: boolean;
 	readonly #editor = new LineEditor();
 	readonly #keys = new KeyDecoder();
 	readonly #transcript: Transcript;
+	/** 会话的全部行。备用屏没有终端滚动区，回看历史靠这里。 */
+	readonly #history: Line[] = [];
+	/** 视口底边离内容末尾多少行；undefined 表示跟尾——新内容到达时画面跟着往下走。 */
+	#scrollFromEnd: number | undefined;
 
 	#runtime: InteractiveRuntime | undefined;
 	#dialog: ConfirmDialog | undefined;
@@ -69,7 +81,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	constructor(options: FrontendOptions) {
 		this.#terminal = options.terminal;
-		this.#region = new LiveRegion(options.terminal, { colors: colorSupport(options.env) });
+		this.#region = new ScreenRegion(options.terminal, { colors: colorSupport(options.env) });
 		this.#desktopNotify = desktopNotificationsSupported(options.env);
 		this.#transcript = new Transcript(this.#width());
 	}
@@ -81,7 +93,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#startTerminal();
 
 		try {
-			this.#region.commit(this.#welcomeLines(runtime));
+			this.#commit(this.#welcomeLines(runtime));
 			runtime.setConfirmer((question, detail) => this.#ask(question, detail));
 			this.#refresh();
 
@@ -91,11 +103,16 @@ export class TerminalFrontend implements InteractiveFrontend {
 		} finally {
 			this.#restoreTerminal();
 			runtime.setConfirmer(undefined);
-			// 说出会话标识、文件位置与用量：使用者才知道去哪儿接着聊、花了多少
+			// 备用屏一交还，整个对话就从屏幕上消失了。主屏上必须留下三条信息：
+			// 存在哪儿、怎么接着聊、花了多少——最后一条复用会话统计的那份输出
 			const usage = runtime.sessionUsage();
-			const spent = usage.requests === 0 ? "" : `　共 ${usage.total} token（${usage.requests} 次请求）`;
+			const where = runtime.session.path ?? "（只留在内存里）";
 			this.#terminal.write(
-				`会话 ${runtime.session.id} 已保存：${runtime.session.path ?? "（只留在内存里）"}${spent}\n`,
+				`会话已保存：${where}\n` +
+					`接续这次对话：reins --resume ${runtime.session.id}\n` +
+					(usage.requests === 0
+						? ""
+						: `用量：${describeUsage(usage)}\n`),
 			);
 			this.#runtime = undefined;
 		}
@@ -109,6 +126,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#terminal.setRawMode(true);
 		this.#terminal.setBracketedPaste(true);
 		this.#terminal.setFocusReporting(true);
+		// 整块屏幕都归本程序：主屏原封不动，退出时原样交还
+		this.#terminal.setAlternateScreen(true);
 		this.#terminal.onInput((chunk) => this.#onInput(chunk));
 		this.#terminal.onResize(() => this.#onResize());
 		// 进程被别的方式结束（信号、崩溃）时也要把终端还原，否则 shell 会留在原始模式里
@@ -120,6 +139,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#region.clear();
 		this.#stopTicker();
 		if (this.#escapeTimer !== undefined) clearTimeout(this.#escapeTimer);
+		this.#terminal.setAlternateScreen(false);
 		this.#terminal.setBracketedPaste(false);
 		this.#terminal.setFocusReporting(false);
 		this.#terminal.setCursorVisible(true);
@@ -130,6 +150,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 	/** 进程退出时的兜底还原。这里不能做异步的事，只能把控制序列写出去。 */
 	readonly #restoreOnExit = (): void => {
 		try {
+			this.#terminal.setAlternateScreen(false);
 			this.#terminal.setBracketedPaste(false);
 			this.#terminal.setFocusReporting(false);
 			this.#terminal.setCursorVisible(true);
@@ -208,6 +229,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 
 	#handleKey(event: Extract<KeyEvent, { type: "key" }>): void {
+		if (event.name === "pageup" || event.name === "pagedown") {
+			const page = Math.max(1, Math.floor(this.#mainRows() / 2));
+			this.#scrollBy(event.name === "pageup" ? page : -page);
+			return;
+		}
+		// 其余按键都意味着回到正在进行的对话：视口恢复跟尾
+		this.#scrollFromEnd = undefined;
 		switch (event.name) {
 			case "enter":
 				void this.#submit();
@@ -375,7 +403,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 
 		const lines = this.#transcript.handle(event, now);
-		if (lines.length > 0) this.#region.commit(lines);
+		this.#commit(lines);
 		this.#refresh();
 	}
 
@@ -449,46 +477,140 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 
 	#commit(lines: readonly Line[]): void {
-		this.#region.commit(lines);
+		if (lines.length === 0) return;
+		this.#history.push(...lines);
+		// 往上翻过就把画面钉在原地：新到的内容不把视口拉走
+		if (this.#scrollFromEnd !== undefined) this.#scrollFromEnd += lines.length;
 		this.#refresh();
 	}
 
-	/** 组装一帧：活动块、对话框、输入区、状态行。 */
+	/** Main 区当前有几行可用，翻页的步长按它算。 */
+	#mainRows(): number {
+		return Math.max(1, this.#terminal.size().rows - FOOTER_ROWS - 2);
+	}
+
+	/** 翻页。翻到底部时自动恢复跟尾。 */
+	#scrollBy(delta: number): void {
+		const next = (this.#scrollFromEnd ?? 0) + delta;
+		this.#scrollFromEnd = next <= 0 ? undefined : next;
+		this.#refresh();
+	}
+
+	/** 组装一帧：外框、会话区的可见窗口、Footer。 */
 	#refresh(): void {
 		if (this.#stopped || this.#runtime === undefined) return;
 
 		const size = this.#terminal.size();
-		const width = Math.max(1, size.cols);
-		const editor = this.#editor.render({ width, prompt: PROMPT, placeholder: PLACEHOLDER });
-		const dialog = this.#dialog === undefined ? [] : dialogLines(this.#dialog, width);
-		const reserved = editor.lines.length + RESERVED_LINES + dialog.length;
-		const capacity = Math.max(1, size.rows - reserved);
+		const width = Math.max(8, size.cols);
+		const height = Math.max(FOOTER_ROWS + 3, size.rows);
 
-		const stable = this.#transcript.takeStable(capacity);
-		if (stable.length > 0) this.#region.commit(stable);
+		const editor = this.#editor.render({ width: width - 4, prompt: PROMPT, placeholder: PLACEHOLDER });
+		// 确认框顶掉整个 Footer；两种形态等高，所以 Main 的高度不随它变
+		const dialog = this.#dialog === undefined ? undefined : dialogLines(this.#dialog, width - 4);
+		const footer =
+			dialog === undefined ? this.#footerRows(editor, width) : this.#confirmFooterRows(dialog, width);
+		const mainRows = Math.max(1, height - footer.rows.length - 2);
 
-		const live = this.#transcript.live({ maxLines: capacity, now: Date.now() });
-		const lines = [...live, ...dialog, ...editor.lines, this.#statusLine(width)];
+		const transcript = [...this.#history, ...this.#transcript.live({ maxLines: mainRows, now: Date.now() })];
+		const maxStart = Math.max(0, transcript.length - mainRows);
+		let start = maxStart;
+		if (this.#scrollFromEnd !== undefined) {
+			start = Math.max(0, Math.min(maxStart, maxStart - this.#scrollFromEnd));
+			// 已经翻到底了就恢复跟尾，别让「正在翻阅」的提示一直挂着
+			if (start === maxStart) this.#scrollFromEnd = undefined;
+		}
+		const visible = transcript.slice(start, start + mainRows);
+		while (visible.length < mainRows) visible.push(plain(""));
+
+		const rows: Line[] = [plain(`┌${"─".repeat(width - 2)}┐`)];
+		for (const line of visible) rows.push(frameRow(line, width));
+		rows.push(...footer.rows);
+		rows.push(plain(`└${"─".repeat(width - 2)}┘`));
+
+		// 光标在输入那一行：上面隔着顶框与整块 Main
 		this.#region.draw({
-			lines,
-			cursor: { row: live.length + dialog.length + editor.cursor.row, col: editor.cursor.col },
+			lines: rows,
+			cursor: { row: 1 + mainRows + footer.editorAt + editor.cursor.row, col: 2 + editor.cursor.col },
 		});
+	}
+
+	/** 常态 Footer：空行 / 状态行 / 实线 / 输入 / 实线 / 信息行。 */
+	#footerRows(editor: { readonly lines: readonly Line[] }, width: number): {
+		readonly rows: readonly Line[];
+		readonly editorAt: number;
+	} {
+		return {
+			rows: [
+				frameRow(plain(""), width),
+				frameRow(this.#statusLine(width - 4), width),
+				inputRule(width),
+				...editor.lines.map((line) => frameRow(line, width)),
+				inputRule(width),
+				frameRow(this.#infoLine(width - 4), width),
+			],
+			editorAt: 3,
+		};
+	}
+
+	/** 确认框顶掉整个 Footer：实线 / 空 / 问题 / 空 / 选项 / 实线。 */
+	#confirmFooterRows(
+		dialog: readonly Line[],
+		width: number,
+	): { readonly rows: readonly Line[]; readonly editorAt: number } {
+		return {
+			rows: [
+				inputRule(width),
+				frameRow(plain(""), width),
+				...dialog.map((line) => frameRow(line, width)),
+				frameRow(plain(""), width),
+				frameRow(plain("  y 允许　n 拒绝　a 本次全部允许"), width),
+				inputRule(width),
+			],
+			editorAt: 0,
+		};
+	}
+
+	/** 底部信息行。放不下时只留模型名。 */
+	#infoLine(width: number): Line {
+		const runtime = this.#runtime;
+		if (runtime === undefined) return plain("");
+
+		const full = `${runtime.provider}/${runtime.model}　approval=${runtime.approval}　sandbox=${runtime.sandbox}　/help 看命令`;
+		return truncateLine(styled(full, { dim: true }), width);
 	}
 
 	#statusLine(width: number): Line {
 		const runtime = this.#runtime;
-		if (runtime === undefined) return [];
+		if (runtime === undefined) return plain("");
 
-		const parts: Span[] = [styled(`${runtime.provider}/${runtime.model}`, { dim: true })[0]];
-		if (this.#dialog !== undefined) {
-			parts.push(...styled("　等待你的选择", { color: "yellow" }));
-		} else if (this.#running) {
+		const parts: Span[] = [];
+		if (this.#running) {
 			parts.push(...spinnerLine(this.#activity, Date.now() - this.#turnStartedAt));
 			parts.push(...styled("　Ctrl+C 中止", { dim: true }));
+		} else if (this.#dialog !== undefined) {
+			parts.push(...styled("等待你的选择", { color: "yellow" }));
 		} else {
-			parts.push(...styled(`　approval=${runtime.approval}　sandbox=${runtime.sandbox}`, { dim: true }));
-			parts.push(...styled("　/help 看命令", { dim: true }));
+			const usage = runtime.sessionUsage();
+			parts.push(
+				...styled(
+					usage.requests === 0
+						? "就绪"
+						: `就绪　本轮 ${usage.total} token${usage.cost === undefined ? "" : `　$${usage.cost.toFixed(4)}`}`,
+					{ dim: true },
+				),
+			);
+		}
+		if (this.#scrollFromEnd !== undefined) {
+			parts.push(...styled("　↑ 正在翻阅历史　PageDown 回到底部", { color: "yellow" }));
 		}
 		return truncateLine(parts, width);
 	}
+}
+
+/** 给一行补上左右外框：内容居左，右侧补空格到边。 */
+function frameRow(line: Line, width: number): Line {
+	const inner = Math.max(1, width - 2);
+	const fitted = lineWidth(line) > inner ? truncateLine(line, inner) : line;
+	const gap = Math.max(0, inner - lineWidth(fitted));
+	return [...plain("│"), ...fitted, ...plain(`${" ".repeat(gap)}│`)];
 }

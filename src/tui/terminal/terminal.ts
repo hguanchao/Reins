@@ -29,6 +29,13 @@ export interface Terminal extends TerminalDevice {
 	setBracketedPaste(enabled: boolean): void;
 	/** 焦点变化上报：终端失去焦点时通知我们，据此决定要不要响铃或弹通知。 */
 	setFocusReporting(enabled: boolean): void;
+	/**
+	 * 备用屏。
+	 *
+	 * 进入时终端切到一块独立屏幕，退出时原样恢复主屏——对话不会留在使用者的 shell 历史里。
+	 * 代价是终端自带的滚动区没了，回看历史要靠自己画。
+	 */
+	setAlternateScreen(enabled: boolean): void;
 }
 
 /** 默认尺寸只用于「输出不是终端」这种启动阶段就会拒绝的情形。 */
@@ -40,6 +47,8 @@ const ENABLE_PASTE = "\x1b[?2004h";
 const DISABLE_PASTE = "\x1b[?2004l";
 const ENABLE_FOCUS = "\x1b[?1004h";
 const DISABLE_FOCUS = "\x1b[?1004l";
+const ENTER_ALT_SCREEN = "\x1b[?1049h";
+const LEAVE_ALT_SCREEN = "\x1b[?1049l";
 
 /** 真实终端：进程的标准输入输出。 */
 export class ProcessTerminal implements Terminal {
@@ -91,5 +100,9 @@ export class ProcessTerminal implements Terminal {
 
 	setFocusReporting(enabled: boolean): void {
 		this.write(enabled ? ENABLE_FOCUS : DISABLE_FOCUS);
+	}
+
+	setAlternateScreen(enabled: boolean): void {
+		this.write(enabled ? ENTER_ALT_SCREEN : LEAVE_ALT_SCREEN);
 	}
 }

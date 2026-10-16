@@ -34,9 +34,16 @@ const OK: Style = { color: "green" };
 const BAD: Style = { color: "red" };
 const WARN: Style = { color: "yellow" };
 
+/** 模型产出的缩进：使用者的问题在两列，回答与工具调用整体再缩进两列。 */
+const MODEL_INDENT = "  ";
+
 export interface LiveOptions {
-	/** 活动块最多占几行，超出的部分从上往下丢弃 */
-	readonly maxLines: number;
+	/**
+	 * 活动块最多占几行，超出的部分从上往下丢弃。
+	 *
+	 * 整屏绘制时不传：显示哪一段由调用方自己从全部行里挑，这里折了反而丢内容。
+	 */
+	readonly maxLines?: number;
 	/** 当前时刻，用来推进指示器与耗时 */
 	readonly now: number;
 }
@@ -68,11 +75,11 @@ export class Transcript {
 
 	/** 使用者提交了一句话：把它作为一行回显出来。 */
 	userTurn(text: string): readonly Line[] {
-		// 提示符作为首行缩进传进去：它自己占两列，不扣掉的话首行就会超宽
+		// 使用者的消息顶格在两列，提示符算在缩进里；模型产出整体再缩进两列，一问一答靠这个区分
 		return wrapLine(plain(text), {
 			width: this.#width,
-			firstIndent: styled("› ", PROMPT),
-			restIndent: plain("  "),
+			firstIndent: [...plain("  "), ...styled("› ", PROMPT)],
+			restIndent: plain("    "),
 		});
 	}
 
@@ -152,28 +159,9 @@ export class Transcript {
 		for (const tool of this.#running) lines.push(this.#runningToolLine(tool, options.now));
 
 		// 顶部溢出时丢上面：正在写的内容与正在跑的工具比早先的预览更值得看
-		if (lines.length > options.maxLines) {
+		if (options.maxLines !== undefined && lines.length > options.maxLines) {
 			return [styled("…", DIM), ...lines.slice(lines.length - options.maxLines + 1)];
 		}
-		return lines;
-	}
-
-	/**
-	 * 活动块放不下时，把已经定型的部分交出来。
-	 *
-	 * 只交「不会再变」的行：正文还在长的时候，最后一段随时可能重排，交出去就再也收不回来。
-	 */
-	takeStable(maxLines: number): readonly Line[] {
-		if (this.#streaming.length === 0) return [];
-
-		const rendered = renderMarkdown(this.#streaming, { width: this.#width });
-		if (rendered.lines.length - this.#committedStreamLines <= maxLines) return [];
-
-		const keep = Math.min(rendered.stableLines, rendered.lines.length - 1);
-		if (keep <= this.#committedStreamLines) return [];
-
-		const lines = rendered.lines.slice(this.#committedStreamLines, keep);
-		this.#committedStreamLines = keep;
 		return lines;
 	}
 
@@ -217,9 +205,13 @@ export class Transcript {
 		return this.#wrap([...mark, ...plain(`${label} `), ...styled(detail, DIM)]);
 	}
 
-	/** 折行到当前宽度。 */
+	/** 折行到当前宽度，带模型产出的缩进。 */
 	#wrap(line: Line): readonly Line[] {
-		return wrapLine(line, { width: this.#width, firstIndent: [], restIndent: plain("  ") });
+		return wrapLine(line, {
+			width: this.#width,
+			firstIndent: plain(MODEL_INDENT),
+			restIndent: plain(`${MODEL_INDENT}  `),
+		});
 	}
 }
 

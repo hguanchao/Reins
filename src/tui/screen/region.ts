@@ -134,3 +134,54 @@ function sameStyle(left: unknown, right: unknown): boolean {
 		(key) => (left as Record<string, unknown>)[key] === (right as Record<string, unknown>)[key],
 	);
 }
+
+/**
+ * 整屏绘制。
+ *
+ * 备用屏里整块屏幕都归本程序，每一帧从左上角画到右下角。闪不闪烁取决于两次帧之间写了多少
+ * 字节：内容没变就一个字节都不写；变了才把光标移回左上角逐行重画，行尾用「清到行尾」擦掉
+ * 残留，最后把上一帧多出来的行整段清空。
+ *
+ * 用绝对行列定位光标：宽字符占两列，按显示列算出的绝对位置才不会偏。
+ */
+export class ScreenRegion {
+	readonly #device: TerminalDevice;
+	readonly #colors: boolean;
+	#live: LiveFrame | undefined;
+
+	constructor(device: TerminalDevice, options: { readonly colors: boolean }) {
+		this.#device = device;
+		this.#colors = options.colors;
+	}
+
+	/** 画一帧。内容与上一帧一致时一个字节都不写。 */
+	draw(frame: LiveFrame): void {
+		if (this.#live !== undefined && sameFrame(this.#live, frame)) return;
+
+		let text = "\x1b[H";
+		frame.lines.forEach((line, index) => {
+			const fitted = lineWidth(line) > this.#width() ? truncateLine(line, this.#width()) : line;
+			text += `\r\x1b[2K${serializeLine(fitted, this.#colors)}`;
+			if (index < frame.lines.length - 1) text += "\r\n";
+		});
+		// 上一帧比这一帧长时（窗口变大、确认框收起），把残余的行整段清掉
+		if (this.#live !== undefined && this.#live.lines.length > frame.lines.length) text += "\x1b[J";
+
+		const cursor = frame.cursor;
+		if (cursor !== undefined) text += `\x1b[${cursor.row + 1};${cursor.col + 1}H`;
+
+		this.#live = frame;
+		this.#device.write(text);
+	}
+
+	/** 交还屏幕前清干净，光标回到左上角。 */
+	clear(): void {
+		if (this.#live === undefined) return;
+		this.#live = undefined;
+		this.#device.write("\x1b[H\x1b[2J");
+	}
+
+	#width(): number {
+		return Math.max(1, this.#device.size().cols);
+	}
+}

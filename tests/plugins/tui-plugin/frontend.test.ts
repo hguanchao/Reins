@@ -28,7 +28,12 @@ async function start(
 		terminal,
 		fake,
 		done,
-		visible: () => screenOf(terminal).visible().filter((line) => line.length > 0),
+		visible: () =>
+			screenOf(terminal)
+				.visible()
+				.filter((line) => !line.startsWith("┌") && !line.startsWith("├") && !line.startsWith("└"))
+				.map((line) => line.replace(/^│/, "").replace(/│\s*$/, "").trim())
+				.filter((line) => line.length > 0),
 	};
 }
 
@@ -44,7 +49,7 @@ describe("交互界面", () => {
 		const { terminal, visible, done } = await start();
 		const lines = visible();
 		assert.ok(lines.some((line) => line.includes("Reins  demo/m1")));
-		assert.ok(lines.some((line) => line.includes("输入一句话开始")));
+		assert.ok(lines.some((line) => line.includes("sandbox=off")));
 		assert.ok(lines.some((line) => line.startsWith("› ")));
 		assert.ok(lines.some((line) => line.includes("demo/m1") && line.includes("approval=ask")));
 		await quit(terminal, done);
@@ -88,7 +93,7 @@ describe("交互界面", () => {
 		await quit(terminal, done);
 	});
 
-	it("很长的回答会把前面的行留在滚动区，不重复重画", async () => {
+	it("PageUp 向上翻阅历史，PageDown 回到底部", async () => {
 		const { terminal, visible, done } = await start(
 			{
 				onRun: async ({ emit }) => {
@@ -96,23 +101,37 @@ describe("交互界面", () => {
 					await emit({ type: "run_end" });
 				},
 			},
-			{ rows: 8, cols: 40 },
+			{ rows: 24, cols: 40 },
 		);
 
 		terminal.feedInput("写点什么\r");
 		await tick();
 		await tick();
 
-		const screen = screenOf(terminal);
-		const scrolled = screen.scrolled();
-		assert.ok(scrolled.some((line) => line.includes("第 0 行内容")));
-		assert.ok(scrolled.some((line) => line.includes("第 5 行内容")));
-		// 屏幕上剩下的最后几行仍在
-		assert.ok(visible().length > 0);
+		// 跟尾时只能看到最后一段
+		assert.ok(!visible().some((line) => line.includes("第 0 行内容")));
+
+		terminal.feedInput("\x1b[5~");
+		await tick();
+		assert.ok(visible().some((line) => line.includes("正在翻阅历史")));
+		assert.ok(visible().some((line) => line.includes("第 0 行内容")));
+
+		// 翻到底部自动恢复跟尾，提示也就没了
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		terminal.feedInput("\x1b[6~");
+		await tick();
+		assert.ok(!visible().some((line) => line.includes("正在翻阅历史")));
 
 		await quit(terminal, done);
 	});
-
 	it("工具调用显示成一行结果", async () => {
 		const { terminal, visible, done } = await start({
 			onRun: async ({ emit }) => {
@@ -222,7 +241,8 @@ describe("交互界面", () => {
 		assert.deepEqual(terminal.pasteModes, [true, false]);
 		assert.deepEqual(terminal.focusModes, [true, false]);
 		const text = terminal.writes.join("");
-		assert.ok(text.includes("会话 abc 已保存：/work/session.jsonl"), text);
+		assert.ok(text.includes("会话已保存：/work/session.jsonl"), text);
+		assert.ok(text.includes("接续这次对话：reins --resume abc"), text);
 	});
 
 	it("接续旧会话时说出屏幕外还有多少条历史", async () => {
@@ -242,16 +262,17 @@ describe("交互界面", () => {
 		await tick();
 
 		const text = terminal.writes.join("");
-		assert.ok(text.includes("共 1060 token（3 次请求）"), text);
+		assert.ok(text.includes("请求 3 次"), text);
+		assert.ok(text.includes("1060 token"), text);
 	});
 
-	it("不整屏清空：滚动区里的历史不会被擦掉", async () => {
+	it("进出备用屏成对出现，主屏不会被整屏清空", async () => {
 		const { terminal, done } = await start();
 		terminal.feedInput("随便\r");
 		await tick();
 		await quit(terminal, done);
 
-		assert.ok(!terminal.writes.join("").includes("\x1b[2J"));
+		assert.deepEqual(terminal.alternateScreens.slice(0, 2), [true, false]);
 	});
 
 	it("窗口缩放后按新宽度重排", async () => {

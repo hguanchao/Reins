@@ -17,6 +17,7 @@ export class MemoryTerminal implements Terminal {
 	readonly cursorVisibility: boolean[] = [];
 	readonly pasteModes: boolean[] = [];
 	readonly focusModes: boolean[] = [];
+	readonly alternateScreens: boolean[] = [];
 	/** 每次缩放发生在第几次写入之后，供重放时按当时的几何尺寸还原 */
 	readonly resizes: { readonly at: number; readonly size: TerminalSize }[] = [];
 
@@ -54,6 +55,11 @@ export class MemoryTerminal implements Terminal {
 
 	setBracketedPaste(enabled: boolean): void {
 		this.pasteModes.push(enabled);
+	}
+
+	setAlternateScreen(enabled: boolean): void {
+		this.write(enabled ? "\x1b[?1049h" : "\x1b[?1049l");
+		this.alternateScreens.push(enabled);
 	}
 
 	setFocusReporting(enabled: boolean): void {

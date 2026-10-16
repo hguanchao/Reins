@@ -21,6 +21,8 @@ export type KeyName =
 	| "down"
 	| "home"
 	| "end"
+	| "pageup"
+	| "pagedown"
 	| "ctrl-a"
 	| "ctrl-c"
 	| "ctrl-d"
@@ -52,6 +54,8 @@ const CSI_KEYS: ReadonlyMap<string, KeyName> = new Map([
 	["1~", "home"],
 	["3~", "delete"],
 	["4~", "end"],
+	["5~", "pageup"],
+	["6~", "pagedown"],
 	["7~", "home"],
 	["8~", "end"],
 ]);

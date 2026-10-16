@@ -5,7 +5,8 @@ import type { AgentEvent } from "../../../src/agent/events.ts";
 import { Transcript } from "../../../src/plugins/tui-plugin/transcript.ts";
 
 function texts(lines: readonly (readonly { readonly text: string }[])[]): string[] {
-	return lines.map((line) => line.map((span) => span.text).join(""));
+	// 模型产出的行带缩进，断言关心的是内容本身，因此比较时把两端空白去掉
+	return lines.map((line) => line.map((span) => span.text).join("")).map((line) => line.trim());
 }
 
 const NOW = 1_000_000;
@@ -13,7 +14,7 @@ const NOW = 1_000_000;
 describe("会话显示状态", () => {
 	it("回显我说的话，长句子折行后缩进对齐", () => {
 		const transcript = new Transcript(12);
-		assert.deepEqual(texts(transcript.userTurn("一二三四五六七八九十")), ["› 一二三四五", "  六七八九十"]);
+		assert.deepEqual(texts(transcript.userTurn("一二三四五六七八九十")), ["› 一二三四", "五六七八", "九十"]);
 	});
 
 	it("流式回答按 markdown 画在活动块里", () => {
@@ -22,22 +23,20 @@ describe("会话显示状态", () => {
 		assert.deepEqual(texts(transcript.live({ maxLines: 10, now: NOW })), ["标题", "", "正文"]);
 	});
 
-	it("还没写完的内容不进滚动区", () => {
+	it("还在写的回答不产生已定型的行，只在活动块里", () => {
 		const transcript = new Transcript(20);
 		transcript.handle({ type: "text_delta", text: "一二三四五六七八九十" }, NOW);
-		// 只有一行在写，交不出去任何东西
-		assert.deepEqual(transcript.takeStable(5), []);
+		// 写到一半的内容随时会重排，因此不算定型；整屏绘制由调用方自己决定显示哪一段
+		assert.deepEqual(transcript.handle({ type: "text_delta", text: "又写了" }, NOW), []);
+		assert.ok(transcript.live({ now: NOW }).length > 0);
 	});
 
-	it("活动块太长时先交出已经定型的部分", () => {
+	it("不传 maxLines 时活动块不折叠：显示哪一段由调用方自己挑", () => {
 		const transcript = new Transcript(10);
-		transcript.handle({ type: "text_delta", text: "第一段\n\n第二段还在写" }, NOW);
-
-		const stable = transcript.takeStable(2);
-		// 最后一块的最后一行还在长，前面的行已经定型
-		assert.deepEqual(texts(stable), ["第一段", "", "第二段还在"]);
-		// 交出去的行不再出现在活动块里
-		assert.deepEqual(texts(transcript.live({ maxLines: 5, now: NOW })), ["写"]);
+		transcript.handle({ type: "text_delta", text: "第一段\n\n第二段\n\n第三段" }, NOW);
+		const lines = transcript.live({ now: NOW });
+		assert.equal(lines.length, 5);
+		assert.deepEqual(texts(lines), ["第一段", "", "第二段", "", "第三段"]);
 	});
 
 	it("调工具之前先把写好的回答交出去", () => {
@@ -90,7 +89,7 @@ describe("会话显示状态", () => {
 	it("推理内容只做预览，不写进滚动区", () => {
 		const transcript = new Transcript(30);
 		transcript.handle({ type: "reasoning_delta", text: "想一想\n再想一想" }, NOW);
-		assert.deepEqual(texts(transcript.live({ maxLines: 5, now: NOW })), ["· 想一想", "  再想一想"]);
+		assert.deepEqual(texts(transcript.live({ maxLines: 5, now: NOW })), ["·   想一想", "再想一想"]);
 
 		// 本轮结束时推理内容被丢掉
 		assert.deepEqual(texts(transcript.flush()), []);
