@@ -1,8 +1,10 @@
+import type { McpServerConfig } from "../config/config-file.ts";
+import type { Plugin } from "./host.ts";
+import { createMcpPlugin } from "./mcp-plugin/index.ts";
 import sandboxPlugin from "./sandbox-plugin/index.ts";
 import sessionPlugin from "./session-plugin/index.ts";
 import toolsPlugin from "./tools-plugin/index.ts";
 import tuiPlugin from "./tui-plugin/index.ts";
-import type { Plugin } from "./host.ts";
 
 /**
  * 组合根。
@@ -11,8 +13,29 @@ import type { Plugin } from "./host.ts";
  * 周期。这样「宿主不依赖具体插件」这条规则才有落点——依赖方向始终是 plugins 指向宿主，
  * 反过来一次都没有。
  */
-export function bundledPlugins(): readonly Plugin[] {
-	return [toolsPlugin, sessionPlugin, sandboxPlugin, tuiPlugin];
+
+export interface BundledPluginContext {
+	/** 工作目录：要起外部进程的插件在这里动手 */
+	readonly cwd: string;
+	/** 本程序自己的版本，握手时用得上 */
+	readonly version: string;
+	/**
+	 * 要连接的 MCP server。
+	 *
+	 * 只读命令（比如列会话清单）传空数组：为了显示一份清单去起一堆外部进程，既慢又会在使用者
+	 * 看不见的地方留下副作用。
+	 */
+	readonly mcpServers: readonly McpServerConfig[];
+}
+
+export function bundledPlugins(context: BundledPluginContext): readonly Plugin[] {
+	return [
+		toolsPlugin,
+		sessionPlugin,
+		sandboxPlugin,
+		tuiPlugin,
+		createMcpPlugin({ cwd: context.cwd, version: context.version, servers: context.mcpServers }),
+	];
 }
 
 export { sandboxPlugin, sessionPlugin, toolsPlugin, tuiPlugin };

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { PermissionPolicy } from "../../src/permission/policy.ts";
-import { PluginHost, type Plugin } from "../../src/plugins/host.ts";
+import { PluginHost, type Plugin, type PluginApi } from "../../src/plugins/host.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
 import type { SessionStore } from "../../src/session/store.ts";
@@ -126,6 +126,22 @@ describe("插件装载", () => {
 			},
 		]);
 		assert.equal(tools.get("later")?.name, "later");
+	});
+
+	it("装载结束之后注册的工具直接生效，不跟着任何插件回滚", async () => {
+		const tools = makeRegistry();
+		const host = new PluginHost(tools, new PermissionPolicy("ask"));
+		let api!: PluginApi;
+		const failures = await host.load([
+			{ name: "late-plugin", setup(value) { api = value; } },
+			{ name: "broken-plugin", setup() { throw new Error("坏了"); } },
+		]);
+
+		assert.equal(failures.length, 1);
+		// 连上远端之后才知道有哪些工具，这类注册发生在装载之后：没有「中途失败要回滚」这回事，
+		// 也不该被别的插件的失败带走
+		api.registerTool(echoTool("late"));
+		assert.equal(tools.get("late")?.name, "late");
 	});
 });
 

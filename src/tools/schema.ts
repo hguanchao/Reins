@@ -105,11 +105,15 @@ function check(schema: JsonSchema, value: unknown, path: string, problems: strin
 			for (const key of schema.required ?? []) {
 				if (record[key] === undefined) problems.push(`${path} 缺少必填的 ${key}`);
 			}
+			// 没有声明 properties 时任何键都合法。本程序自带的工具都会声明，但参数模式也可能
+			// 来自外部（远端工具），只说 type 不列属性是合法的 JSON Schema 写法
+			const properties = schema.properties;
+			if (properties === undefined) return;
 			for (const [key, item] of Object.entries(record)) {
-				const property = schema.properties[key];
+				const property = properties[key];
 				if (property === undefined) {
 					// 多余的键一律报错：多半是模型把参数名写错了，静默忽略会让它以为设置生效了
-					problems.push(`${path} 出现未知的 ${key}，可用：${Object.keys(schema.properties).join("、")}`);
+					problems.push(`${path} 出现未知的 ${key}，可用：${Object.keys(properties).join("、")}`);
 					continue;
 				}
 				if (item === undefined) continue;

@@ -99,7 +99,7 @@ async function runSessionsCommand(options: CliOptions): Promise<number> {
 			new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), new PermissionGate({ policy })),
 			policy,
 		);
-		await loadBundledPlugins(config, host);
+		await loadBundledPlugins(config, host, workRoot);
 
 		return runSessions(options, {
 			workRoot,
@@ -183,7 +183,11 @@ async function runPrint(options: CliOptions): Promise<number> {
 	for (const tool of createCoreTools()) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
-	const failures = await host.load(bundledPlugins().filter((plugin) => !disabledPlugins(config).has(plugin.name)));
+	const failures = await host.load(
+		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
+			(plugin) => !disabledPlugins(config).has(plugin.name),
+		),
+	);
 	for (const failure of failures) {
 		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
 		writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
@@ -269,7 +273,11 @@ async function runChat(options: CliOptions): Promise<number> {
 	for (const tool of createCoreTools()) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
-	const failures = await host.load(bundledPlugins().filter((plugin) => !disabledPlugins(config).has(plugin.name)));
+	const failures = await host.load(
+		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
+			(plugin) => !disabledPlugins(config).has(plugin.name),
+		),
+	);
 	for (const failure of failures) writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
 
 	const frontend = host.frontend();
@@ -546,10 +554,15 @@ function createReviewer(
  *
  * 失败只说一声：一个写坏的插件不该让整个程序起不来。禁用清单来自配置，而配置在装载之前
  * 就已经读过并取得过信任了。
+ *
+ * 这里不给 MCP server：`reins sessions` 只列会话，为了显示一份清单去起一堆外部进程，既慢
+ * 又会在使用者看不见的地方留下副作用。
  */
-async function loadBundledPlugins(config: Config, host: PluginHost): Promise<void> {
+async function loadBundledPlugins(config: Config, host: PluginHost, cwd: string): Promise<void> {
 	const failures = await host.load(
-		bundledPlugins().filter((plugin) => !disabledPlugins(config).has(plugin.name)),
+		bundledPlugins({ cwd, version: readVersion(), mcpServers: [] }).filter(
+			(plugin) => !disabledPlugins(config).has(plugin.name),
+		),
 	);
 	for (const failure of failures) writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
 }

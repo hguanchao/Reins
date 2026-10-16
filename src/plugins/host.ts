@@ -55,9 +55,22 @@ export interface PluginFailure {
 	readonly message: string;
 }
 
-interface PendingTool {
-	readonly tool: AnyToolDefinition;
-	readonly plugin: string;
+/**
+ * 一个插件的待提交项。
+ *
+ * 每个插件各有一份，而不是共用几个字段：插件可以在装载结束之后继续注册工具（远端连上之后
+ * 才知道自己有哪些能力），共用字段会让那些迟到的注册落进另一个插件的队列里，跟着它一起
+ * 提交或一起回滚。
+ */
+interface Pending {
+	readonly tools: AnyToolDefinition[];
+	readonly rules: PermissionRule[];
+	readonly backends: SandboxBackend[];
+	readonly commands: PluginCommand[];
+	store: SessionStore | undefined;
+	frontend: InteractiveFrontend | undefined;
+	/** 这个插件的装载是否还在进行。结束后再注册就直接生效——已经没有可回滚的对象了 */
+	open: boolean;
 }
 
 export class PluginHost {
@@ -67,12 +80,6 @@ export class PluginHost {
 	readonly #backends: SandboxBackend[] = [];
 	#frontend: InteractiveFrontend | undefined;
 	#sessionStore: SessionStore | undefined;
-	/** 装载期间先放在这里，等 setup 正常返回再一起交出去 */
-	#pendingTools: PendingTool[] = [];
-	#pendingRules: PermissionRule[] = [];
-	#pendingBackends: SandboxBackend[] = [];
-	#pendingStore: SessionStore | undefined;
-	#current = "";
 
 	constructor(tools: ToolRegistry, policy: PermissionPolicy) {
 		this.#tools = tools;
@@ -82,8 +89,9 @@ export class PluginHost {
 	/**
 	 * 依次装载插件。
 	 *
-	 * 装载期间插件只把条目记进队列，等它的 setup 正常返回后再一起提交。这样插件中途抛错时
-	 * 不会留下半注册的状态——一半生效的插件比完全没加载更难看懂，使用者会以为某项能力可用。
+	 * 装载期间插件只把条目记进自己的队列，等它的 setup 正常返回后再一起提交。这样插件中途
+	 * 抛错时不会留下半注册的状态——一半生效的插件比完全没加载更难看懂，使用者会以为某项
+	 * 能力可用。
 	 *
 	 * 单个插件失败不影响其余插件：一个写坏的插件不该让整个程序起不来。
 	 */
@@ -91,12 +99,13 @@ export class PluginHost {
 		const failures: PluginFailure[] = [];
 
 		for (const plugin of plugins) {
-			this.#current = plugin.name;
+			const pending = newPending();
 			try {
-				await plugin.setup(this.#api());
-				this.#commit();
+				await plugin.setup(this.#api(pending));
+				pending.open = false;
+				this.#commit(pending);
 			} catch (error) {
-				this.#discard();
+				pending.open = false;
 				failures.push({
 					plugin: plugin.name,
 					message: error instanceof Error ? error.message : String(error),
@@ -104,7 +113,6 @@ export class PluginHost {
 			}
 		}
 
-		this.#current = "";
 		return failures;
 	}
 
@@ -132,60 +140,54 @@ export class PluginHost {
 		await command.run(args, context);
 	}
 
-	#api(): PluginApi {
+	#api(pending: Pending): PluginApi {
 		return {
 			registerTool: (tool) => {
-				this.#pendingTools.push({ tool, plugin: this.#current });
+				if (!pending.open) {
+					// 装载已经结束：这是插件在后台拿到能力之后才注册的，直接生效
+					this.#tools.register(tool, "plugin");
+					return;
+				}
+				pending.tools.push(tool);
 			},
 			registerCommand: (command) => {
-				if (this.#commands.has(command.name)) {
+				if (this.#commands.has(command.name) || pending.commands.some((item) => item.name === command.name)) {
 					throw new Error(`命令 /${command.name} 重复注册`);
 				}
-				this.#commands.set(command.name, command);
+				pending.commands.push(command);
 			},
 			registerSandboxBackend: (backend) => {
-				this.#pendingBackends.push(backend);
+				pending.backends.push(backend);
 			},
 			registerPermissionRule: (rule) => {
-				this.#pendingRules.push(rule);
+				pending.rules.push(rule);
 			},
 			registerFrontend: (frontend) => {
-				if (this.#frontend !== undefined) {
+				if (this.#frontend !== undefined || pending.frontend !== undefined) {
 					throw new Error("交互界面已经注册过了，只能有一个");
 				}
-				this.#frontend = frontend;
+				pending.frontend = frontend;
 			},
 			registerSessionStore: (store) => {
-				if (this.#pendingStore !== undefined || this.#sessionStore !== undefined) {
+				if (this.#sessionStore !== undefined || pending.store !== undefined) {
 					throw new Error("会话存储已经注册过了，只能有一个");
 				}
-				this.#pendingStore = store;
+				pending.store = store;
 			},
 		};
 	}
 
-	#commit(): void {
+	#commit(pending: Pending): void {
 		// 工具先提交：它的重名检查会抛错，抛在这里仍算在该插件名下
-		const tools = this.#pendingTools;
-		this.#pendingTools = [];
-		for (const item of tools) this.#tools.register(item.tool, "plugin");
-
-		for (const backend of this.#pendingBackends) this.#backends.push(backend);
-		this.#pendingBackends = [];
-
-		for (const rule of this.#pendingRules) this.#policy.addRule(rule);
-		this.#pendingRules = [];
-
-		if (this.#pendingStore !== undefined) {
-			this.#sessionStore = this.#pendingStore;
-			this.#pendingStore = undefined;
-		}
+		for (const tool of pending.tools) this.#tools.register(tool, "plugin");
+		for (const backend of pending.backends) this.#backends.push(backend);
+		for (const rule of pending.rules) this.#policy.addRule(rule);
+		for (const command of pending.commands) this.#commands.set(command.name, command);
+		if (pending.store !== undefined) this.#sessionStore = pending.store;
+		if (pending.frontend !== undefined) this.#frontend = pending.frontend;
 	}
+}
 
-	#discard(): void {
-		this.#pendingTools = [];
-		this.#pendingBackends = [];
-		this.#pendingRules = [];
-		this.#pendingStore = undefined;
-	}
+function newPending(): Pending {
+	return { tools: [], rules: [], backends: [], commands: [], store: undefined, frontend: undefined, open: true };
 }
