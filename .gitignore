@@ -1,0 +1,7 @@
+node_modules/
+
+# 调研用的第三方源码：只读、不入库
+reference/
+
+# 工具生成的会话状态
+.zcode/

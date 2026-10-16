@@ -1,0 +1,20 @@
+{
+	"name": "@reins/cli",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"reins": "./src/cli/index.ts"
+	},
+	"engines": {
+		"node": ">=22.18"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"test": "node --test \"tests/**/*.test.ts\""
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.0",
+		"typescript": "^5.9.0"
+	}
+}
