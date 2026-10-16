@@ -28,6 +28,8 @@ export interface Style {
 	readonly dim?: boolean;
 	readonly italic?: boolean;
 	readonly underline?: boolean;
+	/** 前景与背景互换。光标就是靠它显示的：反显的那一格就是光标。 */
+	readonly reverse?: boolean;
 	readonly color?: ColorName;
 }
 
@@ -50,6 +52,13 @@ export interface Cell {
 export interface CellLine {
 	readonly cells: readonly Cell[];
 	readonly width: number;
+	/**
+	 * 这一行的内容在输入格子里的起点。
+	 *
+	 * 光标定位要用它：换行会重排格子，但任何格子都不会被丢掉，因此「输入里的第 i 个格子」
+	 * 与「输出行里的某个格子」是一一对应的，只要知道这一行从哪开始。
+	 */
+	readonly sourceStart: number;
 }
 
 export function plain(text: string): Line {
@@ -100,12 +109,14 @@ export function mergeStyles(base: Style | undefined, extra: Style | undefined): 
 		dim?: boolean;
 		italic?: boolean;
 		underline?: boolean;
+		reverse?: boolean;
 		color?: ColorName;
 	} = {};
 	if (base.bold === true || extra.bold === true) merged.bold = true;
 	if (base.dim === true || extra.dim === true) merged.dim = true;
 	if (base.italic === true || extra.italic === true) merged.italic = true;
 	if (base.underline === true || extra.underline === true) merged.underline = true;
+	if (base.reverse === true || extra.reverse === true) merged.reverse = true;
 	const color = extra.color ?? base.color;
 	if (color !== undefined) merged.color = color;
 
@@ -179,6 +190,7 @@ function sameStyle(left: Style | undefined, right: Style | undefined): boolean {
 		left.dim === right.dim &&
 		left.italic === right.italic &&
 		left.underline === right.underline &&
+		left.reverse === right.reverse &&
 		left.color === right.color
 	);
 }

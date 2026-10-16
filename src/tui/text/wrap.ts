@@ -61,28 +61,38 @@ export function wrapCells(cells: readonly Cell[], options: WrapOptions): readonl
 	let currentWidth = sumCellsWidth(firstIndent);
 	/** 本行缩进之后的起点；在此之前不许断，否则会把缩进单独留在一行 */
 	let contentStart = current.length;
+	/** 本行第一个内容格子在输入里是第几个，用来把输出行映射回输入 */
+	let sourceStart = 0;
 	let lastBreak = -1;
 	/** 自上次断行以来是否放过内容，用于判断输入末尾的换行要不要产生一个空行 */
 	let dirty = false;
 
-	const flush = (): void => {
-		lines.push({ cells: current, width: currentWidth });
+	const flush = (nextSource: number): void => {
+		lines.push({ cells: current, width: currentWidth, sourceStart });
 		current = [...restIndent];
 		currentWidth = indentWidth;
 		contentStart = restIndent.length;
+		sourceStart = nextSource;
 		lastBreak = -1;
 		dirty = false;
 	};
 
-	const place = (cell: Cell): void => {
+	const place = (cell: Cell, source: number): void => {
 		while (currentWidth + cell.width > width && current.length > contentStart) {
 			if (lastBreak > contentStart) {
 				const tail = current.slice(lastBreak);
-				lines.push({ cells: current.slice(0, lastBreak), width: currentWidth - sumCellsWidth(tail) });
+				lines.push({
+					cells: current.slice(0, lastBreak),
+					width: currentWidth - sumCellsWidth(tail),
+					sourceStart,
+				});
+				// 断点之后的内容连同它在输入里的位置一起挪到下一行
+				sourceStart += lastBreak - contentStart;
 				current = [...restIndent, ...tail];
 				currentWidth = indentWidth + sumCellsWidth(tail);
 			} else {
-				lines.push({ cells: current, width: currentWidth });
+				lines.push({ cells: current, width: currentWidth, sourceStart });
+				sourceStart = source;
 				current = [...restIndent];
 				currentWidth = indentWidth;
 			}
@@ -98,24 +108,25 @@ export function wrapCells(cells: readonly Cell[], options: WrapOptions): readonl
 		dirty = true;
 	};
 
-	for (const cell of cells) {
+	for (let index = 0; index < cells.length; index += 1) {
+		const cell = cells[index];
 		if (LINE_FEEDS.has(cell.text)) {
-			flush();
+			flush(index + 1);
 			continue;
 		}
 		if (cell.text === "\t") {
 			// 空格的个数要先算定：place 会改当前列宽，边放边算会把制表位越缩越短
 			const count = TAB_WIDTH - (currentWidth % TAB_WIDTH);
-			for (let index = 0; index < count; index += 1) {
-				place({ text: " ", width: 1, style: cell.style });
+			for (let offset = 0; offset < count; offset += 1) {
+				place({ text: " ", width: 1, style: cell.style }, index);
 			}
 			continue;
 		}
-		place(cell);
+		place(cell, index);
 	}
 
 	// 末尾的换行只表示「这一行结束了」，不该再凭空多出一个空行；空输入则保留一行
-	if (dirty || lines.length === 0) lines.push({ cells: current, width: currentWidth });
+	if (dirty || lines.length === 0) lines.push({ cells: current, width: currentWidth, sourceStart });
 	return applyMaxLines(lines, width, options.maxLines);
 }
 
@@ -135,5 +146,5 @@ function applyMaxLines(
 	const last = kept[kept.length - 1];
 	const trimmed = fitCells(last.cells, width - 1);
 	const cells = [...trimmed, { text: ELLIPSIS, width: 1 }];
-	return [...kept.slice(0, -1), { cells, width: sumCellsWidth(cells) }];
+	return [...kept.slice(0, -1), { cells, width: sumCellsWidth(cells), sourceStart: last.sourceStart }];
 }
