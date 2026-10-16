@@ -238,7 +238,8 @@ export class TurnDriver {
 		});
 	}
 
-	async #recordFailures(calls: readonly LlmToolCallBlock[], content: string): Promise<void> {		for (const call of calls) {
+	async #recordFailures(calls: readonly LlmToolCallBlock[], content: string): Promise<void> {
+		for (const call of calls) {
 			await this.#deps.session.append({
 				type: "message",
 				message: {
