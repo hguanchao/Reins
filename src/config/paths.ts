@@ -33,6 +33,15 @@ export function spillDir(): string {
 }
 
 /**
+ * 外部插件目录。
+ *
+ * 放在配置目录下：插件是使用者自己的东西，不属于某个具体项目，换目录工作时也该还在。
+ */
+export function pluginsDir(): string {
+	return join(configDir(), "plugins");
+}
+
+/**
  * 会话文件所在目录。
  *
  * 按工作根分目录，同一个目录下的会话聚在一起，换目录工作时各自看到自己的历史。

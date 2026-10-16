@@ -118,6 +118,18 @@ export class ToolRegistry {
 		return this.#tools.get(name)?.definition;
 	}
 
+	/**
+	 * 卸下插件注册的工具，为热重载让位。
+	 *
+	 * 核心工具不在可卸之列：它们是产品的一部分，重载不该让它们消失。
+	 */
+	removePluginTool(name: string): void {
+		const existing = this.#tools.get(name);
+		if (existing === undefined) return;
+		if (existing.source === "core") throw new Error(`核心工具 ${name} 不能被卸下`);
+		this.#tools.delete(name);
+	}
+
 	/** 声明给模型的工具清单。 */
 	list(): readonly AnyToolDefinition[] {
 		return [...this.#tools.values()].map((item) => item.definition);

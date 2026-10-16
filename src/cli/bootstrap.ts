@@ -11,6 +11,7 @@ import { loadModels, type ModelsConfig } from "../config/models-file.ts";
 import {
 	configFilePath,
 	modelsFilePath,
+	pluginsDir,
 	projectConfigFilePath,
 	projectModelsFilePath,
 	spillDir,
@@ -21,7 +22,8 @@ import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
 import { PermissionGate, PermissionPolicy, type Confirmer } from "../permission/policy.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
-import { PluginHost } from "../plugins/host.ts";
+import { PluginHost, type PluginFailure } from "../plugins/host.ts";
+import { ExternalPlugins } from "../plugins/external.ts";
 import { bundledPlugins } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
@@ -183,6 +185,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 	for (const tool of createCoreTools()) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
+	const external = prepareExternalPlugins(host);
 	const failures = await host.load(
 		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
 			(plugin) => !disabledPlugins(config).has(plugin.name),
@@ -192,6 +195,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
 		writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
 	}
+	reportExternalFailures(await external.load());
 
 	let sandbox: SandboxView;
 	try {
@@ -273,12 +277,14 @@ async function runChat(options: CliOptions): Promise<number> {
 	for (const tool of createCoreTools()) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
+	const external = prepareExternalPlugins(host);
 	const failures = await host.load(
 		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
 			(plugin) => !disabledPlugins(config).has(plugin.name),
 		),
 	);
 	for (const failure of failures) writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
+	reportExternalFailures(await external.load());
 
 	const frontend = host.frontend();
 	if (frontend === undefined) {
@@ -550,13 +556,43 @@ function createReviewer(
 }
 
 /**
+ * 建好外部插件的装载器，并登记 /reload。
+ *
+ * 命令要赶在插件装载之前登记：先占住名字，插件再想用同一个名字就会成为一条清楚的装载失败，
+ * 而不是启动到一半崩掉。
+ */
+function prepareExternalPlugins(host: PluginHost): ExternalPlugins {
+	const external = new ExternalPlugins({ directory: pluginsDir(), host });
+	host.addCommand({
+		name: "reload",
+		description: "重新装载外部插件（改完文件不必重启）",
+		async run(_args, context) {
+			const failures = await external.load();
+			if (failures.length === 0) {
+				context.print("外部插件已重新装载。");
+				return;
+			}
+			context.print("外部插件已重新装载，下列插件没装成功：");
+			for (const failure of failures) context.print(`  ${failure.plugin}：${failure.message}`);
+		},
+	});
+	return external;
+}
+
+function reportExternalFailures(failures: readonly PluginFailure[]): void {
+	for (const failure of failures) {
+		writeStderr(`外部插件 ${failure.plugin} 装载失败：${failure.message}\n`);
+	}
+}
+
+/**
  * 装载随包分发的插件。
  *
  * 失败只说一声：一个写坏的插件不该让整个程序起不来。禁用清单来自配置，而配置在装载之前
  * 就已经读过并取得过信任了。
  *
- * 这里不给 MCP server：`reins sessions` 只列会话，为了显示一份清单去起一堆外部进程，既慢
- * 又会在使用者看不见的地方留下副作用。
+ * 这里不给 MCP server，也不装外部插件：`reins sessions` 只列会话，为了显示一份清单去起一堆
+ * 外部进程、跑一遍别人的代码，既慢又会在使用者看不见的地方留下副作用。
  */
 async function loadBundledPlugins(config: Config, host: PluginHost, cwd: string): Promise<void> {
 	const failures = await host.load(
