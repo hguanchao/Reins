@@ -96,3 +96,52 @@ describe("parseArgs 拒绝非法输入", () => {
 		assert.throws(() => parseArgs(["config", "check", "多余"]), /不接受额外参数/);
 	});
 });
+
+describe("parseArgs 的会话选项", () => {
+	it("认出 --continue 与 --resume", () => {
+		assert.equal(parseArgs(["-c"]).continueSession, true);
+		assert.equal(parseArgs(["--continue"]).continueSession, true);
+		assert.equal(parseArgs(["--resume", "abc123"]).resume, "abc123");
+		assert.equal(parseArgs(["--resume=abc123"]).resume, "abc123");
+		// 非交互模式也能接续：这是脚本里最常用的一种
+		const print = parseArgs(["--resume", "abc123", "-p", "接着说"]);
+		assert.equal(print.command, "print");
+		assert.equal(print.resume, "abc123");
+	});
+
+	it("认出 --fork 与 --at", () => {
+		const options = parseArgs(["--resume", "abc123", "--fork", "--at", "e1"]);
+		assert.equal(options.fork, true);
+		assert.equal(options.forkAt, "e1");
+	});
+
+	it("组合不完整时报用法错误", () => {
+		// 单独一个 --fork 说明不了从哪儿分叉
+		assert.throws(() => parseArgs(["--fork"]), /要配 --resume/);
+		assert.throws(() => parseArgs(["--at", "e1"]), /只和 --fork 一起用/);
+		assert.throws(() => parseArgs(["-c", "--resume", "abc123"]), /只能用其中一个/);
+		assert.throws(() => parseArgs(["--resume"]), /需要一个标识/);
+	});
+
+	it("识别 sessions 子命令", () => {
+		const list = parseArgs(["sessions", "list"]);
+		assert.equal(list.command, "sessions");
+		assert.equal(list.sessionsAction, "list");
+		assert.equal(list.sessionRef, undefined);
+
+		const show = parseArgs(["sessions", "show", "abc123"]);
+		assert.equal(show.sessionsAction, "show");
+		assert.equal(show.sessionRef, "abc123");
+
+		assert.throws(() => parseArgs(["sessions"]), /支持 list 与 show/);
+		assert.throws(() => parseArgs(["sessions", "rm", "abc"]), /支持 list 与 show/);
+		assert.throws(() => parseArgs(["sessions", "show"]), /需要一个会话标识/);
+		assert.throws(() => parseArgs(["sessions", "list", "多余"]), /不接受额外参数/);
+	});
+
+	it("帮助文本写明了会话相关的用法", () => {
+		assert.ok(HELP_TEXT.includes("reins sessions list"));
+		assert.ok(HELP_TEXT.includes("--continue"));
+		assert.ok(HELP_TEXT.includes("--fork"));
+	});
+});

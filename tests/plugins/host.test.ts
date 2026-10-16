@@ -8,6 +8,7 @@ import { PermissionPolicy } from "../../src/permission/policy.ts";
 import { PluginHost, type Plugin } from "../../src/plugins/host.ts";
 import { ToolRegistry } from "../../src/tools/registry.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
+import type { SessionStore } from "../../src/session/store.ts";
 import type { AnyToolDefinition } from "../../src/tools/contract.ts";
 import { allowAllGate } from "../tools/helpers.ts";
 
@@ -255,9 +256,18 @@ describe("插件提供的交互界面", () => {
 });
 
 describe("插件提供的会话存储", () => {
-	const store = {
+	const store: SessionStore = {
 		create() {
 			return { write() {}, end() {} };
+		},
+		read() {
+			return { header: undefined, entries: [] };
+		},
+		append() {
+			return { write() {}, end() {} };
+		},
+		list() {
+			return [];
 		},
 	};
 

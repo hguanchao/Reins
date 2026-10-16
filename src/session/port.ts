@@ -15,14 +15,25 @@ export interface SessionEntryBase {
 	readonly timestamp: string;
 }
 
+/** 条目格式的版本。日后若要调整字段含义，靠它决定怎么读旧文件。 */
+export const SESSION_VERSION = 1;
+
+/** 分叉的出处：从哪个会话的哪一条条目接着写。 */
+export interface ForkOrigin {
+	readonly session: string;
+	/** 分叉点的条目标识 */
+	readonly entry: string;
+}
+
 /** 文件首行，只有元信息，不属于条目树。 */
 export interface SessionHeaderEntry {
 	readonly type: "session";
-	/** 条目格式的版本号，便于日后迁移旧文件 */
 	readonly version: number;
 	readonly id: string;
 	readonly timestamp: string;
 	readonly cwd: string;
+	/** 这个会话是从别处分叉出来时记下来，形成一条可追的父会话链 */
+	readonly forkedFrom?: ForkOrigin;
 }
 
 export interface SessionMessageEntry extends SessionEntryBase {

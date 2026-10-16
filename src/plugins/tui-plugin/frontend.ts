@@ -91,9 +91,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 		} finally {
 			this.#restoreTerminal();
 			runtime.setConfirmer(undefined);
-			if (runtime.session.path !== null) {
-				this.#terminal.write(`会话已保存：${runtime.session.path}\n`);
-			}
+			// 说出会话标识与文件位置：使用者才知道去哪儿接着聊、去哪儿找这次记录
+			this.#terminal.write(`会话 ${runtime.session.id} 已保存：${runtime.session.path ?? "（只留在内存里）"}\n`);
 			this.#runtime = undefined;
 		}
 	}
@@ -147,6 +146,17 @@ export class TerminalFrontend implements InteractiveFrontend {
 				{ dim: true },
 			),
 		];
+
+		// 接续旧会话时屏幕上没有历史：至少要说清还有多少条在前面，以及去哪儿看
+		if (runtime.session.entries > 0) {
+			lines.push(
+				styled(
+					`接续会话 ${runtime.session.id}：已有 ${runtime.session.entries} 条条目，` +
+						`用 reins sessions show ${runtime.session.id} 看完整记录`,
+					{ color: "cyan" },
+				),
+			);
+		}
 
 		if (!runtime.trust.trusted && runtime.trust.files.length > 0) {
 			lines.push(

@@ -118,7 +118,7 @@ async function start(client: ScriptedClient): Promise<Harness> {
 	});
 	const workspace = new WorkspaceBoundary(work);
 
-	const fake = makeRuntime({ session: { id: session.id, path: session.path } });
+	const fake = makeRuntime({ session: { id: session.id, path: session.path, entries: session.entryCount } });
 	const runtime = {
 		...fake.runtime,
 		createDriver: (onEvent: AgentEventListener): TurnDriver =>

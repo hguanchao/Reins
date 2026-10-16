@@ -1,8 +1,16 @@
 import { randomBytes } from "node:crypto";
 
 import { SessionFolder } from "./fold.ts";
-import type { NewSessionEntry, SessionEntry, SessionPort, SessionState } from "./port.ts";
-import type { SessionWriter } from "./store.ts";
+import {
+	SESSION_VERSION,
+	type ForkOrigin,
+	type NewSessionEntry,
+	type SessionEntry,
+	type SessionPort,
+	type SessionState,
+} from "./port.ts";
+import type { SessionStore, SessionWriter } from "./store.ts";
+import { leavesOf, pathTo } from "./tree.ts";
 
 /**
  * 会话。
@@ -10,6 +18,9 @@ import type { SessionWriter } from "./store.ts";
  * 条目用 id/parentId 串成树，写入时只沿当前叶子追加，文件里因此天然是一条路径。落盘交给
  * 写入器：会话本身只负责条目、叶子与折叠出的状态，所以同一套语义既能写进 JSONL，也能只留在
  * 内存里。
+ *
+ * 续聊是把既有条目读进来接着写；分叉是把某个会话的一条路径复制成一个新会话——原会话一个
+ * 字节都不动。
  */
 
 export interface SessionOptions {
@@ -19,6 +30,8 @@ export interface SessionOptions {
 	readonly file: string | null;
 	/** 落盘通道。file 非 null 时必须给：没有通道就写不下去，这件事必须在构造时暴露 */
 	readonly writer?: SessionWriter;
+	/** 既有历史：续聊与分叉都从这里进来，叶子取最后一条路径的末尾 */
+	readonly entries?: readonly SessionEntry[];
 }
 
 export class Session implements SessionPort {
@@ -41,6 +54,73 @@ export class Session implements SessionPort {
 		this.cwd = options.cwd;
 		this.path = options.file;
 		this.#writer = options.writer;
+
+		for (const entry of options.entries ?? []) {
+			this.#entries.push(entry);
+			this.#ids.add(entry.id);
+			this.#folder.add(entry);
+		}
+		const leaves = leavesOf(this.#entries);
+		this.#leafId = leaves.length === 0 ? null : (leaves[leaves.length - 1]?.id ?? null);
+	}
+
+	/** 接续一个既有会话文件。读出来的条目已经在文件里，不会再写一遍。 */
+	static open(file: string, store: SessionStore): Session {
+		const opened = store.read(file);
+		if (opened.header === undefined) {
+			throw new Error(`会话文件缺少首行（会话头），无法接续：${file}`);
+		}
+		if (opened.header.version !== SESSION_VERSION) {
+			throw new Error(
+				`会话文件版本 ${opened.header.version} 与当前版本 ${SESSION_VERSION} 不一致，无法接续：${file}`,
+			);
+		}
+		return new Session({
+			id: opened.header.id,
+			cwd: opened.header.cwd,
+			file,
+			writer: store.append(file),
+			entries: opened.entries,
+		});
+	}
+
+	/**
+	 * 从一个会话分叉出新会话。
+	 *
+	 * 复制的是「从根到分叉点」那条路径，条目按原样写进新文件——id、时间与父子关系都不变，
+	 * 两份文件因此对得上。分叉点写进新会话的头，父会话链就是这么串起来的。
+	 */
+	static fork(
+		source: Session,
+		options: {
+			readonly id: string;
+			readonly cwd: string;
+			readonly file: string;
+			readonly store: SessionStore;
+			/** 分叉点；省略时取会话当前的位置 */
+			readonly at?: string;
+		},
+	): Session {
+		const at = options.at ?? source.leafId;
+		if (at === null) throw new Error("这个会话还没有内容，没有什么可以分叉的");
+
+		const path = pathTo(source.entries(), at);
+		const forkedFrom: ForkOrigin = { session: source.id, entry: at };
+		const writer = options.store.create({
+			id: options.id,
+			cwd: options.cwd,
+			file: options.file,
+			forkedFrom,
+		});
+		for (const entry of path) writer.write(entry);
+
+		return new Session({
+			id: options.id,
+			cwd: options.cwd,
+			file: options.file,
+			writer,
+			entries: path,
+		});
 	}
 
 	get entryCount(): number {

@@ -24,6 +24,8 @@ export interface InteractiveFrontend {
 export interface SessionView {
 	readonly id: string;
 	readonly path: string | null;
+	/** 已有的条目数。接续一个旧会话时，界面至少要让人知道屏幕之外还有多少历史 */
+	readonly entries: number;
 }
 
 /** 工作区信任在界面上的样子。 */

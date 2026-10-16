@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { JsonlSessionStore, SESSION_VERSION, parseSessionText } from "../../../src/plugins/session-plugin/jsonl-store.ts";
+import { JsonlSessionStore, parseSessionText } from "../../../src/plugins/session-plugin/jsonl-store.ts";
 import { Session } from "../../../src/session/session.ts";
-import type { SessionEntry } from "../../../src/session/port.ts";
+import { SESSION_VERSION, type SessionEntry } from "../../../src/session/port.ts";
 
 /**
  * JSONL 会话存储。

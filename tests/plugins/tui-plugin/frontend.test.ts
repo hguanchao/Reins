@@ -212,7 +212,7 @@ describe("交互界面", () => {
 		await quit(terminal, done);
 	});
 
-	it("退出后把终端恢复原状，并说出会话文件在哪", async () => {
+	it("退出后把终端恢复原状，并说出会话标识与文件在哪", async () => {
 		const { terminal, done } = await start();
 		terminal.feedInput("\x04");
 		await done;
@@ -221,7 +221,16 @@ describe("交互界面", () => {
 		assert.equal(terminal.rawModes.at(-1), false);
 		assert.deepEqual(terminal.pasteModes, [true, false]);
 		assert.deepEqual(terminal.focusModes, [true, false]);
-		assert.ok(terminal.writes.join("").includes("会话已保存：/work/session.jsonl"));
+		const text = terminal.writes.join("");
+		assert.ok(text.includes("会话 abc 已保存：/work/session.jsonl"), text);
+	});
+
+	it("接续旧会话时说出屏幕外还有多少条历史", async () => {
+		const { terminal, visible, done } = await start({
+			session: { id: "abc", path: "/work/session.jsonl", entries: 12 },
+		});
+		assert.ok(visible().some((line) => line.includes("已有 12 条条目")));
+		await quit(terminal, done);
 	});
 
 	it("不整屏清空：滚动区里的历史不会被擦掉", async () => {

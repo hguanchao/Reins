@@ -1,6 +1,4 @@
-import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
 import { Compactor } from "../agent/compactor.ts";
@@ -14,7 +12,6 @@ import {
 	modelsFilePath,
 	projectConfigFilePath,
 	projectModelsFilePath,
-	sessionsDir,
 	spillDir,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
@@ -39,6 +36,8 @@ import { findProjectResources, recordTrust, resolveTrust } from "../workspace/tr
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { formatConfigReport } from "./config-report.ts";
 import { runPrintMode } from "./print-mode.ts";
+import { openSession } from "./session-target.ts";
+import { runSessions } from "./sessions.ts";
 import { askYesNo } from "./prompt.ts";
 
 /**
@@ -73,10 +72,45 @@ export async function main(argv: readonly string[]): Promise<number> {
 			return 0;
 		case "config-check":
 			return runConfigCheck(options);
+		case "sessions":
+			return runSessionsCommand(options);
 		case "print":
 			return runPrint(options);
 		case "chat":
 			return runChat(options);
+	}
+}
+
+/**
+ * `reins sessions`。
+ *
+ * 只需要配置与插件清单：列出与查看会话不碰模型，因此不要求 model 能在 models.json 里对上，
+ * 配置本身有问题时才报错。工作区自带的配置照旧要信任才读，插件清单也从那里来。
+ */
+async function runSessionsCommand(options: CliOptions): Promise<number> {
+	const workRoot = process.cwd();
+	try {
+		const { config } = await loadEffectiveConfig(options);
+		// 列会话不碰工具，但插件装载只有这一条路：会话仓库本身就是插件提供的
+		const policy = new PermissionPolicy(config.approval);
+		const host = new PluginHost(
+			new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), new PermissionGate({ policy })),
+			policy,
+		);
+		await loadBundledPlugins(config, host);
+
+		return runSessions(options, {
+			workRoot,
+			store: host.sessionStore(),
+			stdout: writeStdout,
+		});
+	} catch (error) {
+		if (error instanceof ConfigError) {
+			writeStderr(`${error.display}\n`);
+			return 1;
+		}
+		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
 	}
 }
 
@@ -161,7 +195,8 @@ async function runPrint(options: CliOptions): Promise<number> {
 		return 1;
 	}
 
-	const session = createSession(workRoot, host.sessionStore());
+	const session = openSessionFor(options, workRoot, host.sessionStore());
+	if (session === undefined) return 1;
 	const compactor = createCompactor(config, selection);
 
 	try {
@@ -251,12 +286,13 @@ async function runChat(options: CliOptions): Promise<number> {
 		return 1;
 	}
 
-	const session = createSession(workRoot, host.sessionStore());
+	const session = openSessionFor(options, workRoot, host.sessionStore());
+	if (session === undefined) return 1;
 	const compactor = createCompactor(config, selection);
 
 	const runtime: InteractiveRuntime = {
 		cwd: workRoot,
-		session: { id: session.id, path: session.path },
+		session: { id: session.id, path: session.path, entries: session.entryCount },
 		provider: selection.provider.id,
 		model: selection.model.id,
 		approval: config.approval,
@@ -488,29 +524,40 @@ function createReviewer(
 }
 
 /**
- * 建立本次会话。
+ * 装载随包分发的插件。
  *
- * 会话存储由插件提供，因此必须显式处理它缺席的情形：这时会话只留在内存里，并且要说出来。
- * 使用者以为历史留在磁盘上、事后去找却发现什么都没有，是最难查的一种失败。
+ * 失败只说一声：一个写坏的插件不该让整个程序起不来。禁用清单来自配置，而配置在装载之前
+ * 就已经读过并取得过信任了。
  */
-function createSession(workRoot: string, store: SessionStore | undefined): Session {
-	const id = randomBytes(8).toString("hex");
-	if (store === undefined) {
-		writeStderr("没有会话存储（session-plugin 被禁用或装载失败），本次会话不会保存到文件。\n");
-		return new Session({ id, cwd: workRoot, file: null });
-	}
-	const file = sessionFilePath(workRoot);
-	return new Session({ id, cwd: workRoot, file, writer: store.create({ id, cwd: workRoot, file }) });
+async function loadBundledPlugins(config: Config, host: PluginHost): Promise<void> {
+	const failures = await host.load(
+		bundledPlugins().filter((plugin) => !disabledPlugins(config).has(plugin.name)),
+	);
+	for (const failure of failures) writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
 }
 
 /**
- * 会话文件路径。
+ * 按选项准备本次会话；选项指向的会话用不了时说明原因并返回 undefined。
  *
- * 文件名里带创建时间，便于按时间找人；后缀是短随机串，避免同一秒内启动两次时撞名。
+ * 会话存储由插件提供，它缺席时新建会话仍可用（只留在内存里），但必须说出来：使用者以为历史
+ * 留在磁盘上、事后去找却发现什么都没有，是最难查的一种失败。
  */
-function sessionFilePath(workRoot: string): string {
-	const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
-	return join(sessionsDir(workRoot), `${stamp}_${randomBytes(4).toString("hex")}.jsonl`);
+function openSessionFor(
+	options: CliOptions,
+	workRoot: string,
+	store: SessionStore | undefined,
+): Session | undefined {
+	const wantsExisting = options.continueSession || options.resume !== undefined;
+	if (store === undefined && !wantsExisting) {
+		writeStderr("没有会话存储（session-plugin 被禁用或装载失败），本次会话不会保存到文件。\n");
+	}
+
+	try {
+		return openSession(options, { workRoot, store });
+	} catch (error) {
+		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
+		return undefined;
+	}
 }
 
 /** 版本号取自 package.json；源码即运行产物，因此相对路径在任何安装形态下都成立。 */

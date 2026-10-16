@@ -52,7 +52,7 @@ export function makeRuntime(script: RuntimeScript = {}): FakeRuntime {
 
 	const runtime: InteractiveRuntime = {
 		cwd: "/work",
-		session: script.session ?? { id: "abc", path: "/work/session.jsonl" },
+		session: script.session ?? { id: "abc", path: "/work/session.jsonl", entries: 0 },
 		provider: script.provider ?? "demo",
 		model: script.model ?? "m1",
 		approval: script.approval ?? "ask",
