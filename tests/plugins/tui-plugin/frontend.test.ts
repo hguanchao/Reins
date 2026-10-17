@@ -387,6 +387,106 @@ describe("输入框边框", () => {
 		await running;
 	});
 
+	it("输入斜杠显示命令下拉，方向键选择后 Tab 补全", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("/");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		let rows = lastFrameRows(terminal.output);
+		for (const name of ["/help", "/exit", "/notify", "/trust"]) {
+			assert.ok(rows.some((line) => line.includes(name)), `dropdown lists ${name}`);
+		}
+		assert.ok(rows.some((line) => line.includes("Show this help")), "description column");
+
+		// 选中项默认是第一项 help；下移到 exit
+		terminal.inputListener?.("\x1b[B");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("\t");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ /exit")), "Tab accepts the selected command");
+		assert.ok(!rows.some((line) => line.includes("Show this help")), "dropdown closes after completion");
+
+		terminal.inputListener?.("\x03"); // 清空
+		terminal.quit();
+		await running;
+	});
+
+	it("斜杠查询过滤候选；未完整输入时 Enter 只补全", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("/he");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		let rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("/help")));
+		assert.ok(!rows.some((line) => line.includes("/exit")), "non-matching commands are filtered out");
+
+		terminal.inputListener?.("\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ /help")), "partial command is completed, not executed");
+		assert.ok(!rows.some((line) => line.includes("Interface commands")), "command did not run yet");
+
+		// 已经完整打出命令：再按 Enter 执行
+		terminal.inputListener?.("\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(
+			rows.some((line) => line.includes("While browsing, Home/End")),
+			"exact command executes",
+		);
+
+		terminal.quit();
+		await running;
+	});
+
+	it("Esc 只收起斜杠下拉，不清空输入；鼠标单击选中、双击接受", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("/he");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("\x1b");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		let rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ /he")), "Esc keeps the draft");
+		assert.ok(!rows.some((line) => line.includes("Show this help")), "Esc closes the dropdown");
+
+		// 回到空输入，重新打开下拉后用鼠标选 exit
+		terminal.inputListener?.("\x03");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("/");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		const exitRow = rows.findIndex((line) => line.includes("/exit"));
+		assert.ok(exitRow >= 0, "exit row is visible");
+		const exitCol = rows[exitRow].indexOf("/exit") + 1;
+		for (let click = 0; click < 2; click += 1) {
+			terminal.inputListener?.(`\x1b[<0;${exitCol};${exitRow + 1}M`);
+			terminal.inputListener?.(`\x1b[<0;${exitCol};${exitRow + 1}m`);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ /exit")), "double-click accepts the row");
+		assert.ok(!rows.some((line) => line.includes("Show this help")), "dropdown closes after mouse accept");
+
+		terminal.inputListener?.("\x03");
+		terminal.quit();
+		await running;
+	});
+
 	it("用户消息块按条目布局排列并带 ❯ 前缀", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };

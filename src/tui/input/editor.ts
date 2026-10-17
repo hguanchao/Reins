@@ -98,6 +98,11 @@ export class LineEditor {
 		return this.#atoms.map(atomText).join("");
 	}
 
+	/** 光标之前的显示文本；斜杠下拉靠它判断命令名是否还在输入中。 */
+	get displayBeforeCursor(): string {
+		return this.#atoms.slice(0, this.#cursor).map(atomText).join("");
+	}
+
 	get isEmpty(): boolean {
 		return this.#atoms.length === 0;
 	}
@@ -122,6 +127,33 @@ export class LineEditor {
 			...this.#atoms.slice(this.#cursor),
 		];
 		this.#cursor += 1;
+		this.#resetHistoryCursor();
+	}
+
+	/**
+	 * 替换开头的一段显示文本。
+	 *
+	 * 斜杠补全用它把 `/he` 换成 `/help `。只接受落在原子边界上的长度；命令名是普通文本，
+	 * 不会跨过粘贴 chip。
+	 */
+	replacePrefix(length: number, replacement: string): void {
+		if (length <= 0) return;
+
+		let consumed = 0;
+		let cutoff = 0;
+		while (cutoff < this.#atoms.length && consumed < length) {
+			consumed += atomText(this.#atoms[cutoff]).length;
+			cutoff += 1;
+		}
+		if (consumed !== length) return;
+
+		this.#snapshot();
+		const inserted: Atom[] = segmentGraphemes(normalizeLineBreaks(replacement)).map((text) => ({
+			kind: "text",
+			text,
+		}));
+		this.#atoms = [...inserted, ...this.#atoms.slice(cutoff)];
+		this.#cursor = inserted.length;
 		this.#resetHistoryCursor();
 	}
 

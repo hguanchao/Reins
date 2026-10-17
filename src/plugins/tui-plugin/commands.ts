@@ -25,12 +25,17 @@ export interface BuiltinContext {
 	readonly setNotify: (mode: NotifyMode) => void;
 }
 
-/** 命令清单，用于帮助文本。 */
-export const BUILTIN_COMMANDS: readonly { readonly name: string; readonly description: string }[] = [
+/** 命令清单，用于帮助文本和斜杠补全。 */
+export const BUILTIN_COMMANDS: readonly {
+	readonly name: string;
+	readonly description: string;
+	/** 接受补全后是否补一个空格，方便继续输入参数。 */
+	readonly takesArgs?: boolean;
+}[] = [
 	{ name: "help", description: "Show this help" },
 	{ name: "exit", description: "Quit (Ctrl+D on an empty prompt does the same)" },
-	{ name: "notify", description: `Show or set completion notifications: ${NOTIFY_MODES.join(" / ")}` },
-	{ name: "trust", description: "Show or change trust for the current workspace" },
+	{ name: "notify", description: `Show or set completion notifications: ${NOTIFY_MODES.join(" / ")}`, takesArgs: true },
+	{ name: "trust", description: "Show or change trust for the current workspace", takesArgs: true },
 ];
 
 /** 执行一条自带命令；不是自带命令时返回 undefined，由调用方转给插件命令。 */
@@ -71,6 +76,7 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 		[],
 		styled("Keys", BOLD),
 		plain("  Enter send   Ctrl+J/Alt+Enter newline   Esc/Ctrl+C cancel   Ctrl+D quit"),
+		plain("  Type / for the command menu; Up/Down select, Tab completes, Enter runs, Esc closes"),
 		plain("  Ctrl+V paste   Ctrl+Shift+V paste inline   Ctrl+Z undo   Ctrl+L redraw"),
 		plain("  Multi-line pastes fold into a [Pasted: N lines] chip; double-click or paste again to expand"),
 		plain("  Up/Down move in the draft or recall history"),

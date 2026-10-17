@@ -37,12 +37,13 @@ import {
 	type ViewportWindow,
 } from "../../tui/index.ts";
 import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
-import { isBuiltinCommand, runBuiltin } from "./commands.ts";
+import { isBuiltinCommand, runBuiltin, BUILTIN_COMMANDS } from "./commands.ts";
 import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts";
 import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
 import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
+import { matchSlashCommands, slashContext, type SlashCommand, type SlashContext } from "./slash-menu.ts";
 import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, EDGE_LIT, FAINT, PASTE_BG, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
 
@@ -173,6 +174,16 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#editorTop = 0;
 	/** 上一次单击粘贴 chip 的 id 与时间，用来识别双击展开。 */
 	#lastElementClick: { id: number; at: number } | undefined;
+	/** 斜杠下拉的当前选择与上次查询；查询变化时回到第一项。 */
+	#slashIndex = 0;
+	#slashQuery: string | undefined;
+	/** 按 Esc 关闭下拉时记下当时的文本，文本变了才重新打开。 */
+	#slashClosedFor: string | undefined;
+	/** 下拉在屏幕上的起始行与可见行数，鼠标命中用。 */
+	#slashTop = 0;
+	#slashTopScreen = 0;
+	#slashVisible = 0;
+	#lastSlashClick: { index: number; at: number } | undefined;
 	/** 底部临时提示（复制成功之类），过一会儿让回给快捷键条。 */
 	#notice = "";
 	#noticeTimer: NodeJS.Timeout | undefined;
@@ -343,7 +354,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 
 			if (event.type === "key" && event.name === "tab") {
-				this.#togglePane();
+				// 下拉打开时 Tab 是接受候选，不切换焦点
+				if (this.#slashState() !== undefined) this.#handleKey(event);
+				else this.#togglePane();
 				continue;
 			}
 
@@ -462,6 +475,111 @@ export class TerminalFrontend implements InteractiveFrontend {
 					break;
 			}
 		}
+	}
+
+	/** 自带命令与插件命令合成下拉候选；同名时自带命令优先。 */
+	#slashCatalog(): readonly SlashCommand[] {
+		const builtins: SlashCommand[] = BUILTIN_COMMANDS.map((command) => ({
+			name: command.name,
+			description: command.description,
+			insertText: `/${command.name}${command.takesArgs === true ? " " : ""}`,
+		}));
+		const names = new Set(builtins.map((command) => command.name));
+		const plugins: SlashCommand[] = (this.#runtime?.commands ?? [])
+			.filter((command) => !names.has(command.name))
+			.map((command) => ({
+				name: command.name,
+				description: command.description,
+				insertText: `/${command.name} `,
+			}));
+		return [...builtins, ...plugins];
+	}
+
+	/** 当前是否该显示斜杠下拉；同时把查询变化与选中项夹到有效范围。 */
+	#slashState(): { context: SlashContext; items: readonly SlashCommand[] } | undefined {
+		if (this.#dialog !== undefined || this.#pane !== "prompt") return undefined;
+
+		const text = this.#editor.displayText;
+		if (this.#slashClosedFor !== undefined && this.#slashClosedFor !== text) this.#slashClosedFor = undefined;
+		if (this.#slashClosedFor === text) return undefined;
+
+		const context = slashContext(text, this.#editor.displayBeforeCursor.length);
+		if (context === undefined) {
+			this.#slashQuery = undefined;
+			return undefined;
+		}
+
+		const items = matchSlashCommands(this.#slashCatalog(), context.query);
+		if (items.length === 0) return undefined;
+		if (context.query !== this.#slashQuery) {
+			this.#slashQuery = context.query;
+			this.#slashIndex = 0;
+		}
+		this.#slashIndex = Math.max(0, Math.min(items.length - 1, this.#slashIndex));
+		return { context, items };
+	}
+
+	/** 下拉行：命令名与描述分列，选中项整行铺底。 */
+	#slashRows(width: number): readonly Line[] {
+		const state = this.#slashState();
+		if (state === undefined) {
+			this.#slashVisible = 0;
+			return [];
+		}
+
+		const limit = Math.max(1, Math.min(8, this.#terminal.size().rows - 10));
+		const visibleCount = Math.min(limit, state.items.length);
+		let start = 0;
+		if (this.#slashIndex >= visibleCount) {
+			start = Math.min(this.#slashIndex - visibleCount + 1, state.items.length - visibleCount);
+		}
+		const visible = state.items.slice(start, start + visibleCount);
+		const labelWidth = Math.min(24, Math.max(...visible.map((item) => item.name.length)) + 1);
+		this.#slashTop = start;
+		this.#slashVisible = visible.length;
+
+		return visible.map((item, offset) => {
+			const selected = start + offset === this.#slashIndex;
+			const background = selected ? SELECT_BG : BAND;
+			const label = `/${item.name}`;
+			const gap = Math.max(2, labelWidth - label.length + 2);
+			const content = concat(
+				styled("  ", background),
+				styled(label, mergeStyles(selected ? TITLE : ACCENT, background) ?? background),
+				styled(" ".repeat(gap), background),
+				styled(item.description, mergeStyles(selected ? BRIGHT : DIM, background) ?? background),
+			);
+			return padLine(truncateLine(content, width), width, background);
+		});
+	}
+
+	#moveSlash(delta: number): void {
+		const state = this.#slashState();
+		if (state === undefined) return;
+		const count = state.items.length;
+		this.#slashIndex = (this.#slashIndex + delta + count) % count;
+		this.#refresh();
+	}
+
+	/** 翻页时夹在两端，不绕回。 */
+	#scrollSlash(delta: number): void {
+		const state = this.#slashState();
+		if (state === undefined) return;
+		this.#slashIndex = Math.max(0, Math.min(state.items.length - 1, this.#slashIndex + delta));
+		this.#refresh();
+	}
+
+	#acceptSlash(item: SlashCommand, context: SlashContext): void {
+		this.#editor.replacePrefix(context.tokenLength, item.insertText);
+		// 补全后先收起下拉；继续输入会按新文本重新判断
+		this.#slashClosedFor = this.#editor.displayText;
+		this.#slashQuery = undefined;
+		this.#refresh();
+	}
+
+	#closeSlash(): void {
+		this.#slashClosedFor = this.#editor.displayText;
+		this.#refresh();
 	}
 
 	/** 跳到上一个或下一个回合的开头。 */
@@ -596,6 +714,33 @@ export class TerminalFrontend implements InteractiveFrontend {
 			return;
 		}
 
+		// 斜杠下拉：单击选中，300ms 内再点一次接受
+		if (
+			event.button === "left" &&
+			event.action === "down" &&
+			this.#slashVisible > 0 &&
+			row >= this.#slashTopScreen &&
+			row < this.#slashTopScreen + this.#slashVisible
+		) {
+			const state = this.#slashState();
+			const index = this.#slashTop + (row - this.#slashTopScreen);
+			const item = state?.items[index];
+			if (state !== undefined && item !== undefined) {
+				this.#pane = "prompt";
+				this.#slashIndex = index;
+				const now = Date.now();
+				const last = this.#lastSlashClick;
+				this.#lastSlashClick = { index, at: now };
+				if (last !== undefined && last.index === index && now - last.at <= 300) {
+					this.#lastSlashClick = undefined;
+					this.#acceptSlash(item, state.context);
+					return;
+				}
+				this.#refresh();
+				return;
+			}
+		}
+
 		// 点到输入区：焦点回到输入框；双击粘贴 chip 则把它展开
 		if (event.button === "left" && event.action === "down" && row >= this.#main.rows) {
 			this.#pane = "prompt";
@@ -656,6 +801,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	/** 输入区里的单击：落在粘贴 chip 上时记录位置，300ms 内的第二下把它展开。 */
 	#handleEditorClick(row: number, col: number): void {
+		this.#lastSlashClick = undefined;
 		const editorRow = row - this.#editorTop;
 		const editorCol = col - INPUT_LEFT;
 		if (editorRow < 0 || editorCol < 0) {
@@ -789,6 +935,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 	 * 那时候使用者的注意力在历史里，不在输入框上。
 	 */
 	#scrollKey(event: Extract<KeyEvent, { type: "key" }>): boolean {
+		// 下拉打开时，翻页与 Ctrl+P/N 属于候选列表，不是会话历史
+		const slashKey = event.name === "pageup" || event.name === "pagedown" || event.name === "ctrl-p" || event.name === "ctrl-n";
+		if (slashKey && this.#slashState() !== undefined) return false;
+
 		switch (event.name) {
 			case "pageup":
 				this.#scrollPages(-1);
@@ -818,6 +968,48 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 
 	#handleKey(event: Extract<KeyEvent, { type: "key" }>): void {
+		const slash = this.#slashState();
+		if (slash !== undefined) {
+			if (event.name === "up" || event.name === "ctrl-p") {
+				this.#moveSlash(-1);
+				return;
+			}
+			if (event.name === "down" || event.name === "ctrl-n") {
+				this.#moveSlash(1);
+				return;
+			}
+			if (event.name === "pageup") {
+				this.#scrollSlash(-8);
+				return;
+			}
+			if (event.name === "pagedown") {
+				this.#scrollSlash(8);
+				return;
+			}
+			if (event.name === "tab") {
+				const item = slash.items[this.#slashIndex];
+				if (item !== undefined) this.#acceptSlash(item, slash.context);
+				return;
+			}
+			if (event.name === "escape") {
+				// 只关下拉，不清输入，也不中止回合
+				this.#closeSlash();
+				return;
+			}
+			if (event.name === "enter") {
+				const item = slash.items[this.#slashIndex];
+				if (item === undefined) return;
+				const token = this.#editor.displayText.slice(1, slash.context.tokenLength);
+				if (token === item.name) {
+					// 已经完整打出命令：这一下直接执行，不是补全
+					this.#slashClosedFor = this.#editor.displayText;
+				} else {
+					this.#acceptSlash(item, slash.context);
+					return;
+				}
+			}
+		}
+
 		switch (event.name) {
 			case "enter":
 				void this.#submit();
@@ -1162,19 +1354,23 @@ export class TerminalFrontend implements InteractiveFrontend {
 			maxRows: maxEditorRows,
 		});
 		const panel = dialog === undefined ? undefined : this.#panelRows(size.cols, dialog);
+		const slash = panel === undefined ? this.#slashRows(size.cols) : [];
+		if (panel !== undefined) this.#slashVisible = 0;
 		const editorRows = editor.lines.length + PROMPT_CHROME_ROWS;
-		const footerRows = panel === undefined ? editorRows : panel.length + 1;
+		const footerRows = panel === undefined ? editorRows + slash.length : panel.length + 1;
 		const height = Math.max(footerRows + status + 1, size.rows);
 		const rows = Math.max(1, height - footerRows - status);
 
 		const conversation = this.#conversationRows(body, rows);
 		const input: readonly Line[] = panel === undefined ? this.#inputRows(size.cols, editor) : panel;
 		this.#editorElements = editor.elements;
-		this.#editorTop = rows + status + 2;
+		this.#slashTopScreen = rows + status;
+		this.#editorTop = rows + status + slash.length + 2;
 
 		const lines: Line[] = [
 			...conversation,
 			...(this.#running ? [plain(""), this.#runningRow(size.cols)] : []),
+			...slash,
 			...input,
 			this.#keysRow(size.cols),
 		];
@@ -1186,7 +1382,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			cursor:
 				panel === undefined
 					? {
-							row: rows + status + 2 + editor.cursor.row,
+							row: rows + status + slash.length + 2 + editor.cursor.row,
 							col: INPUT_LEFT + editor.cursor.col,
 						}
 					: undefined,
@@ -1432,6 +1628,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 				{ keys: "y/Y", label: "copy/meta" },
 				{ keys: "g/G", label: "top/btm" },
 				{ keys: "Tab", label: "prompt" },
+			];
+		}
+		if (this.#slashState() !== undefined) {
+			return [
+				{ keys: "↑/↓", label: "select" },
+				{ keys: "Tab", label: "complete" },
+				{ keys: "Enter", label: "run" },
+				{ keys: "Esc", label: "close" },
 			];
 		}
 		if (!this.#main.window.following) {
