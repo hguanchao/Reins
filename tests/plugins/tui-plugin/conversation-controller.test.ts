@@ -24,8 +24,8 @@ describe("主区控制器", () => {
 		conversation.userTurn("hello", 0);
 		conversation.conversationRows(40, 8);
 
-		conversation.beginSelection({ line: 1, cell: 5 });
-		assert.equal(conversation.updateSelection({ line: 1, cell: 9 }), true);
+		conversation.beginSelection({ line: 1, cell: 2 });
+		assert.equal(conversation.updateSelection({ line: 1, cell: 7 }), true);
 		assert.equal(conversation.finishSelection(), "hello");
 
 		const block = conversation.blocks[0];

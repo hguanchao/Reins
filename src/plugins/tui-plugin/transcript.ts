@@ -608,18 +608,18 @@ export class Transcript {
 	#userLines(block: UserBlock): readonly Line[] {
 		const collapsed = block.mode === "collapsed";
 		const contentWidth = this.#contentWidth();
+		// 符号直接贴着色带左缘，缩进格全部去掉；续行对齐到符号后的正文列
+		const textWidth = contentWidth + ACCENT_WIDTH + BLOCK_PAD_LEFT - BLOCK_PAD_RIGHT;
 		const lines = wrapLine(plain(block.text), {
-			width: Math.max(1, contentWidth - TIMESTAMP_WIDTH),
+			width: Math.max(1, textWidth - TIMESTAMP_WIDTH),
 			firstIndent: styled("❯ ", ACCENT),
 			restIndent: plain("  "),
 			maxLines: collapsed ? USER_PREVIEW_LINES : undefined,
 		});
-		const prefix = plain(" ".repeat(ACCENT_WIDTH + BLOCK_PAD_LEFT));
 		const time = styled(timestampText(block.createdAt), DIM);
 		const band = (line: Line, index: number): Line => {
-			const content = concat(prefix, line);
 			const withTime =
-				index === 0 ? alignEnds(content, time, BLOCK_CONTENT_OFFSET + contentWidth) : content;
+				index === 0 ? alignEnds(line, time, BLOCK_CONTENT_OFFSET + contentWidth) : line;
 			return this.#band(withTime, this.#width);
 		};
 		const blank = this.#band(plain(""), this.#width);

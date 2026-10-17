@@ -13,7 +13,7 @@ describe("用户消息", () => {
 
 		assert.equal(rows.length, 3);
 		const text = lineText(rows[1]);
-		assert.ok(text.startsWith("   ❯ hello"));
+		assert.ok(text.startsWith("❯ hello"));
 		assert.match(text, /\d{1,2}:\d{2} (AM|PM)/);
 		assert.equal(lineWidth(rows[1]), 40);
 		assert.equal(lineText(rows[0]).trim(), "");
@@ -46,7 +46,7 @@ describe("用户消息", () => {
 		transcript.userTurn("hello");
 		const rows = transcript.view().rows;
 
-		assert.ok(lineText(rows[1]).startsWith("   ❯ hello"));
+		assert.ok(lineText(rows[1]).startsWith("❯ hello"));
 	});
 
 	it("整块铺底，每行都填满给定宽度", () => {
@@ -68,8 +68,8 @@ describe("用户消息", () => {
 		assert.equal(lineText(rows[0]).trim(), "");
 		assert.equal(lineText(rows[rows.length - 1]).trim(), "");
 		const content = rows.slice(1, -1).map(lineText);
-		assert.ok(content[0].startsWith("   ❯ "), "first line starts with the prompt");
-		for (const line of content.slice(1)) assert.ok(line.startsWith("     "), "continuation aligns after the prompt");
+		assert.ok(content[0].startsWith("❯ "), "first line starts with the prompt");
+		for (const line of content.slice(1)) assert.ok(line.startsWith("  "), "continuation aligns after the prompt");
 		assert.ok(content.join("").includes("three"));
 		assert.ok(content.join("").includes("four"));
 	});

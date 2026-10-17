@@ -15,7 +15,7 @@ import {
 	drawSelectionBox,
 	expandTimestamp,
 } from "./conversation-view.ts";
-import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
+import { GUTTER_WIDTH, OUTER_PAD } from "./layout.ts";
 import { appendRail, railCells, railWidth, RAIL_WIDTH } from "./rail.ts";
 import { scrollbarCell } from "./scrollbar.ts";
 import { fullTimestamp } from "./session-format.ts";
@@ -221,18 +221,17 @@ export class ConversationController {
 		return this.#blockAt(row);
 	}
 
-	/** 屏幕坐标落在哪一行文字的哪个字素簇上；落在竖线、边距、轨道、滚动条上则不算。 */
+	/** 屏幕坐标落在哪一行文字的哪个字素簇上；落在竖线、轨道、滚动条上则不算。 */
 	selectionPoint(col: number, row: number, entryWidth: number): SelectionPoint | undefined {
 		if (row < 0 || row >= this.#main.rows) return undefined;
 
 		const line = this.#main.window.start + row;
 		if (line < 0 || line >= this.#rows.length) return undefined;
 
-		const contentWidth = entryContentWidth(entryWidth);
-		const contentCol = col - CONTENT_OFFSET;
-		if (contentCol < 0 || contentCol >= contentWidth) return undefined;
+		const contentCol = col - OUTER_PAD;
+		if (contentCol < 0 || contentCol >= entryWidth) return undefined;
 
-		return { line, cell: cellIndexAtColumn(this.#rows[line], BLOCK_CONTENT_OFFSET + contentCol) };
+		return { line, cell: cellIndexAtColumn(this.#rows[line], contentCol) };
 	}
 
 	beginSelection(point: SelectionPoint): void {
@@ -243,6 +242,9 @@ export class ConversationController {
 
 	updateSelection(point: SelectionPoint): boolean {
 		if (!this.#selecting || this.#selection === undefined) return false;
+		// 没有离开起点的移动不算拖选：双击、原地抖动都不会带出一段文本
+		const anchor = this.#selection.anchor;
+		if (point.line === anchor.line && point.cell === anchor.cell) return false;
 		this.#selection = { ...this.#selection, focus: point };
 		this.#dragged = true;
 		this.#lastBlockClick = undefined;

@@ -107,7 +107,7 @@ describe("前端：会话区交互", () => {
 		terminal.inputListener?.("hi\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const message = lastFrameRows(terminal.output).find((line) => line.startsWith("     ❯ hi"));
+		const message = lastFrameRows(terminal.output).find((line) => line.startsWith("  ❯ hi"));
 		assert.ok(message, "message starts after the block chrome");
 		assert.equal(message!.length, 80, "band spans the full entry width plus gutter");
 
@@ -157,13 +157,13 @@ describe("前端：会话区交互", () => {
 		terminal.inputListener?.("hello\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		// 用户消息在第二行（❯ hello）：正文从第 5 列开始，从 h 拖到第二个 l
-		terminal.inputListener?.("\x1b[<0;8;2M");
-		terminal.inputListener?.("\x1b[<32;11;2M");
+		// 用户消息在第二行（❯ hello）：符号贴着色带左缘，h 在第 5 列，从 h 拖到第二个 l
+		terminal.inputListener?.("\x1b[<0;5;2M");
+		terminal.inputListener?.("\x1b[<32;8;2M");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		assert.ok(terminal.output.includes("\x1b[7;") || terminal.output.includes("\x1b[7m"), "selection is highlighted");
 
-		terminal.inputListener?.("\x1b[<0;11;2m");
+		terminal.inputListener?.("\x1b[<0;8;2m");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		assert.ok(terminal.output.includes("\x1b]52;c;aGVsbA=="), "copied selected text");

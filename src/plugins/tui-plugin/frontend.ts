@@ -60,8 +60,8 @@ import { ACCENT, BAD, PASTE_BG, THEME, WARN } from "./theme.ts";
 
 /** 会话区与确认卡片的最外圈留白由 layout.ts 统一规定。 */
 
-/** 输入框之外的固定行：上面一行空行、边框上下两条、下面的快捷键条。 */
-const PROMPT_CHROME_ROWS = 4;
+/** 输入框之外的固定行：边框上下两条、下面的快捷键条。 */
+const PROMPT_CHROME_ROWS = 3;
 
 /** 跑起来时多出的两行：空行与回合状态行。 */
 const RUNNING_ROWS = 2;
@@ -1039,7 +1039,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 					})
 				: panel;
 		this.#menuTopScreen = rows + status;
-		this.#editorTop = rows + status + menu.length + 2;
+		this.#editorTop = rows + status + menu.length + 1;
 
 		const lines: Line[] = [
 			...conversation,
@@ -1056,7 +1056,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			cursor:
 				panel === undefined
 					? {
-							row: rows + status + menu.length + 2 + editor.cursor.row,
+							row: rows + status + menu.length + 1 + editor.cursor.row,
 							col: INPUT_LEFT + editor.cursor.col,
 						}
 					: undefined,

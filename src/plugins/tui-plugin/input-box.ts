@@ -21,17 +21,17 @@ import { DIM, EDGE, EDGE_LIT, FAINT, TEXT } from "./theme.ts";
  * 这里只负责把编辑器的结果排成行，光标位置由调用方按同一组常量计算。
  */
 
-/** 正文与左右边框之间的留白。 */
-export const INPUT_PAD = 2;
+/** 正文与右边框之间的留白；左边框与提示符直接相贴，不留格。 */
+export const INPUT_PAD_RIGHT = 2;
 
 /** 输入框整体与终端左右边缘的距离：与会话区最外圈一致。 */
 const INPUT_MARGIN = OUTER_PAD;
 
-/** 从终端左缘到输入正文的列数：左边距、左边框、左留白。 */
-export const INPUT_LEFT = INPUT_MARGIN + 1 + INPUT_PAD;
+/** 从终端左缘到输入正文的列数：左边距加左边框，没有额外缩进。 */
+export const INPUT_LEFT = INPUT_MARGIN + 1;
 
-/** 整屏宽度里被输入框框型占掉的列数：两侧外边距、两条竖线、两侧留白。 */
-export const INPUT_CHROME = INPUT_MARGIN * 2 + INPUT_PAD * 2 + 2;
+/** 整屏宽度里被输入框框型占掉的列数：两侧外边距、两条竖线、右侧留白。 */
+export const INPUT_CHROME = INPUT_MARGIN * 2 + 2 + INPUT_PAD_RIGHT;
 
 interface InputBoxOptions {
 	readonly width: number;
@@ -45,21 +45,19 @@ export function inputBoxRows(options: InputBoxOptions): readonly Line[] {
 	const { width, editor, focused } = options;
 	const border = focused ? EDGE_LIT : EDGE;
 	const boxWidth = Math.max(1, width - INPUT_MARGIN * 2);
-	const inner = Math.max(1, boxWidth - INPUT_PAD * 2 - 2);
+	const inner = Math.max(1, boxWidth - 2 - INPUT_PAD_RIGHT);
 	const base: Style = focused ? TEXT : { ...TEXT, dim: true };
 
 	const text = editor.lines.map((line) =>
 		concat(
 			styled("│", border),
-			plain(" ".repeat(INPUT_PAD)),
 			padLine(mapLine(line, (style) => mergeStyles(base, style) ?? base), inner),
-			plain(" ".repeat(INPUT_PAD)),
+			plain(" ".repeat(INPUT_PAD_RIGHT)),
 			styled("│", border),
 		),
 	);
 
 	return [
-		plain(""),
 		row(INPUT_MARGIN, borderRow("╭", "─".repeat(Math.max(0, boxWidth - 2)), "╮", border)),
 		...text.map((line) => row(INPUT_MARGIN, line)),
 		row(INPUT_MARGIN, infoBorder(boxWidth, border, options.model, options.approval)),

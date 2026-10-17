@@ -32,15 +32,15 @@ describe("前端：帧与输入", () => {
 		assert.ok(lines.some((line) => line.includes("╭") && line.includes("38;2;80;80;88")), "focused border color");
 	});
 
-	it("输入行左右有竖线，提示符在边框和内边距之后", async () => {
+	it("输入行左右有竖线，提示符与左边框直接相贴", async () => {
 		const { lines } = await framesWith(24, 80);
 		const editorRow = lines.find((line) => line.includes("❯"));
 		assert.ok(editorRow, "editor row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 		assert.ok(visible.trimStart().startsWith("│"), "left border");
 		assert.ok(visible.trimEnd().endsWith("│"), "right border");
-		// 左边距(2) + 左竖线在可见文本里的位置：margin(2) + border + pad(2)
-		assert.equal(visible.indexOf("❯"), 5, "margin, border and two padding columns");
+		// 左边距(2) + 左边框后没有缩进格
+		assert.equal(visible.indexOf("❯"), 3, "prompt right after the border");
 	});
 
 	it("模型与审批方式嵌在下边框，顶部没有单独状态条", async () => {
@@ -77,8 +77,8 @@ describe("前端：帧与输入", () => {
 		const lastFrame = frame.slice(frame.lastIndexOf("\x1b[H"));
 		const anchorMatch = /(?:\x1b\[)(\d+);(\d+)H(?!.*\x1b\[\d+;\d+H)/.exec(lastFrame);
 		assert.ok(anchorMatch, "cursor positioned");
-		// 边距(2)+边框(1)+内边距(2)+提示符(2)+输入内容(1)，从 1 开始计数
-		assert.equal(anchorMatch[2], "9");
+		// 边距(2)+边框(1)+提示符(2)+输入内容(1)，从 1 开始计数
+		assert.equal(anchorMatch[2], "7");
 		// 清空再退出:Ctrl+D 只在空输入时退出
 		terminal.inputListener?.("\x7f");
 		terminal.quit();
