@@ -4,7 +4,9 @@ import { Lexer, type Token, type Tokens } from "marked";
 
 import {
 	concat,
+	lineText,
 	lineWidth,
+	mapLine,
 	mergeStyles,
 	padLine,
 	plain,
@@ -19,23 +21,35 @@ import { THEME } from "./theme.ts";
 /**
  * 把模型的回答渲染成终端行。
  *
- * 只做「块级结构 + 少量行内样式」这一层：标题、列表、代码块、引用、分隔线，行内则是粗体、
- * 斜体、行内代码与链接。表格按一串文本行处理，HTML 原样显示——它们很少出现，为此再定一套
- * 排版规则不划算。
+ * 块级结构：标题、列表、表格（盒线框）、围栏代码（整行底色面板）、引用与分隔线；行内则是
+ * 粗体、斜体、行内代码与链接（正文后跟灰色括注地址）。表格与代码块下面还各带一行
+ * 「◇ lang [Copy …]」操作行：鼠标点在方括号上就把表格的 TSV/CSV/Markdown 或代码原文写进
+ * 剪贴板，可点区域随渲染结果透传给界面层。
  *
  * 解析交给 markdown 的词法分析器，只取它的记号树、不用它的输出：markdown 有正式规范与上千条
- * 边界规则，自己写必然在细节上出错；这一层要的恰好只是「记号树」这样一个稳定接缝。备选也
- * 看过：语法更底层的库等于还是自己写词法，偏重插件体系的库还得为它写一套渲染插件。这里只
+ * 边界规则，自己写必然在细节上出错；这一层要的恰好只是「记号树」这样一个稳定接缝。这里只
  * 解析、不生成 HTML，所以不涉及转义与注入方面的问题。
  *
  * 结果里带一个「前多少行已经定型」的标记。流式输出时正文还在长，已定型的部分可以先写进
  * 滚动区不再重画，未定型的部分留在活动区里；没有这个标记就只能等整段结束才敢输出。
  */
 
+export interface CopyAffordance {
+	/** 操作行在渲染结果里的行号。 */
+	readonly line: number;
+	/** 可点击的方括号标签在本行内的列范围，[from, to)。 */
+	readonly from: number;
+	readonly to: number;
+	/** 点击后写进剪贴板的内容。 */
+	readonly content: string;
+}
+
 export interface RenderedMarkdown {
 	readonly lines: readonly Line[];
 	/** 前多少行不会再变 */
 	readonly stableLines: number;
+	/** 块下面的操作行里可以点击复制的区域。 */
+	readonly copies: readonly CopyAffordance[];
 }
 
 /** 渲染一个块的上下文：可用宽度、首行与续行的前缀、整块叠加的样式。 */
@@ -44,33 +58,39 @@ interface Context {
 	readonly firstIndent: Line;
 	readonly restIndent: Line;
 	readonly base: Style | undefined;
+	/** 列表嵌套深度：决定子弹符。 */
+	readonly listDepth: number;
+	/** 渲染过程中收集到的可点击复制区域。 */
+	readonly copies: CopyAffordance[];
 }
 
-const BODY: Style = { color: THEME.text };
+const BODY: Style = { color: THEME.bright };
 const STRONG: Style = { bold: true };
 const EMPHASIS: Style = { italic: true };
 const STRIKE: Style = { strikethrough: true };
-const H1: Style = { bold: true, color: THEME.teal };
+const H1: Style = { bold: true, color: THEME.mdTeal };
 const H2: Style = { bold: true, color: THEME.system };
 const H3: Style = { bold: true, color: THEME.accent };
-const H4: Style = { bold: true, color: THEME.bright };
+const H4: Style = { bold: true, color: THEME.grayBright };
 const H5: Style = { bold: true, color: THEME.muted };
 const H6: Style = { color: THEME.faint };
 const INLINE_CODE: Style = { color: THEME.code, bold: true };
 const LINK: Style = { color: THEME.system, underline: true };
 const QUOTE: Style = { color: THEME.muted, dim: true };
-const RULE: Style = { color: THEME.faint };
-const TABLE_BORDER: Style = { color: THEME.faint };
-const TABLE_HEADER: Style = H2;
+const RULE: Style = { color: THEME.muted };
+const TABLE_BORDER: Style = { color: THEME.muted, dim: true };
+const TABLE_HEADER: Style = { bold: true };
 const TASK_CHECKED: Style = { color: THEME.ok };
 const TASK_UNCHECKED: Style = { color: THEME.muted, dim: true };
 const MUTED: Style = { color: THEME.muted };
+const FAINT: Style = { color: THEME.faint };
 const CODE_TEXT: Style = { color: THEME.text, background: THEME.codeBg };
-const CODE_GUTTER_STYLE: Style = { color: THEME.muted, background: THEME.codeBg, dim: true };
 
 const QUOTE_PREFIX = "│ ";
-const CODE_BAR = "│ ";
-const SEPARATOR_WIDTH = 40;
+/** 列表子弹符按深度取用。 */
+const BULLETS = ["• ", "◦ ", "▪ "];
+/** 表格单元左右各留一格空白。 */
+const TABLE_PADDING = 1;
 
 const lowlight = createLowlight(common);
 
@@ -200,6 +220,8 @@ export function renderMarkdown(text: string, options: { readonly width: number }
 		firstIndent: [],
 		restIndent: [],
 		base: BODY,
+		listDepth: 0,
+		copies: [],
 	};
 
 	const tokens = Lexer.lex(text);
@@ -221,7 +243,7 @@ export function renderMarkdown(text: string, options: { readonly width: number }
 			: lines.length;
 	});
 
-	return { lines, stableLines };
+	return { lines, stableLines, copies: root.copies };
 }
 
 /**
@@ -243,7 +265,7 @@ function stableWithinLastToken(token: Token, produced: number): number {
 /** 会改变行内样式的字符。 */
 const INLINE_MARKUP = /[*_`[\]\\]/;
 
-function renderBlock(token: Token, context: Context): Line[] {
+function renderBlock(token: Token, context: Context): readonly Line[] {
 	switch (token.type) {
 		case "heading": {
 			const heading = token as Tokens.Heading;
@@ -264,7 +286,8 @@ function renderBlock(token: Token, context: Context): Line[] {
 		case "list":
 			return renderList(token as Tokens.List, context);
 		case "hr":
-			return [styled("─".repeat(availableWidth(context)), RULE)];
+			// 分隔线只画三格：一条短短的横线，不是贯穿整个内容区
+			return [styled("───", RULE)];
 		case "table":
 			return renderTable(token as Tokens.Table, context);
 		case "html":
@@ -279,8 +302,6 @@ function renderBlock(token: Token, context: Context): Line[] {
 
 function renderCode(token: Tokens.Code, context: Context): Line[] {
 	const codeStyle: Style = mergeStyles(context.base, CODE_TEXT) ?? CODE_TEXT;
-	const gutterStyle: Style = mergeStyles(context.base, CODE_GUTTER_STYLE) ?? CODE_GUTTER_STYLE;
-	const gutter = styled(CODE_BAR, gutterStyle);
 	// 代码里的缩进有意义，原样保留；行尾空白没有意义，去掉
 	const code = token.text
 		.split("\n")
@@ -288,14 +309,36 @@ function renderCode(token: Tokens.Code, context: Context): Line[] {
 		.join("\n");
 	const language = token.lang?.trim().split(/\s+/)[0];
 	const lines = highlightLines(code, language, codeStyle);
-	// 竖线由换行器的前缀负责，空行也照样有，看起来才是一条连续的代码块
-	const wrapped = wrapLogical(lines, {
-		...context,
-		firstIndent: concat(context.firstIndent, gutter),
-		restIndent: concat(context.restIndent, gutter),
-	});
-	// 背景铺满整行，代码块才是一整块面板而不是一行行短条
-	return wrapped.map((line) => padLine(line, context.width, codeStyle));
+	// 背景铺满整行，代码块才是一整块面板；不需要竖线边框
+	const wrapped = wrapLogical(lines, context);
+	const panel = wrapped.map((line) => padLine(line, context.width, codeStyle));
+
+	if (language === undefined || language.length === 0) return panel;
+	pushCopyRow(context, panel, language, [{ name: "Copy", content: token.text.replace(/\s+$/, "") }]);
+	return panel;
+}
+
+/**
+ * 代码块/表格下面的操作行：`◇ 标签   [Copy …]`。
+ *
+ * 方括号标签的列范围记进渲染上下文，界面层据此做点击命中；点击行为最后写剪贴板的文字由
+ * 这里一并给出。
+ */
+function pushCopyRow(
+	context: Context,
+	lines: Line[],
+	label: string,
+	actions: readonly { readonly name: string; readonly content: string }[],
+): void {
+	let row: Line = concat(styled("◇ ", FAINT), styled(label, MUTED));
+	for (const action of actions) {
+		const labelSpan = styled(`[${action.name}]`, MUTED);
+		const from = lineWidth(row) + 3;
+		const to = from + lineWidth(labelSpan);
+		row = concat(row, plain("   "), labelSpan);
+		context.copies.push({ line: lines.length, from, to, content: action.content });
+	}
+	lines.push(row);
 }
 
 function renderBlockquote(token: Tokens.Blockquote, context: Context): Line[] {
@@ -312,9 +355,11 @@ function renderBlockquote(token: Tokens.Blockquote, context: Context): Line[] {
 function renderList(token: Tokens.List, context: Context): Line[] {
 	const items: Line[][] = [];
 	let number = token.start === "" ? 1 : Number(token.start);
+	// 子弹符按嵌套深度换字；有序列表的数字标记保持原样
+	const depth = Math.min(context.listDepth, BULLETS.length - 1);
 
 	for (const item of token.items) {
-		const marker = token.ordered ? `${number}. ` : "• ";
+		const marker = token.ordered ? `${number}. ` : BULLETS[depth];
 		number += 1;
 
 		// 勾选状态由这里统一画：记号树里还带着一个勾选框记号，留着就会画两遍
@@ -343,6 +388,7 @@ function renderList(token: Tokens.List, context: Context): Line[] {
 			...context,
 			firstIndent: concat(context.firstIndent, hanging),
 			restIndent: concat(context.restIndent, hanging),
+			listDepth: context.listDepth + 1,
 		};
 
 		items.push(
@@ -356,43 +402,108 @@ function renderList(token: Tokens.List, context: Context): Line[] {
 	return token.loose ? joinBlocks(items) : items.flat();
 }
 
-function renderTable(token: Tokens.Table, context: Context): Line[] {
-	const header = token.header.map((cell) => renderInline(cell.tokens, TABLE_HEADER, context).flat());
-	const body = token.rows.map((row) =>
+function renderTable(token: Tokens.Table, context: Context): readonly Line[] {
+	const border = mergeStyles(context.base, TABLE_BORDER) ?? TABLE_BORDER;
+	const header: Line[] = token.header.map((cell) => renderInline(cell.tokens, TABLE_HEADER, context).flat());
+	const body: Line[][] = token.rows.map((row) =>
 		row.map((cell) => renderInline(cell.tokens, undefined, context).flat()),
 	);
-	const columns = header.length;
-	const widths = Array.from({ length: columns }, (_, index) =>
-		Math.max(lineWidth(header[index] ?? []), ...body.map((row) => lineWidth(row[index] ?? []))),
-	);
-	const tableWidth = Math.max(
-		1,
-		Math.min(
-			availableWidth(context),
-			widths.reduce((total, width) => total + width, 0) + 3 * Math.max(0, columns - 1),
-		),
-	);
+	const columns = Math.max(1, token.header.length, ...token.rows.map((row) => row.length));
 
-	const rows: Line[] = [joinCells(header)];
-	rows.push(styled("─".repeat(tableWidth), RULE));
-	for (const row of body) rows.push(joinCells(row));
-	return wrapLogical(rows, context);
-
-	function joinCells(cells: readonly Line[]): Line {
-		const joined: Span[] = [];
-		for (let index = 0; index < columns; index += 1) {
-			if (index > 0) joined.push(...styled(" │ ", TABLE_BORDER));
-			joined.push(...alignCell(cells[index] ?? [], index));
-		}
-		return joined;
+	// 列宽取各列内容的最宽显示宽；总宽放不下时从最宽的列开始逐列压缩
+	const widths = Array.from({ length: columns }, (_, index) => {
+		const cells = [header[index], ...body.map((row) => row[index])].filter(
+			(cell): cell is Line => cell !== undefined,
+		);
+		return Math.max(1, ...cells.map((cell) => lineWidth(cell)));
+	});
+	const totalWidth = (): number => widths.reduce((total, width) => total + width, 0) + 3 * columns + 1;
+	const available = Math.max(1, availableWidth(context));
+	while (totalWidth() > available && widths.some((width) => width > 1)) {
+		const widest = widths.reduce((max, width, index) => (width > widths[max] ? index : max), 0);
+		widths[widest] = Math.max(1, widths[widest] - 1);
 	}
 
-	function alignCell(line: Line, index: number): Line {
-		const width = widths[index] ?? 0;
+	const cellLines = (cells: readonly Line[], index: number): readonly Line[] => {
+		return wrapLine(cells[index] ?? [], { width: widths[index] ?? 1 });
+	};
+
+	// 记录每个单元的纯文本，操作行复制 TSV/CSV 时用
+	const plainCell = (cells: readonly Line[], index: number): string => {
+		return cellLines(cells, index)
+			.map((line) => lineText(line).trim())
+			.filter((text) => text.length > 0)
+			.join(" ");
+	};
+
+	const lines: Line[] = [joinBorder("┌", "┬", "┐")];
+	lines.push(...rowOf(header, true));
+	lines.push(joinBorder("├", "┼", "┤"));
+	token.rows.forEach((_, index) => {
+		lines.push(...rowOf(body[index] ?? [], false));
+		if (index < token.rows.length - 1) lines.push(joinBorder("├", "┼", "┤"));
+	});
+	lines.push(joinBorder("└", "┴", "┘"));
+
+	// 表格下面再给一行复制操作：TSV 给表格软件，CSV 给报表，Markdown 保源文本
+	const matrix = [header, ...body];
+	pushCopyRow(context, lines, "table", [
+		{
+			name: "Copy TSV",
+			content: matrix
+				.map((cells) => cells.map((_, index) => plainCell(cells, index)).join("\t"))
+				.join("\n"),
+		},
+		{
+			name: "Copy CSV",
+			content: matrix
+				.map((cells) => cells.map((_, index) => csvCell(plainCell(cells, index))).join(","))
+				.join("\n"),
+		},
+		{ name: "Copy Markdown", content: tableSource(token) },
+	]);
+
+	return lines;
+
+	function rowOf(cells: readonly Line[], isHeader: boolean): readonly Line[] {
+		const wrapped = Array.from({ length: columns }, (_, index) => cellLines(cells, index));
+		const height = Math.max(1, ...wrapped.map((lines) => lines.length));
+		const rows: Line[] = [];
+		for (let line = 0; line < height; line += 1) {
+			const row: Span[] = [];
+			for (let index = 0; index < columns; index += 1) {
+				const width = widths[index] ?? 1;
+				const source = wrapped[index]?.[line];
+				const content = source === undefined ? [] : alignCell(source, width, index);
+				row.push(...styled(`│${" ".repeat(TABLE_PADDING)}`, border));
+				if (isHeader) {
+					row.push(
+						...padLine(mapLine(content, (style) => mergeStyles(style, { bold: true }) ?? { bold: true }), width),
+					);
+				} else {
+					row.push(...padLine(content, width));
+				}
+				row.push(...styled(`${" ".repeat(TABLE_PADDING)}│`, border));
+			}
+			rows.push(row);
+		}
+		return rows;
+	}
+
+	function joinBorder(left: string, joint: string, right: string): Line {
+		let parts: Line = styled(left, border);
+		widths.forEach((width, index) => {
+			parts = index > 0 ? concat(parts, styled(joint, border)) : parts;
+			parts = concat(parts, styled("─".repeat(width + TABLE_PADDING * 2), border));
+		});
+		return concat(parts, styled(right, border));
+	}
+
+	function alignCell(line: Line, width: number, index: number): Line {
 		const gap = width - lineWidth(line);
 		if (gap <= 0) return line;
 
-		switch (token.align[index] ?? "left") {
+		switch (token.align[index] ?? null) {
 			case "right":
 				return concat(plain(" ".repeat(gap)), line);
 			case "center": {
@@ -400,9 +511,20 @@ function renderTable(token: Tokens.Table, context: Context): Line[] {
 				return concat(plain(" ".repeat(left)), line, plain(" ".repeat(gap - left)));
 			}
 			default:
-				return padLine(line, width);
+				return concat(line, plain(" ".repeat(gap)));
 		}
 	}
+}
+
+/** 表格的源文本：[Copy Markdown] 用它原样复制回去。 */
+function tableSource(token: Tokens.Table): string {
+	const raw = (token as { readonly raw?: unknown }).raw;
+	return typeof raw === "string" ? raw.trimEnd() : "";
+}
+
+/** CSV 单元格：带逗号、引号或换行的内容用引号包住，内部引号翻倍。 */
+function csvCell(text: string): string {
+	return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 /** 行内记号画成若干逻辑行（硬换行会断开），样式逐层叠加。 */
@@ -439,6 +561,8 @@ function renderInline(tokens: readonly Token[], style: Style | undefined, contex
 					link.href.length > 0 ? { link: link.href } : undefined,
 				);
 				builder.appendLines(renderInline(link.tokens, withLink, context));
+				// 链接文字后面用暗色把地址括注出来，终端里点不着也知道跳去哪
+				if (link.href.length > 0) builder.append(decorate(` (${link.href})`, MUTED, context));
 				continue;
 			}
 			case "image": {
@@ -514,7 +638,7 @@ function joinBlocks(blocks: readonly (readonly Line[])[]): Line[] {
 
 /** 去掉缩进之后还剩多少列可用。 */
 function availableWidth(context: Context): number {
-	return Math.max(1, Math.min(SEPARATOR_WIDTH, context.width - lineWidth(context.firstIndent)));
+	return Math.max(1, context.width - lineWidth(context.firstIndent));
 }
 
 /** 取记号的原始文本。用途是「保住内容」，不追求精确还原。 */

@@ -15,7 +15,7 @@ import {
 	drawSelectionBox,
 	expandTimestamp,
 } from "./conversation-view.ts";
-import { GUTTER_WIDTH, OUTER_PAD } from "./layout.ts";
+import { GUTTER_WIDTH, CONTENT_OFFSET, OUTER_PAD } from "./layout.ts";
 import { appendRail, railCells, railWidth, RAIL_WIDTH } from "./rail.ts";
 import { scrollbarCell } from "./scrollbar.ts";
 import { fullTimestamp } from "./session-format.ts";
@@ -64,6 +64,8 @@ export class ConversationController {
 	#hoverTimestamp: number | undefined;
 	/** 悬停刻度所在的屏幕行：浮卡以它为竖直中心。 */
 	#hoverRow: number | undefined;
+	/** 当前帧里可见的 [Copy …] 标签区域，列已换算成屏幕列。 */
+	#copyRegions: readonly { readonly row: number; readonly from: number; readonly to: number; readonly content: string }[] = [];
 
 	constructor(width: number) {
 		this.transcript = new Transcript(width);
@@ -91,6 +93,18 @@ export class ConversationController {
 
 	clearRunning(): void {
 		this.transcript.clearRunning();
+	}
+
+	/** 回合完成后在正文末尾补一行耗时。 */
+	turnCompleted(elapsedMs: number, now = Date.now()): void {
+		this.transcript.turnCompleted(elapsedMs, now);
+	}
+
+	/** 点中的 [Copy …] 标签对应的剪贴板内容；不在标签上时返回 undefined。 */
+	copyTextAt(row: number, col: number): string | undefined {
+		return this.#copyRegions.find(
+			(region) => region.row === row && col >= region.from && col < region.to,
+		)?.content;
 	}
 
 	get blocks(): readonly BlockSpan[] {
@@ -382,6 +396,14 @@ export class ConversationController {
 		const rail = railWidth({ width: body, turns: view.turns.length });
 		const window = this.#viewport.window(view.rows.length, mainRows);
 		this.#main = { total: view.rows.length, rows: mainRows, window };
+		this.#copyRegions = view.copies
+			.filter((copy) => copy.row >= window.start && copy.row < window.start + mainRows)
+			.map((copy) => ({
+				row: copy.row - window.start,
+				from: copy.from + CONTENT_OFFSET,
+				to: copy.to + CONTENT_OFFSET,
+				content: copy.content,
+			}));
 
 		const visible = view.rows.slice(window.start, window.start + mainRows);
 		while (visible.length < mainRows) visible.push(plain(""));

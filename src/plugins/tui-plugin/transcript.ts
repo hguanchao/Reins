@@ -2,6 +2,7 @@ import type { AgentEvent } from "../../agent/events.ts";
 import {
 	alignEnds,
 	concat,
+	formatDuration,
 	lineText,
 	lineWidth,
 	mapLine,
@@ -14,6 +15,7 @@ import {
 	type Line,
 	type Style,
 } from "../../tui/index.ts";
+import type { CopyAffordance } from "./markdown.ts";
 import { formatTokens } from "./format.ts";
 import { ACCENT_WIDTH, BLOCK_CONTENT_OFFSET, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -103,6 +105,16 @@ export interface TranscriptView {
 	readonly turnPreviews: readonly string[];
 	/** 消息时间戳的位置与原始时刻，悬停时用来展开完整日期。 */
 	readonly timestamps: readonly TimestampSpan[];
+	/** 块下操作行里的可点击复制区域；列相对正文区，界面按块缩进换算。 */
+	readonly copies: readonly CopyRegion[];
+}
+
+/** 一个 [Copy …] 标签的位置与点击后应写入剪贴板的内容。 */
+export interface CopyRegion {
+	readonly row: number;
+	readonly from: number;
+	readonly to: number;
+	readonly content: string;
 }
 
 /** 一个时间戳在行数组里的位置；列相对条目行。 */
@@ -185,6 +197,8 @@ export class Transcript {
 	#running: RunningTool[] = [];
 	/** 工作目录：工具参数里的绝对路径显示成相对路径。 */
 	#cwd: string | undefined = undefined;
+	/** 最近渲染的模型正文里带出的复制操作行；view() 换算成绝对行号。 */
+	#mdCopies: readonly CopyAffordance[] = [];
 
 	constructor(width: number) {
 		this.#width = Math.max(1, width);
@@ -332,6 +346,12 @@ export class Transcript {
 		this.#commitStream();
 	}
 
+	/** 回合完成后在正文末尾补一行耗时；中止的回合不补。 */
+	turnCompleted(elapsedMs: number, now: number): void {
+		this.#closeThinking(now);
+		this.appendSystem([styled(`Worked for ${formatDuration(elapsedMs)}`, DIM)]);
+	}
+
 	/** 本轮中止或出错后，工具痕迹不该留在屏幕上。 */
 	clearRunning(): void {
 		this.#running = [];
@@ -394,6 +414,7 @@ export class Transcript {
 		};
 
 		this.#syncGroups();
+		const copies: CopyRegion[] = [];
 		for (let index = 0; index < this.#blocks.length; index += 1) {
 			const block = this.#blocks[index];
 			const members = this.#groupRunAt(index);
@@ -422,7 +443,8 @@ export class Transcript {
 				continue;
 			}
 
-			push(this.#renderBlock(block, now), {
+			const blockLines = this.#renderBlock(block, now);
+			push(blockLines, {
 				id: block.id,
 				kind: block.kind,
 				mode: block.mode,
@@ -430,6 +452,15 @@ export class Transcript {
 				preview: block.kind === "user" ? firstLine(block.text) : undefined,
 				timestamp: block.kind === "user" || block.kind === "agent" ? block.createdAt : undefined,
 			});
+			// 块下操作行里的可点击区域：换成行数组的绝对行号
+			for (const copy of this.#mdCopies) {
+				copies.push({
+					row: rows.length - blockLines.length + copy.line,
+					from: copy.from,
+					to: copy.to,
+					content: copy.content,
+				});
+			}
 		}
 
 		let live = this.#liveRows(now);
@@ -441,7 +472,7 @@ export class Transcript {
 			rows.push(...live);
 		}
 
-		return { rows, blocks, turns, turnPreviews, timestamps };
+		return { rows, blocks, turns, turnPreviews, timestamps, copies };
 	}
 
 	/** 切换一个块的展开/收起；不可折叠的块原样返回。 */
@@ -628,9 +659,9 @@ export class Transcript {
 
 	#agentLines(block: AgentBlock): readonly Line[] {
 		const contentWidth = this.#contentWidth();
-		const lines = renderMarkdown(block.text, { width: Math.max(1, contentWidth - TIMESTAMP_WIDTH) }).lines.map(
-			agentLine,
-		);
+		const rendered = renderMarkdown(block.text, { width: Math.max(1, contentWidth - TIMESTAMP_WIDTH) });
+		this.#mdCopies = rendered.copies;
+		const lines = rendered.lines.map(agentLine);
 		const first = lines.findIndex((line) => line.length > 0);
 		if (first >= 0) {
 			lines[first] = alignEnds(

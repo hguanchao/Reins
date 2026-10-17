@@ -17,7 +17,7 @@ describe("Markdown 渲染", () => {
 	it("标题按级别使用主题色", () => {
 		const { lines } = renderMarkdown("# One\n\n## Two\n\n### Three", { width: 40 });
 
-		assert.equal(findSpan(findLine(lines, "One"), "One")?.style?.color, THEME.teal);
+		assert.equal(findSpan(findLine(lines, "One"), "One")?.style?.color, THEME.mdTeal);
 		assert.equal(findSpan(findLine(lines, "Two"), "Two")?.style?.color, THEME.system);
 		assert.equal(findSpan(findLine(lines, "Three"), "Three")?.style?.color, THEME.accent);
 	});
@@ -62,14 +62,43 @@ describe("Markdown 渲染", () => {
 		assert.ok(loose.lines.length > 2);
 	});
 
-	it("表格按对齐方式补空格", () => {
-		const { lines } = renderMarkdown("| A | Long |\n| - | ---: |\n| 1 | 2 |", { width: 40 });
-		const row = findLine(lines, "1");
-		assert.ok(row);
-		assert.ok(lineText(row).includes("│    2"), lineText(row));
+	it("表格画成盒线，表头加粗，下面带复制操作行", () => {
+		const source = "| A | B |\n| - | - |\n| 1 | 2 |";
+		const { lines, copies } = renderMarkdown(source, { width: 40 });
+
+		assert.ok(findLine(lines, "┌"), "top border");
+		assert.ok(findLine(lines, "├"), "row separator");
+		assert.ok(findLine(lines, "└"), "bottom border");
+		const headerCell = findSpan(findLine(lines, "A"), "A");
+		assert.equal(headerCell?.style?.bold, true);
+
+		const row = findLine(lines, "│ 1");
+		assert.ok(row, "body cell inside the grid");
+		assert.equal(copies.length, 3);
+		assert.deepEqual(
+			copies.map((copy) => copy.content),
+			["A\tB\n1\t2", "A,B\n1,2", source],
+		);
+		// 方括号标签的列范围正好覆盖 [Copy …] 文本
+		const csvRow = lines[copies[1].line];
+		assert.equal(lineText(csvRow).slice(copies[1].from, copies[1].to), "[Copy CSV]");
 	});
 
-	it("引用块压暗，表格表头用二级标题样式", () => {
+	it("分隔线只画三格", () => {
+		const { lines } = renderMarkdown("above\n\n---\n\nbelow", { width: 60 });
+		const rule = findLine(lines, "───");
+		assert.ok(rule);
+		assert.equal(lineWidth(rule), 3);
+	});
+
+	it("链接正文后跟灰色括注地址", () => {
+		const { lines } = renderMarkdown("[docs](https://example.com)", { width: 60 });
+		const suffix = findSpan(findLine(lines, "(https://example.com)"), "(https://example.com)");
+		assert.ok(suffix);
+		assert.equal(suffix?.style?.color, THEME.muted);
+	});
+
+	it("引用块压暗，表格表头加粗", () => {
 		const quote = renderMarkdown("> note", { width: 40 });
 		const quoted = findSpan(findLine(quote.lines, "note"), "note");
 		assert.ok(lineText(findLine(quote.lines, "note")!).startsWith("│ "));
@@ -79,6 +108,6 @@ describe("Markdown 渲染", () => {
 		const table = renderMarkdown("| A | B |\n| - | - |\n| 1 | 2 |", { width: 40 });
 		const header = findSpan(findLine(table.lines, "A"), "A");
 		assert.equal(header?.style?.bold, true);
-		assert.equal(header?.style?.color, THEME.system);
+		assert.equal(header?.style?.color, THEME.bright);
 	});
 });

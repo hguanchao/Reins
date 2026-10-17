@@ -97,6 +97,21 @@ describe("用户消息", () => {
 		assert.ok(collapsed.rows.length < expanded.rows.length);
 		assert.ok(collapsed.rows.some((row) => lineText(row).includes("…")));
 	});
+
+	it("代码块下面的复制操作行带正确的行号与列范围", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "text_delta", text: "```bash\necho hi\n```" }, 0);
+		transcript.handle({ type: "run_end" }, 1);
+
+		const view = transcript.view();
+		assert.equal(view.copies.length, 1);
+		const copy = view.copies[0];
+		assert.equal(copy.content, "echo hi");
+		const row = view.rows[copy.row];
+		assert.ok(row, "copy row points at a real row");
+		// 列是正文相对坐标：组合行还带着块左边 3 列的竖线与留白
+		assert.equal(lineText(row).slice(copy.from + 3, copy.to + 3), "[Copy]");
+	});
 });
 
 describe("块折叠", () => {

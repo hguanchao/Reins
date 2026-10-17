@@ -25,6 +25,10 @@ export const THEME = {
 	faint: rgb(0x58, 0x58, 0x58),
 	/** 比次要文字亮一档：按键、菜单项 */
 	bright: rgb(0xc8, 0xc8, 0xc8),
+	/** Markdown 一级标题的青绿 */
+	mdTeal: rgb(0x1a, 0xbc, 0x9c),
+	/** Markdown 四级标题的中灰 */
+	grayBright: rgb(0x78, 0x78, 0x78),
 	/** 模型正在说的与正在做的 */
 	accent: rgb(0xbb, 0x9a, 0xf7),
 	/** 系统类信息：提示、行内代码 */

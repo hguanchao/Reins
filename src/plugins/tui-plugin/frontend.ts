@@ -464,6 +464,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const row = event.row - 1;
 		const col = event.col - 1;
 
+		// 表格与代码块下面的 [Copy …] 标签：按下即写入剪贴板
+		if (event.button === "left" && event.action === "down") {
+			const copy = this.#conversation.copyTextAt(row, col);
+			if (copy !== undefined) {
+				this.#writeClipboard(copy);
+				return;
+			}
+		}
+
 		if (event.action === "move") {
 			if (this.#conversation.hoverAt(row, col, cols)) this.#refresh();
 			return;
@@ -847,6 +856,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#abort = undefined;
 			this.#activity = "";
 			this.#stopTicker();
+			// 中止的回合不算完成，不补耗时行
+			if (controller.signal.aborted === false) {
+				this.#conversation.turnCompleted(Date.now() - this.#turnStartedAt);
+			}
 			this.#conversation.clearRunning();
 			// 一轮里可能新建了文件；刷新清单，让紧接着的 @ 补全能找到它们
 			this.#prompt.loadFileIndex(runtime.cwd);
