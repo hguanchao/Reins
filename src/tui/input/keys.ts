@@ -6,7 +6,8 @@
  * 里等下一段数据，宁可慢一个字符，也不能把方向键当成文本插进输入框。
  *
  * 认不出来的序列一律丢掉而不是当文本：终端还会发来鼠标事件、终端自身状态的回复等等，
- * 把它们显示在输入框里是纯粹的噪声。
+ * 把它们显示在输入框里是纯粹的噪声。鼠标报告里只有滚轮有用——它是备用屏里唯一能滚动主区的
+ * 输入——其余（按下、松开、移动）同样丢掉。
  */
 
 export type KeyName =
@@ -29,6 +30,8 @@ export type KeyName =
 	| "ctrl-e"
 	| "ctrl-k"
 	| "ctrl-l"
+	| "ctrl-n"
+	| "ctrl-p"
 	| "ctrl-u"
 	| "ctrl-w";
 
@@ -38,6 +41,8 @@ export type KeyEvent =
 	| { readonly type: "paste"; readonly text: string }
 	/** 终端窗口获得或失去焦点 */
 	| { readonly type: "focus"; readonly focused: boolean }
+	/** 滚轮方向 */
+	| { readonly type: "wheel"; readonly direction: "up" | "down" }
 	| { readonly type: "key"; readonly name: KeyName };
 
 const ESCAPE = "\x1b";
@@ -77,6 +82,8 @@ const CONTROL_KEYS: ReadonlyMap<string, KeyName> = new Map([
 	["\x05", "ctrl-e"],
 	["\x0b", "ctrl-k"],
 	["\x0c", "ctrl-l"],
+	["\x0e", "ctrl-n"],
+	["\x10", "ctrl-p"],
 	["\x15", "ctrl-u"],
 	["\x17", "ctrl-w"],
 ]);
@@ -178,8 +185,12 @@ export class KeyDecoder {
 			if (sequence === "I") events.push({ type: "focus", focused: true });
 			else if (sequence === "O") events.push({ type: "focus", focused: false });
 			else {
-				const key = CSI_KEYS.get(sequence);
-				if (key !== undefined) events.push({ type: "key", name: key });
+				const wheel = wheelFromSgr(sequence);
+				if (wheel !== undefined) events.push({ type: "wheel", direction: wheel });
+				else {
+					const key = CSI_KEYS.get(sequence);
+					if (key !== undefined) events.push({ type: "key", name: key });
+				}
 			}
 			return index + 1;
 		}
@@ -212,6 +223,22 @@ function singleKey(char: string): KeyName | undefined {
 	if (char === "\x7f" || char === "\x08") return "backspace";
 	if (char === "\t") return "tab";
 	return CONTROL_KEYS.get(char);
+}
+
+/**
+ * SGR 鼠标报告里的滚轮。
+ *
+ * 序列形如 `<64;12;3M`：按钮编号、列、行。64 是上滚，65 是下滚（这两个数由终端编码定死，
+ * 与按钮编号连在一起，不能改）。末尾的 M 表示按下，小写 m 表示松开——滚轮没有松开这回事，
+ * 只认大写。其余按钮（左键、中键、移动）在界面上没有含义，交给调用方丢掉。
+ */
+function wheelFromSgr(sequence: string): "up" | "down" | undefined {
+	if (!sequence.startsWith("<") || !sequence.endsWith("M")) return undefined;
+
+	const button = Number.parseInt(sequence.slice(1), 10);
+	if (button === 64) return "up";
+	if (button === 65) return "down";
+	return undefined;
 }
 
 function isControl(char: string): boolean {

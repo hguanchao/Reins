@@ -11,6 +11,7 @@ export * from "./input/editor.ts";
 export * from "./input/keys.ts";
 export * from "./screen/region.ts";
 export * from "./screen/style.ts";
+export * from "./screen/viewport.ts";
 export * from "./terminal/terminal.ts";
 export * from "./text/line.ts";
 export * from "./text/truncate.ts";

@@ -17,6 +17,7 @@ export class MemoryTerminal implements Terminal {
 	readonly cursorVisibility: boolean[] = [];
 	readonly pasteModes: boolean[] = [];
 	readonly focusModes: boolean[] = [];
+	readonly mouseModes: boolean[] = [];
 	readonly alternateScreens: boolean[] = [];
 	/** 每次缩放发生在第几次写入之后，供重放时按当时的几何尺寸还原 */
 	readonly resizes: { readonly at: number; readonly size: TerminalSize }[] = [];
@@ -64,6 +65,10 @@ export class MemoryTerminal implements Terminal {
 
 	setFocusReporting(enabled: boolean): void {
 		this.focusModes.push(enabled);
+	}
+
+	setMouseTracking(enabled: boolean): void {
+		this.mouseModes.push(enabled);
 	}
 
 	/** 模拟用户按键。 */
@@ -202,6 +207,32 @@ export class ScreenEmulator {
 				// 2K：清整行
 				const row = this.#grid[this.#cursor.row];
 				if (row !== undefined) row.fill(" ");
+				this.#pendingWrap = false;
+				break;
+			}
+			case "J": {
+				// 2J：整屏清空；其余（含 0J）从光标清到屏幕末尾
+				if (Number.parseInt(params, 10) === 2) {
+					for (const line of this.#grid) line.fill(" ");
+				} else {
+					const row = this.#grid[this.#cursor.row];
+					if (row !== undefined) row.fill(" ", this.#cursor.col);
+					for (let line = this.#cursor.row + 1; line < this.#rows; line += 1) {
+						this.#grid[line].fill(" ");
+					}
+				}
+				this.#pendingWrap = false;
+				break;
+			}
+			case "H": {
+				// 绝对定位：行列都按 1 起算，省略时回左上角
+				const parts = params.replace(/^\?/, "").split(";");
+				const row = Number.parseInt(parts[0] ?? "", 10);
+				const col = Number.parseInt(parts[1] ?? "", 10);
+				this.#cursor = {
+					row: Math.min(this.#rows - 1, Math.max(0, (Number.isNaN(row) ? 1 : row) - 1)),
+					col: Math.min(this.#cols - 1, Math.max(0, (Number.isNaN(col) ? 1 : col) - 1)),
+				};
 				this.#pendingWrap = false;
 				break;
 			}

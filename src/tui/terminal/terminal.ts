@@ -30,6 +30,13 @@ export interface Terminal extends TerminalDevice {
 	/** 焦点变化上报：终端失去焦点时通知我们，据此决定要不要响铃或弹通知。 */
 	setFocusReporting(enabled: boolean): void;
 	/**
+	 * 鼠标上报。
+	 *
+	 * 备用屏里没有终端自带的回滚缓冲，滚轮只有终端把它报上来才翻得动主区。代价是鼠标不再
+	 * 归终端管——要选中文本得按住 Shift，所以只在该接管的那段时间里开着。
+	 */
+	setMouseTracking(enabled: boolean): void;
+	/**
 	 * 备用屏。
 	 *
 	 * 进入时终端切到一块独立屏幕，退出时原样恢复主屏——对话不会留在使用者的 shell 历史里。
@@ -49,6 +56,14 @@ const ENABLE_FOCUS = "\x1b[?1004h";
 const DISABLE_FOCUS = "\x1b[?1004l";
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const LEAVE_ALT_SCREEN = "\x1b[?1049l";
+/**
+ * 鼠标上报：普通上报加 SGR 编码。
+ *
+ * 老式编码把按键与坐标各塞进一个字节，列号超过 95 就报不准；SGR 用十进制写坐标，宽屏也
+ * 不会错位。
+ */
+const ENABLE_MOUSE = "\x1b[?1000h\x1b[?1006h";
+const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1000l";
 
 /** 真实终端：进程的标准输入输出。 */
 export class ProcessTerminal implements Terminal {
@@ -100,6 +115,10 @@ export class ProcessTerminal implements Terminal {
 
 	setFocusReporting(enabled: boolean): void {
 		this.write(enabled ? ENABLE_FOCUS : DISABLE_FOCUS);
+	}
+
+	setMouseTracking(enabled: boolean): void {
+		this.write(enabled ? ENABLE_MOUSE : DISABLE_MOUSE);
 	}
 
 	setAlternateScreen(enabled: boolean): void {

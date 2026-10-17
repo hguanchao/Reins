@@ -7,6 +7,7 @@ function names(events: readonly KeyEvent[]): string[] {
 	return events.map((event) => {
 		if (event.type === "key") return event.name;
 		if (event.type === "focus") return event.focused ? "focus-in" : "focus-out";
+		if (event.type === "wheel") return `wheel:${event.direction}`;
 		return `${event.type}:${event.text}`;
 	});
 }
@@ -26,6 +27,7 @@ describe("KeyDecoder", () => {
 		assert.deepEqual(names(decoder.push("\x03")), ["ctrl-c"]);
 		assert.deepEqual(names(decoder.push("\x04")), ["ctrl-d"]);
 		assert.deepEqual(names(decoder.push("\x0c")), ["ctrl-l"]);
+		assert.deepEqual(names(decoder.push("\x0e\x10")), ["ctrl-n", "ctrl-p"]);
 	});
 
 	it("方向键与编辑键", () => {
@@ -79,10 +81,19 @@ describe("KeyDecoder", () => {
 		assert.deepEqual(names(decoder.push("x")), ["text:x"]);
 	});
 
+	it("滚轮上报成方向，其余的鼠标事件丢掉", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(names(decoder.push("\x1b[<64;10;5M")), ["wheel:up"]);
+		assert.deepEqual(names(decoder.push("\x1b[<65;10;5M")), ["wheel:down"]);
+		// 左键按下、松开与移动在界面上没有含义
+		assert.deepEqual(decoder.push("\x1b[<0;10;5M"), []);
+		assert.deepEqual(decoder.push("\x1b[<0;10;5m"), []);
+		assert.deepEqual(decoder.push("\x1b[<35;10;5M"), []);
+	});
+
 	it("认不出来的序列丢掉，不当成文本", () => {
 		const decoder = new KeyDecoder();
-		// 鼠标报告与终端状态回复
-		assert.deepEqual(decoder.push("\x1b[<0;10;5M"), []);
+		// 终端状态回复
 		assert.deepEqual(decoder.push("\x1b]11;rgb:0000/0000/0000\x07"), []);
 		assert.deepEqual(decoder.push("\x1b[?2004;1$y"), []);
 		// 功能键没有绑定，同样丢掉
