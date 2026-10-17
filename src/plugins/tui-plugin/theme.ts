@@ -35,6 +35,8 @@ export const THEME = {
 	code: rgb(0x3a, 0x95, 0xab),
 	/** 代码块底色 */
 	codeBg: rgb(0x1c, 0x1c, 0x1c),
+	/** 面板里被选中的行 */
+	selectBg: rgb(0x36, 0x36, 0x36),
 	/** 路径 */
 	path: rgb(0xff, 0x9e, 0x64),
 	/** 需要注意但不致命的事：没读的配置、被拒绝的发送 */
@@ -58,6 +60,8 @@ export const SYSTEM: Style = { color: THEME.system };
 export const TEAL: Style = { color: THEME.teal };
 export const CODE: Style = { color: THEME.code };
 export const CODE_BG: Style = { background: THEME.codeBg };
+/** 选中行的底色。 */
+export const SELECT_BG: Style = { background: THEME.selectBg };
 export const PATH: Style = { color: THEME.path };
 export const WARN: Style = { color: THEME.warn };
 export const OK: Style = { color: THEME.ok };

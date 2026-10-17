@@ -549,12 +549,8 @@ describe("输入框边框", () => {
 			const decision = confirmer?.("Allow Bash to run?", "{}");
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			assert.ok(
-				lastFrameRows(terminal.output).some((line) => line.includes("Approval required")),
+				lastFrameRows(terminal.output).some((line) => line.includes("Allow Bash to run?")),
 				"dialog stays visible in scrollback focus",
-			);
-			assert.ok(
-				!lastFrameRows(terminal.output).some((line) => line.trimStart().startsWith("┌")),
-				"selection box is hidden behind the dialog",
 			);
 
 			terminal.inputListener?.(key);
@@ -562,7 +558,7 @@ describe("输入框边框", () => {
 			assert.equal(await decision, false, "dialog denied");
 			assert.equal(aborted, true, "turn aborted");
 			assert.ok(
-				!lastFrameRows(terminal.output).some((line) => line.includes("Approval required")),
+				!lastFrameRows(terminal.output).some((line) => line.includes("Allow Bash to run?")),
 				"dialog closed",
 			);
 
@@ -571,7 +567,7 @@ describe("输入框边框", () => {
 		}
 	});
 
-	it("审批弹窗居中，选项横向排列且不带按键提示", async () => {
+	it("审批面板替换输入区，选项纵向排列", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		let confirmer: ((question: string, detail: string) => Promise<boolean>) | undefined;
@@ -589,27 +585,17 @@ describe("输入框边框", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		const visible = lastFrameRows(terminal.output);
-		const header = visible.findIndex((line) => line.includes("Approval required"));
-		assert.ok(header > 0, "popup is vertically centered");
-		assert.ok(visible[header].includes("╭"), "header is a border");
-		assert.ok(visible.some((line) => line.includes("Allow Bash to run?")), "question shown");
-		assert.ok(
-			visible.some((line) => line.includes("┃") && line.includes("npm test")),
-			"detail shown without raw JSON",
-		);
-		assert.ok(!visible.some((line) => line.includes('"command"')), "no JSON in the dialog");
+		assert.ok(visible.some((line) => line.includes("Allow Bash to run?")), "question is the panel title");
+		assert.ok(visible.some((line) => line.includes("npm test")), "detail shown without raw JSON");
+		assert.ok(!visible.some((line) => line.includes('"command"')), "no JSON in the panel");
+		assert.ok(!visible.some((line) => line.includes("Approval required")), "no bordered popup title");
 
-		const options = visible.find((line) => line.includes("▶ 1  Allow"));
-		assert.ok(options, "allow option shown");
-		assert.ok(options!.includes("2  Deny"), "options are horizontal");
+		assert.ok(visible.some((line) => line.includes("1 (●) Allow")), "allow option is focused");
+		assert.ok(visible.some((line) => line.includes("2 (○) Deny")), "options are vertical");
+		assert.ok(visible.some((line) => line.includes("↑/↓:select")), "footer shows dialog keys");
 
-		assert.ok(!visible.some((line) => line.includes("1-2 select")), "no select hint");
-		assert.ok(!visible.some((line) => line.includes("Enter confirm")), "no confirm hint");
-		assert.ok(!visible.some((line) => line.includes("Esc deny")), "no deny hint");
-
-		// 左右都有留白：弹窗不是贴着左边框
-		const left = visible[header].length - visible[header].trimStart().length;
-		assert.ok(left > 2 && left < 40, "popup is horizontally centered");
+		const rules = visible.filter((line) => /^─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
+		assert.equal(rules.length, 0, "input box is replaced by the permission panel");
 
 		terminal.inputListener?.("2");
 		assert.equal(await decision, false);

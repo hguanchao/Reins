@@ -11,6 +11,7 @@ import {
 	LineEditor,
 	lineOfCells,
 	lineText,
+	mapLine,
 	mergeStyles,
 	padLine,
 	plain,
@@ -34,7 +35,7 @@ import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryCon
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
 import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
-import { ACCENT, BAD, BRIGHT, DIM, EDGE, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, FAINT, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
 
 /**
@@ -61,7 +62,6 @@ import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
  */
 
 /** 会话区与确认卡片的最外圈留白由 layout.ts 统一规定。 */
-const PAD = OUTER_PAD;
 
 /** 输入框之外的固定行：上面一行空行、边框上下两条、下面的快捷键条。 */
 const PROMPT_CHROME_ROWS = 4;
@@ -69,9 +69,8 @@ const PROMPT_CHROME_ROWS = 4;
 /** 跑起来时多出的两行：空行与回合状态行。 */
 const RUNNING_ROWS = 2;
 
-/** 审批弹窗的最大宽度，以及它与内容区两侧之间至少留出的空白。 */
-const DIALOG_MAX_WIDTH = 56;
-const DIALOG_MARGIN = 8;
+/** 审批面板的正文宽度占比由左侧竖线、两列留白和右侧两列留白决定。 */
+const PANEL_CONTENT_INSET = 5;
 
 /** 滚轮一格翻几行。终端只报「上滚」「下滚」，格与行之间的换算由界面定。 */
 const WHEEL_LINES = 3;
@@ -126,6 +125,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	#runtime: InteractiveRuntime | undefined;
 	#dialog: ConfirmDialog | undefined;
+	/** 审批面板当前聚焦的选项；上/下键移动，回车确认。 */
+	#dialogFocus = 0;
 	#focus: boolean | undefined;
 	#notifyMode: NotifyMode = "auto";
 	#activity = "";
@@ -277,10 +278,35 @@ export class TerminalFrontend implements InteractiveFrontend {
 			if (event.type === "key" && this.#scrollKey(event)) continue;
 
 			if (this.#dialog !== undefined) {
-				if (event.type === "key" && (event.name === "ctrl-c" || event.name === "escape")) {
-					// 询问期间按 Ctrl+C 或 Esc：拒绝，并把这一轮停掉
-					this.#interrupt(true);
-					continue;
+				if (event.type === "key") {
+					if (event.name === "ctrl-c" || event.name === "escape") {
+						// 询问期间按 Ctrl+C 或 Esc：拒绝，并把这一轮停掉
+						this.#interrupt(true);
+						continue;
+					}
+					if (event.name === "up" || event.name === "ctrl-p") {
+						this.#moveDialogFocus(-1);
+						continue;
+					}
+					if (event.name === "down" || event.name === "ctrl-n") {
+						this.#moveDialogFocus(1);
+						continue;
+					}
+					if (event.name === "enter") {
+						this.#answer(DIALOG_OPTIONS[this.#dialogFocus]?.allowed ?? false);
+						continue;
+					}
+				}
+				if (event.type === "text") {
+					const text = event.text.trim().toLowerCase();
+					if (text === "j") {
+						this.#moveDialogFocus(1);
+						continue;
+					}
+					if (text === "k") {
+						this.#moveDialogFocus(-1);
+						continue;
+					}
 				}
 				const decision = dialogDecision(event);
 				if (decision !== undefined) this.#answer(decision);
@@ -920,16 +946,23 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#ask(question: string, detail: string): Promise<boolean> {
 		return new Promise<boolean>((resolve) => {
 			this.#dialog = { question, detail, resolve };
+			this.#dialogFocus = 0;
 			this.#refresh();
 			// 屏幕前的这个人可能正看着别的窗口，这一问必须让他知道
 			this.#notify(question);
 		});
 	}
 
+	#moveDialogFocus(delta: number): void {
+		this.#dialogFocus = Math.max(0, Math.min(DIALOG_OPTIONS.length - 1, this.#dialogFocus + delta));
+		this.#refresh();
+	}
+
 	#answer(allowed: boolean): void {
 		const dialog = this.#dialog;
 		if (dialog === undefined) return;
 		this.#dialog = undefined;
+		this.#dialogFocus = 0;
 		dialog.resolve(allowed);
 		this.#refresh();
 	}
@@ -983,46 +1016,51 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#refresh();
 	}
 
-	/** 组装一帧：会话区（含可选的状态行与确认卡片）、输入框、快捷键条。 */
+	/** 组装一帧：会话区（含可选的状态行）、审批面板或输入框、快捷键条。 */
 	#refresh(): void {
 		if (this.#stopped || this.#runtime === undefined) return;
 
 		const size = this.#terminal.size();
 		const body = this.#body(size.cols);
-		// 输入框没有左右边框，正文从第一列开始排，占满整行；它多高先算出来，会话区才好分剩下的行
-		const editor = this.#editor.render({ width: size.cols, prompt: PROMPT });
-		const footerRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const dialog = this.#dialog;
+		// 输入框没有左右边框，正文从第一列开始排；审批时它整块让位给面板
+		const editor = this.#editor.render({ width: size.cols, prompt: PROMPT });
+		const panel = dialog === undefined ? undefined : this.#panelRows(size.cols, dialog);
+		const editorRows = editor.lines.length + PROMPT_CHROME_ROWS;
+		const footerRows = panel === undefined ? editorRows : panel.length + 1;
 		const status = this.#running ? RUNNING_ROWS : 0;
-		// 弹窗盖在会话区上，不再额外占行；这里只要保证至少剩下一行会话
 		const height = Math.max(footerRows + status + 1, size.rows);
 		const rows = Math.max(1, height - footerRows - status);
 
-		const conversation = this.#conversationRows(body, rows, dialog);
+		const conversation = this.#conversationRows(body, rows);
+		const input: readonly Line[] =
+			panel === undefined
+				? [plain(""), boxRule(size.cols), ...editor.lines, this.#boxBottom(size.cols)]
+				: panel;
 
 		const lines: Line[] = [
 			...conversation,
 			...(this.#running ? [plain(""), this.#runningRow(size.cols)] : []),
-			plain(""),
-			boxRule(size.cols),
-			...editor.lines,
-			this.#boxBottom(size.cols),
+			...input,
 			this.#keysRow(size.cols),
 		];
 
-		// 光标在输入框里：它上面是会话区与输入框的上边框和留白
-		this.#setCursorVisible(this.#pane === "prompt");
+		// 审批面板没有硬件光标；输入框里光标位于折行后的位置
+		this.#setCursorVisible(panel === undefined && this.#pane === "prompt");
 		this.#region.draw({
 			lines,
-			cursor: {
-				row: rows + status + 2 + editor.cursor.row,
-				col: editor.cursor.col,
-			},
+			cursor:
+				panel === undefined
+					? {
+							row: rows + status + 2 + editor.cursor.row,
+							col: editor.cursor.col,
+						}
+					: undefined,
 		});
 	}
 
-	/** 主屏：会话区的可见窗口，右侧是轨道与滚动条；有审批时把弹窗盖在中间。 */
-	#conversationRows(body: number, rows: number, dialog: ConfirmDialog | undefined): readonly Line[] {
+	/** 主屏：会话区的可见窗口，右侧是轨道与滚动条。 */
+	#conversationRows(body: number, rows: number): readonly Line[] {
 		const mainRows = Math.max(1, rows);
 		// 条目总宽扣掉右侧两列：一列轨道、一列滚动条
 		const entryWidth = Math.max(1, body - GUTTER_WIDTH);
@@ -1054,14 +1092,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 		});
 
 		const selected =
-			dialog !== undefined || this.#selectedBlock === undefined
+			this.#selectedBlock === undefined
 				? undefined
 				: this.#blockSpans.find((block) => block.id === this.#selectedBlock);
-		const withBox =
-			selected === undefined ? conversation : this.#drawSelectionBox(conversation, selected, window, entryWidth);
-
-		if (dialog === undefined) return withBox;
-		return this.#overlayDialog(withBox, dialog, body);
+		return selected === undefined ? conversation : this.#drawSelectionBox(conversation, selected, window, entryWidth);
 	}
 
 	/** 选中块的边框：左右竖线贴着块的可见行，上下角画在块外一行。 */
@@ -1125,56 +1159,48 @@ export class TerminalFrontend implements InteractiveFrontend {
 		);
 	}
 
-	/** 把审批弹窗盖在会话区正中：弹窗自己占的行替换掉背后的内容。 */
-	#overlayDialog(conversation: readonly Line[], dialog: ConfirmDialog, body: number): readonly Line[] {
-		const popup = this.#dialogRows(dialog, body, conversation.length);
-		const top = Math.max(0, Math.floor((conversation.length - popup.length) / 2));
-		return conversation.map((line, index) => {
-			const popupLine = popup[index - top];
-			return popupLine === undefined ? line : concat(plain(" ".repeat(PAD)), popupLine);
-		});
-	}
+	/** 审批面板：替换输入区，左侧竖线、浅色底，标题、命令预览和纵向选项。 */
+	#panelRows(width: number, dialog: ConfirmDialog): Line[] {
+		const contentWidth = Math.max(1, width - PANEL_CONTENT_INSET);
+		const row = (content: Line, selected = false): Line => {
+			const background = selected ? SELECT_BG : BAND;
+			const styledContent = mapLine(
+				content,
+				(style: Style | undefined) => mergeStyles(style, background) ?? background,
+			);
+			return concat(
+				styled("┃", mergeStyles(ACCENT, background) ?? background),
+				styled("  ", background),
+				padLine(styledContent, contentWidth, background),
+				styled("  ", background),
+			);
+		};
 
-	/** 弹窗本体：标题嵌在上边框里，下面是问句、调用详情和横排的两个选项。 */
-	#dialogRows(dialog: ConfirmDialog, body: number, rows: number): readonly Line[] {
-		const width = Math.min(body, Math.max(24, Math.min(DIALOG_MAX_WIDTH, body - DIALOG_MARGIN * 2)));
-		const inner = Math.max(1, width - 2);
-		const left = Math.max(0, Math.floor((body - width) / 2));
-		const [allow, deny] = DIALOG_OPTIONS;
-
-		const title = " Approval required ";
-		const header = concat(
-			styled("╭─", FAINT),
-			styled(title, TITLE),
-			styled(`${"─".repeat(Math.max(0, width - 3 - title.length))}╮`, FAINT),
+		const title = truncateLine(styled(dialog.question, TITLE), contentWidth);
+		const detail = wrapLine(
+			commandDetail(dialogDetail(dialog.detail, dialog.question, this.#runtime?.cwd), dialog.question),
+			{ width: contentWidth, maxLines: 5 },
 		);
-		const footer = styled(`╰${"─".repeat(Math.max(0, width - 2))}╯`, FAINT);
-		const row = (content: Line): Line => concat(styled("│", FAINT), padLine(content, inner), styled("│", FAINT));
-
-		// 详情可能很长；弹窗最多占满整个会话区，超出部分由换行器加省略号
-		const detailWidth = inner;
-		const detail = wrapLine(styled(dialogDetail(dialog.detail, dialog.question, this.#runtime?.cwd), DIM), {
-			width: detailWidth,
-			firstIndent: concat(plain("  "), styled("┃ ", ACCENT)),
-			restIndent: concat(plain("  "), styled("┃ ", ACCENT)),
-			maxLines: Math.max(1, rows - 6),
+		const options = DIALOG_OPTIONS.map((option, index) => {
+			const focused = index === this.#dialogFocus;
+			return row(
+				concat(
+					styled(`${option.key} `, ACCENT),
+					styled(`${focused ? "(●)" : "(○)"} `, focused ? TITLE : DIM),
+					styled(option.label, focused ? TITLE : DIM),
+				),
+				focused,
+			);
 		});
-		const options = concat(
-			styled(`▶ ${allow.key}  ${allow.label}`, ACCENT),
-			plain("      "),
-			styled(`${deny.key}  ${deny.label}`, DIM),
-		);
 
-		const lines: Line[] = [
-			header,
+		return [
 			row(plain("")),
-			row(concat(plain("  "), truncateLine(styled(dialog.question, TITLE), Math.max(1, inner - 2)))),
-			...detail.map(row),
+			row(title),
+			...detail.map((line) => row(line)),
 			row(plain("")),
-			row(concat(plain("  "), truncateLine(options, Math.max(1, inner - 2)))),
-			footer,
+			...options,
+			row(plain("")),
 		];
-		return lines.map((line) => concat(plain(" ".repeat(left)), line));
 	}
 
 	/** 跑起来时的那一行：左边是当前动作，右边是这一轮已经跑了多久。 */
@@ -1214,6 +1240,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 	 */
 	#hints(): readonly KeyHint[] {
 		const help: KeyHint = { keys: "/help", label: "shortcuts" };
+		if (this.#dialog !== undefined) {
+			return [
+				{ keys: "↑/↓", label: "select" },
+				{ keys: "Enter", label: "confirm" },
+				{ keys: "Esc", label: "deny" },
+			];
+		}
 		if (this.#pane === "scrollback") {
 			return [
 				{ keys: "j/k", label: "entry" },
@@ -1293,6 +1326,13 @@ function dialogDetail(detail: string, question: string, cwd: string | undefined)
 		// 不是 JSON：按原样显示
 	}
 	return detail;
+}
+
+/** bash 命令里的分隔符提亮，帮助一眼看出命令的分段。 */
+function commandDetail(text: string, question: string): Line {
+	if (!/bash/i.test(question)) return styled(text, TEXT);
+	const parts = text.split(/(\s*(?:;|&&|\|\|)\s*)/);
+	return concat(...parts.map((part, index) => (index % 2 === 1 ? styled(part, ACCENT) : styled(part, TEXT))));
 }
 
 /** 在指定显示列写一个字符；选中框的边线覆盖在现有内容上。 */
