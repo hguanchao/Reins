@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it } from "node:test";
 
 import { TerminalFrontend } from "../../../src/plugins/tui-plugin/frontend.ts";
 import type { Terminal, TerminalDevice, TerminalSize } from "../../../src/tui/terminal/terminal.ts";
@@ -70,6 +73,36 @@ class MemoryTerminal implements Terminal {
 	quit(): void {
 		this.inputListener?.("\x04"); // Ctrl+D
 	}
+}
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+	while (tempDirs.length > 0) rmSync(tempDirs.pop()!, { recursive: true, force: true });
+});
+
+/** 一个可被 @ 搜索的工作区。 */
+function workspaceFixture(): string {
+	const root = mkdtempSync(join(tmpdir(), "reins-frontend-files-"));
+	tempDirs.push(root);
+	mkdirSync(join(root, "src"), { recursive: true });
+	writeFileSync(join(root, "src", "app.ts"), "app");
+	writeFileSync(join(root, "src", "util.ts"), "util");
+	writeFileSync(join(root, "README.md"), "readme");
+	return root;
+}
+
+/** 等文件索引完成或某个界面状态出现；最多等半秒。 */
+async function waitForRows(
+	terminal: MemoryTerminal,
+	predicate: (rows: string[]) => boolean,
+): Promise<string[]> {
+	for (let attempt = 0; attempt < 50; attempt += 1) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		const rows = lastFrameRows(terminal.output);
+		if (predicate(rows)) return rows;
+	}
+	return lastFrameRows(terminal.output);
 }
 
 function runtimeOf(): InteractiveRuntime {
@@ -481,6 +514,59 @@ describe("输入框边框", () => {
 		rows = lastFrameRows(terminal.output);
 		assert.ok(rows.some((line) => line.includes("❯ /exit")), "double-click accepts the row");
 		assert.ok(!rows.some((line) => line.includes("Show this help")), "dropdown closes after mouse accept");
+
+		terminal.inputListener?.("\x03");
+		terminal.quit();
+		await running;
+	});
+
+	it("@ 文件补全：过滤、Tab 插入与目录钻取", async () => {
+		const root = workspaceFixture();
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = { ...runtimeOf(), cwd: root };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("open @app");
+		let rows = await waitForRows(terminal, (frame) => frame.some((line) => line.includes("src/app.ts")));
+		assert.ok(rows.some((line) => line.includes("src/app.ts")), "file matches appear");
+		assert.ok(!rows.some((line) => line.includes("src/util.ts")), "query filters other files");
+
+		terminal.inputListener?.("\t");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("open @src/app.ts ")), "Tab inserts a file ref");
+		assert.ok(!rows.some((line) => line.includes("src/util.ts")), "menu closes after insert");
+
+		terminal.inputListener?.("\x03");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("@sr");
+		rows = await waitForRows(terminal, (frame) => frame.some((line) => line.includes("src/")));
+		assert.ok(rows.some((line) => line.includes("src/")), "directory is offered");
+
+		// Tab 引用目录本身；右方向键才钻进去
+		terminal.inputListener?.("\t");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ @src ")), "Tab inserts a directory ref");
+
+		terminal.inputListener?.("\x03");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("@sr");
+		rows = await waitForRows(terminal, (frame) => frame.some((line) => line.includes("src/")));
+
+		terminal.inputListener?.("\x1b[C"); // 右方向键钻取
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ @src/")), "Right drills into the folder");
+		assert.ok(rows.some((line) => line.includes("util.ts")), "children are listed after drill");
+
+		terminal.inputListener?.("\t");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("@src/app.ts ")), "child file is inserted");
 
 		terminal.inputListener?.("\x03");
 		terminal.quit();

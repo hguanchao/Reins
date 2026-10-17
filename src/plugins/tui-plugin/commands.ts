@@ -77,6 +77,7 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 		styled("Keys", BOLD),
 		plain("  Enter send   Ctrl+J/Alt+Enter newline   Esc/Ctrl+C cancel   Ctrl+D quit"),
 		plain("  Type / for the command menu; Up/Down select, Tab completes, Enter runs, Esc closes"),
+		plain("  Type @ to reference a file; Tab/Enter insert, Right drills into a folder, Esc closes"),
 		plain("  Ctrl+V paste   Ctrl+Shift+V paste inline   Ctrl+Z undo   Ctrl+L redraw"),
 		plain("  Multi-line pastes fold into a [Pasted: N lines] chip; double-click or paste again to expand"),
 		plain("  Up/Down move in the draft or recall history"),

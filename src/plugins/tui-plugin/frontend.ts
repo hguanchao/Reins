@@ -39,12 +39,19 @@ import {
 import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
 import { isBuiltinCommand, runBuiltin, BUILTIN_COMMANDS } from "./commands.ts";
 import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts";
+import {
+	detectAtContext,
+	indexWorkspaceFiles,
+	matchFiles,
+	type AtContext,
+	type FileEntry,
+} from "./file-search.ts";
 import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
 import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
 import { matchSlashCommands, slashContext, type SlashCommand, type SlashContext } from "./slash-menu.ts";
-import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, EDGE_LIT, FAINT, PASTE_BG, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, EDGE_LIT, FAINT, PASTE_BG, PATH, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
 
 /**
@@ -184,6 +191,18 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#slashTopScreen = 0;
 	#slashVisible = 0;
 	#lastSlashClick: { index: number; at: number } | undefined;
+	/** 工作区文件清单；在会话启动后异步建立，`@` 补全只读这份快照。 */
+	#fileIndex: readonly FileEntry[] = [];
+	#fileIndexRoot: string | undefined;
+	#fileIndexLoading = false;
+	#fileIndexAt = 0;
+	#fileIndexSelected = 0;
+	#fileIndexKey: string | undefined;
+	#fileClosedFor: string | undefined;
+	#fileTop = 0;
+	#fileTopScreen = 0;
+	#fileVisible = 0;
+	#lastFileClick: { index: number; at: number } | undefined;
 	/** 底部临时提示（复制成功之类），过一会儿让回给快捷键条。 */
 	#notice = "";
 	#noticeTimer: NodeJS.Timeout | undefined;
@@ -210,6 +229,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#runtime = runtime;
 		this.#notifyMode = runtime.notify;
 		this.#transcript.setCwd(runtime.cwd);
+		this.#loadFileIndex(runtime.cwd);
 		this.#stopped = false;
 		this.#startTerminal();
 
@@ -355,7 +375,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 			if (event.type === "key" && event.name === "tab") {
 				// 下拉打开时 Tab 是接受候选，不切换焦点
-				if (this.#slashState() !== undefined) this.#handleKey(event);
+				if (this.#slashState() !== undefined || this.#fileState() !== undefined) this.#handleKey(event);
 				else this.#togglePane();
 				continue;
 			}
@@ -582,6 +602,124 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#refresh();
 	}
 
+	/** 异步建立文件清单；同一根目录 30 秒内不重复扫描。 */
+	#loadFileIndex(root: string): void {
+		if (this.#fileIndexLoading && this.#fileIndexRoot === root) return;
+		if (this.#fileIndexRoot === root && Date.now() - this.#fileIndexAt < 30_000) return;
+
+		this.#fileIndexRoot = root;
+		this.#fileIndexLoading = true;
+		this.#fileIndexAt = Date.now();
+		void indexWorkspaceFiles(root)
+			.then((entries) => {
+				if (this.#fileIndexRoot !== root) return;
+				this.#fileIndex = entries;
+				this.#fileIndexLoading = false;
+				this.#refresh();
+			})
+			.catch(() => {
+				if (this.#fileIndexRoot !== root) return;
+				this.#fileIndexLoading = false;
+				this.#refresh();
+			});
+	}
+
+	/** 当前是否该显示 `@` 文件下拉。 */
+	#fileState(): { context: AtContext; items: readonly FileEntry[] } | undefined {
+		if (this.#dialog !== undefined || this.#pane !== "prompt") return undefined;
+
+		const text = this.#editor.displayText;
+		if (this.#fileClosedFor !== undefined && this.#fileClosedFor !== text) this.#fileClosedFor = undefined;
+		if (this.#fileClosedFor === text) return undefined;
+
+		const context = detectAtContext(text, this.#editor.displayBeforeCursor.length);
+		if (context === undefined || this.#fileIndex.length === 0) {
+			this.#fileIndexKey = undefined;
+			return undefined;
+		}
+
+		const items = matchFiles(this.#fileIndex, context.query);
+		if (items.length === 0) return undefined;
+
+		const key = `${context.start}:${context.end}:${context.query}`;
+		if (key !== this.#fileIndexKey) {
+			this.#fileIndexKey = key;
+			this.#fileIndexSelected = 0;
+		}
+		this.#fileIndexSelected = Math.max(0, Math.min(items.length - 1, this.#fileIndexSelected));
+		return { context, items };
+	}
+
+	/** 文件下拉行：目录带尾斜杠并整体用强调色。 */
+	#fileRows(width: number): readonly Line[] {
+		const state = this.#fileState();
+		if (state === undefined) {
+			this.#fileVisible = 0;
+			return [];
+		}
+
+		const limit = Math.max(1, Math.min(8, this.#terminal.size().rows - 10));
+		const visibleCount = Math.min(limit, state.items.length);
+		let start = 0;
+		if (this.#fileIndexSelected >= visibleCount) {
+			start = Math.min(this.#fileIndexSelected - visibleCount + 1, state.items.length - visibleCount);
+		}
+		const visible = state.items.slice(start, start + visibleCount);
+		this.#fileTop = start;
+		this.#fileVisible = visible.length;
+
+		return visible.map((item, offset) => {
+			const selected = start + offset === this.#fileIndexSelected;
+			const background = selected ? SELECT_BG : BAND;
+			const color = selected ? TITLE : item.kind === "directory" ? ACCENT : PATH;
+			const path = item.kind === "directory" ? `${item.path}/` : item.path;
+			const content = concat(
+				styled("  ", background),
+				styled("@", mergeStyles(DIM, background) ?? background),
+				styled(path, mergeStyles(color, background) ?? background),
+			);
+			return padLine(truncateLine(content, width), width, background);
+		});
+	}
+
+	#moveFile(delta: number): void {
+		const state = this.#fileState();
+		if (state === undefined) return;
+		const count = state.items.length;
+		this.#fileIndexSelected = (this.#fileIndexSelected + delta + count) % count;
+		this.#refresh();
+	}
+
+	/** 翻页时夹在两端。 */
+	#scrollFile(delta: number): void {
+		const state = this.#fileState();
+		if (state === undefined) return;
+		this.#fileIndexSelected = Math.max(0, Math.min(state.items.length - 1, this.#fileIndexSelected + delta));
+		this.#refresh();
+	}
+
+	/**
+	 * 接受一个文件结果。
+	 *
+	 * 目录在目录模式（查询以 `/` 结尾）或按右方向键时补成 `@dir/` 并保持下拉，可以直接继续
+	 * 往里选；其余情况补成 `@path ` 后收起。
+	 */
+	#acceptFile(item: FileEntry, context: AtContext, drill: boolean): void {
+		const directory = item.kind === "directory";
+		const drillDown = directory && (drill || context.query.endsWith("/"));
+		const replacement = drillDown ? `@${item.path}/` : `@${item.path} `;
+		if (!this.#editor.replaceDisplayRange(context.start, context.end, replacement)) return;
+
+		this.#fileIndexKey = undefined;
+		this.#fileClosedFor = drillDown ? undefined : this.#editor.displayText;
+		this.#refresh();
+	}
+
+	#closeFileMenu(): void {
+		this.#fileClosedFor = this.#editor.displayText;
+		this.#refresh();
+	}
+
 	/** 跳到上一个或下一个回合的开头。 */
 	#jumpTurn(delta: number): void {
 		if (this.#turnRows.length === 0) return;
@@ -741,6 +879,33 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 		}
 
+		// 文件下拉：单击选中，双击插入引用
+		if (
+			event.button === "left" &&
+			event.action === "down" &&
+			this.#fileVisible > 0 &&
+			row >= this.#fileTopScreen &&
+			row < this.#fileTopScreen + this.#fileVisible
+		) {
+			const state = this.#fileState();
+			const index = this.#fileTop + (row - this.#fileTopScreen);
+			const item = state?.items[index];
+			if (state !== undefined && item !== undefined) {
+				this.#pane = "prompt";
+				this.#fileIndexSelected = index;
+				const now = Date.now();
+				const last = this.#lastFileClick;
+				this.#lastFileClick = { index, at: now };
+				if (last !== undefined && last.index === index && now - last.at <= 300) {
+					this.#lastFileClick = undefined;
+					this.#acceptFile(item, state.context, false);
+					return;
+				}
+				this.#refresh();
+				return;
+			}
+		}
+
 		// 点到输入区：焦点回到输入框；双击粘贴 chip 则把它展开
 		if (event.button === "left" && event.action === "down" && row >= this.#main.rows) {
 			this.#pane = "prompt";
@@ -802,6 +967,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 	/** 输入区里的单击：落在粘贴 chip 上时记录位置，300ms 内的第二下把它展开。 */
 	#handleEditorClick(row: number, col: number): void {
 		this.#lastSlashClick = undefined;
+		this.#lastFileClick = undefined;
 		const editorRow = row - this.#editorTop;
 		const editorCol = col - INPUT_LEFT;
 		if (editorRow < 0 || editorCol < 0) {
@@ -936,8 +1102,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 	 */
 	#scrollKey(event: Extract<KeyEvent, { type: "key" }>): boolean {
 		// 下拉打开时，翻页与 Ctrl+P/N 属于候选列表，不是会话历史
-		const slashKey = event.name === "pageup" || event.name === "pagedown" || event.name === "ctrl-p" || event.name === "ctrl-n";
-		if (slashKey && this.#slashState() !== undefined) return false;
+		const menuKey =
+			event.name === "pageup" ||
+			event.name === "pagedown" ||
+			event.name === "ctrl-p" ||
+			event.name === "ctrl-n";
+		if (menuKey && (this.#slashState() !== undefined || this.#fileState() !== undefined)) return false;
 
 		switch (event.name) {
 			case "pageup":
@@ -1007,6 +1177,40 @@ export class TerminalFrontend implements InteractiveFrontend {
 					this.#acceptSlash(item, slash.context);
 					return;
 				}
+			}
+		}
+
+		const file = slash === undefined ? this.#fileState() : undefined;
+		if (file !== undefined) {
+			if (event.name === "up" || event.name === "ctrl-p") {
+				this.#moveFile(-1);
+				return;
+			}
+			if (event.name === "down" || event.name === "ctrl-n") {
+				this.#moveFile(1);
+				return;
+			}
+			if (event.name === "pageup") {
+				this.#scrollFile(-8);
+				return;
+			}
+			if (event.name === "pagedown") {
+				this.#scrollFile(8);
+				return;
+			}
+			if (event.name === "tab" || event.name === "enter") {
+				const item = file.items[this.#fileIndexSelected];
+				if (item !== undefined) this.#acceptFile(item, file.context, false);
+				return;
+			}
+			if (event.name === "right") {
+				const item = file.items[this.#fileIndexSelected];
+				if (item !== undefined) this.#acceptFile(item, file.context, true);
+				return;
+			}
+			if (event.name === "escape") {
+				this.#closeFileMenu();
+				return;
 			}
 		}
 
@@ -1187,6 +1391,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#activity = "";
 			this.#stopTicker();
 			this.#transcript.clearRunning();
+			// 一轮里可能新建了文件；刷新清单，让紧接着的 @ 补全能找到它们
+			this.#loadFileIndex(runtime.cwd);
 			this.#refresh();
 			this.#notify("Done");
 		}
@@ -1354,10 +1560,22 @@ export class TerminalFrontend implements InteractiveFrontend {
 			maxRows: maxEditorRows,
 		});
 		const panel = dialog === undefined ? undefined : this.#panelRows(size.cols, dialog);
-		const slash = panel === undefined ? this.#slashRows(size.cols) : [];
-		if (panel !== undefined) this.#slashVisible = 0;
+		let menu: readonly Line[] = [];
+		if (panel === undefined) {
+			// 斜杠命令优先；同一段文本里不会同时出现两个下拉
+			const slashRows = this.#slashRows(size.cols);
+			if (slashRows.length > 0) {
+				menu = slashRows;
+				this.#fileVisible = 0;
+			} else {
+				menu = this.#fileRows(size.cols);
+			}
+		} else {
+			this.#slashVisible = 0;
+			this.#fileVisible = 0;
+		}
 		const editorRows = editor.lines.length + PROMPT_CHROME_ROWS;
-		const footerRows = panel === undefined ? editorRows + slash.length : panel.length + 1;
+		const footerRows = panel === undefined ? editorRows + menu.length : panel.length + 1;
 		const height = Math.max(footerRows + status + 1, size.rows);
 		const rows = Math.max(1, height - footerRows - status);
 
@@ -1365,12 +1583,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const input: readonly Line[] = panel === undefined ? this.#inputRows(size.cols, editor) : panel;
 		this.#editorElements = editor.elements;
 		this.#slashTopScreen = rows + status;
-		this.#editorTop = rows + status + slash.length + 2;
+		this.#fileTopScreen = rows + status;
+		this.#editorTop = rows + status + menu.length + 2;
 
 		const lines: Line[] = [
 			...conversation,
 			...(this.#running ? [plain(""), this.#runningRow(size.cols)] : []),
-			...slash,
+			...menu,
 			...input,
 			this.#keysRow(size.cols),
 		];
@@ -1382,7 +1601,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			cursor:
 				panel === undefined
 					? {
-							row: rows + status + slash.length + 2 + editor.cursor.row,
+							row: rows + status + menu.length + 2 + editor.cursor.row,
 							col: INPUT_LEFT + editor.cursor.col,
 						}
 					: undefined,
@@ -1635,6 +1854,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 				{ keys: "↑/↓", label: "select" },
 				{ keys: "Tab", label: "complete" },
 				{ keys: "Enter", label: "run" },
+				{ keys: "Esc", label: "close" },
+			];
+		}
+		if (this.#fileState() !== undefined) {
+			return [
+				{ keys: "↑/↓", label: "select" },
+				{ keys: "Tab/Enter", label: "insert" },
+				{ keys: "→", label: "drill" },
 				{ keys: "Esc", label: "close" },
 			];
 		}

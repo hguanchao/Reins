@@ -131,30 +131,43 @@ export class LineEditor {
 	}
 
 	/**
-	 * 替换开头的一段显示文本。
+	 * 替换一段显示文本。
 	 *
-	 * 斜杠补全用它把 `/he` 换成 `/help `。只接受落在原子边界上的长度；命令名是普通文本，
-	 * 不会跨过粘贴 chip。
+	 * 斜杠补全与 `@` 文件引用用它改写标记。起点和终点都必须落在原子边界上；跨过粘贴 chip
+	 * 的替换直接拒绝，避免把整段粘贴内容误删。
 	 */
-	replacePrefix(length: number, replacement: string): void {
-		if (length <= 0) return;
-
-		let consumed = 0;
-		let cutoff = 0;
-		while (cutoff < this.#atoms.length && consumed < length) {
-			consumed += atomText(this.#atoms[cutoff]).length;
-			cutoff += 1;
-		}
-		if (consumed !== length) return;
+	replaceDisplayRange(start: number, end: number, replacement: string): boolean {
+		if (start < 0 || end < start) return false;
+		const from = this.#atomAtOffset(start);
+		const to = this.#atomAtOffset(end);
+		if (from === undefined || to === undefined) return false;
 
 		this.#snapshot();
 		const inserted: Atom[] = segmentGraphemes(normalizeLineBreaks(replacement)).map((text) => ({
 			kind: "text",
 			text,
 		}));
-		this.#atoms = [...inserted, ...this.#atoms.slice(cutoff)];
-		this.#cursor = inserted.length;
+		this.#atoms = [...this.#atoms.slice(0, from), ...inserted, ...this.#atoms.slice(to)];
+		this.#cursor = from + inserted.length;
 		this.#resetHistoryCursor();
+		return true;
+	}
+
+	/** 替换开头的一段显示文本；斜杠补全用。 */
+	replacePrefix(length: number, replacement: string): void {
+		if (length <= 0) return;
+		this.replaceDisplayRange(0, length, replacement);
+	}
+
+	/** 显示偏移对应的原子下标；不在边界上返回 undefined。 */
+	#atomAtOffset(offset: number): number | undefined {
+		let consumed = 0;
+		for (let index = 0; index < this.#atoms.length; index += 1) {
+			if (consumed === offset) return index;
+			consumed += atomText(this.#atoms[index]).length;
+			if (consumed > offset) return undefined;
+		}
+		return consumed === offset ? this.#atoms.length : undefined;
 	}
 
 	/**
