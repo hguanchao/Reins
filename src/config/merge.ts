@@ -69,7 +69,7 @@ function pickStricterApproval(user: ConfigFile, project: ConfigFile): ApprovalMo
 	const wanted = project.config.approval;
 	if (APPROVAL_STRICTNESS[wanted] < APPROVAL_STRICTNESS[user.config.approval]) {
 		throw new ConfigError(
-			`项目配置不能把 approval 从 ${user.config.approval} 放宽到 ${wanted}，只能改得更严（可选：${APPROVAL_MODES.join("、")}）`,
+			`Project config cannot relax approval from ${user.config.approval} to ${wanted}; it may only tighten (available: ${APPROVAL_MODES.join(", ")})`,
 			{ file: project.file, ...project.locationOf(["approval"]) },
 		);
 	}
@@ -81,7 +81,7 @@ function pickStricterSandbox(user: ConfigFile, project: ConfigFile): SandboxMode
 	const wanted = project.config.sandbox;
 	if (SANDBOX_STRICTNESS[wanted] < SANDBOX_STRICTNESS[user.config.sandbox]) {
 		throw new ConfigError(
-			`项目配置不能把 sandbox 从 ${user.config.sandbox} 放宽到 ${wanted}，只能改得更严（可选：${SANDBOX_MODES.join("、")}）`,
+			`Project config cannot relax sandbox from ${user.config.sandbox} to ${wanted}; it may only tighten (available: ${SANDBOX_MODES.join(", ")})`,
 			{ file: project.file, ...project.locationOf(["sandbox"]) },
 		);
 	}

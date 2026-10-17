@@ -34,18 +34,18 @@ export type ValidationResult = ValidationSuccess | ValidationFailure;
 
 function describeType(value: unknown): string {
 	if (value === null) return "null";
-	if (Array.isArray(value)) return "数组";
+	if (Array.isArray(value)) return "array";
 	switch (typeof value) {
 		case "string":
-			return "字符串";
+			return "string";
 		case "number":
-			return "数字";
+			return "number";
 		case "boolean":
-			return "布尔";
+			return "boolean";
 		case "object":
-			return "对象";
+			return "object";
 		case "undefined":
-			return "未提供";
+			return "undefined";
 		default:
 			return typeof value;
 	}
@@ -56,39 +56,39 @@ function check(schema: JsonSchema, value: unknown, path: string, problems: strin
 	switch (schema.type) {
 		case "string": {
 			if (typeof value !== "string") {
-				problems.push(`${path} 应当是字符串，实际是${describeType(value)}`);
+				problems.push(`${path} must be a string, got ${describeType(value)}`);
 				return;
 			}
 			if (schema.enum !== undefined && !schema.enum.some((item) => item === value)) {
-				problems.push(`${path} 只能是 ${schema.enum.join("、")} 之一，实际是 ${JSON.stringify(value)}`);
+				problems.push(`${path} must be one of ${schema.enum.join(", ")}, got ${JSON.stringify(value)}`);
 			}
 			return;
 		}
 		case "number": {
 			if (typeof value !== "number" || !Number.isFinite(value)) {
-				problems.push(`${path} 应当是数字，实际是${describeType(value)}`);
+				problems.push(`${path} must be a number, got ${describeType(value)}`);
 			}
 			return;
 		}
 		case "integer": {
 			if (typeof value !== "number" || !Number.isInteger(value)) {
-				problems.push(`${path} 应当是整数，实际是${describeType(value)}`);
+				problems.push(`${path} must be an integer, got ${describeType(value)}`);
 				return;
 			}
 			if (schema.minimum !== undefined && value < schema.minimum) {
-				problems.push(`${path} 不能小于 ${schema.minimum}，实际是 ${value}`);
+				problems.push(`${path} must be at least ${schema.minimum}, got ${value}`);
 			}
 			return;
 		}
 		case "boolean": {
 			if (typeof value !== "boolean") {
-				problems.push(`${path} 应当是布尔值，实际是${describeType(value)}`);
+				problems.push(`${path} must be a boolean, got ${describeType(value)}`);
 			}
 			return;
 		}
 		case "array": {
 			if (!Array.isArray(value)) {
-				problems.push(`${path} 应当是数组，实际是${describeType(value)}`);
+				problems.push(`${path} must be an array, got ${describeType(value)}`);
 				return;
 			}
 			for (let index = 0; index < value.length; index += 1) {
@@ -98,12 +98,12 @@ function check(schema: JsonSchema, value: unknown, path: string, problems: strin
 		}
 		case "object": {
 			if (typeof value !== "object" || value === null || Array.isArray(value)) {
-				problems.push(`${path} 应当是对象，实际是${describeType(value)}`);
+				problems.push(`${path} must be an object, got ${describeType(value)}`);
 				return;
 			}
 			const record = value as Record<string, unknown>;
 			for (const key of schema.required ?? []) {
-				if (record[key] === undefined) problems.push(`${path} 缺少必填的 ${key}`);
+				if (record[key] === undefined) problems.push(`${path} is missing the required key ${key}`);
 			}
 			// 没有声明 properties 时任何键都合法。本程序自带的工具都会声明，但参数模式也可能
 			// 来自外部（远端工具），只说 type 不列属性是合法的 JSON Schema 写法
@@ -113,7 +113,7 @@ function check(schema: JsonSchema, value: unknown, path: string, problems: strin
 				const property = properties[key];
 				if (property === undefined) {
 					// 多余的键一律报错：多半是模型把参数名写错了，静默忽略会让它以为设置生效了
-					problems.push(`${path} 出现未知的 ${key}，可用：${Object.keys(properties).join("、")}`);
+					problems.push(`${path} has an unknown key ${key}; valid keys: ${Object.keys(properties).join(", ")}`);
 					continue;
 				}
 				if (item === undefined) continue;
@@ -133,7 +133,7 @@ function check(schema: JsonSchema, value: unknown, path: string, problems: strin
  */
 export function validateToolArguments(schema: JsonSchema, args: unknown): ValidationResult {
 	if (typeof args !== "object" || args === null || Array.isArray(args)) {
-		return { ok: false, message: `参数应当是对象，实际是${describeType(args)}` };
+		return { ok: false, message: `Arguments must be an object, got ${describeType(args)}` };
 	}
 
 	const problems: string[] = [];

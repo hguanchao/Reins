@@ -34,7 +34,7 @@ export function openSession(options: CliOptions, target: SessionTarget): Session
 		return createSession(workRoot, store);
 	}
 	if (store === undefined) {
-		throw new Error("会话存储没有装载（session-plugin 被禁用或装载失败），无法接续或分叉会话");
+		throw new Error("No session store (session-plugin is disabled or failed to load), cannot resume or fork a session");
 	}
 
 	const listings = store.list(sessionsDir(workRoot));
@@ -44,8 +44,8 @@ export function openSession(options: CliOptions, target: SessionTarget): Session
 	if (listing === undefined) {
 		throw new Error(
 			options.resume === undefined
-				? `${workRoot} 下没有可以接续的会话`
-				: `没有找到会话 ${options.resume}；用 reins sessions list 看看有哪些`,
+				? `No session to continue under ${workRoot}`
+				: `Session ${options.resume} not found; run reins sessions list to see what is available`,
 		);
 	}
 
@@ -81,7 +81,7 @@ export function resolveListing(
 	const matches = listings.filter((listing) => listing.id.startsWith(ref));
 	if (matches.length === 1) return matches[0];
 	if (matches.length > 1) {
-		throw new Error(`标识 ${ref} 不唯一，可能是：${matches.map((item) => item.id).join("、")}`);
+		throw new Error(`Id ${ref} is ambiguous, matches: ${matches.map((item) => item.id).join(", ")}`);
 	}
 	return undefined;
 }

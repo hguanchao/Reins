@@ -32,7 +32,7 @@ export function updateUserConfigValue(
 	try {
 		document = new TomlDocument(existsSync(file) ? readFileSync(file, "utf8") : "");
 	} catch (error) {
-		throw new ConfigError(`读取配置失败：${describeError(error)}`, { file });
+		throw new ConfigError(`Cannot read config: ${describeError(error)}`, { file });
 	}
 	const next = update(document.get(path));
 
@@ -41,7 +41,7 @@ export function updateUserConfigValue(
 		document.set([...path], next);
 		writeFileSync(file, document.source, "utf8");
 	} catch (error) {
-		throw new ConfigError(`写入配置失败：${describeError(error)}`, { file });
+		throw new ConfigError(`Cannot write config: ${describeError(error)}`, { file });
 	}
 }
 

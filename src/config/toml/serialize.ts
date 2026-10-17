@@ -59,5 +59,5 @@ export function serializeValue(value: ConfigValue): string {
 		return `{ ${pairs.join(", ")} }`;
 	}
 	// ConfigValue 的联合类型已经穷尽，走到这里说明调用方绕过了类型检查
-	throw new TypeError("无法序列化的值");
+	throw new TypeError("Value cannot be serialized");
 }

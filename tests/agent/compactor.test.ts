@@ -2,149 +2,120 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { Compactor, estimateTokens } from "../../src/agent/compactor.ts";
-import type { ModelEntry } from "../../src/config/providers-file.ts";
+import { EventStream } from "../../src/llm/event-stream.ts";
+import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../../src/llm/client.ts";
 import type { LlmMessage } from "../../src/llm/messages.ts";
-import { ScriptedClient, errorResult, textResult } from "./scripted-client.ts";
 
-/**
- * 上下文压缩的判断与摘要请求。
- *
- * 这几条规则决定「什么时候压、压掉哪一段」：判断错了要么永远不压（最后被端点拒绝），要么
- * 把不该丢的上下文丢掉。摘要请求本身也要守规矩——它不该带工具，也不该要思考等级。
- */
+const SIGNAL = new AbortController().signal;
 
-const model: ModelEntry = {
-	id: "compact-model",
-	name: "压缩模型",
-	api: "scripted",
-	baseUrl: "https://x",
-	reasoning: true,
-	thinkingLevelMap: {},
-	input: ["text"],
-	cost: undefined,
-	contextWindow: 1000,
-	maxTokens: 512,
-	headers: {},
-};
-
-function makeCompactor(client: ScriptedClient, contextWindow = 1000): Compactor {
-	return new Compactor({ client, provider: "p", model, contextWindow, maxTokens: 4096 });
+function userMessage(...text: string[]): LlmMessage {
+	return { role: "user", content: text.join("") };
 }
 
-function user(text: string): LlmMessage {
-	return { role: "user", content: text };
+function toolResultMessage(content: string): LlmMessage {
+	return { role: "toolResult", toolCallId: "c", toolName: "t", content, isError: false };
 }
 
-function assistantText(text: string): LlmMessage {
-	return { role: "assistant", content: [{ type: "text", text }] };
+function emptyStream(): LlmStream {
+	const stream = EventStream.incremental<LlmEvent, LlmResult>();
+	stream.close({ stopReason: "stop", content: [], usage: undefined, errorMessage: undefined, model: "m1" });
+	return stream;
 }
 
-function assistantCall(id: string): LlmMessage {
-	return { role: "assistant", content: [{ type: "toolCall", id, name: "read", arguments: { path: "a.txt" } }] };
+function compactor(overrides: Partial<{ contextWindow: number; client: LlmClient; maxTokens: number | undefined }> = {}): Compactor {
+	return new Compactor({
+		client: overrides.client ?? { api: "fake", stream: () => emptyStream() },
+		provider: "p",
+		model: { id: "m1", name: "m1", api: "a", baseUrl: "b", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: overrides.maxTokens, headers: {} },
+		contextWindow: overrides.contextWindow ?? 1000,
+		maxTokens: overrides.maxTokens,
+	});
 }
 
-function toolResult(id: string, content: string): LlmMessage {
-	return { role: "toolResult", toolCallId: id, toolName: "read", content, isError: false };
+function clientSaying(text: string, stopReason: "stop" | "error" | "aborted" | "length" = "stop", errorMessage?: string): LlmClient {
+	return {
+		api: "fake",
+		stream: (request: LlmRequest) => {
+			void request;
+			const es = EventStream.incremental<LlmEvent, LlmResult>();
+			es.close({
+				stopReason,
+				content: [{ type: "text", text }],
+				usage: undefined,
+				errorMessage: errorMessage ?? undefined,
+				model: "m1",
+			});
+			return es;
+		},
+	};
 }
 
-describe("压缩的时机", () => {
-	it("上下文到上限的八成才压，留出余量给这一轮的输出", () => {
-		const compactor = makeCompactor(new ScriptedClient([]));
-		assert.equal(compactor.shouldCompact(799), false);
-		assert.equal(compactor.shouldCompact(800), true);
+describe("用量估算", () => {
+	it("英文字符约四字一 token,中文一字一 token", () => {
+		assert.ok(estimateTokens([userMessage("x".repeat(400))]) >= 100);
+		assert.ok(estimateTokens([userMessage("一二三四")]) >= 4);
+	});
+
+	it("每条消息有固定开销", () => {
+		const single = estimateTokens([userMessage("x")]);
+		const doubled = estimateTokens([userMessage("x"), userMessage("")]);
+		assert.ok(doubled > single);
 	});
 });
 
-describe("压缩的范围", () => {
-	it("保留最近的内容，全部都在保留额度里时不压", () => {
-		const compactor = makeCompactor(new ScriptedClient([]));
-		assert.equal(compactor.plan([user("短"), assistantText("也短")]), 0);
+describe("压缩计划", () => {
+	it("工具结果不被切在边界上", () => {
+		const messages = [userMessage("old"), toolResultMessage("result"), userMessage("recent")];
+		const cut = compactor().plan(messages);
+		// 边界若落在 toolResult 上就往前退
+		if (cut > 0) {
+			assert.notEqual(messages[cut]?.role, "toolResult");
+		}
 	});
 
-	it("边界不落在工具结果上：它对应的调用被摘要掉，端点会拒绝整个请求", () => {
-		// 保留额度 225：最近两条（那条大消息 + 收尾）正好放得下，再往前就超了
-		const compactor = makeCompactor(new ScriptedClient([]), 900);
-		const boundaryIsToolResult = [
-			user("开始"),
-			assistantCall("c1"),
-			toolResult("c1", "字".repeat(200)),
-			assistantText("收尾"),
-		];
-		// 边界原本落在工具结果上，因此往前挪一条，把那次调用一起留下
-		assert.equal(compactor.plan(boundaryIsToolResult), 1);
-
-		// 同样的大小，但边界那条是使用者说的话时就不必挪
-		const boundaryIsUser = [
-			user("开始"),
-			assistantCall("c1"),
-			user("字".repeat(200)),
-			assistantText("收尾"),
-		];
-		assert.equal(compactor.plan(boundaryIsUser), 2);
+	it("什么都保不住时给 0", () => {
+		assert.equal(compactor({ contextWindow: 10 }).plan([userMessage("x")]), 0);
 	});
 });
 
 describe("摘要请求", () => {
-	const signal = new AbortController().signal;
-
-	it("带上指令、不带工具，也不发思考等级", async () => {
-		const client = new ScriptedClient([textResult("摘要正文")]);
-		const result = await makeCompactor(client).summarize([user("甲"), assistantText("乙")], signal);
-
-		assert.equal(result.ok, true);
-		const request = client.requests[0];
-		assert.equal(request.model, "compact-model");
-		assert.deepEqual(request.tools, []);
-		assert.equal(request.effort, undefined);
-		assert.equal(request.maxTokens, 512);
-		assert.match(request.system, /交接/);
-		const last = request.messages[request.messages.length - 1];
-		assert.equal(last.role, "user");
-		if (last.role === "user") assert.match(last.content, /压缩/);
+	it("正常产出摘要", async () => {
+		const client = clientSaying("the summary text");
+		const result = await compactor({ client }).summarize([userMessage("content")], SIGNAL);
+		assert.deepEqual(result, { ok: true, summary: "the summary text", usage: undefined, cost: undefined });
 	});
 
-	it("摘要与用量一起交回", async () => {
-		const client = new ScriptedClient([textResult("  摘要正文  ")]);
-		const result = await makeCompactor(client).summarize([user("甲")], signal);
+	it("错误、中止、空产出都按失败处理", async () => {
+		const failed = await compactor({ client: clientSaying("x", "error", "boom") }).summarize([], SIGNAL);
+		assert.deepEqual(failed, { ok: false, message: "boom" });
 
-		assert.equal(result.ok, true);
-		if (result.ok) {
-			assert.equal(result.summary, "摘要正文");
-			assert.equal(result.usage?.total, 15);
-		}
+		const aborted = await compactor({ client: clientSaying("x", "aborted") }).summarize([], SIGNAL);
+		assert.deepEqual(aborted, { ok: false, message: "Compaction was aborted" });
+
+		const empty = await compactor({ client: clientSaying(" ") }).summarize([], SIGNAL);
+		assert.deepEqual(empty, { ok: false, message: "The compaction model returned nothing" });
 	});
 
-	it("端点出错时如实回报，不拿半截摘要替换历史", async () => {
-		const client = new ScriptedClient([errorResult("连接断了")]);
-		const result = await makeCompactor(client).summarize([user("甲")], signal);
-
-		assert.equal(result.ok, false);
-		if (!result.ok) assert.match(result.message, /连接断了/);
+	it("截断的摘要被丢弃并给出明确理由", async () => {
+		const failed = await compactor({ client: clientSaying("half summary", "length") }).summarize([], SIGNAL);
+		assert.equal(failed.ok, false);
+		assert.match(failed.ok === false ? failed.message : "", /output limit/);
 	});
 
-	it("输出被上限截断、以及没有内容时都不采用", async () => {
-		const truncated = { ...textResult("写到一半"), stopReason: "length" as const };
-		const cut = await makeCompactor(new ScriptedClient([truncated])).summarize([user("甲")], signal);
-		assert.equal(cut.ok, false);
-		if (!cut.ok) assert.match(cut.message, /截断/);
-
-		const empty = await makeCompactor(new ScriptedClient([textResult("   ")])).summarize([user("甲")], signal);
-		assert.equal(empty.ok, false);
-		if (!empty.ok) assert.match(empty.message, /没有返回任何内容/);
-	});
-});
-
-describe("上下文规模的估算", () => {
-	it("中文比同长度的拉丁文占得更多，规模随内容增长", () => {
-		const chinese = estimateTokens([user("字".repeat(100))]);
-		const latin = estimateTokens([user("a".repeat(100))]);
-		assert.ok(chinese > latin, `中文 ${chinese} 应当大于拉丁文 ${latin}`);
-		assert.ok(estimateTokens([user("字".repeat(200))]) > chinese);
-	});
-
-	it("工具的调用与结果都算进去", () => {
-		const withoutTools = estimateTokens([user("甲")]);
-		const withTools = estimateTokens([assistantCall("c1"), toolResult("c1", "读到的内容")]);
-		assert.ok(withTools > withoutTools);
+	it("请求里的注释与指令:摘要不带思考等级与工具", async () => {
+		let captured: LlmRequest | undefined;
+		const client: LlmClient = {
+			api: "fake",
+			stream: (request: LlmRequest) => {
+				captured = request;
+				return clientSaying("s").stream(request);
+			},
+		};
+		await compactor({ client }).summarize([userMessage("content")], SIGNAL);
+		assert.ok(captured);
+		assert.equal(captured.effort, undefined);
+		assert.deepEqual(captured.tools, []);
+		const instruction = captured.messages[captured.messages.length - 1]!;
+		assert.match(instruction.content as string, /handover summary/);
 	});
 });

@@ -108,7 +108,7 @@ export class OpenAiCompletionsClient implements LlmClient {
 					return;
 				}
 				if (chunk.error !== undefined) {
-					throw new Error(`端点返回错误：${chunk.error.message ?? chunk.error.type ?? "未说明"}`);
+					throw new Error(`endpoint returned an error: ${chunk.error.message ?? chunk.error.type ?? "no details"}`);
 				}
 				if (chunk.model !== undefined) responseModel = chunk.model;
 				if (chunk.usage !== undefined) usage = toUsage(chunk.usage);
@@ -125,7 +125,7 @@ export class OpenAiCompletionsClient implements LlmClient {
 
 		if (finishReason === undefined) {
 			// 没有结束原因的响应可能被截断过；当成完成会让残缺的工具调用被执行
-			throw new Error("响应没有给出结束原因，可能是连接提前断开");
+			throw new Error("the response has no finish reason; the connection may have been cut off early");
 		}
 		accumulator.finishAll();
 

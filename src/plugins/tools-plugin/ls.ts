@@ -8,8 +8,8 @@ import type { JsonSchema } from "../../tools/schema.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		path: { type: "string", description: "目录路径，省略则列工作根" },
-		limit: { type: "integer", minimum: 1, description: "最多列出多少项，默认 500" },
+		path: { type: "string", description: "Directory to list; defaults to the workspace root" },
+		limit: { type: "integer", minimum: 1, description: "Maximum entries to list; defaults to 500" },
 	},
 	required: [],
 } as const satisfies JsonSchema;
@@ -23,7 +23,7 @@ const DEFAULT_LIMIT = 500;
 
 export const lsTool: ToolDefinition<LsArgs> = {
 	name: "ls",
-	description: "列出目录内容。目录名带斜杠结尾，不递归。",
+	description: "List a directory. Directory names end with a slash; not recursive.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
@@ -36,16 +36,16 @@ export const lsTool: ToolDefinition<LsArgs> = {
 		let names: readonly string[];
 		try {
 			if (!statSync(resolved.absolute).isDirectory()) {
-				return { content: `${displayPath} 不是目录`, isError: true };
+				return { content: `${displayPath} is not a directory`, isError: true };
 			}
 			names = readdirSync(resolved.absolute).sort((left, right) =>
 				left.toLowerCase().localeCompare(right.toLowerCase()),
 			);
 		} catch (error) {
-			return { content: `列出 ${displayPath} 失败：${describeError(error)}`, isError: true };
+			return { content: `Cannot list ${displayPath}: ${describeError(error)}`, isError: true };
 		}
 
-		if (names.length === 0) return { content: `${displayPath} 是空目录` };
+		if (names.length === 0) return { content: `${displayPath} is empty` };
 
 		const shown: string[] = [];
 		for (const name of names.slice(0, limit)) {
@@ -53,7 +53,7 @@ export const lsTool: ToolDefinition<LsArgs> = {
 			shown.push(isDirectory ? `${name}/` : name);
 		}
 		if (names.length > shown.length) {
-			shown.push(`…（共 ${names.length} 项，只列出前 ${shown.length} 项）`);
+			shown.push(`… (${names.length} entries; showing the first ${shown.length})`);
 		}
 
 		return {

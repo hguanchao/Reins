@@ -21,7 +21,7 @@ export interface SessionsDeps {
 export function runSessions(options: CliOptions, deps: SessionsDeps): number {
 	const { store } = deps;
 	if (store === undefined) {
-		throw new Error("会话存储没有装载（session-plugin 被禁用或装载失败），看不到会话");
+		throw new Error("No session store (session-plugin is disabled or failed to load), cannot list sessions");
 	}
 
 	const listings = store.list(sessionsDir(deps.workRoot));
@@ -32,7 +32,7 @@ export function runSessions(options: CliOptions, deps: SessionsDeps): number {
 
 	const listing = resolveListing(listings, options.sessionRef ?? "");
 	if (listing === undefined) {
-		throw new Error(`没有找到会话 ${options.sessionRef ?? ""}；用 reins sessions list 看看有哪些`);
+		throw new Error(`Session ${options.sessionRef ?? ""} not found; run reins sessions list to see what is available`);
 	}
 
 	const opened = store.read(listing.file);

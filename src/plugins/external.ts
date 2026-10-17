@@ -60,28 +60,28 @@ export async function importPlugin(
 	try {
 		module = await import(url.href);
 	} catch (error) {
-		throw new Error(`装载失败：${describeError(error)}`);
+		throw new Error(`Load failed: ${describeError(error)}`);
 	}
 
 	const plugin = readPlugin(module);
 	if (plugin.name !== source.name) {
-		throw new Error(`插件标识 ${plugin.name} 与文件名 ${source.name} 不一致`);
+		throw new Error(`Plugin id ${plugin.name} does not match the file name ${source.name}`);
 	}
 	return plugin;
 }
 
 function readPlugin(module: unknown): Plugin {
 	if (typeof module !== "object" || module === null || !("default" in module)) {
-		throw new Error("没有默认导出");
+		throw new Error("No default export");
 	}
 	const value = (module as { readonly default: unknown }).default;
-	if (typeof value !== "object" || value === null) throw new Error("默认导出的不是对象");
+	if (typeof value !== "object" || value === null) throw new Error("The default export is not an object");
 
 	const record = value as Record<string, unknown>;
 	if (typeof record["name"] !== "string" || record["name"].length === 0) {
-		throw new Error("默认导出缺少 name");
+		throw new Error("The default export is missing name");
 	}
-	if (typeof record["setup"] !== "function") throw new Error("默认导出缺少 setup");
+	if (typeof record["setup"] !== "function") throw new Error("The default export is missing setup");
 	return value as Plugin;
 }
 

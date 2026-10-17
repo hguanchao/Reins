@@ -108,7 +108,7 @@ export class TurnDriver {
 			return "end";
 		}
 		if (result.stopReason === "error") {
-			await this.emit({ type: "error", message: result.errorMessage ?? "未知错误" });
+			await this.emit({ type: "error", message: result.errorMessage ?? "unknown error" });
 			return "end";
 		}
 
@@ -123,8 +123,9 @@ export class TurnDriver {
 			// 一个被截断的路径或命令可能指向完全不同的东西。
 			await this.#recordFailures(
 				calls,
-				"上一轮输出被长度上限截断，工具参数可能不完整，因此这次没有执行。" +
-					"请把任务拆小一些，或减少一次输出的内容量。",
+				"The previous response was cut off by the output limit, so its tool arguments may be" +
+					" incomplete; this call was not executed. Split the task into smaller steps, or send" +
+					" less in a single response.",
 			);
 			return "continue";
 		}

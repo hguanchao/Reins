@@ -18,17 +18,17 @@ function clockTime(iso: string): string {
 
 /** 会话清单。 */
 export function formatSessionList(listings: readonly SessionListing[]): readonly string[] {
-	if (listings.length === 0) return ["这个目录下还没有会话。"];
+	if (listings.length === 0) return ["No sessions in this directory yet"];
 
 	const lines: string[] = [];
 	for (const listing of listings) {
-		const title = listing.title === undefined || listing.title.length === 0 ? "（还没有对话）" : listing.title;
-		const fork = listing.forkedFrom === undefined ? "" : `　↳ 分叉自 ${listing.forkedFrom.session}`;
+		const title = listing.title === undefined || listing.title.length === 0 ? "(no conversation yet)" : listing.title;
+		const fork = listing.forkedFrom === undefined ? "" : `  ↳ forked from ${listing.forkedFrom.session}`;
 		lines.push(
-			`${formatTimestamp(listing.updatedAt)}  ${listing.id}  ${String(listing.entryCount).padStart(4)} 条  ${title}${fork}`,
+			`${formatTimestamp(listing.updatedAt)}  ${listing.id}  ${String(listing.entryCount).padStart(4)} entries  ${title}${fork}`,
 		);
 	}
-	lines.push("", "用 reins sessions show <标识> 看详细条目，用 reins --resume <标识> 接续。");
+	lines.push("", "Run reins sessions show <id> for the entries, reins --resume <id> to continue");
 	return lines;
 }
 
@@ -36,28 +36,28 @@ export function formatSessionList(listings: readonly SessionListing[]): readonly
 export function formatSessionDetail(header: SessionHeaderEntry | undefined, entries: readonly SessionEntry[]): readonly string[] {
 	const lines: string[] = [];
 	if (header === undefined) {
-		lines.push("会话文件缺少首行（会话头），只能列出条目。");
+		lines.push("The session file has no header line, only entries can be listed");
 	} else {
-		lines.push(`会话 ${header.id}`);
-		lines.push(`  目录：${header.cwd}`);
-		lines.push(`  开始：${formatTimestamp(header.timestamp)}`);
+		lines.push(`Session ${header.id}`);
+		lines.push(`  cwd: ${header.cwd}`);
+		lines.push(`  started: ${formatTimestamp(header.timestamp)}`);
 		if (header.forkedFrom !== undefined) {
 			// 父会话链从这里往上追：那个会话的头里同样记着它的父会话
-			lines.push(`  分叉自：${header.forkedFrom.session} 的 ${header.forkedFrom.entry}`);
+			lines.push(`  forked from: ${header.forkedFrom.session} entry ${header.forkedFrom.entry}`);
 		}
 	}
-	lines.push(`  条目：${entries.length}`);
+	lines.push(`  entries: ${entries.length}`);
 
 	const leaf = entries[entries.length - 1];
-	if (leaf !== undefined) lines.push(`  当前位置：${leaf.id}（分叉或接续从这里开始）`);
+	if (leaf !== undefined) lines.push(`  position: ${leaf.id} (forks and resumes start here)`);
 
 	const usage = sumUsage(entries);
 	if (usage.requests > 0) {
 		// 被压缩掉的历史同样计在里面：那些 token 确实花掉了
-		lines.push(`  用量：${describeUsage(usage)}`);
+		lines.push(`  usage: ${describeUsage(usage)}`);
 	}
 
-	lines.push("", "标识      时间       类型        内容");
+	lines.push("", "id        time       type        content");
 	for (const entry of entries) {
 		lines.push(
 			`${entry.id}  ${clockTime(entry.timestamp)}  ${entry.type.padEnd(10)}  ${summarize(entry)}`,
@@ -72,7 +72,7 @@ export function summarize(entry: SessionEntry): string {
 		case "message":
 			switch (entry.message.role) {
 				case "user":
-					return `使用者：${clip(entry.message.content)}`;
+					return `user: ${clip(entry.message.content)}`;
 				case "assistant": {
 					const text = entry.message.content
 						.filter((block) => block.type === "text")
@@ -82,31 +82,31 @@ export function summarize(entry: SessionEntry): string {
 					const parts: string[] = [];
 					if (text.trim().length > 0) parts.push(clip(text));
 					if (calls.length > 0) {
-						parts.push(`调用 ${calls.map((call) => (call.type === "toolCall" ? call.name : "")).join("、")}`);
+						parts.push(`calls ${calls.map((call) => (call.type === "toolCall" ? call.name : "")).join(", ")}`);
 					}
-					return `助手：${parts.join("；")}`;
+					return `assistant: ${parts.join("; ")}`;
 				}
 				case "toolResult":
-					return `${entry.message.isError ? "工具失败" : "工具结果"} ${entry.message.toolName}：${clip(entry.message.content)}`;
+					return `${entry.message.isError ? "tool error" : "tool result"} ${entry.message.toolName}: ${clip(entry.message.content)}`;
 			}
 		case "system": {
 			const names = Object.entries(entry.sections).map(([name, body]) => (body === null ? `-${name}` : name));
 			const parts: string[] = [];
-			if (names.length > 0) parts.push(`分段 ${names.join("、")}`);
+			if (names.length > 0) parts.push(`sections ${names.join(", ")}`);
 			if ((entry.toolsAdded ?? []).length > 0) {
-				parts.push(`工具 +${(entry.toolsAdded ?? []).map((tool) => tool.name).join("、")}`);
+				parts.push(`tools +${(entry.toolsAdded ?? []).map((tool) => tool.name).join(", ")}`);
 			}
-			if ((entry.toolsRemoved ?? []).length > 0) parts.push(`工具 -${(entry.toolsRemoved ?? []).join("、")}`);
-			return parts.join("；");
+			if ((entry.toolsRemoved ?? []).length > 0) parts.push(`tools -${(entry.toolsRemoved ?? []).join(", ")}`);
+			return parts.join("; ");
 		}
 		case "model_change":
-			return `模型 → ${entry.provider}/${entry.model}`;
+			return `model → ${entry.provider}/${entry.model}`;
 		case "effort_change":
-			return `思考等级 → ${entry.effort}`;
+			return `effort → ${entry.effort}`;
 		case "usage":
-			return `${usageLabel(entry.kind)} ${entry.model}：${entry.usage.total} token`;
+			return `${usageLabel(entry.kind)} ${entry.model}: ${entry.usage.total} tokens`;
 		case "compaction":
-			return `压缩 ${entry.covered.length} 条消息（约 ${entry.tokensBefore} token）：${clip(entry.summary)}`;
+			return `compact ${entry.covered.length} messages (~${entry.tokensBefore} tokens): ${clip(entry.summary)}`;
 	}
 }
 
@@ -114,11 +114,11 @@ export function summarize(entry: SessionEntry): string {
 function usageLabel(kind: SessionUsageEntry["kind"]): string {
 	switch (kind) {
 		case "turn":
-			return "用量";
+			return "usage";
 		case "compact":
-			return "压缩用量";
+			return "compact usage";
 		case "subagent":
-			return "子代理用量";
+			return "subagent usage";
 	}
 }
 

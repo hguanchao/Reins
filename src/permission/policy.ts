@@ -64,7 +64,7 @@ export class PermissionPolicy {
 
 		if (annotations.readOnly) return { kind: "allow" };
 
-		const reason = `${tool} 会改动状态`;
+		const reason = `${tool} modifies state`;
 		switch (this.#mode) {
 			case "yolo":
 				return { kind: "allow" };
@@ -141,18 +141,18 @@ export class PermissionGate {
 			// 没有人看着的时候就按拒绝处理：默认放行等于把「无人值守」变成「随意改动」
 			return {
 				allowed: false,
-				reason: `${reason}，但当前无法征求同意，已拒绝。要放行请用 --yes，或把 config.toml 里的 approval 改为 auto 或 yolo。`,
+				reason: `${reason}, but there is no one to ask; use --yes to allow, or set approval to auto or yolo in config.toml`,
 			};
 		}
 
-		const allowed = await confirmer(`是否允许执行 ${request.tool}？`, describeCall(request.args));
-		return allowed ? { allowed: true, reason: "" } : { allowed: false, reason: `${reason}，使用者没有同意` };
+		const allowed = await confirmer(`Allow ${request.tool} to run?`, describeCall(request.args));
+		return allowed ? { allowed: true, reason: "" } : { allowed: false, reason: `${reason}, but the user did not approve` };
 	}
 
 	async #review(request: GateRequest, reason: string): Promise<GateOutcome> {
 		const reviewer = this.#options.reviewer;
 		if (reviewer === undefined) {
-			return { allowed: false, reason: `${reason}，但审批方式为 auto 却没有可用的审查模型，已拒绝` };
+			return { allowed: false, reason: `${reason}, but approval is auto and no reviewer model is available; denied` };
 		}
 
 		const outcome = await reviewer.review(request.tool, request.args, request.signal);

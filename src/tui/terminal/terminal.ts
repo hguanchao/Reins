@@ -100,7 +100,7 @@ export class ProcessTerminal implements Terminal {
 	setRawMode(enabled: boolean): void {
 		const input = this.#input as { setRawMode?: (value: boolean) => void };
 		if (input.setRawMode === undefined) {
-			throw new Error("当前输入不是终端，无法进入原始模式");
+			throw new Error("Standard input is not a terminal; cannot enter raw mode");
 		}
 		input.setRawMode(enabled);
 	}

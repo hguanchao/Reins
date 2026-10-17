@@ -12,24 +12,24 @@ import type { ApprovalReviewer, ReviewOutcome } from "./policy.ts";
  * 解析不出结论时一律按拒绝处理：审查环节本来就该在不确定时收紧，而不是放开。
  */
 
-const REVIEW_SYSTEM_PROMPT = `你在审查一次工具调用能否自动放行。你只看到这一次调用，看不到任务的来龙去脉，所以按「这一下会不会造成难以挽回的影响」判断，而不是按「它像不像在完成某件事」。
+const REVIEW_SYSTEM_PROMPT = `You are reviewing whether one tool call may be auto-approved. You only see this one call and not the task behind it, so judge by "could this cause an impact that is hard to undo", not by "does it look like it is getting the job done".
 
-应当放行：
-- 读取、列出、检索类操作
-- 在工作区内创建或修改文件
-- 运行只读取状态或只在工作区内产生影响的命令，例如构建、测试、查看版本状态
+Approve:
+- read, list and search operations
+- creating or modifying files inside the workspace
+- commands that only read state or only affect the workspace, such as builds, tests and status checks
 
-应当拒绝：
-- 删除或覆盖工作区之外的内容
-- 改动版本历史，例如强制切换、丢弃未提交的改动
-- 把工作区内容发往外部服务
-- 改动与当前任务无关的持久状态，例如系统配置、包管理器的全局安装
-- 你看不出这条命令会做什么
+Deny:
+- deleting or overwriting anything outside the workspace
+- rewriting version history, such as force-switching or discarding uncommitted changes
+- sending workspace content to an external service
+- changing persistent state unrelated to the current task, such as system configuration or global package installs
+- calls whose effect you cannot tell
 
-拿不准就拒绝。多看一眼的代价远小于一次不可逆的改动。
+When in doubt, deny. A second look costs far less than an irreversible change.
 
-只输出一个 JSON 对象，不要任何其他内容：
-{"allow": true 或 false, "reason": "一句话说明理由"}`;
+Output one JSON object and nothing else:
+{"allow": true or false, "reason": "one sentence explaining why"}`;
 
 export interface ReviewerOptions {
 	readonly client: LlmClient;
@@ -62,9 +62,9 @@ export class ModelReviewer implements ApprovalReviewer {
 				{
 					role: "user" as const,
 					content: [
-						`工作区：${this.#options.workspaceRoot}`,
-						`工具：${tool}`,
-						`参数：${truncate(JSON.stringify(args, null, 2))}`,
+						`Workspace: ${this.#options.workspaceRoot}`,
+						`Tool: ${tool}`,
+						`Arguments: ${truncate(JSON.stringify(args, null, 2))}`,
 					].join("\n\n"),
 				},
 			],
@@ -83,11 +83,11 @@ export class ModelReviewer implements ApprovalReviewer {
 			}
 			const result = await stream.result();
 			if (result.stopReason === "error" || result.stopReason === "aborted") {
-				return reject(`审查未能完成：${result.errorMessage ?? result.stopReason}`);
+				return reject(`Review did not finish: ${result.errorMessage ?? result.stopReason}`);
 			}
 			text = assistantText({ role: "assistant", content: result.content });
 		} catch (error) {
-			return reject(`审查未能完成：${error instanceof Error ? error.message : String(error)}`);
+			return reject(`Review did not finish: ${error instanceof Error ? error.message : String(error)}`);
 		}
 
 		return parseVerdict(text);
@@ -119,7 +119,7 @@ export function parseVerdict(text: string): ReviewOutcome {
 		if (inner !== undefined) return inner;
 	}
 
-	return reject("审查模型的回答无法解析，按拒绝处理");
+	return reject("Reviewer reply could not be parsed; denying");
 }
 
 function tryParse(candidate: string): ReviewOutcome | undefined {
@@ -136,6 +136,6 @@ function tryParse(candidate: string): ReviewOutcome | undefined {
 	const record = parsed as { allow?: unknown; reason?: unknown };
 	if (typeof record.allow !== "boolean") return undefined;
 
-	const reason = typeof record.reason === "string" && record.reason.length > 0 ? record.reason : "审查模型未给出理由";
+	const reason = typeof record.reason === "string" && record.reason.length > 0 ? record.reason : "Reviewer gave no reason";
 	return { allowed: record.allow, reason };
 }

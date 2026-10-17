@@ -26,7 +26,7 @@ export function backoffDelay(attempt: number, baseDelayMs: number): number {
 export function delay(ms: number, signal: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
 		if (signal.aborted) {
-			reject(new Error("已中止"));
+			reject(new Error("Aborted"));
 			return;
 		}
 		const timer = setTimeout(() => {
@@ -35,7 +35,7 @@ export function delay(ms: number, signal: AbortSignal): Promise<void> {
 		}, ms);
 		const onAbort = (): void => {
 			clearTimeout(timer);
-			reject(new Error("已中止"));
+			reject(new Error("Aborted"));
 		};
 		signal.addEventListener("abort", onAbort, { once: true });
 	});

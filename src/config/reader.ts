@@ -26,7 +26,7 @@ export function readTable(source: ConfigSource, path: ConfigPath): ConfigTable |
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (!isConfigTable(value)) {
-		throw new ConfigError(`${describePath(path)} 应当是表`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be a table`, locate(source, path));
 	}
 	return value;
 }
@@ -43,7 +43,7 @@ export function assertNoUnknownKeys(
 	for (const key of Object.keys(table)) {
 		if (allowed.includes(key)) continue;
 		throw new ConfigError(
-			`无法识别的键 ${describePath([...tablePath, key])}，此处可用：${allowed.join("、")}`,
+			`Unknown key ${describePath([...tablePath, key])}; valid keys here: ${allowed.join(", ")}`,
 			locate(source, [...tablePath, key]),
 		);
 	}
@@ -53,7 +53,7 @@ export function readString(source: ConfigSource, path: ConfigPath): string | und
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (typeof value !== "string") {
-		throw new ConfigError(`${describePath(path)} 应当是字符串`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be a string`, locate(source, path));
 	}
 	return value;
 }
@@ -62,7 +62,7 @@ export function readBoolean(source: ConfigSource, path: ConfigPath): boolean | u
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (typeof value !== "boolean") {
-		throw new ConfigError(`${describePath(path)} 应当是布尔值`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be a boolean`, locate(source, path));
 	}
 	return value;
 }
@@ -71,10 +71,10 @@ export function readInteger(source: ConfigSource, path: ConfigPath, minimum: num
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (typeof value !== "number" || !Number.isInteger(value)) {
-		throw new ConfigError(`${describePath(path)} 应当是整数`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be an integer`, locate(source, path));
 	}
 	if (value < minimum) {
-		throw new ConfigError(`${describePath(path)} 不能小于 ${minimum}`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be at least ${minimum}`, locate(source, path));
 	}
 	return value;
 }
@@ -83,10 +83,10 @@ export function readNumber(source: ConfigSource, path: ConfigPath, minimum: numb
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (typeof value !== "number" || !Number.isFinite(value)) {
-		throw new ConfigError(`${describePath(path)} 应当是数字`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be a number`, locate(source, path));
 	}
 	if (value < minimum) {
-		throw new ConfigError(`${describePath(path)} 不能小于 ${minimum}`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be at least ${minimum}`, locate(source, path));
 	}
 	return value;
 }
@@ -99,7 +99,7 @@ export function readEnum<T extends string>(
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (typeof value !== "string" || !allowed.some((item) => item === value)) {
-		throw new ConfigError(`${describePath(path)} 只能是 ${allowed.join("、")} 之一`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be one of ${allowed.join(", ")}`, locate(source, path));
 	}
 	return value as T;
 }
@@ -113,13 +113,13 @@ export function readEnumArray<T extends string>(
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (!Array.isArray(value)) {
-		throw new ConfigError(`${describePath(path)} 应当是数组`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be an array`, locate(source, path));
 	}
 	const result: T[] = [];
 	for (const item of value) {
 		const match = allowed.find((candidate) => candidate === item);
 		if (match === undefined) {
-			throw new ConfigError(`${describePath(path)} 的元素只能是 ${allowed.join("、")} 之一`, locate(source, path));
+			throw new ConfigError(`${describePath(path)} elements must be one of ${allowed.join(", ")}`, locate(source, path));
 		}
 		result.push(match);
 	}
@@ -130,11 +130,11 @@ export function readStringArray(source: ConfigSource, path: ConfigPath): readonl
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (!Array.isArray(value)) {
-		throw new ConfigError(`${describePath(path)} 应当是字符串数组`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be an array of strings`, locate(source, path));
 	}
 	for (const item of value) {
 		if (typeof item !== "string") {
-			throw new ConfigError(`${describePath(path)} 的元素都应当是字符串`, locate(source, path));
+			throw new ConfigError(`${describePath(path)} elements must all be strings`, locate(source, path));
 		}
 	}
 	return value as readonly string[];
@@ -147,12 +147,12 @@ export function readStringMap(
 	const value = source.get(path);
 	if (value === undefined) return undefined;
 	if (!isConfigTable(value)) {
-		throw new ConfigError(`${describePath(path)} 应当是键值都为字符串的表`, locate(source, path));
+		throw new ConfigError(`${describePath(path)} must be a table of strings`, locate(source, path));
 	}
 	const result: Record<string, string> = {};
 	for (const [key, item] of Object.entries(value)) {
 		if (typeof item !== "string") {
-			throw new ConfigError(`${describePath([...path, key])} 应当是字符串`, locate(source, [...path, key]));
+			throw new ConfigError(`${describePath([...path, key])} must be a string`, locate(source, [...path, key]));
 		}
 		result[key] = item;
 	}

@@ -32,7 +32,7 @@ interface MutableState {
  * 的第三手描述当成新的指令。
  */
 export function summaryMessage(summary: string): LlmUserMessage {
-	return { role: "user", content: `（以下是先前对话的摘要，用于继续当前工作）\n\n${summary}` };
+	return { role: "user", content: `(Summary of the earlier conversation, kept so the work can continue)\n\n${summary}` };
 }
 
 /** 增量折叠。写入方每追加一条就加一条，避免每写一条都重放整份历史。 */

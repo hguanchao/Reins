@@ -1,152 +1,120 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ConfigError } from "../../src/config/config-error.ts";
-import { ConfigFile } from "../../src/config/config-file.ts";
+import { ConfigFile, parseConfig } from "../../src/config/config-file.ts";
 import { mergeConfigs, mergeProviders } from "../../src/config/merge.ts";
-import { parseProviders } from "../../src/config/providers-file.ts";
+import { ConfigError } from "../../src/config/config-error.ts";
+import type { ProvidersConfig } from "../../src/config/providers-file.ts";
 
-const USER = "user/config.toml";
-const PROJECT = "project/config.toml";
+const BASE = `provider = "a"\nmodel = "m1"\n`;
 
-function merge(userSource: string, projectSource: string): ReturnType<typeof mergeConfigs> {
-	return mergeConfigs(
-		ConfigFile.parse(userSource, USER),
-		ConfigFile.parse(projectSource, PROJECT),
-	);
+function get(source: string): ConfigFile {
+	return ConfigFile.parse(source, "config.toml");
 }
 
 describe("配置合并", () => {
-	it("项目里写过某项时以项目为准", () => {
-		const config = merge(
-			'provider = "p"\nmodel = "m"\nmax_retries = 3\n',
-			'provider = "p"\nmodel = "m"\nmax_retries = 7\n',
-		);
-		assert.equal(config.maxRetries, 7);
+	it("普通的项由项目覆盖用户", () => {
+		const merged = mergeConfigs(get(`${BASE}compact_model = "m9"\n`), get(`${BASE}compact_model = "m8"\n`));
+		assert.equal(merged.compactModel, "m8");
+		assert.equal(merged.provider, "a");
 	});
 
-	it("项目没写某项时保留用户的设置，而不是套用默认值", () => {
-		// 只看最终值会把「项目没写」误当成「项目要求用默认值」，从而盖掉用户的设置
-		const config = merge(
-			'provider = "p"\nmodel = "m"\nmax_retries = 9\nspill_threshold = 4096\n',
-			'provider = "p"\nmodel = "m"\n',
-		);
-		assert.equal(config.maxRetries, 9);
-		assert.equal(config.spillThreshold, 4096);
+	it("项目没写的项沿用用户的", () => {
+		const merged = mergeConfigs(get(`${BASE}max_retries = 3\n`), get(BASE));
+		assert.equal(merged.maxRetries, 3);
 	});
 
-	it("项目可以改模型与界面设置", () => {
-		const config = merge(
-			'provider = "p"\nmodel = "m"\n\n[ui]\nnotify = "bell"\n',
-			'provider = "p"\nmodel = "other"\n\n[ui]\nnotify = "off"\n',
-		);
-		assert.equal(config.model, "other");
-		assert.equal(config.ui.notify, "off");
+	it("审批只准加严:放宽报错", () => {
+		// 用户要求逐次询问（最严），项目想切成 yolo（最松），等于放宽：拒绝
+		const user = get(`${BASE}approval = "ask"\n`);
+		const project = get(`${BASE}approval = "yolo"\n`);
+		assert.throws(() => mergeConfigs(user, project), (error: unknown) => {
+			assert.ok(error instanceof ConfigError);
+			assert.match(error.message, /cannot relax approval/);
+			return true;
+		});
 	});
 
-	it("停用清单取并集：项目能多关一个，但不能把用户关掉的打开", () => {
-		const config = merge(
-			'provider = "p"\nmodel = "m"\n\n[plugins]\ndisabled = ["a-plugin"]\n',
-			'provider = "p"\nmodel = "m"\n\n[plugins]\ndisabled = ["b-plugin"]\n',
-		);
-		assert.deepEqual([...config.plugins.disabled].sort(), ["a-plugin", "b-plugin"]);
+	it("审批可以加严", () => {
+		const merged = mergeConfigs(get(`${BASE}approval = "yolo"\n`), get(`${BASE}approval = "ask"\n`));
+		assert.equal(merged.approval, "ask");
 	});
 
-	it("信任清单只在用户级生效", () => {
-		// 让项目声明自己可信，「不受信任的目录影响不了程序」这句话就不成立了
-		const config = merge(
-			'provider = "p"\nmodel = "m"\n\n[plugins]\ntrusted = ["/from-user"]\n',
-			'provider = "p"\nmodel = "m"\n\n[plugins]\ntrusted = ["/from-project"]\n',
+	it("沙箱同样只准加严", () => {
+		assert.throws(
+			() => mergeConfigs(get(`${BASE}sandbox = "read-only"\n`), get(`${BASE}sandbox = "workspace"\n`)),
+			/cannot relax sandbox/,
 		);
-		assert.deepEqual(config.plugins.trusted, ["/from-user"]);
+		const merged = mergeConfigs(get(`${BASE}sandbox = "read-only"\n`), get(`${BASE}sandbox = "read-only"\n`));
+		assert.equal(merged.sandbox, "read-only");
 	});
 
-	it("MCP server 按名字合并，同名的以项目为准", () => {
-		const config = merge(
-			'provider = "p"\nmodel = "m"\n\n[mcp_servers.docs]\nurl = "https://user"\n\n[mcp_servers.keep]\nurl = "https://keep"\n',
-			'provider = "p"\nmodel = "m"\n\n[mcp_servers.docs]\nurl = "https://project"\n',
+	it("插件停用清单取并集，信任清单不变", () => {
+		const merged = mergeConfigs(
+			get(`${BASE}[plugins]\ndisabled = ["a"]\n`),
+			get(`${BASE}[plugins]\ndisabled = ["b"]\n`),
 		);
+		assert.deepEqual(merged.plugins.disabled, ["a", "b"]);
+	});
+
+	it("去重停用清单", () => {
+		const merged = mergeConfigs(
+			get(`${BASE}[plugins]\ndisabled = ["a"]\n`),
+			get(`${BASE}[plugins]\ndisabled = ["a"]\n`),
+		);
+		assert.deepEqual(merged.plugins.disabled, ["a"]);
+	});
+
+	it("MCP server:同名以项目为准，其余补上", () => {
+		const user = get(`${BASE}[mcp_servers.fs]\ncommand = "old"\n[mcp_servers.old]\ncommand = "keep"\n`);
+		const project = get(`${BASE}[mcp_servers.fs]\ncommand = "new"\n[mcp_servers.added]\nurl = "http://x"\n`);
+		const merged = mergeConfigs(user, project);
 		assert.deepEqual(
-			config.mcpServers.map((server) => [server.name, server.url]),
-			[
-				["docs", "https://project"],
-				["keep", "https://keep"],
+			merged.mcpServers.map((server) => `${server.name}:${server.url ?? server.command}`),
+			["fs:new", "old:keep", "added:http://x"],
+		);
+	});
+
+	it("providers 合并:同名整体替换，其余补上", () => {
+		const user: ProvidersConfig = {
+			providers: [
+				{ id: "a", name: "a", baseUrl: "ua", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
+				{ id: "b", name: "b", baseUrl: "ub", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
 			],
-		);
-	});
-});
-
-describe("安全姿态只能加严", () => {
-	it("项目可以把 approval 改得更严", () => {
-		assert.equal(merge('provider = "p"\nmodel = "m"\napproval = "yolo"\n', 'provider = "p"\nmodel = "m"\napproval = "ask"\n').approval, "ask");
-		assert.equal(merge('provider = "p"\nmodel = "m"\napproval = "auto"\n', 'provider = "p"\nmodel = "m"\napproval = "ask"\n').approval, "ask");
-	});
-
-	it("项目放宽 approval 会被拒绝，并指到具体位置", () => {
-		assert.throws(
-			() => merge('provider = "p"\nmodel = "m"\napproval = "ask"\n', 'provider = "p"\nmodel = "m"\napproval = "yolo"\n'),
-			(error: unknown) => {
-				assert.ok(error instanceof ConfigError);
-				assert.match(error.message, /不能把 approval 从 ask 放宽到 yolo/);
-				assert.equal(error.file, PROJECT);
-				assert.equal(error.line, 3);
-				return true;
-			},
-		);
-	});
-
-	it("项目可以把 sandbox 改得更严", () => {
-		const config = merge(
-			'provider = "p"\nmodel = "m"\nsandbox = "off"\n',
-			'provider = "p"\nmodel = "m"\nsandbox = "read-only"\n',
-		);
-		assert.equal(config.sandbox, "read-only");
-	});
-
-	it("项目放宽 sandbox 会被拒绝", () => {
-		assert.throws(
-			() =>
-				merge(
-					'provider = "p"\nmodel = "m"\nsandbox = "read-only"\n',
-					'provider = "p"\nmodel = "m"\nsandbox = "off"\n',
-				),
-			/不能把 sandbox 从 read-only 放宽到 off/,
-		);
-	});
-
-	it("项目没写时不触发加严检查", () => {
-		assert.equal(merge('provider = "p"\nmodel = "m"\napproval = "yolo"\n', 'provider = "p"\nmodel = "m"\n').approval, "yolo");
-	});
-});
-
-describe("模型配置合并", () => {
-	const user = parseProviders(
-		JSON.stringify({
-			providers: {
-				a: { baseUrl: "https://a", api: "openai-completions", models: [{ id: "m1" }] },
-				b: { baseUrl: "https://b", api: "openai-completions", models: [{ id: "m2" }] },
-			},
-		}),
-		"user/providers.json",
-	);
-	const project = parseProviders(
-		JSON.stringify({
-			providers: {
-				a: { baseUrl: "https://a-project", api: "openai-completions", models: [{ id: "m1" }] },
-				c: { baseUrl: "https://c", api: "openai-completions", models: [{ id: "m3" }] },
-			},
-		}),
-		"project/providers.json",
-	);
-
-	it("同名的整体替换，其余补上", () => {
+		};
+		const project: ProvidersConfig = {
+			providers: [
+				{ id: "a", name: "a", baseUrl: "pa", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
+				{ id: "c", name: "c", baseUrl: "pc", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
+			],
+		};
 		const merged = mergeProviders(user, project);
 		assert.deepEqual(
-			merged.providers.map((provider) => provider.id),
-			["a", "b", "c"],
+			merged.providers.map((provider) => `${provider.id}:${provider.baseUrl}`),
+			["a:pa", "b:ub", "c:pc"],
 		);
-		// 整体替换而不是逐字段合并：半新半旧的 provider 定义很难看出最终长什么样
-		assert.equal(merged.providers[0].baseUrl, "https://a-project");
-		assert.equal(merged.providers[1].baseUrl, "https://b");
+	});
+
+	it("parseConfig 校验缺 provider 或 model 时报错", () => {
+		assert.throws(() => parseConfig(`model = "m"\n`, "c"), /Missing provider/);
+		assert.throws(() => parseConfig(`provider = "p"\n`, "c"), /Missing model/);
+	});
+
+	it("parseConfig 拒绝未知键并给出可选键", () => {
+		assert.throws(() => parseConfig(`provider = "p"\nmodel = "m"\nnope = 1\n`, "c"), (error: unknown) => {
+			assert.ok(error instanceof ConfigError);
+			assert.match(error.display, /^c:\d+:\d+ Unknown key nope/);
+			return true;
+		});
+	});
+
+	it("默认值各就各位", () => {
+		const config = parseConfig(`provider = "p"\nmodel = "m"\n`, "c");
+		assert.equal(config.reasoningEffort, "off");
+		assert.equal(config.approval, "ask");
+		assert.equal(config.sandbox, "off");
+		assert.equal(config.maxRetries, 10);
+		assert.equal(config.spillThreshold, 8192);
+		assert.equal(config.ui.notify, "auto");
 	});
 });

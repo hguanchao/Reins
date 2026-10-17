@@ -21,7 +21,7 @@ export class LlmRegistry {
 
 	register(factory: LlmClientFactory): void {
 		if (this.#factories.some((item) => item.api === factory.api)) {
-			throw new Error(`协议 ${factory.api} 已经有适配器`);
+			throw new Error(`protocol ${factory.api} already has an adapter`);
 		}
 		this.#factories.push(factory);
 	}
@@ -39,7 +39,7 @@ export class LlmRegistry {
 	create(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy): LlmClient {
 		const factory = this.#factories.find((item) => item.api === model.api);
 		if (factory === undefined) {
-			throw new Error(`没有 ${model.api} 协议的适配器，可用：${this.apis().join("、")}`);
+			throw new Error(`no adapter for protocol ${model.api}; available protocols: ${this.apis().join(", ")}`);
 		}
 		return factory.create(provider, model, policy);
 	}

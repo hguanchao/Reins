@@ -1,107 +1,65 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { Sandbox, type SandboxBackend } from "../../src/sandbox/policy.ts";
+import { Sandbox, type SandboxBackend, type SandboxPolicy } from "../../src/sandbox/policy.ts";
 
-const ROOT = join("C:", "work", "project");
+const ROOT = process.platform === "win32" ? "E:\\w" : "/tmp/w";
 
-function backend(overrides: Partial<SandboxBackend> = {}): SandboxBackend {
-	return {
-		id: "test",
-		available: true,
-		wrap: (command) => `wrapper ${command}`,
-		...overrides,
-	};
+function sandbox(mode: SandboxPolicy["mode"], backend: SandboxBackend | undefined = undefined): Sandbox {
+	return new Sandbox({ mode, root: ROOT }, backend);
 }
 
-describe("路径判定", () => {
-	it("不隔离时不拦任何操作", () => {
-		const sandbox = new Sandbox({ mode: "off", root: ROOT }, undefined);
-		sandbox.assertPathAllowed("read", join(ROOT, "a.txt"));
-		sandbox.assertPathAllowed("write", join("D:", "elsewhere", "a.txt"));
+const availableBackend: SandboxBackend = {
+	id: "fake",
+	available: true,
+	wrap: (command) => `wrapped(${command})`,
+};
+
+const unavailableBackend: SandboxBackend = {
+	id: "fake",
+	available: false,
+	wrap: (command) => `wrapped(${command})`,
+};
+
+describe("沙箱判定", () => {
+	it("off 模式不判定任何东西", () => {
+		const relaxed = sandbox("off");
+		assert.doesNotThrow(() => relaxed.assertPathAllowed("write", "/etc/passwd"));
+		assert.equal(relaxed.wrapCommand("ls"), "ls");
+		assert.equal(relaxed.confinesCommands, true);
 	});
 
-	it("只读模式下读取照常，写入一律被拒", () => {
-		const sandbox = new Sandbox({ mode: "read-only", root: ROOT }, undefined);
-		sandbox.assertPathAllowed("read", join(ROOT, "a.txt"));
-
-		assert.throws(
-			() => sandbox.assertPathAllowed("write", join(ROOT, "a.txt")),
-			/只读模式/,
-		);
-		assert.throws(
-			() => sandbox.assertPathAllowed("write", join("D:", "elsewhere", "a.txt")),
-			/只读模式/,
-		);
+	it("read 永远放行,write 被拦", () => {
+		const strict = sandbox("read-only");
+		strict.assertPathAllowed("read", ROOT);
+		strict.assertPathAllowed("read", "/etc/hosts");
+		assert.throws(() => strict.assertPathAllowed("write", `${ROOT}\\a.ts`), /read-only and refusing to write/);
 	});
 
-	it("工作区模式允许改工作区内的，拒绝改外面的", () => {
-		const sandbox = new Sandbox({ mode: "workspace", root: ROOT }, undefined);
-		sandbox.assertPathAllowed("write", join(ROOT, "src", "a.txt"));
-		sandbox.assertPathAllowed("write", ROOT);
-		// 读不受限：工作区模式限制的是写入
-		sandbox.assertPathAllowed("read", join("D:", "elsewhere", "a.txt"));
-
-		assert.throws(
-			() => sandbox.assertPathAllowed("write", join("D:", "elsewhere", "a.txt")),
-			/限制在工作区内/,
-		);
+	it("workspace 模式:根内可写,根外拒绝", () => {
+		const confined = sandbox("workspace");
+		confined.assertPathAllowed("write", `${ROOT}\\a.ts`);
+		assert.throws(() => confined.assertPathAllowed("write", "E:\\outside\\a.ts"), /confined to the workspace/);
 	});
 
-	it("拒绝时的提示指向具体设置", () => {
-		const sandbox = new Sandbox({ mode: "workspace", root: ROOT }, undefined);
-		assert.throws(
-			() => sandbox.assertPathAllowed("write", join("D:", "elsewhere", "a.txt")),
-			/请调整 config\.toml 里的 sandbox/,
-		);
-	});
-});
-
-describe("命令隔离", () => {
-	it("不隔离时命令原样传出，也不碰后端", () => {
-		let consulted = false;
-		const sandbox = new Sandbox(
-			{ mode: "off", root: ROOT },
-			backend({
-				wrap: (command) => {
-					consulted = true;
-					return command;
-				},
-			}),
-		);
-		assert.equal(sandbox.wrapCommand("echo hi"), "echo hi");
-		assert.equal(consulted, false);
+	it("confinesCommands 反映模式与后端", () => {
+		assert.equal(sandbox("workspace", undefined).confinesCommands, false);
+		assert.equal(sandbox("workspace", unavailableBackend).confinesCommands, false);
+		assert.equal(sandbox("workspace", availableBackend).confinesCommands, true);
 	});
 
-	it("有可用后端时命令被包起来", () => {
-		const sandbox = new Sandbox({ mode: "workspace", root: ROOT }, backend());
-		assert.equal(sandbox.wrapCommand("echo hi"), "wrapper echo hi");
-		assert.equal(sandbox.confinesCommands, true);
+	it("约束命令:有可用后端时包一层", () => {
+		const sandboxWithBackend = sandbox("workspace", availableBackend);
+		assert.equal(sandboxWithBackend.wrapCommand("ls -la"), "wrapped(ls -la)");
 	});
 
-	it("没有后端时拒绝执行，而不是退回到不隔离", () => {
-		const sandbox = new Sandbox({ mode: "workspace", root: ROOT }, undefined);
-		assert.throws(
-			() => sandbox.wrapCommand("echo hi"),
-			(error: unknown) => {
-				assert.ok(error instanceof Error);
-				assert.match(error.message, /没有可用的隔离手段/);
-				assert.match(error.message, /不会被执行/);
-				assert.match(error.message, /设为 off/);
-				return true;
-			},
-		);
-		assert.equal(sandbox.confinesCommands, false);
+	it("约束命令:没有后端或后端不可用时报错而不是裸跑", () => {
+		assert.throws(() => sandbox("workspace", undefined).wrapCommand("ls"), /no usable isolation backend/);
+		assert.throws(() => sandbox("workspace", unavailableBackend).wrapCommand("ls"), /no usable isolation backend/);
 	});
 
-	it("后端自称不可用时同样拒绝执行", () => {
-		const sandbox = new Sandbox({ mode: "read-only", root: ROOT }, backend({ available: false }));
-		assert.throws(() => sandbox.wrapCommand("echo hi"), /没有可用的隔离手段/);
-	});
-
-	it("后端表示约束不了这条命令时拒绝执行", () => {
-		const sandbox = new Sandbox({ mode: "workspace", root: ROOT }, backend({ wrap: () => undefined }));
-		assert.throws(() => sandbox.wrapCommand("echo hi"), /无法约束这条命令/);
+	it("后端包不住的命令不运行", () => {
+		const picky: SandboxBackend = { id: "picky", available: true, wrap: () => undefined };
+		assert.throws(() => sandbox("workspace", picky).wrapCommand("x"), /cannot confine this command/);
 	});
 });

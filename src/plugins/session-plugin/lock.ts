@@ -29,8 +29,8 @@ export class SessionLock {
 		} catch (error) {
 			if (!isAlreadyExists(error)) throw error;
 			throw new Error(
-				`会话文件已被占用：${path}（持有者 ${describeHolder(path)}）。` +
-					"确认没有其他进程在写这个会话后，删除该锁定文件再试。",
+				`Session file is locked: ${path} (held by ${describeHolder(path)}). ` +
+					"Check that no other process is writing this session, then delete the lock file and try again.",
 			);
 		}
 	}
@@ -51,10 +51,10 @@ function isAlreadyExists(error: unknown): boolean {
 }
 
 function describeHolder(path: string): string {
-	if (!existsSync(path)) return "未知";
+	if (!existsSync(path)) return "unknown";
 	try {
-		return readFileSync(path, "utf8").trim() || "未知";
+		return readFileSync(path, "utf8").trim() || "unknown";
 	} catch {
-		return "未知";
+		return "unknown";
 	}
 }

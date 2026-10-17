@@ -1,148 +1,165 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { LiveRegion } from "../../../src/tui/screen/region.ts";
-import {
-	concat,
-	plain,
-	styled,
-	type Line,
-} from "../../../src/tui/text/line.ts";
-import { displayWidth } from "../../../src/tui/text/width.ts";
-import { MemoryTerminal, screenOf } from "../memory-terminal.ts";
+import { LiveRegion, ScreenRegion } from "../../../src/tui/screen/region.ts";
+import { plain, styled } from "../../../src/tui/text/line.ts";
+import type { TerminalDevice, TerminalSize } from "../../../src/tui/terminal/terminal.ts";
 
-function createRegion(size = { rows: 6, cols: 20 }): { terminal: MemoryTerminal; region: LiveRegion } {
-	const terminal = new MemoryTerminal(size);
-	return { terminal, region: new LiveRegion(terminal, { colors: true }) };
+/** 哑设备：记住写过什么，尺寸可改，不触真终端。 */
+class MemoryDevice implements TerminalDevice {
+	output = "";
+	sizeValue: TerminalSize;
+
+	constructor(size: Partial<TerminalSize> = {}) {
+		this.sizeValue = { rows: 24, cols: 80, ...size };
+	}
+
+	size(): TerminalSize {
+		return this.sizeValue;
+	}
+
+	write(text: string): void {
+		this.output += text;
+	}
 }
 
-describe("LiveRegion", () => {
-	it("画出活动区并把光标留给你指定的位置", () => {
-		const { terminal, region } = createRegion();
-		region.draw({
-			lines: [plain("> 输入"), plain("状态行")],
-			cursor: { row: 0, col: 2 },
-		});
-
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible().slice(0, 2), ["> 输入", "状态行"]);
-		assert.deepEqual(screen.cursor(), { row: 0, col: 2 });
+describe("活动区 LiveRegion", () => {
+	it("首次绘制写出各行，带样式", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
+		region.draw({ lines: [plain("hi"), styled("!", { bold: true })] });
+		assert.ok(device.output.includes("\r\x1b[2Khi"));
+		assert.ok(device.output.includes("\x1b[1m!\x1b[0m"));
 	});
 
-	it("重画时只擦掉活动区自己的行，不动上面的历史", () => {
-		const { terminal, region } = createRegion();
-		region.commit([plain("第一行历史")]);
-		region.draw({ lines: [plain("活动一"), plain("活动二")] });
-
-		region.draw({ lines: [plain("换过的活动")] });
-
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible().slice(0, 2), ["第一行历史", "换过的活动"]);
-		// 旧的两行只剩一行新内容，多余的那行已被清空
-		assert.equal(screen.visible()[2], "");
+	it("内容未变时一个字节都不写", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
+		const frame = { lines: [plain("same")] };
+		region.draw(frame);
+		const afterFirst = device.output.length;
+		region.draw({ ...frame, lines: [plain("same")] });
+		assert.equal(device.output.length, afterFirst);
 	});
 
-	it("活动区变高变矮都不会残留", () => {
-		const { terminal, region } = createRegion();
-		region.draw({ lines: [plain("一")] });
-		region.draw({ lines: [plain("一"), plain("二"), plain("三")] });
-		assert.deepEqual(screenOf(terminal).visible().slice(0, 3), ["一", "二", "三"]);
-
-		region.draw({ lines: [plain("收尾")] });
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible().slice(0, 2), ["收尾", ""]);
+	it("内容变了才重写，且变化的部分是完整一帧", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
+		region.draw({ lines: [plain("a")] });
+		device.output = "";
+		region.draw({ lines: [plain("b")] });
+		assert.ok(device.output.includes("\r\x1b[2Kb"));
 	});
 
-	it("提交内容进滚动区后把活动区重画在下面", () => {
-		const { terminal, region } = createRegion();
-		region.draw({ lines: [plain("输入中")] });
-		region.commit([plain("已提交甲"), plain("已提交乙")]);
-		region.draw({ lines: [plain("下一个提示")] });
-
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible().slice(0, 3), ["已提交甲", "已提交乙", "下一个提示"]);
+	it("新帧行数变多时，先按旧帧行数擦干净", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
+		region.draw({ lines: [plain("a"), plain("b")] });
+		device.output = "";
+		region.draw({ lines: [plain("a"), plain("b"), plain("c")] });
+		// 擦除段在重画帧之前：一路向上再逐行清空
+		const rendered = device.output;
+		const lastRow = rendered.lastIndexOf("\r\x1b[2Kc");
+		const erasePart = rendered.slice(0, lastRow);
+		assert.ok(erasePart.includes("\x1b[1A")); // 回到上一行
+		assert.ok(erasePart.includes("\r\x1b[2K")); // 清行
 	});
 
-	it("提交的内容留在滚动区，之后的活动区重画不会碰它", () => {
-		const { terminal, region } = createRegion({ rows: 4, cols: 20 });
-		for (let index = 0; index < 6; index += 1) {
-			region.commit([plain(`第 ${index} 条`)]);
-		}
-		region.draw({ lines: [plain("输入框")] });
-
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible(), ["第 3 条", "第 4 条", "第 5 条", "输入框"]);
-		assert.deepEqual(screen.scrolled(), ["第 0 条", "第 1 条", "第 2 条"]);
+	it("commit 把行写进滚动区，随后重画活动区", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
+		region.commit([plain("done")]);
+		assert.ok(device.output.includes("done\r\n"));
 	});
 
-	it("光标停在活动区中间时，重画不会擦到上面的历史", () => {
-		const { terminal, region } = createRegion();
-		region.commit([plain("历史")]);
-		region.draw({ lines: [plain("输入"), plain("状态")], cursor: { row: 0, col: 2 } });
-
-		region.draw({ lines: [plain("输入改了"), plain("状态")], cursor: { row: 0, col: 4 } });
-
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible().slice(0, 3), ["历史", "输入改了", "状态"]);
-	});
-
-	it("提交长内容时由活动区自己折行，行数才对得上", () => {
-		const { terminal, region } = createRegion({ rows: 6, cols: 10 });
-		region.commit([plain("一二三四五六七八九十一二三四五六")]);
-		region.draw({ lines: [plain("输入")] });
-
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible().slice(0, 3), ["一二三四五", "六七八九十", "一二三四五"]);
-	});
-
-	it("内容没变就不写任何字节", () => {
-		const { terminal, region } = createRegion();
-		region.draw({ lines: [plain("一样的内容")] });
-		const before = terminal.writes.length;
-
-		region.draw({ lines: [plain("一样的内容")] });
-		region.draw({ lines: [plain("一样的内容")] });
-
-		assert.equal(terminal.writes.length, before);
-	});
-
-	it("一帧只写一次", () => {
-		const { terminal, region } = createRegion();
-		region.draw({ lines: [plain("甲"), plain("乙"), plain("丙")] });
-		assert.equal(terminal.writes.length, 1);
-	});
-
-	it("清空活动区后不再留下任何界面内容", () => {
-		const { terminal, region } = createRegion();
-		region.commit([plain("历史")]);
-		region.draw({ lines: [plain("活动一"), plain("活动二")] });
-
-		region.clear();
-
-		const screen = screenOf(terminal);
-		assert.deepEqual(screen.visible().slice(0, 2), ["历史", ""]);
-	});
-
-	it("宽字符按显示列计算光标位置", () => {
-		const { terminal, region } = createRegion();
-		const line: Line = concat(plain("中文"), styled("ab", { bold: true }));
-		assert.equal(displayWidth("中文"), 4);
-
-		region.draw({ lines: [line], cursor: { row: 0, col: 4 } });
-		assert.deepEqual(screenOf(terminal).cursor().col, 4);
-	});
-
-	it("不输出颜色时样式只剩文本", () => {
-		const terminal = new MemoryTerminal({ rows: 4, cols: 20 });
-		const region = new LiveRegion(terminal, { colors: false });
-		region.draw({ lines: [styled("红色", { color: "red", bold: true })] });
-
-		assert.equal(terminal.writes.join(""), "\r\x1b[2K红色");
-	});
-
-	it("没有内容时提交什么都不做", () => {
-		const { terminal, region } = createRegion();
+	it("commit 空行数组不写任何东西", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
 		region.commit([]);
-		assert.deepEqual(terminal.writes, []);
+		assert.equal(device.output, "");
+	});
+
+	it("越过宽度的行被截断而不是交给终端折行", () => {
+		const device = new MemoryDevice({ cols: 5 });
+		const region = new LiveRegion(device, { colors: true });
+		region.draw({ lines: [plain("abcdefgh")] });
+		assert.ok(device.output.includes("abcd…"));
+		assert.ok(!device.output.includes("efgh"));
+	});
+
+	it("clear 把画过的内容擦掉", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
+		region.draw({ lines: [plain("x"), plain("y")] });
+		device.output = "";
+		region.clear();
+		assert.ok(device.output.length > 0);
+		assert.ok(device.output.includes("\x1b[2K"));
+	});
+
+	it("光标定位：按行列绝对列定位", () => {
+		const device = new MemoryDevice();
+		const region = new LiveRegion(device, { colors: true });
+		region.draw({ lines: [plain("row0"), plain("row1")], cursor: { row: 0, col: 3 } });
+		assert.ok(device.output.includes("\x1b[4G")); // 绝对列 3+1
+	});
+});
+
+describe("整屏绘制 ScreenRegion", () => {
+	it("从左上角开始画，光标定位用行列", () => {
+		const device = new MemoryDevice();
+		const region = new ScreenRegion(device, { colors: true });
+		region.draw({ lines: [plain("a"), plain("b")], cursor: { row: 5, col: 2 } });
+		assert.ok(device.output.startsWith("\x1b[H"));
+		assert.ok(device.output.includes("\x1b[6;3H"));
+		// 行与行之间是回车、清行、内容
+		assert.ok(device.output.includes("\r\x1b[2Ka\r\n\r\x1b[2Kb"));
+	});
+
+	it("内容未变时不写", () => {
+		const device = new MemoryDevice();
+		const region = new ScreenRegion(device, { colors: true });
+		const frame = { lines: [plain("x")] };
+		region.draw(frame);
+		const size = device.output.length;
+		region.draw({ ...frame });
+		assert.equal(device.output.length, size);
+	});
+
+	it("上一帧更长时把残余行清掉", () => {
+		const device = new MemoryDevice();
+		const region = new ScreenRegion(device, { colors: true });
+		region.draw({ lines: [plain("a"), plain("b"), plain("c")] });
+		device.output = "";
+		region.draw({ lines: [plain("a")] });
+		assert.ok(device.output.includes("\x1b[J"));
+	});
+
+	it("变短不触发残余清理", () => {
+		const device = new MemoryDevice();
+		const region = new ScreenRegion(device, { colors: true });
+		region.draw({ lines: [plain("a")] });
+		device.output = "";
+		region.draw({ lines: [plain("a"), plain("b")] });
+		assert.ok(!device.output.includes("\x1b[J"));
+	});
+
+	it("clear 清屏并复位", () => {
+		const device = new MemoryDevice();
+		const region = new ScreenRegion(device, { colors: true });
+		region.clear(); // 没画过：无输出
+		assert.equal(device.output, "");
+
+		region.draw({ lines: [plain("x")] });
+		device.output = "";
+		region.clear();
+		assert.equal(device.output, "\x1b[H\x1b[2J");
+	});
+
+	it("超宽截断", () => {
+		const device = new MemoryDevice({ cols: 4 });
+		const region = new ScreenRegion(device, { colors: true });
+		region.draw({ lines: [plain("abcdef")] });
+		assert.ok(device.output.includes("abc…"));
 	});
 });

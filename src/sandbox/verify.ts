@@ -35,9 +35,9 @@ export function verifyCommandIsolation(sandbox: SandboxView, root: string): void
 
 	if (commandSucceeded || leaked) {
 		throw new Error(
-			`命令隔离没有生效：写入 ${probePath} 本应被拒绝，实际没有被拦住。` +
-				"带着看起来开着、实际不管用的隔离继续跑更危险，因此在这里停下。" +
-				"请核对 config.toml 里的 sandbox 设置与当前平台的隔离后端。",
+			`Command isolation is not working: writing ${probePath} should have been refused but was not. ` +
+				"Continuing with isolation that looks on but does nothing is more dangerous, so stopping here. " +
+				"Check the sandbox setting in config.toml and the isolation backend for this platform.",
 		);
 	}
 }

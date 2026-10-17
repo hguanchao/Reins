@@ -11,8 +11,8 @@ import { withFileMutation } from "./file-mutation-queue.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		path: { type: "string", description: "文件路径，相对工作根或绝对路径" },
-		content: { type: "string", description: "完整文件内容；要改已有文件请用 edit" },
+		path: { type: "string", description: "The path to write, relative to the workspace root or absolute." },
+		content: { type: "string", description: "The complete file content. To modify an existing file, use edit instead." },
 	},
 	required: ["path", "content"],
 } as const satisfies JsonSchema;
@@ -25,8 +25,8 @@ type WriteArgs = {
 export const writeTool: ToolDefinition<WriteArgs> = {
 	name: "write",
 	description:
-		"写入文件，父目录会自动创建。内容较长时整段覆盖会丢掉原有改动，" +
-		"所以修改已有文件请改用 edit。",
+		"Write a file; missing parent directories are created. Overwriting a whole file discards the existing content, " +
+		"so use edit to modify an existing file.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: false },
 
@@ -38,7 +38,7 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 
 		return withFileMutation(resolved.absolute, async (): Promise<ToolResult> => {
 			if (existsSync(resolved.absolute) && statSync(resolved.absolute).isDirectory()) {
-				return { content: `${displayPath} 是一个目录，不能写入`, isError: true };
+				return { content: `${displayPath} is a directory and cannot be written`, isError: true };
 			}
 
 			const existed = existsSync(resolved.absolute);
@@ -48,12 +48,12 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 				mkdirSync(dirname(resolved.absolute), { recursive: true });
 				writeFileSync(resolved.absolute, args.content, "utf8");
 			} catch (error) {
-				return { content: `写入 ${displayPath} 失败：${describeError(error)}`, isError: true };
+				return { content: `Failed to write ${displayPath}: ${describeError(error)}`, isError: true };
 			}
 
 			const summary = existed
-				? `已覆盖 ${displayPath}，写入 ${bytes} 字节（原有 ${previousBytes} 字节）`
-				: `已创建 ${displayPath}，写入 ${bytes} 字节`;
+				? `Overwrote ${displayPath} with ${bytes} bytes (was ${previousBytes} bytes)`
+				: `Created ${displayPath} with ${bytes} bytes`;
 			return { content: summary, details: { path: displayPath, bytes, created: !existed } };
 		});
 	},

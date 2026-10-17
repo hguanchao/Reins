@@ -24,15 +24,15 @@ const KEEP_RATIO = 0.25;
 /** 每条消息的固定开销（角色标记与协议外壳），按条计一点，免得整体低估。 */
 const MESSAGE_OVERHEAD_TOKENS = 8;
 
-const SUMMARY_SYSTEM = `你负责压缩编码助手与使用者之间的对话，产出一份能让人接着干活的交接说明。
+const SUMMARY_SYSTEM = `You compress a conversation between a coding assistant and its user into a handover summary that lets the work continue.
 
-要求：
-- 只依据给定的对话，不要推测，不要补充对话里没有的信息。
-- 保留：当前目标、已经完成的改动与结论、尚未完成的部分、涉及的文件与路径、跑过的关键命令及其结果、使用者的明确要求与禁止事项。
-- 丢弃：寒暄、重复的确认、可以重新读一次就得到的文件内容全文。
-- 用中文分条写，控制在 500 字以内。`;
+Rules:
+- Use only the given conversation. Do not speculate or add anything it does not contain.
+- Keep: the current goal, changes and conclusions already reached, what is still unfinished, the files and paths involved, the key commands that ran and how they turned out, and the user's explicit requirements and prohibitions.
+- Drop: pleasantries, repeated confirmations, and file contents that can simply be read again.
+- Write it as a bulleted list in English, under 500 words.`;
 
-const SUMMARY_INSTRUCTION = "请把上面的对话压缩成一份交接说明。";
+const SUMMARY_INSTRUCTION = "Compress the conversation above into a handover summary.";
 
 export interface CompactorDeps {
 	readonly client: LlmClient;
@@ -115,15 +115,15 @@ export class Compactor {
 
 		const result = await stream.result();
 		if (result.stopReason === "error") {
-			return { ok: false, message: result.errorMessage ?? "压缩请求失败" };
+			return { ok: false, message: result.errorMessage ?? "Compaction request failed" };
 		}
-		if (result.stopReason === "aborted") return { ok: false, message: "压缩被中止" };
+		if (result.stopReason === "aborted") return { ok: false, message: "Compaction was aborted" };
 		if (result.stopReason === "length") {
-			return { ok: false, message: "摘要被输出上限截断，未采用；可调大该模型的 max_tokens 后重试" };
+			return { ok: false, message: "The summary hit the output limit and was discarded; raise max_tokens for this model and try again" };
 		}
 
 		const summary = assistantText({ role: "assistant", content: result.content }).trim();
-		if (summary.length === 0) return { ok: false, message: "压缩模型没有返回任何内容" };
+		if (summary.length === 0) return { ok: false, message: "The compaction model returned nothing" };
 		return {
 			ok: true,
 			summary,

@@ -4,7 +4,7 @@ import type { ModelSelection } from "../config/selection.ts";
 import { displayWidth } from "../tui/text/width.ts";
 
 /** 未声明的值就写「未声明」。用 0 或某个数字代替会让人以为程序知道真实情况。 */
-const UNKNOWN = "未声明";
+const UNKNOWN = "not declared";
 
 /** 标签列的宽度，按显示列数算而不是字符数：中文标签占两列。 */
 const LABEL_WIDTH = 14;
@@ -19,24 +19,24 @@ function padTo(columns: number): number {
 
 function describeModel(providerId: string, model: ModelEntry): string {
 	const parts = [`${providerId}/${model.id}`, model.api, model.baseUrl];
-	if (model.reasoning) parts.push("支持思考等级");
-	if (model.input.includes("image")) parts.push("支持图片");
-	if (model.contextWindow !== undefined) parts.push(`上下文 ${model.contextWindow}`);
-	if (model.maxTokens !== undefined) parts.push(`输出上限 ${model.maxTokens}`);
+	if (model.reasoning) parts.push("supports reasoning levels");
+	if (model.input.includes("image")) parts.push("supports images");
+	if (model.contextWindow !== undefined) parts.push(`context ${model.contextWindow}`);
+	if (model.maxTokens !== undefined) parts.push(`max output ${model.maxTokens}`);
 	return `  ${parts.join("  ·  ")}`;
 }
 
 /** 单价按每百万 token 报，与配置文件里的口径一致。 */
 function describeCost(cost: ModelCost | undefined): string {
-	if (cost === undefined) return `${UNKNOWN}（只报 token，不报金额）`;
+	if (cost === undefined) return `${UNKNOWN} (tokens only, no cost)`;
 	return (
-		`输入 $${cost.input}　输出 $${cost.output}　` +
-		`缓存读 $${cost.cacheRead}　缓存写 $${cost.cacheWrite}　每百万 token`
+		`input $${cost.input}  output $${cost.output}  ` +
+		`cache read $${cost.cacheRead}  cache write $${cost.cacheWrite}  per million tokens`
 	);
 }
 
 function describeOptional(model: ModelEntry | undefined): string {
-	return model === undefined ? "跟随主模型" : model.id;
+	return model === undefined ? "follows main model" : model.id;
 }
 
 /**
@@ -57,38 +57,38 @@ export function formatConfigReport(input: {
 	const { config, providersConfig, selection } = input;
 	const lines: string[] = [];
 
-	lines.push("配置文件");
+	lines.push("Config files");
 	lines.push(row("config", input.configFile));
 	lines.push(row("providers", input.providersFile));
-	lines.push(row("REINS_HOME", input.reinsHome ?? "（未设置）"));
+	lines.push(row("REINS_HOME", input.reinsHome ?? "(not set)"));
 	lines.push("");
 
-	lines.push("当前模型");
+	lines.push("Current model");
 	lines.push(row("provider", config.provider));
 	lines.push(row("model", config.model));
 	lines.push(row("api", selection.model.api));
 	lines.push(row("baseUrl", selection.model.baseUrl));
-	lines.push(row("思考等级", config.reasoningEffort));
+	lines.push(row("reasoning", config.reasoningEffort));
 	lines.push(
-		row("上下文窗口", windowReport(selection.model.contextWindow ?? config.contextWindow)),
+		row("context", windowReport(selection.model.contextWindow ?? config.contextWindow)),
 	);
-	lines.push(row("输出上限", formatNumber(selection.model.maxTokens ?? config.maxTokens)));
-	lines.push(row("单价", describeCost(selection.model.cost)));
-	lines.push(row("输入形态", selection.model.input.join("、")));
-	lines.push(row("压缩模型", describeOptional(selection.compactModel)));
-	lines.push(row("审查模型", describeOptional(selection.reviewModel)));
+	lines.push(row("max output", formatNumber(selection.model.maxTokens ?? config.maxTokens)));
+	lines.push(row("pricing", describeCost(selection.model.cost)));
+	lines.push(row("input modes", selection.model.input.join(", ")));
+	lines.push(row("compact model", describeOptional(selection.compactModel)));
+	lines.push(row("review model", describeOptional(selection.reviewModel)));
 	lines.push("");
 
-	lines.push("运行参数");
-	lines.push(row("审批", config.approval));
-	lines.push(row("沙箱", config.sandbox));
-	lines.push(row("最大重试", String(config.maxRetries)));
-	lines.push(row("落盘阈值", config.spillThreshold === 0 ? "关闭" : String(config.spillThreshold)));
-	lines.push(row("子代理上限", config.maxTurns === undefined ? "子代理默认" : String(config.maxTurns)));
-	lines.push(row("代理", config.httpProxy === undefined ? UNKNOWN : config.httpProxy || "强制直连"));
+	lines.push("Runtime");
+	lines.push(row("approval", config.approval));
+	lines.push(row("sandbox", config.sandbox));
+	lines.push(row("max retries", String(config.maxRetries)));
+	lines.push(row("spill", config.spillThreshold === 0 ? "off" : String(config.spillThreshold)));
+	lines.push(row("subagent", config.maxTurns === undefined ? "default" : String(config.maxTurns)));
+	lines.push(row("proxy", config.httpProxy === undefined ? UNKNOWN : config.httpProxy || "force direct"));
 	lines.push("");
 
-	lines.push(`可选模型（共 ${providersConfig.providers.reduce((total, item) => total + item.models.length, 0)} 个）`);
+	lines.push(`Models (${providersConfig.providers.reduce((total, item) => total + item.models.length, 0)} total)`);
 	for (const provider of providersConfig.providers) {
 		for (const model of provider.models) {
 			const mark = provider.id === config.provider && model.id === config.model ? "*" : " ";
@@ -97,18 +97,18 @@ export function formatConfigReport(input: {
 	}
 	lines.push("");
 
-	lines.push("插件");
-	lines.push(row("停用", config.plugins.disabled.length === 0 ? "无" : config.plugins.disabled.join("、")));
-	lines.push(row("已信任根", config.plugins.trusted.length === 0 ? "无" : config.plugins.trusted.join("、")));
+	lines.push("Plugins");
+	lines.push(row("disabled", config.plugins.disabled.length === 0 ? "none" : config.plugins.disabled.join(", ")));
+	lines.push(row("trusted roots", config.plugins.trusted.length === 0 ? "none" : config.plugins.trusted.join(", ")));
 	lines.push("");
 
-	lines.push(`MCP server（共 ${config.mcpServers.length} 个）`);
+	lines.push(`MCP servers (${config.mcpServers.length} total)`);
 	if (config.mcpServers.length === 0) {
-		lines.push("  未配置");
+		lines.push("  none configured");
 	}
 	for (const server of config.mcpServers) {
 		const endpoint = server.type === "stdio" ? [server.command, ...server.args].join(" ") : (server.url ?? "");
-		const state = server.disabled ? "已停用" : "启用";
+		const state = server.disabled ? "disabled" : "enabled";
 		lines.push(`  ${server.name}  ${server.type}  ${state}  ${endpoint}`);
 	}
 
@@ -124,5 +124,5 @@ function formatNumber(value: number | undefined): string {
  * 触发，而这件事只看一个「未声明」是看不出来的。
  */
 function windowReport(value: number | undefined): string {
-	return value === undefined ? `${UNKNOWN}（不会自动压缩上下文）` : String(value);
+	return value === undefined ? `${UNKNOWN} (context is never compacted automatically)` : String(value);
 }

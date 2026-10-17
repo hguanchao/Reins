@@ -34,28 +34,28 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				// 成功只报耗时；失败要把原因说出来，否则使用者只知道「没做成」，不知道该改什么
 				deps.stderr(
 					event.isError
-						? `  失败 ${event.durationMs}ms：${event.summary}\n`
-						: `  完成 ${event.durationMs}ms\n`,
+						? `  failed ${event.durationMs}ms: ${event.summary}\n`
+						: `  done ${event.durationMs}ms\n`,
 				);
 				return;
 			case "turn_end":
 				state.finished = true;
 				return;
 			case "compaction_start":
-				deps.stderr(`\n· 压缩上下文：把前面 ${event.messages} 条换成摘要（约 ${event.tokensBefore} token）\n`);
+				deps.stderr(`\n· compacting context: replacing the first ${event.messages} messages with a summary (~${event.tokensBefore} tokens)\n`);
 				return;
 			case "compaction_end":
-				deps.stderr(`  完成：约 ${event.tokensBefore} → ${event.tokensAfter} token\n`);
+				deps.stderr(`  done: ~${event.tokensBefore} → ${event.tokensAfter} tokens\n`);
 				return;
 			case "compaction_failed":
-				deps.stderr(`  压缩没有成功，上下文照原样继续：${event.message}\n`);
+				deps.stderr(`  compaction failed, continuing with the context as is: ${event.message}\n`);
 				return;
 			case "error":
-				deps.stderr(`\n出错：${event.message}\n`);
+				deps.stderr(`\nerror: ${event.message}\n`);
 				state.failed = true;
 				return;
 			case "aborted":
-				deps.stderr("\n已中止\n");
+				deps.stderr("\naborted\n");
 				state.failed = true;
 				return;
 			default:
@@ -72,7 +72,7 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 	try {
 		await deps.createDriver(listener).run(deps.prompt, controller.signal);
 	} catch (error) {
-		deps.stderr(`\n出错：${error instanceof Error ? error.message : String(error)}\n`);
+		deps.stderr(`\nerror: ${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
 	} finally {
 		process.removeListener("SIGINT", onInterrupt);

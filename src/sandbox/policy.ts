@@ -74,13 +74,13 @@ export class Sandbox implements SandboxView {
 
 		if (mode === "read-only") {
 			throw new Error(
-				`沙箱处于只读模式，不允许写入 ${absolutePath}。要允许写入请调整 config.toml 里的 sandbox。`,
+				`Sandbox is read-only and refusing to write ${absolutePath}; adjust sandbox in config.toml to allow writes`,
 			);
 		}
 		if (!isPathInside(root, absolutePath)) {
 			throw new Error(
-				`沙箱限制在工作区内，${absolutePath} 落在了 ${root} 之外，不允许写入。` +
-					"确实需要写到外面时，请调整 config.toml 里的 sandbox。",
+				`Sandbox is confined to the workspace and ${absolutePath} is outside ${root}. ` +
+					"Adjust sandbox in config.toml if you really need to write outside",
 			);
 		}
 	}
@@ -90,15 +90,15 @@ export class Sandbox implements SandboxView {
 
 		if (this.#backend === undefined || !this.#backend.available) {
 			throw new Error(
-				`沙箱模式为 ${this.#policy.mode}，但当前平台（${process.platform}）没有可用的隔离手段，` +
-					"因此这条命令不会被执行。想在不隔离的前提下运行，请把 config.toml 里的 sandbox 设为 off。",
+				`Sandbox mode is ${this.#policy.mode} but this platform (${process.platform}) has no usable isolation backend, ` +
+					"so the command will not run; set sandbox to off in config.toml to run without isolation",
 			);
 		}
 		const wrapped = this.#backend.wrap(command, this.#policy);
 		if (wrapped === undefined) {
 			throw new Error(
-				`沙箱后端 ${this.#backend.id} 无法约束这条命令，因此它不会被执行。` +
-					"想在不隔离的前提下运行，请把 config.toml 里的 sandbox 设为 off。",
+				`Sandbox backend ${this.#backend.id} cannot confine this command, so it will not run; ` +
+					"set sandbox to off in config.toml to run without isolation",
 			);
 		}
 		return wrapped;

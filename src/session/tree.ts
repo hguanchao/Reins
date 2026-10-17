@@ -11,7 +11,7 @@ import type { SessionEntry } from "./port.ts";
 /** 从根到指定条目的路径；目标不在里面时抛错。 */
 export function pathTo(entries: readonly SessionEntry[], id: string): readonly SessionEntry[] {
 	const byId = new Map(entries.map((entry) => [entry.id, entry]));
-	if (!byId.has(id)) throw new Error(`会话里没有条目 ${id}`);
+	if (!byId.has(id)) throw new Error(`Session has no entry ${id}`);
 
 	const path: SessionEntry[] = [];
 	let current = byId.get(id);

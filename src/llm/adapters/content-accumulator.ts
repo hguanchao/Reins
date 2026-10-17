@@ -119,11 +119,11 @@ export function parseToolArguments(json: string): ParsedToolArguments {
 		parsed = JSON.parse(json);
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		return { arguments: {}, argumentsError: `工具参数不是合法 JSON：${reason}` };
+		return { arguments: {}, argumentsError: `tool arguments are not valid JSON: ${reason}` };
 	}
 
 	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-		return { arguments: {}, argumentsError: "工具参数应当是 JSON 对象" };
+		return { arguments: {}, argumentsError: "tool arguments must be a JSON object" };
 	}
 	return { arguments: parsed as Record<string, unknown> };
 }

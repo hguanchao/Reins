@@ -126,10 +126,10 @@ export class Transcript {
 				return [
 					...this.#closeThinking(now),
 					...this.#drainStream(),
-					...this.#wrap(styled(`✗ 出错：${event.message}`, BAD)),
+					...this.#wrap(styled(`✗ Error: ${event.message}`, BAD)),
 				];
 			case "aborted":
-				return [...this.#closeThinking(now), ...this.#drainStream(), ...this.#wrap(styled("◇ 已中止", DIM))];
+				return [...this.#closeThinking(now), ...this.#drainStream(), ...this.#wrap(styled("◇ Cancelled", DIM))];
 			case "compaction_start":
 				// 摘要要花一会儿，先把已经写出来的回答定下来，再说明为什么停下来
 				return [
@@ -137,7 +137,7 @@ export class Transcript {
 					...this.#drainStream(),
 					...this.#wrap(
 						styled(
-							`上下文偏长，正在把前面 ${event.messages} 条换成摘要（约 ${formatTokens(event.tokensBefore)} token）`,
+							`Context is long; summarizing the previous ${event.messages} messages (~${formatTokens(event.tokensBefore)} tokens)`,
 							DIM,
 						),
 					),
@@ -145,12 +145,12 @@ export class Transcript {
 			case "compaction_end":
 				return this.#wrap(
 					styled(
-						`上下文已压缩：${formatTokens(event.tokensBefore)} → ${formatTokens(event.tokensAfter)} token，历史仍在会话文件里`,
+						`Context compacted: ${formatTokens(event.tokensBefore)} → ${formatTokens(event.tokensAfter)} tokens; the full history is still in the session file`,
 						DIM,
 					),
 				);
 			case "compaction_failed":
-				return this.#wrap(styled(`压缩没有成功，上下文照原样继续：${event.message}`, DIM));
+				return this.#wrap(styled(`Compaction failed; continuing with the full context: ${event.message}`, DIM));
 			case "run_end":
 				return this.flush(now);
 			default:
@@ -163,7 +163,7 @@ export class Transcript {
 		const lines: Line[] = [];
 
 		if (this.#reasoning.length > 0) {
-			lines.push(concat(styled(THOUGHT_MARK, FAINT), styled("思考中…", DIM)));
+			lines.push(concat(styled(THOUGHT_MARK, FAINT), styled("Thinking…", DIM)));
 			// 竖线作为缩进参与折行：它是块的一部分，不能挤到宽度之外
 			const preview = wrapLine(mapLine(plain(this.#reasoning), (style) => mergeStyles(style, DIM)), {
 				width: this.#width,
@@ -207,7 +207,7 @@ export class Transcript {
 		const elapsed = now - (this.#reasoningStartedAt ?? now);
 		this.#reasoning = "";
 		this.#reasoningStartedAt = undefined;
-		return [concat(styled(THOUGHT_MARK, FAINT), styled(`思考了 ${formatDuration(elapsed)}`, DIM))];
+		return [concat(styled(THOUGHT_MARK, FAINT), styled(`Thought for ${formatDuration(elapsed)}`, DIM))];
 	}
 
 	#drainStream(): readonly Line[] {

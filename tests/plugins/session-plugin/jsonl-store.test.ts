@@ -1,143 +1,200 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, describe, it } from "node:test";
+import { describe, it } from "node:test";
 
 import { JsonlSessionStore, parseSessionText } from "../../../src/plugins/session-plugin/jsonl-store.ts";
-import { Session } from "../../../src/session/session.ts";
-import { SESSION_VERSION, type SessionEntry } from "../../../src/session/port.ts";
+import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../../src/session/port.ts";
+import type { SessionWriter } from "../../../src/session/store.ts";
 
-/**
- * JSONL 会话存储。
- *
- * 这里只管「条目怎么落到磁盘上」：首行是头、每条一行、文件在第一次写入时才出现、同一份文件
- * 只有一个写入者。折叠与叶子由宿主的会话模块负责，另有测试。
- */
+const T = "2026-01-01T00:00:00Z";
 
-const root = mkdtempSync(join(tmpdir(), "reins-session-store-"));
-const store = new JsonlSessionStore();
-
-after(() => {
-	rmSync(root, { recursive: true, force: true });
-});
-
-function fileOf(name: string): string {
-	return join(root, `${name}.jsonl`);
+/** 每个用例各自一个临时目录，免去共享状态。 */
+function workdir(name: string): string {
+	const suffix = Math.random().toString(16).slice(2);
+	const directory = join(tmpdir(), `reins-jsonl-${name}-${suffix}`);
+	mkdirSync(directory, { recursive: true });
+	return directory;
 }
 
-describe("JSONL 会话存储", () => {
-	it("首行是会话头，之后每条一行", async () => {
-		const file = fileOf("header");
-		const session = new Session({
-			id: "abc",
-			cwd: root,
-			file,
-			writer: store.create({ id: "abc", cwd: root, file }),
-		});
-		await session.append({ type: "message", message: { role: "user", content: "甲" } });
-		await session.close();
+function entry(id: string, content: string): SessionEntry {
+	return { type: "message", id, parentId: null, timestamp: T, message: { role: "user", content } };
+}
 
-		const parsed = parseSessionText(readFileSync(file, "utf8"));
-		assert.equal(parsed.skippedLines, 0);
-		assert.equal(parsed.header?.type, "session");
-		assert.equal(parsed.header?.version, SESSION_VERSION);
-		assert.equal(parsed.header?.id, "abc");
-		assert.equal(parsed.header?.cwd, root);
-		assert.equal(parsed.entries.length, 1);
-	});
-
-	it("没有写入之前不建文件：只看一眼帮助不该留下空会话", async () => {
-		const file = fileOf("lazy");
-		const writer = store.create({ id: "lazy", cwd: root, file });
-		assert.equal(existsSync(file), false);
-
-		writer.write({
-			type: "message",
-			id: "e1",
-			parentId: null,
-			timestamp: new Date().toISOString(),
-			message: { role: "user", content: "甲" },
-		});
-		assert.equal(existsSync(file), true);
+describe("JSONL 会话文件", () => {
+	it("create 写首行,write 追加,read 读回来", () => {
+		const dir = workdir("create");
+		const store = new JsonlSessionStore();
+		const file = join(dir, "s1.jsonl");
+		const writer = store.create({ id: "s1", cwd: dir, file, forkedFrom: undefined });
+		writer.write(entry("a", "hello"));
+		writer.write(entry("b", "world"));
 		writer.end();
-	});
+		assert.ok(existsSync(file));
 
-	it("文件已存在时拒绝写入，而不是接着写进去", () => {
-		const file = fileOf("collision");
-		writeFileSync(file, "", "utf8");
-
-		const writer = store.create({ id: "collision", cwd: root, file });
-		assert.throws(
-			() => {
-				writer.write({
-					type: "message",
-					id: "e1",
-					parentId: null,
-					timestamp: new Date().toISOString(),
-					message: { role: "user", content: "甲" },
-				});
-			},
-			/写入会话文件失败/,
+		const read = store.read(file);
+		assert.equal(read.header?.id, "s1");
+		assert.equal(read.header?.version, SESSION_VERSION);
+		assert.deepEqual(
+			read.entries.map((item) => (item.type === "message" ? item.message.content : item.type)),
+			["hello", "world"],
 		);
 	});
 
-	it("同一份文件不能被两个写入者同时写入", async () => {
-		const file = fileOf("contended");
-		const first = new Session({ id: "a", cwd: root, file, writer: store.create({ id: "a", cwd: root, file }) });
-		await first.append({ type: "message", message: { role: "user", content: "甲" } });
-		assert.ok(existsSync(`${file}.lock`));
-
-		try {
-			// 只构造不写入不留痕迹，因此冲突要到真正落笔时才暴露
-			const second = new Session({ id: "b", cwd: root, file, writer: store.create({ id: "b", cwd: root, file }) });
-			await assert.rejects(
-				async () => second.append({ type: "message", message: { role: "user", content: "乙" } }),
-				/已被占用/,
-			);
-		} finally {
-			await first.close();
-		}
-		assert.ok(!existsSync(`${file}.lock`));
+	it("不写就别落文件，end 只放锁", () => {
+		const dir = workdir("no-write");
+		const file = join(dir, "never.jsonl");
+		const writer = new JsonlSessionStore().create({ id: "x", cwd: dir, file });
+		writer.end();
+		assert.equal(existsSync(file), false);
 	});
 
-	it("写坏一次之后不再继续写：无锁追加比停下来更危险", () => {
-		const file = fileOf("broken");
-		writeFileSync(file, "", "utf8");
-		const writer = store.create({ id: "broken", cwd: root, file });
+	it("append 接续既有文件", () => {
+		const dir = workdir("append");
+		const file = join(dir, "s.jsonl");
+		const store = new JsonlSessionStore();
+		const first = store.create({ id: "s", cwd: dir, file });
+		first.write(entry("a", "one"));
+		first.end();
 
-		const entry: SessionEntry = {
-			type: "message",
-			id: "e1",
-			parentId: null,
-			timestamp: new Date().toISOString(),
-			message: { role: "user", content: "甲" },
-		};
-		assert.throws(() => writer.write(entry), /写入会话文件失败/);
-		assert.throws(() => writer.write(entry), /已经写入失败/);
+		const writer: SessionWriter = store.append(file);
+		writer.write(entry("b", "later"));
+		writer.end();
+
+		const again = store.read(file);
+		assert.equal(again.entries.length, 2);
+		assert.equal((again.entries[1] as { message: { content: string } }).message.content, "later");
 	});
 
-	it("只在内存里时不落盘", () => {
-		const writer = store.create({ id: "memory", cwd: root, file: null });
+	it("丢失头部的文件能读也能接续", () => {
+		const dir = workdir("no-header");
+		const file = join(dir, "broken.jsonl");
+		writeFileSync(file, `${JSON.stringify({ type: "message", id: "a", parentId: null, timestamp: T, message: { role: "user", content: "x" } })}\n`, "utf8");
+		const store = new JsonlSessionStore();
+		// read(): 无头但有条目、没有坏行，读得动
+		assert.equal(store.read(file).entries.length, 1);
+
+		const writer = store.append(file);
+		writer.write(entry("b", "y"));
+		writer.end();
+		assert.equal(store.read(file).entries.length, 2);
+	});
+
+	it("目标文件已存在时 create 的写入报错而不覆盖", () => {
+		const dir = workdir("dup");
+		const file = join(dir, "dup.jsonl");
+		const store = new JsonlSessionStore();
+		const first = store.create({ id: "s", cwd: dir, file });
+		first.write(entry("a", "x"));
+		first.end();
+
+		// 写要落到磁盘才知道撞名；构造时不写
+		const second = store.create({ id: "s", cwd: dir, file });
+		assert.throws(() => second.write(entry("a", "y")), /Cannot write the session file/);
+		second.end();
+		// 原文件内容没有被破坏
+		assert.equal(store.read(file).entries.length, 1);
+	});
+
+	it("第一次写失败后面再写也报错,放锁后不再拦", () => {
+		const dir = workdir("fail");
+		const store = new JsonlSessionStore();
+		// 目录用一个不可写文件占住名字，让写进程必然失败
+		const blocked = join(dir, "blocked");
+		writeFileSync(blocked, "", "utf8");
+		const file = join(blocked, "sub.jsonl"); // blocked 是文件，不能有子路径
+		const writer = store.create({ id: "x", cwd: dir, file });
+		assert.throws(() => writer.write(entry("a", "x")));
+		assert.throws(() => writer.write(entry("b", "x")), /already failed to write/);
+		writer.end();
+	});
+
+	it("list 按更新时间倒序,标题取第一条用户消息的前 60 字", () => {
+		const dir = workdir("list");
+		const store = new JsonlSessionStore();
+		const a = join(dir, "a.jsonl");
+		const writer = store.create({ id: "a", cwd: dir, file: a });
+		writer.write(entry("a", "hello"));
+		writer.end();
+
+		const listing = store.list(dir);
+		assert.equal(listing.length, 1);
+		assert.equal(listing[0]!.id, "a");
+		assert.equal(listing[0]!.title, "hello");
+		assert.equal(typeof listing[0]!.updatedAt, "string");
+	});
+
+	it("不存在的目录 list 返回空", () => {
+		const dir = workdir("absent");
+		assert.deepEqual(new JsonlSessionStore().list(join(dir, "nothing-here")), []);
+	});
+
+	it("标题超长截到 60 字符", () => {
+		const dir = workdir("title");
+		const file = join(dir, "long.jsonl");
+		const store = new JsonlSessionStore();
+		const writer = store.create({ id: "long", cwd: dir, file });
+		writer.write(entry("a", "t".repeat(200)));
+		writer.end();
+
+		const listing = store.list(dir);
+		assert.equal(listing[0]!.title?.length, 61); // 60 字符 + 省略号
+		assert.ok(listing[0]!.title?.endsWith("…"));
+	});
+
+	it("list 对坏文件不挑坏行,标题缺失时不给标题", () => {
+		const dir = workdir("badfile");
+		const file = join(dir, "no-user.jsonl");
+		const store = new JsonlSessionStore();
+		const writer = store.create({ id: "n", cwd: dir, file });
 		writer.write({
 			type: "message",
-			id: "e1",
+			id: "a",
 			parentId: null,
-			timestamp: new Date().toISOString(),
-			message: { role: "user", content: "甲" },
+			timestamp: T,
+			message: { role: "assistant", content: [{ type: "text", text: "answer" }] },
 		});
 		writer.end();
-		assert.equal(existsSync(join(root, "memory.jsonl")), false);
+
+		const listing = store.list(dir);
+		assert.equal(listing[0]!.title, undefined);
+		assert.equal(listing[0]!.entryCount, 1);
+	});
+});
+
+describe("会话文本解析", () => {
+	it("首行会话头与条目树", () => {
+		const header: SessionHeaderEntry = {
+			type: "session",
+			version: SESSION_VERSION,
+			id: "id1",
+			timestamp: T,
+			cwd: "C:\\w",
+		};
+		const text = `${JSON.stringify(header)}\n${JSON.stringify(entry("a", "one"))}\n\n`;
+		const parsed = parseSessionText(text);
+		assert.equal(parsed.header?.id, "id1");
+		assert.equal(parsed.entries.length, 1);
+		assert.equal(parsed.skippedLines, 0);
 	});
 
-	it("解析不了的行单独计数，不当成条目", () => {
-		const text = [
-			JSON.stringify({ type: "session", version: 1, id: "x", timestamp: "t", cwd: "c" }),
-			"{\"type\":\"message\",\"id\":\"e1\",\"parentId\":null,\"timestamp\":\"t\",\"message\":{\"role\":\"user\",\"content\":\"甲\"}}",
-			"半截的",
-		].join("\n");
-		const parsed = parseSessionText(text);
-		assert.equal(parsed.entries.length, 1);
+	it("坏行计数", () => {
+		// not json 解析不了；{} 缺 type 不认账——两行都跳过
+		const parsed = parseSessionText("not json\n{}\n");
+		assert.equal(parsed.entries.length, 0);
+		assert.equal(parsed.skippedLines, 2);
+	});
+
+	it("不认识的条目类型跳过而不硬读", () => {
+		const parsed = parseSessionText(`${JSON.stringify({ type: "future_thing", id: "z" })}\n`);
+		assert.equal(parsed.entries.length, 0);
 		assert.equal(parsed.skippedLines, 1);
+	});
+
+	it("空文件没有头", () => {
+		const parsed = parseSessionText("");
+		assert.equal(parsed.header, undefined);
+		assert.equal(parsed.entries.length, 0);
 	});
 });

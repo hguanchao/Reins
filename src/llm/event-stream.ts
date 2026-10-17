@@ -16,7 +16,7 @@ export class EventStream<T, R> implements AsyncIterable<T> {
 		return new EventStream<T, R>(
 			() => false,
 			() => {
-				throw new Error("这种流的结果只能通过 close 给出");
+				throw new Error("this stream only provides its result through close()");
 			},
 		);
 	}

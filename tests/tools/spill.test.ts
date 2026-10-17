@@ -1,64 +1,49 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { after, describe, it } from "node:test";
+import { join } from "node:path";
+import { afterEach, describe, it } from "node:test";
 
 import { ResultSpiller } from "../../src/tools/spill.ts";
 
-const directory = mkdtempSync(join(tmpdir(), "reins-spill-"));
+describe("结果落盘", () => {
+	const directory = join(tmpdir(), `reins-spill-${Date.now()}`);
+	afterEach(() => rmSync(directory, { recursive: true, force: true }));
 
-after(() => {
-	rmSync(directory, { recursive: true, force: true });
-});
-
-describe("大结果落盘", () => {
-	it("未超过阈值时原样返回", () => {
+	it("未超阈值原样返回，不写文件", () => {
 		const spiller = new ResultSpiller(100, directory);
-		assert.equal(spiller.spill("read", "短内容"), "短内容");
+		assert.equal(spiller.spill("probe", "short"), "short");
 	});
 
-	it("阈值为 0 时关闭该行为", () => {
+	it("阈值为 0 即关闭", () => {
 		const spiller = new ResultSpiller(0, directory);
-		const content = "x".repeat(1000);
-		assert.equal(spiller.spill("read", content), content);
+		assert.equal(spiller.spill("probe", "x".repeat(500)), "x".repeat(500));
 	});
 
-	it("超过阈值时落盘，正文里给出头尾预览与文件路径", () => {
-		const spiller = new ResultSpiller(100, directory);
-		const content = `${"头".repeat(50)}${"中".repeat(200)}${"尾".repeat(50)}`;
-		const result = spiller.spill("bash", content);
-
-		assert.ok(result.startsWith("头".repeat(50)));
-		assert.ok(result.includes("中间 200 个字符已省略"));
-		assert.ok(result.includes("尾".repeat(50)));
-		assert.ok(result.includes("已写入"));
-
-		const match = /已写入 (.+?)，可按行读取/.exec(result);
-		assert.ok(match !== null, `预览里应当给出文件路径：${result.slice(-120)}`);
-		const path = match[1];
-		assert.ok(existsSync(path));
-		assert.equal(readFileSync(path, "utf8"), content);
+	it("超阈值:写盘并在内容里给出路径与总量，头尾各留一半", () => {
+		const spiller = new ResultSpiller(20, directory);
+		const content = `${"a".repeat(50)}middle${"z".repeat(50)}`;
+		const result = spiller.spill("probe", content);
+		assert.match(result, /the full result is 106 characters; written to /);
+		assert.ok(result.includes("aaaaaaaaaa"), "head retained");
+		assert.ok(result.includes("\n\n… (86 characters omitted in the middle) …\n\n"), "middle omitted note");
+		assert.ok(result.includes("zzzzzzzzzz"), "tail retained");
+		const match = /written to ([^,]+), read it back/.exec(result);
+		assert.ok(match);
+		const written = readFileSync(match[1]!, "utf8");
+		assert.equal(written, content);
 	});
 
-	it("工具名里的特殊字符不会跑进文件名", () => {
-		const spiller = new ResultSpiller(10, directory);
-		const result = spiller.spill("mcp:docs/read", "y".repeat(100));
-		const match = /已写入 (.+?)，可按行读取/.exec(result);
-		assert.ok(match !== null);
-		const fileName = basename(match[1]);
-		assert.ok(!fileName.includes(":"), fileName);
-		assert.ok(!fileName.includes("/"), fileName);
+	it("两次落盘文件名不冲突", () => {
+		const spiller = new ResultSpiller(5, directory);
+		spiller.spill("probe", "xxxxxxx1");
+		spiller.spill("probe", "xxxxxxx2");
+		assert.equal(readdirSync(directory).length, 2);
 	});
 
-	it("落盘失败时明确说出来，而不是只给一段被截断的内容", () => {
-		// 把父路径指成一个已存在的文件，建目录必然失败
-		const blocker = join(directory, "blocker");
-		writeFileSync(blocker, "x", "utf8");
-		const spiller = new ResultSpiller(10, join(blocker, "sub"));
-
-		const result = spiller.spill("read", "z".repeat(100));
-		assert.ok(result.includes("写入临时文件失败"));
-		assert.ok(result.includes("超出部分无法获取"));
+	it("工具名里不合法的字符折成下划线", () => {
+		const spiller = new ResultSpiller(5, directory);
+		const result = spiller.spill("mcp:tool/x", "yyyyyyy");
+		assert.match(result, /reins-mcp_tool_x-/);
 	});
 });

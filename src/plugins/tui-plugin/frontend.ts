@@ -64,7 +64,7 @@ const CARD_ROWS = 6;
 const WHEEL_LINES = 3;
 
 const PROMPT: Line = styled("❯ ", ACCENT);
-const PLACEHOLDER = "说点什么；/help 看命令";
+const PLACEHOLDER = "Build anything";
 
 /** 输入框的上边框；下边框里嵌着模型与审批状态，由 `#boxBottom` 拼。 */
 const boxTop = (width: number): Line => styled(`╭${"─".repeat(Math.max(0, width - 2))}╮`, EDGE);
@@ -146,7 +146,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			// 那段对话还在
 			this.#terminal.write(
 				runtime.session.path === null
-					? "这次会话没有保存到文件，重开就没了（session-plugin 被禁用或装载失败）。\n"
+					? "This session was not saved to a file and is lost on restart (session-plugin is disabled or failed to load).\n"
 					: `reins --resume ${runtime.session.id}\n`,
 			);
 			this.#runtime = undefined;
@@ -339,7 +339,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (runtime === undefined) return;
 
 		if (this.#running) {
-			this.#commit([styled("正在执行上一轮，等它结束再发送；Ctrl+C 可以中止。", WARN)]);
+			this.#commit([styled("A turn is still running; wait for it to finish, or press Ctrl+C to cancel.", WARN)]);
 			return;
 		}
 
@@ -401,7 +401,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	async #runTurn(runtime: InteractiveRuntime, prompt: string): Promise<void> {
 		this.#running = true;
-		this.#activity = "正在思考";
+		this.#activity = "Thinking";
 		this.#turnStartedAt = Date.now();
 		const controller = new AbortController();
 		this.#abort = controller;
@@ -412,7 +412,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			await runtime.createDriver((event) => this.#onAgentEvent(event)).run(prompt, controller.signal);
 		} catch (error) {
 			// 驱动把可预期的失败都编码进了事件，走到这里说明出了意料之外的事
-			this.#commit([styled(`✗ 出错：${error instanceof Error ? error.message : String(error)}`, BAD)]);
+			this.#commit([styled(`✗ Error: ${error instanceof Error ? error.message : String(error)}`, BAD)]);
 		} finally {
 			this.#running = false;
 			this.#abort = undefined;
@@ -420,7 +420,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#stopTicker();
 			this.#transcript.clearRunning();
 			this.#refresh();
-			this.#notify("已完成");
+			this.#notify("Done");
 		}
 	}
 
@@ -428,20 +428,20 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const now = Date.now();
 		switch (event.type) {
 			case "turn_start":
-				this.#activity = "正在思考";
+				this.#activity = "Thinking";
 				break;
 			case "tool_start":
-				this.#activity = `正在执行 ${event.name}`;
+				this.#activity = `Running ${event.name}`;
 				break;
 			case "tool_end":
-				this.#activity = "正在思考";
+				this.#activity = "Thinking";
 				break;
 			case "compaction_start":
-				this.#activity = "正在压缩上下文";
+				this.#activity = "Compacting context";
 				break;
 			case "compaction_end":
 			case "compaction_failed":
-				this.#activity = "正在思考";
+				this.#activity = "Thinking";
 				break;
 			default:
 				break;
@@ -587,9 +587,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const usage = runtime.sessionUsage();
 		const left =
 			usage.requests === 0
-				? styled("就绪", DIM)
+				? styled("Ready", DIM)
 				: styled(
-						`本轮 ${formatTokens(usage.total)} token${usage.cost === undefined ? "" : `　${formatCost(usage.cost)}`}`,
+						`This session: ${formatTokens(usage.total)} tokens${usage.cost === undefined ? "" : ` · ${formatCost(usage.cost)}`}`,
 						DIM,
 					);
 
@@ -610,7 +610,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		const content: Line[] = [
 			concat(styled("Reins", BOLD), styled(`  ${runtime.provider}/${runtime.model}`, DIM)),
-			styled("说点什么开始；/help 看命令", DIM),
+			styled("Type a message to start; /help lists commands", DIM),
 		];
 
 		// 两件只在开场说的事：接续的是旧会话、工作区自带的配置没读
@@ -633,14 +633,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (runtime.session.entries > 0) {
 			lines.push(
 				styled(
-					`接续会话 ${runtime.session.id}：已有 ${runtime.session.entries} 条条目，` +
-						`用 reins sessions show ${runtime.session.id} 看完整记录`,
+					`Resumed session ${runtime.session.id}: ${runtime.session.entries} entries already; ` +
+						`run reins sessions show ${runtime.session.id} to see them`,
 					DIM,
 				),
 			);
 		}
 		if (!runtime.trust.trusted && runtime.trust.files.length > 0) {
-			lines.push(styled(`工作区自带的配置没有读取：${runtime.trust.files.join("、")}（用 /trust yes 打开）`, WARN));
+			lines.push(styled(`Project config not loaded: ${runtime.trust.files.join(", ")} (open it with /trust yes)`, WARN));
 		}
 		return lines;
 	}
@@ -685,15 +685,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			),
 			concat(plain(" ".repeat(PAD)), styled(`▶ ${allow.key}  ${allow.label}`, ACCENT)),
 			concat(plain(" ".repeat(PAD + 2)), styled(`${deny.key}  ${deny.label}`, DIM)),
-			concat(
-				plain(" ".repeat(PAD)),
-				styled("1-2", BRIGHT),
-				styled(" 直选　", DIM),
-				styled("Enter", BRIGHT),
-				styled(" 确认　", DIM),
-				styled("Esc", BRIGHT),
-				styled(" 拒绝", DIM),
-			),
+			this.#hintLine(CARD_HINTS, body),
 		];
 	}
 
@@ -719,10 +711,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 		return concat(plain(" ".repeat(PAD)), styled("╰─ ", EDGE), fitted, styled(` ${"─".repeat(dashes)}╯`, EDGE));
 	}
 
-	/** 底部快捷键条：键亮、动作暗，段与段之间用竖线分开。 */
+	/** 底部快捷键条：当前场景该按什么。 */
 	#keysRow(body: number): Line {
+		return this.#hintLine(this.#hints(), body);
+	}
+
+	/** 一行按键提示：键亮、动作暗，段与段之间用竖线分开。 */
+	#hintLine(hints: readonly KeyHint[], body: number): Line {
 		const parts: Span[] = [];
-		this.#hints().forEach((hint, index) => {
+		hints.forEach((hint, index) => {
 			if (index > 0) parts.push(...styled("  │  ", FAINT));
 			parts.push(...styled(hint.keys, { color: BRIGHT.color, bold: true }));
 			parts.push(...styled(`:${hint.label}`, DIM));
@@ -737,27 +734,27 @@ export class TerminalFrontend implements InteractiveFrontend {
 	 * 其余按键在 /help 里一次看全。
 	 */
 	#hints(): readonly KeyHint[] {
-		const help: KeyHint = { keys: "/help", label: "全部按键" };
+		const help: KeyHint = { keys: "/help", label: "shortcuts" };
 		if (!this.#main.window.following) {
 			return [
-				{ keys: "PageUp/PageDown", label: "翻页" },
-				{ keys: "Ctrl+P/N", label: "逐行" },
-				{ keys: "End", label: "回到底部" },
+				{ keys: "PageUp/PageDown", label: "page" },
+				{ keys: "Ctrl+P/N", label: "line" },
+				{ keys: "End", label: "bottom" },
 				help,
 			];
 		}
 		if (this.#running) {
 			return [
-				{ keys: "Ctrl+C", label: "中止" },
-				{ keys: "PageUp", label: "翻阅" },
+				{ keys: "Ctrl+C", label: "cancel" },
+				{ keys: "PageUp", label: "page" },
 				help,
 			];
 		}
 		return [
-			{ keys: "Enter", label: "发送" },
-			{ keys: "↑/↓", label: "输入历史" },
-			{ keys: "Ctrl+L", label: "重画" },
-			{ keys: "Ctrl+D", label: "退出" },
+			{ keys: "Enter", label: "send" },
+			{ keys: "↑/↓", label: "history" },
+			{ keys: "Ctrl+L", label: "redraw" },
+			{ keys: "Ctrl+D", label: "quit" },
 			help,
 		];
 	}
@@ -790,6 +787,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 /** 首屏入口框里的菜单：文字在左、命令在右，「/」开头说明这是敲进输入框的东西。 */
 const WELCOME_MENU: readonly { readonly label: string; readonly key: string }[] = [
-	{ label: "全部命令", key: "/help" },
-	{ label: "退出", key: "/exit" },
+	{ label: "Commands", key: "/help" },
+	{ label: "Quit", key: "/exit" },
+];
+
+/** 确认卡片上的按键：与底部快捷键条同一套写法。 */
+const CARD_HINTS: readonly KeyHint[] = [
+	{ keys: "1-2", label: "select" },
+	{ keys: "Enter", label: "confirm" },
+	{ keys: "Esc", label: "deny" },
 ];

@@ -91,15 +91,17 @@ class McpConnection {
 		const name = this.name.padEnd(16);
 		switch (this.#status) {
 			case "disabled":
-				return `${name} 已禁用`;
+				return `${name} disabled`;
 			case "connecting":
-				return `${name} 连接中`;
+				return `${name} connecting`;
 			case "ready": {
-				const tools = this.#tools.length === 0 ? "没有提供工具" : `${this.#tools.length} 个工具：${this.#tools.join("、")}`;
-				return `${name} 已连接　${tools}`;
+				const tools = this.#tools.length === 0
+					? "no tools"
+					: `${this.#tools.length} tools: ${this.#tools.join(", ")}`;
+				return `${name} connected  ${tools}`;
 			}
 			case "failed":
-				return `${name} 连不上　${this.#failure}`;
+				return `${name} unreachable  ${this.#failure}`;
 		}
 	}
 
@@ -111,7 +113,7 @@ class McpConnection {
 		const client = this.#client;
 		if (client === undefined || this.#status !== "ready") {
 			return {
-				content: `MCP server ${this.name} 当前不可用：${this.#failure.length > 0 ? this.#failure : "还没有连上"}`,
+				content: `MCP server ${this.name} is unavailable: ${this.#failure.length > 0 ? this.#failure : "not connected yet"}`,
 				isError: true,
 			};
 		}
@@ -154,10 +156,10 @@ export function createMcpPlugin(options: McpPluginOptions): Plugin {
 
 			api.registerCommand({
 				name: "mcps",
-				description: "查看 MCP server 的连接状态与工具清单",
+				description: "Show MCP server connections and their tools",
 				async run(_args, context) {
 					if (connections.length === 0) {
-						context.print("没有配置 MCP server。在 config.toml 里加 [mcp_servers.<名字>]。");
+						context.print("No MCP servers configured. Add [mcp_servers.<name>] to config.toml.");
 						return;
 					}
 					for (const connection of connections) context.print(connection.describe());
@@ -188,7 +190,7 @@ function createMcpTool(
 	}>,
 ): AnyToolDefinition {
 	const description =
-		info.description.length > 0 ? `[MCP ${server}] ${info.description}` : `[MCP ${server}] 远端工具 ${info.name}`;
+		info.description.length > 0 ? `[MCP ${server}] ${info.description}` : `[MCP ${server}] remote tool ${info.name}`;
 
 	return {
 		name: `${server}_${info.name}`,

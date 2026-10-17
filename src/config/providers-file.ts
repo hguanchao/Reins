@@ -127,9 +127,9 @@ export function parseProviders(source: string, file: string): ProvidersConfig {
 		assertNoUnknownKeys(document, [], TOP_LEVEL_KEYS);
 
 		const providerTable = readTable(document, ["providers"]);
-		if (providerTable === undefined) throw new ConfigError("缺少 providers");
+		if (providerTable === undefined) throw new ConfigError("Missing providers");
 		const providerIds = Object.keys(providerTable);
-		if (providerIds.length === 0) throw new ConfigError("providers 至少要声明一个 provider");
+		if (providerIds.length === 0) throw new ConfigError("providers must declare at least one provider");
 
 		return { providers: providerIds.map((id) => readProvider(document, id)) };
 	});
@@ -166,19 +166,19 @@ function readModelList(
 ): readonly ModelEntry[] {
 	const value = source.get([...providerPath, "models"]);
 	if (value === undefined) {
-		throw new ConfigError(`${describePath(providerPath)} 缺少 models`, {
+		throw new ConfigError(`${describePath(providerPath)} is missing models`, {
 			...(source.locationOf(providerPath) ?? {}),
 		});
 	}
 	if (!Array.isArray(value)) {
-		throw new ConfigError(`${describePath([...providerPath, "models"])} 应当是数组`, {
+		throw new ConfigError(`${describePath([...providerPath, "models"])} must be an array`, {
 			...(source.locationOf([...providerPath, "models"]) ?? {}),
 		});
 	}
 	if (value.length === 0) {
 		// 没有模型的 provider 无法被选中，属于配置疏漏而不是合法状态
 		throw new ConfigError(
-			`${describePath(providerPath)} 至少要声明一个模型`,
+			`${describePath(providerPath)} must declare at least one model`,
 			source.locationOf(providerPath) ?? {},
 		);
 	}
@@ -191,25 +191,25 @@ function readModelList(
 
 		const id = readString(source, [...path, "id"]);
 		if (id === undefined) {
-			throw new ConfigError(`${describePath(path)} 缺少 id`, source.locationOf(path) ?? {});
+			throw new ConfigError(`${describePath(path)} is missing id`, source.locationOf(path) ?? {});
 		}
 		if (seen.has(id)) {
 			// 同一个 provider 下同名模型会互相遮蔽，只留一个不如直接报错
-			throw new ConfigError(`${providerId} 下的模型 ${id} 重复定义`, source.locationOf([...path, "id"]) ?? {});
+			throw new ConfigError(`Duplicate model ${id} under ${providerId}`, source.locationOf([...path, "id"]) ?? {});
 		}
 		seen.add(id);
 
 		const api = readString(source, [...path, "api"]) ?? providerDefaults.api;
 		if (api === undefined) {
 			throw new ConfigError(
-				`模型 ${providerId}/${id} 没有可用的 api：provider 与模型都未声明`,
+				`Model ${providerId}/${id} has no usable api: neither the provider nor the model declares one`,
 				source.locationOf(path) ?? {},
 			);
 		}
 		const baseUrl = readString(source, [...path, "baseUrl"]) ?? providerDefaults.baseUrl;
 		if (baseUrl === undefined) {
 			throw new ConfigError(
-				`模型 ${providerId}/${id} 没有可用的 baseUrl：provider 与模型都未声明`,
+				`Model ${providerId}/${id} has no usable baseUrl: neither the provider nor the model declares one`,
 				source.locationOf(path) ?? {},
 			);
 		}
@@ -235,20 +235,20 @@ function readThinkingLevelMap(source: ConfigSource, path: ConfigPath): ThinkingL
 	const value = source.get(path);
 	if (value === undefined) return {};
 	if (!isConfigTable(value)) {
-		throw new ConfigError(`${describePath(path)} 应当是表`, source.locationOf(path) ?? {});
+		throw new ConfigError(`${describePath(path)} must be a table`, source.locationOf(path) ?? {});
 	}
 
 	const result: Partial<Record<ThinkingLevel, string | null>> = {};
 	for (const [key, item] of Object.entries(value)) {
 		if (!THINKING_LEVELS.some((level) => level === key)) {
 			throw new ConfigError(
-				`${describePath([...path, key])} 只能是 ${THINKING_LEVELS.join("、")} 之一`,
+				`${describePath([...path, key])} must be one of ${THINKING_LEVELS.join(", ")}`,
 				source.locationOf([...path, key]) ?? {},
 			);
 		}
 		if (item !== null && typeof item !== "string") {
 			throw new ConfigError(
-				`${describePath([...path, key])} 应当是字符串或 null`,
+				`${describePath([...path, key])} must be a string or null`,
 				source.locationOf([...path, key]) ?? {},
 			);
 		}
@@ -267,12 +267,12 @@ function readModalities(source: ConfigSource, path: ConfigPath): readonly ModelM
 	const declared = readEnumArray(source, path, MODEL_MODALITIES);
 	if (declared === undefined) return ["text"];
 	if (declared.length === 0) {
-		throw new ConfigError(`${describePath(path)} 至少要声明一种输入形态`, source.locationOf(path) ?? {});
+		throw new ConfigError(`${describePath(path)} must declare at least one input modality`, source.locationOf(path) ?? {});
 	}
 	// 重复声明说明写的人不清楚自己要什么，报错比默默去重好
 	const unique = [...new Set(declared)];
 	if (unique.length !== declared.length) {
-		throw new ConfigError(`${describePath(path)} 里有重复的取值`, source.locationOf(path) ?? {});
+		throw new ConfigError(`${describePath(path)} has duplicate values`, source.locationOf(path) ?? {});
 	}
 	return unique;
 }
@@ -285,7 +285,7 @@ function readCost(source: ConfigSource, path: ConfigPath): ModelCost | undefined
 	const missing = COST_KEYS.filter((key) => table[key] === undefined);
 	if (missing.length > 0) {
 		throw new ConfigError(
-			`${describePath(path)} 缺少 ${missing.join("、")}：只写一半的单价表算出来的金额是错的`,
+			`${describePath(path)} is missing ${missing.join(", ")}: a half-written price list produces wrong costs`,
 			source.locationOf(path) ?? {},
 		);
 	}

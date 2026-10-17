@@ -255,7 +255,7 @@ function renderInline(tokens: readonly Token[], style: Style | undefined, contex
 				builder.appendLines(renderInline((token as Tokens.Link).tokens, mergeStyles(style, LINK), context));
 				continue;
 			case "image":
-				builder.append(decorate(`[图片：${(token as Tokens.Image).text}]`, mergeStyles(style, DIM), context));
+				builder.append(decorate(`[image: ${(token as Tokens.Image).text}]`, mergeStyles(style, DIM), context));
 				continue;
 			case "br":
 				builder.break();

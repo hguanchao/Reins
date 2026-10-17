@@ -89,7 +89,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		}
 		if (argument === "--resume" || argument === "--at") {
 			const value = argv[index + 1];
-			if (value === undefined || value.startsWith("-")) throw new UsageError(`${argument} 需要一个标识`);
+			if (value === undefined || value.startsWith("-")) throw new UsageError(`${argument} requires an id`);
 			if (argument === "--resume") resume = value;
 			else forkAt = value;
 			index += 1;
@@ -98,14 +98,14 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		if (argument.startsWith("--resume=") || argument.startsWith("--at=")) {
 			const separator = argument.indexOf("=");
 			const value = argument.slice(separator + 1);
-			if (value.length === 0) throw new UsageError(`${argument.slice(0, separator)} 需要一个标识`);
+			if (value.length === 0) throw new UsageError(`${argument.slice(0, separator)} requires an id`);
 			if (argument.startsWith("--resume=")) resume = value;
 			else forkAt = value;
 			continue;
 		}
 		if (argument === "--config" || argument === "--providers") {
 			const value = argv[index + 1];
-			if (value === undefined || value.startsWith("-")) throw new UsageError(`${argument} 需要一个路径`);
+			if (value === undefined || value.startsWith("-")) throw new UsageError(`${argument} requires a path`);
 			if (argument === "--config") configPath = value;
 			else providersPath = value;
 			index += 1;
@@ -114,7 +114,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		if (argument.startsWith("--config=") || argument.startsWith("--providers=")) {
 			const separator = argument.indexOf("=");
 			const value = argument.slice(separator + 1);
-			if (value.length === 0) throw new UsageError(`${argument.slice(0, separator)} 需要一个路径`);
+			if (value.length === 0) throw new UsageError(`${argument.slice(0, separator)} requires a path`);
 			if (argument.startsWith("--config=")) configPath = value;
 			else providersPath = value;
 			continue;
@@ -123,7 +123,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 			positionals.push(...argv.slice(index + 1));
 			break;
 		}
-		if (argument.startsWith("-")) throw new UsageError(`无法识别的选项 ${argument}`);
+		if (argument.startsWith("-")) throw new UsageError(`unknown option ${argument}`);
 
 		positionals.push(argument);
 	}
@@ -132,9 +132,9 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	if (command === "sessions") return sessionsOptions(positionals);
 
 	// 分叉与接续的组合必须说清楚：这些开关单独出现时含义不完整
-	if (fork && resume === undefined) throw new UsageError("--fork 要配 --resume：它要指明从哪个会话分叉");
-	if (forkAt !== undefined && !fork) throw new UsageError("--at 只和 --fork 一起用");
-	if (continueSession && resume !== undefined) throw new UsageError("--continue 与 --resume 只能用其中一个");
+	if (fork && resume === undefined) throw new UsageError("--fork requires --resume to name the session to fork from");
+	if (forkAt !== undefined && !fork) throw new UsageError("--at only works together with --fork");
+	if (continueSession && resume !== undefined) throw new UsageError("use either --continue or --resume, not both");
 
 	return {
 		command,
@@ -171,13 +171,13 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	function sessionsOptions(args: readonly string[]): CliOptions {
 		const action = args[1];
 		if (action !== "list" && action !== "show" && action !== "export") {
-			throw new UsageError("sessions 支持 list、show、export 三个子命令");
+			throw new UsageError("sessions has three subcommands: list, show, export");
 		}
 		const ref = args[2];
-		if (action !== "list" && ref === undefined) throw new UsageError(`sessions ${action} 需要一个会话标识`);
+		if (action !== "list" && ref === undefined) throw new UsageError(`sessions ${action} requires a session id`);
 		const allowed = action === "list" ? 2 : 3;
 		if (args.length > allowed) {
-			throw new UsageError(`sessions ${action} 不接受额外参数：${args.slice(allowed).join(" ")}`);
+			throw new UsageError(`sessions ${action} takes no extra arguments: ${args.slice(allowed).join(" ")}`);
 		}
 		return { ...special("sessions"), sessionsAction: action, sessionRef: ref };
 	}
@@ -185,42 +185,42 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 
 function resolveCommand(positionals: readonly string[], explicitPrint: boolean): CliCommand {
 	if (positionals[0] === "config") {
-		if (positionals[1] !== "check") throw new UsageError("config 目前只支持 check 子命令");
-		if (positionals.length > 2) throw new UsageError(`config check 不接受额外参数：${positionals.slice(2).join(" ")}`);
+		if (positionals[1] !== "check") throw new UsageError("config only supports the check subcommand");
+		if (positionals.length > 2) throw new UsageError(`config check takes no extra arguments: ${positionals.slice(2).join(" ")}`);
 		return "config-check";
 	}
 	if (positionals[0] === "sessions") return "sessions";
 	// 没有句子、也没有要求非交互，就是进交互界面
 	if (!explicitPrint && positionals.length === 0) return "chat";
-	if (positionals.length === 0) throw new UsageError("-p 后面需要给出要执行的句子");
+	if (positionals.length === 0) throw new UsageError("-p requires a prompt");
 	return "print";
 }
 
-export const HELP_TEXT = `Reins —— 终端编码智能体
+export const HELP_TEXT = `Reins — terminal coding agent
 
-用法:
-  reins                     进入交互界面
-  reins <句子>              执行一句话，结果写到标准输出
-  reins -p <句子>           同上，显式指定非交互模式
-  reins sessions list       列出当前目录下的会话
-  reins sessions show <标识> 显示一个会话的条目与用量
-  reins sessions export <标识> 导出成 Markdown 写到标准输出（可重定向到文件）
-  reins config check        校验配置文件并列出解析结果
-  reins --help              显示本帮助
-  reins --version           显示版本
+Usage:
+  reins                       Start the interactive UI
+  reins <prompt>              Run one prompt, write the answer to stdout
+  reins -p <prompt>           Same, explicitly non-interactive
+  reins sessions list         List sessions under the current directory
+  reins sessions show <id>    Show one session's entries and usage
+  reins sessions export <id>  Export as Markdown to stdout (redirect to a file)
+  reins config check          Validate the config files and print the result
+  reins --help                Show this help
+  reins --version             Show the version
 
-会话:
-  -c, --continue             接着当前目录下最近一次会话继续
-  --resume <标识>            接续指定的会话；标识用 sessions list 查
-  --fork                     把 --resume 那个会话的历史复制进一个新会话，原会话保持原样
-  --at <条目标识>            分叉的起点，省略时从会话当前的位置分叉
+Sessions:
+  -c, --continue              Continue the most recent session in this directory
+  --resume <id>               Resume the given session; list ids with sessions list
+  --fork                      Copy the --resume session into a new one, leaving the original as is
+  --at <entry id>             Fork point; defaults to the session's current position
 
-选项:
-  --yes                      非交互模式下，凡是要征求同意的调用一律视为同意；拒绝规则与审查模型照旧生效
-  --trust                    读取当前工作区自带的配置，并把这一决定记下来
-  --no-trust                 不读取当前工作区自带的配置，并把这一决定记下来
-  --config <路径>            指定 config.toml，默认取配置目录下的同名文件
-  --providers <路径>            指定 providers.json，默认取配置目录下的同名文件
+Options:
+  --yes                       In non-interactive mode, every approval request counts as granted; deny rules and the review model still apply
+  --trust                     Read the config shipped in this workspace and record the decision
+  --no-trust                  Do not read the workspace config, and record the decision
+  --config <path>             Use the given config.toml instead of the one in the config directory
+  --providers <path>          Use the given providers.json instead of the one in the config directory
 
-配置目录由环境变量 REINS_HOME 覆盖，默认为用户主目录下的 .reins。
+The config directory is set by REINS_HOME, defaulting to .reins under the home directory
 `;

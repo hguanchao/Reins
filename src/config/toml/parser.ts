@@ -107,7 +107,7 @@ export class TomlParser {
 				sections.push(section);
 				const headerStart = this.#pos;
 				const header = this.#parseTableHeader(root);
-				this.#finishLine("表头");
+				this.#finishLine("table header");
 				section = {
 					path: header.path,
 					headerStart,
@@ -121,7 +121,7 @@ export class TomlParser {
 			const pathStart = this.#pos;
 			const path = this.#parseKeyPath();
 			this.#skipHorizontalWhitespace();
-			this.#expectCharacter("=", "键之后需要等号");
+			this.#expectCharacter("=", "Expected an equals sign after the key");
 			this.#skipHorizontalWhitespace();
 			const valueStart = this.#pos;
 			const value = this.#parseValue();
@@ -135,7 +135,7 @@ export class TomlParser {
 				valueEnd,
 			});
 
-			this.#finishLine("赋值");
+			this.#finishLine("assignment");
 			// 只有真正写入条目的行才推进区段末尾：这样插入新键时不会插到下一段之前的
 			// 空行或注释之后，注释仍与它描述的表头相邻。
 			section.bodyEnd = this.#pos;
@@ -151,9 +151,9 @@ export class TomlParser {
 		const start = this.#pos;
 		const path = this.#parseKeyPath();
 		if (isArrayOfTables) {
-			this.#expectText("]]", "数组表头需要以 ]] 结束");
+			this.#expectText("]]", "Array of tables header must end with ]]");
 		} else {
-			this.#expectText("]", "表头需要以 ] 结束");
+			this.#expectText("]", "Table header must end with ]");
 		}
 		return { path, table: this.#defineTable(root, path, isArrayOfTables, start), isArrayOfTables };
 	}
@@ -188,27 +188,27 @@ export class TomlParser {
 			if (isConfigTable(existing)) {
 				const state = this.#tableStates.get(existing);
 				if (state === "closed") {
-					throw this.#errorAt(`${where} 是内联表，不能再往里添加内容`, start);
+					throw this.#errorAt(`${where} is an inline table and cannot be extended`, start);
 				}
 				if (state === "explicit" && traversal === "dotted") {
-					throw this.#errorAt(`${where} 已用表头定义过，不能再通过点分键添加内容`, start);
+					throw this.#errorAt(`${where} was already defined by a table header and cannot be extended with dotted keys`, start);
 				}
 				table = existing;
 				continue;
 			}
 			if (Array.isArray(existing)) {
 				if (this.#tableStates.get(existing) !== "table-array") {
-					throw this.#errorAt(`${where} 是数组，不能当作表使用`, start);
+						throw this.#errorAt(`${where} is an array and cannot be used as a table`, start);
 				}
 				// 数组表上的子表挂在最后一个元素下。这条只对表头成立：点分键往数组表里追加
 				// 会让「数组有几个元素」取决于写法，读的时候拼不出最终形态。
 				if (traversal === "dotted") {
-					throw this.#errorAt(`${where} 是数组表，不能用点分键添加内容`, start);
+						throw this.#errorAt(`${where} is an array of tables and cannot be extended with dotted keys`, start);
 				}
 				table = existing[existing.length - 1] as ConfigTable;
 				continue;
 			}
-			throw this.#errorAt(`${where} 已被非表的值占用`, start);
+			throw this.#errorAt(`${where} is already taken by a non-table value`, start);
 		}
 		return table;
 	}
@@ -239,7 +239,7 @@ export class TomlParser {
 				this.#tableStates.set(appended, "explicit");
 				return appended;
 			}
-			throw this.#errorAt(`数组表 ${path.join(".")} 与已有定义冲突`, start);
+			throw this.#errorAt(`Array of tables ${path.join(".")} conflicts with an existing definition`, start);
 		}
 
 		if (existing === undefined) {
@@ -253,9 +253,9 @@ export class TomlParser {
 			return existing;
 		}
 		if (Array.isArray(existing)) {
-			throw this.#errorAt(`${path.join(".")} 已定义为数组表`, start);
+			throw this.#errorAt(`${path.join(".")} is already defined as an array of tables`, start);
 		}
-		throw this.#errorAt(`表 ${path.join(".")} 重复定义`, start);
+		throw this.#errorAt(`Duplicate definition of table ${path.join(".")}`, start);
 	}
 
 	/** 把值写进当前表；点分键会展开成嵌套的表，这类表之后不能再被表头定义。 */
@@ -263,7 +263,7 @@ export class TomlParser {
 		const target = this.#descend(table, path.slice(0, -1), start, "dotted");
 		const last = path[path.length - 1];
 		if (target[last] !== undefined) {
-			throw this.#errorAt(`键 ${path.join(".")} 重复定义`, start);
+			throw this.#errorAt(`Duplicate key ${path.join(".")}`, start);
 		}
 		target[last] = value;
 	}
@@ -288,13 +288,13 @@ export class TomlParser {
 		while (this.#pos < this.#source.length && BARE_KEY_CHAR.test(this.#source[this.#pos])) {
 			this.#pos += 1;
 		}
-		if (this.#pos === start) throw this.#error("缺少键名");
+		if (this.#pos === start) throw this.#error("Missing key name");
 		return this.#source.slice(start, this.#pos);
 	}
 
 	#parseValue(): ConfigValue {
 		const char = this.#peek();
-		if (char === undefined) throw this.#error("缺少值");
+		if (char === undefined) throw this.#error("Missing value");
 		if (char === '"') return this.#parseBasicString(true);
 		if (char === "'") return this.#parseLiteralString(true);
 		if (char === "[") return this.#parseArray();
@@ -322,11 +322,11 @@ export class TomlParser {
 		}
 
 		const raw = this.#source.slice(start, this.#pos);
-		if (raw.length === 0) throw this.#errorAt("缺少值", start);
+		if (raw.length === 0) throw this.#errorAt("Missing value", start);
 		if (raw === "true") return true;
 		if (raw === "false") return false;
-		if (raw.includes(":")) throw this.#errorAt("本实现不支持时间类型", start);
-		if (/^\d{4}-\d{2}-\d{2}/.test(raw)) throw this.#errorAt("本实现不支持日期类型", start);
+		if (raw.includes(":")) throw this.#errorAt("Time values are not supported", start);
+		if (/^\d{4}-\d{2}-\d{2}/.test(raw)) throw this.#errorAt("Date values are not supported", start);
 		return this.#parseNumber(raw, start);
 	}
 
@@ -345,7 +345,7 @@ export class TomlParser {
 		if (FLOAT_WITH_FRACTION.test(raw) || FLOAT_WITH_EXPONENT.test(raw)) {
 			return Number.parseFloat(digitsOnly);
 		}
-		throw this.#errorAt(`无法识别的值 ${raw}`, start);
+		throw this.#errorAt(`Unrecognized value ${raw}`, start);
 	}
 
 	#parseBasicString(allowMultiline: boolean): string {
@@ -359,8 +359,8 @@ export class TomlParser {
 		let out = "";
 		for (;;) {
 			const char = this.#peek();
-			if (char === undefined) throw this.#errorAt("字符串没有闭合", start);
-			if (char === "\n" || char === "\r") throw this.#errorAt("基本字符串不能跨行", start);
+			if (char === undefined) throw this.#errorAt("Unterminated string", start);
+			if (char === "\n" || char === "\r") throw this.#errorAt("Basic string cannot span lines", start);
 			if (char === '"') {
 				this.#pos += 1;
 				return out;
@@ -381,7 +381,7 @@ export class TomlParser {
 
 		let out = "";
 		for (;;) {
-			if (this.#atEnd()) throw this.#errorAt("多行字符串没有闭合", start);
+			if (this.#atEnd()) throw this.#errorAt("Unterminated multiline string", start);
 
 			if (this.#peek() === "\\") {
 				let look = this.#pos + 1;
@@ -399,7 +399,7 @@ export class TomlParser {
 			if (this.#startsWith('"""')) {
 				let quotes = 0;
 				while (this.#peekAt(quotes) === '"') quotes += 1;
-				if (quotes > 5) throw this.#errorAt("多行字符串里的引号过多", start);
+				if (quotes > 5) throw this.#errorAt("Too many quotes in multiline string", start);
 				out += '"'.repeat(quotes - 3);
 				this.#pos += quotes;
 				return out;
@@ -422,8 +422,8 @@ export class TomlParser {
 		let out = "";
 		for (;;) {
 			const char = this.#peek();
-			if (char === undefined) throw this.#errorAt("字符串没有闭合", start);
-			if (char === "\n" || char === "\r") throw this.#errorAt("字面量字符串不能跨行", start);
+			if (char === undefined) throw this.#errorAt("Unterminated string", start);
+			if (char === "\n" || char === "\r") throw this.#errorAt("Literal string cannot span lines", start);
 			if (char === "'") {
 				this.#pos += 1;
 				return out;
@@ -439,11 +439,11 @@ export class TomlParser {
 
 		let out = "";
 		for (;;) {
-			if (this.#atEnd()) throw this.#errorAt("多行字符串没有闭合", start);
+			if (this.#atEnd()) throw this.#errorAt("Unterminated multiline string", start);
 			if (this.#startsWith("'''")) {
 				let quotes = 0;
 				while (this.#peekAt(quotes) === "'") quotes += 1;
-				if (quotes > 5) throw this.#errorAt("多行字符串里的引号过多", start);
+				if (quotes > 5) throw this.#errorAt("Too many quotes in multiline string", start);
 				out += "'".repeat(quotes - 3);
 				this.#pos += quotes;
 				return out;
@@ -458,7 +458,7 @@ export class TomlParser {
 		const start = this.#pos;
 		this.#pos += 1;
 		const char = this.#peek();
-		if (char === undefined) throw this.#errorAt("转义符后缺少内容", start);
+		if (char === undefined) throw this.#errorAt("Missing escape sequence", start);
 		this.#pos += 1;
 
 		switch (char) {
@@ -481,20 +481,20 @@ export class TomlParser {
 			case "U":
 				return this.#readUnicodeEscape(8, start);
 			default:
-				throw this.#errorAt(`不支持的转义 \\${char}`, start);
+				throw this.#errorAt(`Unsupported escape \\${char}`, start);
 		}
 	}
 
 	#readUnicodeEscape(digits: number, start: number): string {
 		const hex = this.#source.slice(this.#pos, this.#pos + digits);
 		if (hex.length !== digits || !/^[0-9A-Fa-f]+$/.test(hex)) {
-			throw this.#errorAt(`Unicode 转义需要 ${digits} 位十六进制`, start);
+			throw this.#errorAt(`Unicode escape needs ${digits} hex digits`, start);
 		}
 		this.#pos += digits;
 		const code = Number.parseInt(hex, 16);
 		// 代理区不是有效码位，放行会得到无法编码的半个字符
 		if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) {
-			throw this.#errorAt("Unicode 转义必须是有效码位", start);
+			throw this.#errorAt("Unicode escape must be a valid code point", start);
 		}
 		return String.fromCodePoint(code);
 	}
@@ -506,7 +506,7 @@ export class TomlParser {
 
 		for (;;) {
 			this.#skipArrayWhitespace();
-			if (this.#atEnd()) throw this.#errorAt("数组没有闭合", start);
+			if (this.#atEnd()) throw this.#errorAt("Unterminated array", start);
 			if (this.#peek() === "]") {
 				this.#pos += 1;
 				this.#closeContainer(items);
@@ -523,7 +523,7 @@ export class TomlParser {
 				this.#closeContainer(items);
 				return items;
 			}
-			throw this.#errorAt("数组元素之间需要逗号", start);
+			throw this.#errorAt("Expected a comma between array elements", start);
 		}
 	}
 
@@ -542,12 +542,12 @@ export class TomlParser {
 		for (;;) {
 			this.#skipHorizontalWhitespace();
 			if (this.#atNewline() || this.#atEnd()) {
-				throw this.#error("内联表不能跨行，且必须以 } 结束");
+				throw this.#error("Inline table cannot span lines and must end with }");
 			}
 			const keyStart = this.#pos;
 			const path = this.#parseKeyPath();
 			this.#skipHorizontalWhitespace();
-			this.#expectCharacter("=", "键之后需要等号");
+			this.#expectCharacter("=", "Expected an equals sign after the key");
 			this.#skipHorizontalWhitespace();
 			this.#assign(table, path, this.#parseValue(), keyStart);
 			this.#skipHorizontalWhitespace();
@@ -561,7 +561,7 @@ export class TomlParser {
 				this.#closeContainer(table);
 				return table;
 			}
-			throw this.#errorAt("内联表里只允许用逗号分隔键值对，且不能跨行", start);
+			throw this.#errorAt("Inline table members must be comma-separated and cannot span lines", start);
 		}
 	}
 
@@ -580,7 +580,7 @@ export class TomlParser {
 		this.#skipHorizontalWhitespace();
 		if (this.#atComment()) this.#skipToLineEnd();
 		if (this.#atEnd()) return;
-		if (!this.#atNewline()) throw this.#error(`${context}之后只能跟换行`);
+			if (!this.#atNewline()) throw this.#error(`Only a newline may follow the ${context}`);
 		this.#consumeNewline();
 	}
 
@@ -630,7 +630,7 @@ export class TomlParser {
 		if (code > 0x1f && code !== 0x7f) return;
 		if (char === "\t") return;
 		if (allowNewline && (char === "\n" || (char === "\r" && this.#peekAt(1) === "\n"))) return;
-		throw this.#error(`不允许的控制字符 U+${code.toString(16).toUpperCase().padStart(4, "0")}`);
+		throw this.#error(`Control character U+${code.toString(16).toUpperCase().padStart(4, "0")} is not allowed`);
 	}
 
 	#atComment(): boolean {

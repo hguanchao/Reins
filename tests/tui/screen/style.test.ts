@@ -1,60 +1,60 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { plain, styled } from "../../../src/tui/text/line.ts";
 import { colorSupport, serializeLine, styleSequence } from "../../../src/tui/screen/style.ts";
+import { concat, plain, styled } from "../../../src/tui/text/line.ts";
 
-describe("styleSequence", () => {
-	it("按样式逐项拼出 SGR 参数", () => {
-		assert.equal(styleSequence({ bold: true }, true), "\x1b[1m");
-		assert.equal(styleSequence({ dim: true, italic: true }, true), "\x1b[2;3m");
-		assert.equal(styleSequence({ underline: true, color: "cyan" }, true), "\x1b[4;36m");
+	describe("样式转序列", () => {
+	it("无样式返回空串，colors 关闭时也返回空串", () => {
+		assert.equal(styleSequence(undefined, true), "");
+		assert.equal(styleSequence({ bold: true }, false), "");
+		assert.equal(serializeLine([], true), "");
+	});
+
+	it("布尔项按序输出", () => {
+		assert.equal(styleSequence({ bold: true, underline: true }, true), "\x1b[1;4m");
+		assert.equal(styleSequence({ reverse: true }, true), "\x1b[7m");
+	});
+
+	it("十六色前景与背景用同一张表，背景加十", () => {
+		assert.equal(styleSequence({ color: "red" }, true), "\x1b[31m");
+		assert.equal(styleSequence({ background: "red" }, true), "\x1b[41m");
 		assert.equal(styleSequence({ color: "gray" }, true), "\x1b[90m");
 	});
 
-	it("真彩色按 38;2 与 48;2 写出来", () => {
-		assert.equal(styleSequence({ color: [0xbb, 0x9a, 0xf7] }, true), "[38;2;187;154;247m");
-		assert.equal(styleSequence({ background: [0x24, 0x24, 0x24] }, true), "[48;2;36;36;36m");
-		// 十六色名与真彩色可以混在一份样式里
-		assert.equal(styleSequence({ bold: true, background: "black" }, true), "[1;40m");
+	it("真彩色按 38;2 与 48;2 输出", () => {
+		assert.equal(styleSequence({ color: [10, 20, 30] }, true), "\x1b[38;2;10;20;30m");
+		assert.equal(styleSequence({ background: [1, 2, 3] }, true), "\x1b[48;2;1;2;3m");
 	});
 
-	it("没有样式就没有序列", () => {
-		assert.equal(styleSequence(undefined, true), "");
-		assert.equal(styleSequence({}, true), "");
+	it("混合样式合并成一条序列", () => {
+		assert.equal(styleSequence({ dim: true, color: "blue" }, true), "\x1b[2;34m");
 	});
 
-	it("关掉颜色后不再输出任何序列", () => {
-		assert.equal(styleSequence({ bold: true, color: "red" }, false), "");
+	it("serializeLine 每个带样式的片段之后复位", () => {
+		const line = concat(plain("a"), styled("b", { bold: true }), plain("c"));
+		assert.equal(serializeLine(line, true), "a\x1b[1mb\x1b[0mc");
+	});
+
+	it("colors 关闭时只输出纯文本", () => {
+		const line = concat(plain("a"), styled("b", { bold: true }));
+		assert.equal(serializeLine(line, false), "ab");
 	});
 });
 
-describe("colorSupport", () => {
-	it("默认输出颜色", () => {
-		assert.equal(colorSupport({}), true);
-	});
-
-	it("NO_COLOR 有值就关闭", () => {
+describe("颜色开关", () => {
+	it("NO_COLOR 有值即关闭，空串不算有值", () => {
 		assert.equal(colorSupport({ NO_COLOR: "1" }), false);
 		assert.equal(colorSupport({ NO_COLOR: "" }), true);
 	});
 
-	it("TERM=dumb 表示终端不支持控制序列", () => {
+	it("TERM=dumb 关闭", () => {
 		assert.equal(colorSupport({ TERM: "dumb" }), false);
+	});
+
+	it("其余情况都开", () => {
+		assert.equal(colorSupport({}), true);
 		assert.equal(colorSupport({ TERM: "xterm-256color" }), true);
-	});
-});
-
-describe("serializeLine", () => {
-	it("逐片段写样式并在片段后复位", () => {
-		assert.equal(
-			serializeLine([{ text: "a" }, { text: "b", style: { bold: true } }, { text: "c" }], true),
-			"a\x1b[1mb\x1b[0mc",
-		);
-	});
-
-	it("关掉颜色时只剩文本", () => {
-		assert.equal(serializeLine(styled("接口", { color: "green" }), false), "接口");
-		assert.equal(serializeLine(plain("接口"), false), "接口");
+		assert.equal(colorSupport({ NO_COLOR: "", TERM: "xterm" }), true);
 	});
 });

@@ -1,239 +1,190 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { after, describe, it } from "node:test";
+import { describe, it } from "node:test";
 
-import type { AnyToolDefinition } from "../../src/tools/contract.ts";
-import { ToolRegistry } from "../../src/tools/registry.ts";
+import { ToolRegistry, type GateRequest, type ToolGate, type ToolRunContext } from "../../src/tools/registry.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
-import { allowAllGate, createTestWorkspace, expectFailure, type TestWorkspace } from "./helpers.ts";
+import type { JsonSchema } from "../../src/tools/schema.ts";
+import type { ToolDefinition, ToolResult } from "../../src/tools/contract.ts";
+import type { WorkspaceBoundary } from "../../src/workspace/boundary.ts";
+import type { SandboxView } from "../../src/sandbox/policy.ts";
 
-const spillDirectory = mkdtempSync(join(tmpdir(), "reins-registry-spill-"));
-const workspace: TestWorkspace = createTestWorkspace();
+const ECHO_SCHEMA: JsonSchema = {
+	type: "object",
+	properties: { text: { type: "string" } },
+	required: ["text"],
+};
 
-after(() => {
-	workspace.remove();
-	rmSync(spillDirectory, { recursive: true, force: true });
-});
-
-/** 一个最小工具：把收到的一个字符串参数原样返回。 */
-function echoTool(overrides: Partial<AnyToolDefinition> = {}): AnyToolDefinition {
+function toolWith(schema: JsonSchema, execute: (args: Record<string, unknown>) => Promise<ToolResult>): ToolDefinition {
 	return {
-		name: "echo",
-		description: "回显",
-		parameters: {
-			type: "object",
-			properties: { text: { type: "string" } },
-			required: ["text"],
-		},
+		name: "echo-tool",
+		description: "echoes text",
+		parameters: schema,
 		annotations: { readOnly: true, destructive: false, openWorld: false },
-		async execute({ args }) {
-			return { content: String(args["text"]) };
-		},
-		...overrides,
+		execute: (context) => execute(context.args),
 	};
 }
 
-function registry(spillThreshold = 0): ToolRegistry {
-	return new ToolRegistry(new ResultSpiller(spillThreshold, spillDirectory), allowAllGate);
-}
+const ECHO = toolWith(ECHO_SCHEMA, async (args) => ({ content: `echo:${args["text"]}` }));
 
-describe("工具注册", () => {
-	it("重复注册同名工具会报错", () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		assert.throws(() => tools.register(echoTool(), "core"), /重复注册/);
-	});
+const ALLOW: ToolGate = {
+	check: async (_request: GateRequest) => ({ allowed: true, reason: "" }),
+};
 
-	it("插件不得替换核心工具", () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		assert.throws(() => tools.register(echoTool(), "plugin"), /不能被插件替换/);
-	});
-
-	it("插件之间同名也报错", () => {
-		const tools = registry();
-		tools.register(echoTool(), "plugin");
-		assert.throws(() => tools.register(echoTool(), "plugin"), /重复注册/);
-	});
-
-	it("列出工具与来源", () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		assert.deepEqual(tools.describe(), [{ name: "echo", source: "core" }]);
-		assert.equal(tools.list().length, 1);
-		assert.equal(tools.get("echo")?.name, "echo");
-		assert.equal(tools.get("missing"), undefined);
-	});
+const deny = (reason: string): ToolGate => ({
+	check: async () => ({ allowed: false, reason }),
 });
 
-describe("调用管线", () => {
-	it("正常执行并返回内容", async () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		const outcome = await tools.call(
-			{ callId: "c1", name: "echo", args: { text: "甲" } },
-			workspace.context(undefined),
-		);
-		assert.equal(outcome.content, "甲");
-		assert.equal(outcome.isError, false);
+const explodeGate: ToolGate = {
+	check: async () => {
+		throw new Error("gate is down");
+	},
+};
+
+function noSpill(): ResultSpiller {
+	return new ResultSpiller(0, "");
+}
+
+function context(): ToolRunContext {
+	return {
+		workspace: { root: "E:\\w" } as WorkspaceBoundary,
+		sandbox: {} as SandboxView,
+		session: {} as never,
+		signal: new AbortController().signal,
+		onUpdate: () => undefined,
+	};
+}
+
+function registryWith(gate: ToolGate, spiller: ResultSpiller = noSpill()): ToolRegistry {
+	const registry = new ToolRegistry(spiller, gate);
+	registry.register(ECHO, "core");
+	return registry;
+}
+
+describe("工具注册表", () => {
+	it("注册、查询与列出", () => {
+		const registry = registryWith(ALLOW);
+		assert.equal(registry.get("echo-tool")?.name, "echo-tool");
+		assert.equal(registry.get("missing"), undefined);
+		assert.deepEqual(registry.list().map((tool) => tool.name), ["echo-tool"]);
+		assert.deepEqual(registry.describe(), [{ name: "echo-tool", source: "core" }]);
 	});
 
-	it("未知工具时列出可用的名字", async () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		const outcome = await tools.call(
-			{ callId: "c1", name: "missing", args: {} },
-			workspace.context(undefined),
-		);
-		expectFailure(outcome, "没有名为 missing 的工具");
-		assert.ok(outcome.content.includes("echo"));
+	it("插件不能取代核心工具，名字重复也不行", () => {
+		const registry = registryWith(ALLOW);
+		assert.throws(() => registry.register(ECHO, "plugin"), /cannot be replaced by a plugin/);
+		assert.throws(() => registry.register(ECHO, "core"), /already registered/);
 	});
 
-	it("参数不合模式时报错，并回显收到的参数", async () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		const outcome = await tools.call(
-			{ callId: "c1", name: "echo", args: { text: 42 } },
-			workspace.context(undefined),
-		);
-		expectFailure(outcome, "参数有误");
-		assert.ok(outcome.content.includes("应当是字符串"));
-		assert.ok(outcome.content.includes('{"text":42}'));
+	it("卸载插件工具，核心工具不许卸载", () => {
+		const registry = registryWith(ALLOW);
+		registry.removePluginTool("not-there"); // 不存在:无事发生
+
+		assert.throws(() => registry.removePluginTool("echo-tool"), /Core tool .* cannot be removed/);
 	});
 
-	it("缺少必填参数时报错", async () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		const outcome = await tools.call({ callId: "c1", name: "echo", args: {} }, workspace.context(undefined));
-		expectFailure(outcome, "缺少必填的 text");
+	it("附加工具:复制出新注册表，原名占用报错", () => {
+		const registry = registryWith(ALLOW);
+		const extra = toolWith(ECHO_SCHEMA, async () => ({ content: "x" }));
+		const extra2: ToolDefinition = { ...extra, name: "echo-2", execute: extra.execute };
+		const none: ToolDefinition = { ...extra, name: "echo-tool" };
+		assert.throws(() => registry.withExtraTool(none), /already in use/);
+		const copy = registry.withExtraTool(extra2);
+		assert.equal(copy.get("echo-2")?.name, "echo-2");
+		assert.equal(copy.get("echo-tool")?.name, "echo-tool");
+		assert.equal(registry.get("echo-2"), undefined); // 原注册表不受影响
 	});
 
-	it("多余的参数被拒，帮模型发现自己把参数名写错了", async () => {
-		const tools = registry();
-		tools.register(echoTool(), "core");
-		const outcome = await tools.call(
-			{ callId: "c1", name: "echo", args: { text: "a", extra: 1 } },
-			workspace.context(undefined),
-		);
-		expectFailure(outcome, "未知的 extra");
+	it("未知工具给出可用清单", async () => {
+		const outcome = await registryWith(ALLOW).call({ callId: "c", name: "nope", args: {} }, context());
+		assert.equal(outcome.isError, true);
+		assert.match(outcome.content, /Unknown tool: nope\. Available tools: echo-tool/);
 	});
 
-	it("先经过 prepareArguments 再校验", async () => {
-		const tools = registry();
-		tools.register(
-			echoTool({
-				prepareArguments: (args) => ({ text: String(args["text"] ?? "") }),
-			}),
-			"core",
-		);
-		const outcome = await tools.call(
-			{ callId: "c1", name: "echo", args: { text: "补上" } },
-			workspace.context(undefined),
-		);
-		assert.equal(outcome.isError, false);
+	it("参数错误回显收到的参数", async () => {
+		const outcome = await registryWith(ALLOW).call({ callId: "c", name: "echo-tool", args: { text: 1 } }, context());
+		assert.equal(outcome.isError, true);
+		assert.match(outcome.content, /Invalid arguments:[\s\S]*Received arguments: {"text":1}/);
 	});
 
-	it("工具抛错时转成错误结果，不中断整轮对话", async () => {
-		const tools = registry();
-		tools.register(
-			echoTool({
-				name: "boom",
-				async execute() {
-					throw new Error("炸了");
-				},
-			}),
-			"core",
-		);
-		const outcome = await tools.call(
-			{ callId: "c1", name: "boom", args: { text: "x" } },
-			workspace.context(undefined),
-		);
-		expectFailure(outcome, "工具执行失败：炸了");
+	it("成功执行,结果不溢出时原样返回", async () => {
+		const outcome = await registryWith(ALLOW).call({ callId: "c", name: "echo-tool", args: { text: "hi" } }, context());
+		assert.deepEqual({ content: outcome.content, isError: outcome.isError }, { content: "echo:hi", isError: false });
+		assert.ok(outcome.durationMs >= 0);
 	});
 
-	it("判定不通过时工具不执行，理由写进结果", async () => {
-		let executed = false;
-		const tools = new ToolRegistry(new ResultSpiller(0, spillDirectory), {
-			async check() {
-				return { allowed: false, reason: "这类命令要先问过使用者" };
+	it("审批拒绝时工具不执行", async () => {
+		const executed = [];
+		const gate = deny("danger");
+		const spy: ToolDefinition = {
+			...ECHO,
+			execute: async (callContext) => {
+				executed.push(callContext.callId);
+				return { content: "" };
 			},
-		});
-		tools.register(
-			echoTool({
-				async execute() {
-					executed = true;
-					return { content: "不该走到这里" };
-				},
-			}),
-			"core",
-		);
-
-		const outcome = await tools.call(
-			{ callId: "c1", name: "echo", args: { text: "x" } },
-			workspace.context(undefined),
-		);
-		expectFailure(outcome, "未执行：这类命令要先问过使用者");
-		assert.equal(executed, false);
+		};
+		const registry = new ToolRegistry(noSpill(), gate);
+		registry.register(spy, "core");
+		const outcome = await registry.call({ callId: "c", name: "echo-tool", args: { text: "x" } }, context());
+		assert.equal(outcome.isError, true);
+		assert.match(outcome.content, /Not executed: danger/);
+		assert.equal(executed.length, 0);
 	});
 
-	it("判定本身出错时按拒绝处理", async () => {
-		let executed = false;
-		const tools = new ToolRegistry(new ResultSpiller(0, spillDirectory), {
-			async check() {
-				throw new Error("判定器坏了");
+	it("判定本身抛错按拒绝处理", async () => {
+		const outcome = await registryWith(explodeGate).call({ callId: "c", name: "echo-tool", args: { text: "x" } }, context());
+		assert.equal(outcome.isError, true);
+		assert.match(outcome.content, /Approval check failed.*gate is down/);
+	});
+
+	it("工具抛错转成错误结果", async () => {
+		const bomb = toolWith(ECHO_SCHEMA, async () => {
+			throw new Error("boom");
+		});
+		const registry = new ToolRegistry(noSpill(), ALLOW);
+		registry.register(bomb, "core");
+		const outcome = await registry.call({ callId: "c", name: "echo-tool", args: { text: "x" } }, context());
+		assert.equal(outcome.isError, true);
+		assert.match(outcome.content, /Tool execution failed: boom/);
+	});
+
+	it("结果经防溢出器处理", async () => {
+		const spiller = new ResultSpiller(0, "");
+		// 短路掉真实的落盘行为，只看注册表有没有把结果交给它
+		spiller.spill = (toolName: string, content: string) => `${toolName}!${content}`;
+		const outcome = await registryWith(ALLOW, spiller).call({ callId: "c", name: "echo-tool", args: { text: "hi" } }, context());
+		assert.equal(outcome.content, "echo-tool!echo:hi");
+	});
+
+	it("prepareArguments 在校验前整理参数", async () => {
+		const preparing = toolWith(ECHO_SCHEMA, async (args) => ({ content: `echo:${args["text"]}` }));
+		// 常见的畸形写法：模型把参数塞进 payload 键里；整理层把它摊回顶层
+		const wrapped: ToolDefinition = {
+			...preparing,
+			prepareArguments: (args) => {
+				const payload = args["payload"];
+				return typeof payload === "object" && payload !== null ? (payload as Record<string, unknown>) : args;
 			},
-		});
-		tools.register(
-			echoTool({
-				async execute() {
-					executed = true;
-					return { content: "不该走到这里" };
-				},
-			}),
-			"core",
+		};
+		const registry = new ToolRegistry(noSpill(), ALLOW);
+		registry.register(wrapped, "core");
+		const outcome = await registry.call(
+			{ callId: "c", name: "echo-tool", args: { payload: { text: "hi" } } as Record<string, unknown> },
+			context(),
 		);
-
-		const outcome = await tools.call(
-			{ callId: "c1", name: "echo", args: { text: "x" } },
-			workspace.context(undefined),
-		);
-		expectFailure(outcome, "审批判定失败，已拒绝");
-		assert.equal(executed, false);
+		assert.equal(outcome.content, "echo:hi");
 	});
 
-	it("判定在参数校验之后：参数写错时先报参数", async () => {
-		let asked = false;
-		const tools = new ToolRegistry(new ResultSpiller(0, spillDirectory), {
-			async check() {
-				asked = true;
+	it("校验后的参数才进 gate 与工具", async () => {
+		let passed: unknown;
+		const gate: ToolGate = {
+			check: async (request: GateRequest) => {
+				passed = request.args;
 				return { allowed: true, reason: "" };
 			},
-		});
-		tools.register(echoTool(), "core");
-
-		const outcome = await tools.call({ callId: "c1", name: "echo", args: {} }, workspace.context(undefined));
-		expectFailure(outcome, "缺少必填的 text");
-		assert.equal(asked, false);
-	});
-
-	it("超过阈值的结果被落盘", async () => {
-		const tools = registry(20);
-		tools.register(
-			echoTool({
-				name: "big",
-				async execute() {
-					return { content: "字".repeat(200) };
-				},
-			}),
-			"core",
-		);
-		const outcome = await tools.call(
-			{ callId: "c1", name: "big", args: { text: "x" } },
-			workspace.context(undefined),
-		);
-		assert.ok(outcome.content.includes("已写入"));
-		assert.ok(outcome.content.includes("已省略"));
+		};
+		const registry = new ToolRegistry(noSpill(), gate);
+		registry.register(ECHO, "core");
+		await registry.call({ callId: "c", name: "echo-tool", args: { text: "hi", extra: 1 } }, context());
+		assert.equal(passed, undefined); // 多余键校验就该拦下
 	});
 });

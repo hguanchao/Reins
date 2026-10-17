@@ -135,7 +135,7 @@ export class PluginHost {
 	 * 与插件命令放在同一份清单里：界面照同一份清单显示与转发，不必区分谁提供的。
 	 */
 	addCommand(command: PluginCommand): void {
-		if (this.#commands.has(command.name)) throw new Error(`命令 /${command.name} 重复注册`);
+		if (this.#commands.has(command.name)) throw new Error(`Command /${command.name} is already registered`);
 		this.#commands.set(command.name, command);
 	}
 
@@ -159,7 +159,7 @@ export class PluginHost {
 
 	async runCommand(name: string, args: string, context: CommandContext): Promise<void> {
 		const command = this.#commands.get(name);
-		if (command === undefined) throw new Error(`没有 /${name} 这条命令`);
+		if (command === undefined) throw new Error(`No such command: /${name}`);
 		await command.run(args, context);
 	}
 
@@ -190,7 +190,7 @@ export class PluginHost {
 	#api(pending: Pending): PluginApi {
 		const assertLive = (): void => {
 			if (pending.stale) {
-				throw new Error("这个插件的上下文已经失效：它被重载换掉了，要注册请等下一次装载");
+				throw new Error("This plugin context is stale: a reload replaced it; wait for the next load to register");
 			}
 		};
 
@@ -208,7 +208,7 @@ export class PluginHost {
 			registerCommand: (command) => {
 				assertLive();
 				if (this.#commands.has(command.name) || pending.commands.some((item) => item.name === command.name)) {
-					throw new Error(`命令 /${command.name} 重复注册`);
+					throw new Error(`Command /${command.name} is already registered`);
 				}
 				pending.commands.push(command);
 			},
@@ -223,14 +223,14 @@ export class PluginHost {
 			registerFrontend: (frontend) => {
 				assertLive();
 				if (this.#frontend !== undefined || pending.frontend !== undefined) {
-					throw new Error("交互界面已经注册过了，只能有一个");
+					throw new Error("A frontend is already registered; only one is allowed");
 				}
 				pending.frontend = frontend;
 			},
 			registerSessionStore: (store) => {
 				assertLive();
 				if (this.#sessionStore !== undefined || pending.store !== undefined) {
-					throw new Error("会话存储已经注册过了，只能有一个");
+					throw new Error("A session store is already registered; only one is allowed");
 				}
 				pending.store = store;
 			},

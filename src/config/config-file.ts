@@ -189,8 +189,8 @@ function parseConfigFile(source: string, file: string): ConfigFile {
 
 		const provider = readString(document, ["provider"]);
 		const model = readString(document, ["model"]);
-		if (provider === undefined) throw new ConfigError("缺少 provider");
-		if (model === undefined) throw new ConfigError("缺少 model");
+		if (provider === undefined) throw new ConfigError("Missing provider");
+		if (model === undefined) throw new ConfigError("Missing model");
 
 		const config: Config = {
 			provider,
@@ -224,7 +224,7 @@ export function readTextFile(file: string): string {
 	try {
 		source = readFileSync(file, "utf8");
 	} catch (error) {
-		throw new ConfigError(`读取失败：${describeError(error)}`, { file });
+		throw new ConfigError(`Cannot read file: ${describeError(error)}`, { file });
 	}
 	// 带 BOM 的文件在 Windows 上很常见，不该因此报解析错误
 	return source.startsWith("\uFEFF") ? source.slice(1) : source;
@@ -287,10 +287,10 @@ function readMcpServer(document: TomlDocument, name: string, path: readonly stri
 	const declaredType = readString(document, [...path, "type"]);
 
 	if (command !== undefined && url !== undefined) {
-		throw new ConfigError(`${describePath(path)} 不能同时设置 command 与 url`, locate(document, path));
+		throw new ConfigError(`${describePath(path)} cannot set both command and url`, locate(document, path));
 	}
 	if (command === undefined && url === undefined) {
-		throw new ConfigError(`${describePath(path)} 需要 command 或 url 之一`, locate(document, path));
+		throw new ConfigError(`${describePath(path)} needs either command or url`, locate(document, path));
 	}
 
 	let type: McpServerType;
@@ -300,16 +300,16 @@ function readMcpServer(document: TomlDocument, name: string, path: readonly stri
 		type = declaredType;
 	} else {
 		throw new ConfigError(
-			`${describePath([...path, "type"])} 只能是 stdio、http、sse 之一`,
+			`${describePath([...path, "type"])} must be one of stdio, http, sse`,
 			locate(document, [...path, "type"]),
 		);
 	}
 
 	if (type === "stdio" && command === undefined) {
-		throw new ConfigError(`${describePath(path)} 声明为 stdio 就必须设置 command`, locate(document, path));
+		throw new ConfigError(`${describePath(path)} declared as stdio must set command`, locate(document, path));
 	}
 	if (type !== "stdio" && url === undefined) {
-		throw new ConfigError(`${describePath(path)} 声明为 ${type} 就必须设置 url`, locate(document, path));
+			throw new ConfigError(`${describePath(path)} declared as ${type} must set url`, locate(document, path));
 	}
 
 	return {

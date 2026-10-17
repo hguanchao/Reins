@@ -3,43 +3,52 @@ import { describe, it } from "node:test";
 
 import { resolveApiKey } from "../../src/llm/api-keys.ts";
 
-const signal = new AbortController().signal;
+const SIGNAL = new AbortController().signal;
 
 describe("密钥解析", () => {
-	it("未声明时返回 undefined", async () => {
-		assert.equal(await resolveApiKey(undefined, signal), undefined);
+	it("未配置返回 undefined", async () => {
+		assert.equal(await resolveApiKey(undefined, SIGNAL), undefined);
 	});
 
-	it("字面值原样返回", async () => {
-		assert.equal(await resolveApiKey("sk-abc", signal), "sk-abc");
+	it("无插值的字面值原样返回", async () => {
+		assert.equal(await resolveApiKey("literal-key", SIGNAL), "literal-key");
 	});
 
-	it("展开环境变量插值的两种写法", async () => {
-		process.env["REINS_TEST_KEY"] = "from-env";
+	it("$NAME 与 ${NAME} 插值", async () => {
+		process.env["REINS_TEST_KEY"] = "secret-1234";
 		try {
-			assert.equal(await resolveApiKey("$REINS_TEST_KEY", signal), "from-env");
-			assert.equal(await resolveApiKey("${REINS_TEST_KEY}", signal), "from-env");
-			assert.equal(await resolveApiKey("prefix-$REINS_TEST_KEY", signal), "prefix-from-env");
+			assert.equal(await resolveApiKey("$REINS_TEST_KEY", SIGNAL), "secret-1234");
+			assert.equal(await resolveApiKey("prefix-${REINS_TEST_KEY}-suffix", SIGNAL), "prefix-secret-1234-suffix");
 		} finally {
 			delete process.env["REINS_TEST_KEY"];
 		}
 	});
 
-	it("引用的环境变量未设置时报错而不是当成空串", async () => {
-		// 空串会让端点回一个认证失败，把「忘了设变量」伪装成「密钥不对」
-		await assert.rejects(() => resolveApiKey("${REINS_TEST_MISSING_KEY}", signal), /未设置/);
+	it("环境变量未设置时报错,不出空串", async () => {
+		await assert.rejects(() => resolveApiKey("$REINS_DEFINITELY_MISSING_VAR", SIGNAL), /environment variable REINS_DEFINITELY_MISSING_VAR/);
 	});
 
-	it("以 ! 开头的写法执行命令并取标准输出的首尾空白去掉后的内容", async () => {
-		const key = await resolveApiKey("!echo  from-command  ", signal);
+	it("命令形式:取命令输出作为密钥", async () => {
+		const key = await resolveApiKey("!node -e \"process.stdout.write('from-command')\"", SIGNAL);
 		assert.equal(key, "from-command");
 	});
 
-	it("命令没有输出时报错", async () => {
-		await assert.rejects(() => resolveApiKey("!node -e \"\"", signal), /没有输出/);
+	it("命令形式:前头叹号后无命令报错", async () => {
+		await assert.rejects(() => resolveApiKey("!", SIGNAL), /no command after the leading/);
 	});
 
-	it("! 后面没有命令时报错", async () => {
-		await assert.rejects(() => resolveApiKey("!   ", signal), /没有命令/);
+	it("命令形式:无输出报错", async () => {
+		await assert.rejects(() => resolveApiKey("!node -e ''", SIGNAL), /produced no output/);
+	});
+
+	it("命令形式:命令失败向上冒泡", async () => {
+		await assert.rejects(
+			() => resolveApiKey("!node -e \"process.exit(2)\"", SIGNAL),
+			(CommandError) => CommandError !== undefined,
+		);
+	});
+
+	it("字面值里形如 \\$NAME 的部分也按插值处理（非转义语法）", async () => {
+		await assert.rejects(() => resolveApiKey("cost $200 worth", SIGNAL), /environment variable 200/);
 	});
 });

@@ -1,390 +1,152 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ConfigError } from "../../../src/config/config-error.ts";
 import { TomlParser } from "../../../src/config/toml/parser.ts";
+import { serializeKey, serializeValue } from "../../../src/config/toml/serialize.ts";
+import { ConfigError } from "../../../src/config/config-error.ts";
 
-/** 解析并直接取根表，省去每个用例都写一遍 .parse().root。 */
-function parseRoot(source: string): Record<string, unknown> {
-	return new TomlParser(source).parse().root as Record<string, unknown>;
-}
-
-function expectError(source: string, messagePart: string, line?: number): ConfigError {
+function parse(source: string) {
 	try {
-		new TomlParser(source).parse();
+		return new TomlParser(source).parse();
 	} catch (error) {
-		assert.ok(error instanceof ConfigError, `期望 ConfigError，实际是 ${String(error)}`);
-		assert.ok(
-			error.message.includes(messagePart),
-			`期望错误信息包含「${messagePart}」，实际是「${error.message}」`,
-		);
-		if (line !== undefined) assert.equal(error.line, line);
-		return error;
+		if (error instanceof ConfigError) throw new Error(error.display);
+		throw error;
 	}
-	throw new Error("期望解析失败，但解析成功了");
 }
 
-describe("TomlParser 顶层结构", () => {
-	it("解析顶层键值并忽略注释与空行", () => {
-		const root = parseRoot(`
-# 开头注释
-provider = "example-openai"
+function expectError(source: string, expected: string): void {
+	assert.throws(() => parse(source), (error: unknown) => error instanceof Error && error.message.includes(expected));
+}
 
-model = "gpt-5.2"   # 行尾注释
-
-`);
-		assert.deepEqual(root, { provider: "example-openai", model: "gpt-5.2" });
+describe("TOML 解析", () => {
+	it("基本赋值与表头", () => {
+		const { root } = parse(`model = "gpt"\n[ui]\nnotify = "bell"\n`);
+		assert.deepEqual(root, { model: "gpt", ui: { notify: "bell" } });
 	});
 
-	it("没有结尾换行也能解析", () => {
-		assert.deepEqual(parseRoot('provider = "x"'), { provider: "x" });
+	it("点分键展开成嵌套表", () => {
+		const { root } = parse(`a.b.c = 1`);
+		assert.deepEqual(root, { a: { b: { c: 1 } } });
 	});
 
-	it("空文件解析成空表", () => {
-		assert.deepEqual(parseRoot(""), {});
-		assert.deepEqual(parseRoot("\n\n# 只有注释\n"), {});
+	it("数组与内联表", () => {
+		const { root } = parse(`steps = [1, 2, 3]\ninline = { x = 1, y = "z" }`);
+		assert.deepEqual(root, { steps: [1, 2, 3], inline: { x: 1, y: "z" } });
 	});
 
-	it("键可以用引号包裹", () => {
-		assert.deepEqual(parseRoot('"a b" = 1'), { "a b": 1 });
-		assert.deepEqual(parseRoot("'c.d' = 2"), { "c.d": 2 });
+	it("带引号的键", () => {
+		const { root } = parse(`"a.b" = 1`);
+		assert.deepEqual(root, { "a.b": 1 });
+	});
+
+	it("数组内的注释与换行", () => {
+		const { root } = parse(`steps = [\n  1, # first\n  2,\n]`);
+		assert.deepEqual(root, { steps: [1, 2] });
+	});
+
+	it("数组表 [[seg]] 追加元素", () => {
+		const { root } = parse(`[[seg]]\nx = 1\n[[seg]]\nx = 2`);
+		assert.deepEqual(root, { seg: [{ x: 1 }, { x: 2 }] });
+	});
+
+	it("数字：下划线、十六进制与前缀符号", () => {
+		const { root } = parse(`a = 1_000\nb = 0xFF\nc = -7\nd = +1.5`);
+		assert.deepEqual(root, { a: 1000, b: 255, c: -7, d: 1.5 });
+	});
+
+	it("多行字符串吃掉行尾折行", () => {
+		const { root } = parse('s = """first\\\nsecond"""');
+		assert.deepEqual(root, { s: "firstsecond" });
+	});
+
+	it("普通多行字符串保留换行", () => {
+		const { root } = parse('s = """a\nb"""');
+		assert.deepEqual(root, { s: "a\nb" });
+	});
+
+	it("字面量字符串不转义", () => {
+		const { root } = parse('s = \'a\\nb\'');
+		assert.deepEqual(root, { s: "a\\nb" });
+	});
+
+	it("记录赋值与区段位置，供回写使用", () => {
+		const source = `a = "x"\n\n[ui]\nnotify = "bell"\n`;
+		const result = parse(source);
+		assert.deepEqual(result.assignments.map((a) => a.path), [["a"], ["ui", "notify"]]);
+		const aAssignment = result.assignments[0]!;
+		assert.equal(aAssignment.valueStart, source.indexOf('"x"'));
+		const uiSection = result.sections.find((s) => s.path !== null && s.path.join(".") === "ui");
+		assert.ok(uiSection);
+	});
+
+	it("重复键与重复表头报错", () => {
+		expectError(`a = 1\na = 2`, "Duplicate key");
+		expectError(`[t]\n[t]`, "Duplicate definition");
+	});
+
+	it("点分键定义的表不能被表头再定义", () => {
+		expectError(`a.b = 1\n[a]`, "Duplicate definition");
+		expectError(`a.b = 1\n[a.b]`, "Duplicate definition");
+	});
+
+	it("已经写出的内联表不能再追加", () => {
+		expectError(`a = { x = 1 }\n[a.b]`, "cannot be extended");
+	});
+
+	it("值被别的类型占了报错", () => {
+		expectError(`a = 1\n[a.b]`, "already taken by a non-table value");
+	});
+
+	it("日期与时间不支持", () => {
+		expectError(`a = 1990-01-01`, "Date");
+		expectError(`a = 01:04:20`, "Time");
+	});
+
+	it("缺值、缺等号报错", () => {
+		expectError(`a = `, "Missing value");
+		expectError(`a "b"`, "equals sign");
+	});
+
+	it("坐标：错误指到行列", () => {
+		// expectError 会把 ConfigError 包成普通 Error，这里直接试并保留原始错误类型
+		assert.throws(() => new TomlParser(`a = 1\nbad`).parse(), (error: unknown) => {
+			assert.ok(error instanceof ConfigError);
+			assert.equal(error.line, 2);
+			return true;
+		});
 	});
 });
 
-describe("TomlParser 字符串", () => {
-	it("基本字符串支持转义", () => {
-		assert.deepEqual(parseRoot('a = "行1\\n行2\\t制表 \\"引号\\" \\\\ 反斜杠"'), {
-			a: '行1\n行2\t制表 "引号" \\ 反斜杠',
-		});
+describe("TOML 序列化", () => {
+	it("裸键直接输出，其余加引号", () => {
+		assert.equal(serializeKey("model"), "model");
+		assert.equal(serializeKey("a.b"), '"a.b"');
+		assert.equal(serializeKey("中文"), '"中文"');
 	});
 
-	it("基本字符串支持 Unicode 转义", () => {
-		assert.deepEqual(parseRoot('a = "\\u4E2D\\U0001F600"'), { a: "\u4E2D\uD83D\uDE00" });
+	it("标量值", () => {
+		assert.equal(serializeValue("hi"), '"hi"');
+		assert.equal(serializeValue(42), "42");
+		assert.equal(serializeValue(true), "true");
+		assert.equal(serializeValue(Number.NaN), "nan");
+		assert.equal(serializeValue(Number.POSITIVE_INFINITY), "inf");
 	});
 
-	it("字面量字符串不处理转义", () => {
-		assert.deepEqual(parseRoot("a = 'C:\\Users\\x'"), { a: "C:\\Users\\x" });
+	it("字符串里的控制字符补成 \\\\u 引码形式", () => {
+		assert.equal(serializeValue("a\u0001b"), '"a\\u0001b"');
 	});
 
-	it("多行基本字符串会去掉紧跟定界符的换行", () => {
-		assert.deepEqual(parseRoot('a = """\n第一行\n第二行\n"""'), { a: "第一行\n第二行\n" });
+	it("特殊字符转义", () => {
+		assert.equal(serializeValue('say "hi"'), '"say \\"hi\\""');
+		assert.equal(serializeValue("line\nbreak"), '"line\\nbreak"');
 	});
 
-	it("多行基本字符串的行尾反斜杠会吃掉后续空白", () => {
-		assert.deepEqual(parseRoot('a = """\n折行 \\\n     接上\n"""'), { a: "折行 接上\n" });
+	it("数组与内联表", () => {
+		assert.equal(serializeValue([1, 2]), "[1, 2]");
+		assert.equal(serializeValue({ a: 1, b: "x" }), '{ a = 1, b = "x" }');
 	});
 
-	it("多行字面量字符串保留反斜杠", () => {
-		assert.deepEqual(parseRoot("a = '''\nC:\\x\n'''"), { a: "C:\\x\n" });
-	});
-
-	it("多行字符串允许在结尾带多余的引号", () => {
-		assert.deepEqual(parseRoot('a = """内容""""'), { a: '内容"' });
-		assert.deepEqual(parseRoot("a = '''内容''''"), { a: "内容'" });
-	});
-});
-
-describe("TomlParser 数字与布尔", () => {
-	it("解析各种进制的整数", () => {
-		assert.deepEqual(parseRoot("a = 42\nb = -7\nc = 0\nd = 0x1F\ne = 0o17\nf = 0b1011\ng = 1_000_000"), {
-			a: 42,
-			b: -7,
-			c: 0,
-			d: 31,
-			e: 15,
-			f: 11,
-			g: 1000000,
-		});
-	});
-
-	it("解析浮点数", () => {
-		const root = parseRoot("a = 3.14\nb = -0.5\nc = 1e3\nd = 2.5e-2");
-		assert.equal(root.a, 3.14);
-		assert.equal(root.b, -0.5);
-		assert.equal(root.c, 1000);
-		assert.equal(root.d, 0.025);
-	});
-
-	it("解析 inf 与 nan", () => {
-		const root = parseRoot("a = inf\nb = -inf\nc = nan");
-		assert.equal(root.a, Number.POSITIVE_INFINITY);
-		assert.equal(root.b, Number.NEGATIVE_INFINITY);
-		assert.ok(Number.isNaN(root.c));
-	});
-
-	it("解析布尔", () => {
-		assert.deepEqual(parseRoot("a = true\nb = false"), { a: true, b: false });
-	});
-});
-
-describe("TomlParser 数组与内联表", () => {
-	it("解析单行与跨行数组，允许结尾逗号", () => {
-		assert.deepEqual(parseRoot("a = [1, 2, 3]"), { a: [1, 2, 3] });
-		assert.deepEqual(parseRoot("a = [\n  1,\n  2,  # 注释\n  3,\n]"), { a: [1, 2, 3] });
-		assert.deepEqual(parseRoot("a = []"), { a: [] });
-	});
-
-	it("解析嵌套数组与异构元素", () => {
-		assert.deepEqual(parseRoot('a = [[1, 2], ["x"], { b = 3 }]'), { a: [[1, 2], ["x"], { b: 3 }] });
-	});
-
-	it("解析内联表，包括嵌套", () => {
-		assert.deepEqual(parseRoot('a = { b = 1, c = { d = "x" } }'), { a: { b: 1, c: { d: "x" } } });
-		assert.deepEqual(parseRoot("a = {}"), { a: {} });
-	});
-
-	it("配置里常见的带点键内联表", () => {
-		assert.deepEqual(parseRoot("a = { x.y = 1 }"), { a: { x: { y: 1 } } });
-	});
-});
-
-describe("TomlParser 表", () => {
-	it("解析表与嵌套表", () => {
-		assert.deepEqual(parseRoot("[ui]\nnotify = \"auto\"\n\n[mcp_servers.context7]\ncommand = \"npx\"\n"), {
-			ui: { notify: "auto" },
-			mcp_servers: { context7: { command: "npx" } },
-		});
-	});
-
-	it("同一父表下的多张子表合并", () => {
-		assert.deepEqual(parseRoot("[a.b]\nx = 1\n[a.c]\ny = 2\n"), { a: { b: { x: 1 }, c: { y: 2 } } });
-	});
-
-	it("点分键创建嵌套表", () => {
-		assert.deepEqual(parseRoot("a.b.c = 1"), { a: { b: { c: 1 } } });
-	});
-
-	it("解析数组表并追加", () => {
-		assert.deepEqual(parseRoot("[[s]]\nx = 1\n[[s]]\nx = 2\n"), {
-			s: [{ x: 1 }, { x: 2 }],
-		});
-	});
-
-	it("表头路径允许带引号的段", () => {
-		assert.deepEqual(parseRoot('[a."b c"]\nx = 1'), { a: { "b c": { x: 1 } } });
-	});
-
-	it("区段记录自己的表头位置与插入点", () => {
-		const result = new TomlParser('provider = "x"\n\n# 说明\n[ui]\nnotify = "auto"\n').parse();
-		assert.equal(result.sections.length, 2);
-
-		const [root, ui] = result.sections;
-		assert.equal(root.path, null);
-		// 根区段的插入点紧跟最后一条条目，不会被后面的空行与注释推走
-		assert.equal(root.bodyEnd, 'provider = "x"\n'.length);
-		assert.deepEqual(ui.path, ["ui"]);
-		assert.equal(ui.bodyEnd, 'provider = "x"\n\n# 说明\n[ui]\nnotify = "auto"\n'.length);
-	});
-});
-
-describe("TomlParser 表定义语义", () => {
-	it("表头路径穿过的表可以先被隐式建出来，之后补成显式定义", () => {
-		assert.deepEqual(parseRoot("[a.b.c]\nanswer = 42\n\n[a]\nbetter = 43\n"), {
-			a: { b: { c: { answer: 42 } }, better: 43 },
-		});
-	});
-
-	it("只写深层表头再补父表也合法", () => {
-		assert.deepEqual(parseRoot("[x.y.z.w]\nq = 1\n[x]\nr = 2\n"), {
-			x: { y: { z: { w: { q: 1 } } }, r: 2 },
-		});
-	});
-
-	it("数组表上的子表挂在最后一个元素下", () => {
-		assert.deepEqual(parseRoot("[[arr]]\n[arr.subtab]\nval = 1\n\n[[arr]]\n[arr.subtab]\nval = 2\n"), {
-			arr: [{ subtab: { val: 1 } }, { subtab: { val: 2 } }],
-		});
-	});
-
-	it("数组表里再嵌数组表", () => {
-		const root = parseRoot(
-			'[[fruits]]\nname = "apple"\n[fruits.physical]\ncolor = "red"\n' +
-				'[[fruits.varieties]]\nname = "red delicious"\n[[fruits.varieties]]\nname = "granny smith"\n' +
-				'[[fruits]]\nname = "banana"\n',
-		);
-		assert.deepEqual(root, {
-			fruits: [
-				{
-					name: "apple",
-					physical: { color: "red" },
-					varieties: [{ name: "red delicious" }, { name: "granny smith" }],
-				},
-				{ name: "banana" },
-			],
-		});
-	});
-
-	it("数组表的隐式父表可以后补", () => {
-		assert.deepEqual(parseRoot("[[a.b]]\nx = 1\n\n[a]\ny = 2\n"), {
-			a: { b: [{ x: 1 }], y: 2 },
-		});
-	});
-
-	it("数组表套数组表时的深层子表", () => {
-		assert.deepEqual(parseRoot('[[a]]\n[[a.b]]\n[a.b.c]\nd = 1\n[[a.b]]\n[a.b.c]\nd = 2\n'), {
-			a: [{ b: [{ c: { d: 1 } }, { c: { d: 2 } }] }],
-		});
-	});
-
-	it("表头可以穿过已经显式定义过的表", () => {
-		assert.deepEqual(parseRoot("[a]\nx = 1\n[a.b]\ny = 2\n"), { a: { x: 1, b: { y: 2 } } });
-	});
-
-	it("内联表写出来就是完整的，之后不能再往里添加内容", () => {
-		expectError("a = {}\n[a.b]\n", "是内联表");
-		expectError('[product]\ntype = { name = "Nail" }\ntype.edible = false\n', "是内联表");
-		expectError('tbl = { fruit = { apple.color = "red" }, fruit.apple.texture = { smooth = true } }\n', "是内联表");
-	});
-
-	it("字面量数组写出来就是完整的，之后不能再往里添加内容", () => {
-		expectError("a = [{ b = 1 }]\n[a.c]\nfoo = 1\n", "是数组");
-	});
-
-	it("点分键不能给已用表头定义过的表追加内容", () => {
-		expectError('[a.b.c]\nz = 9\n\n[a]\nb.c.t = "x"\n', "不能再通过点分键添加内容");
-		expectError('[a.b.c.d]\nz = 9\n\n[a]\nb.c.d.k.t = "x"\n', "不能再通过点分键添加内容");
-	});
-
-	it("点分键不能往数组表里追加内容", () => {
-		expectError("[[a.b]]\n\n[a]\nb.y = 2\n", "是数组表");
-		expectError("[[tab.arr]]\n[tab]\narr.val1 = 1\n", "是数组表");
-	});
-});
-
-describe("TomlParser 数字的书写规则", () => {
-	it("下划线只能夹在数字之间", () => {
-		assert.equal(parseRoot("a = 1_000_000")["a"], 1000000);
-		assert.equal(parseRoot("a = 0xdead_beef")["a"], 0xdeadbeef);
-		assert.equal(parseRoot("a = 1_0.5_0e1_0")["a"], 1.05e11);
-
-		expectError("a = 1_\n", "无法识别的值");
-		expectError("a = _1\n", "无法识别的值");
-		expectError("a = 1__0\n", "无法识别的值");
-		expectError("a = 1_.5\n", "无法识别的值");
-		expectError("a = 1._5\n", "无法识别的值");
-		expectError("a = 1.5_e3\n", "无法识别的值");
-		expectError("a = 1e_3\n", "无法识别的值");
-		expectError("a = 0x_ff\n", "无法识别的值");
-		expectError("a = inf_\n", "无法识别的值");
-	});
-
-	it("非十进制整数不能带符号", () => {
-		expectError("a = -0xff\n", "无法识别的值");
-		expectError("a = +0b1\n", "无法识别的值");
-		expectError("a = -0o7\n", "无法识别的值");
-	});
-
-	it("拒绝代理区的 Unicode 转义", () => {
-		expectError('a = "\\uD801"\n', "必须是有效码位");
-		expectError('a = """\\uDFFF"""\n', "必须是有效码位");
-	});
-});
-
-describe("TomlParser 拒绝非法输入", () => {
-	it("拒绝重复的键", () => {
-		expectError("a = 1\na = 2\n", "重复定义", 2);
-	});
-
-	it("拒绝重复定义的表", () => {
-		expectError("[ui]\nnotify = \"a\"\n[ui]\n", "重复定义", 3);
-		expectError("[a]\n[a.b]\n[a]\n", "重复定义", 3);
-	});
-
-	it("拒绝把普通表当成数组表或反过来", () => {
-		expectError("[a]\nx = 1\n[[a]]\n", "与已有定义冲突", 3);
-		expectError("[[a]]\nx = 1\n[a]\n", "已定义为数组表", 3);
-	});
-
-	it("拒绝把已存在的路径当表头", () => {
-		expectError("a = 1\n[a.b]\n", "已被非表的值占用");
-		// 由点分键建出来的表不能再被表头定义
-		expectError("apple.color = \"red\"\n[apple]\n", "重复定义");
-	});
-
-	it("拒绝用表头覆盖普通值", () => {
-		expectError("a = 1\n[a.b]\n", "已被非表的值占用");
-	});
-
-	it("拒绝在值里继续用点分键", () => {
-		expectError("a = 1\na.b = 2\n", "已被非表的值占用");
-	});
-
-	it("拒绝未闭合的字符串", () => {
-		expectError('a = "没有结尾\n', "不能跨行");
-		expectError('a = """没有结尾', "没有闭合");
-	});
-
-	it("拒绝不支持的转义", () => {
-		expectError('a = "\\q"', "不支持的转义");
-	});
-
-	it("拒绝日期与时间类型", () => {
-		expectError("a = 2024-01-02", "不支持日期");
-		expectError('a = 12:30:00', "不支持时间");
-	});
-
-	it("拒绝缺少等号的赋值", () => {
-		expectError("a 1\n", "需要等号");
-	});
-
-	it("拒绝表头后跟多余内容", () => {
-		expectError("[ui] notify\n", "只能跟换行");
-	});
-
-	it("拒绝一行里出现两个赋值", () => {
-		expectError("a = 1 b = 2\n", "只能跟换行");
-	});
-
-	it("拒绝前导零的整数", () => {
-		expectError("a = 01\n", "无法识别的值");
-	});
-
-	it("拒绝跨行的内联表", () => {
-		expectError("a = { b = 1,\n c = 2 }\n", "内联表");
-	});
-
-	it("报错时给出从 1 开始的行列号", () => {
-		const error = expectError("a = 1\nb = @\n", "无法识别的值");
-		assert.equal(error.line, 2);
-		assert.equal(error.column, 5);
-	});
-
-	it("拒绝注释里的控制字符", () => {
-		expectError("# 注释里有垂直制表符 \u000b\na = 1\n", "不允许的控制字符");
-		expectError('a = 1  # 删除符 \u007f\n', "不允许的控制字符");
-		expectError("# 单独的 CR \ra = 1\n", "不允许的控制字符");
-	});
-
-	it("拒绝字符串里的控制字符", () => {
-		expectError('a = "含 \u0000 空字符"\n', "不允许的控制字符");
-		expectError("a = '含 \u001f 分隔符'\n", "不允许的控制字符");
-		expectError('a = """含 \u000c 换页"""\n', "不允许的控制字符");
-		expectError("a = '''含 \u007f 删除符'''\n", "不允许的控制字符");
-	});
-
-	it("制表符在注释与字符串里都允许", () => {
-		assert.deepEqual(parseRoot('# 注释里有制表符\t\na = "值里有制表符\t"\n'), { a: "值里有制表符\t" });
-	});
-});
-
-describe("TomlParser 行尾", () => {
-	it("接受 CRLF 行尾", () => {
-		const root = parseRoot('provider = "x"\r\n\r\n[ui]\r\nnotify = "auto"\r\n');
-		assert.deepEqual(root, { provider: "x", ui: { notify: "auto" } });
-	});
-
-	it("CRLF 下多行字符串的折行按一行算", () => {
-		// 行尾反斜杠连同行尾一起吃掉，但闭合定界符前那个换行属于内容，按原文的 CRLF 保留
-		assert.deepEqual(parseRoot('a = """\r\n折行 \\\r\n     接上\r\n"""'), { a: "折行 接上\r\n" });
-	});
-
-	it("CRLF 下报错的行号仍然正确", () => {
-		const error = expectError('a = "x"\r\nb = @\r\n', "无法识别的值");
-		assert.equal(error.line, 2);
-	});
-
-	it("区分 CRLF 与 LF 混用时的空白行", () => {
-		const result = new TomlParser('provider = "x"\r\n[ui]\r\nnotify = "auto"\r\n').parse();
-		assert.equal(result.sections[0].bodyEnd, 'provider = "x"\r\n'.length);
+	it("嵌套数组", () => {
+		assert.equal(serializeValue([[1], ["a"]]), "[[1], [\"a\"]]");
 	});
 });

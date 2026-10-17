@@ -48,7 +48,7 @@ export class Session implements SessionPort {
 
 	constructor(options: SessionOptions) {
 		if (options.file !== null && options.writer === undefined) {
-			throw new Error("把会话写到文件需要会话存储");
+			throw new Error("Writing a session to a file requires a session store");
 		}
 		this.id = options.id;
 		this.cwd = options.cwd;
@@ -68,11 +68,11 @@ export class Session implements SessionPort {
 	static open(file: string, store: SessionStore): Session {
 		const opened = store.read(file);
 		if (opened.header === undefined) {
-			throw new Error(`会话文件缺少首行（会话头），无法接续：${file}`);
+			throw new Error(`Session file has no header line and cannot be resumed: ${file}`);
 		}
 		if (opened.header.version !== SESSION_VERSION) {
 			throw new Error(
-				`会话文件版本 ${opened.header.version} 与当前版本 ${SESSION_VERSION} 不一致，无法接续：${file}`,
+				`Session file version ${opened.header.version} does not match the current version ${SESSION_VERSION} and cannot be resumed: ${file}`,
 			);
 		}
 		return new Session({
@@ -102,7 +102,7 @@ export class Session implements SessionPort {
 		},
 	): Session {
 		const at = options.at ?? source.leafId;
-		if (at === null) throw new Error("这个会话还没有内容，没有什么可以分叉的");
+		if (at === null) throw new Error("This session has no entries to fork from");
 
 		const path = pathTo(source.entries(), at);
 		const forkedFrom: ForkOrigin = { session: source.id, entry: at };
@@ -133,7 +133,7 @@ export class Session implements SessionPort {
 	}
 
 	async append(entry: NewSessionEntry): Promise<void> {
-		if (this.#closed) throw new Error("会话已关闭");
+		if (this.#closed) throw new Error("Session is closed");
 
 		const id = this.#nextId();
 		const complete = {

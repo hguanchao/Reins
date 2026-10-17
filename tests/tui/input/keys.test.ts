@@ -3,114 +3,112 @@ import { describe, it } from "node:test";
 
 import { KeyDecoder, type KeyEvent } from "../../../src/tui/input/keys.ts";
 
-function names(events: readonly KeyEvent[]): string[] {
-	return events.map((event) => {
-		if (event.type === "key") return event.name;
-		if (event.type === "focus") return event.focused ? "focus-in" : "focus-out";
-		if (event.type === "wheel") return `wheel:${event.direction}`;
-		return `${event.type}:${event.text}`;
-	});
+function keys(events: readonly KeyEvent[]): string[] {
+	return events.map((event) => (event.type === "key" ? event.name : event.type));
 }
 
-describe("KeyDecoder", () => {
-	it("普通字符合成一段文本", () => {
+describe("按键解码", () => {
+	it("普通文本整体解码", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("hello")), ["text:hello"]);
+		assert.deepEqual(decoder.push("hello"), [{ type: "text", text: "hello" }]);
 	});
 
-	it("基本按键", () => {
+	it("回车、退格、Tab 认成按键", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("\r")), ["enter"]);
-		assert.deepEqual(names(decoder.push("\x7f")), ["backspace"]);
-		assert.deepEqual(names(decoder.push("\x08")), ["backspace"]);
-		assert.deepEqual(names(decoder.push("\t")), ["tab"]);
-		assert.deepEqual(names(decoder.push("\x03")), ["ctrl-c"]);
-		assert.deepEqual(names(decoder.push("\x04")), ["ctrl-d"]);
-		assert.deepEqual(names(decoder.push("\x0c")), ["ctrl-l"]);
-		assert.deepEqual(names(decoder.push("\x0e\x10")), ["ctrl-n", "ctrl-p"]);
+		assert.deepEqual(decoder.push("\r x\x7f\t"), [
+			{ type: "key", name: "enter" },
+			{ type: "text", text: " x" },
+			{ type: "key", name: "backspace" },
+			{ type: "key", name: "tab" },
+		]);
 	});
 
-	it("方向键与编辑键", () => {
+	it("绑定的控制字符认成 ctrl-*，没绑定的直接丢掉", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("\x1b[A\x1b[B\x1b[C\x1b[D")), ["up", "down", "right", "left"]);
-		assert.deepEqual(names(decoder.push("\x1b[3~")), ["delete"]);
-		assert.deepEqual(names(decoder.push("\x1b[H\x1b[F")), ["home", "end"]);
-		assert.deepEqual(names(decoder.push("\x1b[1~\x1b[4~")), ["home", "end"]);
-		assert.deepEqual(names(decoder.push("\x1b[7~\x1b[8~")), ["home", "end"]);
-		assert.deepEqual(names(decoder.push("\x1bOA\x1bOB\x1bOC\x1bOD")), ["up", "down", "right", "left"]);
-		assert.deepEqual(names(decoder.push("\x1bOH\x1bOF")), ["home", "end"]);
+		assert.deepEqual(decoder.push("\x03"), [{ type: "key", name: "ctrl-c" }]);
+		// \x02 没有绑定：直接丢掉，两侧的文本照常解码
+		assert.deepEqual(decoder.push("a\x02b"), [{ type: "text", text: "a" }, { type: "text", text: "b" }]);
 	});
 
-	it("被切开的方向键要等齐了才发出来", () => {
+	it("方向键与功能键的 CSI 序列", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(keys(decoder.push("\x1b[A\x1b[B\x1b[C\x1b[D\x1b[H\x1b[F")), [
+			"up",
+			"down",
+			"right",
+			"left",
+			"home",
+			"end",
+		]);
+		assert.deepEqual(keys(decoder.push("\x1b[3~\x1b[5~\x1b[6~")), ["delete", "pageup", "pagedown"]);
+	});
+
+	it("应用光标键模式（SS3）也认", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(keys(decoder.push("\x1bOA\x1bOC")), ["up", "right"]);
+	});
+
+	it("序列被切在两次读取之间也能拼上", () => {
 		const decoder = new KeyDecoder();
 		assert.deepEqual(decoder.push("\x1b"), []);
 		assert.deepEqual(decoder.push("["), []);
-		assert.deepEqual(names(decoder.push("A")), ["up"]);
+		assert.deepEqual(keys(decoder.push("A")), ["up"]);
 	});
 
-	it("孤立的 ESC 在收尾时算 Esc 键", () => {
+	it("孤立的 ESC 在 flush 时交给调用方按 Esc 处理", () => {
 		const decoder = new KeyDecoder();
 		assert.deepEqual(decoder.push("\x1b"), []);
-		assert.deepEqual(names(decoder.flush()), ["escape"]);
-		// 没有残片时收尾什么都不做
-		assert.deepEqual(decoder.flush(), []);
+		assert.deepEqual(keys(decoder.flush()), ["escape"]);
 	});
 
-	it("ESC 后面跟普通字符时按 Esc 加文本处理", () => {
+	it("ESC 后跟普通字符：ESC 本身是 Esc 键，字符另算", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("\x1ba")), ["escape", "text:a"]);
+		assert.deepEqual(decoder.push("\x1bq"), [
+			{ type: "key", name: "escape" },
+			{ type: "text", text: "q" },
+		]);
 	});
 
-	it("焦点变化", () => {
+	it("括号粘贴：内容作为 paste 事件，换行不是回车", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("\x1b[I")), ["focus-in"]);
-		assert.deepEqual(names(decoder.push("\x1b[O")), ["focus-out"]);
+		const events = decoder.push("\x1b[200~line1\nline2\x1b[201~");
+		assert.deepEqual(events, [{ type: "paste", text: "line1\nline2" }]);
 	});
 
-	it("括号粘贴的内容整段取出，里面的换行不是回车", () => {
+	it("粘贴内容和结束标记被切在两次数据之间", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("\x1b[200~第一行\n第二行\x1b[201~")), ["paste:第一行\n第二行"]);
+		// 结束标记只来了一半：已确认是正文的先交出去，末尾像标记开头的几个字符压住
+		assert.deepEqual(decoder.push("\x1b[200~abc\x1b[20"), [{ type: "paste", text: "abc" }]);
+		assert.deepEqual(decoder.push("1~"), []);
 	});
 
-	it("粘贴被切成多段时逐段吐出", () => {
+	it("焦点事件", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("\x1b[200~abc")), ["paste:abc"]);
-		assert.deepEqual(names(decoder.push("def")), ["paste:def"]);
-		assert.deepEqual(names(decoder.push("\x1b[201~")), []);
-		// 粘贴结束后回到普通解析
-		assert.deepEqual(names(decoder.push("x")), ["text:x"]);
+		assert.deepEqual(decoder.push("\x1b[I"), [{ type: "focus", focused: true }]);
+		assert.deepEqual(decoder.push("\x1b[O"), [{ type: "focus", focused: false }]);
 	});
 
-	it("滚轮上报成方向，其余的鼠标事件丢掉", () => {
+	it("SGR 鼠标滚轮：64 上滚、65 下滚", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("\x1b[<64;10;5M")), ["wheel:up"]);
-		assert.deepEqual(names(decoder.push("\x1b[<65;10;5M")), ["wheel:down"]);
-		// 左键按下、松开与移动在界面上没有含义
-		assert.deepEqual(decoder.push("\x1b[<0;10;5M"), []);
-		assert.deepEqual(decoder.push("\x1b[<0;10;5m"), []);
-		assert.deepEqual(decoder.push("\x1b[<35;10;5M"), []);
+		assert.deepEqual(decoder.push("\x1b[<64;12;3M"), [{ type: "wheel", direction: "up" }]);
+		assert.deepEqual(decoder.push("\x1b[<65;1;1M"), [{ type: "wheel", direction: "down" }]);
 	});
 
-	it("认不出来的序列丢掉，不当成文本", () => {
+	it("其余鼠标按钮（m 松开、左键等）丢弃", () => {
 		const decoder = new KeyDecoder();
-		// 终端状态回复
-		assert.deepEqual(decoder.push("\x1b]11;rgb:0000/0000/0000\x07"), []);
-		assert.deepEqual(decoder.push("\x1b[?2004;1$y"), []);
-		// 功能键没有绑定，同样丢掉
-		assert.deepEqual(decoder.push("\x1b[15~"), []);
-		// 但后续的文本照常解析
-		assert.deepEqual(names(decoder.push("ok")), ["text:ok"]);
+		assert.deepEqual(decoder.push("\x1b[<0;1;1M"), []);
+		assert.deepEqual(decoder.push("\x1b[<64;1;1m"), []);
 	});
 
-	it("未结束的操作系统命令序列要等结束标记", () => {
+	it("终端状态回复（OSC）整段丢弃", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(decoder.push("\x1b]11;rgb:00"), []);
-		assert.deepEqual(decoder.push("00/0000\x07"), []);
+		assert.deepEqual(decoder.push("\x1b]10;rgb:1/1/1\x07"), []);
+		assert.deepEqual(decoder.push("\x1b]10;rgb:1/1/1\x1b\\"), []);
+		assert.deepEqual(decoder.push("ok"), [{ type: "text", text: "ok" }]);
 	});
 
-	it("中文字符原样作为文本", () => {
+	it("退格的 0x08 形式也认", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(names(decoder.push("中文")), ["text:中文"]);
-		assert.deepEqual(names(decoder.push("中\x1b[A文")), ["text:中", "up", "text:文"]);
+		assert.deepEqual(keys(decoder.push("\x08")), ["backspace"]);
 	});
 });

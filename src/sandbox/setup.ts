@@ -31,9 +31,9 @@ export function createSandbox(
 		return {
 			sandbox,
 			warnings: [
-				`沙箱模式为 ${mode}，但当前平台（${process.platform}）没有可用的命令隔离手段：` +
-					"读写被限制在规则之内，而 shell 命令会被拒绝执行。" +
-					"需要自由执行命令时请把 config.toml 里的 sandbox 设为 off。",
+				`Sandbox mode is ${mode} but this platform (${process.platform}) has no usable command isolation: ` +
+					"path checks still apply, and shell commands are refused. " +
+					"To run commands freely, set sandbox to off in config.toml",
 			],
 		};
 	}

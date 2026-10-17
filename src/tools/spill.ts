@@ -26,9 +26,9 @@ export class ResultSpiller {
 		const preview = this.#preview(content);
 		if (path === undefined) {
 			// 落盘失败必须说出来：只给一段被截断的内容，模型会以为这就是全部
-			return `${preview}\n\n[完整结果共 ${content.length} 个字符，写入临时文件失败，超出部分无法获取]`;
+			return `${preview}\n\n[the full result is ${content.length} characters; writing the spill file failed, so the rest cannot be retrieved]`;
 		}
-		return `${preview}\n\n[完整结果共 ${content.length} 个字符，已写入 ${path}，可按行读取]`;
+		return `${preview}\n\n[the full result is ${content.length} characters; written to ${path}, read it back line by line]`;
 	}
 
 	#preview(content: string): string {
@@ -36,7 +36,7 @@ export class ResultSpiller {
 		const head = Math.floor(this.#threshold / 2);
 		const tail = this.#threshold - head;
 		const omitted = content.length - head - tail;
-		return `${content.slice(0, head)}\n\n…（中间 ${omitted} 个字符已省略）…\n\n${content.slice(content.length - tail)}`;
+		return `${content.slice(0, head)}\n\n… (${omitted} characters omitted in the middle) …\n\n${content.slice(content.length - tail)}`;
 	}
 
 	#write(toolName: string, content: string): string | undefined {

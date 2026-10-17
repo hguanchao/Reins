@@ -1,133 +1,98 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { jsonPathKey, JsonParser, type JsonObject } from "../../../src/config/json/parser.ts";
+import type { LineColumn } from "../../../src/config/config-error.ts";
 import { ConfigError } from "../../../src/config/config-error.ts";
-import { JsonDocument } from "../../../src/config/json/document.ts";
-
-function parse(source: string): JsonDocument {
-	return new JsonDocument(source);
-}
-
-function expectError(source: string, messagePart: string, line?: number): ConfigError {
+function parse(source: string): { value: unknown; locations: Map<string, LineColumn> } {
 	try {
-		parse(source);
+		return new JsonParser(source).parse() as { value: unknown; locations: Map<string, LineColumn> };
 	} catch (error) {
-		assert.ok(error instanceof ConfigError, `期望 ConfigError，实际是 ${String(error)}`);
-		assert.ok(
-			error.message.includes(messagePart),
-			`期望错误信息包含「${messagePart}」，实际是「${error.message}」`,
-		);
-		if (line !== undefined) assert.equal(error.line, line);
-		return error;
+		if (error instanceof ConfigError) throw new Error(error.display);
+		throw error;
 	}
-	throw new Error("期望解析失败，但解析成功了");
 }
 
-describe("JsonParser 解析", () => {
-	it("解析对象、数组与各类标量", () => {
-		const document = parse('{ "a": 1, "b": "x", "c": true, "d": null, "e": [1, 2], "f": {} }');
-		assert.equal(document.get(["a"]), 1);
-		assert.equal(document.get(["b"]), "x");
-		assert.equal(document.get(["c"]), true);
-		assert.equal(document.get(["d"]), null);
-		assert.deepEqual(document.get(["e"]), [1, 2]);
-		assert.deepEqual(document.get(["f"]), {});
+function expectError(source: string, expected: string): void {
+	assert.throws(() => parse(source), (error: unknown) => error instanceof Error && error.message.includes(expected));
+}
+
+describe("JSON 解析", () => {
+	it("解析普通对象与数组", () => {
+		const { value } = parse(`{"a": 1, "b": ["x", true, null], "c": {"d": false}}`);
+		assert.deepEqual(value, { a: 1, b: ["x", true, null], c: { d: false } });
 	});
 
-	it("解析负数与浮点的各种写法", () => {
-		const document = parse('{ "a": -1, "b": 2.5, "c": 1e3, "d": -2.5e-2, "e": 0 }');
-		assert.equal(document.get(["a"]), -1);
-		assert.equal(document.get(["b"]), 2.5);
-		assert.equal(document.get(["c"]), 1000);
-		assert.equal(document.get(["d"]), -0.025);
-		assert.equal(document.get(["e"]), 0);
-	});
-
-	it("处理字符串转义", () => {
-		const document = parse('{ "a": "\\"\\\\\\/\\b\\f\\n\\r\\t", "u": "\\u4E2D" }');
-		assert.equal(document.get(["a"]), '"\\/\b\f\n\r\t');
-		assert.equal(document.get(["u"]), "中");
-	});
-
-	it("允许行注释与块注释", () => {
-		const document = parse(`{
+	it("支持行注释与块注释", () => {
+		const { value } = parse(`{
 			// 行注释
 			"a": 1, /* 块注释
 			跨行 */
 			"b": 2
 		}`);
-		assert.equal(document.get(["a"]), 1);
-		assert.equal(document.get(["b"]), 2);
+		assert.deepEqual(value, { a: 1, b: 2 });
 	});
 
-	it("注释里出现斜杠不会误判", () => {
-		const document = parse('{ "a": "http://x/y", // http://z\n "b": 2 }');
-		assert.equal(document.get(["a"]), "http://x/y");
-		assert.equal(document.get(["b"]), 2);
+	it("字符串转义", () => {
+		const { value } = parse(`{"s": "a\\"b\\\\c\\u0041\\t"}`);
+		assert.deepEqual((value as JsonObject)["s"], 'a"b\\cA\t');
 	});
 
-	it("按键路径取值，路径类型不符时返回 undefined", () => {
-		const document = parse('{ "a": { "b": [ { "c": 1 } ] } }');
-		assert.equal(document.get(["a", "b", 0, "c"]), 1);
-		assert.equal(document.get(["a", "b", 1, "c"]), undefined);
-		assert.equal(document.get(["a", 0]), undefined);
-		assert.equal(document.get(["missing"]), undefined);
+	it("数字：整数、小数、指数", () => {
+		const { value } = parse(`{"i": -12, "f": 1.5, "e": 2e3, "z": 0}`);
+		assert.deepEqual(value, { i: -12, f: 1.5, e: 2000, z: 0 });
 	});
 
-	it("记录键与数组元素的位置", () => {
-		const document = parse('{\n  "a": {\n    "b": 1\n  },\n  "list": [\n    1\n  ]\n}');
-		assert.deepEqual(document.locationOf(["a"]), { line: 2, column: 3 });
-		assert.deepEqual(document.locationOf(["a", "b"]), { line: 3, column: 5 });
-		assert.deepEqual(document.locationOf(["list", 0]), { line: 6, column: 5 });
-		assert.equal(document.locationOf(["missing"]), undefined);
-	});
-});
-
-describe("JsonParser 拒绝非法输入", () => {
-	it("拒绝重复的键", () => {
-		expectError('{ "a": 1, "a": 2 }', "重复定义", 1);
-	});
-
-	it("拒绝未加引号的键", () => {
-		expectError("{ a: 1 }", "键必须是双引号字符串");
+	it("记录每个键的位置", () => {
+		const { locations } = parse(`{
+  "alpha": 1,
+  "beta": [10, 20]
+}`);
+		const alpha = locations.get(jsonPathKey(["alpha"]));
+		assert.ok(alpha);
+		assert.equal(alpha.line, 2);
+		const betaItem = locations.get(jsonPathKey(["beta", 1]));
+		assert.ok(betaItem);
+		assert.equal(betaItem.line, 3);
 	});
 
-	it("拒绝单引号字符串", () => {
-		expectError("{ 'a': 1 }", "键必须是双引号字符串");
+	it("重复键报错并指明键名", () => {
+		expectError(`{"a": 1, "a": 2}`, "Duplicate key a");
 	});
 
-	it("拒绝缺少冒号", () => {
-		expectError('{ "a" 1 }', "需要冒号");
+	it("尾随逗号报错", () => {
+		expectError(`{"a": 1,}`, "trailing comma");
+		expectError(`[1, 2,]`, "trailing comma");
 	});
 
-	it("拒绝未闭合的字符串", () => {
-		expectError('{ "a": "x', "没有闭合");
+	it("缺逗号报错", () => {
+		expectError(`{"a": 1 "b": 2}`, "separated by commas");
 	});
 
-	it("拒绝不支持的转义", () => {
-		expectError('{ "a": "\\q" }', "不支持的转义");
+	it("键必须双引号", () => {
+		expectError(`{a: 1}`, "double-quoted");
 	});
 
-	it("拒绝字符串里的裸控制字符", () => {
-		expectError('{ "a": "x\ny" }', "控制字符");
+	it("未闭合的字符串与注释报错", () => {
+		expectError(`{"a": "abc`, "Unterminated string");
+		expectError(`/* 未闭合 `, "Unterminated block comment");
 	});
 
-	it("拒绝前导零与十六进制数字", () => {
-		expectError('{ "a": 01 }', "无法识别的值");
-		expectError('{ "a": 0x1 }', "无法识别的值");
+	it("空文件与多余内容报错", () => {
+		expectError(``, "Empty file");
+		expectError(`{} extra`, "Unexpected content after");
 	});
 
-	it("拒绝尾随逗号", () => {
-		expectError('{ "a": 1, }', "多余的逗号");
-		expectError('{ "a": [1, ] }', "多余的逗号");
+	it("非法转义与 \\\\u 报错", () => {
+		expectError(`{"a": "\\x"}`, "Unsupported escape");
+		expectError(`{"a": "\\u12g4"}`, "4 hex digits");
 	});
 
-	it("拒绝未闭合的块注释", () => {
-		expectError('{ "a": 1 } /* 没有闭合', "块注释没有闭合");
+	it("无法识别的词报错", () => {
+		expectError(`{"a": tru}`, "Unrecognized value tru");
 	});
 
-	it("拒绝空文件与多余内容", () => {
-		expectError("", "文件为空");
-		expectError('{ "a": 1 } {}', "还有多余内容");
+	it("裸控制字符报错", () => {
+		expectError(`{"a": "a\tb"}`, "Raw control character");
 	});
 });

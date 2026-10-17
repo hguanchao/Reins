@@ -25,21 +25,21 @@ export async function resolveApiKey(
 
 	if (spec.startsWith("!")) {
 		const command = spec.slice(1).trim();
-		if (command.length === 0) throw new Error("apiKey 的 ! 后面没有命令");
+		if (command.length === 0) throw new Error("apiKey has no command after the leading !");
 		const { stdout } = await runShell(command, {
 			signal,
 			timeout: COMMAND_TIMEOUT_MS,
 			windowsHide: true,
 		});
 		const key = stdout.trim();
-		if (key.length === 0) throw new Error(`取密钥的命令没有输出：${command}`);
+		if (key.length === 0) throw new Error(`apiKey command produced no output: ${command}`);
 		return key;
 	}
 
 	return spec.replace(ENV_REFERENCE, (_match, braced: string | undefined, plain: string | undefined) => {
 		const name = braced ?? plain ?? "";
 		const value = process.env[name];
-		if (value === undefined) throw new Error(`apiKey 引用的环境变量 ${name} 未设置`);
+		if (value === undefined) throw new Error(`environment variable ${name} referenced by apiKey is not set`);
 		return value;
 	});
 }

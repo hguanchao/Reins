@@ -1,49 +1,50 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { clampEffort, providerEffortValue, supportedEfforts } from "../../src/llm/effort.ts";
+import { clampEffort, isReasoningEffort, providerEffortValue, supportedEfforts } from "../../src/llm/effort.ts";
 
-describe("思考等级的收敛", () => {
-	it("不声明思考能力的模型只支持 off", () => {
+describe("思考等级", () => {
+	it("isReasoningEffort 认真实等级,不认 off", () => {
+		assert.equal(isReasoningEffort("low"), true);
+		assert.equal(isReasoningEffort("max"), true);
+		assert.equal(isReasoningEffort("off"), false);
+		assert.equal(isReasoningEffort("high"), true);
+	});
+
+	it("supportedEfforts:不支持思考的模型只有 off", () => {
 		assert.deepEqual(supportedEfforts(false, {}), ["off"]);
-		assert.equal(clampEffort("high", false, {}), undefined);
 	});
 
-	it("声明了思考能力却没给映射时，等级原样可用", () => {
-		assert.deepEqual(supportedEfforts(true, {}), ["off", "low", "medium", "high", "xhigh", "max"]);
-		assert.equal(clampEffort("high", true, {}), "high");
-	});
-
-	it("显式标为 null 的等级不可用，未知等级同样不可用", () => {
-		assert.deepEqual(supportedEfforts(true, { xhigh: null, max: null }), [
+	it("supportedEfforts:显式 null 的等级不支持,其余按支持", () => {
+		assert.deepEqual(supportedEfforts(true, { low: null, high: "custom" }), [
 			"off",
-			"low",
 			"medium",
 			"high",
+			"xhigh",
+			"max",
 		]);
 	});
 
-	it("请求不可用的等级时先往低处找", () => {
-		assert.equal(clampEffort("high", true, { high: null }), "medium");
-		assert.equal(clampEffort("max", true, { high: null, xhigh: null, max: null }), "medium");
-	});
-
-	it("低处都不可用时才往高处找", () => {
-		assert.equal(clampEffort("low", true, { low: null, medium: null }), "high");
-	});
-
-	it("off 与不支持思考都收敛为 undefined", () => {
+	it("clampEffort:off 与不支持思考都返回 undefined", () => {
 		assert.equal(clampEffort("off", true, {}), undefined);
-		assert.equal(clampEffort("off", false, {}), undefined);
-	});
-});
-
-describe("等级在端点那边的取值", () => {
-	it("有映射时用映射值", () => {
-		assert.equal(providerEffortValue("high", { high: "HIGH" }), "HIGH");
+		assert.equal(clampEffort("high", false, {}), undefined);
 	});
 
-	it("没有映射时透传等级名", () => {
-		assert.equal(providerEffortValue("medium", {}), "medium");
+	it("clampEffort:请求的等级支持时原样", () => {
+		assert.equal(clampEffort("high", true, {}), "high");
+	});
+
+	it("clampEffort:先往下找再往上找", () => {
+		// 模型支持到 medium:请求 high 降到 medium
+		assert.equal(clampEffort("high", true, { high: null, xhigh: null, max: null }), "medium");
+		// low 到 max 都不支持:nothing
+		assert.equal(clampEffort("medium", true, { low: null, medium: null, high: null, xhigh: null, max: null }), undefined);
+		// 请求 low 但 low 不支持,向上落到 medium
+		assert.equal(clampEffort("low", true, { low: null }), "medium");
+	});
+
+	it("providerEffortValue:写了映射用映射值,没写透传等级名", () => {
+		assert.equal(providerEffortValue("high", { high: "thinking_budget_max" }), "thinking_budget_max");
+		assert.equal(providerEffortValue("high", {}), "high");
 	});
 });

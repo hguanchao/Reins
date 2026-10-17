@@ -90,9 +90,9 @@ export class ToolRegistry {
 			return;
 		}
 		if (existing.source === "core" && source === "plugin") {
-			throw new Error(`核心工具 ${definition.name} 不能被插件替换`);
+			throw new Error(`Core tool ${definition.name} cannot be replaced by a plugin`);
 		}
-		throw new Error(`工具 ${definition.name} 重复注册`);
+		throw new Error(`Tool ${definition.name} is already registered`);
 	}
 
 	/**
@@ -106,7 +106,7 @@ export class ToolRegistry {
 	 */
 	withExtraTool(tool: AnyToolDefinition): ToolRegistry {
 		if (this.#tools.has(tool.name)) {
-			throw new Error(`工具 ${tool.name} 已经被注册过了，不能再挂一个同名的`);
+			throw new Error(`Cannot attach a second tool named ${tool.name}: that name is already in use`);
 		}
 		const copy = new ToolRegistry(this.#spiller, this.#gate);
 		for (const [name, item] of this.#tools) copy.#tools.set(name, item);
@@ -126,7 +126,7 @@ export class ToolRegistry {
 	removePluginTool(name: string): void {
 		const existing = this.#tools.get(name);
 		if (existing === undefined) return;
-		if (existing.source === "core") throw new Error(`核心工具 ${name} 不能被卸下`);
+		if (existing.source === "core") throw new Error(`Core tool ${name} cannot be removed`);
 		this.#tools.delete(name);
 	}
 
@@ -143,8 +143,8 @@ export class ToolRegistry {
 	async call(request: ToolCallRequest, context: ToolRunContext): Promise<ToolCallOutcome> {
 		const tool = this.get(request.name);
 		if (tool === undefined) {
-			const known = [...this.#tools.keys()].join("、");
-			return error(`没有名为 ${request.name} 的工具。可用：${known}`);
+			const known = [...this.#tools.keys()].join(", ");
+			return error(`Unknown tool: ${request.name}. Available tools: ${known}`);
 		}
 
 		const prepared =
@@ -152,7 +152,7 @@ export class ToolRegistry {
 		const validated = validateToolArguments(tool.parameters, prepared);
 		if (!validated.ok) {
 			// 把「收到了什么」一并回显，模型才能判断是自己写错了参数名还是写错了类型
-			return error(`参数有误：\n${validated.message}\n收到的参数：${JSON.stringify(prepared)}`);
+			return error(`Invalid arguments:\n${validated.message}\nReceived arguments: ${JSON.stringify(prepared)}`);
 		}
 
 		// 审批判定：校验之后、执行之前。放在校验之后的理由是模型把参数写错时应当直接告诉它，
@@ -167,10 +167,10 @@ export class ToolRegistry {
 			});
 		} catch (cause) {
 			// 判定本身失败时按拒绝处理：检查环节出问题不该等于放行
-			return error(`审批判定失败，已拒绝：${describeError(cause)}`);
+			return error(`Approval check failed, so the call was denied: ${describeError(cause)}`);
 		}
 		if (!gateOutcome.allowed) {
-			return error(`未执行：${gateOutcome.reason}`);
+			return error(`Not executed: ${gateOutcome.reason}`);
 		}
 
 		const startedAt = performance.now();
@@ -188,7 +188,7 @@ export class ToolRegistry {
 		} catch (error) {
 			// 工具抛错不让整轮对话中断：转成错误结果交回去，模型自己决定怎么改
 			return {
-				content: `工具执行失败：${describeError(error)}`,
+				content: `Tool execution failed: ${describeError(error)}`,
 				isError: true,
 				durationMs: elapsed(startedAt),
 			};

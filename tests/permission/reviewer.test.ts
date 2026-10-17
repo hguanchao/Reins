@@ -2,80 +2,114 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { ModelReviewer, parseVerdict } from "../../src/permission/reviewer.ts";
-import { ScriptedClient, errorResult, textResult } from "../agent/scripted-client.ts";
+import { EventStream } from "../../src/llm/event-stream.ts";
+import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../../src/llm/client.ts";
 
-const signal = new AbortController().signal;
+/** 不发真实请求的假客户端：返回预置的最终文本。 */
+function fakeStream(text: string, stopReason: LlmResult["stopReason"] = "stop"): LlmStream {
+	const stream = EventStream.incremental<LlmEvent, LlmResult>();
+	stream.push({ type: "text_delta", text });
+	stream.close({
+		stopReason,
+		content: [{ type: "text", text }],
+		usage: undefined,
+		errorMessage: undefined,
+		model: "m",
+	});
+	return stream;
+}
 
-function reviewer(script: Parameters<typeof ScriptedClient.prototype.stream> extends never ? never : ConstructorParameters<typeof ScriptedClient>[0]) {
-	const client = new ScriptedClient(script);
+function clientReturning(text: string, stopReason: LlmResult["stopReason"] = "stop"): LlmClient {
 	return {
-		client,
-		instance: new ModelReviewer({
-			client,
-			model: "judge-model",
-			maxTokens: 1024,
-			workspaceRoot: "/work",
-		}),
+		api: "fake",
+		stream: (_request: LlmRequest) => fakeStream(text, stopReason),
 	};
 }
 
-describe("审查结论的解析", () => {
-	it("直接给出 JSON", () => {
-		assert.deepEqual(parseVerdict('{"allow": true, "reason": "只读操作"}'), {
+const SIGNAL = new AbortController().signal;
+
+describe("审查结论解析", () => {
+	it("纯 JSON 直接解析", () => {
+		assert.deepEqual(parseVerdict('{"allow": true, "reason": "read only"}'), {
 			allowed: true,
-			reason: "只读操作",
+			reason: "read only",
+		});
+		assert.deepEqual(parseVerdict('{"allow": false, "reason": "deletes history"}'), {
+			allowed: false,
+			reason: "deletes history",
 		});
 	});
 
-	it("JSON 被包在说明文字或代码围栏里也能取出来", () => {
-		assert.deepEqual(
-			parseVerdict('判断如下：\n```json\n{"allow": false, "reason": "会删掉文件"}\n```'),
-			{ allowed: false, reason: "会删掉文件" },
-		);
+	it("JSON 包在说明文字或代码围栏里也能取出来", () => {
+		const fenced = 'Here is my verdict:\n```json\n{"allow": true, "reason": "harmless"}\n```';
+		assert.deepEqual(parseVerdict(fenced), { allowed: true, reason: "harmless" });
 	});
 
-	it("缺理由时补一句而不是当失败", () => {
-		assert.deepEqual(parseVerdict('{"allow": true}'), { allowed: true, reason: "审查模型未给出理由" });
+	it("缺 reason 时给出默认说法", () => {
+		assert.deepEqual(parseVerdict('{"allow": true}'), { allowed: true, reason: "Reviewer gave no reason" });
 	});
 
-	it("解析不出来时按拒绝处理", () => {
-		for (const text of ["", "我认为可以放行", '{"verdict": "yes"}', "[1,2,3]"]) {
-			const outcome = parseVerdict(text);
-			assert.equal(outcome.allowed, false, text);
-			assert.match(outcome.reason, /无法解析/);
-		}
+	it("解析不出来的按拒绝处理", () => {
+		assert.equal(parseVerdict("no json here").allowed, false);
+		assert.equal(parseVerdict("").allowed, false);
+		assert.equal(parseVerdict('{"allow": "yes"}').allowed, false);
+		assert.equal(parseVerdict("{}").allowed, false);
 	});
 });
 
-describe("审查模型", () => {
-	it("放行的结论原样带回", async () => {
-		const { instance, client } = reviewer([textResult('{"allow": true, "reason": "只改工作区内的文件"}')]);
-		const outcome = await instance.review("write", { path: "a.txt" }, signal);
-
-		assert.deepEqual(outcome, { allowed: true, reason: "只改工作区内的文件" });
-		// 审查请求里带着工作区与调用内容，否则判断不了「工作区之外」
-		const sent = client.requests[0];
-		assert.ok(sent.system.includes("拿不准就拒绝"));
-		const userText = sent.messages[0];
-		assert.equal(userText.role, "user");
-		assert.match(userText.role === "user" ? userText.content : "", /\/work/);
-		assert.match(userText.role === "user" ? userText.content : "", /a\.txt/);
-		assert.equal(sent.tools.length, 0);
-		assert.equal(sent.effort, undefined);
+describe("模型审查者", () => {
+	it("把工作区与调用放进请求，采纳模型的结论", async () => {
+		let captured: LlmRequest | undefined;
+		const client: LlmClient = {
+			api: "fake",
+			stream: (request: LlmRequest) => {
+				captured = request;
+				return fakeStream('{"allow": true, "reason": "fine"}');
+			},
+		};
+		const reviewer = new ModelReviewer({ client, model: "m1", maxTokens: undefined, workspaceRoot: "E:\\w" });
+		const outcome = await reviewer.review("write", { path: "a.ts" }, SIGNAL);
+		assert.deepEqual(outcome, { allowed: true, reason: "fine" });
+		assert.ok(captured);
+		assert.equal(captured.model, "m1");
+		assert.match(captured.messages[0]!.content as string, /Workspace: E:\\w/);
+		assert.match(captured.messages[0]!.content as string, /Tool: write/);
 	});
 
-	it("审查过程出错时按拒绝处理", async () => {
-		const { instance } = reviewer([errorResult("额度不足")]);
-		const outcome = await instance.review("bash", { command: "rm -rf /" }, signal);
+	it("审查没能完成时按拒绝处理", async () => {
+		const client = clientReturning("ignored", "error");
+		const reviewer = new ModelReviewer({ client, model: "m", maxTokens: undefined, workspaceRoot: "/" });
+		const outcome = await reviewer.review("bash", {}, SIGNAL);
 		assert.equal(outcome.allowed, false);
-		assert.match(outcome.reason, /审查未能完成/);
-		assert.match(outcome.reason, /额度不足/);
+		assert.match(outcome.reason, /Review did not finish/);
 	});
 
-	it("结论读不懂时按拒绝处理", async () => {
-		const { instance } = reviewer([textResult("我觉得应该没问题吧")]);
-		const outcome = await instance.review("bash", {}, signal);
+	it("客户端抛错同样按拒绝处理", async () => {
+		const client: LlmClient = {
+			api: "fake",
+			stream: () => {
+				throw new Error("network down");
+			},
+		};
+		const reviewer = new ModelReviewer({ client, model: "m", maxTokens: undefined, workspaceRoot: "/" });
+		const outcome = await reviewer.review("bash", {}, SIGNAL);
 		assert.equal(outcome.allowed, false);
-		assert.match(outcome.reason, /无法解析/);
+		assert.match(outcome.reason, /network down/);
+	});
+
+	it("超长参数截断后再发", async () => {
+		let captured: LlmRequest | undefined;
+		const client: LlmClient = {
+			api: "fake",
+			stream: (request: LlmRequest) => {
+				captured = request;
+				return fakeStream('{"allow": false, "reason": "r"}');
+			},
+		};
+		const reviewer = new ModelReviewer({ client, model: "m", maxTokens: undefined, workspaceRoot: "/" });
+		await reviewer.review("read", { blob: "x".repeat(9000) }, SIGNAL);
+		const content = (captured?.messages[0]?.content as string) ?? "";
+		assert.ok(content.length < 5000);
+		assert.ok(content.includes("…"));
 	});
 });

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
 	alignEnds,
+	cellsOf,
 	concat,
 	lineOfCells,
 	lineText,
@@ -11,93 +12,130 @@ import {
 	mergeStyles,
 	padLine,
 	plain,
+	sameColor,
 	sameStyle,
 	styled,
+	sumCellsWidth,
+	type Style,
 } from "../../../src/tui/text/line.ts";
 
-describe("line", () => {
-	it("空文本产生空行", () => {
+const RED: Style = { color: "red" };
+const BLUE: Style = { color: "blue" };
+
+describe("行与片段", () => {
+	it("空文本产生空行，普通文本产生一个片段", () => {
 		assert.deepEqual(plain(""), []);
-		assert.deepEqual(styled("", { bold: true }), []);
+		assert.deepEqual(plain("hi"), [{ text: "hi" }]);
+		assert.deepEqual(styled("", RED), []);
+		assert.deepEqual(styled("x", RED), [{ text: "x", style: RED }]);
 	});
 
-	it("宽度按显示宽度算", () => {
-		assert.equal(lineWidth(plain("接口 api")), 8);
-		assert.equal(lineWidth(concat(plain("接口"), styled(" api", { dim: true }))), 8);
-	});
-
-	it("拼接时丢掉空片段", () => {
-		assert.deepEqual(concat(plain(""), plain("a"), plain("")), [{ text: "a" }]);
-	});
-
-	it("取纯文本", () => {
-		assert.equal(lineText(concat(plain("a"), styled("中", { bold: true }))), "a中");
-	});
-
-	it("样式并集，颜色以更具体的一侧为准", () => {
-		assert.deepEqual(mergeStyles({ bold: true }, { dim: true, color: "cyan" }), {
-			bold: true,
-			dim: true,
-			color: "cyan",
-		});
-		assert.equal(mergeStyles({ color: "red" }, { color: "green" })?.color, "green");
-		assert.equal(mergeStyles(undefined, { dim: true })?.dim, true);
-		assert.equal(mergeStyles({ dim: true }, undefined)?.dim, true);
-		// 什么都没设就是没有样式，避免产生一个空壳样式让相邻片段没法合并
-		assert.equal(mergeStyles({}, {}), undefined);
-	});
-
-	it("逐片段改样式", () => {
-		const line = mapLine(concat(plain("a"), styled("b", { bold: true })), (style) =>
-			mergeStyles(style, { dim: true }),
-		);
-		assert.deepEqual(line, [
-			{ text: "a", style: { dim: true } },
-			{ text: "b", style: { bold: true, dim: true } },
+	it("拼接丢掉空的中间片段", () => {
+		assert.deepEqual(concat(plain(""), plain("a"), plain(""), styled("b", RED)), [
+			{ text: "a" },
+			{ text: "b", style: RED },
 		]);
+		assert.deepEqual(concat(), []);
 	});
 
-	it("按宽度补齐行尾", () => {
-		assert.equal(lineWidth(padLine(plain("接口"), 8)), 8);
-		assert.deepEqual(padLine(plain("12345"), 3), plain("12345"));
+	it("宽度按显示宽计算，中文占两列", () => {
+		assert.equal(lineWidth(plain("ab中")), 4);
+		assert.equal(lineWidth([]), 0);
 	});
 
-	it("格子拼回片段时合并相邻同样式部分", () => {
-		const cells = [
-			{ text: "接", width: 2 },
-			{ text: "口", width: 2 },
-			{ text: " ", width: 1, style: { dim: true } },
-			{ text: "a", width: 1, style: { dim: true } },
-		];
-		assert.deepEqual(lineOfCells(cells), [{ text: "接口" }, { text: " a", style: { dim: true } }]);
+	it("取纯文本就是各片段拼接", () => {
+		assert.equal(lineText(concat(plain("ab"), styled("中", RED))), "ab中");
 	});
 });
 
-describe("行与样式", () => {
-	it("合并样式时背景也取内层，逐项都留下", () => {
-		const merged = mergeStyles({ bold: true, background: [1, 2, 3] }, { background: [4, 5, 6], color: "red" });
-		assert.deepEqual(merged, { bold: true, background: [4, 5, 6], color: "red" });
+describe("样式合并与比较", () => {
+	it("布尔项取并集，颜色内层优先", () => {
+		const merged = mergeStyles({ bold: true, color: "red" }, { italic: true, color: "blue" });
+		assert.deepEqual(merged, { bold: true, italic: true, color: "blue" });
 	});
 
-	it("真彩色按值比较，不比引用", () => {
-		assert.equal(sameStyle({ color: [1, 2, 3] }, { color: [1, 2, 3] }), true);
-		assert.equal(sameStyle({ color: [1, 2, 3] }, { color: [1, 2, 4] }), false);
-		assert.equal(sameStyle({ background: [1, 2, 3] }, { background: [1, 2, 3] }), true);
+	it("一边为 undefined 时直接用另一边，undefined 与 undefined 合并还是 undefined", () => {
+		assert.equal(mergeStyles(undefined, RED), RED);
+		assert.equal(mergeStyles(BLUE, undefined), BLUE);
+		assert.equal(mergeStyles(undefined, undefined), undefined);
 	});
 
-	it("补齐时能带上样式：整行铺底靠它", () => {
-		const filled = padLine(plain("ab"), 5, { background: [9, 9, 9] });
-		assert.equal(lineWidth(filled), 5);
-		assert.deepEqual(filled[1], { text: "   ", style: { background: [9, 9, 9] } });
-		// 已经够宽就原样返回
-		assert.deepEqual(padLine(plain("abcdef"), 3), plain("abcdef"));
+	it("两项都为否时合并结果不携带任何字段", () => {
+		assert.equal(mergeStyles({ bold: false }, { dim: false }), undefined);
 	});
 
-	it("左右两段撑满一行，放不下时让右边整个消失", () => {
+	it("背景色同样内层优先", () => {
+		const merged = mergeStyles({ background: "red" }, { background: "blue" });
+		assert.deepEqual(merged, { background: "blue" });
+	});
+
+	it("真彩色逐项比较，字符串不同名即不同", () => {
+		assert.equal(sameColor("red", "red"), true);
+		assert.equal(sameColor("red", "blue"), false);
+		assert.equal(sameColor([1, 2, 3], [1, 2, 3]), true);
+		assert.equal(sameColor([1, 2, 3], [1, 2, 4]), false);
+		assert.equal(sameColor("red", [255, 0, 0]), false);
+		assert.equal(sameColor(undefined, "red"), false);
+		assert.equal(sameColor(undefined, undefined), true);
+	});
+
+	it("样式比较覆盖所有字段", () => {
+		assert.equal(sameStyle(RED, { color: "red" }), true);
+		assert.equal(sameStyle(RED, undefined), false);
+		assert.equal(sameStyle({ bold: true }, { bold: true }), true);
+		assert.equal(sameStyle({ reverse: true }, { reverse: true, bold: true }), false);
+		assert.equal(sameStyle({ bold: true }, { color: "red" }), false);
+	});
+});
+
+describe("改样式与补齐", () => {
+	it("mapLine 逐片段换样式", () => {
+		const mapped = mapLine(concat(plain("a"), styled("b", RED)), () => BLUE);
+		assert.deepEqual(mapped, [
+			{ text: "a", style: BLUE },
+			{ text: "b", style: BLUE },
+		]);
+	});
+
+	it("padLine 补到指定宽度，够宽时原样返回", () => {
+		const line = plain("ab");
+		assert.equal(padLine(line, 2), line);
+		assert.equal(lineText(padLine(line, 5)), "ab   ");
+		assert.equal(lineWidth(padLine(styled("ab", RED), 5, { bold: true })), 5);
+	});
+
+	it("alignEnds 用空格填充中间，放不下时丢弃右段", () => {
 		assert.equal(lineText(alignEnds(plain("a"), plain("b"), 5)), "a   b");
-		// 至少要留一个空格把两段分开，否则右边的整段消失
-		assert.equal(lineText(alignEnds(plain("aaaa"), plain("bb"), 7)), "aaaa bb");
-		assert.equal(lineText(alignEnds(plain("aaaa"), plain("bb"), 6)), "aaaa");
-		assert.equal(lineText(alignEnds(plain("aaaaa"), plain("bb"), 5)), "aaaaa");
+		assert.equal(lineText(alignEnds(plain("aaaa"), plain("bbbb"), 5)), "aaaa");
+		// gap < 1 就放不下：右段整个消失，左段原样保留
+		assert.equal(lineText(alignEnds(plain("a"), plain("b"), 2)), "a");
+		assert.equal(lineText(alignEnds(plain("a"), plain("b"), 3)), "a b");
+	});
+});
+
+describe("格子层投影", () => {
+	it("cellsOf 按字素簇摊开且带样式与宽度", () => {
+		const cells = cellsOf(concat(plain("ab"), styled("中", RED)));
+		assert.equal(cells.length, 3);
+		assert.deepEqual(
+			cells.map((cell) => cell.width),
+			[1, 1, 2],
+		);
+		assert.equal(cells[0].style, undefined);
+		assert.deepEqual(cells[2].style, RED);
+	});
+
+	it("lineOfCells 合并相邻同样式的格子", () => {
+		const cells = cellsOf(plain("aaa"));
+		assert.deepEqual(lineOfCells(cells), [{ text: "aaa" }]);
+	});
+
+	it("roundtrip：拼回的行与原行文本相同", () => {
+		const line = concat(plain("ab"), styled("中c", RED));
+		assert.equal(lineText(lineOfCells(cellsOf(line))), "ab中c");
+	});
+
+	it("sumCellsWidth 用建格时算好的宽度", () => {
+		assert.equal(sumCellsWidth(cellsOf(plain("ab中"))), 4);
 	});
 });

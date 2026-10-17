@@ -106,7 +106,7 @@ export class AnthropicMessagesClient implements LlmClient {
 					return;
 				}
 				if (event.type === "error") {
-					throw new Error(`端点返回错误：${event.error?.message ?? event.error?.type ?? "未说明"}`);
+					throw new Error(`endpoint returned an error: ${event.error?.message ?? event.error?.type ?? "no details"}`);
 				}
 				if (event.type === "message_start") {
 					if (event.message?.model !== undefined) responseModel = event.message.model;
@@ -131,7 +131,7 @@ export class AnthropicMessagesClient implements LlmClient {
 
 		if (stopReason === undefined) {
 			// 没有结束原因的响应可能被截断过；当成完成会让残缺的工具调用被执行
-			throw new Error("响应没有给出结束原因，可能是连接提前断开");
+			throw new Error("the response has no finish reason; the connection may have been cut off early");
 		}
 
 		return {
@@ -147,8 +147,8 @@ export class AnthropicMessagesClient implements LlmClient {
 		if (request.maxTokens === undefined) {
 			// 这套协议要求必须给出输出上限，凭空选一个数字会让花费与截断行为变得不可预期
 			throw new Error(
-				`模型 ${this.#provider.id}/${this.#model.id} 没有声明 maxTokens，` +
-					"这套协议要求必须给出输出上限，请在 providers.json 里补上",
+				`model ${this.#provider.id}/${this.#model.id} does not declare maxTokens, but this protocol requires an ` +
+					"output limit; add it to the model in providers.json",
 			);
 		}
 

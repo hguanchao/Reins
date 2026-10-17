@@ -1,95 +1,169 @@
 import assert from "node:assert/strict";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import type { SessionEntry } from "../../src/session/port.ts";
 import { Session } from "../../src/session/session.ts";
-import type { SessionWriter } from "../../src/session/store.ts";
+import { JsonlSessionStore } from "../../src/plugins/session-plugin/jsonl-store.ts";
+import type { SessionEntry, SessionHeaderEntry } from "../../src/session/port.ts";
+import type { SessionStore, SessionWriter } from "../../src/session/store.ts";
+import { SESSION_VERSION } from "../../src/session/port.ts";
 
-/**
- * 会话本身。
- *
- * 不碰磁盘：这里要验证的是条目怎么串成链、状态怎么随写入更新、通道失败时内存状态会不会被
- * 改坏。落盘细节由存储插件负责，另有测试。
- */
+const T = "2026-01-01T00:00:00Z";
 
-/** 把写过的条目记下来，供断言查看。 */
-class RecordingWriter implements SessionWriter {
-	readonly entries: SessionEntry[] = [];
-	ended = false;
-	readonly #failure: string | undefined;
+const DIR = join(tmpdir(), `reins-session-${Date.now()}`);
 
-	constructor(failure?: string) {
-		this.#failure = failure;
-	}
-
-	write(entry: SessionEntry): void {
-		if (this.#failure !== undefined) throw new Error(this.#failure);
-		this.entries.push(entry);
-	}
-
-	end(): void {
-		this.ended = true;
-	}
+function memoryStore(): SessionStore & { files: Map<string, string> } {
+	const files = new Map<string, string>();
+	const fake = {
+		create(options: { id: string; cwd: string; file: string; forkedFrom?: { session: string; entry: string } }): SessionWriter {
+			const header: SessionHeaderEntry = {
+				type: "session",
+				version: SESSION_VERSION,
+				id: options.id,
+				timestamp: T,
+				cwd: options.cwd,
+				forkedFrom: options.forkedFrom,
+			};
+			let text = `${JSON.stringify(header)}\n`;
+			existsInFile(options.file, text);
+			return {
+				write(entry: SessionEntry) {
+					text += `${JSON.stringify(entry)}\n`;
+					files.set(options.file, text);
+				},
+				end() {
+					files.set(options.file, text);
+				},
+			};
+			function existsInFile(target: string, initial: string): void {
+				if (files.has(target)) throw new Error("already there");
+				files.set(target, initial);
+			}
+		},
+		read(file: string) {
+			const text = files.get(file);
+			if (text === undefined) throw new Error(`unknown file ${file}`);
+			return text === "" ? { header: undefined, entries: [] } : JSON.parse(text.split("\n")[0]) as { header: SessionHeaderEntry; entries: SessionEntry[] };
+		},
+		append(file: string) {
+			return fake.create({ id: "ignored", cwd: "", file });
+		},
+		list() {
+			return [];
+		},
+	};
+	return Object.assign(fake, { files });
 }
 
-describe("会话", () => {
-	it("条目串成一条链，叶子永远指最后一条", async () => {
-		const writer = new RecordingWriter();
-		const session = new Session({ id: "s", cwd: "/work", file: "/work/s.jsonl", writer });
+function userEntry(id: string, text: string): SessionEntry {
+	return { type: "message", id, parentId: null, timestamp: T, message: { role: "user", content: text } };
+}
 
-		await session.append({ type: "message", message: { role: "user", content: "甲" } });
-		await session.append({ type: "message", message: { role: "user", content: "乙" } });
-
-		const entries = session.entries();
-		assert.equal(entries.length, 2);
-		assert.equal(entries[0].parentId, null);
-		assert.equal(entries[1].parentId, entries[0].id);
-		assert.equal(session.leafId, entries[1].id);
-		assert.equal(writer.entries.length, 2);
+describe("会话对象", () => {
+	it("内存会话:追加与折叠状态", async () => {
+		const session = new Session({ id: "m", cwd: "/", file: null });
+		await session.append({ type: "message", message: { role: "user", content: "hi" } });
+		assert.equal(session.entryCount, 1);
+		assert.ok(session.leafId !== null);
+		assert.deepEqual(session.state().messages, [{ role: "user", content: "hi" }]);
 	});
 
-	it("状态随写入增量更新，与整份重放一致", async () => {
-		const session = new Session({ id: "s", cwd: "/work", file: null });
-		await session.append({
-			type: "system",
-			sections: { preamble: "开头", rules: "规则" },
-			toolsAdded: [{ name: "read", description: "读", parameters: {} }],
-		});
-		await session.append({ type: "message", message: { role: "user", content: "甲" } });
-		await session.append({ type: "effort_change", effort: "high" });
-
-		assert.deepEqual(session.state().sections, { preamble: "开头", rules: "规则" });
-		assert.deepEqual(session.state().tools.map((tool) => tool.name), ["read"]);
-		assert.equal(session.state().effort, "high");
-		assert.equal(session.state().messages.length, 1);
+	it("file 非 null 时必须有 writer", () => {
+		assert.throws(() => new Session({ id: "x", cwd: "/", file: "a.jsonl" }), /requires a session store/);
 	});
 
-	it("写入失败时状态不变，也不能拿空通道冒充成功", async () => {
-		const writer = new RecordingWriter("磁盘满了");
-		const session = new Session({ id: "s", cwd: "/work", file: "/work/s.jsonl", writer });
-
-		await assert.rejects(
-			async () => session.append({ type: "message", message: { role: "user", content: "甲" } }),
-			/磁盘满了/,
-		);
-		assert.equal(session.entries().length, 0);
-		assert.equal(session.state().messages.length, 0);
-		assert.equal(session.leafId, null);
-	});
-
-	it("file 非 null 而没有写入通道时构造就报错", () => {
-		assert.throws(() => new Session({ id: "s", cwd: "/work", file: "/work/s.jsonl" }), /需要会话存储/);
-	});
-
-	it("关闭之后不再接受条目，并交还通道", async () => {
-		const writer = new RecordingWriter();
-		const session = new Session({ id: "s", cwd: "/work", file: "/work/s.jsonl", writer });
-
+	it("关闭后再追加报错,重复关闭无事", async () => {
+		const session = new Session({ id: "m", cwd: "/", file: null });
 		await session.close();
-		assert.equal(writer.ended, true);
+		await session.close();
 		await assert.rejects(
-			async () => session.append({ type: "message", message: { role: "user", content: "甲" } }),
-			/会话已关闭/,
+			() => session.append({ type: "message", message: { role: "user", content: "x" } }),
+			/Session is closed/,
 		);
+	});
+
+	it("接续既有历史:叶子取最后一条路径的末尾,旧条目不再落盘", async () => {
+		const history = [userEntry("a", "one"), userEntry("b", "two")];
+		const store = memoryStore();
+		const session = new Session({
+			id: "r",
+			cwd: "/",
+			file: "h.jsonl",
+			writer: store.append("h.jsonl"),
+			entries: history,
+		});
+		assert.equal(session.leafId, "b");
+		await session.append({ type: "message", message: { role: "user", content: "three" } });
+		assert.equal(session.entryCount, 3);
+		await session.close();
+	});
+
+	it("分叉:复制从根到分叉点的路径,头部记下出处", () => {
+		const dir = DIR + "-fork";
+		mkdirSync(dir, { recursive: true });
+		const store = new JsonlSessionStore();
+
+		const sourceFile = join(dir, "src.jsonl");
+		const sourceWriter = store.create({ id: "src", cwd: dir, file: sourceFile });
+		const source = new Session({ id: "src", cwd: dir, file: sourceFile, writer: sourceWriter });
+		source.append({ type: "message", message: { role: "user", content: "first" } }).catch(() => undefined);
+		source.append({ type: "message", message: { role: "user", content: "second" } }).catch(() => undefined);
+
+		const forkFile = join(dir, "fork.jsonl");
+		const fork = Session.fork(source, { id: "fk", cwd: dir, file: forkFile, store });
+
+		// 树里有两层 → 复制两条
+		assert.equal(fork.entryCount, 2, "path to leaf copies all entries");
+		assert.ok(fork.cwd === dir);
+		fork.close().catch(() => undefined);
+		source.close().catch(() => undefined);
+	});
+
+	it("JSONL 全链路:创建、续读、再写", async () => {
+		mkdirSync(DIR, { recursive: true });
+		const store = new JsonlSessionStore();
+		const file = join(DIR, "chain.jsonl");
+
+		const created = store.create({ id: "chain", cwd: DIR, file });
+		const first = new Session({ id: "chain", cwd: DIR, file, writer: created });
+		await first.append({ type: "message", message: { role: "user", content: "opening" } });
+		await first.close();
+		assert.ok(existsSync(file));
+
+		const resumed = Session.open(file, store);
+		assert.equal(resumed.id, "chain");
+		assert.equal(resumed.entryCount, 1);
+		assert.equal(resumed.leafId, first.leafId);
+		await resumed.append({ type: "message", message: { role: "user", content: "follow-up" } });
+		await resumed.close();
+
+		const final = Session.open(file, store);
+		assert.equal(final.entryCount, 2);
+		assert.deepEqual(final.state().messages.map((message) => ("content" in message ? message.content : "")), ["opening", "follow-up"]);
+		rmSync(DIR, { recursive: true, force: true });
+	});
+
+	it("版本不匹配的文件拒绝接续", () => {
+		mkdirSync(DIR + "-ver", { recursive: true });
+		const store = new JsonlSessionStore();
+		const file = join(DIR + "-ver", "old.jsonl");
+		const writer = store.create({ id: "old", cwd: DIR + "-ver", file });
+		writer.write(userEntry("a", "x"));
+		writer.end();
+		// 改头部版本
+		const lines = readFileSync(file, "utf8").split("\n");
+		const header = JSON.parse(lines[0]!) as { version: number };
+		header.version = 999;
+		lines[0] = JSON.stringify(header);
+		writeFileSync(file, lines.join("\n"), "utf8");
+
+		assert.throws(() => Session.open(file, store), (error: unknown) => {
+			assert.ok(error instanceof Error);
+			assert.match(error.message, /does not match the current version/);
+			return true;
+		});
+		rmSync(DIR + "-ver", { recursive: true, force: true });
 	});
 });

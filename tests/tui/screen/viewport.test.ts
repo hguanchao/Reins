@@ -3,67 +3,78 @@ import { describe, it } from "node:test";
 
 import { Viewport } from "../../../src/tui/screen/viewport.ts";
 
-/** 内容 100 行、主区 10 行这种规模：窗口够小，边界一眼能算清。 */
-const TOTAL = 100;
-const ROWS = 10;
-
-describe("Viewport", () => {
-	it("默认跟尾：窗口贴着内容末尾", () => {
+describe("滚动视口", () => {
+	it("内容不足一屏时贴尾，start 为 0", () => {
 		const viewport = new Viewport();
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 90, following: true });
+		assert.deepEqual(viewport.window(5, 10), { start: 0, following: true });
+		assert.deepEqual(viewport.window(0, 10), { start: 0, following: true });
 	});
 
-	it("内容不足一屏时窗口从头开始，也算跟尾", () => {
+	it("内容满屏后跟尾：新内容到达时窗口跟着走", () => {
 		const viewport = new Viewport();
-		assert.deepEqual(viewport.window(4, ROWS), { start: 0, following: true });
+		assert.deepEqual(viewport.window(30, 10), { start: 20, following: true });
+		assert.deepEqual(viewport.window(31, 10), { start: 21, following: true });
 	});
 
-	it("往上翻之后停在原地，新到的内容不会把窗口推走", () => {
+	it("向上逐行滚动时窗口停住，不再被新内容推走", () => {
 		const viewport = new Viewport();
-		viewport.scrollBy(-5, TOTAL, ROWS);
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 85, following: false });
-		// 内容又长了几行，看的还是原来那几行
-		assert.deepEqual(viewport.window(140, ROWS), { start: 85, following: false });
+		viewport.scrollBy(-5, 30, 10);
+		assert.deepEqual(viewport.window(31, 10), { start: 15, following: false });
+
+		// 内容增长，窗口顶端还是绝对行号 15
+		assert.deepEqual(viewport.window(40, 10), { start: 15, following: false });
 	});
 
-	it("往下翻到底部就恢复跟尾", () => {
+	it("翻到最后一行时恢复跟尾", () => {
 		const viewport = new Viewport();
-		viewport.scrollBy(-5, TOTAL, ROWS);
-		viewport.scrollBy(5, TOTAL, ROWS);
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 90, following: true });
+		viewport.scrollBy(-100, 30, 10);
+		assert.deepEqual(viewport.window(30, 10), { start: 0, following: false });
+
+		viewport.scrollBy(100, 30, 10);
+		assert.deepEqual(viewport.window(30, 10), { start: 20, following: true });
 	});
 
-	it("翻页一步半屏，翻过头只停在边界", () => {
+	it("越界滚动夹紧在 [0, last]", () => {
 		const viewport = new Viewport();
-		viewport.scrollPages(-1, TOTAL, ROWS);
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 85, following: false });
+		viewport.scrollBy(-999, 30, 10);
+		assert.equal(viewport.window(30, 10).start, 0);
 
-		viewport.scrollPages(-100, TOTAL, ROWS);
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 0, following: false });
-
-		viewport.scrollPages(100, TOTAL, ROWS);
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 90, following: true });
+		viewport.scrollBy(999, 30, 10);
+		assert.equal(viewport.window(30, 10).start, 20);
+		// 窗口停在 last 不算跟尾，除非正好从跟尾状态出发
+		assert.equal(viewport.window(30, 10).following, true);
 	});
 
-	it("跳到最早与回到末尾", () => {
+	it("按页滚动一步半屏", () => {
+		const viewport = new Viewport();
+		viewport.scrollPages(-1, 32, 10);
+		assert.deepEqual(viewport.window(32, 10), { start: 17, following: false });
+
+		viewport.scrollPages(-2, 32, 10);
+		assert.deepEqual(viewport.window(32, 10), { start: 7, following: false });
+	});
+
+	it("toTop 与 toEnd", () => {
 		const viewport = new Viewport();
 		viewport.toTop();
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 0, following: false });
+		assert.deepEqual(viewport.window(50, 10), { start: 0, following: false });
+
+		// 内容增长不推动
+		assert.deepEqual(viewport.window(60, 10), { start: 0, following: false });
 
 		viewport.toEnd();
-		assert.deepEqual(viewport.window(TOTAL, ROWS), { start: 90, following: true });
+		assert.deepEqual(viewport.window(60, 10), { start: 50, following: true });
 	});
 
-	it("内容不够一屏时跳到最早，看着还是跟尾", () => {
+	it("从 last 位置再向下越界时恢复跟尾，没到过 last 就不跟", () => {
 		const viewport = new Viewport();
 		viewport.toTop();
-		assert.deepEqual(viewport.window(3, ROWS), { start: 0, following: true });
-	});
+		// 从 0 向下 5 行：停在 5，不到 last(20)，不恢复跟尾
+		viewport.scrollBy(5, 30, 10);
+		assert.deepEqual(viewport.window(30, 10), { start: 5, following: false });
 
-	it("主区变高以后窗口不越界", () => {
-		const viewport = new Viewport();
-		viewport.scrollBy(-50, TOTAL, ROWS);
-		// 窗口顶端 40 行，主区长到 80 行：最多只能从第 20 行开始，也就是贴回了末尾
-		assert.deepEqual(viewport.window(TOTAL, 80), { start: 20, following: true });
+		// 越过 last：夹到 20，恢复跟尾
+		viewport.scrollBy(100, 30, 10);
+		assert.deepEqual(viewport.window(30, 10), { start: 20, following: true });
 	});
 });

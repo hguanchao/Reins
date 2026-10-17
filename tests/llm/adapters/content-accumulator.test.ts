@@ -1,102 +1,112 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-	ContentAccumulator,
-	parseToolArguments,
-} from "../../../src/llm/adapters/content-accumulator.ts";
+import { ContentAccumulator, parseToolArguments } from "../../../src/llm/adapters/content-accumulator.ts";
 
-describe("内容累积", () => {
-	it("文本按出现顺序拼起来", () => {
-		const accumulator = new ContentAccumulator();
-		accumulator.appendText(0, "你");
-		accumulator.appendText(0, "好");
-		assert.deepEqual(accumulator.blocks(), [{ type: "text", text: "你好" }]);
+describe("内容累积器", () => {
+	it("文本按下标拼接,乱序下标按出现顺序排列", () => {
+		const blocks = new ContentAccumulator();
+		blocks.appendText(0, "Hello");
+		blocks.appendText(0, " world");
+		blocks.appendText(2, "!");
+		blocks.appendText(1, "second");
+		assert.deepEqual(
+			blocks.blocks().filter((block) => block.type === "text").map((block) => (block as { text: string }).text),
+			["Hello world", "second", "!"],
+		);
 	});
 
-	it("同一块在下标上的多次追加合并成一块", () => {
-		const accumulator = new ContentAccumulator();
-		accumulator.appendText(0, "上面");
-		accumulator.appendThinking(1, "想");
-		accumulator.appendThinking(1, "一下");
-		accumulator.appendText(2, "下面");
-		assert.deepEqual(accumulator.blocks(), [
-			{ type: "text", text: "上面" },
-			{ type: "thinking", text: "想一下" },
-			{ type: "text", text: "下面" },
-		]);
+	it("思考块拼接并保留签名", () => {
+		const blocks = new ContentAccumulator();
+		blocks.appendThinking(0, "think ");
+		blocks.setThinkingSignature(0, "sig-1");
+		blocks.appendThinking(0, "more");
+		const [thinking] = blocks.blocks();
+		assert.deepEqual(thinking, { type: "thinking", text: "think more", signature: "sig-1" });
 	});
 
-	it("没有出现过的下标不会留下空位", () => {
-		const accumulator = new ContentAccumulator();
-		accumulator.appendText(3, "只此一块");
-		assert.deepEqual(accumulator.blocks(), [{ type: "text", text: "只此一块" }]);
+	it("setThinkingSignature 对非思考块无效", () => {
+		const blocks = new ContentAccumulator();
+		blocks.appendText(0, "t");
+		blocks.setThinkingSignature(0, "sig");
+		assert.deepEqual(blocks.blocks(), [{ type: "text", text: "t" }]);
 	});
 
-	it("思考块可以补上签名", () => {
-		const accumulator = new ContentAccumulator();
-		accumulator.appendThinking(0, "推理过程");
-		accumulator.setThinkingSignature(0, "sig-1");
-		assert.deepEqual(accumulator.blocks(), [{ type: "thinking", text: "推理过程", signature: "sig-1" }]);
+	it("工具调用:startToolCall 首次为真,重复返回假并补齐", () => {
+		const blocks = new ContentAccumulator();
+		assert.equal(blocks.startToolCall(0, "id1", "read"), true);
+		assert.equal(blocks.startToolCall(0, "", "read"), false); // 名称已在,空串不覆盖
+		const [call] = blocks.blocks();
+		assert.deepEqual(call, { type: "toolCall", id: "id1", name: "read", arguments: {} });
 	});
 
-	it("工具调用的标识可以分散多次送达并逐步补齐", () => {
-		const accumulator = new ContentAccumulator();
-		assert.equal(accumulator.startToolCall(0, "call-1", ""), true);
-		// 名称在后续分片里才到
-		assert.equal(accumulator.startToolCall(0, "", "read"), false);
-		accumulator.appendToolArguments(0, '{"path":');
-		accumulator.appendToolArguments(0, '"/tmp/a"}');
-		accumulator.finish(0);
-
-		assert.deepEqual(accumulator.blocks(), [
-			{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "/tmp/a" } },
-		]);
+	it("工具参数:JSON 分片在收尾时拼接解析", () => {
+		const blocks = new ContentAccumulator();
+		blocks.startToolCall(0, "id1", "write");
+		blocks.appendToolArguments(0, '{"path":');
+		blocks.appendToolArguments(0, '"a.ts"}');
+		blocks.finish(0);
+		assert.deepEqual(blocks.blocks(), [{ type: "toolCall", id: "id1", name: "write", arguments: { path: "a.ts" } }]);
 	});
 
-	it("收尾时把遗留的工具调用一起结算", () => {
-		const accumulator = new ContentAccumulator();
-		accumulator.startToolCall(1, "call-1", "read");
-		accumulator.appendToolArguments(1, '{"path":"a"}');
-		accumulator.finishAll();
-		assert.deepEqual(accumulator.blocks(), [
-			{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "a" } },
-		]);
+	it("参数不是合法 JSON 时错误记在块上", () => {
+		const blocks = new ContentAccumulator();
+		blocks.startToolCall(0, "id1", "write");
+		blocks.appendToolArguments(0, '{"path": ');
+		blocks.finish(0);
+		const call = blocks.blocks()[0] as { argumentsError?: string };
+		assert.match(call.argumentsError ?? "", /not valid JSON/);
 	});
 
-	it("参数不是合法 JSON 时保留原因而不抛错", () => {
-		const accumulator = new ContentAccumulator();
-		accumulator.startToolCall(0, "call-1", "read");
-		accumulator.appendToolArguments(0, '{"path":');
-		accumulator.finish(0);
-
-		const block = accumulator.blocks()[0];
-		assert.equal(block?.type, "toolCall");
-		assert.deepEqual(block?.type === "toolCall" ? block.arguments : undefined, {});
-		assert.match(block?.type === "toolCall" ? (block.argumentsError ?? "") : "", /不是合法 JSON/);
+	it("参数解析为非对象时也有说明", () => {
+		const blocks = new ContentAccumulator();
+		blocks.startToolCall(0, "id1", "write");
+		blocks.appendToolArguments(0, "[1,2]");
+		blocks.finish(0);
+		const call = blocks.blocks()[0] as { argumentsError?: string };
+		assert.equal(call.argumentsError, "tool arguments must be a JSON object");
 	});
 
-	it("没有参数的工具调用解析成空对象", () => {
-		const accumulator = new ContentAccumulator();
-		accumulator.startToolCall(0, "call-1", "list");
-		accumulator.finish(0);
-		assert.deepEqual(accumulator.blocks(), [
-			{ type: "toolCall", id: "call-1", name: "list", arguments: {} },
-		]);
+	it("finishAll 收掉所有工具块;对非工具块无操作", () => {
+		const blocks = new ContentAccumulator();
+		blocks.appendText(0, "answer");
+		blocks.startToolCall(1, "a", "r");
+		blocks.startToolCall(2, "b", "w");
+		blocks.appendToolArguments(1, '{"x":1}');
+		blocks.appendToolArguments(2, '{"y":2}');
+		blocks.finishAll();
+		assert.deepEqual(
+			blocks.blocks(),
+			[
+				{ type: "text", text: "answer" },
+				{ type: "toolCall", id: "a", name: "r", arguments: { x: 1 } },
+				{ type: "toolCall", id: "b", name: "w", arguments: { y: 2 } },
+			],
+		);
+	});
+
+	it("isEmpty 与无参数默认空对象", () => {
+		const blocks = new ContentAccumulator();
+		assert.equal(blocks.isEmpty(), true);
+		blocks.startToolCall(0, "id", "t");
+		assert.equal(blocks.isEmpty(), false);
+		blocks.finish(0); // 没有累积任何参数
+		assert.deepEqual(blocks.blocks(), [{ type: "toolCall", id: "id", name: "t", arguments: {} }]);
 	});
 });
 
-describe("工具参数解析", () => {
-	it("空文本解析成空对象", () => {
+describe("参数解析", () => {
+	it("空白按空对象算", () => {
 		assert.deepEqual(parseToolArguments("   "), { arguments: {} });
 	});
 
-	it("非对象的 JSON 被拒", () => {
-		assert.match(parseToolArguments("[1,2]").argumentsError ?? "", /应当是 JSON 对象/);
-		assert.match(parseToolArguments('"x"').argumentsError ?? "", /应当是 JSON 对象/);
+	it("对象正常解析", () => {
+		assert.deepEqual(parseToolArguments('{"a":1}'), { arguments: { a: 1 } });
 	});
 
-	it("合法对象解析成功", () => {
-		assert.deepEqual(parseToolArguments('{"a":1}'), { arguments: { a: 1 } });
+	it("数组与非对象报错不抛", () => {
+		assert.equal(parseToolArguments("[1]").argumentsError, "tool arguments must be a JSON object");
+		assert.equal(parseToolArguments("42").argumentsError, "tool arguments must be a JSON object");
+		assert.match(parseToolArguments("{bad").argumentsError ?? "", /not valid JSON/);
 	});
 });

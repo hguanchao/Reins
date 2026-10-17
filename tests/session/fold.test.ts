@@ -1,138 +1,135 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { foldEntries } from "../../src/session/fold.ts";
+import { foldEntries, SessionFolder, summaryMessage } from "../../src/session/fold.ts";
 import type { SessionEntry } from "../../src/session/port.ts";
-import { Session } from "../../src/session/session.ts";
+import type { LlmMessage } from "../../src/llm/messages.ts";
 
-/**
- * 折叠规则。
- *
- * 这些用例盯的是「下一次请求要用的东西全部来自条目」这条约定：分段是增量、工具声明是增量、
- * 移除与替换都要能在重放时生效。
- */
+const T = "2026-01-01T00:00:00Z";
 
-function base(id: string, parentId: string | null): { id: string; parentId: string | null; timestamp: string } {
-	return { id, parentId, timestamp: "2026-01-01T00:00:00.000Z" };
+function messageEntry(id: string, message: LlmMessage, parentId: string | null = null): SessionEntry {
+	return { type: "message", id, parentId, timestamp: T, message };
+}
+
+function systemEntry(id: string, sections: Record<string, string | null>): SessionEntry {
+	return { type: "system", id, parentId: null, timestamp: T, sections };
+}
+
+function usageEntry(id: string): SessionEntry {
+	return {
+		type: "usage",
+		id,
+		parentId: null,
+		timestamp: T,
+		provider: "p",
+		model: "m",
+		kind: "turn",
+		usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 },
+		cost: undefined,
+	};
 }
 
 describe("会话折叠", () => {
-	it("分段按增量叠加，值为 null 表示移除那一段", () => {
-		const entries: SessionEntry[] = [
-			{ type: "system", ...base("1", null), sections: { preamble: "开头", rules: "规则" } },
-			{ type: "system", ...base("2", "1"), sections: { rules: null, cwd: "工作区" } },
-		];
-		assert.deepEqual(foldEntries(entries).sections, { preamble: "开头", cwd: "工作区" });
-	});
-
-	it("工具声明按名字替换与移除，顺序跟着声明走", () => {
-		const entries: SessionEntry[] = [
-			{
-				type: "system",
-				...base("1", null),
-				sections: {},
-				toolsAdded: [
-					{ name: "read", description: "旧说明", parameters: {} },
-					{ name: "bash", description: "跑命令", parameters: {} },
-				],
-			},
-			{
-				type: "system",
-				...base("2", "1"),
-				sections: {},
-				toolsRemoved: ["bash"],
-				toolsAdded: [{ name: "read", description: "新说明", parameters: {} }],
-			},
-		];
-		const tools = foldEntries(entries).tools;
-		assert.equal(tools.length, 1);
-		assert.equal(tools[0].name, "read");
-		assert.equal(tools[0].description, "新说明");
-	});
-
-	it("模型与思考等级取最后一次变更", () => {
-		const entries: SessionEntry[] = [
-			{ type: "model_change", ...base("1", null), provider: "p", model: "a" },
-			{ type: "effort_change", ...base("2", "1"), effort: "low" },
-			{ type: "model_change", ...base("3", "2"), provider: "p", model: "b" },
-		];
-		const state = foldEntries(entries);
-		assert.deepEqual(state.model, { provider: "p", model: "b" });
-		assert.equal(state.effort, "low");
-	});
-
-	it("消息按写入顺序进入上下文", async () => {
-		const session = new Session({ id: "s", cwd: "/work", file: null });
-		await session.append({ type: "message", message: { role: "user", content: "甲" } });
-		await session.append({ type: "message", message: { role: "assistant", content: [{ type: "text", text: "乙" }] } });
-
-		assert.deepEqual(session.state().messages, [
-			{ role: "user", content: "甲" },
-			{ role: "assistant", content: [{ type: "text", text: "乙" }] },
+	it("消息按顺序进上下文，用量条目不进", () => {
+		const state = foldEntries([
+			messageEntry("a", { role: "user", content: "hi" }),
+			usageEntry("u"),
+			messageEntry("b", { role: "assistant", content: [{ type: "text", text: "yo" }] }),
 		]);
-		assert.deepEqual(foldEntries(session.entries()), session.state());
+		assert.deepEqual(state.messageIds, ["a", "b"]);
+		assert.deepEqual(state.messages, [
+			{ role: "user", content: "hi" },
+			{ role: "assistant", content: [{ type: "text", text: "yo" }] },
+		]);
+		assert.equal(state.model, undefined);
+	});
+
+	it("system 条目:节覆盖写、null 移除、工具增删替换", () => {
+		const folder = new SessionFolder();
+		folder.add(systemEntry("s1", { toolset: "full", extra: "x" }));
+		folder.add({
+			type: "system",
+			id: "s2",
+			parentId: null,
+			timestamp: T,
+			sections: { extra: null },
+			toolsAdded: [{ name: "read", description: "d", parameters: {} }],
+		});
+		folder.add({
+			type: "system",
+			id: "s3",
+			parentId: null,
+			timestamp: T,
+			sections: {},
+			toolsAdded: [{ name: "read", description: "d2", parameters: {} }],
+		});
+
+		const state = folder.state();
+		// extra 被 null 移除；toolset 保留
+		assert.deepEqual(state.sections, { toolset: "full" });
+		// 同名工具被后一条替换，只剩一个
+		assert.deepEqual(
+			state.tools.map((tool) => `${tool.name}:${tool.description}`),
+			["read:d2"],
+		);
+
+		folder.add(systemEntry("s4", { toolset: null }));
+		assert.deepEqual(folder.state().sections, {});
+	});
+
+	it("增量折叠与从头折叠结果一致", () => {
+		const entries: SessionEntry[] = [
+			systemEntry("s1", { toolset: "builtin" }),
+			messageEntry("m1", { role: "user", content: "a" }),
+		];
+		const folded = foldEntries(entries);
+
+		const incremental = new SessionFolder();
+		for (const entry of entries) incremental.add(entry);
+		assert.deepEqual(incremental.state(), folded);
+	});
+
+	it("模型与思考等级切换", () => {
+		const state = foldEntries([
+			{ type: "model_change", id: "k1", parentId: null, timestamp: T, provider: "p", model: "m" },
+			{ type: "effort_change", id: "k2", parentId: null, timestamp: T, effort: "high" },
+		]);
+		assert.deepEqual(state.model, { provider: "p", model: "m" });
+		assert.equal(state.effort, "high");
+	});
+
+	it("压缩:被覆盖的消息退出，摘要排最前，未覆盖的排在摘要之后", () => {
+		const state = foldEntries([
+			messageEntry("m1", { role: "user", content: "one" }),
+			messageEntry("m2", { role: "user", content: "two" }),
+			messageEntry("m3", { role: "user", content: "three" }),
+			{
+				type: "compaction",
+				id: "c1",
+				parentId: null,
+				timestamp: T,
+				summary: "the summary",
+				covered: ["m1", "m2"],
+				provider: "p",
+				model: "m",
+				tokensBefore: 100,
+				usage: undefined,
+			},
+		]);
+
+		// m1、m2 被摘要替代；摘要壳在最前，m3 留下
+		assert.equal(state.messages.length, 2);
+		assert.match((state.messages[0] as { content: string }).content, /Summary of the earlier conversation/);
+		assert.match((state.messages[0] as { content: string }).content, /the summary/);
+		assert.equal((state.messages[1] as { content: string }).content, "three");
 	});
 });
 
-describe("压缩条目", () => {
-	function compaction(covered: readonly string[]): SessionEntry {
-		return {
-			type: "compaction",
-			...base("3", "2"),
-			summary: "先前读过了 a.txt",
-			covered,
-			provider: "p",
-			model: "compact",
-			tokensBefore: 900,
-			usage: undefined,
-		};
-	}
-
-	const history: SessionEntry[] = [
-		{ type: "message", ...base("1", null), message: { role: "user", content: "读一下 a.txt" } },
-		{ type: "message", ...base("2", "1"), message: { role: "assistant", content: [{ type: "text", text: "好" }] } },
-		{ type: "message", ...base("4", "3"), message: { role: "user", content: "接着来" } },
-	];
-
-	it("覆盖到的消息换成摘要，摘要排在最前面", () => {
-		const entries = [...history.slice(0, 2), compaction(["1", "2"]), history[2]];
-		const state = foldEntries(entries);
-
-		assert.equal(state.messages.length, 2);
-		assert.match(JSON.stringify(state.messages[0]), /先前读过了 a\.txt/);
-		assert.equal(state.messages[1].role, "user");
-		assert.deepEqual(state.messageIds, ["3", "4"]);
-	});
-
-	it("只覆盖一部分时，保留下来的消息排在摘要之后", () => {
-		const entries = [...history.slice(0, 2), compaction(["1"]), history[2]];
-		const state = foldEntries(entries);
-
-		assert.equal(state.messages.length, 3);
-		assert.deepEqual(state.messageIds, ["3", "2", "4"]);
-		assert.match(JSON.stringify(state.messages[0]), /摘要/);
-	});
-
-	it("条目一条都不删：完整历史仍在文件里，用量也照旧计入", () => {
-		const entries = [...history.slice(0, 2), compaction(["1", "2"]), history[2]];
-		// 被覆盖的消息仍然在条目里，导出与统计看得到
-		assert.equal(entries.filter((entry) => entry.type === "message").length, 3);
-		assert.equal(foldEntries(entries).messages.length, 2);
-	});
-
-	it("用量条目不进上下文", () => {
-		const entries: SessionEntry[] = [
-			...history.slice(0, 1),
-			{
-				type: "usage",
-				...base("9", "1"),
-				provider: "p",
-				model: "m",
-				kind: "turn",
-				usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, total: 3 },
-				cost: undefined,
-			},
-		];
-		assert.equal(foldEntries(entries).messages.length, 1);
+describe("摘要外壳", () => {
+	it("说明这是先前对话的替代品", () => {
+		const message = summaryMessage("handover");
+		assert.equal(message.role, "user");
+		assert.match(message.content, /^\(Summary of the earlier conversation/);
+		assert.ok(message.content.includes("handover"));
 	});
 });

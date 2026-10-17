@@ -16,8 +16,8 @@ import { decodeTextFile, encodeTextFile } from "./text-file.ts";
 const EDIT_ENTRY = {
 	type: "object",
 	properties: {
-		oldText: { type: "string", description: "要替换的原文本，必须与文件中完全一致且只出现一次" },
-		newText: { type: "string", description: "替换成的新文本；留空表示删除" },
+		oldText: { type: "string", description: "The text to replace. It must match the file exactly and appear only once." },
+		newText: { type: "string", description: "The replacement text. Leave empty to delete." },
 	},
 	required: ["oldText", "newText"],
 } as const satisfies JsonSchema;
@@ -25,10 +25,10 @@ const EDIT_ENTRY = {
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		path: { type: "string", description: "文件路径，相对工作根或绝对路径" },
+		path: { type: "string", description: "The path to edit, relative to the workspace root or absolute." },
 		edits: {
 			type: "array",
-			description: "要应用的修改，各条互不重叠",
+			description: "The edits to apply. Their ranges must not overlap.",
 			items: EDIT_ENTRY,
 		},
 	},
@@ -48,8 +48,9 @@ type EditArgs = {
 export const editTool: ToolDefinition<EditArgs> = {
 	name: "edit",
 	description:
-		"按片段替换文件内容。每条 oldText 必须与文件里的一段完全一致且只出现一次，" +
-		"否则整次修改都不生效。要改多处就在一次调用里给多条 edits，它们都基于同一个原文。",
+		"Replace file content by fragment. Each oldText must match one fragment of the file exactly and appear only " +
+		"once, otherwise no edit is applied. To change several places, pass multiple edits in one call; they all apply " +
+		"to the same original content.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: false },
 
@@ -83,13 +84,13 @@ export const editTool: ToolDefinition<EditArgs> = {
 			try {
 				buffer = readFileSync(resolved.absolute);
 			} catch (error) {
-				return { content: `读取 ${displayPath} 失败：${describeError(error)}`, isError: true };
+				return { content: `Failed to read ${displayPath}: ${describeError(error)}`, isError: true };
 			}
 
 			const file = decodeTextFile(buffer);
 			const original = file.text;
 			if (args.edits.length === 0) {
-				return { content: "至少要给出一条修改", isError: true };
+				return { content: "At least one edit is required", isError: true };
 			}
 
 			const located: AppliedEdit[] = [];
@@ -106,8 +107,8 @@ export const editTool: ToolDefinition<EditArgs> = {
 				if (located[index].start < located[index - 1].end) {
 					return {
 						content:
-							`第 ${index} 条与第 ${index + 1} 条修改的范围重叠，无法同时应用。` +
-							"请把它们合成一条，或改成不相交的片段。",
+							`Edits ${index} and ${index + 1} overlap and cannot be applied together. ` +
+							"Merge them into one edit, or make the fragments disjoint.",
 						isError: true,
 					};
 				}
@@ -120,18 +121,18 @@ export const editTool: ToolDefinition<EditArgs> = {
 			}
 
 			if (updated === original) {
-				return { content: `${displayPath} 的内容没有变化`, details: { path: displayPath, changed: false } };
+				return { content: `${displayPath} is unchanged`, details: { path: displayPath, changed: false } };
 			}
 
 			try {
 				writeFileSync(resolved.absolute, encodeTextFile(file, updated));
 			} catch (error) {
-				return { content: `写入 ${displayPath} 失败：${describeError(error)}`, isError: true };
+				return { content: `Failed to write ${displayPath}: ${describeError(error)}`, isError: true };
 			}
 
 			const diff = formatEditDiff(original, updated, located);
 			return {
-				content: `已修改 ${displayPath}，共 ${located.length} 处\n\n${diff}`,
+				content: `Updated ${displayPath}: ${located.length} edits applied\n\n${diff}`,
 				details: {
 					path: displayPath,
 					changed: true,
@@ -151,19 +152,19 @@ export const editTool: ToolDefinition<EditArgs> = {
  */
 function rejectEdit(original: string, edit: EditEntry, position: number): string | undefined {
 	if (edit.oldText.length === 0) {
-		return `第 ${position + 1} 条修改的 oldText 为空。删除内容请把 oldText 写成要删的那段、newText 留空。`;
+		return `Edit ${position + 1} has an empty oldText. To delete content, set oldText to the text to delete and leave newText empty.`;
 	}
 
 	const first = original.indexOf(edit.oldText);
 	if (first === -1) {
-		return `第 ${position + 1} 条修改的 oldText 在文件中找不到。请先用 read 确认原文的实际内容与缩进。`;
+		return `Edit ${position + 1}: oldText was not found in the file. Use read to check the exact content and indentation.`;
 	}
 
 	const second = original.indexOf(edit.oldText, first + 1);
 	if (second !== -1) {
 		return (
-			`第 ${position + 1} 条修改的 oldText 在文件中出现了多次，无法确定改哪一处。` +
-			"请把 oldText 扩展成带上下文的唯一片段。"
+			`Edit ${position + 1}: oldText appears more than once in the file, so the target is ambiguous. ` +
+			"Extend oldText with enough context to make it unique."
 		);
 	}
 	return undefined;

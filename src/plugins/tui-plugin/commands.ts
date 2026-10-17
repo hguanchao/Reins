@@ -27,10 +27,10 @@ export interface BuiltinContext {
 
 /** 命令清单，用于帮助文本。 */
 export const BUILTIN_COMMANDS: readonly { readonly name: string; readonly description: string }[] = [
-	{ name: "help", description: "显示这份帮助" },
-	{ name: "exit", description: "退出（空输入时按 Ctrl+D 也一样）" },
-	{ name: "notify", description: `查看或设置完成提醒：${NOTIFY_MODES.join(" / ")}` },
-	{ name: "trust", description: "查看或修改当前工作区的信任状态" },
+	{ name: "help", description: "Show this help" },
+	{ name: "exit", description: "Quit (Ctrl+D on an empty prompt does the same)" },
+	{ name: "notify", description: `Show or set completion notifications: ${NOTIFY_MODES.join(" / ")}` },
+	{ name: "trust", description: "Show or change trust for the current workspace" },
 ];
 
 /** 执行一条自带命令；不是自带命令时返回 undefined，由调用方转给插件命令。 */
@@ -54,14 +54,14 @@ export function runBuiltin(
 }
 
 function helpLines(context: BuiltinContext): readonly Line[] {
-	const lines: Line[] = [styled("界面命令", BOLD)];
+	const lines: Line[] = [styled("Interface commands", BOLD)];
 	for (const command of BUILTIN_COMMANDS) {
 		lines.push(concat(styled(`  /${command.name}`, ACCENT), plain(`  ${command.description}`)));
 	}
 
 	const pluginCommands = context.runtime.commands;
 	if (pluginCommands.length > 0) {
-		lines.push([], styled("插件命令", BOLD));
+		lines.push([], styled("Plugin commands", BOLD));
 		for (const command of pluginCommands) {
 			lines.push(concat(styled(`  /${command.name}`, ACCENT), plain(`  ${command.description}`)));
 		}
@@ -69,10 +69,10 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 
 	lines.push(
 		[],
-		styled("按键", BOLD),
-		plain("  Enter 发送　Ctrl+C 中止或退出　Ctrl+D 退出　↑ ↓ 输入历史　Ctrl+L 重画"),
-		plain("  PageUp/PageDown 翻页　Ctrl+P/Ctrl+N 逐行　滚轮翻历史"),
-		plain("  翻阅时 Home/End 跳到最早/回到末尾；鼠标选中文本要按住 Shift"),
+		styled("Keys", BOLD),
+		plain("  Enter send   Ctrl+C cancel or quit   Ctrl+D quit   Up/Down input history   Ctrl+L redraw"),
+		plain("  PageUp/PageDown page   Ctrl+P/Ctrl+N line   wheel scrolls the history"),
+		plain("  While browsing, Home/End jump to the oldest or newest line; hold Shift to select text"),
 	);
 	return lines;
 }
@@ -82,8 +82,8 @@ function notifyCommand(args: string, context: BuiltinContext): BuiltinResult {
 	if (argument.length === 0) {
 		return {
 			lines: [
-				concat(plain("完成提醒："), styled(context.notify(), ACCENT)),
-				styled(`  可用取值：${NOTIFY_MODES.join(" / ")}`, DIM),
+				concat(plain("Completion notifications: "), styled(context.notify(), ACCENT)),
+				styled(`  Available: ${NOTIFY_MODES.join(" / ")}`, DIM),
 			],
 		};
 	}
@@ -91,11 +91,11 @@ function notifyCommand(args: string, context: BuiltinContext): BuiltinResult {
 	const mode = NOTIFY_MODES.find((item) => item === argument);
 	if (mode === undefined) {
 		// 写错取值就明确拒绝，不要「看起来设置了其实没变」
-		return { lines: [styled(`无法识别的取值 ${argument}；可用取值：${NOTIFY_MODES.join(" / ")}`, BAD)] };
+		return { lines: [styled(`Unknown value ${argument}; available: ${NOTIFY_MODES.join(" / ")}`, BAD)] };
 	}
 
 	context.setNotify(mode);
-	return { lines: [concat(plain("完成提醒已设为 "), styled(mode, ACCENT), plain("，并写回配置。"))] };
+	return { lines: [concat(plain("Completion notifications set to "), styled(mode, ACCENT), plain(" and written back to config."))] };
 }
 
 function trustCommand(args: string, context: BuiltinContext): BuiltinResult {
@@ -106,7 +106,7 @@ function trustCommand(args: string, context: BuiltinContext): BuiltinResult {
 	if (argument === "") return { lines: status };
 
 	if (argument !== "yes" && argument !== "no") {
-		return { lines: [...status, styled("用法：/trust yes 或 /trust no", DIM)] };
+		return { lines: [...status, styled("Usage: /trust yes or /trust no", DIM)] };
 	}
 
 	const wanted = argument === "yes";
@@ -115,9 +115,9 @@ function trustCommand(args: string, context: BuiltinContext): BuiltinResult {
 		lines: [
 			...status,
 			concat(
-				plain(`已把 ${trust.root} 记为`),
-				styled(wanted ? "信任" : "不信任", ACCENT),
-				plain("；本次运行已经按先前的结果装配完毕，下次启动生效。"),
+				plain(`${trust.root} is now recorded as `),
+				styled(wanted ? "trusted" : "untrusted", ACCENT),
+				plain("; this run is already assembled from the earlier result, so it takes effect on the next start."),
 			),
 		],
 	};
@@ -126,18 +126,18 @@ function trustCommand(args: string, context: BuiltinContext): BuiltinResult {
 function trustStatusLines(context: BuiltinContext): readonly Line[] {
 	const trust = context.runtime.trust;
 	if (trust.files.length === 0) {
-		return [plain(`${trust.root} 里没有需要信任才能读取的配置。`)];
+		return [plain(`${trust.root} has no config that needs trust to read.`)];
 	}
 	if (trust.trusted) {
 		return [
-			concat(plain("已信任 "), styled(trust.root, ACCENT), plain("，自带的配置参与了本次运行：")),
+			concat(styled(trust.root, ACCENT), plain(" is trusted; its config took part in this run:")),
 			...trust.files.map((file) => styled(`  ${file}`, DIM)),
 		];
 	}
 	return [
-		concat(plain("未信任 "), styled(trust.root, WARN), plain("，下列配置没有读取：")),
+		concat(styled(trust.root, WARN), plain(" is not trusted; these config files were not read:")),
 		...trust.files.map((file) => styled(`  ${file}`, DIM)),
-		styled("用 /trust yes 打开它的配置；合并只会更严，不会放宽审批与沙箱。", DIM),
+		styled("Open it with /trust yes; merging can only tighten approval and sandbox, never relax them.", DIM),
 	];
 }
 

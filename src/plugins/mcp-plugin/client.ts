@@ -108,7 +108,7 @@ export class McpClient {
 		if (this.#closed) return;
 		this.#closed = true;
 		this.#options.transport.close();
-		this.#failAll(new Error("连接已经关闭"));
+		this.#failAll(new Error("Connection is closed"));
 	}
 
 	/** 后台把收到的报文分派出去：回音交给等它的人，别的都丢掉。 */
@@ -118,7 +118,7 @@ export class McpClient {
 		} catch {
 			// 传输层自己会把断线原因报给上层；这里只负责把还等着的请求叫醒
 		}
-		this.#failAll(new Error("与服务端的连接已经断开"));
+		this.#failAll(new Error("Connection to the server was lost"));
 	}
 
 	#dispatch(message: JsonRpcMessage): void {
@@ -132,7 +132,7 @@ export class McpClient {
 			void this.#send({
 				jsonrpc: "2.0",
 				id,
-				error: { code: -32601, message: "本程序不支持这个请求" },
+				error: { code: -32601, message: "This request is not supported by this client" },
 			}).catch(() => undefined);
 			return;
 		}
@@ -167,7 +167,7 @@ export class McpClient {
 			};
 			const timer = setTimeout(() => {
 				settle();
-				reject(new Error(`${method} 超过 ${timeoutMs}ms 没有响应`));
+				reject(new Error(`${method} did not respond within ${timeoutMs}ms`));
 			}, timeoutMs);
 			const onAbort = (): void => {
 				settle();
@@ -175,9 +175,9 @@ export class McpClient {
 				void this.#send({
 					jsonrpc: "2.0",
 					method: "notifications/cancelled",
-					params: { requestId: id, reason: "已中止" },
+					params: { requestId: id, reason: "aborted" },
 				}).catch(() => undefined);
-				reject(new Error("已中止"));
+				reject(new Error("aborted"));
 			};
 
 			this.#pending.set(id, {
@@ -205,7 +205,7 @@ export class McpClient {
 	}
 
 	async #send(message: JsonRpcMessage): Promise<void> {
-		if (this.#closed) throw new Error("连接已经关闭");
+		if (this.#closed) throw new Error("Connection is closed");
 		await this.#options.transport.send(message);
 	}
 
@@ -233,7 +233,7 @@ function readInputSchema(raw: unknown): JsonSchema {
 }
 
 function readCallResult(result: unknown): McpCallResult {
-	if (!isRecord(result)) return { content: "服务端没有返回结果", isError: true };
+	if (!isRecord(result)) return { content: "The server returned no result.", isError: true };
 
 	const isError = result["isError"] === true;
 	const blocks = Array.isArray(result["content"]) ? result["content"] : [];
@@ -245,19 +245,19 @@ function readCallResult(result: unknown): McpCallResult {
 			continue;
 		}
 		// 图片、资源这类块显示不出来，但要说一声它们存在，否则模型会以为服务端只回了这些文字
-		const kind = typeof block["type"] === "string" ? block["type"] : "未知";
-		parts.push(`[${kind} 内容，本程序不显示]`);
+		const kind = typeof block["type"] === "string" ? block["type"] : "unknown";
+		parts.push(`[${kind} content is not shown here]`);
 	}
 
 	if (parts.length === 0) {
-		parts.push(isError ? "服务端报告失败，但没有说明原因" : "服务端没有返回内容");
+		parts.push(isError ? "The server reported a failure without a reason." : "The server returned no content.");
 	}
 	return { content: parts.join("\n\n"), isError };
 }
 
 function describeRpcError(error: unknown): string {
-	if (!isRecord(error)) return `服务端返回了错误：${JSON.stringify(error)}`;
-	const message = typeof error["message"] === "string" ? error["message"] : "未说明";
+	if (!isRecord(error)) return `The server returned an error: ${JSON.stringify(error)}`;
+	const message = typeof error["message"] === "string" ? error["message"] : "no reason given";
 	const code = typeof error["code"] === "number" ? `（${error["code"]}）` : "";
 	return `${message}${code}`;
 }

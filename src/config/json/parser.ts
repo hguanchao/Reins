@@ -37,10 +37,10 @@ export class JsonParser {
 
 	parse(): JsonParseResult {
 		this.#skipTrivia();
-		if (this.#atEnd()) throw this.#error("文件为空，需要一个 JSON 对象");
+		if (this.#atEnd()) throw this.#error("Empty file; expected a JSON object");
 		const value = this.#parseValue([]);
 		this.#skipTrivia();
-		if (!this.#atEnd()) throw this.#error("顶层值之后还有多余内容");
+		if (!this.#atEnd()) throw this.#error("Unexpected content after the top-level value");
 		return { value, locations: this.#locations };
 	}
 
@@ -67,16 +67,16 @@ export class JsonParser {
 			this.#skipTrivia();
 			const keyStart = this.#pos;
 			// 能走到循环体里说明前面出现过逗号，此时遇到 } 就是多余的尾随逗号
-			if (this.#peek() === "}") throw this.#error("对象里不能有多余的逗号");
-			if (this.#peek() !== '"') throw this.#error("对象的键必须是双引号字符串");
+			if (this.#peek() === "}") throw this.#error("Unexpected trailing comma in object");
+			if (this.#peek() !== '"') throw this.#error("Object keys must be double-quoted strings");
 			const key = this.#parseString();
 
 			if (Object.hasOwn(result, key)) {
-				throw this.#errorAt(`键 ${key} 重复定义`, keyStart);
+				throw this.#errorAt(`Duplicate key ${key}`, keyStart);
 			}
 
 			this.#skipTrivia();
-			this.#expectCharacter(":", `键 ${key} 之后需要冒号`);
+			this.#expectCharacter(":", `Expected a colon after key ${key}`);
 			this.#skipTrivia();
 
 			this.#locations.set(jsonPathKey([...path, key]), offsetToLineColumn(this.#source, keyStart));
@@ -92,7 +92,7 @@ export class JsonParser {
 				this.#pos += 1;
 				return result;
 			}
-			throw this.#errorAt("对象里只允许用逗号分隔键值对", start);
+			throw this.#errorAt("Object members must be separated by commas", start);
 		}
 	}
 
@@ -110,7 +110,7 @@ export class JsonParser {
 		for (;;) {
 			this.#skipTrivia();
 			// 能走到循环体里说明前面出现过逗号，此时遇到 ] 就是多余的尾随逗号
-			if (this.#peek() === "]") throw this.#error("数组里不能有多余的逗号");
+			if (this.#peek() === "]") throw this.#error("Unexpected trailing comma in array");
 			this.#locations.set(
 				jsonPathKey([...path, items.length]),
 				offsetToLineColumn(this.#source, this.#pos),
@@ -127,7 +127,7 @@ export class JsonParser {
 				this.#pos += 1;
 				return items;
 			}
-			throw this.#errorAt("数组元素之间需要逗号", start);
+			throw this.#errorAt("Expected a comma between array elements", start);
 		}
 	}
 
@@ -138,7 +138,7 @@ export class JsonParser {
 
 		for (;;) {
 			const char = this.#peek();
-			if (char === undefined) throw this.#errorAt("字符串没有闭合", start);
+			if (char === undefined) throw this.#errorAt("Unterminated string", start);
 			if (char === '"') {
 				this.#pos += 1;
 				return out;
@@ -147,7 +147,7 @@ export class JsonParser {
 				out += this.#readEscape();
 				continue;
 			}
-			if (char < " ") throw this.#errorAt("字符串里不能直接出现控制字符", this.#pos);
+			if (char < " ") throw this.#errorAt("Raw control character in string", this.#pos);
 			out += char;
 			this.#pos += 1;
 		}
@@ -157,7 +157,7 @@ export class JsonParser {
 		const escapeStart = this.#pos;
 		this.#pos += 1;
 		const char = this.#peek();
-		if (char === undefined) throw this.#errorAt("转义符后缺少内容", escapeStart);
+		if (char === undefined) throw this.#errorAt("Missing escape sequence", escapeStart);
 		this.#pos += 1;
 
 		switch (char) {
@@ -180,13 +180,13 @@ export class JsonParser {
 			case "u": {
 				const hex = this.#source.slice(this.#pos, this.#pos + 4);
 				if (hex.length !== 4 || !/^[0-9A-Fa-f]{4}$/.test(hex)) {
-					throw this.#errorAt("\\u 转义需要 4 位十六进制", escapeStart);
+					throw this.#errorAt("\\u escape needs 4 hex digits", escapeStart);
 				}
 				this.#pos += 4;
 				return String.fromCharCode(Number.parseInt(hex, 16));
 			}
 			default:
-				throw this.#errorAt(`不支持的转义 \\${char}`, escapeStart);
+					throw this.#errorAt(`Unsupported escape \\${char}`, escapeStart);
 		}
 	}
 
@@ -215,8 +215,8 @@ export class JsonParser {
 		if (raw === "null") return null;
 		if (/^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$/.test(raw)) return Number.parseFloat(raw);
 
-		if (raw.length === 0) throw this.#errorAt("缺少值", start);
-		throw this.#errorAt(`无法识别的值 ${raw}`, start);
+		if (raw.length === 0) throw this.#errorAt("Missing value", start);
+		throw this.#errorAt(`Unrecognized value ${raw}`, start);
 	}
 
 	/** 跳过空白与注释。JSON 本身没有注释，这里是为了让手写的配置文件能临时停用某一项。 */
@@ -235,7 +235,7 @@ export class JsonParser {
 				const start = this.#pos;
 				this.#pos += 2;
 				for (;;) {
-					if (this.#atEnd()) throw this.#errorAt("块注释没有闭合", start);
+					if (this.#atEnd()) throw this.#errorAt("Unterminated block comment", start);
 					if (this.#peek() === "*" && this.#peekAt(1) === "/") {
 						this.#pos += 2;
 						break;

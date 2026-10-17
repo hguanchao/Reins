@@ -1,206 +1,135 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderSessionMarkdown } from "../../src/session/export.ts";
+import { formatTimestamp, renderSessionMarkdown } from "../../src/session/export.ts";
 import type { SessionEntry, SessionHeaderEntry } from "../../src/session/port.ts";
-import { describeUsage, sumUsage } from "../../src/session/usage.ts";
 
-/**
- * 用量统计与导出。
- *
- * 两条要点：被压缩掉的历史仍要计入用量（那些 token 确实花掉了），导出的是完整历史而不是
- * 当前上下文（压缩点单独标出来，读的人才分得清「模型看到什么」与「当时发生了什么」）。
- */
+const T = "2026-01-01T00:00:00Z";
 
-function usageEntry(
-	id: string,
-	kind: "turn" | "compact" | "subagent",
-	total: number,
-	cost?: number,
-): SessionEntry {
-	return {
-		type: "usage",
-		id,
-		parentId: null,
-		timestamp: "2026-01-01T00:00:00.000Z",
-		provider: "p",
-		model: "m",
-		kind,
-		usage: { input: total - 10, output: 10, cacheRead: 0, cacheWrite: 0, total },
-		cost,
-	};
+function header(id: string): SessionHeaderEntry {
+	return { type: "session", version: 1, id, timestamp: T, cwd: "E:\\w" };
 }
 
-function message(id: string, content: string): SessionEntry {
+function userMessage(id: string, text: string): SessionEntry {
+	return { type: "message", id, parentId: null, timestamp: T, message: { role: "user", content: text } };
+}
+
+function assistantMessage(id: string): SessionEntry {
 	return {
 		type: "message",
 		id,
 		parentId: null,
-		timestamp: "2026-01-01T00:00:01.000Z",
-		message: { role: "user", content },
+		timestamp: T,
+		message: {
+			role: "assistant",
+			content: [
+				{ type: "text", text: "the answer" },
+				{ type: "thinking", text: "private thought" },
+				{ type: "toolCall", id: "c1", name: "read", arguments: { path: "a.ts" } },
+			],
+		},
 	};
 }
 
-describe("用量统计", () => {
-	it("把所有用量条目加在一起，含压缩那次", () => {
-		const totals = sumUsage([usageEntry("1", "turn", 100), usageEntry("2", "compact", 50), usageEntry("3", "turn", 30)]);
-		assert.equal(totals.requests, 3);
-		assert.equal(totals.compactions, 1);
-		assert.equal(totals.total, 180);
-		assert.equal(totals.output, 30);
+describe("时间格式", () => {
+	it("ISO 转本地时间", () => {
+		const formatted = formatTimestamp("2026-03-05T06:07:08Z");
+		assert.match(formatted, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
 	});
 
-	it("被压缩掉的历史仍计入：压缩只改变接下来的请求，不改变已经花掉的", () => {
+	it("非法时间原样返回", () => {
+		assert.equal(formatTimestamp("not-a-time"), "not-a-time");
+	});
+});
+
+describe("会话导出", () => {
+	it("头部含开始时间、目录与条目数", () => {
+		const markdown = renderSessionMarkdown(header("s1"), [userMessage("a", "hi")]);
+		assert.match(markdown, /^# Session s1\n/);
+		assert.match(markdown, /- Started: /);
+		assert.match(markdown, /- Directory: E:\\w/);
+		assert.match(markdown, /- Entries: 1/);
+	});
+
+	it("对话按角色分节,assistant 带思考与工具调用", () => {
+		const markdown = renderSessionMarkdown(header("s"), [userMessage("a", "why?"), assistantMessage("b")]);
+		assert.ok(markdown.includes("## Conversation"));
+		assert.ok(markdown.includes("### User\n\nwhy?"));
+		assert.ok(markdown.includes("### Assistant"));
+		assert.ok(markdown.includes("the answer"));
+		assert.ok(markdown.includes("> **Thinking**\n> private thought"));
+		assert.ok(markdown.includes("Tool call `read`:"));
+	});
+
+	it("工具结果带失败标记,内容排进引用块", () => {
+		const entry: SessionEntry = {
+			type: "message",
+			id: "r",
+			parentId: null,
+			timestamp: T,
+			message: { role: "toolResult", toolCallId: "c1", toolName: "bash", content: "line1\nline2", isError: true },
+		};
+		const markdown = renderSessionMarkdown(header("s"), [entry]);
+		assert.ok(markdown.includes("### Tool result bash (failed)"));
+		assert.ok(markdown.includes("> line1\n> line2"));
+	});
+
+	it("system/model_change/effort_change 各有一行说明", () => {
+		const entries: SessionEntry[] = [
+			{ type: "system", id: "s", parentId: null, timestamp: T, sections: { toolset: null, list: "on" }, toolsAdded: [{ name: "grep", description: "", parameters: {} }], toolsRemoved: ["old"] },
+			{ type: "model_change", id: "m", parentId: null, timestamp: T, provider: "p", model: "m1" },
+			{ type: "effort_change", id: "e", parentId: null, timestamp: T, effort: "high" },
+		];
+		const markdown = renderSessionMarkdown(header("s"), entries);
+		assert.ok(markdown.includes("> Prompt: Removed toolset, Updated list, +grep, -old"));
+		assert.ok(markdown.includes("> Model switched to p/m1"));
+		assert.ok(markdown.includes("> Reasoning effort switched to high"));
+	});
+
+	it("空会话给出占位说明", () => {
+		const markdown = renderSessionMarkdown(header("s"), []);
+		assert.ok(markdown.includes("(no conversation yet)"));
+		assert.ok(markdown.includes("## Usage"));
+	});
+
+	it("压缩点在对话里留一行,末尾有专节", () => {
 		const compaction: SessionEntry = {
 			type: "compaction",
 			id: "c",
 			parentId: null,
-			timestamp: "2026-01-01T00:00:02.000Z",
-			summary: "摘要",
-			covered: ["1"],
+			timestamp: T,
+			summary: "we talked about files",
+			covered: ["a", "b"],
 			provider: "p",
 			model: "m",
-			tokensBefore: 900,
+			tokensBefore: 9000,
 			usage: undefined,
 		};
-		const totals = sumUsage([usageEntry("1", "turn", 900), message("m1", "甲"), compaction]);
-		assert.equal(totals.total, 900);
+		const markdown = renderSessionMarkdown(header("s"), [userMessage("a", "x"), compaction]);
+		assert.ok(markdown.includes("> Context compacted: 2 messages covered"));
+		assert.ok(markdown.includes("## Context compaction"));
+		assert.ok(markdown.includes("Covered 2 messages, about 9000 tokens"));
+		assert.ok(markdown.includes("we talked about files"));
 	});
 
-	it("没有用量条目时全为零，不编造数字", () => {
-		assert.deepEqual(sumUsage([message("m1", "甲")]), {
-			requests: 0,
-			compactions: 0,
-			subagents: 0,
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			total: 0,
+	it("用量条目不逐条出现，只在尾部汇总", () => {
+		const usage: SessionEntry = {
+			type: "usage",
+			id: "u",
+			parentId: null,
+			timestamp: T,
+			provider: "p",
+			model: "m",
+			kind: "turn",
+			usage: { input: 5, output: 5, cacheRead: 0, cacheWrite: 0, total: 10 },
 			cost: undefined,
-			unpriced: 0,
-		});
+		};
+		const markdown = renderSessionMarkdown(header("s"), [usage]);
+		assert.match(markdown, /- requests: 1 +input: 5 +output: 5 .+total: 10 tokens/);
 	});
 
-	it("汇总写成人看的一行", () => {
-		const text = describeUsage(sumUsage([usageEntry("1", "turn", 100), usageEntry("2", "compact", 50)]));
-		assert.ok(text.includes("请求 2 次（其中压缩 1 次）"));
-		assert.ok(text.includes("合计 150 token"));
-		// 一笔单价都没有时不出现金额：一个 $0 会被读成「没花钱」
-		assert.ok(!text.includes("费用"));
-	});
-
-	it("配了单价就报金额", () => {
-		const text = describeUsage(sumUsage([usageEntry("1", "turn", 100, 0.0123), usageEntry("2", "turn", 50, 0.0001)]));
-
-		assert.ok(text.includes("费用 $0.0124"), text);
-		assert.ok(!text.includes("未配单价"), text);
-	});
-
-	it("只有部分请求配了单价时，金额只算配了的，并说明有几笔没算", () => {
-		const totals = sumUsage([usageEntry("1", "turn", 100, 0.5), usageEntry("2", "turn", 50), usageEntry("3", "turn", 30)]);
-
-		assert.equal(totals.cost, 0.5);
-		assert.equal(totals.unpriced, 2);
-		const text = describeUsage(totals);
-		assert.ok(text.includes("费用 $0.5000"), text);
-		assert.ok(text.includes("另有 2 次未配单价，未计入"), text);
-	});
-
-	it("小额金额用更多小数位，不显示成 0", () => {
-		const text = describeUsage(sumUsage([usageEntry("1", "turn", 100, 0.000012)]));
-		assert.ok(text.includes("费用 $0.000012"), text);
-	});
-});
-
-describe("导出成 Markdown", () => {
-	const header: SessionHeaderEntry = {
-		type: "session",
-		version: 1,
-		id: "aaaa1111",
-		timestamp: "2026-10-16T02:00:00.000Z",
-		cwd: "E:\\Projects\\Reins",
-		forkedFrom: { session: "bbbb2222", entry: "e0" },
-	};
-
-	it("带上出处、目录与用量", () => {
-		const text = renderSessionMarkdown(header, [message("1", "把配置改一下"), usageEntry("2", "turn", 120)]);
-		assert.ok(text.startsWith("# 会话 aaaa1111"));
-		assert.ok(text.includes("- 分叉自：bbbb2222 的 e0"));
-		assert.ok(text.includes("- 目录：E:\\Projects\\Reins"));
-		assert.ok(text.includes("## 用量"));
-		assert.ok(text.includes("合计 120 token"));
-	});
-
-	it("使用者、助手与工具结果各成一块，工具结果按引用块排", () => {
-		const entries: SessionEntry[] = [
-			message("1", "读一下 a.ts"),
-			{
-				type: "message",
-				id: "2",
-				parentId: "1",
-				timestamp: "2026-01-01T00:00:02.000Z",
-				message: {
-					role: "assistant",
-					content: [
-						{ type: "text", text: "我来读。" },
-						{ type: "thinking", text: "先看文件" },
-						{ type: "toolCall", id: "c1", name: "read", arguments: { path: "a.ts" } },
-					],
-				},
-			},
-			{
-				type: "message",
-				id: "3",
-				parentId: "2",
-				timestamp: "2026-01-01T00:00:03.000Z",
-				message: { role: "toolResult", toolCallId: "c1", toolName: "read", content: "第一行\n第二行", isError: false },
-			},
-		];
-		const text = renderSessionMarkdown(header, entries);
-
-		assert.ok(text.includes("### 使用者"));
-		assert.ok(text.includes("### 助手"));
-		assert.ok(text.includes("我来读。"));
-		assert.ok(text.includes("> **思考**"));
-		assert.ok(text.includes('调用工具 `read`：'));
-		assert.ok(text.includes("### 工具结果 read"));
-		// 多行内容按行加前缀，围栏或缩进都不会把它截断
-		assert.ok(text.includes("> 第一行\n> 第二行"));
-	});
-
-	it("压缩点标出来，并附上摘要全文", () => {
-		const entries: SessionEntry[] = [
-			message("1", "甲"),
-			{
-				type: "compaction",
-				id: "2",
-				parentId: "1",
-				timestamp: "2026-01-01T00:00:04.000Z",
-				summary: "先前读了 a.ts，内容正常。",
-				covered: ["1"],
-				provider: "p",
-				model: "compact-model",
-				tokensBefore: 9000,
-				usage: undefined,
-			},
-			message("3", "接着来"),
-		];
-		const text = renderSessionMarkdown(header, entries);
-
-		assert.ok(text.includes("> 上下文压缩：覆盖 1 条消息，详情见后文"));
-		assert.ok(text.includes("## 上下文压缩"));
-		assert.ok(text.includes("覆盖 1 条消息，压缩前约 9000 token。"));
-		assert.ok(text.includes("先前读了 a.ts，内容正常。"));
-		// 被压缩掉的消息仍在正文里：导出的是完整历史
-		assert.ok(text.includes("### 使用者"));
-		assert.ok(text.includes("甲"));
-		assert.ok(text.includes("接着来"));
-	});
-
-	it("空的会话也导得出来", () => {
-		const text = renderSessionMarkdown(undefined, []);
-		assert.ok(text.includes("（缺少会话头）"));
-		assert.ok(text.includes("（还没有对话）"));
+	it("没有头时标注缺头", () => {
+		const markdown = renderSessionMarkdown(undefined, []);
+		assert.ok(markdown.includes("# Session (missing session header)"));
 	});
 });

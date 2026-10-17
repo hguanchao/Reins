@@ -28,8 +28,8 @@ export interface DialogOption {
  * 只有「允许／拒绝」两种结果：审批策略里没有「以后都允许」这一档，摆出来就是在骗人。
  */
 export const DIALOG_OPTIONS: readonly DialogOption[] = [
-	{ key: "1", label: "允许", allowed: true },
-	{ key: "2", label: "拒绝", allowed: false },
+	{ key: "1", label: "Allow", allowed: true },
+	{ key: "2", label: "Deny", allowed: false },
 ];
 
 /**

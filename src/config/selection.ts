@@ -26,7 +26,7 @@ export function resolveSelection(
 	const provider = providersConfig.providers.find((item) => item.id === config.provider);
 	if (provider === undefined) {
 		throw new ConfigError(
-			`providers.json 里没有 provider ${config.provider}，可选项：${listProviders(providersConfig)}`,
+			`No provider ${config.provider} in providers.json; available: ${listProviders(providersConfig)}`,
 			{ file: providersFile },
 		);
 	}
@@ -34,8 +34,8 @@ export function resolveSelection(
 	const model = provider.models.find((item) => item.id === config.model);
 	if (model === undefined) {
 		throw new ConfigError(
-			`provider ${config.provider} 下没有模型 ${config.model}，可选项：${listModels(provider)}。` +
-				`provider 与模型分别写在 ${configFile} 与 ${providersFile} 里`,
+			`No model ${config.model} under provider ${config.provider}; available: ${listModels(provider)}. ` +
+				`The provider and the model are set in ${configFile} and ${providersFile} respectively`,
 			{ file: providersFile },
 		);
 	}
@@ -59,7 +59,7 @@ function resolveWithinProvider(
 	const model = provider.models.find((item) => item.id === id);
 	if (model === undefined) {
 		throw new ConfigError(
-			`${key} 指定的模型 ${id} 不在 provider ${provider.id} 内，可选项：${listModels(provider)}`,
+			`Model ${id} set by ${key} is not in provider ${provider.id}; available: ${listModels(provider)}`,
 			{ file: configFile },
 		);
 	}
@@ -67,9 +67,9 @@ function resolveWithinProvider(
 }
 
 function listProviders(providersConfig: ProvidersConfig): string {
-	return providersConfig.providers.map((item) => item.id).join("、");
+	return providersConfig.providers.map((item) => item.id).join(", ");
 }
 
 function listModels(provider: ProviderEntry): string {
-	return provider.models.map((item) => item.id).join("、");
+	return provider.models.map((item) => item.id).join(", ");
 }

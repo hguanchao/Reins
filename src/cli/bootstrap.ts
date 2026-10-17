@@ -61,7 +61,7 @@ export async function main(argv: readonly string[]): Promise<number> {
 		options = parseArgs(argv);
 	} catch (error) {
 		if (error instanceof UsageError) {
-			writeStderr(`reins: ${error.message}\n提示：reins --help 查看用法\n`);
+			writeStderr(`reins: ${error.message}\nHint: run reins --help for usage\n`);
 			return 2;
 		}
 		throw error;
@@ -193,7 +193,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 	);
 	for (const failure of failures) {
 		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
-		writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
+		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 	}
 	reportExternalFailures(await external.load());
 
@@ -234,12 +234,12 @@ async function runChat(options: CliOptions): Promise<number> {
 	if (options.assumeYes) {
 		// 界面上随时可以选「允许」，这个开关在这里没有意义。静默忽略会让人以为它生效了
 		writeStderr(
-			"交互界面下 --yes 没有意义：界面本身就会询问。要去掉询问请把 config.toml 里的 approval 设为 yolo。\n",
+			"--yes has no meaning in the interactive UI: the UI asks anyway. To skip the asking, set approval to yolo in config.toml.\n",
 		);
 		return 2;
 	}
 	if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
-		writeStderr("交互界面需要终端。执行一句话请用 reins -p <句子>，用法见 reins --help。\n");
+		writeStderr("The interactive UI needs a terminal. To run a single prompt, use reins -p <prompt>; see reins --help for usage.\n");
 		return 2;
 	}
 
@@ -285,13 +285,13 @@ async function runChat(options: CliOptions): Promise<number> {
 			(plugin) => !disabledPlugins(config).has(plugin.name),
 		),
 	);
-	for (const failure of failures) writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
+	for (const failure of failures) writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 	reportExternalFailures(await external.load());
 
 	const frontend = host.frontend();
 	if (frontend === undefined) {
 		writeStderr(
-			"没有可用的交互界面：界面插件被禁用或装载失败了。执行一句话请用 reins -p <句子>。\n",
+			"No interactive UI available: the UI plugin is disabled or failed to load. To run a single prompt, use reins -p <prompt>.\n",
 		);
 		return 1;
 	}
@@ -344,7 +344,7 @@ async function runChat(options: CliOptions): Promise<number> {
 		await frontend.run(runtime);
 		return 0;
 	} catch (error) {
-		writeStderr(`界面出错：${error instanceof Error ? error.message : String(error)}\n`);
+		writeStderr(`UI error: ${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
 	} finally {
 		await session.close();
@@ -360,8 +360,8 @@ async function runChat(options: CliOptions): Promise<number> {
 async function askTrust(): Promise<boolean> {
 	const workRoot = process.cwd();
 	const resources = findProjectResources(workRoot);
-	const files = resources.files.join("、");
-	return askYesNo(`工作区里自带的配置会影响本次运行：${files}。要读取它们吗？`);
+	const files = resources.files.join(", ");
+	return askYesNo(`The workspace ships config that affects this run: ${files}. Read it?`);
 }
 
 /**
@@ -414,13 +414,13 @@ async function loadEffectiveConfig(
 	if (decision.source === "flag" || decision.source === "asked") {
 		// 命令行给出的结论与询问得到的结论都会被记下来，下次不必再给
 		recordTrust(workRoot, decision.trusted);
-		writeStderr(`已把 ${workRoot} 记为${decision.trusted ? "信任" : "不信任"}。\n`);
+		writeStderr(`Recorded ${workRoot} as ${decision.trusted ? "trusted" : "untrusted"}\n`);
 	}
 
 	if (!decision.trusted) {
 		if (resources.length > 0) {
-			const how = ask === undefined ? "要使用它们请加 --trust。" : "要使用它们可以在界面里用 /trust 改。";
-			writeStderr(`工作区里有需要信任才能读取的配置，已跳过：${resources.join("、")}\n${how}\n`);
+			const how = ask === undefined ? "Pass --trust to use them." : "Use /trust in the UI to enable them.";
+			writeStderr(`Skipped the workspace config that needs trust: ${resources.join(", ")}\n${how}\n`);
 		}
 		return {
 			config: userConfig.config,
@@ -457,8 +457,8 @@ function warnUnsandboxedMcpServers(config: Config): void {
 	const stdio = config.mcpServers.filter((server) => !server.disabled && server.type === "stdio");
 	if (stdio.length === 0) return;
 	writeStderr(
-		`注意：沙箱模式是 ${config.sandbox}，但下列 MCP server 是本程序启动的本地进程，不受沙箱约束：` +
-			`${stdio.map((server) => server.name).join("、")}\n`,
+		`Note: sandbox mode is ${config.sandbox}, but these MCP servers are local processes started by reins and are not constrained by the sandbox: ` +
+			`${stdio.map((server) => server.name).join(", ")}\n`,
 	);
 }
 
@@ -493,8 +493,8 @@ function createCompactor(
 	const contextWindow = selection.model.contextWindow ?? config.contextWindow;
 	if (contextWindow === undefined) {
 		writeStderr(
-			"没有上下文上限（providers.json 未声明 contextWindow，config.toml 也未设 context_window），" +
-				"本次不会自动压缩上下文。\n",
+			"No context window declared (providers.json sets no contextWindow, config.toml sets no context_window). " +
+				"Context will not be compacted automatically this run.\n",
 		);
 		return undefined;
 	}
@@ -586,15 +586,15 @@ function prepareExternalPlugins(host: PluginHost): ExternalPlugins {
 	const external = new ExternalPlugins({ directory: pluginsDir(), host });
 	host.addCommand({
 		name: "reload",
-		description: "重新装载外部插件（改完文件不必重启）",
+		description: "Reload external plugins (no restart needed after edits)",
 		async run(_args, context) {
 			const failures = await external.load();
 			if (failures.length === 0) {
-				context.print("外部插件已重新装载。");
+				context.print("External plugins reloaded");
 				return;
 			}
-			context.print("外部插件已重新装载，下列插件没装成功：");
-			for (const failure of failures) context.print(`  ${failure.plugin}：${failure.message}`);
+			context.print("External plugins reloaded, but these plugins failed to load:");
+			for (const failure of failures) context.print(`  ${failure.plugin}: ${failure.message}`);
 		},
 	});
 	return external;
@@ -602,7 +602,7 @@ function prepareExternalPlugins(host: PluginHost): ExternalPlugins {
 
 function reportExternalFailures(failures: readonly PluginFailure[]): void {
 	for (const failure of failures) {
-		writeStderr(`外部插件 ${failure.plugin} 装载失败：${failure.message}\n`);
+		writeStderr(`External plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 	}
 }
 
@@ -621,7 +621,7 @@ async function loadBundledPlugins(config: Config, host: PluginHost, cwd: string)
 			(plugin) => !disabledPlugins(config).has(plugin.name),
 		),
 	);
-	for (const failure of failures) writeStderr(`插件 ${failure.plugin} 装载失败：${failure.message}\n`);
+	for (const failure of failures) writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 }
 
 /**
@@ -637,7 +637,7 @@ function openSessionFor(
 ): Session | undefined {
 	const wantsExisting = options.continueSession || options.resume !== undefined;
 	if (store === undefined && !wantsExisting) {
-		writeStderr("没有会话存储（session-plugin 被禁用或装载失败），本次会话不会保存到文件。\n");
+		writeStderr("No session store (session-plugin is disabled or failed to load), this session will not be saved to a file\n");
 	}
 
 	try {
@@ -656,7 +656,7 @@ function readVersion(): string {
 		const version = (parsed as { version: unknown }).version;
 		if (typeof version === "string") return version;
 	}
-	return "未知";
+	return "unknown";
 }
 
 function writeStdout(text: string): void {

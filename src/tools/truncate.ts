@@ -118,5 +118,5 @@ export function limitLineBytes(line: string, maxBytes: number): string {
 /** 单行显示截断：超长行只留前一段，并注明原长。 */
 export function truncateLine(line: string, maxLength: number = MAX_LINE_LENGTH): string {
 	if (line.length <= maxLength) return line;
-	return `${line.slice(0, maxLength)}…（该行共 ${line.length} 个字符）`;
+	return `${line.slice(0, maxLength)}… (the line is ${line.length} characters long)`;
 }

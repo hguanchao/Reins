@@ -46,10 +46,10 @@ const LINE_FEEDS = new Set(["\n", "\r", "\r\n"]);
 export function wrapCells(cells: readonly Cell[], options: WrapOptions): readonly CellLine[] {
 	const { width } = options;
 	if (!Number.isInteger(width) || width < 1) {
-		throw new Error(`换行宽度必须是正整数，收到 ${width}`);
+		throw new Error(`Wrap width must be a positive integer, got ${width}`);
 	}
 	if (options.maxLines !== undefined && options.maxLines < 1) {
-		throw new Error(`最多行数必须是正整数，收到 ${options.maxLines}`);
+		throw new Error(`Max lines must be a positive integer, got ${options.maxLines}`);
 	}
 
 	const firstIndent = options.firstIndent === undefined ? [] : [...cellsOf(options.firstIndent)];

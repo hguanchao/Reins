@@ -17,12 +17,12 @@ import { globToRegExp, walk } from "./walk.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		pattern: { type: "string", description: "要匹配的内容，默认按正则解释" },
-		path: { type: "string", description: "在哪个目录下找，省略则从工作根开始" },
-		glob: { type: "string", description: "只在这些文件里找，如 **/*.ts" },
-		literal: { type: "boolean", description: "为 true 时把 pattern 当作普通文本" },
-		ignoreCase: { type: "boolean", description: "忽略大小写" },
-		limit: { type: "integer", minimum: 1, description: "最多返回多少条匹配，默认 100" },
+		pattern: { type: "string", description: "What to match; a regular expression unless literal is set" },
+		path: { type: "string", description: "Directory to search; defaults to the workspace root" },
+		glob: { type: "string", description: "Only search files matching this glob, e.g. **/*.ts" },
+		literal: { type: "boolean", description: "Treat pattern as plain text instead of a regular expression" },
+		ignoreCase: { type: "boolean", description: "Match case-insensitively" },
+		limit: { type: "integer", minimum: 1, description: "Maximum matches to return; defaults to 100" },
 	},
 	required: ["pattern"],
 } as const satisfies JsonSchema;
@@ -45,8 +45,8 @@ const BINARY_PROBE_BYTES = 8192;
 export const grepTool: ToolDefinition<GrepArgs> = {
 	name: "grep",
 	description:
-		"在文件内容里检索，返回「相对路径:行号: 该行内容」。默认按正则解释 pattern，" +
-		"literal 为真时按普通文本。跳过 .git 与 node_modules。",
+		"Search file contents and return matches as \"relative/path:line: text\". pattern is a regular expression"
+		+ " unless literal is set. Skips .git and node_modules.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
@@ -60,7 +60,7 @@ export const grepTool: ToolDefinition<GrepArgs> = {
 			const source = args.literal === true ? escapeRegExp(args.pattern) : args.pattern;
 			matcher = new RegExp(source, args.ignoreCase === true ? "i" : "");
 		} catch (error) {
-			return { content: `pattern 不是合法的正则：${describeError(error)}`, isError: true };
+			return { content: `pattern is not a valid regular expression: ${describeError(error)}`, isError: true };
 		}
 
 		const fileMatcher = args.glob === undefined ? undefined : globToRegExp(args.glob);
@@ -89,11 +89,11 @@ export const grepTool: ToolDefinition<GrepArgs> = {
 		}
 
 		if (matches.length === 0) {
-			return { content: `没有匹配「${args.pattern}」的内容（已检查 ${scannedFiles} 个文件）` };
+			return { content: `No matches for "${args.pattern}" (${scannedFiles} files checked)` };
 		}
 
 		const parts = [matches.join("\n")];
-		if (matches.length >= limit) parts.push(`[已达到 ${limit} 条上限，可用 glob 缩小范围或提高 limit]`);
+		if (matches.length >= limit) parts.push(`[hit the limit of ${limit}; narrow the search with glob or raise limit]`);
 		return { content: parts.join("\n\n"), details: { pattern: args.pattern, matched: matches.length } };
 	},
 };

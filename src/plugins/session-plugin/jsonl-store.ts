@@ -33,7 +33,7 @@ export class JsonlSessionStore implements SessionStore {
 		const parsed = parseSessionText(readText(file));
 		if (parsed.skippedLines > 0) {
 			// 行坏了说明文件被改动过或写到一半断了：宁可明确拒绝，也不要读出一段缺失的历史
-			throw new Error(`会话文件有 ${parsed.skippedLines} 行无法解析，无法读取：${file}`);
+			throw new Error(`Session file has ${parsed.skippedLines} unparsable lines and cannot be read: ${file}`);
 		}
 		return { header: parsed.header, entries: parsed.entries };
 	}
@@ -111,7 +111,7 @@ class JsonlWriter implements SessionWriter {
 		const file = this.#file;
 		if (file === null) return;
 		if (this.#failure !== undefined) {
-			throw new Error(`会话文件已经写入失败，不再继续写：${this.#failure}`);
+			throw new Error(`The session file already failed to write; stopping: ${this.#failure}`);
 		}
 
 		try {
@@ -121,7 +121,7 @@ class JsonlWriter implements SessionWriter {
 			this.#lock?.release();
 			this.#lock = null;
 			this.#failure = error instanceof Error ? error.message : String(error);
-			throw new Error(`写入会话文件失败：${this.#failure}`);
+			throw new Error(`Cannot write the session file: ${this.#failure}`);
 		}
 	}
 
@@ -201,7 +201,7 @@ function readText(file: string): string {
 	try {
 		return readFileSync(file, "utf8");
 	} catch (error) {
-		throw new Error(`读取会话文件失败：${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`Cannot read the session file: ${error instanceof Error ? error.message : String(error)}`);
 	}
 }
 

@@ -75,17 +75,17 @@ export function sumUsage(entries: readonly SessionEntry[]): UsageTotals {
 /** 把用量写成人看的一行，界面上与导出里都用它。 */
 export function describeUsage(totals: UsageTotals): string {
 	const breakdown: string[] = [];
-	if (totals.compactions > 0) breakdown.push(`压缩 ${totals.compactions} 次`);
-	if (totals.subagents > 0) breakdown.push(`子代理 ${totals.subagents} 次`);
-	const detail = breakdown.length === 0 ? "" : `（其中${breakdown.join("、")}）`;
+	if (totals.compactions > 0) breakdown.push(`compactions: ${totals.compactions}`);
+	if (totals.subagents > 0) breakdown.push(`subagents: ${totals.subagents}`);
+	const detail = breakdown.length === 0 ? "" : ` (${breakdown.join(", ")})`;
 	const tokens =
-		`请求 ${totals.requests} 次${detail}　输入 ${totals.input}　输出 ${totals.output}　` +
-		`缓存读 ${totals.cacheRead}　缓存写 ${totals.cacheWrite}　合计 ${totals.total} token`;
+		`requests: ${totals.requests}${detail}  input: ${totals.input}  output: ${totals.output}  ` +
+		`cache read: ${totals.cacheRead}  cache write: ${totals.cacheWrite}  total: ${totals.total} tokens`;
 	if (totals.cost === undefined) return tokens;
 
 	// 没配单价的那几笔要说明白：只说金额会让人以为这就是全部开销
-	const missing = totals.unpriced === 0 ? "" : `（另有 ${totals.unpriced} 次未配单价，未计入）`;
-	return `${tokens}　费用 ${formatCost(totals.cost)}${missing}`;
+	const missing = totals.unpriced === 0 ? "" : ` (${totals.unpriced} requests unpriced, not counted)`;
+	return `${tokens}  cost: ${formatCost(totals.cost)}${missing}`;
 }
 
 /**

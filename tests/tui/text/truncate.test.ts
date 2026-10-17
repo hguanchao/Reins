@@ -2,41 +2,39 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { cellsOf, plain, styled } from "../../../src/tui/text/line.ts";
-import { fitCells, truncateCells, truncateLine } from "../../../src/tui/text/truncate.ts";
+import { ELLIPSIS, fitCells, truncateCells, truncateLine } from "../../../src/tui/text/truncate.ts";
 
-describe("truncateLine", () => {
-	it("放得下时原样返回", () => {
-		assert.deepEqual(truncateLine(plain("abc"), 3), plain("abc"));
-		assert.deepEqual(truncateLine(plain("接口"), 4), plain("接口"));
-		assert.deepEqual(truncateLine(plain("abc"), 10), plain("abc"));
+describe("截断", () => {
+	it("fitCells 按列裁剪，宽字符放不下就整个丢掉", () => {
+		assert.deepEqual(fitCells(cellsOf(plain("abc")), 2).map((cell) => cell.text), ["a", "b"]);
+		// 中文一格占两列，宽度 3 只能放下一个字
+		assert.deepEqual(fitCells(cellsOf(plain("中文")), 3).map((cell) => cell.text), ["中"]);
+		assert.equal(fitCells(cellsOf(plain("abc")), 0).length, 0);
 	});
 
-	it("放不下时补省略号", () => {
-		assert.deepEqual(truncateLine(plain("abcdef"), 4), plain("abc…"));
+	it("truncateCells 不超宽时原样返回", () => {
+		const cells = cellsOf(plain("abc"));
+		assert.deepEqual(truncateCells(cells, 3), cells);
+		assert.deepEqual(truncateCells(cells, 10), cells);
 	});
 
-	it("宽度算的是显示列而不是字符数", () => {
-		assert.deepEqual(truncateLine(plain("接口abc"), 6), plain("接口a…"));
-		// 宽字符放不进去就少放一个，不劈成两半
-		assert.deepEqual(truncateLine(plain("接口abc"), 4), plain("接…"));
+	it("超宽时补省略号，且省略号沿用末格样式", () => {
+		const result = truncateCells(cellsOf(plain("abcdef")), 4);
+		assert.deepEqual(result.map((cell) => cell.text), ["a", "b", "c", ELLIPSIS]);
+
+		const styledCells = truncateCells(cellsOf(styled("abcdef", { color: "red" })), 4);
+		assert.deepEqual(styledCells[styledCells.length - 1].style, { color: "red" });
 	});
 
-	it("宽度不足一列时只留省略号", () => {
-		assert.deepEqual(truncateLine(plain("abc"), 1), plain("…"));
-		assert.deepEqual(truncateLine(plain("abc"), 0), []);
+	it("输入为空时返回空，宽度为零时也返回空", () => {
+		assert.deepEqual(truncateCells(cellsOf(plain("")), 5), []);
+		assert.deepEqual(truncateCells(cellsOf(plain("abc")), 0), []);
 	});
 
-	it("保留样式", () => {
-		assert.deepEqual(truncateLine(styled("abcdef", { dim: true }), 3), styled("ab…", { dim: true }));
-	});
-
-	it("fitCells 只裁剪不补省略号", () => {
-		assert.deepEqual(fitCells(cellsOf(plain("abcdef")), 4), cellsOf(plain("abcd")));
-		assert.deepEqual(fitCells(cellsOf(plain("接口a")), 3), cellsOf(plain("接")));
-		assert.deepEqual(fitCells(cellsOf(plain("abc")), 0), []);
-	});
-
-	it("truncateCells 在刚好等于宽度时不加省略号", () => {
-		assert.deepEqual(truncateCells(cellsOf(plain("abcd")), 4), cellsOf(plain("abcd")));
+	it("truncateLine 对整行生效并保留样式", () => {
+		const line = truncateLine(styled("abcdef", { color: "red" }), 4);
+		// 相邻同样式的格子合并：剩下的字母与省略号同为红色，是一个片段
+		assert.deepEqual(line, [{ text: `abc${ELLIPSIS}`, style: { color: "red" } }]);
+		assert.deepEqual(truncateLine(plain("hi"), 10), [plain("hi")[0]]);
 	});
 });

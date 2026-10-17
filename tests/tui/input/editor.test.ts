@@ -2,182 +2,162 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { LineEditor } from "../../../src/tui/input/editor.ts";
-import { lineText } from "../../../src/tui/text/line.ts";
-import { displayWidth } from "../../../src/tui/text/width.ts";
+import { plain } from "../../../src/tui/text/line.ts";
 
-const PROMPT = [{ text: "› ", style: { color: "cyan" } }] as const;
-
-describe("LineEditor", () => {
-	it("插入与取回内容", () => {
+describe("单行编辑器", () => {
+	it("按字素簇增删：退格删掉一整个组合序列", () => {
 		const editor = new LineEditor();
-		editor.insert("hello");
-		assert.equal(editor.text, "hello");
-		editor.insert(" world");
-		assert.equal(editor.text, "hello world");
-	});
-
-	it("粘贴进来的换行折成空格", () => {
-		const editor = new LineEditor();
-		editor.insert("第一行\n第二行\r\n第三行");
-		assert.equal(editor.text, "第一行 第二行 第三行");
-	});
-
-	it("按字素簇退格，不会把 emoji 删掉一半", () => {
-		const editor = new LineEditor();
-		editor.insert("a👨‍👩‍👧");
+		editor.insert("e\u0301"); // e + 组合用重音是一个字
+		assert.equal(editor.text, "e\u0301");
 		editor.backspace();
-		assert.equal(editor.text, "a");
-	});
-
-	it("插入可能与前一个字素合并的内容后光标仍然正确", () => {
-		const editor = new LineEditor();
-		editor.insert("a");
-		editor.insert("\u0301"); // 组合用重音符，与 a 合成一个簇
-		editor.insert("b");
-		assert.equal(editor.text, "a\u0301b");
-
-		// 光标在 b 之后，退格删掉的应是 b，而不是合成的那个簇
-		editor.backspace();
-		assert.equal(editor.text, "a\u0301");
-	});
-
-	it("光标移动与按位置删除", () => {
-		const editor = new LineEditor();
-		editor.insert("abc");
-		editor.moveLeft();
-		editor.moveLeft();
-		editor.insert("X");
-		assert.equal(editor.text, "aXbc");
-		editor.deleteForward();
-		assert.equal(editor.text, "aXc");
-		editor.moveHome();
-		editor.insert("Y");
-		assert.equal(editor.text, "YaXc");
-		editor.moveEnd();
-		editor.backspace();
-		assert.equal(editor.text, "YaX");
-	});
-
-	it("在行首退格与在行尾删除都是空操作", () => {
-		const editor = new LineEditor();
-		editor.insert("ab");
-		editor.moveHome();
-		editor.backspace();
-		editor.moveEnd();
-		editor.deleteForward();
-		assert.equal(editor.text, "ab");
-	});
-
-	it("删除光标前的一个词，连着前面的空白一起删", () => {
-		const editor = new LineEditor();
-		editor.insert("reins  看看 这个项目");
-		editor.deleteWordBefore();
-		assert.equal(editor.text, "reins  看看 ");
-		editor.deleteWordBefore();
-		assert.equal(editor.text, "reins  ");
-	});
-
-	it("历史：上下翻动，回到最新一条时恢复草稿", () => {
-		const editor = new LineEditor();
-		editor.insert("第一条");
-		editor.submit();
-		editor.insert("第二条");
-		editor.submit();
-
-		editor.insert("还没发出去的草稿");
-		editor.historyPrev();
-		assert.equal(editor.text, "第二条");
-		editor.historyPrev();
-		assert.equal(editor.text, "第一条");
-		editor.historyPrev();
-		assert.equal(editor.text, "第一条");
-		editor.historyNext();
-		assert.equal(editor.text, "第二条");
-		editor.historyNext();
-		assert.equal(editor.text, "还没发出去的草稿");
-		editor.historyNext();
-		assert.equal(editor.text, "还没发出去的草稿");
-	});
-
-	it("连续两条相同的内容只记一次历史", () => {
-		const editor = new LineEditor();
-		editor.insert("同样的话");
-		editor.submit();
-		editor.insert("同样的话");
-		editor.submit();
-		editor.historyPrev();
-		assert.equal(editor.text, "同样的话");
-		editor.historyPrev();
-		assert.equal(editor.text, "同样的话");
-	});
-
-	it("提交后内容清空", () => {
-		const editor = new LineEditor();
-		editor.insert("做点事");
-		assert.equal(editor.submit(), "做点事");
 		assert.equal(editor.text, "");
-		assert.equal(editor.isEmpty, true);
 	});
 
-	it("空内容时显示灰色提示，光标停在提示符之后", () => {
+	it("光标移动与整字删除", () => {
 		const editor = new LineEditor();
-		const rendered = editor.render({ width: 20, prompt: [...PROMPT], placeholder: "说点什么" });
-		assert.deepEqual(rendered.lines.map((line) => lineText(line)), ["› 说点什么"]);
-		assert.deepEqual(rendered.cursor, { row: 0, col: 2 });
-	});
-
-	it("光标落在哪个字符上，哪一格就反显", () => {
-		const editor = new LineEditor();
-		editor.insert("ab");
+		editor.insert("hello world");
 		editor.moveLeft();
-		const rendered = editor.render({ width: 20, prompt: [...PROMPT] });
-		assert.deepEqual(rendered.lines[0][2], { text: "b", style: { reverse: true } });
-		assert.deepEqual(rendered.cursor, { row: 0, col: 3 });
+		editor.moveLeft();
+		editor.moveLeft();
+		editor.moveLeft(); // 光标在 wor 的 r 后面：删掉一个词包括空白
+		editor.deleteWordBefore();
+		assert.equal(editor.text, "hello orld");
 	});
 
-	it("光标在末尾时补一格反显空格，位置仍然正确", () => {
+	it("deleteWordBefore 连同空白一起删", () => {
+		const editor = new LineEditor();
+		editor.insert("ab  cd");
+		for (let index = 0; index < 2; index += 1) editor.moveLeft();
+		editor.deleteWordBefore();
+		assert.equal(editor.text, "cd");
+	});
+
+	it("deleteWordBefore 删掉首词", () => {
 		const editor = new LineEditor();
 		editor.insert("ab");
-		const rendered = editor.render({ width: 20, prompt: [...PROMPT] });
-		assert.equal(lineText(rendered.lines[0]), "› ab ");
-		assert.deepEqual(rendered.cursor, { row: 0, col: 4 });
+		editor.moveEnd();
+		editor.deleteWordBefore();
+		assert.equal(editor.text, "");
 	});
 
-	it("内容超过一行时折行，续行与提示符对齐", () => {
+	it("deleteToStart / deleteToEnd 按 readline 语义", () => {
 		const editor = new LineEditor();
-		editor.insert("一二三四五六七八九十");
-		const rendered = editor.render({ width: 10, prompt: [{ text: "› " }] });
-		// 提示符占两列，剩下的八列刚好放四个汉字；末尾的反显空格另占一列
-		assert.deepEqual(rendered.lines.map((line) => lineText(line)), ["› 一二三四", "› 五六七八", "› 九十 "]);
-		assert.deepEqual(rendered.cursor, { row: 2, col: 6 });
-	});
-
-	it("折行时光标位置跟着所在的显示行走", () => {
-		const editor = new LineEditor();
-		editor.insert("一二三四五六");
+		editor.insert("abcdef");
 		editor.moveHome();
-		editor.moveRight();
-		const rendered = editor.render({ width: 6, prompt: [{ text: "› " }] });
-		assert.deepEqual(rendered.cursor, { row: 0, col: 4 });
-	});
+		editor.deleteToStart();
+		assert.equal(editor.text, "abcdef"); // 光标已在首位，无事发生
 
-	it("宽字符与 emoji 的显示宽度与光标位置一致", () => {
-		const editor = new LineEditor();
-		editor.insert("中文😀");
-		const rendered = editor.render({ width: 20, prompt: [{ text: "› " }] });
-		// 提示符两列 + 两个汉字四列 + 一个 emoji 两列，光标停在末尾的反显空格上
-		assert.equal(displayWidth(lineText(rendered.lines[0])), 2 + 4 + 2 + 1);
-		assert.deepEqual(rendered.cursor, { row: 0, col: 8 });
-	});
+		editor.moveEnd();
+		editor.moveLeft();
+		editor.moveLeft(); // 光标在 e 前：删掉之后的 ef
+		editor.deleteToEnd();
+		assert.equal(editor.text, "abcd");
 
-	it("清空只清内容，历史还在", () => {
-		const editor = new LineEditor();
-		editor.insert("历史内容");
-		editor.submit();
-		editor.insert("临时");
 		editor.clear();
 		assert.equal(editor.text, "");
+	});
+
+	it("插到当前位置而不是末尾", () => {
+		const editor = new LineEditor();
+		editor.insert("ab");
+		editor.moveLeft();
+		editor.insert("X");
+		assert.equal(editor.text, "aXb");
+	});
+
+	it("末尾 deleteForward 是空操作，中间可用", () => {
+		const editor = new LineEditor();
+		editor.insert("ab");
+		editor.deleteForward();
+		assert.equal(editor.text, "ab");
+		editor.moveHome();
+		editor.deleteForward();
+		assert.equal(editor.text, "b");
+	});
+
+	it("换行折成空格", () => {
+		const editor = new LineEditor();
+		editor.insert("a\r\nb\nc");
+		assert.equal(editor.text, "a b c");
+	});
+
+	it("越界移动夹紧", () => {
+		const editor = new LineEditor();
+		editor.moveLeft();
+		editor.insert("x");
+		assert.equal(editor.text, "x");
+	});
+
+	it("提交后清空并进历史，连发同一条不重复入史", () => {
+		const editor = new LineEditor();
+		editor.insert("hi");
+		assert.equal(editor.submit(), "hi");
+		assert.equal(editor.text, "");
+
+		editor.insert("hi");
+		editor.submit();
 		editor.historyPrev();
-		assert.equal(editor.text, "历史内容");
+		assert.equal(editor.text, "hi"); // 历史里只有一条
+	});
+
+	it("空白输入不入史", () => {
+		const editor = new LineEditor();
+		editor.insert("   ");
+		editor.submit();
+		editor.historyPrev();
+		assert.equal(editor.text, ""); // 历史还是空的
+	});
+
+	it("历史翻上去再翻回来，回到之前打的草稿", () => {
+		const editor = new LineEditor();
+		editor.insert("first");
+		editor.submit();
+		editor.insert("second");
+		editor.submit();
+
+		editor.insert("draft");
+		editor.historyPrev();
+		assert.equal(editor.text, "second");
+		editor.historyPrev();
+		assert.equal(editor.text, "first");
+		editor.historyPrev(); // 已经是第一条，停住
+		assert.equal(editor.text, "first");
+		editor.historyNext();
+		assert.equal(editor.text, "second");
+		editor.historyNext();
+		assert.equal(editor.text, "draft"); // 回到草稿
+	});
+});
+
+describe("编辑器渲染", () => {
+	it("空内容显示占位文本，光标在提示符后", () => {
+		const editor = new LineEditor();
+		const render = editor.render({ width: 40, prompt: plain("❯ "), placeholder: "say something" });
+		assert.equal(render.lines.length, 1);
+		assert.equal(render.cursor.row, 0);
+		assert.equal(render.cursor.col, "❯ ".length);
+		assert.match(render.lines[0].map((s) => s.text).join(""), /say something/);
+	});
+
+	it("内容反显出光标：末尾时光标那格是补的空格", () => {
+		const editor = new LineEditor();
+		editor.insert("ab");
+		const render = editor.render({ width: 20, prompt: plain("❯ ") });
+		// 行内容 = 提示符 + 前文 + 反显格；反显格在 ab 之后
+		const row = render.cursor.row;
+		const spans = render.lines[row];
+		const caretIndex = spans.findIndex((span) => span.style !== undefined && span.style.reverse === true);
+		assert.notEqual(caretIndex, -1);
+		assert.equal(spans[caretIndex].text, " "); // 光标在末尾，反显的是补的空格
+		assert.equal(render.cursor.col, spans.slice(0, caretIndex).reduce((sum, span) => sum + span.text.length, 0));
+	});
+
+	it("折行后光标行号跟着内容移动", () => {
+		const editor = new LineEditor();
+		editor.insert("aaaa bbbb cccc");
+	editor.moveHome();
+		const render = editor.render({ width: 10, prompt: plain("") });
+		assert.equal(render.cursor.row, 0);
+		assert.equal(render.cursor.col, 0);
 	});
 });

@@ -12,9 +12,9 @@ import { describeUsage, sumUsage } from "./usage.ts";
  * 会被内容里的围栏截断，而引用块只加一个前缀，多长都不会坏。
  */
 
-const DIALOG_HEADING = "## 对话";
-const COMPACTION_HEADING = "## 上下文压缩";
-const USAGE_HEADING = "## 用量";
+const DIALOG_HEADING = "## Conversation";
+const COMPACTION_HEADING = "## Context compaction";
+const USAGE_HEADING = "## Usage";
 
 /**
  * 时间按本地时间写。
@@ -38,16 +38,16 @@ export function renderSessionMarkdown(
 ): string {
 	const lines: string[] = [];
 
-	lines.push(`# 会话 ${header?.id ?? "（缺少会话头）"}`);
+	lines.push(`# Session ${header?.id ?? "(missing session header)"}`);
 	lines.push("");
 	if (header !== undefined) {
-		lines.push(`- 开始：${formatTimestamp(header.timestamp)}`);
-		lines.push(`- 目录：${header.cwd}`);
+		lines.push(`- Started: ${formatTimestamp(header.timestamp)}`);
+		lines.push(`- Directory: ${header.cwd}`);
 		if (header.forkedFrom !== undefined) {
-			lines.push(`- 分叉自：${header.forkedFrom.session} 的 ${header.forkedFrom.entry}`);
+			lines.push(`- Forked from: ${header.forkedFrom.session} at ${header.forkedFrom.entry}`);
 		}
 	}
-	lines.push(`- 条目：${entries.length}`);
+	lines.push(`- Entries: ${entries.length}`);
 	lines.push("");
 
 	lines.push(DIALOG_HEADING);
@@ -59,16 +59,16 @@ export function renderSessionMarkdown(
 		empty = false;
 		lines.push(...block, "");
 	}
-	if (empty) lines.push("（还没有对话）", "");
+	if (empty) lines.push("(no conversation yet)", "");
 
 	const compactions = entries.filter((entry) => entry.type === "compaction");
 	if (compactions.length > 0) {
 		lines.push(COMPACTION_HEADING, "");
 		for (const entry of compactions) {
 			if (entry.type !== "compaction") continue;
-			lines.push(`### ${formatTimestamp(entry.timestamp)}　${entry.provider}/${entry.model}`);
+			lines.push(`### ${formatTimestamp(entry.timestamp)}  ${entry.provider}/${entry.model}`);
 			lines.push("");
-			lines.push(`覆盖 ${entry.covered.length} 条消息，压缩前约 ${entry.tokensBefore} token。`);
+			lines.push(`Covered ${entry.covered.length} messages, about ${entry.tokensBefore} tokens before compaction`);
 			lines.push("");
 			lines.push(entry.summary);
 			lines.push("");
@@ -85,9 +85,9 @@ function renderEntry(entry: SessionEntry): readonly string[] {
 		case "message":
 			switch (entry.message.role) {
 				case "user":
-					return ["### 使用者", "", entry.message.content];
+					return ["### User", "", entry.message.content];
 				case "assistant": {
-					const lines: string[] = ["### 助手", ""];
+					const lines: string[] = ["### Assistant", ""];
 					const text = entry.message.content
 						.filter((block) => block.type === "text")
 						.map((block) => (block.type === "text" ? block.text : ""))
@@ -101,11 +101,11 @@ function renderEntry(entry: SessionEntry): readonly string[] {
 					const calls = entry.message.content.filter((block) => block.type === "toolCall");
 
 					if (text.length > 0) lines.push(text, "");
-					if (thinking.length > 0) lines.push(...quote("思考", thinking), "");
+					if (thinking.length > 0) lines.push(...quote("Thinking", thinking), "");
 					if (calls.length > 0) {
 						for (const call of calls) {
 							if (call.type !== "toolCall") continue;
-							lines.push(`调用工具 \`${call.name}\`：`, "", ...quote(null, JSON.stringify(call.arguments, null, 2)), "");
+							lines.push(`Tool call \`${call.name}\`:`, "", ...quote(null, JSON.stringify(call.arguments, null, 2)), "");
 						}
 					}
 					while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
@@ -113,30 +113,30 @@ function renderEntry(entry: SessionEntry): readonly string[] {
 				}
 				case "toolResult":
 					return [
-						`### 工具结果 ${entry.message.toolName}${entry.message.isError ? "（失败）" : ""}`,
+						`### Tool result ${entry.message.toolName}${entry.message.isError ? " (failed)" : ""}`,
 						"",
 						...quote(null, entry.message.content),
 					];
 			}
 		case "system": {
 			const changed = Object.entries(entry.sections).map(([name, body]) =>
-				body === null ? `移除 ${name}` : `更新 ${name}`,
+				body === null ? `Removed ${name}` : `Updated ${name}`,
 			);
 			const tools: string[] = [];
 			for (const tool of entry.toolsAdded ?? []) tools.push(`+${tool.name}`);
 			for (const name of entry.toolsRemoved ?? []) tools.push(`-${name}`);
 			const parts = [...changed, ...tools];
-			return parts.length === 0 ? [] : [`> 提示词：${parts.join("、")}`];
+			return parts.length === 0 ? [] : [`> Prompt: ${parts.join(", ")}`];
 		}
 		case "model_change":
-			return [`> 模型切换为 ${entry.provider}/${entry.model}`];
+			return [`> Model switched to ${entry.provider}/${entry.model}`];
 		case "effort_change":
-			return [`> 思考等级切换为 ${entry.effort}`];
+			return [`> Reasoning effort switched to ${entry.effort}`];
 		case "usage":
 			// 用量在末尾统一汇总，逐条列出来只会淹没对话
 			return [];
 		case "compaction":
-			return [`> 上下文压缩：覆盖 ${entry.covered.length} 条消息，详情见后文`];
+			return [`> Context compacted: ${entry.covered.length} messages covered, details below`];
 	}
 }
 

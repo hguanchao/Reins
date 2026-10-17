@@ -83,7 +83,7 @@ export class Subagent {
 			if (context.signal.aborted) {
 				return { report: abortedReport(step - 1), steps: step - 1, stopReason: "aborted" };
 			}
-			context.onProgress(`第 ${step}/${this.#deps.maxSteps} 步`);
+			context.onProgress(`step ${step}/${this.#deps.maxSteps}`);
 
 			const result = await this.#deps.client
 				.stream({
@@ -121,7 +121,7 @@ export class Subagent {
 			}
 			if (result.stopReason === "error") {
 				return {
-					report: `子代理出错，这件事没有做完：${result.errorMessage ?? "未知错误"}`,
+					report: `The subagent failed and did not finish: ${result.errorMessage ?? "unknown error"}`,
 					steps: step,
 					stopReason: "error",
 				};
@@ -136,7 +136,7 @@ export class Subagent {
 			if (calls.length === 0) {
 				// 不再要工具就是要交活了。一句话都没说时不能当成做完了
 				return {
-					report: text.length > 0 ? text : "子代理没有给出汇报。",
+					report: text.length > 0 ? text : "The subagent produced no report.",
 					steps: step,
 					stopReason: "done",
 				};
@@ -156,15 +156,15 @@ export class Subagent {
 				continue;
 			}
 
-			context.onProgress(`  调用 ${calls.map((call) => call.name).join("、")}`);
+			context.onProgress(`  calling ${calls.map((call) => call.name).join(", ")}`);
 			for (const outcome of await Promise.all(calls.map((call) => this.#callTool(call, context)))) {
 				messages.push(outcome);
 			}
 		}
 
-		const note = `子代理用满了 ${this.#deps.maxSteps} 步上限，这件事还没有做完。`;
+		const note = `The subagent used up its ${this.#deps.maxSteps}-step budget without finishing.`;
 		return {
-			report: said.length > 0 ? `${note}\n它最后说的是：\n${said}` : note,
+			report: said.length > 0 ? `${note}\nIts last words were:\n${said}` : note,
 			steps: this.#deps.maxSteps,
 			stopReason: "steps",
 		};
@@ -203,10 +203,11 @@ export class Subagent {
 }
 
 const TRUNCATED_ARGUMENTS =
-	"上一轮输出被长度上限截断，工具参数可能不完整，因此这次没有执行。请把任务拆小一些。";
+	"The previous response was cut off by the output limit, so its tool arguments may be incomplete;" +
+	" this call was not executed. Split the task into smaller steps.";
 
 function abortedReport(steps: number): string {
-	return `子代理被中止，这件事没有做完（已走 ${steps} 步）。`;
+	return `The subagent was cancelled before finishing (${steps} steps taken).`;
 }
 
 const PARAMETERS = {
@@ -215,7 +216,7 @@ const PARAMETERS = {
 		task: {
 			type: "string",
 			description:
-				"交给子代理的任务。要写清目标、涉及的文件与算做完的标准——子代理看不到当前对话，只能看到这段话。",
+				"The task to hand to the subagent. State the goal, the files involved, and what counts as done; the subagent cannot see this conversation, only this description.",
 		},
 	},
 	required: ["task"],
@@ -232,10 +233,10 @@ export function createSubagentTool(deps: SubagentDeps): AnyToolDefinition {
 	const tool: ToolDefinition<SubagentArgs> = {
 		name: "subagent",
 		description:
-			`把一件独立的事交给子代理去做，它有自己的上下文与 ${deps.maxSteps} 步预算，做完交回一份汇报。` +
-			"适合「要读很多文件、跑很多命令，但结论只有几句话」的活。" +
-			"子代理看不到当前对话，任务要写完整；它在同一个工作区里、受同一套审批与沙箱约束，" +
-			"改动会真的落到文件上。",
+			`Hand one self-contained piece of work to a subagent with its own context and a budget of ${deps.maxSteps} steps; it reports back when done.` +
+			" Good for work that reads many files and runs many commands but ends in a few lines of conclusions." +
+			" The subagent cannot see this conversation, so describe the task fully; it runs in the same workspace" +
+			" under the same approval and sandbox rules, and its edits land on real files.",
 		parameters: PARAMETERS,
 		// 它自己能改文件也能跑命令，因此照实声明：派出去的子代理干的活，后果与直接调用一样
 		annotations: { readOnly: false, destructive: true, openWorld: true },

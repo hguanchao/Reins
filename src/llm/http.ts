@@ -40,7 +40,7 @@ export async function postSse(
 	let delivered = false;
 
 	for (let attempt = 0; ; attempt += 1) {
-		if (request.signal.aborted) throw new Error("已中止");
+		if (request.signal.aborted) throw new Error("Aborted");
 		try {
 			await postSseOnce(request, (data) => {
 				delivered = true;
@@ -91,7 +91,7 @@ async function postSseOnce(request: SseRequest, onData: (data: string) => void):
 		throw new LlmHttpError(response.status, await readErrorBody(response));
 	}
 	if (response.body === null) {
-		throw new LlmHttpError(response.status, "响应没有内容");
+		throw new LlmHttpError(response.status, "response has no body");
 	}
 
 	const parser = createParser({
@@ -134,8 +134,8 @@ function assertHeaderEncodable(headers: Readonly<Record<string, string>>): void 
 		for (let index = 0; index < value.length; index += 1) {
 			if (value.charCodeAt(index) <= 0xff) continue;
 			throw new Error(
-				`请求头 ${name} 的第 ${index + 1} 个字符不在 HTTP 头部可用的范围内（只允许 latin-1）。` +
-					"请检查 providers.json 里该 provider 的 apiKey 与 headers。",
+				`Header ${name} has a character at position ${index + 1} outside the range allowed in HTTP headers (latin-1 only).` +
+					" Check the apiKey and headers of this provider in providers.json.",
 			);
 		}
 	}

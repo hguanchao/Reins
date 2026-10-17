@@ -14,11 +14,11 @@ import { DEFAULT_LIMITS, truncateTail } from "../truncate.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		command: { type: "string", description: "要执行的命令，由系统 shell 解析" },
+		command: { type: "string", description: "The command to run, parsed by the system shell." },
 		timeout: {
 			type: "integer",
 			minimum: 1,
-			description: "超时秒数。默认 600；命令超过这个时间会被连同子进程一起终止",
+			description: "Timeout in seconds. Defaults to 600; a longer run is killed together with its child processes.",
 		},
 	},
 	required: ["command"],
@@ -43,8 +43,9 @@ const MAX_CAPTURED_BYTES = 5 * 1024 * 1024;
 export const bashTool: ToolDefinition<BashArgs> = {
 	name: "bash",
 	description:
-		"在系统 shell 里执行命令，返回合并后的输出与退出码。用于构建、测试、版本控制等操作。" +
-		"改文件优先用 edit 或 write，两者能保留原文并给出差异。",
+		"Run a command in the system shell and return the combined output plus the exit code. Use it for builds, tests, " +
+		"version control and similar tasks. Prefer edit or write for file changes: they keep the original text and " +
+		"report a diff.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: true },
 
@@ -84,7 +85,7 @@ export const bashTool: ToolDefinition<BashArgs> = {
 		signal.removeEventListener("abort", onAbort);
 
 		if (!exited.started) {
-			return { content: `无法启动 ${shell.command}：${exited.reason}`, isError: true };
+			return { content: `Failed to start ${shell.command}: ${exited.reason}`, isError: true };
 		}
 
 		return buildResult({
@@ -203,26 +204,26 @@ function buildResult(input: {
 }): ToolResult {
 	const parts: string[] = [];
 	if (input.output.length === 0) {
-		parts.push("[命令没有输出]");
+		parts.push("[command produced no output]");
 	} else {
 		const truncated = truncateTail(input.output, DEFAULT_LIMITS);
 		if (truncated.truncated) {
-			parts.push(`[仅显示输出的末尾，共 ${truncated.totalLines} 行]`);
+			parts.push(`[showing the end of the output only, ${truncated.totalLines} lines in total]`);
 		}
 		parts.push(truncated.text);
 	}
 
 	if (input.overflowed) {
-		parts.push(`[输出超过 ${MAX_CAPTURED_BYTES} 字节，更早的部分已丢弃]`);
+		parts.push(`[output exceeded ${MAX_CAPTURED_BYTES} bytes; earlier parts were dropped]`);
 	}
 	if (input.timedOut) {
-		parts.push(`[命令超过 ${input.timeoutMs / 1000} 秒未结束，已连同子进程终止]`);
+		parts.push(`[command did not finish within ${input.timeoutMs / 1000} seconds; killed with its child processes]`);
 	}
 	if (input.aborted) {
-		parts.push("[已中止]");
+		parts.push("[aborted]");
 	}
 	if (input.exitCode !== null && input.exitCode !== 0) {
-		parts.push(`[命令以退出码 ${input.exitCode} 结束]`);
+		parts.push(`[command exited with code ${input.exitCode}]`);
 	}
 
 	const failed = input.timedOut || input.aborted || (input.exitCode !== null && input.exitCode !== 0);

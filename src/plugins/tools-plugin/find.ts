@@ -7,9 +7,9 @@ import { globToRegExp, walk } from "./walk.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		pattern: { type: "string", description: "路径通配模式，如 src/**/*.ts；** 跨目录，* 不跨目录" },
-		path: { type: "string", description: "在哪个目录下找，省略则从工作根开始" },
-		limit: { type: "integer", minimum: 1, description: "最多返回多少条，默认 1000" },
+		pattern: { type: "string", description: "Path glob, e.g. src/**/*.ts; ** crosses directories, * does not" },
+		path: { type: "string", description: "Directory to search; defaults to the workspace root" },
+		limit: { type: "integer", minimum: 1, description: "Maximum paths to return; defaults to 1000" },
 	},
 	required: ["pattern"],
 } as const satisfies JsonSchema;
@@ -25,8 +25,8 @@ const DEFAULT_LIMIT = 1000;
 export const findTool: ToolDefinition<FindArgs> = {
 	name: "find",
 	description:
-		"按路径名查找文件，返回相对路径。`**` 跨目录、`*` 与 `?` 只在单层内匹配。" +
-		"跳过 .git 与 node_modules。",
+		"Find files by path name and return paths relative to the workspace root. `**` crosses directories;"
+		+ " `*` and `?` match within a single level. Skips .git and node_modules.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
@@ -50,11 +50,11 @@ export const findTool: ToolDefinition<FindArgs> = {
 		}
 
 		if (matched.length === 0) {
-			return { content: `没有匹配 ${args.pattern} 的文件（已检查 ${scanned} 个文件）` };
+			return { content: `No files match ${args.pattern} (${scanned} files checked)` };
 		}
 
 		const parts = [matched.join("\n")];
-		if (matched.length >= limit) parts.push(`[已达到 ${limit} 条上限，可能有更多]`);
+		if (matched.length >= limit) parts.push(`[hit the limit of ${limit}; there may be more]`);
 		return { content: parts.join("\n\n"), details: { pattern: args.pattern, matched: matched.length } };
 	},
 };

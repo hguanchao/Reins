@@ -65,7 +65,7 @@ export class TomlDocument implements ConfigSource {
 	 * 整个表都不存在时在文件末尾补一个表头再写。
 	 */
 	set(path: readonly string[], value: ConfigValue): void {
-		if (path.length === 0) throw new Error("写入的键路径不能为空");
+		if (path.length === 0) throw new Error("Key path for write must not be empty");
 		this.#load(this.#render(path, value));
 	}
 

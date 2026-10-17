@@ -2,80 +2,77 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-	DEFAULT_LIMITS,
 	limitLineBytes,
+	MAX_LINE_LENGTH,
 	splitLines,
 	truncateHead,
 	truncateLine,
 	truncateTail,
 } from "../../src/tools/truncate.ts";
 
-describe("按行切分", () => {
-	it("以换行结尾时不产生额外的空行", () => {
-		assert.deepEqual(splitLines("甲\n乙\n"), ["甲", "乙"]);
-		assert.deepEqual(splitLines("甲\n乙"), ["甲", "乙"]);
+describe("工具输出截断", () => {
+	it("splitLines:末尾换行不产生空行", () => {
+		assert.deepEqual(splitLines("a\nb"), ["a", "b"]);
+		assert.deepEqual(splitLines("a\nb\n"), ["a", "b"]);
 		assert.deepEqual(splitLines(""), []);
-		assert.deepEqual(splitLines("\n"), [""]);
 	});
-});
 
-describe("从开头截断", () => {
-	it("行数够用时不截断", () => {
-		const result = truncateHead("甲\n乙\n丙", DEFAULT_LIMITS);
-		assert.equal(result.text, "甲\n乙\n丙");
+	it("truncateHead:行数上限", () => {
+		const result = truncateHead("1\n2\n3", { maxLines: 2, maxBytes: 1000 });
+		assert.equal(result.text, "1\n2");
+		assert.equal(result.truncated, true);
+		assert.deepEqual({ startLine: result.startLine, endLine: result.endLine, totalLines: result.totalLines }, {
+			startLine: 1,
+			endLine: 2,
+			totalLines: 3,
+		});
+	});
+
+	it("truncateHead:字节上限", () => {
+		const result = truncateHead("aaa\nbbb", { maxLines: 10, maxBytes: 5 });
+		assert.equal(result.text, "aaa"); // "aaa\n" 4 字节，再放 "bbb" 就超 5
+		assert.equal(result.truncated, true);
+	});
+
+	it("truncateHead:第一行就超字节上限时保留半行", () => {
+		const long = "x".repeat(100);
+		const result = truncateHead(long, { maxLines: 10, maxBytes: 10 });
+		assert.equal(result.text.length, 10);
+		assert.equal(result.truncated, true);
+	});
+
+	it("truncateHead:不超限时原样返回", () => {
+		const result = truncateHead("a", { maxLines: 10, maxBytes: 100 });
+		assert.equal(result.text, "a");
 		assert.equal(result.truncated, false);
-		assert.equal(result.totalLines, 3);
 	});
 
-	it("超出行数上限时只保留前若干行", () => {
-		const text = Array.from({ length: 10 }, (_item, index) => `第${index + 1}行`).join("\n");
-		const result = truncateHead(text, { maxLines: 3, maxBytes: 1024 });
-		assert.equal(result.text, "第1行\n第2行\n第3行");
+	it("truncateTail:结论在最后时从结尾保留", () => {
+		const result = truncateTail("early\nearly\nconclusion", { maxLines: 1, maxBytes: 1000 });
+		assert.equal(result.text, "conclusion");
 		assert.equal(result.truncated, true);
+		assert.equal(result.startLine, 3); // 保留区间的首行(1 起)
 		assert.equal(result.endLine, 3);
-		assert.equal(result.totalLines, 10);
 	});
 
-	it("超出字节上限时按整行截断", () => {
-		const result = truncateHead("甲".repeat(10) + "\n乙".repeat(10), { maxLines: 100, maxBytes: 31 });
-		// 「甲」每字 3 字节，加换行刚好 31 字节，第二行放不下
-		assert.equal(result.text, "甲".repeat(10));
-		assert.equal(result.truncated, true);
+	it("truncateTail:字节数从尾部往回收", () => {
+		const lines = ["a", "b", "very-long-line", "c"];
+		const result = truncateTail(lines.join("\n"), { maxLines: 10, maxBytes: 4 });
+		// 从尾部往回： "c" 2 字节、 "very-long-line" 太长被丢後继续回收到 "b"
+		assert.ok(!result.text.includes("very-long-line"));
 	});
 
-	it("第一行就超限时保留它的前一段并标记截断", () => {
-		const result = truncateHead("甲".repeat(100), { maxLines: 10, maxBytes: 30 });
-		assert.equal(result.text, "甲".repeat(10));
-		assert.equal(result.truncated, true);
-	});
-});
-
-describe("从结尾截断", () => {
-	it("保留最后的若干行", () => {
-		const text = Array.from({ length: 10 }, (_item, index) => `第${index + 1}行`).join("\n");
-		const result = truncateTail(text, { maxLines: 3, maxBytes: 1024 });
-		assert.equal(result.text, "第8行\n第9行\n第10行");
-		assert.equal(result.truncated, true);
-		assert.equal(result.startLine, 8);
-		assert.equal(result.endLine, 10);
-	});
-});
-
-describe("单行处理", () => {
-	it("超长行只留前一段并注明原长", () => {
-		const line = "x".repeat(600);
-		const result = truncateLine(line, 500);
-		assert.ok(result.startsWith("x".repeat(500)));
-		assert.ok(result.includes("共 600 个字符"));
+	it("limitLineBytes 不把多字节字符切成半个", () => {
+		const line = "中中中中"; // 每字 3 字节,共 12 字节
+		const limited = limitLineBytes(line, 6);
+		assert.equal(Buffer.byteLength(limited, "utf8"), 6);
+		assert.equal(limited, "中中");
 	});
 
-	it("不超长时原样返回", () => {
-		assert.equal(truncateLine("短行", 500), "短行");
-	});
-
-	it("按字节限制切行时不切开多字节字符", () => {
-		const limited = limitLineBytes("甲".repeat(10), 10);
-		assert.equal(limited, "甲".repeat(3));
-		assert.equal(Buffer.byteLength(limited, "utf8"), 9);
+	it("truncateLine:超长行加省略号和说明", () => {
+		const long = "x".repeat(MAX_LINE_LENGTH + 1);
+		const truncated = truncateLine(long);
+		assert.ok(truncated.endsWith(`(the line is ${long.length} characters long)`));
+		assert.equal(truncateLine("short"), "short");
 	});
 });

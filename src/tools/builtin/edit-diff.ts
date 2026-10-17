@@ -70,7 +70,7 @@ export function formatEditDiff(
 			...addedLines.map((line) => `+ ${line}`),
 			...contextAfter.map((line) => `  ${line}`),
 		];
-		blocks.push(`@@ 第 ${originalStartLine + 1} 行 @@\n${body.join("\n")}`);
+		blocks.push(`@@ line ${originalStartLine + 1} @@\n${body.join("\n")}`);
 
 		shift += edit.newText.length - (edit.end - edit.start);
 	}

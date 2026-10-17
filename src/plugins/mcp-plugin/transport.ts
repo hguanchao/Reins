@@ -92,7 +92,7 @@ export function createStdioTransport(options: StdioTransportOptions): McpTranspo
 	const stdout = child.stdout;
 	const stderr = child.stderr;
 	if (stdin === null || stdout === null || stderr === null) {
-		throw new Error(`无法与 ${options.command} 建立管道`);
+		throw new Error(`Cannot set up pipes for ${options.command}`);
 	}
 
 	let buffer = "";
@@ -126,10 +126,10 @@ export function createStdioTransport(options: StdioTransportOptions): McpTranspo
 	};
 
 	child.on("error", (error) => {
-		report(`无法启动 ${options.command}：${error.message}`);
+		report(`Cannot start ${options.command}: ${error.message}`);
 	});
 	child.on("close", (code) => {
-		report(`${options.command} 已退出（退出码 ${code ?? "未知"}）`);
+		report(`${options.command} exited (code ${code ?? "unknown"})`);
 	});
 
 	unrefChild(child);
@@ -140,7 +140,7 @@ export function createStdioTransport(options: StdioTransportOptions): McpTranspo
 
 	return {
 		async send(message) {
-			if (stdin.destroyed) throw new Error("连接已经关闭");
+			if (stdin.destroyed) throw new Error("Connection is closed");
 			await new Promise<void>((resolve, reject) => {
 				stdin.write(`${JSON.stringify(message)}\n`, (error) => {
 					if (error === null || error === undefined) resolve();
@@ -204,7 +204,7 @@ export function createHttpTransport(options: RemoteTransportOptions): McpTranspo
 			// 通知没有响应体，这是正常的
 			if (text.trim().length === 0) return;
 			const parsed = parseMessage(text);
-			if (parsed === undefined) throw new Error("服务端返回的不是 JSON-RPC 报文");
+			if (parsed === undefined) throw new Error("The server sent something that is not a JSON-RPC message");
 			queue.push(parsed);
 		},
 		receive: () => queue,
@@ -240,7 +240,7 @@ export function createSseTransport(options: RemoteTransportOptions): McpTranspor
 				if (parsed !== undefined) queue.push(parsed);
 			});
 			queue.close();
-			options.onClose("服务端关闭了事件流");
+			options.onClose("The server closed the event stream");
 		} catch (error) {
 			queue.close();
 			options.onClose(error instanceof Error ? error.message : String(error));
@@ -249,7 +249,7 @@ export function createSseTransport(options: RemoteTransportOptions): McpTranspor
 
 	return {
 		async send(message) {
-			if (endpoint === undefined) throw new Error("还没有拿到服务端给出的投递地址");
+			if (endpoint === undefined) throw new Error("The server has not given a message endpoint yet");
 			const response = await fetch(endpoint, {
 				method: "POST",
 				headers: requestHeaders(options.headers, "application/json"),
@@ -290,7 +290,7 @@ async function readEventStream(
 	onEvent: (event: { readonly event: string; readonly data: string }) => void,
 ): Promise<void> {
 	const body = response.body;
-	if (body === null) throw new Error("响应没有内容");
+	if (body === null) throw new Error("Response has no body");
 
 	const parser = createParser({
 		onEvent: (event) => {
