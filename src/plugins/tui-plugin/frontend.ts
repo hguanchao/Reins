@@ -275,8 +275,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 			if (event.type === "key" && this.#scrollKey(event)) continue;
 
 			if (this.#dialog !== undefined) {
-				if (event.type === "key" && event.name === "ctrl-c") {
-					// 询问期间按 Ctrl+C：既拒绝，也把这一轮停掉
+				if (event.type === "key" && (event.name === "ctrl-c" || event.name === "escape")) {
+					// 询问期间按 Ctrl+C 或 Esc：拒绝，并把这一轮停掉
 					this.#interrupt(true);
 					continue;
 				}
@@ -301,8 +301,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 						continue;
 					}
 					if (event.name === "escape") {
-						this.#pane = "prompt";
-						this.#refresh();
+						// 回合还在跑：Esc 直接中止；空闲时只是把焦点还给输入框
+						if (this.#running) this.#interrupt(true);
+						else {
+							this.#pane = "prompt";
+							this.#refresh();
+						}
 						continue;
 					}
 					if (event.name === "ctrl-e") {

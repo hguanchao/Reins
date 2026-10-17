@@ -447,6 +447,111 @@ describe("输入框边框", () => {
 		await running;
 	});
 
+	it("主区焦点下 Esc 与 Ctrl+C 都能中止运行中的回合", async () => {
+		for (const key of ["\x1b", "\x03"]) {
+			let aborted = false;
+			const terminal = new MemoryTerminal();
+			terminal.sizeValue = { rows: 24, cols: 80 };
+			const runtime: InteractiveRuntime = {
+				...runtimeOf(),
+				createDriver: (onEvent) => ({
+					run: async (_prompt: string, signal: AbortSignal) => {
+						onEvent({ type: "turn_start" });
+						await new Promise<void>((resolve) => {
+							signal.addEventListener(
+								"abort",
+								() => {
+									aborted = true;
+									resolve();
+								},
+								{ once: true },
+							);
+						});
+					},
+				}) as unknown as TurnDriver,
+			};
+			const frontend = new TerminalFrontend({ terminal, env: {} });
+			const running = frontend.run(runtime);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			terminal.inputListener?.("hello\r");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			// 点击用户消息块，把焦点切到主区
+			terminal.inputListener?.("\x1b[<0;6;2M");
+			terminal.inputListener?.("\x1b[<0;6;2m");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			assert.ok(
+				lastFrameRows(terminal.output).some((line) => line.includes("j/k:entry")),
+				"scrollback focused",
+			);
+
+			terminal.inputListener?.(key);
+			await new Promise((resolve) => setTimeout(resolve, key === "\x1b" ? 50 : 0));
+			assert.equal(aborted, true, key === "\x1b" ? "aborted by Esc" : "aborted by Ctrl+C");
+
+			terminal.quit();
+			await running;
+		}
+	});
+
+	it("审批弹窗在主区焦点下显示，Esc 与 Ctrl+C 都拒绝并中止", async () => {
+		for (const key of ["\x1b", "\x03"]) {
+			let aborted = false;
+			let confirmer: ((question: string, detail: string) => Promise<boolean>) | undefined;
+			const terminal = new MemoryTerminal();
+			terminal.sizeValue = { rows: 24, cols: 80 };
+			const runtime: InteractiveRuntime = {
+				...runtimeOf(),
+				createDriver: (onEvent) => ({
+					run: async (_prompt: string, signal: AbortSignal) => {
+						onEvent({ type: "turn_start" });
+						await new Promise<void>((resolve) => {
+							signal.addEventListener(
+								"abort",
+								() => {
+									aborted = true;
+									resolve();
+								},
+								{ once: true },
+							);
+						});
+					},
+				}) as unknown as TurnDriver,
+				setConfirmer: (next) => {
+					confirmer = next;
+				},
+			};
+			const frontend = new TerminalFrontend({ terminal, env: {} });
+			const running = frontend.run(runtime);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			terminal.inputListener?.("hello\r");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			terminal.inputListener?.("\x1b[<0;6;2M");
+			terminal.inputListener?.("\x1b[<0;6;2m");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			const decision = confirmer?.("Allow Bash to run?", "{}");
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			assert.ok(
+				lastFrameRows(terminal.output).some((line) => line.includes("Approval required")),
+				"dialog stays visible in scrollback focus",
+			);
+
+			terminal.inputListener?.(key);
+			await new Promise((resolve) => setTimeout(resolve, key === "\x1b" ? 50 : 0));
+			assert.equal(await decision, false, "dialog denied");
+			assert.equal(aborted, true, "turn aborted");
+			assert.ok(
+				!lastFrameRows(terminal.output).some((line) => line.includes("Approval required")),
+				"dialog closed",
+			);
+
+			terminal.quit();
+			await running;
+		}
+	});
+
 	it("审批弹窗居中，选项横向排列且不带按键提示", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
