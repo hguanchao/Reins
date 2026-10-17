@@ -206,30 +206,19 @@ describe("前端：会话区交互", () => {
 		assert.ok(toolRow >= 0, "tool group header is visible");
 		const clickRow = toolRow + 1; // 鼠标坐标从 1 开始
 
-		// 单击：选中行铺高亮底色，行首菱形换成 ▸ 护栏
+		// 单击：选中行铺高亮底色、行首菱形换成 ▸ 护栏，整行还有 ┌┐ 框
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}m`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const selected = lastFrameRows(terminal.output);
 		assert.ok(
-			selected.some((line) => line.trimStart().startsWith("▸") && line.includes("Read 1 file")),
+			selected.some((line) => line.includes("▸") && line.includes("Read 1 file")),
 			"caret marks the selected collapsed row",
 		);
+		const selectedTop = selected.findIndex((line) => line.trimStart().startsWith("┌"));
+		assert.ok(selectedTop >= 0 && selected.some((line) => line.trimStart().startsWith("└")), "box frames the row");
 		assert.ok(!selected.some((line) => line.includes("line one")), "tool group collapsed");
-
-		// 选中块右上角的复制按钮
-		const iconRow = selected.findIndex((line) => line.includes("⧉"));
-		assert.ok(iconRow >= 0, "copy icon is visible");
-		const iconCol = selected[iconRow].indexOf("⧉") + 1;
-		terminal.inputListener?.(`\x1b[<0;${iconCol};${iconRow + 1}M`);
-		terminal.inputListener?.(`\x1b[<0;${iconCol};${iconRow + 1}m`);
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		const iconCopy = [...terminal.output.matchAll(/(?:\x1b\]52;c;)([^\x07]*)\x07/g)].at(-1);
-		assert.ok(iconCopy, "copy icon writes the clipboard");
-		assert.ok(
-			Buffer.from(iconCopy[1], "base64").toString("utf8").includes("line one\nline two"),
-			"copy icon copies the whole block",
-		);
+		assert.ok(!selected.some((line) => line.includes("⧉")), "copy icon is gone");
 
 		// 300ms 内第二次按下：展开组，成员先以一行摘要出现
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);

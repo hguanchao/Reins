@@ -29,12 +29,6 @@ export interface BlockRange {
 	readonly height: number;
 }
 
-export interface CopyIconHit {
-	/** 内容行号，不是屏幕行号。 */
-	readonly line: number;
-	readonly col: number;
-}
-
 /** 选中块的边框：左右竖线贴着块的可见行，上下角覆盖在相邻一行的格子上。 */
 export function drawSelectionBox(
 	lines: readonly Line[],
@@ -104,29 +98,6 @@ function bandLine(line: Line, from: number, to: number): Line {
 		})),
 		sliceRange(line, to, Number.POSITIVE_INFINITY),
 	);
-}
-
-/** 选中块右上角的复制按钮；放在块的第一条非空行上。 */
-export function drawCopyIcon(
-	lines: readonly Line[],
-	block: BlockRange,
-	windowStart: number,
-	entryWidth: number,
-	history: readonly Line[],
-): { readonly lines: Line[]; readonly icon: CopyIconHit | undefined } {
-	let line = block.start;
-	while (line < block.start + block.height && lineText(history[line] ?? []).trim().length === 0) {
-		line += 1;
-	}
-	if (line >= block.start + block.height) line = block.start;
-
-	const row = line - windowStart;
-	if (row < 0 || row >= lines.length) return { lines: [...lines], icon: undefined };
-
-	const col = Math.max(OUTER_PAD, OUTER_PAD + entryWidth - 2);
-	const result = [...lines];
-	result[row] = overlayChar(result[row], col, "⧉", BRIGHT);
-	return { lines: result, icon: { line, col } };
 }
 
 /**

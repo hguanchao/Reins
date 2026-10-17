@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-	drawCopyIcon,
 	drawHoverCard,
 	drawSelectionBand,
 	drawSelectionBox,
@@ -19,19 +18,10 @@ describe("主区装饰", () => {
 		assert.ok(boxed[1].includes("b"));
 	});
 
-	it("复制按钮落在块的第一条非空行", () => {
-		const lines = [plain(""), plain("hello"), plain("")];
-		const result = drawCopyIcon(lines, { start: 0, height: 3 }, 0, 10, lines);
-		assert.deepEqual(result.icon, { line: 1, col: 10 });
-		assert.equal(lineText(result.lines[1])[10], "⧉");
-	});
-
 	it("块完全滚出视口时原样返回", () => {
 		const lines = [plain("aa")];
 		const boxed = drawSelectionBand(lines, { start: 5, height: 1 }, 0, 8);
 		assert.deepEqual(boxed.map(lineText), ["aa"]);
-		const copy = drawCopyIcon(lines, { start: 5, height: 2 }, 0, 8, []);
-		assert.equal(copy.icon, undefined);
 	});
 
 	it("选中的收起行铺高亮底色，菱形换成 ▸ 护栏", () => {

@@ -533,12 +533,6 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 		}
 
-		// 选中块右上角的复制按钮
-		if (event.button === "left" && event.action === "down" && this.#conversation.copyIconHit(row, col)) {
-			this.#copyBlock();
-			return;
-		}
-
 		// 点到输入区：焦点回到输入框；双击粘贴 chip 则把它展开
 		if (event.button === "left" && event.action === "down" && row >= this.#conversation.height) {
 			this.#pane = "prompt";

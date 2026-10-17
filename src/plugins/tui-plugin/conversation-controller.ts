@@ -9,7 +9,6 @@ import {
 	type ViewportWindow,
 } from "../../tui/index.ts";
 import {
-	drawCopyIcon,
 	drawHoverCard,
 	drawSelectionBand,
 	drawSelectionBox,
@@ -57,7 +56,6 @@ export class ConversationController {
 	#selecting = false;
 	#dragged = false;
 	#selectedBlock: number | undefined;
-	#copyIcon: { line: number; col: number } | undefined;
 	#lastBlockClick: { id: number; at: number } | undefined;
 	#hoverTurn: number | undefined;
 	#hoverPreview = "";
@@ -291,13 +289,6 @@ export class ConversationController {
 		return text.length > 0 ? text : undefined;
 	}
 
-	/** 选中块上的复制按钮是否被点到。 */
-	copyIconHit(row: number, col: number): boolean {
-		if (this.#copyIcon === undefined) return false;
-		const line = this.#main.window.start + row;
-		return line === this.#copyIcon.line && col === this.#copyIcon.col;
-	}
-
 	/** 轨道刻度或时间戳的悬停；返回是否发生了变化。刻度占两列，两列都是命中区。 */
 	hoverAt(row: number, col: number, cols: number): boolean {
 		const body = Math.max(16, cols - OUTER_PAD);
@@ -391,7 +382,6 @@ export class ConversationController {
 		this.#turns = view.turns;
 		this.#turnPreviews = view.turnPreviews;
 		this.#timestamps = view.timestamps;
-		this.#copyIcon = undefined;
 
 		const rail = railWidth({ width: body, turns: view.turns.length });
 		const window = this.#viewport.window(view.rows.length, mainRows);
@@ -422,25 +412,20 @@ export class ConversationController {
 			return concat(plain(" ".repeat(OUTER_PAD)), gutter, [scroll]);
 		});
 
-		let frame = conversation;
+		let frame: readonly Line[] = conversation;
 		const selected =
 			this.#selectedBlock === undefined
 				? undefined
 				: this.#blocks.find((block) => block.id === this.#selectedBlock);
 		if (selected !== undefined) {
 			const range = this.#selectionExtent(this.#blocks, selected);
+			// 收起的一行铺高亮底色并画 ▸ 护栏；所有选中块都再画一圈 ┌┐ 框
 			if (selected.mode === "collapsed" && range.height === selected.height) {
-				// 收起的一行：底色加 ▸ 护栏，复制按钮内联在这行右端
-				const banded = drawSelectionBand(conversation, range, window.start, entryWidth);
-				const decorated = drawCopyIcon(banded, range, window.start, entryWidth, view.rows);
-				this.#copyIcon = decorated.icon;
-				frame = decorated.lines;
+				frame = drawSelectionBand(conversation, range, window.start, entryWidth);
 			} else {
-				const boxed = drawSelectionBox(conversation, range, window.start, entryWidth);
-				const decorated = drawCopyIcon(boxed, range, window.start, entryWidth, view.rows);
-				this.#copyIcon = decorated.icon;
-				frame = decorated.lines;
+				frame = conversation;
 			}
+			frame = drawSelectionBox(frame, range, window.start, entryWidth);
 		}
 		return this.#overlayHover(frame, body + OUTER_PAD);
 	}
