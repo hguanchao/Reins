@@ -42,7 +42,7 @@ import { Transcript } from "./transcript.ts";
  * 使用者的 shell 会连回显都没有。
  */
 
-/** 左右各留两列：整屏贴边会把内容顶到终端边缘上，读起来很挤。 */
+/** 会话区与确认卡片左侧留两列：整屏贴边会把内容顶到终端边缘上，读起来很挤。 */
 const PAD = 2;
 
 /** 输入框之外的固定行：上面一行空行、边框上下两条、下面的快捷键条。 */
@@ -147,7 +147,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 	}
 
-	/** 内容可用宽度：扣掉左右留白。 */
+	/** 会话区与确认卡片的可用宽度：它们左侧留两列。 */
 	#body(cols: number): number {
 		return Math.max(16, cols - PAD);
 	}
@@ -538,8 +538,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		const size = this.#terminal.size();
 		const body = this.#body(size.cols);
-		// 输入框没有左右边框，正文就是整行可用宽度；它多高先算出来，会话区才好分剩下的行
-		const editor = this.#editor.render({ width: body, prompt: PROMPT, placeholder: PLACEHOLDER });
+		// 输入框没有左右边框，正文从第一列开始排，占满整行；它多高先算出来，会话区才好分剩下的行
+		const editor = this.#editor.render({ width: size.cols, prompt: PROMPT, placeholder: PLACEHOLDER });
 		const footerRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const dialog = this.#dialog;
 		const card = dialog === undefined ? 0 : CARD_ROWS;
@@ -552,12 +552,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		const lines: Line[] = [
 			...conversation,
-			...(this.#running ? [plain(""), this.#runningRow(body)] : []),
+			...(this.#running ? [plain(""), this.#runningRow(size.cols)] : []),
 			plain(""),
 			boxRule(size.cols),
-			...editor.lines.map((line) => concat(plain(" ".repeat(PAD)), line)),
+			...editor.lines,
 			this.#boxBottom(size.cols),
-			this.#keysRow(body),
+			this.#keysRow(size.cols),
 		];
 
 		// 光标在输入框里：它上面是会话区与输入框的上边框和留白
@@ -565,7 +565,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			lines,
 			cursor: {
 				row: rows + status + 2 + editor.cursor.row,
-				col: PAD + editor.cursor.col,
+				col: editor.cursor.col,
 			},
 		});
 	}
@@ -610,15 +610,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 			),
 			concat(plain(" ".repeat(PAD)), styled(`▶ ${allow.key}  ${allow.label}`, ACCENT)),
 			concat(plain(" ".repeat(PAD + 2)), styled(`${deny.key}  ${deny.label}`, DIM)),
-			this.#hintLine(CARD_HINTS, body),
+			concat(plain(" ".repeat(PAD)), this.#hintLine(CARD_HINTS, body)),
 		];
 	}
 
 	/** 跑起来时的那一行：左边是当前动作，右边是这一轮已经跑了多久。 */
-	#runningRow(body: number): Line {
+	#runningRow(width: number): Line {
 		const elapsed = Date.now() - this.#turnStartedAt;
 		const head = concat(styled(`${spinnerFrame(elapsed)} `, ACCENT), styled(this.#activity, TEXT));
-		return concat(plain(" ".repeat(PAD)), alignEnds(head, styled(formatDuration(elapsed), DIM), body));
+		return alignEnds(head, styled(formatDuration(elapsed), DIM), width);
 	}
 
 	/** 输入框的下边框：与上边框同一条细线，铺满整个终端宽。 */
@@ -627,19 +627,19 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 
 	/** 底部快捷键条：当前场景该按什么。 */
-	#keysRow(body: number): Line {
-		return this.#hintLine(this.#hints(), body);
+	#keysRow(width: number): Line {
+		return this.#hintLine(this.#hints(), width);
 	}
 
 	/** 一行按键提示：键亮、动作暗，段与段之间用竖线分开。 */
-	#hintLine(hints: readonly KeyHint[], body: number): Line {
+	#hintLine(hints: readonly KeyHint[], width: number): Line {
 		const parts: Span[] = [];
 		hints.forEach((hint, index) => {
 			if (index > 0) parts.push(...styled("  │  ", FAINT));
 			parts.push(...styled(hint.keys, { color: BRIGHT.color, bold: true }));
 			parts.push(...styled(`:${hint.label}`, DIM));
 		});
-		return concat(plain(" ".repeat(PAD)), truncateLine(parts, body));
+		return truncateLine(parts, width);
 	}
 
 	/**

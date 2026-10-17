@@ -129,14 +129,13 @@ describe("输入框边框", () => {
 		}
 	});
 
-	it("输入行有没有左右竖线,内容直接从缩进处排", async () => {
+	it("输入行没有左右竖线,内容从第一列开始排", async () => {
 		const { lines } = await framesWith(24, 80);
 		const editorRow = lines.find((line) => line.includes("Build anything"));
 		assert.ok(editorRow, "placeholder row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 		assert.ok(!visible.includes("│"), "no vertical border");
-		assert.ok(visible.startsWith("  "), "PAD indent only, flush left");
-		assert.match(visible, /❯ Build anything/);
+		assert.ok(visible.startsWith("❯ Build anything"), "prompt flushes left");
 	});
 
 	it("下边框不嵌模型与审批状态,屏幕上也没有头部状态条", async () => {
@@ -157,22 +156,68 @@ describe("输入框边框", () => {
 		assert.ok(!visibleLines.some((line) => line.includes("Ready")), "no top bar");
 	});
 
-	it("输入时光标列落在提示符之后:屏幕列 = 缩进 + 输入位置", async () => {
+	it("输入时光标列落在提示符之后:屏幕列 = 提示符 + 输入位置", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		const frontend = new TerminalFrontend({ terminal, env: {} });
 		const running = frontend.run(runtimeOf());
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		// 输入一个字母,再看画帧里的光标绝对定位
+		// 输入一个字母,再看最后一帧里的光标绝对定位
 		terminal.inputListener?.("a");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const frame = terminal.output;
-		const anchorMatch = /(?:\x1b\[)(\d+);(\d+)H(?!.*\x1b\[\d+;\d+H)/.exec(frame);
+		const lastFrame = frame.slice(frame.lastIndexOf("\x1b[H"));
+		const anchorMatch = /(?:\x1b\[)(\d+);(\d+)H(?!.*\x1b\[\d+;\d+H)/.exec(lastFrame);
 		assert.ok(anchorMatch, "cursor positioned");
-		// ❯ 光标在缩进(2)+提示符(2)之后,第一格内容
-		assert.equal(anchorMatch[2], "5");
+		// ❯ 光标在提示符(2)+输入内容(1)之后
+		assert.equal(anchorMatch[2], "4");
 		// 清空再退出:Ctrl+D 只在空输入时退出
 		terminal.inputListener?.("\x7f");
+		terminal.quit();
+		await running;
+	});
+
+	it("底部快捷键条从第一列开始", async () => {
+		const { lines } = await framesWith(24, 80);
+		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+		const hint = visibleLines.find((line) => line.includes("Enter:send"));
+		assert.ok(hint, "key hint row exists");
+		assert.ok(hint!.startsWith("Enter:send"), "no left padding");
+	});
+
+	it("运行状态行从第一列开始", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		let releaseRun: (() => void) | undefined;
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: (onEvent) => ({
+				run: async () => {
+					onEvent({ type: "turn_start" });
+					await new Promise<void>((resolve) => {
+						releaseRun = resolve;
+					});
+				},
+			}) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("hello\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const frame = terminal.output;
+		const lastFrame = frame.slice(frame.lastIndexOf("\x1b[H"));
+		const visible = lastFrame
+			.split("\r\n")
+			.map((line) => line.replace(/^(\r|\r\x1b\[2K)+/, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+		const status = visible.find((line) => line.includes("Thinking"));
+		assert.ok(status, "running row exists");
+		assert.ok(!status!.startsWith(" "), "spinner at the first column");
+
+		releaseRun?.();
+		await new Promise((resolve) => setTimeout(resolve, 0));
 		terminal.quit();
 		await running;
 	});
