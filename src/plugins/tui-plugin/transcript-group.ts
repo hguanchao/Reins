@@ -19,6 +19,16 @@ const GROUP_VERBS: Readonly<
 	web: { done: "Fetched", running: "Fetching", one: "website", many: "websites" },
 };
 
+/** 目录与读取混在一组时是一趟「熟悉」：合并成一个动词，单位也说全称。 */
+const EXPLORED = {
+	done: "Explored",
+	running: "Exploring",
+	dirOne: "directory",
+	dirMany: "directories",
+	fileOne: "file",
+	fileMany: "files",
+};
+
 /** 可汇总的工具按动词归类；其余工具（写文件、编辑、执行命令）各自成行。 */
 export function groupKindOf(name: string): ToolGroupKind | undefined {
 	switch (name.toLowerCase()) {
@@ -74,6 +84,13 @@ export function runningGroupLabel(members: readonly GroupedTool[]): string {
 }
 
 function bucketLabel(buckets: ReadonlyMap<ToolGroupKind, number>, tense: "done" | "running"): string {
+	// 同时列目录又读文件：说成一句「Explored N directories, M files」
+	if (tense === "done" && (buckets.get("dir") ?? 0) > 0 && (buckets.get("file") ?? 0) > 0) {
+		const dirs = buckets.get("dir")!;
+		const files = buckets.get("file")!;
+		return `${EXPLORED.done} ${dirs} ${dirs === 1 ? EXPLORED.dirOne : EXPLORED.dirMany}, ${files} ${files === 1 ? EXPLORED.fileOne : EXPLORED.fileMany}`;
+	}
+
 	let label = "";
 	for (const [kind, count] of buckets) {
 		const verb = GROUP_VERBS[kind];

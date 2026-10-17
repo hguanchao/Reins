@@ -33,6 +33,30 @@ export function describeTool(
 	return text.length > ARGS_LIMIT ? `${text.slice(0, ARGS_LIMIT)}…` : text;
 }
 
+/** 界面里的工具名用地图后的写法，不透传注册名。 */
+export function displayToolName(name: string): string {
+	switch (name.toLowerCase()) {
+		case "ls":
+		case "list_dir":
+			return "List";
+		case "find":
+		case "glob":
+		case "grep":
+			return "Grep";
+		case "bash":
+		case "shell":
+			return "Bash";
+		case "webfetch":
+		case "web_fetch":
+			return "Fetch";
+		case "websearch":
+		case "web_search":
+			return "Search";
+		default:
+			return name.charAt(0).toUpperCase() + name.slice(1);
+	}
+}
+
 export function toolSummary(
 	name: string,
 	args: Record<string, unknown>,

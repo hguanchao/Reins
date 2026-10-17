@@ -202,17 +202,19 @@ describe("前端：会话区交互", () => {
 		terminal.inputListener?.("run\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◈ Read 1 file"));
+		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("Read 1 file"));
 		assert.ok(toolRow >= 0, "tool group header is visible");
 		const clickRow = toolRow + 1; // 鼠标坐标从 1 开始
 
-		// 单击：选中块并画选中框
+		// 单击：选中行铺高亮底色，行首菱形换成 ▸ 护栏
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}m`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const selected = lastFrameRows(terminal.output);
-		assert.ok(selected.some((line) => line.trimStart().startsWith("┌")), "selection box top");
-		assert.ok(selected.some((line) => line.trimStart().startsWith("└")), "selection box bottom");
+		assert.ok(
+			selected.some((line) => line.trimStart().startsWith("▸") && line.includes("Read 1 file")),
+			"caret marks the selected collapsed row",
+		);
 		assert.ok(!selected.some((line) => line.includes("line one")), "tool group collapsed");
 
 		// 选中块右上角的复制按钮

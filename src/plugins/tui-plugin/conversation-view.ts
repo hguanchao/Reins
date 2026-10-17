@@ -9,7 +9,7 @@ import {
 	type Style,
 } from "../../tui/text/line.ts";
 import { GUTTER_WIDTH, OUTER_PAD } from "./layout.ts";
-import { BRIGHT, DIM, EDGE, THEME } from "./theme.ts";
+import { BRIGHT, DIM, EDGE, SELECT_BG, THEME } from "./theme.ts";
 
 /**
  * 主区的整块装饰。
@@ -67,6 +67,44 @@ export function drawSelectionBox(
 		result[row] = overlayChar(result[row], right, "┘", EDGE);
 	}
 	return result;
+}
+
+/**
+ * 选中收起行的样式：整行铺高亮底色，开头的菱形换成 ▸ 护栏。
+ *
+ * 展开的块才有边框；收起的一行用底色和护栏标记选中，border 反而在深底上看不清。
+ */
+export function drawSelectionBand(
+	lines: readonly Line[],
+	block: BlockRange,
+	windowStart: number,
+	entryWidth: number,
+): readonly Line[] {
+	const row = block.start - windowStart;
+	if (row < 0 || row >= lines.length) return [...lines];
+
+	const line = lines[row];
+	const text = lineText(line);
+	const caretCol = [text.indexOf("◆"), text.indexOf("◇")].find((index) => index >= 0);
+	const banded = bandLine(line, OUTER_PAD - 1, OUTER_PAD + entryWidth + 1);
+	const result = [...lines];
+	result[row] =
+		caretCol === undefined
+			? banded
+			: overlayChar(banded, caretCol, "▸", { bold: true, color: BRIGHT.color, background: SELECT_BG.background });
+	return result;
+}
+
+/** 选中段的高亮底色：段内的字素铺上底色，跨界宽字符用空格顶位。 */
+function bandLine(line: Line, from: number, to: number): Line {
+	return concat(
+		sliceRange(line, 0, from),
+		sliceRange(line, from, to).map((span) => ({
+			text: span.text,
+			style: { ...span.style, background: SELECT_BG.background },
+		})),
+		sliceRange(line, to, Number.POSITIVE_INFINITY),
+	);
 }
 
 /** 选中块右上角的复制按钮；放在块的第一条非空行上。 */

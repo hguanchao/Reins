@@ -8,7 +8,13 @@ import {
 	type Line,
 	type ViewportWindow,
 } from "../../tui/index.ts";
-import { drawCopyIcon, drawHoverCard, drawSelectionBox, expandTimestamp } from "./conversation-view.ts";
+import {
+	drawCopyIcon,
+	drawHoverCard,
+	drawSelectionBand,
+	drawSelectionBox,
+	expandTimestamp,
+} from "./conversation-view.ts";
 import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
 import { appendRail, railCells, railWidth, RAIL_WIDTH } from "./rail.ts";
 import { scrollbarCell } from "./scrollbar.ts";
@@ -398,10 +404,18 @@ export class ConversationController {
 				? undefined
 				: this.#blocks.find((block) => block.id === this.#selectedBlock);
 		if (selected !== undefined) {
-			const boxed = drawSelectionBox(conversation, selected, window.start, entryWidth);
-			const decorated = drawCopyIcon(boxed, selected, window.start, entryWidth, view.rows);
-			this.#copyIcon = decorated.icon;
-			frame = decorated.lines;
+			if (selected.mode === "collapsed") {
+				// 收起的一行：底色加 ▸ 护栏，复制按钮内联在这行右端
+				const banded = drawSelectionBand(conversation, selected, window.start, entryWidth);
+				const decorated = drawCopyIcon(banded, selected, window.start, entryWidth, view.rows);
+				this.#copyIcon = decorated.icon;
+				frame = decorated.lines;
+			} else {
+				const boxed = drawSelectionBox(conversation, selected, window.start, entryWidth);
+				const decorated = drawCopyIcon(boxed, selected, window.start, entryWidth, view.rows);
+				this.#copyIcon = decorated.icon;
+				frame = decorated.lines;
+			}
 		}
 		return this.#overlayHover(frame, body + OUTER_PAD);
 	}

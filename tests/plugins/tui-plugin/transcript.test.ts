@@ -145,9 +145,24 @@ describe("块折叠", () => {
 		const block = view.blocks.find((item) => item.kind === "group");
 		assert.ok(block);
 		const header = lineText(view.rows[block.start]);
-		assert.ok(header.includes("◈ Read 2 files"), header);
+		assert.ok(header.includes("◆ Read 2 files"), header);
 		assert.ok(header.includes("Searched 1 pattern"), header);
 		assert.ok(header.includes("1 failed"), header);
+	});
+
+	it("目录与读取混在一组时合并成 Explored", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "ls", args: { path: "." } }, 0);
+		transcript.handle({ type: "tool_end", callId: "1", name: "ls", isError: false, durationMs: 1, summary: "ok" }, 0);
+		transcript.handle({ type: "tool_start", callId: "2", name: "Read", args: { path: "a" } }, 0);
+		transcript.handle({ type: "tool_end", callId: "2", name: "Read", isError: false, durationMs: 1, summary: "ok" }, 0);
+		transcript.handle({ type: "tool_start", callId: "3", name: "Read", args: { path: "b" } }, 0);
+		transcript.handle({ type: "tool_end", callId: "3", name: "Read", isError: false, durationMs: 1, summary: "ok" }, 0);
+
+		const view = transcript.view();
+		const block = view.blocks.find((item) => item.kind === "group");
+		assert.ok(block);
+		assert.ok(lineText(view.rows[block.start]).includes("Explored 1 directory, 2 files"));
 	});
 
 	it("运行中的连续工具用进行时汇总成一行", () => {
@@ -157,9 +172,8 @@ describe("块折叠", () => {
 		transcript.handle({ type: "tool_start", callId: "3", name: "grep", args: { pattern: "x" } }, 0);
 
 		const rows = transcript.view({ now: 0 }).rows.map(lineText);
-		const header = rows.find((line) => line.includes("◈"));
+		const header = rows.find((line) => line.includes("Reading"));
 		assert.ok(header, "running group header");
-		assert.ok(header.includes("Reading 2 files"), header);
 		assert.ok(header.includes("Searching 1 pattern"), header);
 		assert.ok(!rows.some((line) => line.includes("a.ts")), "per-call paths stay hidden while grouped");
 	});
@@ -184,9 +198,9 @@ describe("块折叠", () => {
 		const group = transcript.view().blocks.find((item) => item.kind === "group");
 		assert.ok(group);
 		transcript.toggleFold(group.id);
-		const member = transcript.view().rows.find((row) => lineText(row).includes("read "));
+		const member = transcript.view().rows.find((row) => lineText(row).includes("Read  "));
 		assert.ok(member);
-		assert.ok(lineText(member).includes("read  src/a.ts (10–15)"));
+		assert.ok(lineText(member).includes("Read  src/a.ts (10–15)"));
 		assert.ok(!lineText(member).includes("{"));
 	});
 

@@ -20,6 +20,7 @@ import { renderMarkdown } from "./markdown.ts";
 import { ACCENT, BAD, BAND, BRIGHT, CODE_BG, CODE_TEXT, DIM, FAINT, OK, TEXT } from "./theme.ts";
 import {
 	describeTool,
+	displayToolName,
 	firstLine,
 	lastOutputLine,
 	thoughtLabel,
@@ -573,7 +574,7 @@ export class Transcript {
 			plain(" "),
 			truncateLine(
 				concat(
-					styled("◈ ", failed > 0 ? BAD : FAINT),
+					styled(`${TOOL_MARK}`, FAINT),
 					styled(label, { bold: true, color: BRIGHT.color }),
 					failed > 0 ? styled(` · ${failed} failed`, BAD) : plain(""),
 				),
@@ -672,7 +673,7 @@ export class Transcript {
 			rail(accent),
 			concat(
 				styled(TOOL_MARK, mark),
-				styled(block.name, block.isError ? BAD : TEXT),
+				styled(displayToolName(block.name), block.isError ? BAD : TEXT),
 				plain(block.args === "" ? "" : `  ${block.args}`),
 				detail,
 			),
@@ -803,7 +804,7 @@ export class Transcript {
 			rail(accent),
 			concat(
 				styled(TOOL_MARK, accent),
-				styled(tool.name, TEXT),
+				styled(displayToolName(tool.name), TEXT),
 				plain(tool.args.length === 0 ? "" : ` ${tool.args}`),
 			),
 		);
@@ -822,7 +823,7 @@ export class Transcript {
 		return truncateLine(
 			blockLine(
 				rail(accent),
-				concat(styled("◈ ", accent), styled(label, { bold: true, color: BRIGHT.color })),
+				concat(styled(TOOL_MARK, accent), styled(label, { bold: true, color: BRIGHT.color })),
 			),
 			HEADER_WIDTH(this.#width),
 		);

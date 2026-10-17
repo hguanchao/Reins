@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { drawCopyIcon, drawHoverCard, drawSelectionBox, expandTimestamp } from "../../../src/plugins/tui-plugin/conversation-view.ts";
+import {
+	drawCopyIcon,
+	drawHoverCard,
+	drawSelectionBand,
+	drawSelectionBox,
+	expandTimestamp,
+} from "../../../src/plugins/tui-plugin/conversation-view.ts";
 import { lineText, plain } from "../../../src/tui/text/line.ts";
 
 describe("主区装饰", () => {
@@ -22,10 +28,21 @@ describe("主区装饰", () => {
 
 	it("块完全滚出视口时原样返回", () => {
 		const lines = [plain("aa")];
-		const boxed = drawSelectionBox(lines, { start: 5, height: 2 }, 0, 8);
+		const boxed = drawSelectionBand(lines, { start: 5, height: 1 }, 0, 8);
 		assert.deepEqual(boxed.map(lineText), ["aa"]);
 		const copy = drawCopyIcon(lines, { start: 5, height: 2 }, 0, 8, []);
 		assert.equal(copy.icon, undefined);
+	});
+
+	it("选中的收起行铺高亮底色，菱形换成 ▸ 护栏", () => {
+		const lines = [plain("   ◆ List  src"), plain("other")];
+		const band = drawSelectionBand(lines, { start: 0, height: 1 }, 0, 20);
+		const text = lineText(band[0]);
+		assert.ok(text.includes("▸"), "caret replaces the bullet");
+		assert.ok(!text.includes("◆"), "bullet removed");
+		assert.equal(lineText(band[1]), "other", "neighbouring row untouched");
+		const name = band[0].find((span) => span.text.includes("List"));
+		assert.ok(name?.style?.background, "band background applied");
 	});
 
 	it("悬停浮卡贴着轨道左缘，盖住当行正文且列数不变", () => {
