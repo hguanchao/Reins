@@ -40,6 +40,8 @@ export interface Style {
 	readonly color?: Color;
 	/** 背景色。使用者的消息整行铺底、diff 的增删行都靠它区分。 */
 	readonly background?: Color;
+	/** OSC 8 超链接目标；只允许安全协议，由终端负责打开。 */
+	readonly link?: string;
 }
 
 export interface Span {
@@ -122,6 +124,7 @@ export function mergeStyles(base: Style | undefined, extra: Style | undefined): 
 		reverse?: boolean;
 		color?: Color;
 		background?: Color;
+		link?: string;
 	} = {};
 	if (base.bold === true || extra.bold === true) merged.bold = true;
 	if (base.dim === true || extra.dim === true) merged.dim = true;
@@ -133,6 +136,8 @@ export function mergeStyles(base: Style | undefined, extra: Style | undefined): 
 	if (color !== undefined) merged.color = color;
 	const background = extra.background ?? base.background;
 	if (background !== undefined) merged.background = background;
+	const link = extra.link ?? base.link;
+	if (link !== undefined) merged.link = link;
 
 	return Object.keys(merged).length === 0 ? undefined : merged;
 }
@@ -236,6 +241,7 @@ export function sameStyle(left: Style | undefined, right: Style | undefined): bo
 		left.strikethrough === right.strikethrough &&
 		left.reverse === right.reverse &&
 		sameColor(left.color, right.color) &&
-		sameColor(left.background, right.background)
+		sameColor(left.background, right.background) &&
+		left.link === right.link
 	);
 }

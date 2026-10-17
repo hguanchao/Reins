@@ -28,6 +28,20 @@ import { concat, plain, styled } from "../../../src/tui/text/line.ts";
 		assert.equal(styleSequence({ background: [1, 2, 3] }, true), "\x1b[48;2;1;2;3m");
 	});
 
+	it("安全链接用 OSC 8 包住文本，危险协议不输出", () => {
+		assert.equal(
+			serializeLine(styled("docs", { link: "https://example.com" }), true),
+			"\x1b]8;;https://example.com\x07docs\x1b]8;;\x07",
+		);
+		assert.equal(
+			serializeLine(styled("mail", { link: "mailto:a@b.c" }), true),
+			"\x1b]8;;mailto:a@b.c\x07mail\x1b]8;;\x07",
+		);
+		assert.equal(serializeLine(styled("bad", { link: "javascript:alert(1)" }), true), "bad");
+		assert.equal(serializeLine(styled("bad", { link: "https://a\nb" }), true), "bad");
+		assert.equal(serializeLine(styled("plain", { link: "https://example.com" }), false), "plain");
+	});
+
 	it("混合样式合并成一条序列", () => {
 		assert.equal(styleSequence({ dim: true, color: "blue" }, true), "\x1b[2;34m");
 	});

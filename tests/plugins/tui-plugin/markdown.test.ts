@@ -47,6 +47,11 @@ describe("Markdown 渲染", () => {
 		const link = findSpan(findLine(lines, "docs"), "docs");
 		assert.equal(link?.style?.color, THEME.system);
 		assert.equal(link?.style?.underline, true);
+		assert.equal(link?.style?.link, "https://example.com");
+
+		const image = renderMarkdown("![diagram](https://example.com/a.png)", { width: 60 });
+		const placeholder = findSpan(findLine(image.lines, "[image: diagram]"), "[image: diagram]");
+		assert.equal(placeholder?.style?.link, "https://example.com/a.png");
 	});
 
 	it("紧凑列表项之间不插空行，松散列表保留分段", () => {

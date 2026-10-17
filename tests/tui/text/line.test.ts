@@ -70,6 +70,14 @@ describe("样式合并与比较", () => {
 		assert.deepEqual(merged, { background: "blue" });
 	});
 
+	it("链接目标同样内层优先", () => {
+		const merged = mergeStyles(
+			{ link: "https://outer.example" },
+			{ link: "https://inner.example" },
+		);
+		assert.deepEqual(merged, { link: "https://inner.example" });
+	});
+
 	it("真彩色逐项比较，字符串不同名即不同", () => {
 		assert.equal(sameColor("red", "red"), true);
 		assert.equal(sameColor("red", "blue"), false);
@@ -88,6 +96,8 @@ describe("样式合并与比较", () => {
 		assert.equal(sameStyle({ bold: true }, { color: "red" }), false);
 		assert.equal(sameStyle({ strikethrough: true }, { strikethrough: true }), true);
 		assert.equal(sameStyle({ strikethrough: true }, { underline: true }), false);
+		assert.equal(sameStyle({ link: "https://a" }, { link: "https://a" }), true);
+		assert.equal(sameStyle({ link: "https://a" }, { link: "https://b" }), false);
 	});
 });
 

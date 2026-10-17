@@ -68,7 +68,21 @@ export function serializeLine(line: Line, colors: boolean): string {
 	let text = "";
 	for (const span of line) {
 		const sequence = styleSequence(span.style, colors);
-		text += sequence === "" ? span.text : `${sequence}${span.text}${RESET}`;
+		const body = sequence === "" ? span.text : `${sequence}${span.text}${RESET}`;
+		const link = colors ? safeLink(span.style?.link) : undefined;
+		text += link === undefined ? body : `\x1b]8;;${link}\x07${body}\x1b]8;;\x07`;
 	}
 	return text;
+}
+
+/**
+ * OSC 8 的链接只放行网页与邮件协议。
+ *
+ * 链接来自模型输出，不能把任意字符串塞进转义序列：控制字符会截断序列，`javascript:` 之类
+ * 也没有在终端里打开的理由。
+ */
+function safeLink(link: string | undefined): string | undefined {
+	if (link === undefined || link.length === 0 || link.length > 2048) return undefined;
+	if (/[\x00-\x1f\x7f]/.test(link)) return undefined;
+	return /^(?:https?|mailto):/i.test(link) ? link : undefined;
 }

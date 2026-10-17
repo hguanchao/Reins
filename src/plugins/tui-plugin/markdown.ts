@@ -432,12 +432,24 @@ function renderInline(tokens: readonly Token[], style: Style | undefined, contex
 			case "codespan":
 				builder.append(decorate((token as Tokens.Codespan).text, mergeStyles(style, INLINE_CODE), context));
 				continue;
-			case "link":
-				builder.appendLines(renderInline((token as Tokens.Link).tokens, mergeStyles(style, LINK), context));
+			case "link": {
+				const link = token as Tokens.Link;
+				const withLink = mergeStyles(
+					mergeStyles(style, LINK),
+					link.href.length > 0 ? { link: link.href } : undefined,
+				);
+				builder.appendLines(renderInline(link.tokens, withLink, context));
 				continue;
-			case "image":
-				builder.append(decorate(`[image: ${(token as Tokens.Image).text}]`, mergeStyles(style, MUTED), context));
+			}
+			case "image": {
+				const image = token as Tokens.Image;
+				const withLink = mergeStyles(
+					mergeStyles(style, MUTED),
+					image.href.length > 0 ? { link: image.href } : undefined,
+				);
+				builder.append(decorate(`[image: ${image.text}]`, withLink, context));
 				continue;
+			}
 			case "br":
 				builder.break();
 				continue;
