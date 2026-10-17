@@ -31,8 +31,7 @@ import { ACCENT, BAD, BAND, BRIGHT, DIM, FAINT, OK, TEXT, THEME } from "./theme.
  * 没有竖线，但仍保留竖线列与左留白，和工具正文从同一列开始。连续的可汇总工具（读取、检索、
  * 列目录）会折叠成一行「◈ Read 3 files」；展开后逐个列出成员。
  *
- * 流式输出按 markdown 渲染，并且跟踪「已经交出去几行」：重新渲染整段文本后再跳过前面已
- * 提交的部分，得到的就是还没显示的尾部。这样不必去维护文本偏移量与行号之间的换算。
+ * 流式输出按 markdown 渲染，每次按当前宽度重新排版；块的状态与命中位置由 view() 一并摊开。
  */
 
 /** 推理内容只留最后几行做预览。它是模型的草稿，占满屏幕会把正文挤走。 */
@@ -361,7 +360,7 @@ export class Transcript {
 				const anchor = members[0];
 				const groupId = -anchor.id;
 				const expanded = this.#expandedGroups.has(groupId);
-				push([this.#groupHeader(members, expanded)], {
+				push([this.#groupHeader(members)], {
 					id: groupId,
 					kind: "group",
 					mode: expanded ? "expanded" : "collapsed",
@@ -512,7 +511,7 @@ export class Transcript {
 		return members;
 	}
 
-	#groupHeader(members: readonly ToolBlock[], expanded: boolean): Line {
+	#groupHeader(members: readonly ToolBlock[]): Line {
 		const buckets = new Map<ToolGroupKind, number>();
 		let failed = 0;
 		for (const member of members) {
@@ -533,7 +532,7 @@ export class Transcript {
 			plain(" "),
 			truncateLine(
 				concat(
-					styled(expanded ? "▾ " : "▸ ", failed > 0 ? BAD : FAINT),
+					styled("◈ ", failed > 0 ? BAD : FAINT),
 					styled(label, { bold: true, color: BRIGHT.color }),
 					failed > 0 ? styled(` · ${failed} failed`, BAD) : plain(""),
 				),
@@ -569,7 +568,7 @@ export class Transcript {
 		const contentWidth = this.#contentWidth();
 		const lines = wrapLine(plain(block.text), {
 			width: Math.max(1, contentWidth - TIMESTAMP_WIDTH),
-			firstIndent: styled("› ", ACCENT),
+			firstIndent: styled("❯ ", ACCENT),
 			restIndent: plain("  "),
 			maxLines: collapsed ? USER_PREVIEW_LINES : undefined,
 		});

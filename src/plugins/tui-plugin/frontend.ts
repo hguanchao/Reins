@@ -82,7 +82,7 @@ const PANEL_CONTENT_INSET = 5;
 /** 滚轮一格翻几行。终端只报「上滚」「下滚」，格与行之间的换算由界面定。 */
 const WHEEL_LINES = 3;
 
-const PROMPT: Line = styled("› ", ACCENT);
+const PROMPT: Line = styled("❯ ", ACCENT);
 
 /** 主区上一次画出来的样子。翻阅按键与轨道按它算边界。 */
 interface MainFrame {
@@ -750,11 +750,22 @@ export class TerminalFrontend implements InteractiveFrontend {
 			case "ctrl-w":
 				this.#editor.deleteWordBefore();
 				break;
+			case "ctrl-z":
+				this.#editor.undo();
+				break;
+			case "ctrl-y":
+				this.#editor.redo();
+				break;
+			case "newline":
+				this.#editor.insert("\n");
+				break;
 			case "up":
-				this.#editor.historyPrev();
+				if (this.#editor.isEmpty) this.#editor.historyPrev();
+				else this.#editor.moveUp();
 				break;
 			case "down":
-				this.#editor.historyNext();
+				if (this.#editor.isEmpty) this.#editor.historyNext();
+				else this.#editor.moveDown();
 				break;
 			case "ctrl-l":
 				// 屏幕可能被别的输出弄乱了，重新画一遍
@@ -784,6 +795,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#transcript.appendSystem([
 				styled("A turn is still running; wait for it to finish, or press Esc or Ctrl+C to cancel.", WARN),
 			]);
+			this.#refresh();
+			return;
+		}
+
+		// 光标前的反斜杠表示续行：换成换行，先不发送
+		if (this.#editor.insertNewlineAfterContinuation()) {
 			this.#refresh();
 			return;
 		}
@@ -1321,8 +1338,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 		return [
 			{ keys: "Enter", label: "send" },
-			{ keys: "↑/↓", label: "history" },
-			{ keys: "Ctrl+L", label: "redraw" },
+			{ keys: "Ctrl+J", label: "newline" },
+			{ keys: "↑/↓", label: this.#editor.isEmpty ? "history" : "move" },
 			{ keys: "Ctrl+D", label: "quit" },
 			help,
 		];

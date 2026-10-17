@@ -26,6 +26,8 @@ describe("按键解码", () => {
 	it("绑定的控制字符认成 ctrl-*，没绑定的直接丢掉", () => {
 		const decoder = new KeyDecoder();
 		assert.deepEqual(decoder.push("\x03"), [{ type: "key", name: "ctrl-c" }]);
+		assert.deepEqual(decoder.push("\x1a"), [{ type: "key", name: "ctrl-z" }]);
+		assert.deepEqual(decoder.push("\x19"), [{ type: "key", name: "ctrl-y" }]);
 		// \x02 没有绑定：直接丢掉，两侧的文本照常解码
 		assert.deepEqual(decoder.push("a\x02b"), [{ type: "text", text: "a" }, { type: "text", text: "b" }]);
 	});
@@ -53,6 +55,17 @@ describe("按键解码", () => {
 		assert.deepEqual(decoder.push("\x1b"), []);
 		assert.deepEqual(decoder.push("["), []);
 		assert.deepEqual(keys(decoder.push("A")), ["up"]);
+	});
+
+	it("Ctrl+J 与 Alt+Enter 是换行，不是回车", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(decoder.push("\n"), [{ type: "key", name: "newline" }]);
+		assert.deepEqual(decoder.push("\x1b\r"), [{ type: "key", name: "newline" }]);
+	});
+
+	it("普通的回车仍然是发送", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(decoder.push("\r"), [{ type: "key", name: "enter" }]);
 	});
 
 	it("孤立的 ESC 在 flush 时交给调用方按 Esc 处理", () => {

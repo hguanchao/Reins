@@ -142,12 +142,12 @@ describe("输入框边框", () => {
 
 	it("输入行左右有竖线，提示符在边框和内边距之后", async () => {
 		const { lines } = await framesWith(24, 80);
-		const editorRow = lines.find((line) => line.includes("›"));
+		const editorRow = lines.find((line) => line.includes("❯"));
 		assert.ok(editorRow, "editor row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 		assert.ok(visible.startsWith("│"), "left border");
 		assert.ok(visible.endsWith("│"), "right border");
-		assert.equal(visible.indexOf("›"), 3, "border plus two padding columns");
+		assert.equal(visible.indexOf("❯"), 3, "border plus two padding columns");
 	});
 
 	it("模型与审批方式嵌在下边框，顶部没有单独状态条", async () => {
@@ -188,6 +188,69 @@ describe("输入框边框", () => {
 		assert.equal(anchorMatch[2], "7");
 		// 清空再退出:Ctrl+D 只在空输入时退出
 		terminal.inputListener?.("\x7f");
+		terminal.quit();
+		await running;
+	});
+
+	it("输入框支持 Ctrl+J 换行", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("a\nb");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const editorRows = lastFrameRows(terminal.output).filter(
+			(line) => line.startsWith("│") && line.endsWith("│"),
+		);
+		assert.equal(editorRows.length, 2, "editor grows to two rows");
+		assert.ok(editorRows[0].includes("❯ a"));
+		assert.ok(editorRows[1].includes("b"));
+
+		terminal.inputListener?.("\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ a")), "multiline message committed");
+		assert.ok(rows.some((line) => line.includes("  b")), "second line kept");
+
+		terminal.quit();
+		await running;
+	});
+
+	it("反斜杠续行先换行，补齐后再发送", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("abc\\");
+		terminal.inputListener?.("\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		let rows = lastFrameRows(terminal.output);
+		assert.equal(
+			rows.filter((line) => line.startsWith("│") && line.endsWith("│")).length,
+			2,
+			"continuation keeps two editor rows",
+		);
+		assert.ok(rows.some((line) => line.includes("❯ abc")));
+		assert.ok(!rows.some((line) => line.includes("  abc")), "nothing committed yet");
+
+		terminal.inputListener?.("def\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ abc")), "first line committed");
+		assert.ok(rows.some((line) => line.includes("  def")), "continuation line committed");
+
 		terminal.quit();
 		await running;
 	});
@@ -287,7 +350,7 @@ describe("输入框边框", () => {
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		const cleared = lastFrameRows(terminal.output);
 		assert.ok(!cleared.some((line) => line.includes("abc")), "input cleared");
-		const editor = cleared.find((line) => line.startsWith("│") && line.includes("›"));
+		const editor = cleared.find((line) => line.startsWith("│") && line.includes("❯"));
 		assert.ok(editor, "prompt is empty");
 
 		// Esc 不退出:还能继续输入
@@ -300,7 +363,7 @@ describe("输入框边框", () => {
 		await running;
 	});
 
-	it("用户消息块按条目布局排列并带 › 前缀", async () => {
+	it("用户消息块按条目布局排列并带 ❯ 前缀", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		const runtime: InteractiveRuntime = {
@@ -314,7 +377,7 @@ describe("输入框边框", () => {
 		terminal.inputListener?.("hi\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const message = lastFrameRows(terminal.output).find((line) => line.startsWith("     › hi"));
+		const message = lastFrameRows(terminal.output).find((line) => line.startsWith("     ❯ hi"));
 		assert.ok(message, "message starts after the block chrome");
 		assert.equal(message!.length, 80, "band spans the full entry width plus gutter");
 
@@ -365,7 +428,7 @@ describe("输入框边框", () => {
 		terminal.inputListener?.("hello\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		// 用户消息在第二行（› hello）：正文从第 5 列开始，从 h 拖到第二个 l
+		// 用户消息在第二行（❯ hello）：正文从第 5 列开始，从 h 拖到第二个 l
 		terminal.inputListener?.("\x1b[<0;8;2M");
 		terminal.inputListener?.("\x1b[<32;11;2M");
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -410,7 +473,7 @@ describe("输入框边框", () => {
 		terminal.inputListener?.("run\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("▸ Read 1 file"));
+		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◈ Read 1 file"));
 		assert.ok(toolRow >= 0, "tool group header is visible");
 		const clickRow = toolRow + 1; // 鼠标坐标从 1 开始
 
@@ -463,7 +526,7 @@ describe("输入框边框", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		terminal.inputListener?.("x");
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("› x")), "prompt accepts input");
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("❯ x")), "prompt accepts input");
 
 		terminal.inputListener?.("\x03");
 		terminal.quit();

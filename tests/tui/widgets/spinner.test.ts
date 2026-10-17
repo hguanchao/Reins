@@ -8,7 +8,7 @@ describe("旋转指示器", () => {
 	it("按时间取帧，循环播放", () => {
 		const first = spinnerFrame(0);
 		assert.notEqual(first, spinnerFrame(120));
-		assert.equal(spinnerFrame(10 * 120 + 60), first); // 走完一圈回到第一帧
+		assert.equal(spinnerFrame(8 * 120 + 60), first); // 走完一圈回到第一帧
 		assert.equal(spinnerFrame(-5), spinnerFrame(0)); // 负数夹到 0
 	});
 

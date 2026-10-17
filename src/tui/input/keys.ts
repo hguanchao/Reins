@@ -12,6 +12,8 @@
 
 export type KeyName =
 	| "enter"
+	/** Ctrl+J 或 Alt+Enter：在输入框里插入换行 */
+	| "newline"
 	| "backspace"
 	| "delete"
 	| "tab"
@@ -33,7 +35,9 @@ export type KeyName =
 	| "ctrl-n"
 	| "ctrl-p"
 	| "ctrl-u"
-	| "ctrl-w";
+	| "ctrl-w"
+	| "ctrl-y"
+	| "ctrl-z";
 
 export type KeyEvent =
 	| { readonly type: "text"; readonly text: string }
@@ -94,6 +98,8 @@ const CONTROL_KEYS: ReadonlyMap<string, KeyName> = new Map([
 	["\x10", "ctrl-p"],
 	["\x15", "ctrl-u"],
 	["\x17", "ctrl-w"],
+	["\x19", "ctrl-y"],
+	["\x1a", "ctrl-z"],
 ]);
 
 export class KeyDecoder {
@@ -213,6 +219,12 @@ export class KeyDecoder {
 			return 3;
 		}
 
+		// ESC 后紧跟回车：Alt+Enter，输入框里按换行处理，不当作 Esc + Enter
+		if (second === "\r" || second === "\n") {
+			events.push({ type: "key", name: "newline" });
+			return 2;
+		}
+
 		if (second === "]") {
 			// 操作系统命令序列：终端回答自己的状态时用它，一路读到结束标记为止
 			const bell = this.#buffer.indexOf("\x07", 2);
@@ -229,7 +241,8 @@ export class KeyDecoder {
 }
 
 function singleKey(char: string): KeyName | undefined {
-	if (char === "\r" || char === "\n") return "enter";
+	if (char === "\r") return "enter";
+	if (char === "\n") return "newline";
 	if (char === "\x7f" || char === "\x08") return "backspace";
 	if (char === "\t") return "tab";
 	return CONTROL_KEYS.get(char);

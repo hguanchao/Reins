@@ -68,7 +68,7 @@ const MUTED: Style = { color: THEME.muted };
 const CODE_TEXT: Style = { color: THEME.text, background: THEME.codeBg };
 const CODE_GUTTER_STYLE: Style = { color: THEME.muted, background: THEME.codeBg, dim: true };
 
-const QUOTE_PREFIX = "▏ ";
+const QUOTE_PREFIX = "│ ";
 const CODE_BAR = "│ ";
 const SEPARATOR_WIDTH = 40;
 

@@ -67,6 +67,7 @@ describe("Markdown 渲染", () => {
 	it("引用块压暗，表格表头用二级标题样式", () => {
 		const quote = renderMarkdown("> note", { width: 40 });
 		const quoted = findSpan(findLine(quote.lines, "note"), "note");
+		assert.ok(lineText(findLine(quote.lines, "note")!).startsWith("│ "));
 		assert.equal(quoted?.style?.dim, true);
 		assert.equal(quoted?.style?.color, THEME.muted);
 

@@ -75,10 +75,10 @@ describe("单行编辑器", () => {
 		assert.equal(editor.text, "b");
 	});
 
-	it("换行折成空格", () => {
+	it("粘贴进来的换行保留为多行", () => {
 		const editor = new LineEditor();
 		editor.insert("a\r\nb\nc");
-		assert.equal(editor.text, "a b c");
+		assert.equal(editor.text, "a\nb\nc");
 	});
 
 	it("越界移动夹紧", () => {
@@ -132,22 +132,22 @@ describe("单行编辑器", () => {
 describe("编辑器渲染", () => {
 	it("空内容显示占位文本，光标在提示符后", () => {
 		const editor = new LineEditor();
-		const render = editor.render({ width: 40, prompt: plain("› "), placeholder: "say something" });
+		const render = editor.render({ width: 40, prompt: plain("❯ "), placeholder: "say something" });
 		assert.equal(render.lines.length, 1);
 		assert.equal(render.cursor.row, 0);
-		assert.equal(render.cursor.col, "› ".length);
+		assert.equal(render.cursor.col, "❯ ".length);
 		assert.match(render.lines[0].map((s) => s.text).join(""), /say something/);
 	});
 
 	it("光标只由终端定位，内容里不反显", () => {
 		const editor = new LineEditor();
 		editor.insert("ab");
-		const render = editor.render({ width: 20, prompt: plain("› ") });
+		const render = editor.render({ width: 20, prompt: plain("❯ ") });
 		const row = render.cursor.row;
 		const spans = render.lines[row];
 		assert.ok(spans.every((span) => span.style?.reverse !== true), "no reverse caret");
 		// 末尾补一格空白作落点，光标落在 ab 之后
-		assert.equal(spans.map((span) => span.text).join(""), "› ab ");
+		assert.equal(spans.map((span) => span.text).join(""), "❯ ab ");
 		assert.equal(render.cursor.col, 4);
 	});
 
@@ -155,11 +155,70 @@ describe("编辑器渲染", () => {
 		const editor = new LineEditor();
 		editor.insert("abc");
 		editor.moveLeft();
-		const render = editor.render({ width: 20, prompt: plain("› ") });
+		const render = editor.render({ width: 20, prompt: plain("❯ ") });
 		const spans = render.lines[render.cursor.row];
 		assert.ok(spans.every((span) => span.style?.reverse !== true), "no reverse caret");
-		assert.equal(spans.map((span) => span.text).join(""), "› abc");
+		assert.equal(spans.map((span) => span.text).join(""), "❯ abc");
 		assert.equal(render.cursor.col, 4);
+	});
+
+	it("多行输入按逻辑行渲染，提示符只出现在第一行", () => {
+		const editor = new LineEditor();
+		editor.insert("one\ntwo");
+		const render = editor.render({ width: 40, prompt: plain("❯ ") });
+
+		assert.equal(render.lines.length, 2);
+		assert.equal(render.lines.map((line) => line.map((span) => span.text).join("")).join("|"), "❯ one|  two ");
+		assert.deepEqual(render.cursor, { row: 1, col: 5 });
+	});
+
+	it("上下移动在逻辑行之间移动，Home/End 只到当前行首尾", () => {
+		const editor = new LineEditor();
+		editor.insert("one\ntwo");
+
+		editor.moveUp();
+		assert.deepEqual(editor.render({ width: 40, prompt: plain("❯ ") }).cursor, { row: 0, col: 5 });
+
+		editor.moveHome();
+		assert.deepEqual(editor.render({ width: 40, prompt: plain("❯ ") }).cursor, { row: 0, col: 2 });
+
+		editor.moveDown();
+		assert.deepEqual(editor.render({ width: 40, prompt: plain("❯ ") }).cursor, { row: 1, col: 2 });
+
+		editor.moveEnd();
+		assert.deepEqual(editor.render({ width: 40, prompt: plain("❯ ") }).cursor, { row: 1, col: 5 });
+	});
+
+	it("撤销与重做覆盖插入和删除", () => {
+		const editor = new LineEditor();
+		editor.insert("ab");
+		editor.insert("c");
+		editor.undo();
+		assert.equal(editor.text, "ab");
+		editor.undo();
+		assert.equal(editor.text, "");
+		editor.redo();
+		assert.equal(editor.text, "ab");
+		editor.redo();
+		assert.equal(editor.text, "abc");
+
+		editor.backspace();
+		assert.equal(editor.text, "ab");
+		editor.undo();
+		assert.equal(editor.text, "abc");
+	});
+
+	it("反斜杠续行把光标前的反斜杠换成换行", () => {
+		const editor = new LineEditor();
+		editor.insert("abc\\");
+		assert.equal(editor.insertNewlineAfterContinuation(), true);
+		assert.equal(editor.text, "abc\n");
+		editor.insert("def");
+		assert.equal(editor.text, "abc\ndef");
+
+		editor.clear();
+		editor.insert("abc");
+		assert.equal(editor.insertNewlineAfterContinuation(), false);
 	});
 
 	it("折行后光标行号跟着内容移动", () => {

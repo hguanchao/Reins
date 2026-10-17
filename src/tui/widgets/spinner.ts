@@ -8,7 +8,7 @@ import { plain } from "../text/line.ts";
  * 时间取，而不是每收到一段输出就换一格——后者会让速度随机，看起来像在抖。
  */
 
-const FRAMES: readonly string[] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const FRAMES: readonly string[] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"];
 
 /** 一帧多久换一次。比这更快只会闪，人眼分辨不出。 */
 const FRAME_INTERVAL_MS = 120;

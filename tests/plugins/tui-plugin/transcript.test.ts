@@ -13,19 +13,19 @@ describe("用户消息", () => {
 
 		assert.equal(rows.length, 3);
 		const text = lineText(rows[1]);
-		assert.ok(text.startsWith("   › hello"));
+		assert.ok(text.startsWith("   ❯ hello"));
 		assert.match(text, /\d{1,2}:\d{2} (AM|PM)/);
 		assert.equal(lineWidth(rows[1]), 40);
 		assert.equal(lineText(rows[0]).trim(), "");
 		assert.equal(lineText(rows[2]).trim(), "");
 	});
 
-	it("带 › 前缀，正文从块的竖线列之后开始", () => {
+	it("带 ❯ 前缀，正文从块的竖线列之后开始", () => {
 		const transcript = new Transcript(40);
 		transcript.userTurn("hello");
 		const rows = transcript.view().rows;
 
-		assert.ok(lineText(rows[1]).startsWith("   › hello"));
+		assert.ok(lineText(rows[1]).startsWith("   ❯ hello"));
 	});
 
 	it("整块铺底，每行都填满给定宽度", () => {
@@ -47,7 +47,7 @@ describe("用户消息", () => {
 		assert.equal(lineText(rows[0]).trim(), "");
 		assert.equal(lineText(rows[rows.length - 1]).trim(), "");
 		const content = rows.slice(1, -1).map(lineText);
-		assert.ok(content[0].startsWith("   › "), "first line starts with the prompt");
+		assert.ok(content[0].startsWith("   ❯ "), "first line starts with the prompt");
 		for (const line of content.slice(1)) assert.ok(line.startsWith("     "), "continuation aligns after the prompt");
 		assert.ok(content.join("").includes("three"));
 		assert.ok(content.join("").includes("four"));
@@ -124,7 +124,7 @@ describe("块折叠", () => {
 		const block = view.blocks.find((item) => item.kind === "group");
 		assert.ok(block);
 		const header = lineText(view.rows[block.start]);
-		assert.ok(header.includes("Read 2 files"), header);
+		assert.ok(header.includes("◈ Read 2 files"), header);
 		assert.ok(header.includes("Searched 1 pattern"), header);
 		assert.ok(header.includes("1 failed"), header);
 	});
