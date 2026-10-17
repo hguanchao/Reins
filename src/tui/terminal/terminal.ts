@@ -57,13 +57,13 @@ const DISABLE_FOCUS = "\x1b[?1004l";
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const LEAVE_ALT_SCREEN = "\x1b[?1049l";
 /**
- * 鼠标上报：按住拖动也上报，加 SGR 编码。
+ * 鼠标上报：按住拖动与无按键移动都上报，加 SGR 编码。
  *
- * 1002 让按住左键的移动也报上来，拖选与滚动条拖动都要用；1006 用十进制写坐标，宽屏也
+ * 1002 负责拖选与滚动条拖动，1003 让悬停预览能拿到指针位置；1006 用十进制写坐标，宽屏也
  * 不会错位。
  */
-const ENABLE_MOUSE = "\x1b[?1002h\x1b[?1006h";
-const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1002l";
+const ENABLE_MOUSE = "\x1b[?1002h\x1b[?1003h\x1b[?1006h";
+const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1003l\x1b[?1002l";
 
 /** 真实终端：进程的标准输入输出。 */
 export class ProcessTerminal implements Terminal {

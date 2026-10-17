@@ -86,8 +86,10 @@ function workspaceFixture(): string {
 	const root = mkdtempSync(join(tmpdir(), "reins-frontend-files-"));
 	tempDirs.push(root);
 	mkdirSync(join(root, "src"), { recursive: true });
+	mkdirSync(join(root, "my dir"), { recursive: true });
 	writeFileSync(join(root, "src", "app.ts"), "app");
 	writeFileSync(join(root, "src", "util.ts"), "util");
+	writeFileSync(join(root, "my dir", "note.txt"), "note");
 	writeFileSync(join(root, "README.md"), "readme");
 	return root;
 }
@@ -573,6 +575,106 @@ describe("输入框边框", () => {
 		await running;
 	});
 
+	it("@ 目录名带空格时仍能继续钻取", async () => {
+		const root = workspaceFixture();
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run({ ...runtimeOf(), cwd: root });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("@my");
+		let rows = await waitForRows(terminal, (frame) => frame.some((line) => line.includes("my dir/")));
+		assert.ok(rows.some((line) => line.includes("my dir/")), "spaced directory is offered");
+
+		terminal.inputListener?.("\x1b[C");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ @my dir/")), "space stays inside the token");
+		assert.ok(rows.some((line) => line.includes("note.txt")), "children are listed");
+
+		terminal.inputListener?.("\t");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("@my dir/note.txt ")));
+
+		terminal.inputListener?.("\x03");
+		terminal.quit();
+		await running;
+	});
+
+	it("悬停轨道刻度显示对应回合的预览", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("first\r");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		terminal.inputListener?.("second\r");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		const rows = lastFrameRows(terminal.output);
+		const ticks = rows
+			.map((line, index) => ({ line, index }))
+			.filter(
+				({ line }) =>
+					(line[78] === "─" || line[78] === "━") && line[79] !== "╮" && line[79] !== "╯",
+			);
+		assert.ok(ticks.length >= 2, "two turn ticks are visible");
+		const hover = ticks.at(-1)!;
+
+		terminal.inputListener?.(`\x1b[<35;79;${hover.index + 1}M`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const footer = lastFrameRows(terminal.output).at(-1) ?? "";
+		assert.ok(footer.includes("Turn 2"), footer);
+		assert.ok(footer.includes("second"), footer);
+
+		terminal.inputListener?.("\x1b[<35;10;1M");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(!(lastFrameRows(terminal.output).at(-1) ?? "").includes("Turn 2"), "hover clears");
+
+		terminal.quit();
+		await running;
+	});
+
+	it("悬停时间戳时在底部展开完整日期", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("hello\r");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+
+		const rows = lastFrameRows(terminal.output);
+		const row = rows.findIndex((line) => /\d{1,2}:\d{2} (AM|PM)/.test(line));
+		assert.ok(row >= 0, "timestamp is visible");
+		const col = rows[row].search(/\d{1,2}:\d{2} (AM|PM)/) + 1;
+		terminal.inputListener?.(`\x1b[<35;${col};${row + 1}M`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const footer = lastFrameRows(terminal.output).at(-1) ?? "";
+		assert.match(footer, /\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM)/, footer);
+
+		terminal.inputListener?.("\x1b[<35;10;1M");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(!(lastFrameRows(terminal.output).at(-1) ?? "").includes("▸"), "timestamp hover clears");
+
+		terminal.quit();
+		await running;
+	});
+
 	it("用户消息块按条目布局排列并带 ❯ 前缀", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
@@ -823,6 +925,20 @@ describe("输入框边框", () => {
 		assert.ok(selected.some((line) => line.trimStart().startsWith("┌")), "selection box top");
 		assert.ok(selected.some((line) => line.trimStart().startsWith("└")), "selection box bottom");
 		assert.ok(!selected.some((line) => line.includes("line one")), "tool group collapsed");
+
+		// 选中块右上角的复制按钮
+		const iconRow = selected.findIndex((line) => line.includes("⧉"));
+		assert.ok(iconRow >= 0, "copy icon is visible");
+		const iconCol = selected[iconRow].indexOf("⧉") + 1;
+		terminal.inputListener?.(`\x1b[<0;${iconCol};${iconRow + 1}M`);
+		terminal.inputListener?.(`\x1b[<0;${iconCol};${iconRow + 1}m`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const iconCopy = [...terminal.output.matchAll(/(?:\x1b\]52;c;)([^\x07]*)\x07/g)].at(-1);
+		assert.ok(iconCopy, "copy icon writes the clipboard");
+		assert.ok(
+			Buffer.from(iconCopy[1], "base64").toString("utf8").includes("line one\nline two"),
+			"copy icon copies the whole block",
+		);
 
 		// 300ms 内第二次按下：展开组，成员先以一行摘要出现
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);

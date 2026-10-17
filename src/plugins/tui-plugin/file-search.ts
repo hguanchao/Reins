@@ -1,5 +1,7 @@
+import { execFile } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { join, sep } from "node:path";
+import { promisify } from "node:util";
 
 /**
  * `@` 文件引用。
@@ -29,14 +31,22 @@ export interface IndexOptions {
 
 const SKIPPED = new Set([".git", "node_modules"]);
 const MAX_QUERY_RESULTS = 200;
+const execFileAsync = promisify(execFile);
 
 /**
  * 判断光标是否位于一个 `@` 词里。
  *
  * `@` 前面紧挨着字母、数字或下划线时不触发，避免把邮箱地址当成文件引用。词在空白、逗号或
  * 分号处结束；光标越过词尾就不再补全。
+ *
+ * `drillPrefix` 是刚钻进去的目录路径。路径本身可能含空格，因此前缀内部的空白不当作词尾，
+ * 前缀之后的空白仍然结束这个 `@` 词。
  */
-export function detectAtContext(text: string, cursor: number): AtContext | undefined {
+export function detectAtContext(
+	text: string,
+	cursor: number,
+	drillPrefix?: string,
+): AtContext | undefined {
 	const position = Math.max(0, Math.min(cursor, text.length));
 	const at = text.lastIndexOf("@", position - 1);
 	if (at < 0) return undefined;
@@ -44,7 +54,14 @@ export function detectAtContext(text: string, cursor: number): AtContext | undef
 	const previous = at > 0 ? text[at - 1] : undefined;
 	if (previous !== undefined && (isWordCharacter(previous) || previous === "_")) return undefined;
 
-	const end = tokenEnd(text, at);
+	const contentStart = at + 1;
+	const afterBang = text[contentStart] === "!" ? contentStart + 1 : contentStart;
+	const internalUntil =
+		drillPrefix !== undefined && drillPrefix.length > 0 && text.slice(afterBang).startsWith(drillPrefix)
+			? afterBang + drillPrefix.length
+			: undefined;
+
+	const end = tokenEnd(text, at, internalUntil);
 	if (position > end) return undefined;
 
 	const query = text.slice(at + 1, position);
@@ -64,7 +81,8 @@ export function matchFiles(
 	for (const entry of files) {
 		if (!hidden && isHiddenPath(entry.path)) continue;
 		if (scoped !== undefined) {
-			if (!entry.path.startsWith(scoped) || entry.path === scoped) continue;
+			const path = entry.path.toLowerCase();
+			if (!path.startsWith(scoped) || path === scoped) continue;
 			ranked.push({ entry, rank: 0 });
 			continue;
 		}
@@ -98,6 +116,49 @@ export async function indexWorkspaceFiles(
 	options: IndexOptions = {},
 ): Promise<readonly FileEntry[]> {
 	const maxEntries = options.maxEntries ?? 20_000;
+	const fromGit = await indexWithGit(root, maxEntries);
+	if (fromGit !== undefined) return fromGit;
+	return indexByWalk(root, maxEntries);
+}
+
+/**
+ * 用 `git ls-files` 取工作区文件：它天然遵守 `.gitignore`，路径以 NUL 分隔，带空格也安全。
+ * 不是 git 仓库或没有 git 时返回 undefined，交给目录遍历兜底。
+ */
+async function indexWithGit(root: string, maxEntries: number): Promise<readonly FileEntry[] | undefined> {
+	let stdout: string;
+	try {
+		const result = await execFileAsync(
+			"git",
+			["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."],
+			{ cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+		);
+		stdout = result.stdout;
+	} catch {
+		return undefined;
+	}
+
+	const entries: FileEntry[] = [];
+	const seen = new Set<string>();
+	for (const raw of stdout.split("\0")) {
+		if (raw.length === 0) continue;
+		const path = raw.replaceAll("\\", "/");
+		const parts = path.split("/");
+		for (let index = 1; index < parts.length && entries.length < maxEntries; index += 1) {
+			const directory = parts.slice(0, index).join("/");
+			if (seen.has(directory)) continue;
+			seen.add(directory);
+			entries.push({ path: directory, kind: "directory" });
+		}
+		if (entries.length >= maxEntries) break;
+		if (seen.has(path)) continue;
+		seen.add(path);
+		entries.push({ path, kind: "file" });
+	}
+	return entries;
+}
+
+async function indexByWalk(root: string, maxEntries: number): Promise<readonly FileEntry[]> {
 	const entries: FileEntry[] = [];
 	const queue: string[] = [""];
 
@@ -153,10 +214,12 @@ function isSubsequence(haystack: string, needle: string): boolean {
 	return true;
 }
 
-function tokenEnd(text: string, at: number): number {
+function tokenEnd(text: string, at: number, internalUntil: number | undefined): number {
 	for (let index = at + 1; index < text.length; index += 1) {
 		const char = text[index];
-		if (/\s/.test(char) || char === "," || char === ";") return index;
+		if (!/\s/.test(char) && char !== "," && char !== ";") continue;
+		if (internalUntil !== undefined && index < internalUntil) continue;
+		return index;
 	}
 	return text.length;
 }

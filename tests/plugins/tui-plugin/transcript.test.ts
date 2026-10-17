@@ -20,6 +20,27 @@ describe("用户消息", () => {
 		assert.equal(lineText(rows[2]).trim(), "");
 	});
 
+	it("记录时间戳位置与原始时刻", () => {
+		const transcript = new Transcript(40);
+		const createdAt = new Date(2026, 9, 17, 14, 33).getTime();
+		transcript.userTurn("hello", createdAt);
+		const view = transcript.view();
+		assert.equal(view.timestamps.length, 1);
+		assert.equal(view.timestamps[0].createdAt, createdAt);
+		assert.equal(view.timestamps[0].row, 1);
+		assert.ok(view.timestamps[0].col > 0);
+		assert.match(lineText(view.rows[view.timestamps[0].row]), /\d{1,2}:\d{2} (AM|PM)/);
+	});
+
+	it("回合预览取用户消息的第一行", () => {
+		const transcript = new Transcript(40);
+		transcript.userTurn("hello\nworld");
+		transcript.userTurn("second");
+		const view = transcript.view();
+		assert.deepEqual(view.turnPreviews, ["hello", "second"]);
+		assert.equal(view.turns.length, view.turnPreviews.length);
+	});
+
 	it("带 ❯ 前缀，正文从块的竖线列之后开始", () => {
 		const transcript = new Transcript(40);
 		transcript.userTurn("hello");
@@ -180,6 +201,19 @@ describe("块折叠", () => {
 		assert.ok(block);
 		assert.equal(block.mode, "collapsed");
 		assert.ok(!collapsed.rows.some((row) => lineText(row).includes("first thought")));
+		assert.ok(
+			collapsed.rows.some((row) => lineText(row).includes("(ctrl+e to expand)")),
+			"collapsed thinking advertises the expand key",
+		);
+
+		const narrow = new Transcript(20);
+		narrow.handle({ type: "reasoning_delta", text: "first thought" }, 0);
+		narrow.handle({ type: "text_delta", text: "answer" }, 10);
+		narrow.handle({ type: "run_end" }, 10);
+		assert.ok(
+			!narrow.view().rows.some((row) => lineText(row).includes("ctrl+e to expand")),
+			"hint is omitted when it does not fit",
+		);
 
 		transcript.toggleFold(block.id);
 		const expanded = transcript.view();

@@ -104,6 +104,17 @@ describe("按键解码", () => {
 		assert.deepEqual(decoder.push("\x1b[27;6;86~"), [{ type: "key", name: "ctrl-shift-v" }]);
 	});
 
+	it("Shift/Alt+Enter 的终端编码按换行处理", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(decoder.push("\x1b[27;2;13~"), [{ type: "key", name: "newline" }]);
+		assert.deepEqual(decoder.push("\x1b[27;3;13~"), [{ type: "key", name: "newline" }]);
+		assert.deepEqual(decoder.push("\x1b[27;4;13~"), [{ type: "key", name: "newline" }]);
+		assert.deepEqual(decoder.push("\x1b[13;2u"), [{ type: "key", name: "newline" }]);
+		assert.deepEqual(decoder.push("\x1b[13;3:1u"), [{ type: "key", name: "newline" }]);
+		// Ctrl+Enter 不当作换行
+		assert.deepEqual(decoder.push("\x1b[27;5;13~"), []);
+	});
+
 	it("焦点事件", () => {
 		const decoder = new KeyDecoder();
 		assert.deepEqual(decoder.push("\x1b[I"), [{ type: "focus", focused: true }]);
@@ -112,8 +123,12 @@ describe("按键解码", () => {
 
 	it("SGR 鼠标滚轮：64 上滚、65 下滚", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(decoder.push("\x1b[<64;12;3M"), [{ type: "wheel", direction: "up" }]);
-		assert.deepEqual(decoder.push("\x1b[<65;1;1M"), [{ type: "wheel", direction: "down" }]);
+		assert.deepEqual(decoder.push("\x1b[<64;12;3M"), [
+			{ type: "wheel", direction: "up", col: 12, row: 3 },
+		]);
+		assert.deepEqual(decoder.push("\x1b[<65;1;1M"), [
+			{ type: "wheel", direction: "down", col: 1, row: 1 },
+		]);
 	});
 
 	it("SGR 鼠标按下、拖动与松开", () => {
@@ -140,10 +155,12 @@ describe("按键解码", () => {
 		]);
 	});
 
-	it("横向滚轮与无按键移动丢弃", () => {
+	it("横向滚轮丢弃，无按键移动作为悬停事件", () => {
 		const decoder = new KeyDecoder();
 		assert.deepEqual(decoder.push("\x1b[<66;1;1M"), []);
-		assert.deepEqual(decoder.push("\x1b[<35;4;4M"), []);
+		assert.deepEqual(decoder.push("\x1b[<35;4;4M"), [
+			{ type: "mouse", action: "move", button: "none", col: 4, row: 4 },
+		]);
 	});
 
 	it("终端状态回复（OSC）整段丢弃", () => {

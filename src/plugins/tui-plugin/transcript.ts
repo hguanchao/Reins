@@ -83,6 +83,18 @@ export interface TranscriptView {
 	readonly blocks: readonly BlockSpan[];
 	/** 每个使用者的回合起始行号；右侧轨道按它画刻度。 */
 	readonly turns: readonly number[];
+	/** 与 turns 一一对应：该回合第一行文本，轨道悬停时用作预览。 */
+	readonly turnPreviews: readonly string[];
+	/** 消息时间戳的位置与原始时刻，悬停时用来展开完整日期。 */
+	readonly timestamps: readonly TimestampSpan[];
+}
+
+/** 一个时间戳在行数组里的位置；列相对条目行。 */
+export interface TimestampSpan {
+	readonly row: number;
+	readonly col: number;
+	readonly width: number;
+	readonly createdAt: number;
 }
 
 export interface ViewOptions {
@@ -330,6 +342,8 @@ export class Transcript {
 		const rows: Line[] = [];
 		const blocks: BlockSpan[] = [];
 		const turns: number[] = [];
+		const turnPreviews: string[] = [];
+		const timestamps: TimestampSpan[] = [];
 		let first = true;
 
 		interface SpanInfo {
@@ -337,6 +351,10 @@ export class Transcript {
 			readonly kind: BlockKind;
 			readonly mode: BlockMode;
 			readonly foldable: boolean;
+			/** 使用者回合的第一行文本，供轨道预览。 */
+			readonly preview?: string;
+			/** 用户或模型消息的创建时刻，供时间戳悬停。 */
+			readonly timestamp?: number;
 		}
 
 		const push = (lines: readonly Line[], span: SpanInfo | undefined, tight = false): void => {
@@ -349,7 +367,25 @@ export class Transcript {
 			if (span === undefined) return;
 
 			blocks.push({ ...span, start, height: lines.length });
-			if (span.kind === "user") turns.push(start);
+			if (span.kind === "user") {
+				turns.push(start);
+				turnPreviews.push(span.preview ?? "");
+			}
+			if (span.timestamp !== undefined) {
+				for (let row = start; row < start + lines.length; row += 1) {
+					const text = lineText(rows[row]);
+					const matches = [...text.matchAll(/\d{1,2}:\d{2} (?:AM|PM)/g)];
+					const match = matches.at(-1);
+					if (match?.index === undefined) continue;
+					timestamps.push({
+						row,
+						col: match.index,
+						width: match[0].length,
+						createdAt: span.timestamp,
+					});
+					break;
+				}
+			}
 		};
 
 		this.#syncGroups();
@@ -386,6 +422,8 @@ export class Transcript {
 				kind: block.kind,
 				mode: block.mode,
 				foldable: this.#foldable(block),
+				preview: block.kind === "user" ? firstLine(block.text) : undefined,
+				timestamp: block.kind === "user" || block.kind === "agent" ? block.createdAt : undefined,
 			});
 		}
 
@@ -398,7 +436,7 @@ export class Transcript {
 			rows.push(...live);
 		}
 
-		return { rows, blocks, turns };
+		return { rows, blocks, turns, turnPreviews, timestamps };
 	}
 
 	/** 切换一个块的展开/收起；不可折叠的块原样返回。 */
@@ -618,10 +656,14 @@ export class Transcript {
 		const collapsed = block.mode === "collapsed";
 		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
 		const accent = collapsed ? undefined : flashing ? OK : ACCENT;
-		const header = blockLine(
-			rail(accent),
-			concat(styled(THOUGHT_MARK, FAINT), styled(thoughtLabel(block.elapsedMs), DIM)),
-		);
+		const label = concat(styled(THOUGHT_MARK, FAINT), styled(thoughtLabel(block.elapsedMs), DIM));
+		// 收起时补一条展开提示；放不下就整条省略，不把提示截成半句
+		const hint = plain("  (ctrl+e to expand)");
+		const content =
+			collapsed && lineWidth(label) + lineWidth(hint) <= this.#contentWidth()
+				? concat(label, hint)
+				: label;
+		const header = blockLine(rail(accent), content);
 		if (collapsed) return [header];
 
 		const body = wrapLine(mapLine(plain(block.text), (style) => mergeStyles(style, DIM)), {
@@ -954,4 +996,9 @@ function lastOutputLine(update: string | undefined): string | undefined {
 	if (update === undefined) return undefined;
 	const lines = update.split("\n").filter((line) => line.trim().length > 0);
 	return lines.at(-1);
+}
+
+/** 回合预览只取第一行非空文本。 */
+function firstLine(text: string): string {
+	return text.split("\n").find((line) => line.trim().length > 0)?.trim() ?? "";
 }

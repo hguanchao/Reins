@@ -48,13 +48,13 @@ export type KeyEvent =
 	| { readonly type: "paste"; readonly text: string }
 	/** 终端窗口获得或失去焦点 */
 	| { readonly type: "focus"; readonly focused: boolean }
-	/** 滚轮方向 */
-	| { readonly type: "wheel"; readonly direction: "up" | "down" }
+	/** 滚轮方向与指针位置 */
+	| { readonly type: "wheel"; readonly direction: "up" | "down"; readonly col: number; readonly row: number }
 	/** 鼠标按键、拖动与松开；坐标从 1 开始，与终端一致 */
 	| {
 			readonly type: "mouse";
-			readonly action: "down" | "drag" | "up";
-			readonly button: "left" | "middle" | "right";
+			readonly action: "down" | "drag" | "up" | "move";
+			readonly button: "left" | "middle" | "right" | "none";
 			readonly col: number;
 			readonly row: number;
 	  }
@@ -195,9 +195,13 @@ export class KeyDecoder {
 			}
 			if (index >= this.#buffer.length) return 0;
 
-			const sequence = this.#buffer.slice(2, index + 1);
+				const sequence = this.#buffer.slice(2, index + 1);
 				if (sequence === "200~") {
 					this.#pasting = true;
+					return index + 1;
+				}
+				if (modifiedEnterKey(sequence)) {
+					events.push({ type: "key", name: "newline" });
 					return index + 1;
 				}
 				const modified = modifiedPasteKey(sequence);
@@ -211,7 +215,14 @@ export class KeyDecoder {
 				const mouse = mouseFromSgr(sequence);
 				if (mouse !== undefined) {
 					if (mouse.action === "event") events.push(mouse.event);
-					else events.push({ type: "wheel", direction: mouse.action === "wheel-up" ? "up" : "down" });
+					else {
+						events.push({
+							type: "wheel",
+							direction: mouse.action === "wheel-up" ? "up" : "down",
+							col: mouse.col,
+							row: mouse.row,
+						});
+					}
 				} else {
 					const key = CSI_KEYS.get(sequence);
 					if (key !== undefined) events.push({ type: "key", name: key });
@@ -258,6 +269,29 @@ function singleKey(char: string): KeyName | undefined {
 }
 
 /**
+ * Shift/Alt+Enter 的带修饰编码。
+ *
+ * 只有终端主动开启 modifyOtherKeys 或 kitty 键盘协议时才会收到；这一层不主动开启，
+ * 免得把普通大写字母也改成 CSI 序列。收到时按换行处理，Ctrl+Enter 仍留给终端。
+ */
+function modifiedEnterKey(sequence: string): boolean {
+	// xterm modifyOtherKeys: CSI 27;修饰;13~
+	const xterm = /^27;(\d+);13~$/.exec(sequence);
+	if (xterm !== null) return newlineModifier(Number(xterm[1]));
+
+	// kitty: CSI 13;修饰u
+	const kitty = /^13;(\d+)(?::\d+)?u$/.exec(sequence);
+	if (kitty !== null) return newlineModifier(Number(kitty[1]));
+
+	return false;
+}
+
+function newlineModifier(modifier: number): boolean {
+	const bits = modifier - 1;
+	return (bits & 1) !== 0 || (bits & 2) !== 0;
+}
+
+/**
  * 带修饰键的粘贴按键。
  *
  * 终端通常把 Ctrl+Shift+V 自己处理成括号粘贴；只有开启了 kitty 键盘协议或 xterm 的
@@ -283,8 +317,8 @@ function modifiedPasteKey(sequence: string): KeyName | undefined {
  * 连在一起，不能改。修饰键位（4/8/16）对界面没有意义，忽略。
  */
 type SgrMouse =
-	| { readonly action: "wheel-up" }
-	| { readonly action: "wheel-down" }
+	| { readonly action: "wheel-up"; readonly col: number; readonly row: number }
+	| { readonly action: "wheel-down"; readonly col: number; readonly row: number }
 	| {
 			readonly action: "event";
 			readonly event: Extract<KeyEvent, { type: "mouse" }>;
@@ -299,16 +333,20 @@ function mouseFromSgr(sequence: string): SgrMouse | undefined {
 	if (!Number.isInteger(code) || !Number.isInteger(col) || !Number.isInteger(row)) return undefined;
 	if (col < 1 || row < 1) return undefined;
 
-	if (!released && code === 64) return { action: "wheel-up" };
-	if (!released && code === 65) return { action: "wheel-down" };
+	if (!released && code === 64) return { action: "wheel-up", col, row };
+	if (!released && code === 65) return { action: "wheel-down", col, row };
 	// 横向滚轮与其它扩展按钮没有绑定
 	if (code >= 64) return undefined;
 
 	const buttonBits = code & 3;
-	const button = buttonBits === 0 ? "left" : buttonBits === 1 ? "middle" : buttonBits === 2 ? "right" : undefined;
-	// ?1002 不会报「无按键移动」；真收到就丢掉，免得被当成拖动
-	if (button === undefined) return undefined;
-
+	if (buttonBits === 3) {
+		// ?1003 的「无按键移动」：悬停预览用它
+		return {
+			action: "event",
+			event: { type: "mouse", action: "move", button: "none", col, row },
+		};
+	}
+	const button = buttonBits === 0 ? "left" : buttonBits === 1 ? "middle" : "right";
 	const moving = (code & 32) !== 0;
 	return {
 		action: "event",

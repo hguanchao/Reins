@@ -85,6 +85,7 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 		plain("  While browsing, Home/End jump to the oldest or newest line; hold Shift to select text"),
 		plain("  Drag text to select and copy; drag the bar on the right edge to scroll"),
 		plain("  Click a tick or arrow on the rail to jump to that turn"),
+		plain("  Hover a rail tick for the turn preview; hover a timestamp for the full date"),
 		plain("  Click a block to select; double-click to fold; Tab focuses the transcript"),
 		plain("  Consecutive read/search/ls calls collapse into a ◈ summary; expand it to list them"),
 		plain("  j/k entry   H/L turn   e fold   h/l fold   y copy   Y meta   g/G top/btm   E all"),

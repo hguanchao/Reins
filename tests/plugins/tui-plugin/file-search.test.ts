@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,14 @@ import {
 } from "../../../src/plugins/tui-plugin/file-search.ts";
 
 const tempDirs: string[] = [];
+const HAS_GIT = (() => {
+	try {
+		execFileSync("git", ["--version"], { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
+})();
 
 function workspace(): string {
 	const root = mkdtempSync(join(tmpdir(), "reins-files-"));
@@ -51,6 +60,20 @@ describe("@ 上下文", () => {
 		assert.equal(detectAtContext("user@example.com", 16), undefined);
 		assert.equal(detectAtContext("test_@foo", 9), undefined);
 		assert.equal(detectAtContext("@src file", 9), undefined);
+	});
+
+	it("钻取锚点允许目录名里带空格", () => {
+		const text = "@my dir/note.txt";
+		assert.deepEqual(detectAtContext(text, text.length, "my dir/"), {
+			start: 0,
+			end: text.length,
+			query: "my dir/note.txt",
+			hidden: false,
+		});
+		// 锚点之后仍然由空白结束
+		assert.equal(detectAtContext("@my dir/note.txt next", 15, "my dir/")?.end, 16);
+		// 文本不再以锚点开头时，锚点失效
+		assert.equal(detectAtContext("@other dir/", 6, "my dir/")?.end, 6);
 	});
 });
 
@@ -109,5 +132,23 @@ describe("工作区索引", () => {
 		const root = workspace();
 		const entries = await indexWorkspaceFiles(root, { maxEntries: 2 });
 		assert.equal(entries.length, 2);
+	});
+
+	it("git 仓库按 .gitignore 过滤", { skip: !HAS_GIT }, async () => {
+		const root = mkdtempSync(join(tmpdir(), "reins-files-git-"));
+		tempDirs.push(root);
+		mkdirSync(join(root, "src"), { recursive: true });
+		mkdirSync(join(root, "ignored"), { recursive: true });
+		writeFileSync(join(root, "src", "app.ts"), "app");
+		writeFileSync(join(root, "ignored", "secret.txt"), "secret");
+		writeFileSync(join(root, "debug.log"), "log");
+		writeFileSync(join(root, ".gitignore"), "ignored/\n*.log\n");
+		execFileSync("git", ["init"], { cwd: root, stdio: "ignore" });
+
+		const paths = (await indexWorkspaceFiles(root)).map((entry) => entry.path);
+		assert.ok(paths.includes("src/app.ts"));
+		assert.ok(paths.includes(".gitignore"));
+		assert.ok(!paths.includes("ignored/secret.txt"));
+		assert.ok(!paths.includes("debug.log"));
 	});
 });
