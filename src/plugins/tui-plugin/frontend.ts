@@ -35,7 +35,7 @@ import { decideNotify, desktopNotificationsSupported, notificationSequence } fro
 import { appendRail, railCells, railWidth } from "./rail.ts";
 import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
 import { ACCENT, BAD, BRIGHT, DIM, EDGE, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
-import { Transcript, type BlockSpan } from "./transcript.ts";
+import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
 
 /**
  * 交互式界面。
@@ -1054,7 +1054,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		});
 
 		const selected =
-			this.#selectedBlock === undefined
+			dialog !== undefined || this.#selectedBlock === undefined
 				? undefined
 				: this.#blockSpans.find((block) => block.id === this.#selectedBlock);
 		const withBox =
@@ -1153,7 +1153,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		// 详情可能很长；弹窗最多占满整个会话区，超出部分由换行器加省略号
 		const detailWidth = inner;
-		const detail = wrapLine(styled(dialog.detail, DIM), {
+		const detail = wrapLine(styled(dialogDetail(dialog.detail, dialog.question, this.#runtime?.cwd), DIM), {
 			width: detailWidth,
 			firstIndent: concat(plain("  "), styled("┃ ", ACCENT)),
 			restIndent: concat(plain("  "), styled("┃ ", ACCENT)),
@@ -1278,6 +1278,21 @@ function selectionText(
 		);
 	}
 	return lines.join("\n");
+}
+
+/** 审批详情：能解析成工具参数时显示主参数，不把 JSON 直接摊给使用者。 */
+function dialogDetail(detail: string, question: string, cwd: string | undefined): string {
+	try {
+		const args: unknown = JSON.parse(detail);
+		if (args !== null && typeof args === "object" && !Array.isArray(args)) {
+			const match = /^Allow (.+) to run\?$/.exec(question);
+			const summary = toolSummary(match?.[1] ?? "", args as Record<string, unknown>, cwd);
+			if (summary.length > 0) return summary;
+		}
+	} catch {
+		// 不是 JSON：按原样显示
+	}
+	return detail;
 }
 
 /** 在指定显示列写一个字符；选中框的边线覆盖在现有内容上。 */

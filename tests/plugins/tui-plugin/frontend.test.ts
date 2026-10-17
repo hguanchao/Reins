@@ -552,6 +552,10 @@ describe("输入框边框", () => {
 				lastFrameRows(terminal.output).some((line) => line.includes("Approval required")),
 				"dialog stays visible in scrollback focus",
 			);
+			assert.ok(
+				!lastFrameRows(terminal.output).some((line) => line.trimStart().startsWith("┌")),
+				"selection box is hidden behind the dialog",
+			);
 
 			terminal.inputListener?.(key);
 			await new Promise((resolve) => setTimeout(resolve, key === "\x1b" ? 50 : 0));
@@ -589,7 +593,11 @@ describe("输入框边框", () => {
 		assert.ok(header > 0, "popup is vertically centered");
 		assert.ok(visible[header].includes("╭"), "header is a border");
 		assert.ok(visible.some((line) => line.includes("Allow Bash to run?")), "question shown");
-		assert.ok(visible.some((line) => line.includes("┃") && line.includes("command")), "detail shown");
+		assert.ok(
+			visible.some((line) => line.includes("┃") && line.includes("npm test")),
+			"detail shown without raw JSON",
+		);
+		assert.ok(!visible.some((line) => line.includes('"command"')), "no JSON in the dialog");
 
 		const options = visible.find((line) => line.includes("▶ 1  Allow"));
 		assert.ok(options, "allow option shown");

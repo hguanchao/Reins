@@ -800,7 +800,7 @@ function describeTool(name: string, args: Record<string, unknown>, cwd: string |
 	return text.length > ARGS_LIMIT ? `${text.slice(0, ARGS_LIMIT)}…` : text;
 }
 
-function toolSummary(name: string, args: Record<string, unknown>, cwd: string | undefined): string {
+export function toolSummary(name: string, args: Record<string, unknown>, cwd: string | undefined): string {
 	switch (name.toLowerCase()) {
 		case "read":
 		case "write":
