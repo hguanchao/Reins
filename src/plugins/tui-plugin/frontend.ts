@@ -374,6 +374,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 					this.#transcript.toggleAll();
 					this.#refresh();
 					break;
+				case "y":
+					this.#copyBlock();
+					break;
 				default:
 					break;
 			}
@@ -588,8 +591,17 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (selection === undefined) return;
 
 		const text = selectionText(this.#rows, selection);
-		if (text.length === 0) return;
+		if (text.length > 0) this.#writeClipboard(text);
+	}
 
+	/** 复制选中块的完整正文；折叠状态下也复制全部内容。 */
+	#copyBlock(): void {
+		if (this.#selectedBlock === undefined) return;
+		const text = this.#transcript.blockText(this.#selectedBlock);
+		if (text !== undefined && text.length > 0) this.#writeClipboard(text);
+	}
+
+	#writeClipboard(text: string): void {
 		// OSC 52 让终端自己把内容放进系统剪贴板，不依赖平台命令
 		this.#terminal.write(`\x1b]52;c;${Buffer.from(text, "utf8").toString("base64")}\x07`);
 		this.#showNotice(`Copied ${[...text].length} characters`);
@@ -1155,6 +1167,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 				{ keys: "j/k", label: "entry" },
 				{ keys: "e", label: "fold" },
 				{ keys: "h/l", label: "fold" },
+				{ keys: "y", label: "copy" },
 				{ keys: "g/G", label: "top/btm" },
 				{ keys: "Tab", label: "prompt" },
 			];

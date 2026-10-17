@@ -2,6 +2,7 @@ import type { AgentEvent } from "../../agent/events.ts";
 import {
 	alignEnds,
 	concat,
+	lineText,
 	mapLine,
 	mergeStyles,
 	padLine,
@@ -130,8 +131,7 @@ interface RunningTool {
 
 export class Transcript {
 	/** 条目总宽：竖线、左右留白与正文一起。 */
-	#width: number;
-	#blocks: Block[] = [];
+	#width: number;	#blocks: Block[] = [];
 	#nextId = 1;
 	#streaming = "";
 	#reasoning = "";
@@ -359,6 +359,25 @@ export class Transcript {
 		const thinking = this.#blocks.filter((block) => block.kind === "thinking");
 		const collapse = thinking.some((block) => block.mode === "expanded");
 		for (const block of thinking) block.mode = collapse ? "collapsed" : "expanded";
+	}
+
+	/** 一个块的完整正文，折叠状态下也返回全部内容；用于复制。 */
+	blockText(id: number): string | undefined {
+		const block = this.#blocks.find((item) => item.id === id);
+		if (block === undefined) return undefined;
+
+		switch (block.kind) {
+			case "user":
+			case "agent":
+			case "thinking":
+				return block.text;
+			case "tool":
+				return block.output.length > 0 ? block.output : `${block.name} ${block.args}`.trim();
+			case "system":
+				return block.lines.map(lineText).join("\n");
+			default:
+				return undefined;
+		}
 	}
 
 	#renderBlock(block: Block): readonly Line[] {

@@ -123,4 +123,13 @@ describe("块折叠", () => {
 		const block = transcript.view().blocks[0];
 		assert.equal(block.foldable, false);
 	});
+
+	it("blockText 在折叠状态下仍返回完整正文", () => {
+		const transcript = new Transcript(20);
+		transcript.userTurn("one two three four five six");
+		const block = transcript.view().blocks[0];
+
+		transcript.collapse(block.id);
+		assert.equal(transcript.blockText(block.id), "one two three four five six");
+	});
 });

@@ -428,6 +428,12 @@ describe("输入框边框", () => {
 		const folded = lastFrameRows(terminal.output);
 		assert.ok(!folded.some((line) => line.includes("line one")), "keyboard fold");
 
+		// y 复制块的完整正文（折叠状态也复制全部）
+		terminal.inputListener?.("y");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const payload = Buffer.from("line one\nline two", "utf8").toString("base64");
+		assert.ok(terminal.output.includes(`\x1b]52;c;${payload}`), "y copies the block body");
+
 		// Tab 回输入框，继续输入
 		terminal.inputListener?.("\t");
 		await new Promise((resolve) => setTimeout(resolve, 0));
