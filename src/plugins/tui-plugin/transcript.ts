@@ -14,11 +14,10 @@ import {
 	type Line,
 	type Style,
 } from "../../tui/index.ts";
-import { formatDuration } from "../../tui/widgets/spinner.ts";
 import { formatTokens } from "./format.ts";
 import { ACCENT_WIDTH, BLOCK_CONTENT_OFFSET, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { ACCENT, BAD, BAND, BRIGHT, DIM, FAINT, OK, TEXT } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, CODE_BG, CODE_TEXT, DIM, FAINT, OK, TEXT } from "./theme.ts";
 import {
 	describeTool,
 	firstLine,
@@ -60,6 +59,24 @@ const FINISH_FLASH_MS = 400;
 
 /** 工具行的右端离块右缘的距离：耗时对齐到这里。 */
 const HEADER_WIDTH = (entryWidth: number): number => Math.max(1, entryWidth - BLOCK_PAD_RIGHT);
+
+/** 展开的读取详情：开头与结尾各保留几行，中间用 ⋮ 省略。 */
+const READ_FIRST_LINES = 5;
+const READ_LAST_LINES = 3;
+
+/** 其他工具的展开输出只留最后几行，更早的省略。 */
+const TOOL_TAIL_LINES = 12;
+
+/**
+ * 列表输出里的条目数：截断过的输出自带「N entries」标记，完整清单按行数数。
+ */
+function countEntries(output: string): number | undefined {
+	const marked = /(\d+) entries/.exec(output);
+	const markedCount = Number(marked?.[1]);
+	if (Number.isFinite(markedCount) && markedCount > 0) return markedCount;
+	const lines = output.split("\n").filter((line) => line.trim().length > 0);
+	return lines.length > 0 ? lines.length : undefined;
+}
 
 export type BlockKind = "user" | "agent" | "thinking" | "tool" | "group" | "system";
 export type BlockMode = "collapsed" | "truncated" | "expanded";
@@ -231,7 +248,7 @@ export class Transcript {
 					kind: "tool",
 					name: event.name,
 					args: tool?.args ?? "",
-					output: tool?.update ?? event.summary,
+					output: tool?.update ?? event.content ?? event.summary,
 					isError: event.isError,
 					durationMs: event.durationMs,
 					finishedAt: now,
@@ -650,24 +667,77 @@ export class Transcript {
 		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
 		const accent = collapsed ? undefined : flashing ? OK : block.isError ? BAD : FAINT;
 		const mark = block.isError ? BAD : FAINT;
+		const detail = block.isError ? styled(" (failed)", BAD) : (this.#listDetail(block) ?? plain(""));
 		const head = blockLine(
 			rail(accent),
 			concat(
 				styled(TOOL_MARK, mark),
 				styled(block.name, block.isError ? BAD : TEXT),
-				plain(block.args === "" ? "" : ` ${block.args}`),
+				plain(block.args === "" ? "" : `  ${block.args}`),
+				detail,
 			),
 		);
-		const duration = styled(formatDuration(block.durationMs), DIM);
-		// 参数太长时截断命令本身，耗时仍然保留在最右侧
-		const headLimit = Math.max(1, HEADER_WIDTH(this.#width) - lineWidth(duration) - 1);
-		const header = alignEnds(truncateLine(head, headLimit), duration, HEADER_WIDTH(this.#width));
+		const header = truncateLine(head, HEADER_WIDTH(this.#width));
 		if (collapsed || block.output.length === 0) return [header];
+		return [header, ...this.#toolBody(block, accent)];
+	}
 
-		const body = wrapLine(styled(block.output, block.isError ? BAD : DIM), {
-			width: this.#contentWidth(),
-		});
-		return [header, ...body.map((line) => blockLine(rail(accent), line))];
+	/** 收起行的括号详情：列表工具给出条目数，其余工具不啰嗦。 */
+	#listDetail(block: ToolBlock): Line | undefined {
+		if (groupKindOf(block.name) !== "dir") return undefined;
+		const count = countEntries(block.output);
+		if (count === undefined) return undefined;
+		return styled(` (${count} entries)`, FAINT);
+	}
+
+	/** 展开的工具正文：读取类给行号预览，其余只留最后一段输出。 */
+	#toolBody(block: ToolBlock, accent: Style | undefined): readonly Line[] {
+		const lines = block.output.split("\n");
+		if (block.name.toLowerCase() === "read") return this.#numberedBody(lines);
+
+		const shown = lines.length > TOOL_TAIL_LINES ? [undefined, ...lines.slice(-TOOL_TAIL_LINES)] : lines;
+		const rows: Line[] = [];
+		if (shown[0] === undefined) rows.push(plain(" ⋮"));
+		for (const text of shown) {
+			if (text === undefined) continue;
+			for (const wrapped of wrapLine(styled(text, block.isError ? BAD : DIM), { width: this.#contentWidth() })) {
+				rows.push(blockLine(rail(accent), wrapped));
+			}
+		}
+		return rows;
+	}
+
+	/**
+	 * 读取详情的行号预览：开头多行加结尾多行，中间用 ⋮ 省略；行号右对齐，
+	 * 正文斜体压暗，整块铺代码底色。
+	 */
+	#numberedBody(lines: readonly string[]): readonly Line[] {
+		const total = lines.length;
+		const segments =
+			total > READ_FIRST_LINES + READ_LAST_LINES
+				? [
+						{ from: 0, to: READ_FIRST_LINES },
+						{ from: total - READ_LAST_LINES, to: total },
+					]
+				: [{ from: 0, to: total }];
+		const gutterWidth = String(total).length;
+		const rows: Line[] = [];
+		for (const segment of segments) {
+			if (segment.from > 0 && rows.length > 0) rows.push(plain(" ⋮"));
+			for (let index = segment.from; index < segment.to; index += 1) {
+				const number = String(index + 1).padStart(gutterWidth);
+				const width = Math.max(1, this.#contentWidth() - gutterWidth - 2);
+				for (const wrapped of wrapLine(styled(lines[index] ?? "", CODE_TEXT), { width })) {
+					rows.push(this.#codeLine(concat(plain(`${number}  `), wrapped)));
+				}
+			}
+		}
+		return rows;
+	}
+
+	/** 代码行整行铺代码底色，后续行与行号共用同一层。 */
+	#codeLine(line: Line): Line {
+		return padLine(mapLine(line, (style) => mergeStyles(style, CODE_BG) ?? CODE_BG), this.#contentWidth(), CODE_BG);
 	}
 
 	#systemLines(block: SystemBlock): readonly Line[] {

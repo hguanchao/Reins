@@ -29,6 +29,8 @@ export type AgentEvent =
 			readonly durationMs: number;
 			/** 结果的第一行。失败时它就是失败原因，界面据此告诉使用者为什么没做成。 */
 			readonly summary: string;
+			/** 结果全文；界面展开细节用它，不带时界面只能看到 summary。 */
+			readonly content?: string;
 	  }
 	/** 一轮结束；stopReason 说明为什么停 */
 	| { readonly type: "turn_end"; readonly stopReason: LlmStopReason }

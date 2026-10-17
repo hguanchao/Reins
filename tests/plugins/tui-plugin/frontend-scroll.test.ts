@@ -234,11 +234,11 @@ describe("前端：会话区交互", () => {
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}m`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const expanded = lastFrameRows(terminal.output);
-		assert.ok(expanded.some((line) => line.includes("◆ Read a.ts")), "group expands to member rows");
+		assert.ok(expanded.some((line) => line.includes("◆ Read  a.ts")), "group expands to member rows");
 		assert.ok(!expanded.some((line) => line.includes("line one")), "member stays collapsed");
 
 		// 双击成员：展开这个工具的完整输出
-		const memberRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◆ Read a.ts"));
+		const memberRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◆ Read  a.ts"));
 		assert.ok(memberRow >= 0, "member row exists");
 		const memberClickRow = memberRow + 1;
 		terminal.inputListener?.(`\x1b[<0;6;${memberClickRow}M`);

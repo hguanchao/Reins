@@ -66,6 +66,8 @@ export const SYSTEM: Style = { color: THEME.system };
 export const TEAL: Style = { color: THEME.teal };
 export const CODE: Style = { color: THEME.code };
 export const CODE_BG: Style = { background: THEME.codeBg };
+/** 代码预览的正文：斜体压暗，行号与代码在同一个底色面板里。 */
+export const CODE_TEXT: Style = { italic: true, color: THEME.muted };
 /** 选中行的底色。 */
 export const SELECT_BG: Style = { background: THEME.selectBg };
 /** 粘贴 chip 的底色。 */

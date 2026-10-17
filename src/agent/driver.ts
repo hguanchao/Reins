@@ -178,6 +178,7 @@ export class TurnDriver {
 			isError: outcome.isError,
 			durationMs: outcome.durationMs,
 			summary: firstLine(outcome.content),
+			content: outcome.content,
 		});
 		return {
 			callId: call.id,
@@ -261,6 +262,7 @@ export class TurnDriver {
 				isError: true,
 				durationMs: 0,
 				summary: firstLine(content),
+				content,
 			});
 		}
 	}

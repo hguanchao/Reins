@@ -116,7 +116,7 @@ describe("块折叠", () => {
 
 		transcript.toggleFold(block.id);
 		const expanded = transcript.view();
-		assert.ok(expanded.rows.some((row) => lineText(row).includes("Read a.ts")));
+		assert.ok(expanded.rows.some((row) => lineText(row).includes("Read  a.ts")));
 
 		const member = expanded.blocks.find((item) => item.kind === "tool");
 		assert.ok(member);
@@ -186,7 +186,7 @@ describe("块折叠", () => {
 		transcript.toggleFold(group.id);
 		const member = transcript.view().rows.find((row) => lineText(row).includes("read "));
 		assert.ok(member);
-		assert.ok(lineText(member).includes("read src/a.ts (10–15)"));
+		assert.ok(lineText(member).includes("read  src/a.ts (10–15)"));
 		assert.ok(!lineText(member).includes("{"));
 	});
 
