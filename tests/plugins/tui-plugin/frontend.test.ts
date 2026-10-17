@@ -116,46 +116,64 @@ async function framesWith(rows: number, cols: number): Promise<{ lines: string[]
 }
 
 describe("输入框边框", () => {
-	it("上边框是细线,铺满整行宽,没有左右竖线", async () => {
+	it("上下边框各一条细线,从第一列铺满整个终端宽", async () => {
 		const { lines } = await framesWith(24, 80);
-		const rules = lines.filter((line) => line.includes("─"));
-		assert.ok(rules.length >= 2, "drew top and bottom rules");
-		const visible = rules[0]!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-		// 整行由 PAD(2) + 细线(body=78)组成,合计 80 列铺满
-		assert.ok(visible.startsWith("  "));
-		assert.equal(visible.replace(/ /g, "").length, 78);
-		assert.ok(!visible.includes("╭") && !visible.includes("━"));
-	});
-
-	it("上下边框颜色是正文白,整行一次上色且不嵌字", async () => {
-		const { lines } = await framesWith(24, 80);
-		const rules = lines.filter((line) => /^ {0,2}─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
-		// 首屏:欢迎框上下两条、输入框上下两条,四条都是纯粹线
-		assert.ok(rules.length >= 2);
+		const rules = lines.filter((line) => /^─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
+		// 输入框上下两条;首屏没有欢迎框,正文区直接开始
+		assert.equal(rules.length, 2);
 		for (const rule of rules) {
 			const visible = rule.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-			assert.match(visible, /^ {0,2}─+$/);
+			assert.equal(visible.length, 80); // 80 列终端,一条线占满
 			assert.equal((rule.match(/38;2;225;225;225/g) ?? []).length, 1); // 正文白,整行单段
+			assert.equal((rule.match(/38;2;50;50;55/g) ?? []).length, 0); // 不再使用暗边框色
 		}
 	});
 
-	it("输入行没有左右竖线,提示符直接顶在缩进后", async () => {
+	it("输入行有没有左右竖线,内容直接从缩进处排", async () => {
 		const { lines } = await framesWith(24, 80);
 		const editorRow = lines.find((line) => line.includes("Build anything"));
 		assert.ok(editorRow, "placeholder row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 		assert.ok(!visible.includes("│"), "no vertical border");
+		assert.ok(visible.startsWith("  "), "PAD indent only, flush left");
 		assert.match(visible, /❯ Build anything/);
 	});
 
-	it("下边框不再嵌模型与审批状态,模型信息只在顶部", async () => {
+	it("下边框不嵌模型与审批状态,模型信息只在顶栏", async () => {
 		const { lines } = await framesWith(24, 80);
-		const bottomIndex = lines.findIndex((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").trimEnd().endsWith("─"));
-		assert.ok(bottomIndex > 0);
-		const bottom = lines[bottomIndex]!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-		assert.doesNotMatch(bottom, /p\/m1|approval|sandbox/);
+		const rules = lines.filter((line) => /^─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
+		assert.equal(rules.length, 2);
 		// 顶部状态行仍在:模型与开关只出现在那里
 		const topBar = lines.find((line) => line.includes("p/m1") && line.includes("approval=ask"));
 		assert.ok(topBar, "top bar keeps model and switches");
+	});
+
+	it("首屏没有欢迎框:正文直接开始,不再有包边的线", async () => {
+		const { lines } = await framesWith(24, 80);
+		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+		// Reins 标题与提示文字直接出现,无框
+		const titleRow = visibleLines.findIndex((line) => line.includes("Reins"));
+		assert.ok(titleRow > 0, "title exists");
+		assert.match(visibleLines[titleRow - 1] ?? "", /^( *)$/); // 标题上一行是空白,而不是框线
+	});
+
+	it("输入时光标列落在提示符之后:屏幕列 = 缩进 + 输入位置", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		// 输入一个字母,再看画帧里的光标绝对定位
+		terminal.inputListener?.("a");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const frame = terminal.output;
+		const anchorMatch = /(?:\x1b\[)(\d+);(\d+)H(?!.*\x1b\[\d+;\d+H)/.exec(frame);
+		assert.ok(anchorMatch, "cursor positioned");
+		// ❯ 光标在缩进(2)+提示符(2)之后,第一格内容
+		assert.equal(anchorMatch[2], "5");
+		// 清空再退出:Ctrl+D 只在空输入时退出
+		terminal.inputListener?.("\x7f");
+		terminal.quit();
+		await running;
 	});
 });

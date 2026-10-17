@@ -7,7 +7,6 @@ import {
 	formatDuration,
 	KeyDecoder,
 	LineEditor,
-	padLine,
 	plain,
 	ScreenRegion,
 	spinnerFrame,
@@ -26,7 +25,7 @@ import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts"
 import { formatCost, formatTokens } from "./format.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
-import { ACCENT, BAD, BOLD, BRIGHT, DIM, EDGE, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
+import { ACCENT, BAD, BOLD, BRIGHT, DIM, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript } from "./transcript.ts";
 
 /**
@@ -562,9 +561,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 			...conversation,
 			...(this.#running ? [plain(""), this.#runningRow(body)] : []),
 			plain(""),
-			boxRule(body),
-			...editor.lines.map((line) => concat(styled("  ", EDGE), line)),
-			this.#boxBottom(body),
+			boxRule(size.cols),
+			...editor.lines.map((line) => concat(plain(" ".repeat(PAD)), line)),
+			this.#boxBottom(size.cols),
 			this.#keysRow(body),
 		];
 
@@ -573,7 +572,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			lines,
 			cursor: {
 				row: HEADER_ROWS + rows + status + 2 + editor.cursor.row,
-				col: PAD + 2 + editor.cursor.col,
+				col: PAD + editor.cursor.col,
 			},
 		});
 	}
@@ -602,27 +601,21 @@ export class TerminalFrontend implements InteractiveFrontend {
 		return concat(plain(" ".repeat(PAD)), alignEnds(left, right, body));
 	}
 
-	/** 首屏：一个入口框加居中留白。一句话都没说之前，会话区就是它。 */
+	/** 首屏：没有框，直接正文——一句话都没说之前，会话区就是这几行说明。 */
 	#welcomeRows(body: number, rows: number): readonly Line[] {
 		const runtime = this.#runtime;
 		if (runtime === undefined) return this.#blank(rows);
 
+		// 两件只在开场说的事：接续的是旧会话、工作区自带的配置没读
+		const notices = this.#welcomeNotices(runtime);
 		const content: Line[] = [
 			concat(styled("Reins", BOLD), styled(`  ${runtime.provider}/${runtime.model}`, DIM)),
 			styled("Type a message to start; /help lists commands", DIM),
 		];
-
-		// 两件只在开场说的事：接续的是旧会话、工作区自带的配置没读
-		const notices = this.#welcomeNotices(runtime);
 		if (notices.length > 0) content.push(plain(""), ...notices);
+		content.push(plain(""), ...WELCOME_MENU.map((item) => alignEnds(plain(item.label), styled(item.key, BRIGHT), body)));
 
-		content.push(plain(""));
-		for (const item of WELCOME_MENU) {
-			content.push(alignEnds(plain(item.label), styled(item.key, BRIGHT), body - 4));
-		}
-
-		// 屏幕太矮时不留边框：入口框被压成半截比没有还难看
-		if (content.length + 2 <= rows) return this.#center(this.#box(content, body), rows);
+		// 顶在屏幕中间偏上：贴着头一行反而挤
 		return this.#center(content, rows);
 	}
 
@@ -695,9 +688,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		return concat(plain(" ".repeat(PAD)), alignEnds(head, styled(formatDuration(elapsed), DIM), body));
 	}
 
-	/** 输入框的下边框：与上边框同一条细线。模型与审批状态在顶部状态行里，不在这里。 */
-	#boxBottom(body: number): Line {
-		return concat(plain(" ".repeat(PAD)), boxRule(body - PAD));
+	/** 输入框的下边框：与上边框同一条细线，铺满整个终端宽。 */
+	#boxBottom(cols: number): Line {
+		return boxRule(cols);
 	}
 
 	/** 底部快捷键条：当前场景该按什么。 */
@@ -746,15 +739,6 @@ export class TerminalFrontend implements InteractiveFrontend {
 			{ keys: "Ctrl+D", label: "quit" },
 			help,
 		];
-	}
-
-	/** 给几行内容套上边框：上下细线铺满整行，内容缩进两列。 */
-	#box(content: readonly Line[], width: number): readonly Line[] {
-		const inner = Math.max(1, width - PAD * 2);
-		const rows = content.map((line) =>
-			concat(plain(" ".repeat(PAD)), padLine(truncateLine(line, inner), inner)),
-		);
-		return [concat(plain(" ".repeat(PAD)), boxRule(width)), ...rows, concat(plain(" ".repeat(PAD)), boxRule(width))];
 	}
 
 	/** 上下补空行，把内容摆在中间。首屏居中比顶在头上好看。 */
