@@ -22,10 +22,9 @@ import {
 import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
 import { isBuiltinCommand, runBuiltin } from "./commands.ts";
 import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts";
-import { formatCost, formatTokens } from "./format.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
-import { ACCENT, BAD, BOLD, BRIGHT, DIM, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
+import { ACCENT, BAD, BRIGHT, DIM, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript } from "./transcript.ts";
 
 /**
@@ -45,9 +44,6 @@ import { Transcript } from "./transcript.ts";
 
 /** 左右各留两列：整屏贴边会把内容顶到终端边缘上，读起来很挤。 */
 const PAD = 2;
-
-/** 会话之上的固定行：顶部状态行与它下面的一行空行。 */
-const HEADER_ROWS = 2;
 
 /** 输入框之外的固定行：上面一行空行、边框上下两条、下面的快捷键条。 */
 const PROMPT_CHROME_ROWS = 4;
@@ -536,7 +532,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#refresh();
 	}
 
-	/** 组装一帧：顶部状态行、会话区、可选的状态行与确认卡片、输入框、快捷键条。 */
+	/** 组装一帧：会话区（含可选的状态行与确认卡片）、输入框、快捷键条。 */
 	#refresh(): void {
 		if (this.#stopped || this.#runtime === undefined) return;
 
@@ -549,15 +545,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const card = dialog === undefined ? 0 : CARD_ROWS;
 		const status = this.#running ? RUNNING_ROWS : 0;
 		// 确认卡片压在会话区里面，因此只影响「会话区分到几行」，不额外占屏幕
-		const height = Math.max(HEADER_ROWS + footerRows + status + card + 3, size.rows);
-		const rows = Math.max(1, height - HEADER_ROWS - footerRows - status);
+		const height = Math.max(footerRows + status + card + 1, size.rows);
+		const rows = Math.max(1, height - footerRows - status);
 
-		const conversation =
-			this.#history.length === 0 ? this.#welcomeRows(body, rows) : this.#conversationRows(body, rows, dialog);
+		const conversation = this.#conversationRows(body, rows, dialog);
 
 		const lines: Line[] = [
-			this.#topBar(body),
-			plain(""),
 			...conversation,
 			...(this.#running ? [plain(""), this.#runningRow(body)] : []),
 			plain(""),
@@ -567,74 +560,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#keysRow(body),
 		];
 
-		// 光标在输入框里：它上面是状态行、会话区与输入框的上边框和留白
+		// 光标在输入框里：它上面是会话区与输入框的上边框和留白
 		this.#region.draw({
 			lines,
 			cursor: {
-				row: HEADER_ROWS + rows + status + 2 + editor.cursor.row,
+				row: rows + status + 2 + editor.cursor.row,
 				col: PAD + editor.cursor.col,
 			},
 		});
-	}
-
-	/** 顶部状态行：左是本轮用量，右是模型与两个开关。 */
-	#topBar(body: number): Line {
-		const runtime = this.#runtime;
-		if (runtime === undefined) return plain("");
-
-		const usage = runtime.sessionUsage();
-		const left =
-			usage.requests === 0
-				? styled("Ready", DIM)
-				: styled(
-						`This session: ${formatTokens(usage.total)} tokens${usage.cost === undefined ? "" : ` · ${formatCost(usage.cost)}`}`,
-						DIM,
-					);
-
-		const right: Span[] = [
-			...styled(`${runtime.provider}/${runtime.model}`, DIM),
-			...styled(" │ ", FAINT),
-			...styled(`approval=${runtime.approval}`, DIM),
-			...styled(" │ ", FAINT),
-			...styled(`sandbox=${runtime.sandbox}`, DIM),
-		];
-		return concat(plain(" ".repeat(PAD)), alignEnds(left, right, body));
-	}
-
-	/** 首屏：没有框，直接正文——一句话都没说之前，会话区就是这几行说明。 */
-	#welcomeRows(body: number, rows: number): readonly Line[] {
-		const runtime = this.#runtime;
-		if (runtime === undefined) return this.#blank(rows);
-
-		// 两件只在开场说的事：接续的是旧会话、工作区自带的配置没读
-		const notices = this.#welcomeNotices(runtime);
-		const content: Line[] = [
-			concat(styled("Reins", BOLD), styled(`  ${runtime.provider}/${runtime.model}`, DIM)),
-			styled("Type a message to start; /help lists commands", DIM),
-		];
-		if (notices.length > 0) content.push(plain(""), ...notices);
-		content.push(plain(""), ...WELCOME_MENU.map((item) => alignEnds(plain(item.label), styled(item.key, BRIGHT), body)));
-
-		// 顶在屏幕中间偏上：贴着头一行反而挤
-		return this.#center(content, rows);
-	}
-
-	/** 首屏上要说清的两件事。开始对话后就翻过去了，所以要在这里说明白。 */
-	#welcomeNotices(runtime: InteractiveRuntime): readonly Line[] {
-		const lines: Line[] = [];
-		if (runtime.session.entries > 0) {
-			lines.push(
-				styled(
-					`Resumed session ${runtime.session.id}: ${runtime.session.entries} entries already; ` +
-						`run reins sessions show ${runtime.session.id} to see them`,
-					DIM,
-				),
-			);
-		}
-		if (!runtime.trust.trusted && runtime.trust.files.length > 0) {
-			lines.push(styled(`Project config not loaded: ${runtime.trust.files.join(", ")} (open it with /trust yes)`, WARN));
-		}
-		return lines;
 	}
 
 	/** 主屏：会话区的可见窗口，右侧一列轨道。 */
@@ -740,24 +673,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			help,
 		];
 	}
-
-	/** 上下补空行，把内容摆在中间。首屏居中比顶在头上好看。 */
-	#center(content: readonly Line[], rows: number): readonly Line[] {
-		if (content.length >= rows) return content.slice(0, rows);
-		const above = Math.floor((rows - content.length) / 2);
-		return [...this.#blank(above), ...content, ...this.#blank(rows - content.length - above)];
-	}
-
-	#blank(count: number): readonly Line[] {
-		return Array.from({ length: Math.max(0, count) }, () => plain(""));
-	}
 }
-
-/** 首屏入口框里的菜单：文字在左、命令在右，「/」开头说明这是敲进输入框的东西。 */
-const WELCOME_MENU: readonly { readonly label: string; readonly key: string }[] = [
-	{ label: "Commands", key: "/help" },
-	{ label: "Quit", key: "/exit" },
-];
 
 /** 确认卡片上的按键：与底部快捷键条同一套写法。 */
 const CARD_HINTS: readonly KeyHint[] = [

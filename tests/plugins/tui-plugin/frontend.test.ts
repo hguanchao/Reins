@@ -139,22 +139,22 @@ describe("输入框边框", () => {
 		assert.match(visible, /❯ Build anything/);
 	});
 
-	it("下边框不嵌模型与审批状态,模型信息只在顶栏", async () => {
+	it("下边框不嵌模型与审批状态,屏幕上也没有头部状态条", async () => {
 		const { lines } = await framesWith(24, 80);
 		const rules = lines.filter((line) => /^─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
 		assert.equal(rules.length, 2);
-		// 顶部状态行仍在:模型与开关只出现在那里
-		const topBar = lines.find((line) => line.includes("p/m1") && line.includes("approval=ask"));
-		assert.ok(topBar, "top bar keeps model and switches");
+		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+		// 头部展示整个去掉了:模型与开关不再常驻屏幕
+		assert.ok(!visibleLines.some((line) => line.includes("p/m1") && line.includes("approval=ask")));
 	});
 
-	it("首屏没有欢迎框:正文直接开始,不再有包边的线", async () => {
+	it("没有首屏欢迎:标题、提示语、菜单、Ready 一概不出现", async () => {
 		const { lines } = await framesWith(24, 80);
 		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
-		// Reins 标题与提示文字直接出现,无框
-		const titleRow = visibleLines.findIndex((line) => line.includes("Reins"));
-		assert.ok(titleRow > 0, "title exists");
-		assert.match(visibleLines[titleRow - 1] ?? "", /^( *)$/); // 标题上一行是空白,而不是框线
+		assert.ok(!visibleLines.some((line) => line.includes("Reins")), "no title");
+		assert.ok(!visibleLines.some((line) => line.includes("Type a message")), "no hint line");
+		assert.ok(!visibleLines.some((line) => line.includes("Commands")), "no menu");
+		assert.ok(!visibleLines.some((line) => line.includes("Ready")), "no top bar");
 	});
 
 	it("输入时光标列落在提示符之后:屏幕列 = 缩进 + 输入位置", async () => {
