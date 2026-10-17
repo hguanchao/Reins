@@ -71,14 +71,16 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 		[],
 		styled("Keys", BOLD),
 		plain("  Enter send   Ctrl+J/Alt+Enter newline   Esc/Ctrl+C cancel   Ctrl+D quit"),
-		plain("  Up/Down move in the draft or recall history   Ctrl+Z undo   Ctrl+L redraw"),
+		plain("  Ctrl+V paste   Ctrl+Shift+V paste inline   Ctrl+Z undo   Ctrl+L redraw"),
+		plain("  Multi-line pastes fold into a [Pasted: N lines] chip; double-click or paste again to expand"),
+		plain("  Up/Down move in the draft or recall history"),
 		plain("  PageUp/PageDown page   Ctrl+P/Ctrl+N line   wheel scrolls the history"),
 		plain("  While browsing, Home/End jump to the oldest or newest line; hold Shift to select text"),
 		plain("  Drag text to select and copy; drag the bar on the right edge to scroll"),
 		plain("  Click a tick or arrow on the rail to jump to that turn"),
 		plain("  Click a block to select; double-click to fold; Tab focuses the transcript"),
 		plain("  Consecutive read/search/ls calls collapse into a ◈ summary; expand it to list them"),
-		plain("  j/k entry   H/L turn   e fold   h/l fold   y copy   g/G top/btm   E all"),
+		plain("  j/k entry   H/L turn   e fold   h/l fold   y copy   Y meta   g/G top/btm   E all"),
 		plain("  Ctrl+E folds every thinking block   Tab returns to the prompt"),
 	);
 	return lines;

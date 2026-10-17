@@ -95,6 +95,15 @@ describe("按键解码", () => {
 		assert.deepEqual(decoder.push("1~"), []);
 	});
 
+	it("Ctrl+V 与终端送来的 Ctrl+Shift+V 变体", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(decoder.push("\x16"), [{ type: "key", name: "ctrl-v" }]);
+		assert.deepEqual(decoder.push("\x1b[118;5u"), [{ type: "key", name: "ctrl-v" }]);
+		assert.deepEqual(decoder.push("\x1b[86;6u"), [{ type: "key", name: "ctrl-shift-v" }]);
+		assert.deepEqual(decoder.push("\x1b[27;5;118~"), [{ type: "key", name: "ctrl-v" }]);
+		assert.deepEqual(decoder.push("\x1b[27;6;86~"), [{ type: "key", name: "ctrl-shift-v" }]);
+	});
+
 	it("焦点事件", () => {
 		const decoder = new KeyDecoder();
 		assert.deepEqual(decoder.push("\x1b[I"), [{ type: "focus", focused: true }]);

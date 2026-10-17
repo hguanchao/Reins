@@ -37,6 +37,8 @@ export const THEME = {
 	codeBg: rgb(0x1c, 0x1c, 0x1c),
 	/** 面板里被选中的行 */
 	selectBg: rgb(0x36, 0x36, 0x36),
+	/** 粘贴 chip 的底色：比正文低一档，提醒它是一段折叠起来的内容 */
+	pasteBg: rgb(0x2c, 0x2a, 0x36),
 	/** 路径 */
 	path: rgb(0xff, 0x9e, 0x64),
 	/** 需要注意但不致命的事：没读的配置、被拒绝的发送 */
@@ -62,6 +64,8 @@ export const CODE: Style = { color: THEME.code };
 export const CODE_BG: Style = { background: THEME.codeBg };
 /** 选中行的底色。 */
 export const SELECT_BG: Style = { background: THEME.selectBg };
+/** 粘贴 chip 的底色。 */
+export const PASTE_BG: Style = { background: THEME.pasteBg };
 export const PATH: Style = { color: THEME.path };
 export const WARN: Style = { color: THEME.warn };
 export const OK: Style = { color: THEME.ok };

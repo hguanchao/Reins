@@ -228,4 +228,25 @@ describe("块折叠", () => {
 		transcript.collapse(block.id);
 		assert.equal(transcript.blockText(block.id), "one two three four five six");
 	});
+
+	it("blockMeta 返回工具调用，汇总组按成员逐条返回", () => {
+		const transcript = new Transcript(80);
+		transcript.handle({ type: "tool_start", callId: "1", name: "Read", args: { path: "a.ts" } }, 0);
+		transcript.handle(
+			{ type: "tool_end", callId: "1", name: "Read", isError: false, durationMs: 1, summary: "ok" },
+			1,
+		);
+		transcript.handle({ type: "tool_start", callId: "2", name: "grep", args: { pattern: "needle" } }, 2);
+		transcript.handle(
+			{ type: "tool_end", callId: "2", name: "grep", isError: false, durationMs: 1, summary: "ok" },
+			3,
+		);
+
+		const group = transcript.view().blocks[0];
+		assert.equal(transcript.blockMeta(group.id), "Read a.ts\n\ngrep \"needle\"");
+
+		const user = new Transcript(20);
+		user.userTurn("hi");
+		assert.equal(user.blockMeta(user.view().blocks[0].id), undefined);
+	});
 });

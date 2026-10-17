@@ -485,6 +485,20 @@ export class Transcript {
 		}
 	}
 
+	/** 块的元信息：工具调用返回工具名与参数，汇总组按成员逐条返回。 */
+	blockMeta(id: number): string | undefined {
+		this.#syncGroups();
+		const members = this.#groupAnchors.get(id);
+		if (members !== undefined) return members.map((member) => this.#toolMeta(member)).join("\n\n");
+
+		const block = this.#blocks.find((item) => item.id === id);
+		return block?.kind === "tool" ? this.#toolMeta(block) : undefined;
+	}
+
+	#toolMeta(member: ToolBlock): string {
+		return `${member.name}${member.args.length > 0 ? ` ${member.args}` : ""}`;
+	}
+
 	/** 扫描连续的可汇总工具，记下每个组的组头 id 与成员。 */
 	#syncGroups(): void {
 		this.#groupAnchors.clear();

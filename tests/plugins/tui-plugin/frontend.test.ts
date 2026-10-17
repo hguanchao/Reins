@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { TerminalFrontend } from "../../../src/plugins/tui-plugin/frontend.ts";
 import type { Terminal, TerminalDevice, TerminalSize } from "../../../src/tui/terminal/terminal.ts";
+import type { ClipboardPort } from "../../../src/tui/clipboard.ts";
 import type { InteractiveRuntime } from "../../../src/tui/frontend.ts";
 import type { AgentEventListener } from "../../../src/agent/events.ts";
 import type { TurnDriver } from "../../../src/agent/driver.ts";
@@ -99,6 +100,29 @@ function runtimeOf(): InteractiveRuntime {
 		setConfirmer: () => undefined,
 		setNotify: () => undefined,
 		setTrusted: () => undefined,
+	};
+}
+
+/** 把复制内容写成 OSC 52，供界面测试断言；不碰真实剪贴板。 */
+function osc52Clipboard(terminal: MemoryTerminal): ClipboardPort {
+	return {
+		copy(text: string) {
+			terminal.write(`\x1b]52;c;${Buffer.from(text, "utf8").toString("base64")}\x07`);
+			return { delivery: "confirmed", message: "Copied!" };
+		},
+		readText() {
+			return undefined;
+		},
+	};
+}
+
+/** 固定读取内容的剪贴板；copy 仍写 OSC 52，便于断言。 */
+function textClipboard(terminal: MemoryTerminal, text: string): ClipboardPort {
+	return {
+		...osc52Clipboard(terminal),
+		readText() {
+			return text;
+		},
 	};
 }
 
@@ -421,7 +445,7 @@ describe("输入框边框", () => {
 			...runtimeOf(),
 			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
 		};
-		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const frontend = new TerminalFrontend({ terminal, env: {}, clipboard: osc52Clipboard(terminal) });
 		const running = frontend.run(runtime);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -438,8 +462,116 @@ describe("输入框边框", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		assert.ok(terminal.output.includes("\x1b]52;c;aGVsbA=="), "copied selected text");
-		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("Copied 4 characters")));
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("Copied! (4 chars, 1 line)")));
 
+		terminal.quit();
+		await running;
+	});
+
+	it("Ctrl+V 把多行剪贴板折成 chip，提交时展开完整内容", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const content = "one\ntwo\nthree\nfour";
+		let received = "";
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () =>
+				({
+					run: async (prompt: string) => {
+						received = prompt;
+					},
+				}) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {}, clipboard: textClipboard(terminal, content) });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("\x16");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("[Pasted: 4 lines]")), "multi-line paste becomes a chip");
+		assert.ok(!rows.some((line) => line.includes("one")), "chip hides the pasted body");
+
+		terminal.inputListener?.("\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(received, content, "submit expands the chip");
+
+		terminal.quit();
+		await running;
+	});
+
+	it("Ctrl+Shift+V 内联粘贴，不生成 chip", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({
+			terminal,
+			env: {},
+			clipboard: textClipboard(terminal, "one\ntwo\nthree\nfour"),
+		});
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("\x1b[86;6u");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("one")), "inline paste shows the text");
+		assert.ok(!rows.some((line) => line.includes("[Pasted:")), "no chip in inline mode");
+
+		terminal.inputListener?.("\x03"); // 清空输入
+		terminal.quit();
+		await running;
+	});
+
+	it("再次粘贴同一段内容会把 chip 展开", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const content = "one\ntwo\nthree\nfour";
+		const frontend = new TerminalFrontend({ terminal, env: {}, clipboard: textClipboard(terminal, content) });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("\x16");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("[Pasted: 4 lines]")));
+
+		terminal.inputListener?.("\x16");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rows = lastFrameRows(terminal.output);
+		assert.ok(!rows.some((line) => line.includes("[Pasted:")), "chip is expanded");
+		assert.ok(rows.some((line) => line.includes("one")) && rows.some((line) => line.includes("four")));
+
+		terminal.inputListener?.("\x03");
+		terminal.quit();
+		await running;
+	});
+
+	it("双击粘贴 chip 直接展开", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const content = "one\ntwo\nthree\nfour";
+		const frontend = new TerminalFrontend({ terminal, env: {}, clipboard: textClipboard(terminal, content) });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("\x16");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rows = lastFrameRows(terminal.output);
+		const chipRow = rows.findIndex((line) => line.includes("[Pasted: 4 lines]"));
+		assert.ok(chipRow >= 0, "chip is visible");
+		const chipCol = rows[chipRow].indexOf("[Pasted: 4 lines]") + 1;
+
+		for (let click = 0; click < 2; click += 1) {
+			terminal.inputListener?.(`\x1b[<0;${chipCol};${chipRow + 1}M`);
+			terminal.inputListener?.(`\x1b[<0;${chipCol};${chipRow + 1}m`);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		const expanded = lastFrameRows(terminal.output);
+		assert.ok(!expanded.some((line) => line.includes("[Pasted:")), "double-click expands the chip");
+		assert.ok(expanded.some((line) => line.includes("one")) && expanded.some((line) => line.includes("four")));
+
+		terminal.inputListener?.("\x03");
 		terminal.quit();
 		await running;
 	});
@@ -466,7 +598,7 @@ describe("输入框边框", () => {
 				},
 			}) as unknown as TurnDriver,
 		};
-		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const frontend = new TerminalFrontend({ terminal, env: {}, clipboard: osc52Clipboard(terminal) });
 		const running = frontend.run(runtime);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -520,6 +652,14 @@ describe("输入框边框", () => {
 		const copy = /(?:\x1b\]52;c;)([^\x07]*)\x07/.exec(terminal.output);
 		assert.ok(copy, "clipboard sequence written");
 		assert.ok(Buffer.from(copy[1], "base64").toString("utf8").includes("line one\nline two"), "y copies the member body");
+
+		// Y 只复制元信息（工具名与参数）
+		terminal.inputListener?.("Y");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const sequences = [...terminal.output.matchAll(/(?:\x1b\]52;c;)([^\x07]*)\x07/g)];
+		const meta = sequences.at(-1);
+		assert.ok(meta, "metadata copy sequence written");
+		assert.equal(Buffer.from(meta[1], "base64").toString("utf8"), "Read a.ts");
 
 		// Tab 回输入框，继续输入
 		terminal.inputListener?.("\t");

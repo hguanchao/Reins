@@ -6,9 +6,11 @@
  * 的接缝接进来。
  */
 
+export * from "./clipboard.ts";
 export * from "./frontend.ts";
 export * from "./input/editor.ts";
 export * from "./input/keys.ts";
+export * from "./input/paste.ts";
 export * from "./screen/region.ts";
 export * from "./screen/style.ts";
 export * from "./screen/viewport.ts";

@@ -4,6 +4,7 @@ import {
 	alignEnds,
 	cellIndexAtColumn,
 	cellsOf,
+	Clipboard,
 	colorSupport,
 	concat,
 	formatDuration,
@@ -15,6 +16,8 @@ import {
 	mapLine,
 	mergeStyles,
 	padLine,
+	pasteChipLabel,
+	pasteLineCount,
 	plain,
 	ScreenRegion,
 	spinnerFrame,
@@ -22,6 +25,9 @@ import {
 	truncateLine,
 	Viewport,
 	wrapLine,
+	type ClipboardPort,
+	type CopyOutcome,
+	type EditorElement,
 	type EditorRender,
 	type KeyEvent,
 	type Line,
@@ -29,14 +35,15 @@ import {
 	type Style,
 	type Terminal,
 	type ViewportWindow,
-} from "../../tui/index.ts";import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
+} from "../../tui/index.ts";
+import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
 import { isBuiltinCommand, runBuiltin } from "./commands.ts";
 import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts";
 import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
 import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
-import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, EDGE_LIT, FAINT, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, EDGE_LIT, FAINT, PASTE_BG, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
 
 /**
@@ -56,6 +63,10 @@ import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
  * Ctrl+P/Ctrl+N 逐行，滚轮向上向下，翻阅时 Home/End 跳到首尾。翻阅期间新到的内容不会把画面
  * 推走——视口记的是内容里的绝对行号，而流式输出只往末尾加行；只有发出新的一句时才回到末尾。
  * 会话区右侧还有滚动条；鼠标拖选文本后松开即复制，右键也能复制当前选区。
+ *
+ * 复制先试平台命令，再试 tmux 缓冲与 OSC 52，并把内容另存一份文件：任何一条路成功都不算
+ * 静默失败。输入框支持 Ctrl+V 读系统剪贴板；多行或很大的粘贴折成原子 chip，提交时再展开，
+ * 再次粘贴同一段内容则把 chip 展开。
  *
  * 界面接管终端期间，按键全部由这里解释，因此 Ctrl+C 不再产生信号：它与 Esc 一起用来中止
  * 当前这一轮；空闲时它们清空输入，输入为空时 Ctrl+C 才退出。退出前必须把备用屏交还、
@@ -111,10 +122,13 @@ interface KeyHint {
 export interface FrontendOptions {
 	readonly terminal: Terminal;
 	readonly env: Readonly<Record<string, string | undefined>>;
+	/** 测试可以换成不碰系统剪贴板的实现。 */
+	readonly clipboard?: ClipboardPort;
 }
 
 export class TerminalFrontend implements InteractiveFrontend {
 	readonly #terminal: Terminal;
+	readonly #clipboard: ClipboardPort;
 	readonly #region: ScreenRegion;
 	readonly #desktopNotify: boolean;
 	readonly #editor = new LineEditor();
@@ -154,6 +168,11 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#cursorVisible = true;
 	/** 拖动滚动条时，抓点离滑块顶端的行数。 */
 	#scrollbarGrab: number | undefined;
+	/** 最近一帧里粘贴 chip 的位置，以及输入框在屏幕上的起始行。 */
+	#editorElements: readonly EditorElement[] = [];
+	#editorTop = 0;
+	/** 上一次单击粘贴 chip 的 id 与时间，用来识别双击展开。 */
+	#lastElementClick: { id: number; at: number } | undefined;
 	/** 底部临时提示（复制成功之类），过一会儿让回给快捷键条。 */
 	#notice = "";
 	#noticeTimer: NodeJS.Timeout | undefined;
@@ -165,6 +184,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	constructor(options: FrontendOptions) {
 		this.#terminal = options.terminal;
+		this.#clipboard =
+			options.clipboard ??
+			new Clipboard({
+				env: options.env,
+				write: (sequence) => this.#terminal.write(sequence),
+			});
 		this.#region = new ScreenRegion(options.terminal, { colors: colorSupport(options.env) });
 		this.#desktopNotify = desktopNotificationsSupported(options.env);
 		this.#transcript = new Transcript(this.#entryWidth(options.terminal.size().cols));
@@ -373,7 +398,11 @@ export class TerminalFrontend implements InteractiveFrontend {
 				continue;
 			}
 
-			if (event.type === "paste" || event.type === "text") {
+			if (event.type === "paste") {
+				this.#insertPaste(event.text, false);
+				continue;
+			}
+			if (event.type === "text") {
 				this.#editor.insert(event.text);
 				this.#refresh();
 				continue;
@@ -415,6 +444,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 					break;
 				case "y":
 					this.#copyBlock();
+					break;
+				case "Y":
+					this.#copyBlockMeta();
 					break;
 				case "H":
 					this.#jumpTurn(-1);
@@ -564,9 +596,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 			return;
 		}
 
-		// 点到输入区：焦点回到输入框
+		// 点到输入区：焦点回到输入框；双击粘贴 chip 则把它展开
 		if (event.button === "left" && event.action === "down" && row >= this.#main.rows) {
 			this.#pane = "prompt";
+			this.#handleEditorClick(row, col);
 			this.#refresh();
 			return;
 		}
@@ -621,6 +654,32 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 	}
 
+	/** 输入区里的单击：落在粘贴 chip 上时记录位置，300ms 内的第二下把它展开。 */
+	#handleEditorClick(row: number, col: number): void {
+		const editorRow = row - this.#editorTop;
+		const editorCol = col - INPUT_LEFT;
+		if (editorRow < 0 || editorCol < 0) {
+			this.#lastElementClick = undefined;
+			return;
+		}
+
+		const element = this.#editorElements.find(
+			(item) => item.row === editorRow && editorCol >= item.col && editorCol < item.col + item.width,
+		);
+		if (element === undefined) {
+			this.#lastElementClick = undefined;
+			return;
+		}
+
+		const now = Date.now();
+		const last = this.#lastElementClick;
+		this.#lastElementClick = { id: element.id, at: now };
+		if (last !== undefined && last.id === element.id && now - last.at <= 300) {
+			this.#lastElementClick = undefined;
+			this.#editor.expandPasteElement(element.id);
+		}
+	}
+
 	/** 屏幕行落在哪个已定型的块里；行间距与活动块不算。 */
 	#blockAt(row: number): BlockSpan | undefined {
 		if (row < 0 || row >= this.#main.rows) return undefined;
@@ -663,21 +722,63 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (text !== undefined && text.length > 0) this.#writeClipboard(text);
 	}
 
+	/** 复制选中块的元信息（工具名与参数）；汇总组按成员逐条复制。 */
+	#copyBlockMeta(): void {
+		if (this.#selectedBlock === undefined) return;
+		const text = this.#transcript.blockMeta(this.#selectedBlock);
+		if (text !== undefined && text.length > 0) this.#writeClipboard(text);
+	}
+
+	/**
+	 * 从系统剪贴板粘贴。
+	 *
+	 * inline 为真时跳过 chip 直接插入，对应 Ctrl+Shift+V；否则交给统一的粘贴分流，多行或
+	 * 很大的内容会折成 chip。
+	 */
+	#pasteFromClipboard(inline: boolean): void {
+		const text = this.#clipboard.readText();
+		if (text === undefined || text.trim().length === 0) {
+			this.#showNotice("Clipboard is empty");
+			return;
+		}
+		this.#insertPaste(text, inline);
+	}
+
+	/**
+	 * 粘贴文本。
+	 *
+	 * 再次粘贴与某个 chip 完全相同的内容时，把 chip 展开而不是插入第二份；否则按阈值决定
+	 * 内联还是折成 chip。终端发来的括号粘贴走同一条路。
+	 */
+	#insertPaste(text: string, inline: boolean): void {
+		const normalized = text.replaceAll(/\r\n?/g, "\n");
+		if (normalized.length === 0) return;
+
+		if (!inline && this.#editor.expandPasteAtCursor(normalized)) {
+			this.#refresh();
+			return;
+		}
+
+		const label = inline ? undefined : pasteChipLabel(normalized);
+		if (label === undefined) this.#editor.insert(normalized);
+		else this.#editor.insertElement(normalized, label);
+		this.#refresh();
+	}
+
 	#writeClipboard(text: string): void {
-		// OSC 52 让终端自己把内容放进系统剪贴板，不依赖平台命令
-		this.#terminal.write(`\x1b]52;c;${Buffer.from(text, "utf8").toString("base64")}\x07`);
-		this.#showNotice(`Copied ${[...text].length} characters`);
+		const outcome = this.#clipboard.copy(text);
+		this.#showNotice(copyNotice(outcome, text), outcome.delivery === "confirmed" ? 1800 : 5000);
 	}
 
 	/** 底部临时提示；过一会儿把位置让回给快捷键条。 */
-	#showNotice(text: string): void {
+	#showNotice(text: string, duration = 1500): void {
 		this.#notice = text;
 		if (this.#noticeTimer !== undefined) clearTimeout(this.#noticeTimer);
 		this.#noticeTimer = setTimeout(() => {
 			this.#notice = "";
 			this.#noticeTimer = undefined;
 			this.#refresh();
-		}, 1500);
+		}, duration);
 		this.#refresh();
 	}
 
@@ -750,12 +851,18 @@ export class TerminalFrontend implements InteractiveFrontend {
 			case "ctrl-w":
 				this.#editor.deleteWordBefore();
 				break;
-			case "ctrl-z":
-				this.#editor.undo();
-				break;
-			case "ctrl-y":
-				this.#editor.redo();
-				break;
+				case "ctrl-z":
+					this.#editor.undo();
+					break;
+				case "ctrl-y":
+					this.#editor.redo();
+					break;
+				case "ctrl-v":
+					this.#pasteFromClipboard(false);
+					return;
+				case "ctrl-shift-v":
+					this.#pasteFromClipboard(true);
+					return;
 			case "newline":
 				this.#editor.insert("\n");
 				break;
@@ -1048,6 +1155,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const editor = this.#editor.render({
 			width: Math.max(1, size.cols - INPUT_CHROME),
 			prompt: PROMPT,
+			pasteStyle: PASTE_BG,
 		});
 		const panel = dialog === undefined ? undefined : this.#panelRows(size.cols, dialog);
 		const editorRows = editor.lines.length + PROMPT_CHROME_ROWS;
@@ -1058,6 +1166,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		const conversation = this.#conversationRows(body, rows);
 		const input: readonly Line[] = panel === undefined ? this.#inputRows(size.cols, editor) : panel;
+		this.#editorElements = editor.elements;
+		this.#editorTop = rows + status + 2;
 
 		const lines: Line[] = [
 			...conversation,
@@ -1316,7 +1426,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 				{ keys: "j/k", label: "entry" },
 				{ keys: "e", label: "fold" },
 				{ keys: "h/l", label: "fold" },
-				{ keys: "y", label: "copy" },
+				{ keys: "y/Y", label: "copy/meta" },
 				{ keys: "g/G", label: "top/btm" },
 				{ keys: "Tab", label: "prompt" },
 			];
@@ -1339,6 +1449,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		return [
 			{ keys: "Enter", label: "send" },
 			{ keys: "Ctrl+J", label: "newline" },
+			{ keys: "Ctrl+V", label: "paste" },
 			{ keys: "↑/↓", label: this.#editor.isEmpty ? "history" : "move" },
 			{ keys: "Ctrl+D", label: "quit" },
 			help,
@@ -1346,9 +1457,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 }
 
+/** 复制结果带上内容统计；提示语本身说明内容送到了哪里。 */
+function copyNotice(outcome: CopyOutcome, text: string): string {
+	const chars = [...text].length;
+	const lines = pasteLineCount(text);
+	return `${outcome.message} (${chars} chars, ${lines} ${lines === 1 ? "line" : "lines"})`;
+}
+
 /** 选区里的纯文本：按行拼接，去掉每行末尾的铺底空白与对齐空格。 */
-function selectionText(
-	history: readonly Line[],
+function selectionText(	history: readonly Line[],
 	selection: { readonly anchor: SelectionPoint; readonly focus: SelectionPoint },
 ): string {
 	const reversed =

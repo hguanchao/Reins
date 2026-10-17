@@ -129,6 +129,64 @@ describe("单行编辑器", () => {
 	});
 });
 
+describe("粘贴 chip", () => {
+	const CONTENT = "one\ntwo\nthree\nfour";
+	const LABEL = "[Pasted: 4 lines]";
+
+	it("屏幕只显示标签，提交时展开完整内容", () => {
+		const editor = new LineEditor();
+		editor.insertElement(CONTENT, LABEL);
+		assert.equal(editor.displayText, LABEL);
+		assert.equal(editor.text, CONTENT);
+		assert.equal(editor.submit(), CONTENT);
+		assert.equal(editor.text, "");
+	});
+
+	it("光标移动与退格把 chip 当成一个整体", () => {
+		const editor = new LineEditor();
+		editor.insert("a");
+		editor.insertElement(CONTENT, LABEL);
+		editor.insert("b");
+		assert.equal(editor.displayText, `a${LABEL}b`);
+
+		editor.moveLeft(); // 光标在 b 前，仍位于 chip 之后
+		editor.moveLeft(); // 跨过整个 chip
+		assert.deepEqual(editor.render({ width: 40, prompt: plain("") }).cursor, { row: 0, col: 1 });
+		editor.backspace(); // 删掉 chip 前的 a，而不是 chip 内的字符
+		assert.equal(editor.displayText, `${LABEL}b`);
+
+		editor.moveHome();
+		editor.deleteForward(); // 删掉整个 chip
+		assert.equal(editor.displayText, "b");
+	});
+
+	it("再次粘贴完全相同的内容会展开 chip，不同内容不展开", () => {
+		const editor = new LineEditor();
+		editor.insertElement(CONTENT, LABEL);
+		assert.equal(editor.expandPasteAtCursor("other"), false);
+		assert.equal(editor.expandPasteAtCursor(CONTENT), true);
+		assert.equal(editor.displayText, CONTENT);
+		assert.equal(editor.text, CONTENT);
+	});
+
+	it("渲染结果带 chip 的行列位置，供鼠标命中", () => {
+		const editor = new LineEditor();
+		editor.insert("a");
+		editor.insertElement(CONTENT, LABEL);
+		const render = editor.render({ width: 40, prompt: plain("❯ ") });
+		assert.deepEqual(render.elements, [{ id: 1, row: 0, col: 3, width: LABEL.length }]);
+	});
+
+	it("撤销能恢复 chip", () => {
+		const editor = new LineEditor();
+		editor.insertElement(CONTENT, LABEL);
+		editor.expandPasteAtCursor(CONTENT);
+		assert.equal(editor.displayText, CONTENT);
+		editor.undo();
+		assert.equal(editor.displayText, LABEL);
+	});
+});
+
 describe("编辑器渲染", () => {
 	it("空内容显示占位文本，光标在提示符后", () => {
 		const editor = new LineEditor();

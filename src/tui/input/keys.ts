@@ -35,6 +35,9 @@ export type KeyName =
 	| "ctrl-n"
 	| "ctrl-p"
 	| "ctrl-u"
+	| "ctrl-v"
+	/** Ctrl+Shift+V：内联粘贴，不生成粘贴 chip */
+	| "ctrl-shift-v"
 	| "ctrl-w"
 	| "ctrl-y"
 	| "ctrl-z";
@@ -97,6 +100,7 @@ const CONTROL_KEYS: ReadonlyMap<string, KeyName> = new Map([
 	["\x0e", "ctrl-n"],
 	["\x10", "ctrl-p"],
 	["\x15", "ctrl-u"],
+	["\x16", "ctrl-v"],
 	["\x17", "ctrl-w"],
 	["\x19", "ctrl-y"],
 	["\x1a", "ctrl-z"],
@@ -192,11 +196,16 @@ export class KeyDecoder {
 			if (index >= this.#buffer.length) return 0;
 
 			const sequence = this.#buffer.slice(2, index + 1);
-			if (sequence === "200~") {
-				this.#pasting = true;
-				return index + 1;
-			}
-			if (sequence === "I") events.push({ type: "focus", focused: true });
+				if (sequence === "200~") {
+					this.#pasting = true;
+					return index + 1;
+				}
+				const modified = modifiedPasteKey(sequence);
+				if (modified !== undefined) {
+					events.push({ type: "key", name: modified });
+					return index + 1;
+				}
+				if (sequence === "I") events.push({ type: "focus", focused: true });
 			else if (sequence === "O") events.push({ type: "focus", focused: false });
 			else {
 				const mouse = mouseFromSgr(sequence);
@@ -246,6 +255,24 @@ function singleKey(char: string): KeyName | undefined {
 	if (char === "\x7f" || char === "\x08") return "backspace";
 	if (char === "\t") return "tab";
 	return CONTROL_KEYS.get(char);
+}
+
+/**
+ * 带修饰键的粘贴按键。
+ *
+ * 终端通常把 Ctrl+Shift+V 自己处理成括号粘贴；只有开启了 kitty 键盘协议或 xterm 的
+ * modifyOtherKeys 时才会把组合键原样送进来。这里认这两种写法，认不出就照旧丢掉。
+ */
+function modifiedPasteKey(sequence: string): KeyName | undefined {
+	// kitty: CSI 118;5u（Ctrl+V）、CSI 118;6u（Ctrl+Shift+V）；可能带 ":事件类型"
+	const kitty = /^([Vv]|86|118);([56])(?::\d+)?u$/.exec(sequence);
+	if (kitty !== null) return kitty[2] === "6" ? "ctrl-shift-v" : "ctrl-v";
+
+	// xterm modifyOtherKeys: CSI 27;6;118~
+	const xterm = /^27;([56]);([Vv]|86|118)~$/.exec(sequence);
+	if (xterm !== null) return xterm[1] === "6" ? "ctrl-shift-v" : "ctrl-v";
+
+	return undefined;
 }
 
 /**
