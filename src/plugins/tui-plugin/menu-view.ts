@@ -17,8 +17,8 @@ export const MAX_MENU_ROWS = 8;
 /** 框线占了候选区上方的行数：屏幕行号换算候选行号时要扣掉它。 */
 export const MENU_CHROME_ROWS = 1;
 
-/** 候选内容相对面板框线的缩进。 */
-const MENU_INSET = 2;
+/** 描述列的上限：标签超过它就让位，描述列按最宽标签对齐。 */
+const LABEL_CAP = 40;
 
 export interface MenuLayout {
 	readonly rows: readonly Line[];
@@ -38,7 +38,7 @@ export function slashMenuRows(
 
 	const panel = panelWidth(width);
 	const visible = items.slice(window.top, window.top + window.visible);
-	const labelWidth = Math.min(24, Math.max(...visible.map((item) => item.name.length)) + 1);
+	const labelWidth = Math.min(LABEL_CAP, Math.max(...visible.map((item) => item.name.length + 1)));
 	const rows = visible.map((item, offset) => {
 		const active = window.top + offset === selected;
 		const background = active ? SELECT_BG : BAND;
@@ -90,9 +90,9 @@ function panelWidth(width: number): number {
 	return Math.max(1, width - OUTER_PAD * 2);
 }
 
-/** 一行候选：先缩进两列，整行铺到面板宽度；外边距由面板框线统一补。 */
+/** 一行候选：前缀两列就是与框线的距离，不再额外缩进。 */
 function itemRow(content: Line, panel: number, background: Style): Line {
-	const line = truncateLine(concat(plain(" ".repeat(MENU_INSET)), content), panel);
+	const line = truncateLine(content, panel);
 	return padLine(line, panel, background);
 }
 
