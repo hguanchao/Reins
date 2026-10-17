@@ -94,10 +94,34 @@ describe("按键解码", () => {
 		assert.deepEqual(decoder.push("\x1b[<65;1;1M"), [{ type: "wheel", direction: "down" }]);
 	});
 
-	it("其余鼠标按钮（m 松开、左键等）丢弃", () => {
+	it("SGR 鼠标按下、拖动与松开", () => {
 		const decoder = new KeyDecoder();
-		assert.deepEqual(decoder.push("\x1b[<0;1;1M"), []);
-		assert.deepEqual(decoder.push("\x1b[<64;1;1m"), []);
+		assert.deepEqual(decoder.push("\x1b[<0;3;2M"), [
+			{ type: "mouse", action: "down", button: "left", col: 3, row: 2 },
+		]);
+		assert.deepEqual(decoder.push("\x1b[<32;5;2M"), [
+			{ type: "mouse", action: "drag", button: "left", col: 5, row: 2 },
+		]);
+		assert.deepEqual(decoder.push("\x1b[<0;5;2m"), [
+			{ type: "mouse", action: "up", button: "left", col: 5, row: 2 },
+		]);
+	});
+
+	it("中键与右键也认，修饰键不影响按钮", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(decoder.push("\x1b[<1;1;1M"), [
+			{ type: "mouse", action: "down", button: "middle", col: 1, row: 1 },
+		]);
+		// 带 Shift(4) 的右键
+		assert.deepEqual(decoder.push("\x1b[<6;2;3M"), [
+			{ type: "mouse", action: "down", button: "right", col: 2, row: 3 },
+		]);
+	});
+
+	it("横向滚轮与无按键移动丢弃", () => {
+		const decoder = new KeyDecoder();
+		assert.deepEqual(decoder.push("\x1b[<66;1;1M"), []);
+		assert.deepEqual(decoder.push("\x1b[<35;4;4M"), []);
 	});
 
 	it("终端状态回复（OSC）整段丢弃", () => {

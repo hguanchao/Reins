@@ -37,6 +37,11 @@ export class Viewport {
 		this.scrollBy(pages * Math.max(1, Math.floor(height / 2)), total, height);
 	}
 
+	/** 跳到指定行；拖动滚动条时用。 */
+	scrollTo(index: number, total: number, height: number): void {
+		this.#moveTo(index, total, height);
+	}
+
 	/** 跳到内容开头。 */
 	toTop(): void {
 		this.#following = false;

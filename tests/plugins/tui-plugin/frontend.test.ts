@@ -314,6 +314,65 @@ describe("输入框边框", () => {
 		await running;
 	});
 
+	it("内容超过一屏时显示滚动条，点轨道可以跳到顶部", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			runCommand: async () => Array.from({ length: 40 }, (_, index) => `line ${index}`),
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("/long\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		let rows = lastFrameRows(terminal.output).slice(0, 19);
+		assert.ok(rows.some((line) => line.endsWith("█")), "thumb shown");
+		assert.ok(rows.some((line) => line.endsWith("│")), "track shown");
+
+		// 最右一列是滚动条：点顶端轨道，滑块回到顶部
+		terminal.inputListener?.("\x1b[<0;80;1M");
+		terminal.inputListener?.("\x1b[<0;80;1m");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output).slice(0, 19);
+		assert.ok(rows[0].endsWith("█"), "thumb moved to top");
+
+		terminal.quit();
+		await running;
+	});
+
+	it("鼠标拖选后释放，文本经 OSC 52 写入剪贴板", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("hello\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		// 用户消息在第二行（› hello）：从 h 拖到第二个 l
+		terminal.inputListener?.("\x1b[<0;3;2M");
+		terminal.inputListener?.("\x1b[<32;6;2M");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(terminal.output.includes("\x1b[7;") || terminal.output.includes("\x1b[7m"), "selection is highlighted");
+
+		terminal.inputListener?.("\x1b[<0;6;2m");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		assert.ok(terminal.output.includes("\x1b]52;c;aGVsbA=="), "copied selected text");
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("Copied 4 characters")));
+
+		terminal.quit();
+		await running;
+	});
+
 	it("审批弹窗居中，选项横向排列且不带按键提示", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };

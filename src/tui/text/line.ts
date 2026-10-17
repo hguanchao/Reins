@@ -199,6 +199,19 @@ export function sumCellsWidth(cells: readonly Cell[]): number {
 	return total;
 }
 
+/** 某个显示列落在第几个字素簇上；超出内容时取最后一个。 */
+export function cellIndexAtColumn(line: Line, column: number): number {
+	const cells = cellsOf(line);
+	if (cells.length === 0) return 0;
+
+	let width = 0;
+	for (let index = 0; index < cells.length; index += 1) {
+		width += cells[index].width;
+		if (column < width) return index;
+	}
+	return cells.length - 1;
+}
+
 /** 两个颜色是否相同。真彩色是数组，必须逐项比，不能比引用。 */
 export function sameColor(left: Color | undefined, right: Color | undefined): boolean {
 	if (left === right) return true;

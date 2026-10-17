@@ -32,8 +32,8 @@ export interface Terminal extends TerminalDevice {
 	/**
 	 * 鼠标上报。
 	 *
-	 * 备用屏里没有终端自带的回滚缓冲，滚轮只有终端把它报上来才翻得动主区。代价是鼠标不再
-	 * 归终端管——要选中文本得按住 Shift，所以只在该接管的那段时间里开着。
+	 * 备用屏里没有终端自带的回滚缓冲，滚轮、拖选与拖动滚动条都只有终端把鼠标事件报上来
+	 * 才做得了。代价是鼠标不再归终端管——要用终端自己的选中，得按住 Shift。
 	 */
 	setMouseTracking(enabled: boolean): void;
 	/**
@@ -57,13 +57,13 @@ const DISABLE_FOCUS = "\x1b[?1004l";
 const ENTER_ALT_SCREEN = "\x1b[?1049h";
 const LEAVE_ALT_SCREEN = "\x1b[?1049l";
 /**
- * 鼠标上报：普通上报加 SGR 编码。
+ * 鼠标上报：按住拖动也上报，加 SGR 编码。
  *
- * 老式编码把按键与坐标各塞进一个字节，列号超过 95 就报不准；SGR 用十进制写坐标，宽屏也
+ * 1002 让按住左键的移动也报上来，拖选与滚动条拖动都要用；1006 用十进制写坐标，宽屏也
  * 不会错位。
  */
-const ENABLE_MOUSE = "\x1b[?1000h\x1b[?1006h";
-const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1000l";
+const ENABLE_MOUSE = "\x1b[?1002h\x1b[?1006h";
+const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1002l";
 
 /** 真实终端：进程的标准输入输出。 */
 export class ProcessTerminal implements Terminal {

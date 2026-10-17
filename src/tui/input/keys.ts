@@ -43,6 +43,14 @@ export type KeyEvent =
 	| { readonly type: "focus"; readonly focused: boolean }
 	/** 滚轮方向 */
 	| { readonly type: "wheel"; readonly direction: "up" | "down" }
+	/** 鼠标按键、拖动与松开；坐标从 1 开始，与终端一致 */
+	| {
+			readonly type: "mouse";
+			readonly action: "down" | "drag" | "up";
+			readonly button: "left" | "middle" | "right";
+			readonly col: number;
+			readonly row: number;
+	  }
 	| { readonly type: "key"; readonly name: KeyName };
 
 const ESCAPE = "\x1b";
@@ -185,9 +193,11 @@ export class KeyDecoder {
 			if (sequence === "I") events.push({ type: "focus", focused: true });
 			else if (sequence === "O") events.push({ type: "focus", focused: false });
 			else {
-				const wheel = wheelFromSgr(sequence);
-				if (wheel !== undefined) events.push({ type: "wheel", direction: wheel });
-				else {
+				const mouse = mouseFromSgr(sequence);
+				if (mouse !== undefined) {
+					if (mouse.action === "event") events.push(mouse.event);
+					else events.push({ type: "wheel", direction: mouse.action === "wheel-up" ? "up" : "down" });
+				} else {
 					const key = CSI_KEYS.get(sequence);
 					if (key !== undefined) events.push({ type: "key", name: key });
 				}
@@ -226,19 +236,50 @@ function singleKey(char: string): KeyName | undefined {
 }
 
 /**
- * SGR 鼠标报告里的滚轮。
+ * SGR 鼠标报告。
  *
- * 序列形如 `<64;12;3M`：按钮编号、列、行。64 是上滚，65 是下滚（这两个数由终端编码定死，
- * 与按钮编号连在一起，不能改）。末尾的 M 表示按下，小写 m 表示松开——滚轮没有松开这回事，
- * 只认大写。其余按钮（左键、中键、移动）在界面上没有含义，交给调用方丢掉。
+ * 序列形如 `<0;12;3M`：按钮编号、列、行。末尾大写 M 表示按下或移动，小写 m 表示松开。
+ * 按钮编号的低两位是键（0 左、1 中、2 右），32 位表示按住移动；64/65 是滚轮，与按钮编号
+ * 连在一起，不能改。修饰键位（4/8/16）对界面没有意义，忽略。
  */
-function wheelFromSgr(sequence: string): "up" | "down" | undefined {
-	if (!sequence.startsWith("<") || !sequence.endsWith("M")) return undefined;
+type SgrMouse =
+	| { readonly action: "wheel-up" }
+	| { readonly action: "wheel-down" }
+	| {
+			readonly action: "event";
+			readonly event: Extract<KeyEvent, { type: "mouse" }>;
+	  };
 
-	const button = Number.parseInt(sequence.slice(1), 10);
-	if (button === 64) return "up";
-	if (button === 65) return "down";
-	return undefined;
+function mouseFromSgr(sequence: string): SgrMouse | undefined {
+	if (!sequence.startsWith("<")) return undefined;
+	const released = sequence.endsWith("m");
+	if (!released && !sequence.endsWith("M")) return undefined;
+
+	const [code, col, row] = sequence.slice(1, -1).split(";").map(Number);
+	if (!Number.isInteger(code) || !Number.isInteger(col) || !Number.isInteger(row)) return undefined;
+	if (col < 1 || row < 1) return undefined;
+
+	if (!released && code === 64) return { action: "wheel-up" };
+	if (!released && code === 65) return { action: "wheel-down" };
+	// 横向滚轮与其它扩展按钮没有绑定
+	if (code >= 64) return undefined;
+
+	const buttonBits = code & 3;
+	const button = buttonBits === 0 ? "left" : buttonBits === 1 ? "middle" : buttonBits === 2 ? "right" : undefined;
+	// ?1002 不会报「无按键移动」；真收到就丢掉，免得被当成拖动
+	if (button === undefined) return undefined;
+
+	const moving = (code & 32) !== 0;
+	return {
+		action: "event",
+		event: {
+			type: "mouse",
+			action: released ? "up" : moving ? "drag" : "down",
+			button,
+			col,
+			row,
+		},
+	};
 }
 
 function isControl(char: string): boolean {

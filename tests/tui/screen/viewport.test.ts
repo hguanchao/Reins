@@ -54,6 +54,15 @@ describe("滚动视口", () => {
 		assert.deepEqual(viewport.window(32, 10), { start: 7, following: false });
 	});
 
+	it("scrollTo 直接跳到指定行，到末尾时恢复跟尾", () => {
+		const viewport = new Viewport();
+		viewport.scrollTo(7, 30, 10);
+		assert.deepEqual(viewport.window(30, 10), { start: 7, following: false });
+
+		viewport.scrollTo(999, 30, 10);
+		assert.deepEqual(viewport.window(30, 10), { start: 20, following: true });
+	});
+
 	it("toTop 与 toEnd", () => {
 		const viewport = new Viewport();
 		viewport.toTop();

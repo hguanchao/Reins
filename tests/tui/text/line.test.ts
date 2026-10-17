@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
 	alignEnds,
+	cellIndexAtColumn,
 	cellsOf,
 	concat,
 	lineOfCells,
@@ -137,5 +138,15 @@ describe("格子层投影", () => {
 
 	it("sumCellsWidth 用建格时算好的宽度", () => {
 		assert.equal(sumCellsWidth(cellsOf(plain("ab中"))), 4);
+	});
+
+	it("cellIndexAtColumn 按显示列落格，宽字符占两列", () => {
+		const line = plain("a中b");
+		assert.equal(cellIndexAtColumn(line, 0), 0);
+		assert.equal(cellIndexAtColumn(line, 1), 1);
+		assert.equal(cellIndexAtColumn(line, 2), 1);
+		assert.equal(cellIndexAtColumn(line, 3), 2);
+		assert.equal(cellIndexAtColumn(line, 99), 2);
+		assert.equal(cellIndexAtColumn(plain(""), 3), 0);
 	});
 });

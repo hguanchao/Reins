@@ -2,11 +2,15 @@ import type { AgentEvent } from "../../agent/events.ts";
 import type { NotifyMode } from "../../config/config-file.ts";
 import {
 	alignEnds,
+	cellIndexAtColumn,
+	cellsOf,
 	colorSupport,
 	concat,
 	formatDuration,
 	KeyDecoder,
 	LineEditor,
+	lineOfCells,
+	mergeStyles,
 	padLine,
 	plain,
 	ScreenRegion,
@@ -18,6 +22,7 @@ import {
 	type KeyEvent,
 	type Line,
 	type Span,
+	type Style,
 	type Terminal,
 	type ViewportWindow,
 } from "../../tui/index.ts";
@@ -26,6 +31,7 @@ import { isBuiltinCommand, runBuiltin } from "./commands.ts";
 import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
+import { SCROLLBAR_WIDTH, scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
 import { ACCENT, BAD, BRIGHT, DIM, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript } from "./transcript.ts";
 
@@ -38,6 +44,7 @@ import { Transcript } from "./transcript.ts";
  * 备用屏没有终端自带的回滚缓冲，回看历史因此由会话区自己滚动：PageUp/PageDown 翻页，
  * Ctrl+P/Ctrl+N 逐行，滚轮向上向下，翻阅时 Home/End 跳到首尾。翻阅期间新到的内容不会把画面
  * 推走——视口记的是内容里的绝对行号，而流式输出只往末尾加行；只有发出新的一句时才回到末尾。
+ * 会话区右侧还有滚动条；鼠标拖选文本后松开即复制，右键也能复制当前选区。
  *
  * 界面接管终端期间，按键全部由这里解释，因此 Ctrl+C 不再产生信号：它与 Esc 一起用来中止
  * 当前这一轮；空闲时它们清空输入，输入为空时 Ctrl+C 才退出。退出前必须把备用屏交还、
@@ -75,6 +82,15 @@ interface MainFrame {
 	readonly window: ViewportWindow;
 }
 
+/** 选区端点：会话历史里的行号，以及该行第几个字素簇。 */
+interface SelectionPoint {
+	readonly line: number;
+	readonly cell: number;
+}
+
+/** 拖选的反显样式；终端的选中色拿不到，用反显最接近。 */
+const SELECTION: Style = { reverse: true };
+
 /** 底部快捷键条上的一条：键与动作。 */
 interface KeyHint {
 	readonly keys: string;
@@ -111,6 +127,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#abort: AbortController | undefined;
 	#ticker: NodeJS.Timeout | undefined;
 	#escapeTimer: NodeJS.Timeout | undefined;
+	/** 正在拖选时的两个端点；脱离按下状态后仍保留，直到下一次点击。 */
+	#selection: { anchor: SelectionPoint; focus: SelectionPoint } | undefined;
+	#selecting = false;
+	#dragged = false;
+	/** 拖动滚动条时，抓点离滑块顶端的行数。 */
+	#scrollbarGrab: number | undefined;
+	/** 底部临时提示（复制成功之类），过一会儿让回给快捷键条。 */
+	#notice = "";
+	#noticeTimer: NodeJS.Timeout | undefined;
 	/** 本轮开始的时刻。事件里没有耗时，指示器按它算「这一轮跑了多久」。 */
 	#turnStartedAt = 0;
 	#done: (() => void) | undefined;
@@ -161,8 +186,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#terminal.setRawMode(true);
 		this.#terminal.setBracketedPaste(true);
 		this.#terminal.setFocusReporting(true);
-		// 滚轮在备用屏里没有别的东西可滚：只有终端把它报上来，会话区才翻得动。代价是鼠标不再
-		// 由终端选中（选中文本要按住 Shift），所以只在这一段运行期间开着
+		// 滚轮、拖选与滚动条拖动都靠终端上报鼠标；代价是终端自己的选中要让位给 Shift
 		this.#terminal.setMouseTracking(true);
 		// 整块屏幕都归本程序：主屏原封不动，退出时原样交还
 		this.#terminal.setAlternateScreen(true);
@@ -177,6 +201,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#region.clear();
 		this.#stopTicker();
 		if (this.#escapeTimer !== undefined) clearTimeout(this.#escapeTimer);
+		if (this.#noticeTimer !== undefined) clearTimeout(this.#noticeTimer);
 		this.#terminal.setAlternateScreen(false);
 		this.#terminal.setMouseTracking(false);
 		this.#terminal.setBracketedPaste(false);
@@ -219,6 +244,11 @@ export class TerminalFrontend implements InteractiveFrontend {
 				this.#scrollBy(event.direction === "up" ? -WHEEL_LINES : WHEEL_LINES);
 				continue;
 			}
+			// 弹窗打开时鼠标只让滚轮过：拖选和拖动滚动条都先放一放
+			if (event.type === "mouse") {
+				if (this.#dialog === undefined) this.#handleMouse(event);
+				continue;
+			}
 			// 翻阅在任何时候都要能用：确认卡片问的就是上面那次工具调用，得能翻上去看清楚
 			if (event.type === "key" && this.#scrollKey(event)) continue;
 
@@ -239,6 +269,124 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 			this.#handleKey(event);
 		}
+	}
+
+	/**
+	 * 鼠标操作：会话区里拖选文本，最右一列拖动滚动条，右键复制当前选区。
+	 *
+	 * 坐标从终端来，列和行都从 1 开始；这里先换成 0 起，再按会话区各段占的列还原到内容行。
+	 */
+	#handleMouse(event: Extract<KeyEvent, { type: "mouse" }>): void {
+		const cols = this.#terminal.size().cols;
+		const row = event.row - 1;
+		const col = event.col - 1;
+
+		if (
+			event.button === "left" &&
+			event.action === "down" &&
+			col === cols - 1 &&
+			row >= 0 &&
+			row < this.#main.rows
+		) {
+			const grab = scrollbarGrabOffset(row, this.#main.total, this.#main.rows, this.#main.window.start);
+			if (grab !== undefined) {
+				this.#scrollbarGrab = grab;
+				this.#scrollTo(scrollbarStart(row, grab, this.#main.total, this.#main.rows));
+			}
+			return;
+		}
+
+		if (event.action === "drag" && this.#scrollbarGrab !== undefined) {
+			this.#scrollTo(scrollbarStart(row, this.#scrollbarGrab, this.#main.total, this.#main.rows));
+			return;
+		}
+
+		if (event.action === "up" && this.#scrollbarGrab !== undefined) {
+			this.#scrollbarGrab = undefined;
+			return;
+		}
+
+		if (event.button === "left" && event.action === "down") {
+			const point = this.#selectionPoint(col, row);
+			if (point !== undefined) {
+				this.#selection = { anchor: point, focus: point };
+				this.#selecting = true;
+				this.#dragged = false;
+				this.#refresh();
+			}
+			return;
+		}
+
+		if (event.action === "drag" && this.#selecting && this.#selection !== undefined) {
+			const point = this.#selectionPoint(col, row);
+			if (point !== undefined) {
+				this.#selection.focus = point;
+				this.#dragged = true;
+				this.#refresh();
+			}
+			return;
+		}
+
+		if (event.action === "up" && this.#selecting) {
+			this.#selecting = false;
+			if (this.#dragged) this.#copySelection();
+			else this.#selection = undefined;
+			this.#refresh();
+			return;
+		}
+
+		if (event.button === "right" && event.action === "down" && this.#selection !== undefined) {
+			this.#copySelection();
+		}
+	}
+
+	/** 屏幕坐标落在哪一行文字的哪个字素簇上；落在边距、轨道、滚动条上则不算。 */
+	#selectionPoint(col: number, row: number): SelectionPoint | undefined {
+		if (row < 0 || row >= this.#main.rows) return undefined;
+
+		const line = this.#main.window.start + row;
+		if (line < 0 || line >= this.#history.length) return undefined;
+
+		const cols = this.#terminal.size().cols;
+		const body = this.#body(cols);
+		const rail = railWidth({ width: body, turns: this.#turns.length });
+		const contentWidth = Math.max(1, body - rail - SCROLLBAR_WIDTH);
+		const userLine = this.#userLines.has(line);
+		const contentCol = userLine ? col : col - PAD;
+
+		if (contentCol < 0) return undefined;
+		if (userLine ? contentCol >= cols - SCROLLBAR_WIDTH : contentCol >= contentWidth) return undefined;
+
+		return { line, cell: cellIndexAtColumn(this.#history[line], contentCol) };
+	}
+
+	#scrollTo(index: number): void {
+		this.#viewport.scrollTo(index, this.#main.total, this.#main.rows);
+		this.#refresh();
+	}
+
+	#copySelection(): void {
+		const selection = this.#selection;
+		if (selection === undefined) return;
+
+		const text = selectionText(this.#history, selection);
+		if (text.length === 0) return;
+
+		// OSC 52 让终端自己把内容放进系统剪贴板，不依赖平台命令
+		this.#terminal.write(`\x1b]52;c;${Buffer.from(text, "utf8").toString("base64")}\x07`);
+		this.#showNotice(`Copied ${[...text].length} characters`);
+	}
+
+	/** 底部临时提示；过一会儿把位置让回给快捷键条。 */
+	#showNotice(text: string): void {
+		this.#notice = text;
+		if (this.#noticeTimer !== undefined) clearTimeout(this.#noticeTimer);
+		this.#noticeTimer = setTimeout(() => {
+			this.#notice = "";
+			this.#noticeTimer = undefined;
+			this.#refresh();
+		}, 1500);
+		this.#refresh();
 	}
 
 	/**
@@ -354,8 +502,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		// 新回合从这一行开始；轨道多一格刻度，画面回到末尾——接下来要看的就是它的结果
 		this.#turns.push(this.#history.length);
 		this.#viewport.toEnd();
-		// 用户消息块按整屏宽排版，并通过记录行号跳过全局内边距与轨道
-		const userLines = this.#transcript.userTurn(text, Math.max(1, this.#terminal.size().cols));
+		// 用户消息块贴住屏幕左边铺满，只给右侧滚动条留一列；通过这些行号跳过内边距与轨道
+		const userWidth = Math.max(1, this.#terminal.size().cols - SCROLLBAR_WIDTH);
+		const userLines = this.#transcript.userTurn(text, userWidth);
 		const userStart = this.#history.length;
 		for (let index = 0; index < userLines.length; index += 1) this.#userLines.add(userStart + index);
 		this.#commit(userLines);
@@ -582,12 +731,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 		});
 	}
 
-	/** 主屏：会话区的可见窗口，右侧一列轨道；有审批时把弹窗盖在中间。 */
+	/** 主屏：会话区的可见窗口，右侧是轨道与滚动条；有审批时把弹窗盖在中间。 */
 	#conversationRows(body: number, rows: number, dialog: ConfirmDialog | undefined): readonly Line[] {
 		const mainRows = Math.max(1, rows);
 		const rail = railWidth({ width: body, turns: this.#turns.length });
-		// 轨道占走的列要让出来：正文按扣掉轨道之后的宽度重排
-		this.#transcript.resize(Math.max(1, body - rail));
+		// 轨道与滚动条占走的列要让出来：正文按剩下的宽度重排
+		const contentWidth = Math.max(1, body - rail - SCROLLBAR_WIDTH);
+		this.#transcript.resize(contentWidth);
 
 		// 活动块按主区高度折行：一屏装不下的部分只留最近的，它才是「还在动的」那几行
 		const now = Date.now();
@@ -599,17 +749,48 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const visible = content.slice(window.start, window.start + mainRows);
 		while (visible.length < mainRows) visible.push(plain(""));
 
-		// 每一行末尾接一格轨道：从上往下就是会话的顺序。用户消息块自己占满整行，不再加边距与轨道
+		// 每一行末尾接轨道与滚动条。用户消息块自己铺满整行，只留滚动条那一列
 		const cells = railCells(mainRows, this.#turns, window.start);
 		const conversation = visible.map((line, index) => {
-			if (this.#userLines.has(window.start + index)) return line;
-			return rail === 0
-				? concat(plain(" ".repeat(PAD)), line)
-				: concat(plain(" ".repeat(PAD)), appendRail(line, cells[index]));
+			const absolute = window.start + index;
+			const range = this.#selectionRange(absolute);
+			const base = range === undefined ? line : this.#highlight(line, range.from, range.to);
+			const scroll = scrollbarCell(index, content.length, mainRows, window.start);
+
+			if (this.#userLines.has(absolute)) return concat(base, [scroll]);
+			const withRail = rail === 0 ? base : appendRail(base, cells[index]);
+			return concat(plain(" ".repeat(PAD)), withRail, [scroll]);
 		});
 
 		if (dialog === undefined) return conversation;
 		return this.#overlayDialog(conversation, dialog, body);
+	}
+
+	/** 这一行落在选区里时，返回要反显的字素簇范围（含两端）。 */
+	#selectionRange(line: number): { from: number; to: number } | undefined {
+		const selection = this.#selection;
+		if (selection === undefined) return undefined;
+
+		const { anchor, focus } = selection;
+		const reversed = anchor.line > focus.line || (anchor.line === focus.line && anchor.cell > focus.cell);
+		const start = reversed ? focus : anchor;
+		const end = reversed ? anchor : focus;
+		if (line < start.line || line > end.line) return undefined;
+
+		const count = cellsOf(this.#history[line] ?? []).length;
+		if (count === 0) return undefined;
+		const from = line === start.line ? Math.min(start.cell, count - 1) : 0;
+		const to = line === end.line ? Math.min(end.cell, count - 1) : count - 1;
+		return from > to ? undefined : { from, to };
+	}
+
+	/** 给一段字素簇叠上反显样式；其余格子保持原样。 */
+	#highlight(line: Line, from: number, to: number): Line {
+		return lineOfCells(
+			cellsOf(line).map((cell, index) =>
+				index >= from && index <= to ? { ...cell, style: mergeStyles(cell.style, SELECTION) } : cell,
+			),
+		);
 	}
 
 	/** 把审批弹窗盖在会话区正中：弹窗自己占的行替换掉背后的内容。 */
@@ -676,8 +857,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		return boxRule(cols);
 	}
 
-	/** 底部快捷键条：当前场景该按什么。 */
+	/** 底部快捷键条：当前场景该按什么。复制刚完成时先把位置让给结果提示。 */
 	#keysRow(width: number): Line {
+		if (this.#notice.length > 0) return truncateLine(styled(this.#notice, ACCENT), width);
 		return this.#hintLine(this.#hints(), width);
 	}
 
@@ -723,4 +905,35 @@ export class TerminalFrontend implements InteractiveFrontend {
 			help,
 		];
 	}
+}
+
+/** 选区里的纯文本：按行拼接，去掉每行末尾的铺底空白与对齐空格。 */
+function selectionText(
+	history: readonly Line[],
+	selection: { readonly anchor: SelectionPoint; readonly focus: SelectionPoint },
+): string {
+	const reversed =
+		selection.anchor.line > selection.focus.line ||
+		(selection.anchor.line === selection.focus.line && selection.anchor.cell > selection.focus.cell);
+	const start = reversed ? selection.focus : selection.anchor;
+	const end = reversed ? selection.anchor : selection.focus;
+
+	const lines: string[] = [];
+	for (let index = start.line; index <= end.line; index += 1) {
+		const cells = cellsOf(history[index] ?? []);
+		if (cells.length === 0) {
+			lines.push("");
+			continue;
+		}
+		const from = index === start.line ? Math.min(start.cell, cells.length - 1) : 0;
+		const to = index === end.line ? Math.min(end.cell, cells.length - 1) : cells.length - 1;
+		lines.push(
+			cells
+				.slice(from, to + 1)
+				.map((cell) => cell.text)
+				.join("")
+				.replace(/[ \t]+$/u, ""),
+		);
+	}
+	return lines.join("\n");
 }
