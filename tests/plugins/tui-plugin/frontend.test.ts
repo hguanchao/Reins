@@ -124,35 +124,42 @@ function lastFrameRows(output: string): string[] {
 }
 
 describe("输入框边框", () => {
-	it("上下边框各一条细线,从第一列铺满整个终端宽", async () => {
+	it("输入框是完整方框：上边框与嵌了信息的下边框", async () => {
 		const { lines } = await framesWith(24, 80);
-		const rules = lines.filter((line) => /^─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
-		// 输入框上下两条;首屏没有欢迎框,正文区直接开始
-		assert.equal(rules.length, 2);
-		for (const rule of rules) {
-			const visible = rule.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-			assert.equal(visible.length, 80); // 80 列终端,一条线占满
-			assert.equal((rule.match(/38;2;225;225;225/g) ?? []).length, 1); // 正文白,整行单段
-			assert.equal((rule.match(/38;2;50;50;55/g) ?? []).length, 0); // 不再使用暗边框色
-		}
+		const visible = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+		const top = visible.find((line) => line.startsWith("╭") && line.endsWith("╮"));
+		const bottom = visible.find((line) => line.startsWith("╰") && line.endsWith("╯"));
+
+		assert.ok(top, "top border");
+		assert.ok(bottom, "bottom border");
+		assert.equal(top!.length, 80);
+		assert.equal(bottom!.length, 80);
+		assert.ok(top!.includes("─"));
+		assert.ok(bottom!.includes("m1"), "model in the bottom border");
+		assert.ok(bottom!.includes("approval=ask"), "approval mode in the bottom border");
+		assert.ok(lines.some((line) => line.includes("╭") && line.includes("38;2;80;80;88")), "focused border color");
 	});
 
-	it("输入行没有左右竖线,内容从第一列开始排", async () => {
+	it("输入行左右有竖线，提示符在边框和内边距之后", async () => {
 		const { lines } = await framesWith(24, 80);
 		const editorRow = lines.find((line) => line.includes("›"));
 		assert.ok(editorRow, "editor row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-		assert.ok(!visible.includes("│"), "no vertical border");
-		assert.ok(visible.startsWith("›"), "prompt flushes left");
+		assert.ok(visible.startsWith("│"), "left border");
+		assert.ok(visible.endsWith("│"), "right border");
+		assert.equal(visible.indexOf("›"), 3, "border plus two padding columns");
 	});
 
-	it("下边框不嵌模型与审批状态,屏幕上也没有头部状态条", async () => {
+	it("模型与审批方式嵌在下边框，顶部没有单独状态条", async () => {
 		const { lines } = await framesWith(24, 80);
-		const rules = lines.filter((line) => /^─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
-		assert.equal(rules.length, 2);
 		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
-		// 头部展示整个去掉了:模型与开关不再常驻屏幕
-		assert.ok(!visibleLines.some((line) => line.includes("p/m1") && line.includes("approval=ask")));
+		const bottom = visibleLines.find((line) => line.startsWith("╰") && line.endsWith("╯"));
+
+		assert.ok(bottom);
+		assert.ok(bottom!.includes("m1"));
+		assert.ok(bottom!.includes("approval=ask"));
+		// 第一行是会话区，不是单独的头部状态条
+		assert.ok(!visibleLines[0].includes("p/m1"));
 	});
 
 	it("没有首屏欢迎:标题、提示语、菜单、Ready 一概不出现", async () => {
@@ -177,8 +184,8 @@ describe("输入框边框", () => {
 		const lastFrame = frame.slice(frame.lastIndexOf("\x1b[H"));
 		const anchorMatch = /(?:\x1b\[)(\d+);(\d+)H(?!.*\x1b\[\d+;\d+H)/.exec(lastFrame);
 		assert.ok(anchorMatch, "cursor positioned");
-		// › 光标在提示符(2)+输入内容(1)之后
-		assert.equal(anchorMatch[2], "4");
+		// 边框(1)+内边距(2)+提示符(2)+输入内容(1)，从 1 开始计数
+		assert.equal(anchorMatch[2], "7");
 		// 清空再退出:Ctrl+D 只在空输入时退出
 		terminal.inputListener?.("\x7f");
 		terminal.quit();
@@ -280,7 +287,8 @@ describe("输入框边框", () => {
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		const cleared = lastFrameRows(terminal.output);
 		assert.ok(!cleared.some((line) => line.includes("abc")), "input cleared");
-		assert.ok(cleared.some((line) => line.trimEnd() === "›"), "prompt is empty");
+		const editor = cleared.find((line) => line.startsWith("│") && line.includes("›"));
+		assert.ok(editor, "prompt is empty");
 
 		// Esc 不退出:还能继续输入
 		terminal.inputListener?.("z");

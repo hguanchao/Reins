@@ -11,6 +11,7 @@ import {
 	LineEditor,
 	lineOfCells,
 	lineText,
+	lineWidth,
 	mapLine,
 	mergeStyles,
 	padLine,
@@ -21,21 +22,21 @@ import {
 	truncateLine,
 	Viewport,
 	wrapLine,
+	type EditorRender,
 	type KeyEvent,
 	type Line,
 	type Span,
 	type Style,
 	type Terminal,
 	type ViewportWindow,
-} from "../../tui/index.ts";
-import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
+} from "../../tui/index.ts";import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
 import { isBuiltinCommand, runBuiltin } from "./commands.ts";
 import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts";
 import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
 import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
-import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, FAINT, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, DIM, EDGE, EDGE_LIT, FAINT, SELECT_BG, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
 
 /**
@@ -66,6 +67,12 @@ import { Transcript, toolSummary, type BlockSpan } from "./transcript.ts";
 /** 输入框之外的固定行：上面一行空行、边框上下两条、下面的快捷键条。 */
 const PROMPT_CHROME_ROWS = 4;
 
+/** 输入框的内边距与边框：左右各两列，加两条竖线。 */
+const INPUT_PAD = 2;
+const INPUT_CHROME = 6;
+/** 从终端左缘到输入正文的列数：左边框加左内边距。 */
+const INPUT_LEFT = 3;
+
 /** 跑起来时多出的两行：空行与回合状态行。 */
 const RUNNING_ROWS = 2;
 
@@ -76,9 +83,6 @@ const PANEL_CONTENT_INSET = 5;
 const WHEEL_LINES = 3;
 
 const PROMPT: Line = styled("› ", ACCENT);
-
-/** 输入框的上下边框：细线铺满整行宽，颜色用正文白。 */
-const boxRule = (width: number): Line => styled("─".repeat(Math.max(0, width)), TEXT);
 
 /** 主区上一次画出来的样子。翻阅按键与轨道按它算边界。 */
 interface MainFrame {
@@ -1023,8 +1027,11 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const size = this.#terminal.size();
 		const body = this.#body(size.cols);
 		const dialog = this.#dialog;
-		// 输入框没有左右边框，正文从第一列开始排；审批时它整块让位给面板
-		const editor = this.#editor.render({ width: size.cols, prompt: PROMPT });
+		// 输入框是带左右边框的方框，正文宽度要扣掉边框和左右内边距
+		const editor = this.#editor.render({
+			width: Math.max(1, size.cols - INPUT_CHROME),
+			prompt: PROMPT,
+		});
 		const panel = dialog === undefined ? undefined : this.#panelRows(size.cols, dialog);
 		const editorRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const footerRows = panel === undefined ? editorRows : panel.length + 1;
@@ -1033,10 +1040,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const rows = Math.max(1, height - footerRows - status);
 
 		const conversation = this.#conversationRows(body, rows);
-		const input: readonly Line[] =
-			panel === undefined
-				? [plain(""), boxRule(size.cols), ...editor.lines, this.#boxBottom(size.cols)]
-				: panel;
+		const input: readonly Line[] = panel === undefined ? this.#inputRows(size.cols, editor) : panel;
 
 		const lines: Line[] = [
 			...conversation,
@@ -1045,7 +1049,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#keysRow(size.cols),
 		];
 
-		// 审批面板没有硬件光标；输入框里光标位于折行后的位置
+		// 审批面板没有硬件光标；输入框里光标位于边框与内边距之后
 		this.#setCursorVisible(panel === undefined && this.#pane === "prompt");
 		this.#region.draw({
 			lines,
@@ -1053,10 +1057,58 @@ export class TerminalFrontend implements InteractiveFrontend {
 				panel === undefined
 					? {
 							row: rows + status + 2 + editor.cursor.row,
-							col: editor.cursor.col,
+							col: INPUT_LEFT + editor.cursor.col,
 						}
 					: undefined,
 		});
+	}
+
+	/** 输入框：上边框、带左右竖线的正文、嵌了模型与审批方式的下边框。 */
+	#inputRows(width: number, editor: EditorRender): readonly Line[] {
+		const focused = this.#pane === "prompt";
+		const border = focused ? EDGE_LIT : EDGE;
+		const inner = Math.max(1, width - INPUT_CHROME);
+		const base: Style = focused ? TEXT : { ...TEXT, dim: true };
+
+		const text = editor.lines.map((line) =>
+			concat(
+				styled("│", border),
+				plain(" ".repeat(INPUT_PAD)),
+				padLine(mapLine(line, (style) => mergeStyles(base, style) ?? base), inner),
+				plain(" ".repeat(INPUT_PAD)),
+				styled("│", border),
+			),
+		);
+
+		return [
+			plain(""),
+			concat(styled("╭", border), styled("─".repeat(Math.max(0, width - 2)), border), styled("╮", border)),
+			...text,
+			this.#inputInfoBorder(width, border),
+		];
+	}
+
+	/** 下边框右侧嵌入模型与审批方式，和 grok 的 prompt 信息行一致。 */
+	#inputInfoBorder(width: number, border: Style): Line {
+		const runtime = this.#runtime;
+		const info = concat(
+			styled(" ", FAINT),
+			styled(runtime?.model ?? "", DIM),
+			styled(" · ", FAINT),
+			styled(`approval=${runtime?.approval ?? ""}`, FAINT),
+			styled(" ", FAINT),
+		);
+		const available = Math.max(0, width - 2);
+		const infoWidth = lineWidth(info);
+		if (infoWidth >= available) {
+			return concat(styled("╰", border), styled("─".repeat(available), border), styled("╯", border));
+		}
+		return concat(
+			styled("╰", border),
+			styled("─".repeat(available - infoWidth), border),
+			info,
+			styled("╯", border),
+		);
 	}
 
 	/** 主屏：会话区的可见窗口，右侧是轨道与滚动条。 */
@@ -1208,11 +1260,6 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const elapsed = Date.now() - this.#turnStartedAt;
 		const head = concat(styled(`${spinnerFrame(elapsed)} `, ACCENT), styled(this.#activity, TEXT));
 		return alignEnds(head, styled(formatDuration(elapsed), DIM), width);
-	}
-
-	/** 输入框的下边框：与上边框同一条细线，铺满整个终端宽。 */
-	#boxBottom(cols: number): Line {
-		return boxRule(cols);
 	}
 
 	/** 底部快捷键条：当前场景该按什么。复制刚完成时先把位置让给结果提示。 */
