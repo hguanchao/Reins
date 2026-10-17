@@ -7,7 +7,6 @@ import {
 	formatDuration,
 	KeyDecoder,
 	LineEditor,
-	lineWidth,
 	padLine,
 	plain,
 	ScreenRegion,
@@ -66,11 +65,8 @@ const WHEEL_LINES = 3;
 const PROMPT: Line = styled("❯ ", ACCENT);
 const PLACEHOLDER = "Build anything";
 
-/**
- * 输入框的上边框：一行实线铺满整行宽。宽度必须是显示列数，内容行居中画。
- * 下边框里嵌着模型与审批状态，由 `#boxBottom` 拼。
- */
-const boxTop = (width: number): Line => styled("━".repeat(Math.max(0, width)), EDGE);
+/** 输入框的上下边框：细线铺满整行宽，颜色用正文白。 */
+const boxRule = (width: number): Line => styled("─".repeat(Math.max(0, width)), TEXT);
 
 /** 主区上一次画出来的样子。翻阅按键与轨道按它算边界。 */
 interface MainFrame {
@@ -566,7 +562,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			...conversation,
 			...(this.#running ? [plain(""), this.#runningRow(body)] : []),
 			plain(""),
-			boxTop(body),
+			boxRule(body),
 			...editor.lines.map((line) => concat(styled("  ", EDGE), line)),
 			this.#boxBottom(body),
 			this.#keysRow(body),
@@ -699,25 +695,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		return concat(plain(" ".repeat(PAD)), alignEnds(head, styled(formatDuration(elapsed), DIM), body));
 	}
 
-	/** 输入框的下边框：模型与审批状态嵌在实线里，等于在问「我现在是谁、按什么规矩跑」。 */
+	/** 输入框的下边框：与上边框同一条细线。模型与审批状态在顶部状态行里，不在这里。 */
 	#boxBottom(body: number): Line {
-		const runtime = this.#runtime;
-		const info =
-			runtime === undefined
-				? plain("")
-				: styled(
-						`${runtime.provider}/${runtime.model} · approval=${runtime.approval} · sandbox=${runtime.sandbox}`,
-						DIM,
-					);
-		const width = Math.max(0, body - PAD);
-		const fitted = truncateLine(info, Math.max(0, width - 4));
-		const dashes = Math.max(0, width - lineWidth(fitted) - 4);
-		return concat(
-			plain(" ".repeat(PAD)),
-			styled("┕━ ", EDGE),
-			fitted,
-			styled(` ${"━".repeat(dashes)}┙`, EDGE),
-		);
+		return concat(plain(" ".repeat(PAD)), boxRule(body - PAD));
 	}
 
 	/** 底部快捷键条：当前场景该按什么。 */
@@ -768,13 +748,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 		];
 	}
 
-	/** 给几行内容套上边框：上下实线铺满整行，内容缩进两列。 */
+	/** 给几行内容套上边框：上下细线铺满整行，内容缩进两列。 */
 	#box(content: readonly Line[], width: number): readonly Line[] {
 		const inner = Math.max(1, width - PAD * 2);
 		const rows = content.map((line) =>
 			concat(plain(" ".repeat(PAD)), padLine(truncateLine(line, inner), inner)),
 		);
-		return [concat(plain(" ".repeat(PAD)), boxTop(width)), ...rows, concat(plain(" ".repeat(PAD)), boxTop(width))];
+		return [concat(plain(" ".repeat(PAD)), boxRule(width)), ...rows, concat(plain(" ".repeat(PAD)), boxRule(width))];
 	}
 
 	/** 上下补空行，把内容摆在中间。首屏居中比顶在头上好看。 */

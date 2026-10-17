@@ -116,36 +116,46 @@ async function framesWith(rows: number, cols: number): Promise<{ lines: string[]
 }
 
 describe("输入框边框", () => {
-	it("上边框铺满整行宽,没有左右竖线", async () => {
+	it("上边框是细线,铺满整行宽,没有左右竖线", async () => {
 		const { lines } = await framesWith(24, 80);
-		const topBorder = lines.find((line) => line.includes("━"));
-		assert.ok(topBorder, "drew a solid rule");
-		const visible = topBorder!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-		// 整行由 PAD(2) + 实线(body=78)组成,合计 80 列铺满
+		const rules = lines.filter((line) => line.includes("─"));
+		assert.ok(rules.length >= 2, "drew top and bottom rules");
+		const visible = rules[0]!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+		// 整行由 PAD(2) + 细线(body=78)组成,合计 80 列铺满
 		assert.ok(visible.startsWith("  "));
 		assert.equal(visible.replace(/ /g, "").length, 78);
-		assert.ok(!visible.includes("╭"));
+		assert.ok(!visible.includes("╭") && !visible.includes("━"));
+	});
+
+	it("上下边框颜色是正文白,整行一次上色且不嵌字", async () => {
+		const { lines } = await framesWith(24, 80);
+		const rules = lines.filter((line) => /^ {0,2}─+$/.test(line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "")));
+		// 首屏:欢迎框上下两条、输入框上下两条,四条都是纯粹线
+		assert.ok(rules.length >= 2);
+		for (const rule of rules) {
+			const visible = rule.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+			assert.match(visible, /^ {0,2}─+$/);
+			assert.equal((rule.match(/38;2;225;225;225/g) ?? []).length, 1); // 正文白,整行单段
+		}
 	});
 
 	it("输入行没有左右竖线,提示符直接顶在缩进后", async () => {
 		const { lines } = await framesWith(24, 80);
 		const editorRow = lines.find((line) => line.includes("Build anything"));
 		assert.ok(editorRow, "placeholder row exists");
-		const visible = editorRow!.replace(/[\x1b]\[[0-9;]*[A-Za-z]/g, "");
+		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 		assert.ok(!visible.includes("│"), "no vertical border");
 		assert.match(visible, /❯ Build anything/);
 	});
 
-	it("下边框嵌着模型与审批状态,同样铺满整行", async () => {
+	it("下边框不再嵌模型与审批状态,模型信息只在顶部", async () => {
 		const { lines } = await framesWith(24, 80);
-		const bottom = lines.find((line) => line.includes("p/m1") || line.includes("approval="));
-		assert.ok(bottom, "bottom rule exists");
-		const visible = bottom!.replace(/[\x1b]\[[0-9;]*[A-Za-z]/g, "");
-		assert.ok(!visible.includes("╯"));
-		assert.match(visible, /p\/m1/);
-		assert.match(visible, /approval=ask/);
-		assert.match(visible, /sandbox=off/);
-		// 右端收在同列:实线一直铺到行尾
-		assert.ok(visible.trimEnd().length <= 80);
+		const bottomIndex = lines.findIndex((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").trimEnd().endsWith("─"));
+		assert.ok(bottomIndex > 0);
+		const bottom = lines[bottomIndex]!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+		assert.doesNotMatch(bottom, /p\/m1|approval|sandbox/);
+		// 顶部状态行仍在:模型与开关只出现在那里
+		const topBar = lines.find((line) => line.includes("p/m1") && line.includes("approval=ask"));
+		assert.ok(topBar, "top bar keeps model and switches");
 	});
 });
