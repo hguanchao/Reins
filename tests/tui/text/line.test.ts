@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+	alignEnds,
 	concat,
 	lineOfCells,
 	lineText,
@@ -10,6 +11,7 @@ import {
 	mergeStyles,
 	padLine,
 	plain,
+	sameStyle,
 	styled,
 } from "../../../src/tui/text/line.ts";
 
@@ -68,5 +70,34 @@ describe("line", () => {
 			{ text: "a", width: 1, style: { dim: true } },
 		];
 		assert.deepEqual(lineOfCells(cells), [{ text: "接口" }, { text: " a", style: { dim: true } }]);
+	});
+});
+
+describe("行与样式", () => {
+	it("合并样式时背景也取内层，逐项都留下", () => {
+		const merged = mergeStyles({ bold: true, background: [1, 2, 3] }, { background: [4, 5, 6], color: "red" });
+		assert.deepEqual(merged, { bold: true, background: [4, 5, 6], color: "red" });
+	});
+
+	it("真彩色按值比较，不比引用", () => {
+		assert.equal(sameStyle({ color: [1, 2, 3] }, { color: [1, 2, 3] }), true);
+		assert.equal(sameStyle({ color: [1, 2, 3] }, { color: [1, 2, 4] }), false);
+		assert.equal(sameStyle({ background: [1, 2, 3] }, { background: [1, 2, 3] }), true);
+	});
+
+	it("补齐时能带上样式：整行铺底靠它", () => {
+		const filled = padLine(plain("ab"), 5, { background: [9, 9, 9] });
+		assert.equal(lineWidth(filled), 5);
+		assert.deepEqual(filled[1], { text: "   ", style: { background: [9, 9, 9] } });
+		// 已经够宽就原样返回
+		assert.deepEqual(padLine(plain("abcdef"), 3), plain("abcdef"));
+	});
+
+	it("左右两段撑满一行，放不下时让右边整个消失", () => {
+		assert.equal(lineText(alignEnds(plain("a"), plain("b"), 5)), "a   b");
+		// 至少要留一个空格把两段分开，否则右边的整段消失
+		assert.equal(lineText(alignEnds(plain("aaaa"), plain("bb"), 7)), "aaaa bb");
+		assert.equal(lineText(alignEnds(plain("aaaa"), plain("bb"), 6)), "aaaa");
+		assert.equal(lineText(alignEnds(plain("aaaaa"), plain("bb"), 5)), "aaaaa");
 	});
 });

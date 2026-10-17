@@ -23,6 +23,11 @@ export type ColorName =
 	| "white"
 	| "gray";
 
+/** 真彩色。终端普遍支持 24 位色，主题里定好的颜色因此能原样送出去，不必先折算成十六色。 */
+export type Rgb = readonly [number, number, number];
+
+export type Color = ColorName | Rgb;
+
 export interface Style {
 	readonly bold?: boolean;
 	readonly dim?: boolean;
@@ -30,7 +35,9 @@ export interface Style {
 	readonly underline?: boolean;
 	/** 前景与背景互换。光标就是靠它显示的：反显的那一格就是光标。 */
 	readonly reverse?: boolean;
-	readonly color?: ColorName;
+	readonly color?: Color;
+	/** 背景色。使用者的消息整行铺底、diff 的增删行都靠它区分。 */
+	readonly background?: Color;
 }
 
 export interface Span {
@@ -110,7 +117,8 @@ export function mergeStyles(base: Style | undefined, extra: Style | undefined): 
 		italic?: boolean;
 		underline?: boolean;
 		reverse?: boolean;
-		color?: ColorName;
+		color?: Color;
+		background?: Color;
 	} = {};
 	if (base.bold === true || extra.bold === true) merged.bold = true;
 	if (base.dim === true || extra.dim === true) merged.dim = true;
@@ -119,6 +127,8 @@ export function mergeStyles(base: Style | undefined, extra: Style | undefined): 
 	if (base.reverse === true || extra.reverse === true) merged.reverse = true;
 	const color = extra.color ?? base.color;
 	if (color !== undefined) merged.color = color;
+	const background = extra.background ?? base.background;
+	if (background !== undefined) merged.background = background;
 
 	return Object.keys(merged).length === 0 ? undefined : merged;
 }
@@ -129,9 +139,16 @@ export function mapLine(line: Line, transform: (style: Style | undefined) => Sty
 }
 
 /** 把行首补空格到指定宽度。已经够宽时原样返回——截断是另一件事。 */
-export function padLine(line: Line, width: number): Line {
+export function padLine(line: Line, width: number, style?: Style): Line {
 	const missing = width - lineWidth(line);
-	return missing <= 0 ? line : concat(line, plain(" ".repeat(missing)));
+	if (missing <= 0) return line;
+	return concat(line, [style === undefined ? { text: " ".repeat(missing) } : { text: " ".repeat(missing), style }]);
+}
+
+/** 左右两段撑满一行：中间用空格填。放不下时让右段整个消失，而不是把它挤成一团。 */
+export function alignEnds(left: Line, right: Line, width: number): Line {
+	const gap = width - lineWidth(left) - lineWidth(right);
+	return gap < 1 ? left : concat(left, plain(" ".repeat(gap)), right);
 }
 
 /** 按字素簇摊平片段。 */
@@ -182,7 +199,16 @@ export function sumCellsWidth(cells: readonly Cell[]): number {
 	return total;
 }
 
-function sameStyle(left: Style | undefined, right: Style | undefined): boolean {
+/** 两个颜色是否相同。真彩色是数组，必须逐项比，不能比引用。 */
+export function sameColor(left: Color | undefined, right: Color | undefined): boolean {
+	if (left === right) return true;
+	if (left === undefined || right === undefined) return false;
+	if (typeof left === "string" || typeof right === "string") return false;
+	return left[0] === right[0] && left[1] === right[1] && left[2] === right[2];
+}
+
+/** 两个样式是否相同。相邻片段同样式就合并、整帧没变就不重画，都靠它判断。 */
+export function sameStyle(left: Style | undefined, right: Style | undefined): boolean {
 	if (left === right) return true;
 	if (left === undefined || right === undefined) return false;
 	return (
@@ -191,6 +217,7 @@ function sameStyle(left: Style | undefined, right: Style | undefined): boolean {
 		left.italic === right.italic &&
 		left.underline === right.underline &&
 		left.reverse === right.reverse &&
-		left.color === right.color
+		sameColor(left.color, right.color) &&
+		sameColor(left.background, right.background)
 	);
 }

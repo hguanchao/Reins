@@ -1,4 +1,4 @@
-import { lineWidth, type Line } from "../text/line.ts";
+import { lineWidth, sameStyle, type Line } from "../text/line.ts";
 import { truncateLine } from "../text/truncate.ts";
 import { wrapLine } from "../text/wrap.ts";
 import type { TerminalDevice } from "../terminal/terminal.ts";
@@ -124,15 +124,6 @@ function sameLine(left: Line, right: Line): boolean {
 		const other = right[index];
 		return span.text === other.text && sameStyle(span.style, other.style);
 	});
-}
-
-function sameStyle(left: unknown, right: unknown): boolean {
-	if (left === right) return true;
-	if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return false;
-	const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-	return [...keys].every(
-		(key) => (left as Record<string, unknown>)[key] === (right as Record<string, unknown>)[key],
-	);
 }
 
 /**

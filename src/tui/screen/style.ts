@@ -1,4 +1,4 @@
-import type { ColorName, Line, Style } from "../text/line.ts";
+import type { Color, ColorName, Line, Style } from "../text/line.ts";
 
 /**
  * 样式到控制序列的转换。
@@ -21,6 +21,18 @@ const COLOR_CODES: Readonly<Record<ColorName, number>> = {
 	gray: 90,
 };
 
+/**
+ * 颜色对应的 SGR 参数。
+ *
+ * 十六色直接用码表；真彩色按 `38;2;r;g;b`（背景是 `48;2;…`）写，也就是 24 位色那套扩展写法。
+ * 主题里的颜色是定死的，折算成十六色反而会走样。
+ */
+function colorCodes(color: Color, base: number): number[] {
+	// 十六色：前景是 30–37 与 90，背景就是同一组数加十
+	if (typeof color === "string") return [COLOR_CODES[color] + (base - 30)];
+	return [base + 8, 2, color[0], color[1], color[2]];
+}
+
 /** 该样式对应的转义序列；没有可输出的样式时返回空串。 */
 export function styleSequence(style: Style | undefined, colors: boolean): string {
 	if (style === undefined || !colors) return "";
@@ -31,7 +43,8 @@ export function styleSequence(style: Style | undefined, colors: boolean): string
 	if (style.italic === true) codes.push(3);
 	if (style.underline === true) codes.push(4);
 	if (style.reverse === true) codes.push(7);
-	if (style.color !== undefined) codes.push(COLOR_CODES[style.color]);
+	if (style.color !== undefined) codes.push(...colorCodes(style.color, 30));
+	if (style.background !== undefined) codes.push(...colorCodes(style.background, 40));
 
 	return codes.length === 0 ? "" : `\x1b[${codes.join(";")}m`;
 }

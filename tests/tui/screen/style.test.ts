@@ -12,6 +12,13 @@ describe("styleSequence", () => {
 		assert.equal(styleSequence({ color: "gray" }, true), "\x1b[90m");
 	});
 
+	it("真彩色按 38;2 与 48;2 写出来", () => {
+		assert.equal(styleSequence({ color: [0xbb, 0x9a, 0xf7] }, true), "[38;2;187;154;247m");
+		assert.equal(styleSequence({ background: [0x24, 0x24, 0x24] }, true), "[48;2;36;36;36m");
+		// 十六色名与真彩色可以混在一份样式里
+		assert.equal(styleSequence({ bold: true, background: "black" }, true), "[1;40m");
+	});
+
 	it("没有样式就没有序列", () => {
 		assert.equal(styleSequence(undefined, true), "");
 		assert.equal(styleSequence({}, true), "");
