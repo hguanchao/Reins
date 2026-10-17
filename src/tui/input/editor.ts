@@ -48,6 +48,8 @@ export interface EditorRenderOptions {
 	readonly placeholder?: string;
 	/** 粘贴 chip 的样式；不传则用普通文字。 */
 	readonly pasteStyle?: Style;
+	/** 最多显示几行；超出时只保留包含光标的一段，输入区内部滚动。 */
+	readonly maxRows?: number;
 }
 
 /** 一段普通文本原子：一个输入字素簇。 */
@@ -387,7 +389,19 @@ export class LineEditor {
 			lines.push(...wrapped.map((item) => lineOfCells(item.cells)));
 		});
 
-		return { lines, cursor: { row: cursorRow, col: cursorCol }, elements };
+		const start = viewportStart(lines.length, cursorRow, options.maxRows);
+		const visible = options.maxRows === undefined ? lines : lines.slice(start, start + options.maxRows);
+		const visibleElements =
+			options.maxRows === undefined
+				? elements
+				: elements
+						.filter((element) => element.row >= start && element.row < start + visible.length)
+						.map((element) => ({ ...element, row: element.row - start }));
+		return {
+			lines: visible,
+			cursor: { row: cursorRow - start, col: cursorCol },
+			elements: visibleElements,
+		};
 	}
 
 	/** 一个逻辑行里各粘贴 chip 的显示区间，单位是这一行的内容格。 */
@@ -514,6 +528,13 @@ function lineOfCaret(
 
 function atomText(atom: Atom): string {
 	return atom.kind === "text" ? atom.text : atom.label;
+}
+
+/** 输入区只看一段时，尽量把光标放在中间；靠近首尾时贴边。 */
+function viewportStart(total: number, cursor: number, maxRows: number | undefined): number {
+	if (maxRows === undefined || total <= maxRows) return 0;
+	const target = cursor - Math.floor(maxRows / 2);
+	return Math.max(0, Math.min(total - maxRows, target));
 }
 
 function isSpace(atom: string): boolean {

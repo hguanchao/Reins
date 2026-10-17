@@ -686,7 +686,22 @@ export class Transcript {
 			parts.push(renderMarkdown(this.#streaming, { width: this.#contentWidth() }).lines.map(agentLine));
 		}
 
-		for (const tool of this.#running) parts.push([this.#liveToolLine(tool, now)]);
+		// 连续的可汇总工具也合成一行，动词用进行时；单个工具同样收起参数，和定型后的组头一致
+		let index = 0;
+		while (index < this.#running.length) {
+			const tool = this.#running[index];
+			if (groupKindOf(tool.name) === undefined) {
+				parts.push([this.#liveToolLine(tool, now)]);
+				index += 1;
+				continue;
+			}
+			const members: RunningTool[] = [];
+			while (index < this.#running.length && groupKindOf(this.#running[index].name) !== undefined) {
+				members.push(this.#running[index]);
+				index += 1;
+			}
+			parts.push([this.#runningGroupLine(members, now)]);
+		}
 
 		const lines: Line[] = [];
 		for (const part of parts) {
@@ -714,6 +729,32 @@ export class Transcript {
 		const right = truncateLine(styled(tail, DIM), Math.max(1, Math.floor(this.#contentWidth() / 3)));
 		const headLimit = Math.max(1, HEADER_WIDTH(this.#width) - lineWidth(right) - 1);
 		return alignEnds(truncateLine(head, headLimit), right, HEADER_WIDTH(this.#width));
+	}
+
+	/** 正在跑的汇总组：用进行时聚合，不给每个调用单独刷一行细节。 */
+	#runningGroupLine(members: readonly RunningTool[], now: number): Line {
+		const buckets = new Map<ToolGroupKind, number>();
+		for (const member of members) {
+			const kind = groupKindOf(member.name);
+			if (kind === undefined) continue;
+			buckets.set(kind, (buckets.get(kind) ?? 0) + 1);
+		}
+
+		let label = "";
+		for (const [kind, count] of buckets) {
+			const verb = GROUP_VERBS[kind];
+			if (label.length > 0) label += ", ";
+			label += `${verb.running} ${count} ${count === 1 ? verb.one : verb.many}`;
+		}
+
+		const accent = pulseStyle(now);
+		return truncateLine(
+			blockLine(
+				rail(accent),
+				concat(styled("◈ ", accent), styled(label, { bold: true, color: BRIGHT.color })),
+			),
+			HEADER_WIDTH(this.#width),
+		);
 	}
 
 	/** 整行铺底：底色要盖住文字，所以先把样式并到每个片段上，再补满到条目总宽。 */

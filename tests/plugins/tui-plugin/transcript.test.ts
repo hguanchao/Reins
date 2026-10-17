@@ -129,6 +129,20 @@ describe("块折叠", () => {
 		assert.ok(header.includes("1 failed"), header);
 	});
 
+	it("运行中的连续工具用进行时汇总成一行", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "Read", args: { path: "a.ts" } }, 0);
+		transcript.handle({ type: "tool_start", callId: "2", name: "Read", args: { path: "b.ts" } }, 0);
+		transcript.handle({ type: "tool_start", callId: "3", name: "grep", args: { pattern: "x" } }, 0);
+
+		const rows = transcript.view({ now: 0 }).rows.map(lineText);
+		const header = rows.find((line) => line.includes("◈"));
+		assert.ok(header, "running group header");
+		assert.ok(header.includes("Reading 2 files"), header);
+		assert.ok(header.includes("Searching 1 pattern"), header);
+		assert.ok(!rows.some((line) => line.includes("a.ts")), "per-call paths stay hidden while grouped");
+	});
+
 	it("工具参数显示为相对路径和偏移量，不打印 JSON", () => {
 		const transcript = new Transcript(60);
 		transcript.setCwd("E:/w");

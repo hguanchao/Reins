@@ -202,10 +202,12 @@ describe("剪贴板写入", () => {
 		});
 
 		clipboard.copy("中文");
-		assert.equal(fake.calls[0].command, "powershell.exe");
-		assert.match(fake.calls[0].args.join(" "), /Set-Clipboard/);
+		assert.equal(fake.calls[0].command, "cmd.exe");
+		assert.match(fake.calls[0].args.join(" "), /clip/);
+		assert.equal(fake.calls[1].command, "powershell.exe");
+		assert.match(fake.calls[1].args.join(" "), /Set-Clipboard/);
 		assert.equal(clipboard.readText(), "clipboard text");
-		assert.match(fake.calls[1].args.join(" "), /Get-Clipboard -Raw/);
+		assert.match(fake.calls[2].args.join(" "), /Get-Clipboard -Raw/);
 	});
 });
 

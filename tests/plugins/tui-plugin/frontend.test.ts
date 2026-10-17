@@ -546,6 +546,26 @@ describe("输入框边框", () => {
 		await running;
 	});
 
+	it("输入内容超过高度上限时内部滚动，整帧仍不超过终端高度", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const content = Array.from({ length: 40 }, (_, index) => `line ${index + 1}`).join("\n");
+		const frontend = new TerminalFrontend({ terminal, env: {}, clipboard: textClipboard(terminal, content) });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("\x1b[86;6u"); // 内联粘贴
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rows = lastFrameRows(terminal.output);
+		assert.equal(rows.length, 24, "frame stays within the terminal height");
+		assert.ok(rows.some((line) => line.includes("line 40")), "cursor end stays visible");
+		assert.ok(!rows.some((line) => line.trim() === "line 1"), "top of the draft scrolls out");
+
+		terminal.inputListener?.("\x03");
+		terminal.quit();
+		await running;
+	});
+
 	it("双击粘贴 chip 直接展开", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };

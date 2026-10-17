@@ -178,8 +178,10 @@ export class Clipboard implements ClipboardPort {
 				return [["pbcopy", []]];
 			case "win32":
 				return [
+					// clip.exe 启动只要几十毫秒；先切到 UTF-8 代码页，中文才不会乱码。
+					// PowerShell 作为兜底：启动慢，但 Set-Clipboard 更可靠。
+					["cmd.exe", ["/c", "chcp 65001>nul & clip"]],
 					["powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", WINDOWS_SET_SCRIPT]],
-					["clip.exe", []],
 				];
 			default: {
 				const commands: (readonly [string, readonly string[]])[] = [];

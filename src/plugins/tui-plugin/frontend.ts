@@ -1151,16 +1151,19 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const size = this.#terminal.size();
 		const body = this.#body(size.cols);
 		const dialog = this.#dialog;
+		const status = this.#running ? RUNNING_ROWS : 0;
+		// 输入区最多占十几行：再高就把会话区挤没了，整帧还可能超过终端高度
+		const maxEditorRows = Math.max(3, Math.min(12, size.rows - 12 - status));
 		// 输入框是带左右边框的方框，正文宽度要扣掉边框和左右内边距
 		const editor = this.#editor.render({
 			width: Math.max(1, size.cols - INPUT_CHROME),
 			prompt: PROMPT,
 			pasteStyle: PASTE_BG,
+			maxRows: maxEditorRows,
 		});
 		const panel = dialog === undefined ? undefined : this.#panelRows(size.cols, dialog);
 		const editorRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const footerRows = panel === undefined ? editorRows : panel.length + 1;
-		const status = this.#running ? RUNNING_ROWS : 0;
 		const height = Math.max(footerRows + status + 1, size.rows);
 		const rows = Math.max(1, height - footerRows - status);
 

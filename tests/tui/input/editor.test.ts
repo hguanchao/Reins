@@ -177,6 +177,17 @@ describe("粘贴 chip", () => {
 		assert.deepEqual(render.elements, [{ id: 1, row: 0, col: 3, width: LABEL.length }]);
 	});
 
+	it("超过 maxRows 时内部滚动，光标所在行仍可见", () => {
+		const editor = new LineEditor();
+		editor.insert(Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n"));
+		const render = editor.render({ width: 40, prompt: plain("❯ "), maxRows: 5 });
+		assert.equal(render.lines.length, 5);
+		assert.equal(render.cursor.row, 4);
+		const text = render.lines.map((line) => line.map((span) => span.text).join("")).join("\n");
+		assert.ok(text.includes("line 30"), "last line is visible");
+		assert.ok(!text.includes("line 1\n"), "top is scrolled out");
+	});
+
 	it("撤销能恢复 chip", () => {
 		const editor = new LineEditor();
 		editor.insertElement(CONTENT, LABEL);
