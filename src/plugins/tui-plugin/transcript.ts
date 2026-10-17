@@ -82,11 +82,15 @@ export class Transcript {
 		this.#width = Math.max(1, width);
 	}
 
-	/** 使用者提交了一句话：上下各留一行铺底，正文垂直居中；多行消息整块增高，不截断。 */
-	userTurn(text: string): readonly Line[] {
-		const lines = wrapLine(plain(text), { width: this.#width });
-		const blank = this.#band(plain(""));
-		return [blank, ...lines.map((line) => this.#band(line)), blank];
+	/** 使用者提交了一句话：整块贴住屏幕左边铺满，上下各留一行，正文垂直居中；多行消息整块增高，不截断。 */
+	userTurn(text: string, width: number): readonly Line[] {
+		const lines = wrapLine(plain(text), {
+			width: Math.max(1, width),
+			firstIndent: styled("› ", ACCENT),
+			restIndent: plain("  "),
+		});
+		const blank = this.#band(plain(""), width);
+		return [blank, ...lines.map((line) => this.#band(line, width)), blank];
 	}
 
 	/** 处理一个事件，返回因此要提交进会话区的行。 */
@@ -193,9 +197,9 @@ export class Transcript {
 		this.#running = [];
 	}
 
-	/** 整行铺底：底色要盖住文字，所以先把样式并到每个片段上，再补满到整屏宽。 */
-	#band(line: Line): Line {
-		return padLine(mapLine(line, (style) => mergeStyles(style, BAND)), this.#width, BAND);
+	/** 整行铺底：底色要盖住文字，所以先把样式并到每个片段上，再补满到给定宽度。 */
+	#band(line: Line, width: number): Line {
+		return padLine(mapLine(line, (style) => mergeStyles(style, BAND)), width, BAND);
 	}
 
 	/** 推理收尾：把「想了多久」定成一行留在会话里，草稿本身不留。 */

@@ -292,6 +292,28 @@ describe("输入框边框", () => {
 		await running;
 	});
 
+	it("用户消息块贴住屏幕左边并带 › 前缀", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("hi\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const message = lastFrameRows(terminal.output).find((line) => line.startsWith("› hi"));
+		assert.ok(message, "message flushes left");
+		assert.equal(message!.length, 80, "band spans the full terminal width");
+
+		terminal.quit();
+		await running;
+	});
+
 	it("审批弹窗居中，选项横向排列且不带按键提示", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };

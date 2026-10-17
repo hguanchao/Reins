@@ -95,6 +95,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 	readonly #transcript: Transcript;
 	/** 会话的全部行。备用屏没有终端自带的回滚缓冲，回看历史靠会话区自己滚动。 */
 	readonly #history: Line[] = [];
+	/** 用户消息块占用的行号：它们贴住屏幕左边，不加全局内边距，也不接轨道。 */
+	readonly #userLines = new Set<number>();
 	/** 每个回合起始的行号。右侧轨道一格刻度就是一个回合。 */
 	readonly #turns: number[] = [];
 	readonly #viewport = new Viewport();
@@ -352,7 +354,11 @@ export class TerminalFrontend implements InteractiveFrontend {
 		// 新回合从这一行开始；轨道多一格刻度，画面回到末尾——接下来要看的就是它的结果
 		this.#turns.push(this.#history.length);
 		this.#viewport.toEnd();
-		this.#commit(this.#transcript.userTurn(text));
+		// 用户消息块按整屏宽排版，并通过记录行号跳过全局内边距与轨道
+		const userLines = this.#transcript.userTurn(text, Math.max(1, this.#terminal.size().cols));
+		const userStart = this.#history.length;
+		for (let index = 0; index < userLines.length; index += 1) this.#userLines.add(userStart + index);
+		this.#commit(userLines);
 
 		if (text.startsWith("/")) {
 			await this.#runCommand(text.slice(1));
@@ -593,11 +599,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const visible = content.slice(window.start, window.start + mainRows);
 		while (visible.length < mainRows) visible.push(plain(""));
 
-		// 每一行末尾接一格轨道：从上往下就是会话的顺序
+		// 每一行末尾接一格轨道：从上往下就是会话的顺序。用户消息块自己占满整行，不再加边距与轨道
 		const cells = railCells(mainRows, this.#turns, window.start);
-		const conversation = visible.map((line, index) =>
-			rail === 0 ? concat(plain(" ".repeat(PAD)), line) : concat(plain(" ".repeat(PAD)), appendRail(line, cells[index])),
-		);
+		const conversation = visible.map((line, index) => {
+			if (this.#userLines.has(window.start + index)) return line;
+			return rail === 0
+				? concat(plain(" ".repeat(PAD)), line)
+				: concat(plain(" ".repeat(PAD)), appendRail(line, cells[index]));
+		});
 
 		if (dialog === undefined) return conversation;
 		return this.#overlayDialog(conversation, dialog, body);
