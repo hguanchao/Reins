@@ -95,8 +95,13 @@ describe("块折叠", () => {
 
 		transcript.toggleFold(block.id);
 		const expanded = transcript.view();
-		assert.ok(expanded.rows.length > collapsed.rows.length);
-		assert.ok(expanded.rows.some((row) => lineText(row).includes("line one")));
+		assert.ok(expanded.rows.some((row) => lineText(row).includes("Read a.ts")));
+
+		const member = expanded.blocks.find((item) => item.kind === "tool");
+		assert.ok(member);
+		transcript.toggleFold(member.id);
+		const detail = transcript.view();
+		assert.ok(detail.rows.some((row) => lineText(row).includes("line one")));
 	});
 
 	it("连续同类工具按动词汇总，失败数单独标出", () => {
@@ -122,6 +127,32 @@ describe("块折叠", () => {
 		assert.ok(header.includes("Read 2 files"), header);
 		assert.ok(header.includes("Searched 1 pattern"), header);
 		assert.ok(header.includes("1 failed"), header);
+	});
+
+	it("工具参数显示为相对路径和偏移量，不打印 JSON", () => {
+		const transcript = new Transcript(60);
+		transcript.setCwd("E:/w");
+		transcript.handle(
+			{
+				type: "tool_start",
+				callId: "1",
+				name: "read",
+				args: { path: "E:\\w\\src\\a.ts", offset: 10, limit: 5 },
+			},
+			0,
+		);
+		transcript.handle(
+			{ type: "tool_end", callId: "1", name: "read", isError: false, durationMs: 1, summary: "ok" },
+			0,
+		);
+
+		const group = transcript.view().blocks.find((item) => item.kind === "group");
+		assert.ok(group);
+		transcript.toggleFold(group.id);
+		const member = transcript.view().rows.find((row) => lineText(row).includes("read "));
+		assert.ok(member);
+		assert.ok(lineText(member).includes("read src/a.ts (10–15)"));
+		assert.ok(!lineText(member).includes("{"));
 	});
 
 	it("思考块默认收起，展开后显示完整草稿", () => {
@@ -176,14 +207,17 @@ describe("块折叠", () => {
 		const group = collapsed.blocks.find((item) => item.kind === "group");
 		assert.ok(group);
 		transcript.toggleFold(group.id);
+		const member = transcript.view({ now: 500 }).blocks.find((item) => item.kind === "tool");
+		assert.ok(member);
+		transcript.toggleFold(member.id);
 
 		const flashing = transcript.view({ now: 500 }).rows;
-		const flashingHeader = flashing[group.start + 2];
+		const flashingHeader = flashing[group.start + 1];
 		assert.equal(flashingHeader?.[0]?.text, "┃");
 		assert.equal(flashingHeader?.[0]?.style?.color, THEME.ok);
 
 		const settled = transcript.view({ now: 900 }).rows;
-		assert.equal(settled[group.start + 2]?.[0]?.style?.color, THEME.faint);
+		assert.equal(settled[group.start + 1]?.[0]?.style?.color, THEME.faint);
 	});
 
 	it("blockText 在折叠状态下仍返回完整正文", () => {

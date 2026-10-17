@@ -10,6 +10,7 @@ import {
 	KeyDecoder,
 	LineEditor,
 	lineOfCells,
+	lineText,
 	mergeStyles,
 	padLine,
 	plain,
@@ -167,6 +168,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 	async run(runtime: InteractiveRuntime): Promise<void> {
 		this.#runtime = runtime;
 		this.#notifyMode = runtime.notify;
+		this.#transcript.setCwd(runtime.cwd);
 		this.#stopped = false;
 		this.#startTerminal();
 
@@ -1083,12 +1085,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 			result[row] = overlayChar(result[row], left, "│", EDGE);
 			result[row] = overlayChar(result[row], right, "│", EDGE);
 		}
-		if (first > 0) {
+		if (first > 0 && lineText(result[first - 1]).trim().length === 0) {
 			const row = first - 1;
 			result[row] = overlayChar(result[row], left, "┌", EDGE);
 			result[row] = overlayChar(result[row], right, "┐", EDGE);
 		}
-		if (last < lines.length - 1) {
+		if (last < lines.length - 1 && lineText(result[last + 1]).trim().length === 0) {
 			const row = last + 1;
 			result[row] = overlayChar(result[row], left, "└", EDGE);
 			result[row] = overlayChar(result[row], right, "┘", EDGE);

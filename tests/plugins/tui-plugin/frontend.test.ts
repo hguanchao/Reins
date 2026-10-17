@@ -402,7 +402,7 @@ describe("输入框边框", () => {
 		terminal.inputListener?.("run\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◈ Read 1 file"));
+		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("▸ Read 1 file"));
 		assert.ok(toolRow >= 0, "tool group header is visible");
 		const clickRow = toolRow + 1; // 鼠标坐标从 1 开始
 
@@ -415,25 +415,40 @@ describe("输入框边框", () => {
 		assert.ok(selected.some((line) => line.trimStart().startsWith("└")), "selection box bottom");
 		assert.ok(!selected.some((line) => line.includes("line one")), "tool group collapsed");
 
-		// 300ms 内第二次按下：展开
+		// 300ms 内第二次按下：展开组，成员先以一行摘要出现
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}m`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const expanded = lastFrameRows(terminal.output);
-		assert.ok(expanded.some((line) => line.includes("line one")), "double-click expands");
+		assert.ok(expanded.some((line) => line.includes("◆ Read a.ts")), "group expands to member rows");
+		assert.ok(!expanded.some((line) => line.includes("line one")), "member stays collapsed");
 
-		// 焦点已在主区：e 收起
+		// 双击成员：展开这个工具的完整输出
+		const memberRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◆ Read a.ts"));
+		assert.ok(memberRow >= 0, "member row exists");
+		const memberClickRow = memberRow + 1;
+		terminal.inputListener?.(`\x1b[<0;6;${memberClickRow}M`);
+		terminal.inputListener?.(`\x1b[<0;6;${memberClickRow}m`);
+		terminal.inputListener?.(`\x1b[<0;6;${memberClickRow}M`);
+		terminal.inputListener?.(`\x1b[<0;6;${memberClickRow}m`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(
+			lastFrameRows(terminal.output).some((line) => line.includes("line one")),
+			"double-click expands the member",
+		);
+
+		// 焦点已在主区：e 收起成员
 		terminal.inputListener?.("e");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const folded = lastFrameRows(terminal.output);
 		assert.ok(!folded.some((line) => line.includes("line one")), "keyboard fold");
 
-		// y 复制组的完整正文（折叠状态也复制全部）
+		// y 复制成员的完整正文（折叠状态也复制全部）
 		terminal.inputListener?.("y");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const copy = /(?:\x1b\]52;c;)([^\x07]*)\x07/.exec(terminal.output);
 		assert.ok(copy, "clipboard sequence written");
-		assert.ok(Buffer.from(copy[1], "base64").toString("utf8").includes("line one\nline two"), "y copies the group body");
+		assert.ok(Buffer.from(copy[1], "base64").toString("utf8").includes("line one\nline two"), "y copies the member body");
 
 		// Tab 回输入框，继续输入
 		terminal.inputListener?.("\t");

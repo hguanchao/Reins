@@ -3,6 +3,7 @@ import {
 	alignEnds,
 	concat,
 	lineText,
+	lineWidth,
 	mapLine,
 	mergeStyles,
 	padLine,
@@ -159,13 +160,15 @@ export class Transcript {
 	#nextId = 1;
 	/** 展开的汇总组，按组内第一个工具块的 id 记。 */
 	#expandedGroups = new Set<number>();
-	/** 最近一次扫描出的汇总组：组头 id → 成员工具块。 */
+	/** 最近一次扫描出的汇总组：组头 id（用锚点成员 id 的负值，避免与成员冲突）→ 成员工具块。 */
 	#groupAnchors = new Map<number, ToolBlock[]>();
 	#streaming = "";
 	#streamStartedAt: number | undefined;
 	#reasoning = "";
 	#reasoningStartedAt: number | undefined;
 	#running: RunningTool[] = [];
+	/** 工作目录：工具参数里的绝对路径显示成相对路径。 */
+	#cwd: string | undefined = undefined;
 
 	constructor(width: number) {
 		this.#width = Math.max(1, width);
@@ -174,6 +177,11 @@ export class Transcript {
 	/** 窗口尺寸变了，后续按新宽度重排。块的状态不受影响。 */
 	resize(width: number): void {
 		this.#width = Math.max(1, width);
+	}
+
+	/** 会话的工作目录，用来把工具参数里的绝对路径缩成相对路径。 */
+	setCwd(cwd: string): void {
+		this.#cwd = cwd;
 	}
 
 	/** 使用者提交了一句话：新建一个展开的用户块。 */
@@ -205,7 +213,7 @@ export class Transcript {
 				this.#running.push({
 					callId: event.callId,
 					name: event.name,
-					args: summarizeArgs(event.args),
+					args: describeTool(event.name, event.args, this.#cwd),
 					startedAt: now,
 					update: undefined,
 				});
@@ -332,10 +340,10 @@ export class Transcript {
 			readonly foldable: boolean;
 		}
 
-		const push = (lines: readonly Line[], span: SpanInfo | undefined): void => {
+		const push = (lines: readonly Line[], span: SpanInfo | undefined, tight = false): void => {
 			if (lines.length === 0) return;
-			// 块与块之间固定留一行：用户消息自己的上下留白是块内空间，不再兼作块间距
-			if (!first) rows.push([]);
+			// 块与块之间固定留一行；组头与成员之间不留，保持密集
+			if (!first && !tight) rows.push([]);
 			first = false;
 			const start = rows.length;
 			rows.push(...lines);
@@ -351,13 +359,25 @@ export class Transcript {
 			const members = this.#groupRunAt(index);
 			if (members !== undefined) {
 				const anchor = members[0];
-				const expanded = this.#expandedGroups.has(anchor.id);
-				push(this.#groupLines(members, expanded, now), {
-					id: anchor.id,
+				const groupId = -anchor.id;
+				const expanded = this.#expandedGroups.has(groupId);
+				push([this.#groupHeader(members, expanded)], {
+					id: groupId,
 					kind: "group",
 					mode: expanded ? "expanded" : "collapsed",
 					foldable: true,
 				});
+				if (expanded) {
+					// 展开组：成员各自成块，默认仍是折叠的一行，可以单独再展开看输出
+					for (const member of members) {
+						push(this.#toolLines(member, false, now), {
+							id: member.id,
+							kind: "tool",
+							mode: member.mode,
+							foldable: true,
+						}, true);
+					}
+				}
 				index += members.length - 1;
 				continue;
 			}
@@ -472,7 +492,7 @@ export class Transcript {
 		for (let index = 0; index < this.#blocks.length; index += 1) {
 			const members = this.#groupRunAt(index);
 			if (members === undefined) continue;
-			this.#groupAnchors.set(members[0].id, members);
+			this.#groupAnchors.set(-members[0].id, members);
 			index += members.length - 1;
 		}
 	}
@@ -492,20 +512,7 @@ export class Transcript {
 		return members;
 	}
 
-	/** 汇总组：收起时只有组头，展开后逐个列出成员工具的完整内容。 */
-	#groupLines(members: readonly ToolBlock[], expanded: boolean, now: number): readonly Line[] {
-		const header = this.#groupHeader(members);
-		if (!expanded) return [header];
-
-		const lines: Line[] = [header];
-		for (const member of members) {
-			lines.push([]);
-			lines.push(...this.#toolLines(member, true, now));
-		}
-		return lines;
-	}
-
-	#groupHeader(members: readonly ToolBlock[]): Line {
+	#groupHeader(members: readonly ToolBlock[], expanded: boolean): Line {
 		const buckets = new Map<ToolGroupKind, number>();
 		let failed = 0;
 		for (const member of members) {
@@ -524,10 +531,13 @@ export class Transcript {
 
 		return blockLine(
 			plain(" "),
-			concat(
-				styled("◈ ", failed > 0 ? BAD : FAINT),
-				styled(label, { bold: true, color: BRIGHT.color }),
-				failed > 0 ? styled(` · ${failed} failed`, BAD) : plain(""),
+			truncateLine(
+				concat(
+					styled(expanded ? "▾ " : "▸ ", failed > 0 ? BAD : FAINT),
+					styled(label, { bold: true, color: BRIGHT.color }),
+					failed > 0 ? styled(` · ${failed} failed`, BAD) : plain(""),
+				),
+				this.#contentWidth(),
 			),
 		);
 	}
@@ -613,18 +623,18 @@ export class Transcript {
 		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
 		const accent = collapsed ? undefined : flashing ? OK : block.isError ? BAD : FAINT;
 		const mark = block.isError ? BAD : FAINT;
-		const header = alignEnds(
-			blockLine(
-				rail(accent),
-				concat(
-					styled(TOOL_MARK, mark),
-					styled(block.name, block.isError ? BAD : TEXT),
-					plain(block.args === "" ? "" : ` ${block.args}`),
-				),
+		const head = blockLine(
+			rail(accent),
+			concat(
+				styled(TOOL_MARK, mark),
+				styled(block.name, block.isError ? BAD : TEXT),
+				plain(block.args === "" ? "" : ` ${block.args}`),
 			),
-			styled(formatDuration(block.durationMs), DIM),
-			HEADER_WIDTH(this.#width),
 		);
+		const duration = styled(formatDuration(block.durationMs), DIM);
+		// 参数太长时截断命令本身，耗时仍然保留在最右侧
+		const headLimit = Math.max(1, HEADER_WIDTH(this.#width) - lineWidth(duration) - 1);
+		const header = alignEnds(truncateLine(head, headLimit), duration, HEADER_WIDTH(this.#width));
 		if (collapsed || block.output.length === 0) return [header];
 
 		const body = wrapLine(styled(block.output, block.isError ? BAD : DIM), {
@@ -687,8 +697,10 @@ export class Transcript {
 		);
 
 		const tail = lastOutputLine(tool.update);
-		if (tail === undefined) return head;
-		return alignEnds(head, truncateLine(styled(tail, DIM), Math.max(1, Math.floor(this.#contentWidth() / 3))), HEADER_WIDTH(this.#width));
+		if (tail === undefined) return truncateLine(head, HEADER_WIDTH(this.#width));
+		const right = truncateLine(styled(tail, DIM), Math.max(1, Math.floor(this.#contentWidth() / 3)));
+		const headLimit = Math.max(1, HEADER_WIDTH(this.#width) - lineWidth(right) - 1);
+		return alignEnds(truncateLine(head, headLimit), right, HEADER_WIDTH(this.#width));
 	}
 
 	/** 整行铺底：底色要盖住文字，所以先把样式并到每个片段上，再补满到条目总宽。 */
@@ -782,11 +794,83 @@ function timestampText(ms: number): string {
 	return `  ${hour}:${minute} ${suffix}`;
 }
 
-/** 把工具参数压成一行：界面上只显示个大概。 */
-function summarizeArgs(args: Record<string, unknown>): string {
-	const text = JSON.stringify(args);
-	if (text === undefined || text === "{}") return "";
+/** 工具行显示哪几个参数：按工具类型取主参数，路径缩成相对当前工作目录。 */
+function describeTool(name: string, args: Record<string, unknown>, cwd: string | undefined): string {
+	const text = toolSummary(name, args, cwd);
 	return text.length > ARGS_LIMIT ? `${text.slice(0, ARGS_LIMIT)}…` : text;
+}
+
+function toolSummary(name: string, args: Record<string, unknown>, cwd: string | undefined): string {
+	switch (name.toLowerCase()) {
+		case "read":
+		case "write":
+		case "edit": {
+			const path = displayPath(stringArg(args.path) ?? ".", cwd);
+			const offset = numberArg(args.offset);
+			const limit = numberArg(args.limit);
+			if (offset === undefined && limit === undefined) return path;
+			const end = limit === undefined ? "" : `–${(offset ?? 0) + limit}`;
+			return `${path} (${offset ?? 0}${end})`;
+		}
+		case "ls":
+		case "list_dir":
+			return displayPath(stringArg(args.path) ?? ".", cwd);
+		case "find": {
+			const pattern = stringArg(args.pattern) ?? "";
+			const path = stringArg(args.path);
+			return path === undefined ? pattern : `${pattern} in ${displayPath(path, cwd)}`;
+		}
+		case "grep":
+		case "glob": {
+			const pattern = stringArg(args.pattern);
+			const path = stringArg(args.path) ?? stringArg(args.glob);
+			if (pattern !== undefined && path !== undefined) return `"${pattern}" ${displayPath(path, cwd)}`;
+			if (pattern !== undefined) return `"${pattern}"`;
+			return path === undefined ? "" : displayPath(path, cwd);
+		}
+		case "bash":
+		case "shell":
+			return stringArg(args.command) ?? "";
+		case "webfetch":
+		case "web_fetch":
+			return stringArg(args.url) ?? "";
+		case "websearch":
+		case "web_search":
+			return stringArg(args.query) ?? "";
+		default: {
+			const parts: string[] = [];
+			for (const [key, value] of Object.entries(args)) {
+				if (parts.length >= 3) break;
+				parts.push(`${key}=${inlineValue(value)}`);
+			}
+			return parts.join(" ");
+		}
+	}
+}
+
+function stringArg(value: unknown): string | undefined {
+	return typeof value === "string" ? value : undefined;
+}
+
+function numberArg(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function inlineValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (Array.isArray(value)) return value.map(inlineValue).join(",");
+	if (value === null) return "null";
+	return "…";
+}
+
+/** 绝对路径缩成工作目录内的相对路径，Windows 反斜杠统一成 `/`。 */
+function displayPath(path: string, cwd: string | undefined): string {
+	const normalized = path.replace(/\\/g, "/");
+	if (cwd === undefined) return normalized;
+	const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+	if (normalized === root) return ".";
+	return normalized.startsWith(`${root}/`) ? normalized.slice(root.length + 1) : normalized;
 }
 
 /** 可汇总的工具按动词归类；其余工具（写文件、编辑、执行命令）各自成行。 */
