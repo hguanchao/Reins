@@ -135,7 +135,7 @@ describe("输入框边框", () => {
 		assert.ok(editorRow, "placeholder row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 		assert.ok(!visible.includes("│"), "no vertical border");
-		assert.ok(visible.startsWith("❯ Build anything"), "prompt flushes left");
+		assert.ok(visible.startsWith("› Build anything"), "prompt flushes left");
 	});
 
 	it("下边框不嵌模型与审批状态,屏幕上也没有头部状态条", async () => {
@@ -169,7 +169,7 @@ describe("输入框边框", () => {
 		const lastFrame = frame.slice(frame.lastIndexOf("\x1b[H"));
 		const anchorMatch = /(?:\x1b\[)(\d+);(\d+)H(?!.*\x1b\[\d+;\d+H)/.exec(lastFrame);
 		assert.ok(anchorMatch, "cursor positioned");
-		// ❯ 光标在提示符(2)+输入内容(1)之后
+		// › 光标在提示符(2)+输入内容(1)之后
 		assert.equal(anchorMatch[2], "4");
 		// 清空再退出:Ctrl+D 只在空输入时退出
 		terminal.inputListener?.("\x7f");

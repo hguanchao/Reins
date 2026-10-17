@@ -132,22 +132,22 @@ describe("单行编辑器", () => {
 describe("编辑器渲染", () => {
 	it("空内容显示占位文本，光标在提示符后", () => {
 		const editor = new LineEditor();
-		const render = editor.render({ width: 40, prompt: plain("❯ "), placeholder: "say something" });
+		const render = editor.render({ width: 40, prompt: plain("› "), placeholder: "say something" });
 		assert.equal(render.lines.length, 1);
 		assert.equal(render.cursor.row, 0);
-		assert.equal(render.cursor.col, "❯ ".length);
+		assert.equal(render.cursor.col, "› ".length);
 		assert.match(render.lines[0].map((s) => s.text).join(""), /say something/);
 	});
 
 	it("光标只由终端定位，内容里不反显", () => {
 		const editor = new LineEditor();
 		editor.insert("ab");
-		const render = editor.render({ width: 20, prompt: plain("❯ ") });
+		const render = editor.render({ width: 20, prompt: plain("› ") });
 		const row = render.cursor.row;
 		const spans = render.lines[row];
 		assert.ok(spans.every((span) => span.style?.reverse !== true), "no reverse caret");
 		// 末尾补一格空白作落点，光标落在 ab 之后
-		assert.equal(spans.map((span) => span.text).join(""), "❯ ab ");
+		assert.equal(spans.map((span) => span.text).join(""), "› ab ");
 		assert.equal(render.cursor.col, 4);
 	});
 
@@ -155,10 +155,10 @@ describe("编辑器渲染", () => {
 		const editor = new LineEditor();
 		editor.insert("abc");
 		editor.moveLeft();
-		const render = editor.render({ width: 20, prompt: plain("❯ ") });
+		const render = editor.render({ width: 20, prompt: plain("› ") });
 		const spans = render.lines[render.cursor.row];
 		assert.ok(spans.every((span) => span.style?.reverse !== true), "no reverse caret");
-		assert.equal(spans.map((span) => span.text).join(""), "❯ abc");
+		assert.equal(spans.map((span) => span.text).join(""), "› abc");
 		assert.equal(render.cursor.col, 4);
 	});
 

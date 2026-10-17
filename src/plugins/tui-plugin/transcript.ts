@@ -19,7 +19,7 @@ import { ACCENT, BAD, BAND, DIM, FAINT, TEXT } from "./theme.ts";
 /**
  * 会话的显示状态。
  *
- * 每一类内容在这里有自己的形状：使用者的消息整行铺底并带「❯ 」前缀，模型的回答与工具调用
+ * 每一类内容在这里有自己的形状：使用者的消息整行铺底并带「› 」前缀，模型的回答与工具调用
  * 从顶格开始，工具名与耗时压暗，只有失败才用红色。区分靠的是形状与深浅，不是满屏的彩色。
  *
  * 内容分两半：定稿的行（写进会话区的历史）与活动块（还在变的部分——正在流式输出的回答、
@@ -86,7 +86,7 @@ export class Transcript {
 	userTurn(text: string): readonly Line[] {
 		const lines = wrapLine(plain(text), {
 			width: this.#width,
-			firstIndent: styled("❯ ", ACCENT),
+			firstIndent: styled("› ", ACCENT),
 			restIndent: plain("  "),
 		});
 		return lines.map((line) => this.#band(line));

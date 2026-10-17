@@ -57,7 +57,7 @@ const CARD_ROWS = 6;
 /** 滚轮一格翻几行。终端只报「上滚」「下滚」，格与行之间的换算由界面定。 */
 const WHEEL_LINES = 3;
 
-const PROMPT: Line = styled("❯ ", ACCENT);
+const PROMPT: Line = styled("› ", ACCENT);
 const PLACEHOLDER = "Build anything";
 
 /** 输入框的上下边框：细线铺满整行宽，颜色用正文白。 */
