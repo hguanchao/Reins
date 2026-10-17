@@ -35,7 +35,7 @@ export interface CopyIconHit {
 	readonly col: number;
 }
 
-/** 选中块的边框：左右竖线贴着块的可见行，上下角画在块外一行。 */
+/** 选中块的边框：左右竖线贴着块的可见行，上下角覆盖在相邻一行的格子上。 */
 export function drawSelectionBox(
 	lines: readonly Line[],
 	block: BlockRange,
@@ -56,15 +56,14 @@ export function drawSelectionBox(
 		result[row] = overlayChar(result[row], left, "│", EDGE);
 		result[row] = overlayChar(result[row], right, "│", EDGE);
 	}
-	if (first > 0 && lineText(result[first - 1]).trim().length === 0) {
-		const row = first - 1;
-		result[row] = overlayChar(result[row], left, "┌", EDGE);
-		result[row] = overlayChar(result[row], right, "┐", EDGE);
+	// 角永远画出来：相邻一行不管有没有内容，覆盖一格就好——跳过它框就成了无头的竖线
+	if (first - 1 >= 0 && first - 1 < lines.length) {
+		result[first - 1] = overlayChar(result[first - 1], left, "┌", EDGE);
+		result[first - 1] = overlayChar(result[first - 1], right, "┐", EDGE);
 	}
-	if (last < lines.length - 1 && lineText(result[last + 1]).trim().length === 0) {
-		const row = last + 1;
-		result[row] = overlayChar(result[row], left, "└", EDGE);
-		result[row] = overlayChar(result[row], right, "┘", EDGE);
+	if (last + 1 < lines.length) {
+		result[last + 1] = overlayChar(result[last + 1], left, "└", EDGE);
+		result[last + 1] = overlayChar(result[last + 1], right, "┘", EDGE);
 	}
 	return result;
 }

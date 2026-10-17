@@ -404,20 +404,39 @@ export class ConversationController {
 				? undefined
 				: this.#blocks.find((block) => block.id === this.#selectedBlock);
 		if (selected !== undefined) {
-			if (selected.mode === "collapsed") {
+			const range = this.#selectionExtent(this.#blocks, selected);
+			if (selected.mode === "collapsed" && range.height === selected.height) {
 				// 收起的一行：底色加 ▸ 护栏，复制按钮内联在这行右端
-				const banded = drawSelectionBand(conversation, selected, window.start, entryWidth);
-				const decorated = drawCopyIcon(banded, selected, window.start, entryWidth, view.rows);
+				const banded = drawSelectionBand(conversation, range, window.start, entryWidth);
+				const decorated = drawCopyIcon(banded, range, window.start, entryWidth, view.rows);
 				this.#copyIcon = decorated.icon;
 				frame = decorated.lines;
 			} else {
-				const boxed = drawSelectionBox(conversation, selected, window.start, entryWidth);
-				const decorated = drawCopyIcon(boxed, selected, window.start, entryWidth, view.rows);
+				const boxed = drawSelectionBox(conversation, range, window.start, entryWidth);
+				const decorated = drawCopyIcon(boxed, range, window.start, entryWidth, view.rows);
 				this.#copyIcon = decorated.icon;
 				frame = decorated.lines;
 			}
 		}
 		return this.#overlayHover(frame, body + OUTER_PAD);
+	}
+
+	/** 选中范围：展开的组要把它整队成员行都框进来，其余块就是自身那一段。 */
+	#selectionExtent(
+		spans: readonly BlockSpan[],
+		selected: BlockSpan,
+	): BlockSpan {
+		if (selected.kind === "group" && selected.mode === "expanded") {
+			const position = spans.indexOf(selected);
+			let end = selected.start + selected.height;
+			for (let index = position + 1; index < spans.length; index += 1) {
+				const next = spans[index];
+				if (next.kind !== "tool" || next.start !== end) break;
+				end = next.start + next.height;
+			}
+			return { ...selected, height: end - selected.start };
+		}
+		return selected;
 	}
 
 	/** 悬停的落点画在会话区里：轨道旁的预览浮卡、时间戳原地展开。 */
