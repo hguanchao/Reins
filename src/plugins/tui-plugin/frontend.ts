@@ -29,9 +29,10 @@ import {
 import type { InteractiveFrontend, InteractiveRuntime } from "../../tui/frontend.ts";
 import { isBuiltinCommand, runBuiltin } from "./commands.ts";
 import { DIALOG_OPTIONS, dialogDecision, type ConfirmDialog } from "./dialog.ts";
+import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
-import { SCROLLBAR_WIDTH, scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
+import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
 import { ACCENT, BAD, BRIGHT, DIM, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
 import { Transcript } from "./transcript.ts";
 
@@ -40,6 +41,9 @@ import { Transcript } from "./transcript.ts";
  *
  * 界面运行在终端的备用屏里，整块屏幕都归它，从上到下四段：顶部状态行、会话区（右侧一格一回合
  * 的轨道）、输入框、快捷键条。一句话都没说之前，会话区摆的是入口框——首屏。
+ *
+ * 主区按「块」排版：最左一列竖线标出块类型，正文前留两列；使用者消息整块铺底并在上下各留
+ * 一行，思考和工具块带彩色竖线。右侧一列是回合轨道，一列是滚动条。
  *
  * 备用屏没有终端自带的回滚缓冲，回看历史因此由会话区自己滚动：PageUp/PageDown 翻页，
  * Ctrl+P/Ctrl+N 逐行，滚轮向上向下，翻阅时 Home/End 跳到首尾。翻阅期间新到的内容不会把画面
@@ -51,8 +55,8 @@ import { Transcript } from "./transcript.ts";
  * 终端恢复原状——留在原始模式里，使用者的 shell 会连回显都没有。
  */
 
-/** 会话区与确认卡片左侧留两列：整屏贴边会把内容顶到终端边缘上，读起来很挤。 */
-const PAD = 2;
+/** 会话区与确认卡片的最外圈留白由 layout.ts 统一规定。 */
+const PAD = OUTER_PAD;
 
 /** 输入框之外的固定行：上面一行空行、边框上下两条、下面的快捷键条。 */
 const PROMPT_CHROME_ROWS = 4;
@@ -110,8 +114,6 @@ export class TerminalFrontend implements InteractiveFrontend {
 	readonly #transcript: Transcript;
 	/** 会话的全部行。备用屏没有终端自带的回滚缓冲，回看历史靠会话区自己滚动。 */
 	readonly #history: Line[] = [];
-	/** 用户消息块占用的行号：它们贴住屏幕左边，不加全局内边距，也不接轨道。 */
-	readonly #userLines = new Set<number>();
 	/** 每个回合起始的行号。右侧轨道一格刻度就是一个回合。 */
 	readonly #turns: number[] = [];
 	readonly #viewport = new Viewport();
@@ -145,7 +147,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#terminal = options.terminal;
 		this.#region = new ScreenRegion(options.terminal, { colors: colorSupport(options.env) });
 		this.#desktopNotify = desktopNotificationsSupported(options.env);
-		this.#transcript = new Transcript(this.#body(options.terminal.size().cols));
+		this.#transcript = new Transcript(this.#entryWidth(options.terminal.size().cols));
 	}
 
 	async run(runtime: InteractiveRuntime): Promise<void> {
@@ -178,7 +180,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	/** 会话区与确认卡片的可用宽度：它们左侧留两列。 */
 	#body(cols: number): number {
-		return Math.max(16, cols - PAD);
+		return Math.max(16, cols - OUTER_PAD);
+	}
+
+	/** 条目总宽：正文区的宽度再扣掉右侧给轨道与滚动条的两列。 */
+	#entryWidth(cols: number): number {
+		return Math.max(1, this.#body(cols) - GUTTER_WIDTH);
 	}
 
 	#startTerminal(): void {
@@ -305,6 +312,16 @@ export class TerminalFrontend implements InteractiveFrontend {
 			return;
 		}
 
+		// 轨道在滚动条左边一格：点刻度或箭头跳到对应回合
+		if (event.button === "left" && event.action === "down" && col === cols - GUTTER_WIDTH && row >= 0 && row < this.#main.rows) {
+			if (railWidth({ width: this.#body(cols), turns: this.#turns.length }) > 0) {
+				const cells = railCells(this.#main.rows, this.#turns, this.#main.window.start);
+				const target = cells[row]?.target;
+				if (target !== undefined) this.#scrollTo(target);
+			}
+			return;
+		}
+
 		if (event.button === "left" && event.action === "down") {
 			const point = this.#selectionPoint(col, row);
 			if (point !== undefined) {
@@ -339,24 +356,19 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 	}
 
-	/** 屏幕坐标落在哪一行文字的哪个字素簇上；落在边距、轨道、滚动条上则不算。 */
+	/** 屏幕坐标落在哪一行文字的哪个字素簇上；落在竖线、边距、轨道、滚动条上则不算。 */
 	#selectionPoint(col: number, row: number): SelectionPoint | undefined {
 		if (row < 0 || row >= this.#main.rows) return undefined;
 
 		const line = this.#main.window.start + row;
 		if (line < 0 || line >= this.#history.length) return undefined;
 
-		const cols = this.#terminal.size().cols;
-		const body = this.#body(cols);
-		const rail = railWidth({ width: body, turns: this.#turns.length });
-		const contentWidth = Math.max(1, body - rail - SCROLLBAR_WIDTH);
-		const userLine = this.#userLines.has(line);
-		const contentCol = userLine ? col : col - PAD;
+		const entryWidth = this.#entryWidth(this.#terminal.size().cols);
+		const contentWidth = entryContentWidth(entryWidth);
+		const contentCol = col - CONTENT_OFFSET;
+		if (contentCol < 0 || contentCol >= contentWidth) return undefined;
 
-		if (contentCol < 0) return undefined;
-		if (userLine ? contentCol >= cols - SCROLLBAR_WIDTH : contentCol >= contentWidth) return undefined;
-
-		return { line, cell: cellIndexAtColumn(this.#history[line], contentCol) };
+		return { line, cell: cellIndexAtColumn(this.#history[line], BLOCK_CONTENT_OFFSET + contentCol) };
 	}
 
 	#scrollTo(index: number): void {
@@ -501,11 +513,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		// 新回合从这一行开始；轨道多一格刻度，画面回到末尾——接下来要看的就是它的结果
 		this.#turns.push(this.#history.length);
 		this.#viewport.toEnd();
-		// 用户消息块贴住屏幕左边铺满，只给右侧滚动条留一列；通过这些行号跳过内边距与轨道
-		const userWidth = Math.max(1, this.#terminal.size().cols - SCROLLBAR_WIDTH);
+		// 用户消息块按条目总宽排版：竖线列、左右留白、正文都在其中
+		const userWidth = this.#entryWidth(this.#terminal.size().cols);
 		const userLines = this.#transcript.userTurn(text, userWidth);
-		const userStart = this.#history.length;
-		for (let index = 0; index < userLines.length; index += 1) this.#userLines.add(userStart + index);
 		this.#commit(userLines);
 
 		if (text.startsWith("/")) {
@@ -734,9 +744,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#conversationRows(body: number, rows: number, dialog: ConfirmDialog | undefined): readonly Line[] {
 		const mainRows = Math.max(1, rows);
 		const rail = railWidth({ width: body, turns: this.#turns.length });
-		// 轨道与滚动条占走的列要让出来：正文按剩下的宽度重排
-		const contentWidth = Math.max(1, body - rail - SCROLLBAR_WIDTH);
-		this.#transcript.resize(contentWidth);
+		// 条目总宽扣掉右侧两列：一列轨道、一列滚动条
+		const entryWidth = Math.max(1, body - GUTTER_WIDTH);
+		this.#transcript.resize(entryWidth);
 
 		// 活动块按主区高度折行：一屏装不下的部分只留最近的，它才是「还在动的」那几行
 		const now = Date.now();
@@ -748,17 +758,17 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const visible = content.slice(window.start, window.start + mainRows);
 		while (visible.length < mainRows) visible.push(plain(""));
 
-		// 每一行末尾接轨道与滚动条。用户消息块自己铺满整行，只留滚动条那一列
-		const cells = railCells(mainRows, this.#turns, window.start);
+		// 每一行末尾接轨道与滚动条。轨道隐藏时也留一格空白，滚动条始终在最右一列
+		const cells = rail > 0 ? railCells(mainRows, this.#turns, window.start) : [];
 		const conversation = visible.map((line, index) => {
 			const absolute = window.start + index;
 			const range = this.#selectionRange(absolute);
 			const base = range === undefined ? line : this.#highlight(line, range.from, range.to);
 			const scroll = scrollbarCell(index, content.length, mainRows, window.start);
-
-			if (this.#userLines.has(absolute)) return concat(base, [scroll]);
-			const withRail = rail === 0 ? base : appendRail(base, cells[index]);
-			return concat(plain(" ".repeat(PAD)), withRail, [scroll]);
+			// 每条目都补满到固定宽度，轨道与滚动条才会对齐在右侧
+			const entry = padLine(base, entryWidth);
+			const gutter = rail === 0 ? concat(entry, plain(" ")) : appendRail(entry, cells[index]);
+			return concat(plain(" ".repeat(OUTER_PAD)), gutter, [scroll]);
 		});
 
 		if (dialog === undefined) return conversation;

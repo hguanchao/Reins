@@ -1,5 +1,5 @@
 import type { Span } from "../../tui/index.ts";
-import { BRIGHT, FAINT } from "./theme.ts";
+import { DIM, EDGE } from "./theme.ts";
 
 /**
  * 会话区右侧的滚动条。
@@ -38,8 +38,8 @@ export function scrollbarCell(row: number, total: number, height: number, start:
 	const state = scrollbarState(total, height, start);
 	if (state.size === 0) return { text: " " };
 	return row >= state.top && row < state.top + state.size
-		? { text: "█", style: BRIGHT }
-		: { text: "│", style: FAINT };
+		? { text: "█", style: DIM }
+		: { text: "│", style: EDGE };
 }
 
 /**

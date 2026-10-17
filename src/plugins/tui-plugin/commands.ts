@@ -74,6 +74,7 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 		plain("  PageUp/PageDown page   Ctrl+P/Ctrl+N line   wheel scrolls the history"),
 		plain("  While browsing, Home/End jump to the oldest or newest line; hold Shift to select text"),
 		plain("  Drag text to select and copy; drag the bar on the right edge to scroll"),
+		plain("  Click a tick or arrow on the rail to jump to that turn"),
 	);
 	return lines;
 }
