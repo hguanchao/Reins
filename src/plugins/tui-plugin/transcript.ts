@@ -430,12 +430,15 @@ export class Transcript {
 	}
 
 	#toolLines(block: ToolBlock): readonly Line[] {
-		const accent = block.isError ? BAD : FAINT;
+		const collapsed = block.mode === "collapsed";
+		// 折叠行没有竖线，和参考实现的折叠态一致；展开后才画出块的范围
+		const accent = collapsed ? undefined : block.isError ? BAD : FAINT;
+		const mark = block.isError ? BAD : FAINT;
 		const header = alignEnds(
 			blockLine(
 				rail(accent),
 				concat(
-					styled(TOOL_MARK, accent),
+					styled(TOOL_MARK, mark),
 					styled(block.name, block.isError ? BAD : TEXT),
 					plain(block.args === "" ? "" : ` ${block.args}`),
 				),
@@ -443,9 +446,11 @@ export class Transcript {
 			styled(formatDuration(block.durationMs), DIM),
 			HEADER_WIDTH(this.#width),
 		);
-		if (block.mode === "collapsed" || block.output.length === 0) return [header];
+		if (collapsed || block.output.length === 0) return [header];
 
-		const body = wrapLine(styled(block.output, DIM), { width: this.#contentWidth() });
+		const body = wrapLine(styled(block.output, block.isError ? BAD : DIM), {
+			width: this.#contentWidth(),
+		});
 		return [header, ...body.map((line) => blockLine(rail(accent), line))];
 	}
 

@@ -377,10 +377,31 @@ export class TerminalFrontend implements InteractiveFrontend {
 				case "y":
 					this.#copyBlock();
 					break;
+				case "H":
+					this.#jumpTurn(-1);
+					break;
+				case "L":
+				case "J":
+					this.#jumpTurn(1);
+					break;
+				case "K":
+					this.#jumpTurn(-1);
+					break;
 				default:
 					break;
 			}
 		}
+	}
+
+	/** 跳到上一个或下一个回合的开头。 */
+	#jumpTurn(delta: number): void {
+		if (this.#turnRows.length === 0) return;
+		const top = this.#main.window.start;
+		const target =
+			delta > 0
+				? this.#turnRows.find((row) => row > top)
+				: [...this.#turnRows].reverse().find((row) => row < top);
+		if (target !== undefined) this.#scrollTo(target);
 	}
 
 	#togglePane(): void {
@@ -440,7 +461,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#refresh();
 		const block = this.#blockSpans.find((span) => span.id === id);
 		if (block !== undefined) {
-			this.#ensureBlockVisible(block);
+			// 用户消息双击后回到它自己的开头，和参考实现一致
+			if (block.kind === "user") this.#scrollTo(block.start);
+			else this.#ensureBlockVisible(block);
 			this.#refresh();
 		}
 	}
