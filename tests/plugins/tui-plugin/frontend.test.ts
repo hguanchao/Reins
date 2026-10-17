@@ -373,6 +373,73 @@ describe("输入框边框", () => {
 		await running;
 	});
 
+	it("单击选中块，双击折叠/展开，主区可用键盘折叠", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: (onEvent) => ({
+				run: async () => {
+					onEvent({ type: "turn_start" });
+					onEvent({ type: "tool_start", callId: "t1", name: "Read", args: { path: "a.ts" } });
+					onEvent({ type: "tool_update", callId: "t1", text: "line one\nline two" });
+					onEvent({
+						type: "tool_end",
+						callId: "t1",
+						name: "Read",
+						isError: false,
+						durationMs: 10,
+						summary: "ok",
+					});
+					onEvent({ type: "run_end" });
+				},
+			}) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("run\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◆ Read"));
+		assert.ok(toolRow >= 0, "tool block is visible");
+		const clickRow = toolRow + 1; // 鼠标坐标从 1 开始
+
+		// 单击：选中块并画选中框
+		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);
+		terminal.inputListener?.(`\x1b[<0;6;${clickRow}m`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const selected = lastFrameRows(terminal.output);
+		assert.ok(selected.some((line) => line.trimStart().startsWith("┌")), "selection box top");
+		assert.ok(selected.some((line) => line.trimStart().startsWith("└")), "selection box bottom");
+		assert.ok(!selected.some((line) => line.includes("line one")), "tool body collapsed");
+
+		// 300ms 内第二次按下：展开
+		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);
+		terminal.inputListener?.(`\x1b[<0;6;${clickRow}m`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const expanded = lastFrameRows(terminal.output);
+		assert.ok(expanded.some((line) => line.includes("line one")), "double-click expands");
+
+		// 焦点已在主区：e 收起
+		terminal.inputListener?.("e");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const folded = lastFrameRows(terminal.output);
+		assert.ok(!folded.some((line) => line.includes("line one")), "keyboard fold");
+
+		// Tab 回输入框，继续输入
+		terminal.inputListener?.("\t");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("x");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("› x")), "prompt accepts input");
+
+		terminal.inputListener?.("\x03");
+		terminal.quit();
+		await running;
+	});
+
 	it("审批弹窗居中，选项横向排列且不带按键提示", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };

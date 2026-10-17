@@ -33,8 +33,8 @@ import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryCon
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { appendRail, railCells, railWidth } from "./rail.ts";
 import { scrollbarCell, scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
-import { ACCENT, BAD, BRIGHT, DIM, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
-import { Transcript } from "./transcript.ts";
+import { ACCENT, BAD, BRIGHT, DIM, EDGE, FAINT, TEXT, TITLE, WARN } from "./theme.ts";
+import { Transcript, type BlockSpan } from "./transcript.ts";
 
 /**
  * 交互式界面。
@@ -44,6 +44,10 @@ import { Transcript } from "./transcript.ts";
  *
  * 主区按「块」排版：最左一列竖线标出块类型，正文前留两列；使用者消息整块铺底并在上下各留
  * 一行，思考和工具块带彩色竖线。右侧一列是回合轨道，一列是滚动条。
+ *
+ * 主区的交互与输入框分开：单击块选中并画选中框，300ms 内再次单击切换折叠；Tab 在输入框与
+ * 主区之间切换焦点，主区里 j/k 选条目、e 折叠、h/l 收起/展开、g/G 到顶/底、E 全部折叠、
+ * Ctrl+E 折叠所有思考块。拖选文本与滚动条在两边都可用。
  *
  * 备用屏没有终端自带的回滚缓冲，回看历史因此由会话区自己滚动：PageUp/PageDown 翻页，
  * Ctrl+P/Ctrl+N 逐行，滚轮向上向下，翻阅时 Home/End 跳到首尾。翻阅期间新到的内容不会把画面
@@ -112,10 +116,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 	readonly #editor = new LineEditor();
 	readonly #keys = new KeyDecoder();
 	readonly #transcript: Transcript;
-	/** 会话的全部行。备用屏没有终端自带的回滚缓冲，回看历史靠会话区自己滚动。 */
-	readonly #history: Line[] = [];
-	/** 每个回合起始的行号。右侧轨道一格刻度就是一个回合。 */
-	readonly #turns: number[] = [];
+	/** 最近一帧摊开的行、块位置与回合起点，鼠标命中测试与轨道都用它们。 */
+	#rows: readonly Line[] = [];
+	#blockSpans: readonly BlockSpan[] = [];
+	#turnRows: readonly number[] = [];
 	readonly #viewport = new Viewport();
 	#main: MainFrame = { total: 0, rows: 1, window: { start: 0, following: true } };
 
@@ -132,6 +136,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#selection: { anchor: SelectionPoint; focus: SelectionPoint } | undefined;
 	#selecting = false;
 	#dragged = false;
+	/** 当前选中的块（单击块或从输入框按 Tab 进入主区时设置）。 */
+	#selectedBlock: number | undefined;
+	/** 上一次单击的块与时间，用来识别 300ms 内的双击。 */
+	#lastBlockClick: { id: number; at: number } | undefined;
+	/** 焦点在哪：输入框还是主区。 */
+	#pane: "prompt" | "scrollback" = "prompt";
+	/** 终端光标当前是否可见，避免每帧都写一次显隐序列。 */
+	#cursorVisible = true;
 	/** 拖动滚动条时，抓点离滑块顶端的行数。 */
 	#scrollbarGrab: number | undefined;
 	/** 底部临时提示（复制成功之类），过一会儿让回给快捷键条。 */
@@ -212,6 +224,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#terminal.setMouseTracking(false);
 		this.#terminal.setBracketedPaste(false);
 		this.#terminal.setFocusReporting(false);
+		this.#cursorVisible = true;
 		this.#terminal.setCursorVisible(true);
 		this.#terminal.setRawMode(false);
 		process.off("exit", this.#restoreOnExit);
@@ -268,6 +281,59 @@ export class TerminalFrontend implements InteractiveFrontend {
 				if (decision !== undefined) this.#answer(decision);
 				continue;
 			}
+
+			if (event.type === "key" && event.name === "tab") {
+				this.#togglePane();
+				continue;
+			}
+
+			if (this.#pane === "scrollback") {
+				if (event.type === "key") {
+					if (event.name === "ctrl-c") {
+						this.#interrupt(true);
+						continue;
+					}
+					if (event.name === "ctrl-d") {
+						if (this.#editor.isEmpty && !this.#running) this.#exit();
+						continue;
+					}
+					if (event.name === "escape") {
+						this.#pane = "prompt";
+						this.#refresh();
+						continue;
+					}
+					if (event.name === "ctrl-e") {
+						this.#transcript.toggleAllThinking();
+						this.#refresh();
+						continue;
+					}
+					if (event.name === "down") {
+						this.#selectAdjacentBlock(1);
+						continue;
+					}
+					if (event.name === "up") {
+						this.#selectAdjacentBlock(-1);
+						continue;
+					}
+					if (event.name === "enter") {
+						this.#foldSelected();
+						continue;
+					}
+					if (event.name === "home") {
+						this.#viewport.toTop();
+						this.#refresh();
+						continue;
+					}
+					if (event.name === "end") {
+						this.#viewport.toEnd();
+						this.#refresh();
+						continue;
+					}
+				}
+				if (event.type === "text") this.#handleScrollbackText(event.text);
+				continue;
+			}
+
 			if (event.type === "paste" || event.type === "text") {
 				this.#editor.insert(event.text);
 				this.#refresh();
@@ -275,6 +341,111 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 			this.#handleKey(event);
 		}
+	}
+
+	/** 主区里的字母键：j/k 选条目，e 折叠，h/l 收起/展开，g/G 到顶/底，E 全部折叠。 */
+	#handleScrollbackText(text: string): void {
+		for (const char of text) {
+			switch (char) {
+				case "j":
+					this.#selectAdjacentBlock(1);
+					break;
+				case "k":
+					this.#selectAdjacentBlock(-1);
+					break;
+				case "e":
+					this.#foldSelected();
+					break;
+				case "h":
+					this.#changeSelectedFold("collapsed");
+					break;
+				case "l":
+					this.#changeSelectedFold("expanded");
+					break;
+				case "g":
+					this.#viewport.toTop();
+					this.#refresh();
+					break;
+				case "G":
+					this.#viewport.toEnd();
+					this.#refresh();
+					break;
+				case "E":
+					this.#transcript.toggleAll();
+					this.#refresh();
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
+	#togglePane(): void {
+		if (this.#pane === "prompt") {
+			this.#pane = "scrollback";
+			if (this.#selectedBlock === undefined) {
+				const block = this.#blockSpans.find((span) => span.start + span.height > this.#main.window.start);
+				this.#selectedBlock = block?.id;
+			}
+		} else {
+			this.#pane = "prompt";
+		}
+		this.#refresh();
+	}
+
+	#selectAdjacentBlock(delta: number): void {
+		const blocks = this.#blockSpans;
+		if (blocks.length === 0) return;
+
+		const current = blocks.findIndex((block) => block.id === this.#selectedBlock);
+		const next =
+			current < 0
+				? delta > 0
+					? 0
+					: blocks.length - 1
+				: Math.max(0, Math.min(blocks.length - 1, current + delta));
+		const block = blocks[next];
+		this.#selectedBlock = block.id;
+		this.#ensureBlockVisible(block);
+		this.#refresh();
+	}
+
+	#foldSelected(): void {
+		if (this.#selectedBlock === undefined) return;
+		this.#toggleBlock(this.#selectedBlock);
+	}
+
+	#changeSelectedFold(mode: "collapsed" | "expanded"): void {
+		if (this.#selectedBlock === undefined) return;
+		if (mode === "collapsed") this.#transcript.collapse(this.#selectedBlock);
+		else this.#transcript.expand(this.#selectedBlock);
+		this.#selection = undefined;
+		this.#selecting = false;
+		this.#refresh();
+		const block = this.#blockSpans.find((span) => span.id === this.#selectedBlock);
+		if (block !== undefined) {
+			this.#ensureBlockVisible(block);
+			this.#refresh();
+		}
+	}
+
+	/** 双击一个块：可折叠的切换展开/收起，并保证它仍在视野里。 */
+	#toggleBlock(id: number): void {
+		this.#transcript.toggleFold(id);
+		this.#selection = undefined;
+		this.#selecting = false;
+		this.#refresh();
+		const block = this.#blockSpans.find((span) => span.id === id);
+		if (block !== undefined) {
+			this.#ensureBlockVisible(block);
+			this.#refresh();
+		}
+	}
+
+	#ensureBlockVisible(block: BlockSpan): void {
+		const { start } = this.#main.window;
+		const end = start + this.#main.rows;
+		if (block.start < start || block.start + block.height > end) this.#scrollTo(block.start);
 	}
 
 	/**
@@ -313,16 +484,44 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 
 		// 轨道在滚动条左边一格：点刻度或箭头跳到对应回合
-		if (event.button === "left" && event.action === "down" && col === cols - GUTTER_WIDTH && row >= 0 && row < this.#main.rows) {
-			if (railWidth({ width: this.#body(cols), turns: this.#turns.length }) > 0) {
-				const cells = railCells(this.#main.rows, this.#turns, this.#main.window.start);
+		if (
+			event.button === "left" &&
+			event.action === "down" &&
+			col === cols - GUTTER_WIDTH &&
+			row >= 0 &&
+			row < this.#main.rows
+		) {
+			if (railWidth({ width: this.#body(cols), turns: this.#turnRows.length }) > 0) {
+				const cells = railCells(this.#main.rows, this.#turnRows, this.#main.window.start);
 				const target = cells[row]?.target;
 				if (target !== undefined) this.#scrollTo(target);
 			}
 			return;
 		}
 
+		// 点到输入区：焦点回到输入框
+		if (event.button === "left" && event.action === "down" && row >= this.#main.rows) {
+			this.#pane = "prompt";
+			this.#refresh();
+			return;
+		}
+
 		if (event.button === "left" && event.action === "down") {
+			const block = this.#blockAt(row);
+			if (block !== undefined) {
+				this.#pane = "scrollback";
+				this.#selectedBlock = block.id;
+				const now = Date.now();
+				const last = this.#lastBlockClick;
+				this.#lastBlockClick = { id: block.id, at: now };
+				// 同一个块 300ms 内的第二次按下：切换折叠
+				if (last !== undefined && last.id === block.id && now - last.at <= 300) {
+					this.#lastBlockClick = undefined;
+					this.#toggleBlock(block.id);
+					return;
+				}
+			}
+
 			const point = this.#selectionPoint(col, row);
 			if (point !== undefined) {
 				this.#selection = { anchor: point, focus: point };
@@ -338,6 +537,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			if (point !== undefined) {
 				this.#selection.focus = point;
 				this.#dragged = true;
+				this.#lastBlockClick = undefined;
 				this.#refresh();
 			}
 			return;
@@ -356,19 +556,26 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 	}
 
+	/** 屏幕行落在哪个已定型的块里；行间距与活动块不算。 */
+	#blockAt(row: number): BlockSpan | undefined {
+		if (row < 0 || row >= this.#main.rows) return undefined;
+		const line = this.#main.window.start + row;
+		return this.#blockSpans.find((span) => line >= span.start && line < span.start + span.height);
+	}
+
 	/** 屏幕坐标落在哪一行文字的哪个字素簇上；落在竖线、边距、轨道、滚动条上则不算。 */
 	#selectionPoint(col: number, row: number): SelectionPoint | undefined {
 		if (row < 0 || row >= this.#main.rows) return undefined;
 
 		const line = this.#main.window.start + row;
-		if (line < 0 || line >= this.#history.length) return undefined;
+		if (line < 0 || line >= this.#rows.length) return undefined;
 
 		const entryWidth = this.#entryWidth(this.#terminal.size().cols);
 		const contentWidth = entryContentWidth(entryWidth);
 		const contentCol = col - CONTENT_OFFSET;
 		if (contentCol < 0 || contentCol >= contentWidth) return undefined;
 
-		return { line, cell: cellIndexAtColumn(this.#history[line], BLOCK_CONTENT_OFFSET + contentCol) };
+		return { line, cell: cellIndexAtColumn(this.#rows[line], BLOCK_CONTENT_OFFSET + contentCol) };
 	}
 
 	#scrollTo(index: number): void {
@@ -380,7 +587,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const selection = this.#selection;
 		if (selection === undefined) return;
 
-		const text = selectionText(this.#history, selection);
+		const text = selectionText(this.#rows, selection);
 		if (text.length === 0) return;
 
 		// OSC 52 让终端自己把内容放进系统剪贴板，不依赖平台命令
@@ -489,7 +696,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 				if (this.#editor.isEmpty && !this.#running) this.#exit();
 				return;
 			default:
-				// tab 等目前没有绑定，按了就当没按
+				// 其余按键目前没有绑定，按了就当没按
 				return;
 		}
 		this.#refresh();
@@ -500,7 +707,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (runtime === undefined) return;
 
 		if (this.#running) {
-			this.#commit([styled("A turn is still running; wait for it to finish, or press Esc or Ctrl+C to cancel.", WARN)]);
+			this.#transcript.appendSystem([
+				styled("A turn is still running; wait for it to finish, or press Esc or Ctrl+C to cancel.", WARN),
+			]);
+			this.#refresh();
 			return;
 		}
 
@@ -511,12 +721,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 
 		// 新回合从这一行开始；轨道多一格刻度，画面回到末尾——接下来要看的就是它的结果
-		this.#turns.push(this.#history.length);
+		this.#pane = "prompt";
+		this.#transcript.userTurn(text);
 		this.#viewport.toEnd();
-		// 用户消息块按条目总宽排版：竖线列、左右留白、正文都在其中
-		const userWidth = this.#entryWidth(this.#terminal.size().cols);
-		const userLines = this.#transcript.userTurn(text, userWidth);
-		this.#commit(userLines);
+		this.#refresh();
 
 		if (text.startsWith("/")) {
 			await this.#runCommand(text.slice(1));
@@ -547,7 +755,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 					},
 				});
 				if (result === undefined) return;
-				this.#commit(result.lines);
+				this.#transcript.appendSystem(result.lines);
+				this.#refresh();
 				if (result.exit === true) {
 					this.#exit();
 					return;
@@ -556,10 +765,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 
 			const lines = await runtime.runCommand(name, args);
-			this.#commit(lines.map((line) => plain(line)));
+			this.#transcript.appendSystem(lines.map((line) => plain(line)));
+			this.#refresh();
 		} catch (error) {
 			// 命令出错只影响这一条命令，界面继续用
-			this.#commit([styled(error instanceof Error ? error.message : String(error), BAD)]);
+			this.#transcript.appendSystem([styled(error instanceof Error ? error.message : String(error), BAD)], BAD);
+			this.#refresh();
 		}
 	}
 
@@ -576,7 +787,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 			await runtime.createDriver((event) => this.#onAgentEvent(event)).run(prompt, controller.signal);
 		} catch (error) {
 			// 驱动把可预期的失败都编码进了事件，走到这里说明出了意料之外的事
-			this.#commit([styled(`✗ Error: ${error instanceof Error ? error.message : String(error)}`, BAD)]);
+			this.#transcript.appendSystem(
+				[styled(`✗ Error: ${error instanceof Error ? error.message : String(error)}`, BAD)],
+				BAD,
+			);
 		} finally {
 			this.#running = false;
 			this.#abort = undefined;
@@ -611,7 +825,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 				break;
 		}
 
-		this.#commit(this.#transcript.handle(event, now));
+		this.#transcript.handle(event, now);
 		this.#refresh();
 	}
 
@@ -667,6 +881,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 
 	#onResize(): void {
+		// 行会在新宽度下重排，旧的选区端点已经对不上
+		this.#selection = undefined;
+		this.#selecting = false;
 		// 先按记住的行数擦掉旧活动区，再按新宽度重画
 		this.#region.clear();
 		this.#refresh();
@@ -684,11 +901,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#ticker = undefined;
 	}
 
-	#commit(lines: readonly Line[]): void {
-		if (lines.length === 0) return;
-		// 只往末尾加行：正翻阅历史时窗口因此不会被新内容推走
-		this.#history.push(...lines);
-		this.#refresh();
+	#setCursorVisible(visible: boolean): void {
+		if (this.#cursorVisible === visible) return;
+		this.#cursorVisible = visible;
+		this.#terminal.setCursorVisible(visible);
 	}
 
 	/** 按行翻阅。视口按上一帧的内容行数与高度算边界。 */
@@ -731,6 +947,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		];
 
 		// 光标在输入框里：它上面是会话区与输入框的上边框和留白
+		this.#setCursorVisible(this.#pane === "prompt");
 		this.#region.draw({
 			lines,
 			cursor: {
@@ -743,36 +960,78 @@ export class TerminalFrontend implements InteractiveFrontend {
 	/** 主屏：会话区的可见窗口，右侧是轨道与滚动条；有审批时把弹窗盖在中间。 */
 	#conversationRows(body: number, rows: number, dialog: ConfirmDialog | undefined): readonly Line[] {
 		const mainRows = Math.max(1, rows);
-		const rail = railWidth({ width: body, turns: this.#turns.length });
 		// 条目总宽扣掉右侧两列：一列轨道、一列滚动条
 		const entryWidth = Math.max(1, body - GUTTER_WIDTH);
 		this.#transcript.resize(entryWidth);
 
-		// 活动块按主区高度折行：一屏装不下的部分只留最近的，它才是「还在动的」那几行
-		const now = Date.now();
-		const live = this.#transcript.live({ maxLines: mainRows, now });
-		const content = [...this.#history, ...live];
-		const window = this.#viewport.window(content.length, mainRows);
-		this.#main = { total: content.length, rows: mainRows, window };
+		const view = this.#transcript.view({ maxLiveRows: mainRows });
+		this.#rows = view.rows;
+		this.#blockSpans = view.blocks;
+		this.#turnRows = view.turns;
 
-		const visible = content.slice(window.start, window.start + mainRows);
+		const rail = railWidth({ width: body, turns: view.turns.length });
+		const window = this.#viewport.window(view.rows.length, mainRows);
+		this.#main = { total: view.rows.length, rows: mainRows, window };
+
+		const visible = view.rows.slice(window.start, window.start + mainRows);
 		while (visible.length < mainRows) visible.push(plain(""));
 
 		// 每一行末尾接轨道与滚动条。轨道隐藏时也留一格空白，滚动条始终在最右一列
-		const cells = rail > 0 ? railCells(mainRows, this.#turns, window.start) : [];
+		const cells = rail > 0 ? railCells(mainRows, view.turns, window.start) : [];
 		const conversation = visible.map((line, index) => {
 			const absolute = window.start + index;
 			const range = this.#selectionRange(absolute);
 			const base = range === undefined ? line : this.#highlight(line, range.from, range.to);
-			const scroll = scrollbarCell(index, content.length, mainRows, window.start);
+			const scroll = scrollbarCell(index, view.rows.length, mainRows, window.start);
 			// 每条目都补满到固定宽度，轨道与滚动条才会对齐在右侧
 			const entry = padLine(base, entryWidth);
 			const gutter = rail === 0 ? concat(entry, plain(" ")) : appendRail(entry, cells[index]);
 			return concat(plain(" ".repeat(OUTER_PAD)), gutter, [scroll]);
 		});
 
-		if (dialog === undefined) return conversation;
-		return this.#overlayDialog(conversation, dialog, body);
+		const selected =
+			this.#selectedBlock === undefined
+				? undefined
+				: this.#blockSpans.find((block) => block.id === this.#selectedBlock);
+		const withBox =
+			selected === undefined ? conversation : this.#drawSelectionBox(conversation, selected, window, entryWidth);
+
+		if (dialog === undefined) return withBox;
+		return this.#overlayDialog(withBox, dialog, body);
+	}
+
+	/** 选中块的边框：左右竖线贴着块的可见行，上下角画在块外一行。 */
+	#drawSelectionBox(
+		lines: readonly Line[],
+		block: BlockSpan,
+		window: ViewportWindow,
+		entryWidth: number,
+	): Line[] {
+		const first = block.start - window.start;
+		const last = first + block.height - 1;
+		if (last < 0 || first >= lines.length) return [...lines];
+
+		const top = Math.max(0, first);
+		const bottom = Math.min(lines.length - 1, last);
+		const left = OUTER_PAD - 1;
+		const right = OUTER_PAD + entryWidth;
+		const result = [...lines];
+
+		for (let row = top; row <= bottom; row += 1) {
+			result[row] = overlayChar(result[row], left, "│", EDGE);
+			result[row] = overlayChar(result[row], right, "│", EDGE);
+		}
+		if (first > 0) {
+			const row = first - 1;
+			result[row] = overlayChar(result[row], left, "┌", EDGE);
+			result[row] = overlayChar(result[row], right, "┐", EDGE);
+		}
+		if (last < lines.length - 1) {
+			const row = last + 1;
+			result[row] = overlayChar(result[row], left, "└", EDGE);
+			result[row] = overlayChar(result[row], right, "┘", EDGE);
+		}
+		return result;
 	}
 
 	/** 这一行落在选区里时，返回要反显的字素簇范围（含两端）。 */
@@ -786,7 +1045,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const end = reversed ? anchor : focus;
 		if (line < start.line || line > end.line) return undefined;
 
-		const count = cellsOf(this.#history[line] ?? []).length;
+		const count = cellsOf(this.#rows[line] ?? []).length;
 		if (count === 0) return undefined;
 		const from = line === start.line ? Math.min(start.cell, count - 1) : 0;
 		const to = line === end.line ? Math.min(end.cell, count - 1) : count - 1;
@@ -891,6 +1150,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 	 */
 	#hints(): readonly KeyHint[] {
 		const help: KeyHint = { keys: "/help", label: "shortcuts" };
+		if (this.#pane === "scrollback") {
+			return [
+				{ keys: "j/k", label: "entry" },
+				{ keys: "e", label: "fold" },
+				{ keys: "h/l", label: "fold" },
+				{ keys: "g/G", label: "top/btm" },
+				{ keys: "Tab", label: "prompt" },
+			];
+		}
 		if (!this.#main.window.following) {
 			return [
 				{ keys: "PageUp/PageDown", label: "page" },
@@ -945,4 +1213,22 @@ function selectionText(
 		);
 	}
 	return lines.join("\n");
+}
+
+/** 在指定显示列写一个字符；选中框的边线覆盖在现有内容上。 */
+function overlayChar(line: Line, column: number, text: string, style: Style): Line {
+	const cells = cellsOf(line);
+	let width = 0;
+	for (let index = 0; index < cells.length; index += 1) {
+		const cell = cells[index];
+		if (column >= width && column < width + cell.width) {
+			return lineOfCells([
+				...cells.slice(0, index),
+				{ text, width: 1, style },
+				...cells.slice(index + 1),
+			]);
+		}
+		width += cell.width;
+	}
+	return concat(line, plain(" ".repeat(Math.max(0, column - width))), styled(text, style));
 }
