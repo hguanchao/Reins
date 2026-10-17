@@ -1,6 +1,7 @@
 import { NOTIFY_MODES, type NotifyMode } from "../../config/config-file.ts";
 import { concat, plain, styled, type Line } from "../../tui/index.ts";
 import type { InteractiveRuntime } from "../../tui/frontend.ts";
+import { ACCENT, BAD, BOLD, DIM, WARN } from "./theme.ts";
 
 /**
  * 界面自带的那几条命令。
@@ -23,9 +24,6 @@ export interface BuiltinContext {
 	readonly notify: () => NotifyMode;
 	readonly setNotify: (mode: NotifyMode) => void;
 }
-
-const DIM = { dim: true } as const;
-const BOLD = { bold: true } as const;
 
 /** 命令清单，用于帮助文本。 */
 export const BUILTIN_COMMANDS: readonly { readonly name: string; readonly description: string }[] = [
@@ -58,21 +56,23 @@ export function runBuiltin(
 function helpLines(context: BuiltinContext): readonly Line[] {
 	const lines: Line[] = [styled("界面命令", BOLD)];
 	for (const command of BUILTIN_COMMANDS) {
-		lines.push(concat(styled(`  /${command.name}`, { color: "cyan" }), plain(`  ${command.description}`)));
+		lines.push(concat(styled(`  /${command.name}`, ACCENT), plain(`  ${command.description}`)));
 	}
 
 	const pluginCommands = context.runtime.commands;
 	if (pluginCommands.length > 0) {
 		lines.push([], styled("插件命令", BOLD));
 		for (const command of pluginCommands) {
-			lines.push(concat(styled(`  /${command.name}`, { color: "cyan" }), plain(`  ${command.description}`)));
+			lines.push(concat(styled(`  /${command.name}`, ACCENT), plain(`  ${command.description}`)));
 		}
 	}
 
 	lines.push(
 		[],
 		styled("按键", BOLD),
-		plain("  Enter 发送　Ctrl+C 中止或退出　Ctrl+D 退出　↑ ↓ 历史　Ctrl+L 重画"),
+		plain("  Enter 发送　Ctrl+C 中止或退出　Ctrl+D 退出　↑ ↓ 输入历史　Ctrl+L 重画"),
+		plain("  PageUp/PageDown 翻页　Ctrl+P/Ctrl+N 逐行　滚轮翻历史"),
+		plain("  翻阅时 Home/End 跳到最早/回到末尾；鼠标选中文本要按住 Shift"),
 	);
 	return lines;
 }
@@ -82,7 +82,7 @@ function notifyCommand(args: string, context: BuiltinContext): BuiltinResult {
 	if (argument.length === 0) {
 		return {
 			lines: [
-				concat(plain("完成提醒："), styled(context.notify(), { color: "cyan" })),
+				concat(plain("完成提醒："), styled(context.notify(), ACCENT)),
 				styled(`  可用取值：${NOTIFY_MODES.join(" / ")}`, DIM),
 			],
 		};
@@ -91,11 +91,11 @@ function notifyCommand(args: string, context: BuiltinContext): BuiltinResult {
 	const mode = NOTIFY_MODES.find((item) => item === argument);
 	if (mode === undefined) {
 		// 写错取值就明确拒绝，不要「看起来设置了其实没变」
-		return { lines: [styled(`无法识别的取值 ${argument}；可用取值：${NOTIFY_MODES.join(" / ")}`, { color: "red" })] };
+		return { lines: [styled(`无法识别的取值 ${argument}；可用取值：${NOTIFY_MODES.join(" / ")}`, BAD)] };
 	}
 
 	context.setNotify(mode);
-	return { lines: [concat(plain("完成提醒已设为 "), styled(mode, { color: "cyan" }), plain("，并写回配置。"))] };
+	return { lines: [concat(plain("完成提醒已设为 "), styled(mode, ACCENT), plain("，并写回配置。"))] };
 }
 
 function trustCommand(args: string, context: BuiltinContext): BuiltinResult {
@@ -116,7 +116,7 @@ function trustCommand(args: string, context: BuiltinContext): BuiltinResult {
 			...status,
 			concat(
 				plain(`已把 ${trust.root} 记为`),
-				styled(wanted ? "信任" : "不信任", { color: "cyan" }),
+				styled(wanted ? "信任" : "不信任", ACCENT),
 				plain("；本次运行已经按先前的结果装配完毕，下次启动生效。"),
 			),
 		],
@@ -130,12 +130,12 @@ function trustStatusLines(context: BuiltinContext): readonly Line[] {
 	}
 	if (trust.trusted) {
 		return [
-			concat(plain("已信任 "), styled(trust.root, { color: "cyan" }), plain("，自带的配置参与了本次运行：")),
+			concat(plain("已信任 "), styled(trust.root, ACCENT), plain("，自带的配置参与了本次运行：")),
 			...trust.files.map((file) => styled(`  ${file}`, DIM)),
 		];
 	}
 	return [
-		concat(plain("未信任 "), styled(trust.root, { color: "yellow" }), plain("，下列配置没有读取：")),
+		concat(plain("未信任 "), styled(trust.root, WARN), plain("，下列配置没有读取：")),
 		...trust.files.map((file) => styled(`  ${file}`, DIM)),
 		styled("用 /trust yes 打开它的配置；合并只会更严，不会放宽审批与沙箱。", DIM),
 	];

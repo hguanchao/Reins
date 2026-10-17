@@ -192,7 +192,7 @@ describe("界面与驱动的接合", () => {
 		await waitForText(harness, "写完了");
 
 		assert.equal(readFileSync(target, "utf8"), "写好");
-		assert.ok(harness.seen().some((line) => line.includes("✓ write")));
+		assert.ok(harness.seen().some((line) => line.includes("◆ write")));
 
 		await harness.finish();
 	});
@@ -212,7 +212,7 @@ describe("界面与驱动的接合", () => {
 		await waitForText(harness, "那我就不写了");
 
 		assert.equal(existsSync(target), false);
-		assert.ok(harness.seen().some((line) => line.includes("✗ write")));
+		assert.ok(harness.seen().some((line) => line.includes("◆ write")), harness.seen().join("\n"));
 		// 拒绝的理由进了会话，模型下一轮看得到
 		assert.ok(JSON.stringify(messages(harness)).includes("使用者没有同意"));
 

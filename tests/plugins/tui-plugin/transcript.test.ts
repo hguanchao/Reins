@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import type { AgentEvent } from "../../../src/agent/events.ts";
 import { Transcript } from "../../../src/plugins/tui-plugin/transcript.ts";
+import { BAND } from "../../../src/plugins/tui-plugin/theme.ts";
+import { lineWidth } from "../../../src/tui/index.ts";
 
 function texts(lines: readonly (readonly { readonly text: string }[])[]): string[] {
 	// 模型产出的行带缩进，断言关心的是内容本身，因此比较时把两端空白去掉
@@ -14,7 +16,14 @@ const NOW = 1_000_000;
 describe("会话显示状态", () => {
 	it("回显我说的话，长句子折行后缩进对齐", () => {
 		const transcript = new Transcript(12);
-		assert.deepEqual(texts(transcript.userTurn("一二三四五六七八九十")), ["› 一二三四", "五六七八", "九十"]);
+		assert.deepEqual(texts(transcript.userTurn("一二三四五六七八九十")), ["❯ 一二三四五", "六七八九十"]);
+	});
+
+	it("用户消息整行铺底：补满整屏宽，每个片段都带背景", () => {
+		const transcript = new Transcript(12);
+		const lines = transcript.userTurn("你好");
+		assert.equal(lineWidth(lines[0]), 12);
+		assert.ok(lines[0].every((span) => span.style?.background === BAND.background), JSON.stringify(lines[0]));
 	});
 
 	it("流式回答按 markdown 画在活动块里", () => {
@@ -76,40 +85,44 @@ describe("会话显示状态", () => {
 			{ type: "tool_end", callId: "c1", name: "read", isError: false, durationMs: 12, summary: "内容" },
 			NOW + 12,
 		);
-		assert.deepEqual(texts(ok), ["✓ read {\"path\":\"a.ts\"} 12ms"]);
+		assert.ok(texts(ok)[0].startsWith("◆ read {\"path\":\"a.ts\"}"), texts(ok)[0]);
+		assert.ok(texts(ok)[0].endsWith("12ms"), texts(ok)[0]);
 
 		transcript.handle({ type: "tool_start", callId: "c2", name: "bash", args: { command: "ls" } }, NOW);
 		const failed = transcript.handle(
 			{ type: "tool_end", callId: "c2", name: "bash", isError: true, durationMs: 5, summary: "没这条命令" },
 			NOW,
 		);
-		assert.deepEqual(texts(failed), ['✗ bash {"command":"ls"} 失败 5ms：没这条命令']);
+		assert.equal(texts(failed).length, 2);
+		assert.ok(texts(failed)[0].startsWith('◆ bash {"command":"ls"}'), texts(failed)[0]);
+		assert.ok(texts(failed)[0].endsWith("5ms"), texts(failed)[0]);
+		assert.equal(texts(failed)[1], "没这条命令");
 	});
 
 	it("推理内容只做预览，不写进滚动区", () => {
 		const transcript = new Transcript(30);
 		transcript.handle({ type: "reasoning_delta", text: "想一想\n再想一想" }, NOW);
-		assert.deepEqual(texts(transcript.live({ maxLines: 5, now: NOW })), ["·     想一想", "再想一想"]);
+		assert.deepEqual(texts(transcript.live({ maxLines: 5, now: NOW })), ["◇ 思考中…", "┃ 想一想", "┃ 再想一想"]);
 
-		// 本轮结束时推理内容被丢掉
-		assert.deepEqual(texts(transcript.flush()), []);
+		// 本轮结束时草稿被丢掉，只留下「想了多久」
+		assert.deepEqual(texts(transcript.flush(NOW + 2000)), ["◇ 思考了 2.0s"]);
 		assert.deepEqual(transcript.live({ maxLines: 5, now: NOW }), []);
 	});
 
 	it("活动块超出上限时丢掉上面的部分并留一个记号", () => {
 		const transcript = new Transcript(10);
+		// 开始写正文时思考就收尾了：预览不再占着活动块
 		transcript.handle({ type: "reasoning_delta", text: "推理" }, NOW);
-		transcript.handle({ type: "text_delta", text: "一二三四五六七八九十" }, NOW);
+		transcript.handle({ type: "text_delta", text: "一二三四五六七八九十甲乙" }, NOW);
 
-		// 推理一行加回答两行压到两行：丢掉最上面那行，留一个记号提示
-		const live = texts(transcript.live({ maxLines: 2, now: NOW }));
-		assert.deepEqual(live, ["…", "十"]);
+		// 回答占三行，压到两行：丢掉最上面那行，留一个记号提示
+		assert.deepEqual(texts(transcript.live({ maxLines: 2, now: NOW })), ["…", "甲乙"]);
 	});
 
 	it("中止与出错都会留下明确的一行", () => {
 		const transcript = new Transcript(40);
-		assert.deepEqual(texts(transcript.handle({ type: "aborted" }, NOW)), ["已中止"]);
-		assert.deepEqual(texts(transcript.handle({ type: "error", message: "连接断了" }, NOW)), ["出错：连接断了"]);
+		assert.deepEqual(texts(transcript.handle({ type: "aborted" }, NOW)), ["◇ 已中止"]);
+		assert.deepEqual(texts(transcript.handle({ type: "error", message: "连接断了" }, NOW))[0], "✗ 出错：连接断了");
 	});
 
 	it("本轮结束时把剩下的回答交出去", () => {
@@ -118,7 +131,7 @@ describe("会话显示状态", () => {
 		assert.deepEqual(texts(transcript.handle({ type: "run_end" }, NOW)), ["答案在这里"]);
 		assert.deepEqual(transcript.live({ maxLines: 5, now: NOW }), []);
 		// 再交一次不会重复
-		assert.deepEqual(transcript.flush(), []);
+		assert.deepEqual(transcript.flush(NOW), []);
 	});
 
 	it("中断后正在跑的工具不再留在活动块里", () => {
@@ -131,11 +144,12 @@ describe("会话显示状态", () => {
 	it("换宽度后重新排版", () => {
 		const transcript = new Transcript(20);
 		transcript.handle({ type: "text_delta", text: "一二三四五六七八九十" }, NOW);
-		// 20 列扣掉 4 列缩进还剩 16 列，十个汉字折成两行
-		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 2);
+		// 模型的产出顶格写：20 列装得下十个汉字，一行就够
+		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 1);
 
+		// 十个汉字占二十列，八列宽要折成三行
 		transcript.resize(8);
-		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 5);
+		assert.equal(texts(transcript.live({ maxLines: 10, now: NOW })).length, 3);
 	});
 
 	it("压缩上下文时说明为什么停下来，结束与失败各留一行", () => {
@@ -146,14 +160,14 @@ describe("会话显示状态", () => {
 		const started = transcript.handle({ type: "compaction_start", messages: 12, tokensBefore: 9000 }, NOW);
 		assert.deepEqual(texts(started), [
 			"先说到这。",
-			"上下文偏长，正在把前面 12 条换成摘要（约 9000 token）",
+			"上下文偏长，正在把前面 12 条换成摘要（约 9.0k token）",
 		]);
 
 		const ended = transcript.handle(
 			{ type: "compaction_end", covered: 12, tokensBefore: 9000, tokensAfter: 800 },
 			NOW,
 		);
-		assert.ok(texts(ended)[0].includes("已压缩上下文"));
+		assert.ok(texts(ended)[0].includes("上下文已压缩"), texts(ended)[0]);
 		assert.ok(texts(ended)[0].includes("历史仍在会话文件里"));
 
 		assert.ok(

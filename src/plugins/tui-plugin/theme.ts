@@ -1,0 +1,62 @@
+import type { Rgb, Style } from "../../tui/index.ts";
+
+/**
+ * 界面配色。
+ *
+ * 颜色属于产品外观，因此定在界面这边而不是终端库里：终端库只认「一行上有哪些样式」，
+ * 具体用哪几种颜色由界面决定。
+ *
+ * 整体是深色：底色近乎黑，正文是浅灰，彩色只留给需要一眼分清的东西——使用者的消息、模型的
+ * 产出、成功与失败、路径。这样正文永远是最安静的那一层，界面上抢眼的东西都是有意义的。
+ */
+
+const rgb = (red: number, green: number, blue: number): Rgb => [red, green, blue];
+
+export const THEME = {
+	/** 屏幕底色 */
+	base: rgb(0x14, 0x14, 0x14),
+	/** 使用者消息的铺底 */
+	band: rgb(0x24, 0x24, 0x24),
+	/** 正文 */
+	text: rgb(0xe1, 0xe1, 0xe1),
+	/** 次要文字：工具名、耗时、说明 */
+	muted: rgb(0x78, 0x78, 0x78),
+	/** 再淡一层：菱形、竖线、分段符 */
+	faint: rgb(0x58, 0x58, 0x58),
+	/** 比次要文字亮一档：按键、菜单项 */
+	bright: rgb(0xc8, 0xc8, 0xc8),
+	/** 模型正在说的与正在做的 */
+	accent: rgb(0xbb, 0x9a, 0xf7),
+	/** 系统类信息：提示、行内代码 */
+	system: rgb(0x7a, 0xa2, 0xf7),
+	/** 路径 */
+	path: rgb(0xff, 0x9e, 0x64),
+	/** 需要注意但不致命的事：没读的配置、被拒绝的发送 */
+	warn: rgb(0xff, 0x9e, 0x64),
+	/** 成功 */
+	ok: rgb(0x9e, 0xce, 0x6a),
+	/** 失败 */
+	bad: rgb(0xf7, 0x76, 0x8e),
+	/** 边框 */
+	edge: rgb(0x32, 0x32, 0x37),
+	/** 亮一档的边框：轨道刻度、将来的聚焦态 */
+	edgeLit: rgb(0x50, 0x50, 0x58),
+} as const;
+
+export const TEXT: Style = { color: THEME.text };
+export const DIM: Style = { color: THEME.muted };
+export const FAINT: Style = { color: THEME.faint };
+export const BRIGHT: Style = { color: THEME.bright };
+export const ACCENT: Style = { color: THEME.accent };
+export const SYSTEM: Style = { color: THEME.system };
+export const PATH: Style = { color: THEME.path };
+export const WARN: Style = { color: THEME.warn };
+export const OK: Style = { color: THEME.ok };
+export const BAD: Style = { color: THEME.bad };
+export const EDGE: Style = { color: THEME.edge };
+export const EDGE_LIT: Style = { color: THEME.edgeLit };
+export const BOLD: Style = { bold: true };
+/** 卡片的问句、标题这类要压过正文一头的文字。 */
+export const TITLE: Style = { bold: true, color: THEME.text };
+/** 整行铺底。 */
+export const BAND: Style = { background: THEME.band };

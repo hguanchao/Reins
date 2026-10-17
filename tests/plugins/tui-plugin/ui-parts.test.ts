@@ -8,6 +8,7 @@ import {
 	desktopNotificationsSupported,
 	notificationSequence,
 } from "../../../src/plugins/tui-plugin/notify.ts";
+import { THEME } from "../../../src/plugins/tui-plugin/theme.ts";
 import { makeRuntime } from "./helpers.ts";
 
 describe("完成提醒", () => {
@@ -122,7 +123,7 @@ describe("自带命令", () => {
 		const { context, notifyCalls } = builtinContext();
 		const result = runBuiltin("notify", "大声点", context);
 		assert.deepEqual(notifyCalls, []);
-		assert.equal(result?.lines[0][0].style?.color, "red");
+		assert.deepEqual(result?.lines[0][0].style?.color, THEME.bad);
 	});
 
 	it("/trust 显示状态，/trust yes 改结论", () => {
