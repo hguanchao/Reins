@@ -139,17 +139,27 @@ describe("编辑器渲染", () => {
 		assert.match(render.lines[0].map((s) => s.text).join(""), /say something/);
 	});
 
-	it("内容反显出光标：末尾时光标那格是补的空格", () => {
+	it("光标只由终端定位，内容里不反显", () => {
 		const editor = new LineEditor();
 		editor.insert("ab");
 		const render = editor.render({ width: 20, prompt: plain("❯ ") });
-		// 行内容 = 提示符 + 前文 + 反显格；反显格在 ab 之后
 		const row = render.cursor.row;
 		const spans = render.lines[row];
-		const caretIndex = spans.findIndex((span) => span.style !== undefined && span.style.reverse === true);
-		assert.notEqual(caretIndex, -1);
-		assert.equal(spans[caretIndex].text, " "); // 光标在末尾，反显的是补的空格
-		assert.equal(render.cursor.col, spans.slice(0, caretIndex).reduce((sum, span) => sum + span.text.length, 0));
+		assert.ok(spans.every((span) => span.style?.reverse !== true), "no reverse caret");
+		// 末尾补一格空白作落点，光标落在 ab 之后
+		assert.equal(spans.map((span) => span.text).join(""), "❯ ab ");
+		assert.equal(render.cursor.col, 4);
+	});
+
+	it("光标在中间时落在该字符所在的格子上", () => {
+		const editor = new LineEditor();
+		editor.insert("abc");
+		editor.moveLeft();
+		const render = editor.render({ width: 20, prompt: plain("❯ ") });
+		const spans = render.lines[render.cursor.row];
+		assert.ok(spans.every((span) => span.style?.reverse !== true), "no reverse caret");
+		assert.equal(spans.map((span) => span.text).join(""), "❯ abc");
+		assert.equal(render.cursor.col, 4);
 	});
 
 	it("折行后光标行号跟着内容移动", () => {

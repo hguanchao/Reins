@@ -5,10 +5,8 @@ import {
 	mapLine,
 	mergeStyles,
 	plain,
-	styled,
 	sumCellsWidth,
 	type Line,
-	type Style,
 } from "../text/line.ts";
 import { segmentGraphemes } from "../text/width.ts";
 import { wrapCells, wrapLine } from "../text/wrap.ts";
@@ -37,9 +35,6 @@ export interface EditorRenderOptions {
 	/** 内容为空时显示的灰色提示 */
 	readonly placeholder?: string;
 }
-
-/** 既是光标又是选中字符：反显的那一格就是光标。 */
-const CARET: Style = { reverse: true };
 
 export class LineEditor {
 	#clusters: readonly string[] = [];
@@ -193,8 +188,8 @@ export class LineEditor {
 		const after = this.#clusters.slice(this.#cursor + 1).join("");
 		const line = concat(
 			plain(before),
-			// 光标处的字符反显；光标本就在末尾时补一个空格，否则光标会看不见
-			styled(caretCluster ?? " ", CARET),
+			// 光标由终端自己画，不在内容里反显；末尾补一格空白，光标才有落点，也才能在最右列换行
+			plain(caretCluster ?? " "),
 			plain(after),
 		);
 
