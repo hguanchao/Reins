@@ -115,6 +115,14 @@ async function framesWith(rows: number, cols: number): Promise<{ lines: string[]
 	return { lines: terminal.frameAt(snapshot) };
 }
 
+/** 取最后一帧的可见文本行:去掉清行序列与样式序列。 */
+function lastFrameRows(output: string): string[] {
+	return output
+		.slice(output.lastIndexOf("\x1b[H"))
+		.split("\r\n")
+		.map((line) => line.replace(/^(\r|\r\x1b\[2K)+/, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+}
+
 describe("输入框边框", () => {
 	it("上下边框各一条细线,从第一列铺满整个终端宽", async () => {
 		const { lines } = await framesWith(24, 80);
@@ -208,16 +216,78 @@ describe("输入框边框", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		const frame = terminal.output;
-		const lastFrame = frame.slice(frame.lastIndexOf("\x1b[H"));
-		const visible = lastFrame
-			.split("\r\n")
-			.map((line) => line.replace(/^(\r|\r\x1b\[2K)+/, "").replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
+		const visible = lastFrameRows(frame);
 		const status = visible.find((line) => line.includes("Thinking"));
 		assert.ok(status, "running row exists");
 		assert.ok(!status!.startsWith(" "), "spinner at the first column");
 
 		releaseRun?.();
 		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.quit();
+		await running;
+	});
+
+	it("运行中按 Esc 中止这一轮", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		let aborted = false;
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: (onEvent) => ({
+				run: async (_prompt: string, signal: AbortSignal) => {
+					onEvent({ type: "turn_start" });
+					await new Promise<void>((resolve) => {
+						signal.addEventListener(
+							"abort",
+							() => {
+								aborted = true;
+								resolve();
+							},
+							{ once: true },
+						);
+					});
+				},
+			}) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("hello\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		// 单独的 ESC 要等一小会儿，确认它不是某个转义序列的开头
+		terminal.inputListener?.("\x1b");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		assert.equal(aborted, true, "turn aborted by Esc");
+
+		terminal.quit();
+		await running;
+	});
+
+	it("空闲时按 Esc 清空输入，界面继续运行", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("abc");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("abc")), "text entered");
+
+		terminal.inputListener?.("\x1b");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const cleared = lastFrameRows(terminal.output);
+		assert.ok(!cleared.some((line) => line.includes("abc")), "input cleared");
+		assert.ok(cleared.some((line) => line.includes("Build anything")), "placeholder is back");
+
+		// Esc 不退出:还能继续输入
+		terminal.inputListener?.("z");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("z")), "still running");
+
+		terminal.inputListener?.("\x03"); // Ctrl+C 清空输入
 		terminal.quit();
 		await running;
 	});

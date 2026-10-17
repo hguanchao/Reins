@@ -37,9 +37,9 @@ import { Transcript } from "./transcript.ts";
  * Ctrl+P/Ctrl+N 逐行，滚轮向上向下，翻阅时 Home/End 跳到首尾。翻阅期间新到的内容不会把画面
  * 推走——视口记的是内容里的绝对行号，而流式输出只往末尾加行；只有发出新的一句时才回到末尾。
  *
- * 界面接管终端期间，按键全部由这里解释，因此 Ctrl+C 不再产生信号，而是「中止当前这一轮」；
- * 空闲时它才用来清空输入或退出。退出前必须把备用屏交还、终端恢复原状——留在原始模式里，
- * 使用者的 shell 会连回显都没有。
+ * 界面接管终端期间，按键全部由这里解释，因此 Ctrl+C 不再产生信号：它与 Esc 一起用来中止
+ * 当前这一轮；空闲时它们清空输入，输入为空时 Ctrl+C 才退出。退出前必须把备用屏交还、
+ * 终端恢复原状——留在原始模式里，使用者的 shell 会连回显都没有。
  */
 
 /** 会话区与确认卡片左侧留两列：整屏贴边会把内容顶到终端边缘上，读起来很挤。 */
@@ -220,7 +220,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			if (this.#dialog !== undefined) {
 				if (event.type === "key" && event.name === "ctrl-c") {
 					// 询问期间按 Ctrl+C：既拒绝，也把这一轮停掉
-					this.#interrupt();
+					this.#interrupt(true);
 					continue;
 				}
 				const decision = dialogDecision(event);
@@ -316,13 +316,16 @@ export class TerminalFrontend implements InteractiveFrontend {
 				this.#region.clear();
 				break;
 			case "ctrl-c":
-				this.#interrupt();
+				this.#interrupt(true);
+				break;
+			case "escape":
+				this.#interrupt(false);
 				break;
 			case "ctrl-d":
 				if (this.#editor.isEmpty && !this.#running) this.#exit();
 				return;
 			default:
-				// tab、escape 等目前没有绑定，按了就当没按
+				// tab 等目前没有绑定，按了就当没按
 				return;
 		}
 		this.#refresh();
@@ -333,7 +336,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (runtime === undefined) return;
 
 		if (this.#running) {
-			this.#commit([styled("A turn is still running; wait for it to finish, or press Ctrl+C to cancel.", WARN)]);
+			this.#commit([styled("A turn is still running; wait for it to finish, or press Esc or Ctrl+C to cancel.", WARN)]);
 			return;
 		}
 
@@ -445,7 +448,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#refresh();
 	}
 
-	#interrupt(): void {
+	#interrupt(exitWhenIdle: boolean): void {
 		if (this.#dialog !== undefined) {
 			// 询问期间按 Ctrl+C：拒绝，并且把这一轮也停掉
 			this.#answer(false);
@@ -461,7 +464,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#refresh();
 			return;
 		}
-		this.#exit();
+		// Esc 在空闲、没有输入时什么都不做：它只用来打断，不承担退出的职责
+		if (exitWhenIdle) this.#exit();
 	}
 
 	#exit(): void {
@@ -660,7 +664,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 		if (this.#running) {
 			return [
-				{ keys: "Ctrl+C", label: "cancel" },
+				{ keys: "Esc/Ctrl+C", label: "cancel" },
 				{ keys: "PageUp", label: "page" },
 				help,
 			];
