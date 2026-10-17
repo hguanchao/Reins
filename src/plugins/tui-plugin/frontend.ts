@@ -66,8 +66,11 @@ const WHEEL_LINES = 3;
 const PROMPT: Line = styled("❯ ", ACCENT);
 const PLACEHOLDER = "Build anything";
 
-/** 输入框的上边框；下边框里嵌着模型与审批状态，由 `#boxBottom` 拼。 */
-const boxTop = (width: number): Line => styled(`╭${"─".repeat(Math.max(0, width - 2))}╮`, EDGE);
+/**
+ * 输入框的上边框：一行实线铺满整行宽。宽度必须是显示列数，内容行居中画。
+ * 下边框里嵌着模型与审批状态，由 `#boxBottom` 拼。
+ */
+const boxTop = (width: number): Line => styled("━".repeat(Math.max(0, width)), EDGE);
 
 /** 主区上一次画出来的样子。翻阅按键与轨道按它算边界。 */
 interface MainFrame {
@@ -544,8 +547,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		const size = this.#terminal.size();
 		const body = this.#body(size.cols);
-		// 输入框会随内容折行，它多高先算出来，会话区才好分剩下的行
-		const editor = this.#editor.render({ width: body - 4, prompt: PROMPT, placeholder: PLACEHOLDER });
+		// 输入框没有左右边框，正文就是整行可用宽度；它多高先算出来，会话区才好分剩下的行
+		const editor = this.#editor.render({ width: body, prompt: PROMPT, placeholder: PLACEHOLDER });
 		const footerRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const dialog = this.#dialog;
 		const card = dialog === undefined ? 0 : CARD_ROWS;
@@ -564,7 +567,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			...(this.#running ? [plain(""), this.#runningRow(body)] : []),
 			plain(""),
 			boxTop(body),
-			...editor.lines.map((line) => concat(styled("│ ", EDGE), line, styled(" │", EDGE))),
+			...editor.lines.map((line) => concat(styled("  ", EDGE), line)),
 			this.#boxBottom(body),
 			this.#keysRow(body),
 		];
@@ -706,9 +709,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 						`${runtime.provider}/${runtime.model} · approval=${runtime.approval} · sandbox=${runtime.sandbox}`,
 						DIM,
 					);
-		const fitted = truncateLine(info, Math.max(0, body - 6));
-		const dashes = Math.max(0, body - 5 - lineWidth(fitted));
-		return concat(plain(" ".repeat(PAD)), styled("╰─ ", EDGE), fitted, styled(` ${"─".repeat(dashes)}╯`, EDGE));
+		const width = Math.max(0, body - PAD);
+		const fitted = truncateLine(info, Math.max(0, width - 4));
+		const dashes = Math.max(0, width - lineWidth(fitted) - 4);
+		return concat(
+			plain(" ".repeat(PAD)),
+			styled("┕━ ", EDGE),
+			fitted,
+			styled(` ${"━".repeat(dashes)}┙`, EDGE),
+		);
 	}
 
 	/** 底部快捷键条：当前场景该按什么。 */
@@ -759,18 +768,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 		];
 	}
 
-	/** 给几行内容套上边框。 */
+	/** 给几行内容套上边框：上下实线铺满整行，内容缩进两列。 */
 	#box(content: readonly Line[], width: number): readonly Line[] {
-		const inner = Math.max(1, width - 4);
+		const inner = Math.max(1, width - PAD * 2);
 		const rows = content.map((line) =>
-			concat(
-				plain(" ".repeat(PAD)),
-				styled("│ ", EDGE),
-				padLine(truncateLine(line, inner), inner),
-				styled(" │", EDGE),
-			),
+			concat(plain(" ".repeat(PAD)), padLine(truncateLine(line, inner), inner)),
 		);
-		return [concat(plain(" ".repeat(PAD)), boxTop(width)), ...rows, concat(plain(" ".repeat(PAD)), styled(`╰${"─".repeat(Math.max(0, width - 2))}╯`, EDGE))];
+		return [concat(plain(" ".repeat(PAD)), boxTop(width)), ...rows, concat(plain(" ".repeat(PAD)), boxTop(width))];
 	}
 
 	/** 上下补空行，把内容摆在中间。首屏居中比顶在头上好看。 */
