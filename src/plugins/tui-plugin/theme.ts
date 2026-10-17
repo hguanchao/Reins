@@ -29,6 +29,12 @@ export const THEME = {
 	accent: rgb(0xbb, 0x9a, 0xf7),
 	/** 系统类信息：提示、行内代码 */
 	system: rgb(0x7a, 0xa2, 0xf7),
+	/** 一级标题与强调用的青色 */
+	teal: rgb(0x73, 0xda, 0xca),
+	/** 行内代码与代码文字 */
+	code: rgb(0x3a, 0x95, 0xab),
+	/** 代码块底色 */
+	codeBg: rgb(0x1c, 0x1c, 0x1c),
 	/** 路径 */
 	path: rgb(0xff, 0x9e, 0x64),
 	/** 需要注意但不致命的事：没读的配置、被拒绝的发送 */
@@ -49,6 +55,9 @@ export const FAINT: Style = { color: THEME.faint };
 export const BRIGHT: Style = { color: THEME.bright };
 export const ACCENT: Style = { color: THEME.accent };
 export const SYSTEM: Style = { color: THEME.system };
+export const TEAL: Style = { color: THEME.teal };
+export const CODE: Style = { color: THEME.code };
+export const CODE_BG: Style = { background: THEME.codeBg };
 export const PATH: Style = { color: THEME.path };
 export const WARN: Style = { color: THEME.warn };
 export const OK: Style = { color: THEME.ok };

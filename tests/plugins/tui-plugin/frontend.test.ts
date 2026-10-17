@@ -402,8 +402,8 @@ describe("输入框边框", () => {
 		terminal.inputListener?.("run\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◆ Read"));
-		assert.ok(toolRow >= 0, "tool block is visible");
+		const toolRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◈ Read 1 file"));
+		assert.ok(toolRow >= 0, "tool group header is visible");
 		const clickRow = toolRow + 1; // 鼠标坐标从 1 开始
 
 		// 单击：选中块并画选中框
@@ -413,7 +413,7 @@ describe("输入框边框", () => {
 		const selected = lastFrameRows(terminal.output);
 		assert.ok(selected.some((line) => line.trimStart().startsWith("┌")), "selection box top");
 		assert.ok(selected.some((line) => line.trimStart().startsWith("└")), "selection box bottom");
-		assert.ok(!selected.some((line) => line.includes("line one")), "tool body collapsed");
+		assert.ok(!selected.some((line) => line.includes("line one")), "tool group collapsed");
 
 		// 300ms 内第二次按下：展开
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}M`);
@@ -428,11 +428,12 @@ describe("输入框边框", () => {
 		const folded = lastFrameRows(terminal.output);
 		assert.ok(!folded.some((line) => line.includes("line one")), "keyboard fold");
 
-		// y 复制块的完整正文（折叠状态也复制全部）
+		// y 复制组的完整正文（折叠状态也复制全部）
 		terminal.inputListener?.("y");
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const payload = Buffer.from("line one\nline two", "utf8").toString("base64");
-		assert.ok(terminal.output.includes(`\x1b]52;c;${payload}`), "y copies the block body");
+		const copy = /(?:\x1b\]52;c;)([^\x07]*)\x07/.exec(terminal.output);
+		assert.ok(copy, "clipboard sequence written");
+		assert.ok(Buffer.from(copy[1], "base64").toString("utf8").includes("line one\nline two"), "y copies the group body");
 
 		// Tab 回输入框，继续输入
 		terminal.inputListener?.("\t");

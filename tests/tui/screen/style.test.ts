@@ -14,6 +14,7 @@ import { concat, plain, styled } from "../../../src/tui/text/line.ts";
 	it("布尔项按序输出", () => {
 		assert.equal(styleSequence({ bold: true, underline: true }, true), "\x1b[1;4m");
 		assert.equal(styleSequence({ reverse: true }, true), "\x1b[7m");
+		assert.equal(styleSequence({ strikethrough: true }, true), "\x1b[9m");
 	});
 
 	it("十六色前景与背景用同一张表，背景加十", () => {

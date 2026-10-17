@@ -33,6 +33,8 @@ export interface Style {
 	readonly dim?: boolean;
 	readonly italic?: boolean;
 	readonly underline?: boolean;
+	/** 删除线。Markdown 的 `~~text~~` 用它。 */
+	readonly strikethrough?: boolean;
 	/** 前景与背景互换。光标就是靠它显示的：反显的那一格就是光标。 */
 	readonly reverse?: boolean;
 	readonly color?: Color;
@@ -116,6 +118,7 @@ export function mergeStyles(base: Style | undefined, extra: Style | undefined): 
 		dim?: boolean;
 		italic?: boolean;
 		underline?: boolean;
+		strikethrough?: boolean;
 		reverse?: boolean;
 		color?: Color;
 		background?: Color;
@@ -124,6 +127,7 @@ export function mergeStyles(base: Style | undefined, extra: Style | undefined): 
 	if (base.dim === true || extra.dim === true) merged.dim = true;
 	if (base.italic === true || extra.italic === true) merged.italic = true;
 	if (base.underline === true || extra.underline === true) merged.underline = true;
+	if (base.strikethrough === true || extra.strikethrough === true) merged.strikethrough = true;
 	if (base.reverse === true || extra.reverse === true) merged.reverse = true;
 	const color = extra.color ?? base.color;
 	if (color !== undefined) merged.color = color;
@@ -229,6 +233,7 @@ export function sameStyle(left: Style | undefined, right: Style | undefined): bo
 		left.dim === right.dim &&
 		left.italic === right.italic &&
 		left.underline === right.underline &&
+		left.strikethrough === right.strikethrough &&
 		left.reverse === right.reverse &&
 		sameColor(left.color, right.color) &&
 		sameColor(left.background, right.background)

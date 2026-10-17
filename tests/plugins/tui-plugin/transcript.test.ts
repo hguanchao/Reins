@@ -65,7 +65,7 @@ describe("用户消息", () => {
 });
 
 describe("块折叠", () => {
-	it("工具块收起时只有表头，展开后显示输出", () => {
+	it("工具块汇总成组头，展开后显示输出", () => {
 		const transcript = new Transcript(60);
 		transcript.handle({ type: "tool_start", callId: "1", name: "Read", args: { path: "a.ts" } }, 0);
 		transcript.handle({ type: "tool_update", callId: "1", text: "line one\nline two\nline three" }, 1);
@@ -75,13 +75,39 @@ describe("块折叠", () => {
 		);
 
 		const collapsed = transcript.view();
-		const block = collapsed.blocks.find((item) => item.kind === "tool");
+		const block = collapsed.blocks.find((item) => item.kind === "group");
 		assert.ok(block?.foldable);
+		assert.ok(collapsed.rows.some((row) => lineText(row).includes("Read 1 file")));
 
 		transcript.toggleFold(block.id);
 		const expanded = transcript.view();
 		assert.ok(expanded.rows.length > collapsed.rows.length);
 		assert.ok(expanded.rows.some((row) => lineText(row).includes("line one")));
+	});
+
+	it("连续同类工具按动词汇总，失败数单独标出", () => {
+		const transcript = new Transcript(60);
+		const end = (callId: string, name: string, isError = false): void => {
+			transcript.handle(
+				{ type: "tool_end", callId, name, isError, durationMs: 1, summary: "done" },
+				0,
+			);
+		};
+
+		transcript.handle({ type: "tool_start", callId: "1", name: "Read", args: { path: "a" } }, 0);
+		end("1", "Read");
+		transcript.handle({ type: "tool_start", callId: "2", name: "Read", args: { path: "b" } }, 0);
+		end("2", "Read", true);
+		transcript.handle({ type: "tool_start", callId: "3", name: "grep", args: { pattern: "x" } }, 0);
+		end("3", "grep");
+
+		const view = transcript.view();
+		const block = view.blocks.find((item) => item.kind === "group");
+		assert.ok(block);
+		const header = lineText(view.rows[block.start]);
+		assert.ok(header.includes("Read 2 files"), header);
+		assert.ok(header.includes("Searched 1 pattern"), header);
+		assert.ok(header.includes("1 failed"), header);
 	});
 
 	it("思考块默认收起，展开后显示完整草稿", () => {

@@ -86,6 +86,8 @@ describe("样式合并与比较", () => {
 		assert.equal(sameStyle({ bold: true }, { bold: true }), true);
 		assert.equal(sameStyle({ reverse: true }, { reverse: true, bold: true }), false);
 		assert.equal(sameStyle({ bold: true }, { color: "red" }), false);
+		assert.equal(sameStyle({ strikethrough: true }, { strikethrough: true }), true);
+		assert.equal(sameStyle({ strikethrough: true }, { underline: true }), false);
 	});
 });
 

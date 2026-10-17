@@ -4,6 +4,7 @@ import {
 	concat,
 	lineWidth,
 	mergeStyles,
+	padLine,
 	plain,
 	styled,
 	type Line,
@@ -11,6 +12,7 @@ import {
 	type Style,
 } from "../../tui/text/line.ts";
 import { wrapLine } from "../../tui/text/wrap.ts";
+import { THEME } from "./theme.ts";
 
 /**
  * 把模型的回答渲染成终端行。
@@ -42,23 +44,55 @@ interface Context {
 	readonly base: Style | undefined;
 }
 
-const HEADING: Style = { bold: true };
-const HEADING_TOP: Style = { bold: true, underline: true };
-const CODE: Style = { dim: true };
-const INLINE_CODE: Style = { color: "cyan" };
-const LINK: Style = { underline: true };
-const DIM: Style = { dim: true };
+const BODY: Style = { color: THEME.text };
+const STRONG: Style = { bold: true };
+const EMPHASIS: Style = { italic: true };
+const STRIKE: Style = { strikethrough: true };
+const H1: Style = { bold: true, color: THEME.teal };
+const H2: Style = { bold: true, color: THEME.system };
+const H3: Style = { bold: true, color: THEME.accent };
+const H4: Style = { bold: true, color: THEME.bright };
+const H5: Style = { bold: true, color: THEME.muted };
+const H6: Style = { color: THEME.faint };
+const INLINE_CODE: Style = { color: THEME.code, bold: true };
+const LINK: Style = { color: THEME.system, underline: true };
+const QUOTE: Style = { color: THEME.muted, dim: true };
+const RULE: Style = { color: THEME.faint };
+const TABLE_BORDER: Style = { color: THEME.faint };
+const TABLE_HEADER: Style = H2;
+const TASK_CHECKED: Style = { color: THEME.ok };
+const TASK_UNCHECKED: Style = { color: THEME.muted, dim: true };
+const MUTED: Style = { color: THEME.muted };
+const CODE_TEXT: Style = { color: THEME.text, background: THEME.codeBg };
+const CODE_GUTTER_STYLE: Style = { color: THEME.muted, background: THEME.codeBg, dim: true };
 
 const QUOTE_PREFIX = "▏ ";
-const CODE_GUTTER = "│ ";
+const CODE_BAR = "│ ";
 const SEPARATOR_WIDTH = 40;
+
+function headingStyle(depth: number): Style {
+	switch (depth) {
+		case 1:
+			return H1;
+		case 2:
+			return H2;
+		case 3:
+			return H3;
+		case 4:
+			return H4;
+		case 5:
+			return H5;
+		default:
+			return H6;
+	}
+}
 
 export function renderMarkdown(text: string, options: { readonly width: number }): RenderedMarkdown {
 	const root: Context = {
 		width: Math.max(1, options.width),
 		firstIndent: [],
 		restIndent: [],
-		base: undefined,
+		base: BODY,
 	};
 
 	const tokens = Lexer.lex(text);
@@ -106,8 +140,7 @@ function renderBlock(token: Token, context: Context): Line[] {
 	switch (token.type) {
 		case "heading": {
 			const heading = token as Tokens.Heading;
-			const style = heading.depth <= 2 ? HEADING_TOP : HEADING;
-			return wrapLogical(renderInline(heading.tokens, style, context), context);
+			return wrapLogical(renderInline(heading.tokens, headingStyle(heading.depth), context), context);
 		}
 		case "paragraph":
 			return wrapLogical(renderInline((token as Tokens.Paragraph).tokens, undefined, context), context);
@@ -124,7 +157,7 @@ function renderBlock(token: Token, context: Context): Line[] {
 		case "list":
 			return renderList(token as Tokens.List, context);
 		case "hr":
-			return [styled("─".repeat(availableWidth(context)), DIM)];
+			return [styled("─".repeat(availableWidth(context)), RULE)];
 		case "table":
 			return renderTable(token as Tokens.Table, context);
 		case "html":
@@ -138,24 +171,28 @@ function renderBlock(token: Token, context: Context): Line[] {
 }
 
 function renderCode(token: Tokens.Code, context: Context): Line[] {
-	const gutter = styled(CODE_GUTTER, CODE);
+	const codeStyle: Style = mergeStyles(context.base, CODE_TEXT) ?? CODE_TEXT;
+	const gutterStyle: Style = mergeStyles(context.base, CODE_GUTTER_STYLE) ?? CODE_GUTTER_STYLE;
+	const gutter = styled(CODE_BAR, gutterStyle);
 	// 代码里的缩进有意义，原样保留；行尾空白没有意义，去掉
-	const lines = token.text.split("\n").map((raw) => styled(raw.replace(/\s+$/, ""), CODE));
+	const lines = token.text.split("\n").map((raw) => styled(raw.replace(/\s+$/, ""), codeStyle));
 	// 竖线由换行器的前缀负责，空行也照样有，看起来才是一条连续的代码块
-	return wrapLogical(lines, {
+	const wrapped = wrapLogical(lines, {
 		...context,
 		firstIndent: concat(context.firstIndent, gutter),
 		restIndent: concat(context.restIndent, gutter),
 	});
+	// 背景铺满整行，代码块才是一整块面板而不是一行行短条
+	return wrapped.map((line) => padLine(line, context.width, codeStyle));
 }
 
 function renderBlockquote(token: Tokens.Blockquote, context: Context): Line[] {
-	const prefix = styled(QUOTE_PREFIX, DIM);
+	const prefix = styled(QUOTE_PREFIX, QUOTE);
 	const inner: Context = {
 		...context,
 		firstIndent: concat(context.firstIndent, prefix),
 		restIndent: concat(context.restIndent, prefix),
-		base: mergeStyles(context.base, DIM),
+		base: mergeStyles(context.base, QUOTE),
 	};
 	return joinBlocks(token.tokens.map((child) => renderBlock(child, inner)));
 }
@@ -174,7 +211,7 @@ function renderList(token: Tokens.List, context: Context): Line[] {
 		const hanging = plain(" ".repeat(lineWidth([{ text: marker }])));
 		const itemContext: Context = {
 			...context,
-			firstIndent: concat(context.firstIndent, styled(marker, DIM)),
+			firstIndent: concat(context.firstIndent, styled(marker, MUTED)),
 			restIndent: concat(context.restIndent, hanging),
 		};
 		// 任务列表把勾选状态画出来：它表达的是「做没做」，比一个圆点有用
@@ -182,7 +219,13 @@ function renderList(token: Tokens.List, context: Context): Line[] {
 		const withCheck: Context =
 			checked === ""
 				? itemContext
-				: { ...itemContext, firstIndent: concat(itemContext.firstIndent, plain(checked)) };
+				: {
+						...itemContext,
+						firstIndent: concat(
+							itemContext.firstIndent,
+							styled(checked, item.checked === true ? TASK_CHECKED : TASK_UNCHECKED),
+						),
+					};
 		// 项里的第一个块接着标记写；嵌套的列表等块与标记后的文字对齐，不再重复一遍标记
 		const nested: Context = {
 			...context,
@@ -197,22 +240,23 @@ function renderList(token: Tokens.List, context: Context): Line[] {
 		);
 	}
 
-	return joinBlocks(items);
+	// 紧凑列表项之间不留空行；松散列表保留源文本里的分段
+	return token.loose ? joinBlocks(items) : items.flat();
 }
 
 function renderTable(token: Tokens.Table, context: Context): Line[] {
 	const cellLines = (cells: readonly Tokens.TableCell[], style: Style | undefined): readonly Line[] =>
 		cells.map((cell) => renderInline(cell.tokens, style, context).flat());
 
-	const rows: Line[] = [joinCells(cellLines(token.header, HEADING))];
-	rows.push(styled("─".repeat(availableWidth(context)), DIM));
+	const rows: Line[] = [joinCells(cellLines(token.header, TABLE_HEADER))];
+	rows.push(styled("─".repeat(availableWidth(context)), RULE));
 	for (const row of token.rows) rows.push(joinCells(cellLines(row, undefined)));
 	return wrapLogical(rows, context);
 
 	function joinCells(lines: readonly Line[]): Line {
 		const joined: Span[] = [];
 		lines.forEach((line, index) => {
-			if (index > 0) joined.push(...styled(" │ ", DIM));
+			if (index > 0) joined.push(...styled(" │ ", TABLE_BORDER));
 			joined.push(...line);
 		});
 		return joined;
@@ -235,18 +279,13 @@ function renderInline(tokens: readonly Token[], style: Style | undefined, contex
 				builder.append(decorate((token as Tokens.Escape).text, style, context));
 				continue;
 			case "strong":
-				builder.appendLines(
-					renderInline((token as Tokens.Strong).tokens, mergeStyles(style, { bold: true }), context),
-				);
+				builder.appendLines(renderInline((token as Tokens.Strong).tokens, mergeStyles(style, STRONG), context));
 				continue;
 			case "em":
-				builder.appendLines(
-					renderInline((token as Tokens.Em).tokens, mergeStyles(style, { italic: true }), context),
-				);
+				builder.appendLines(renderInline((token as Tokens.Em).tokens, mergeStyles(style, EMPHASIS), context));
 				continue;
 			case "del":
-				// 删除线在各终端表现不一，按普通文字画，内容不丢
-				builder.appendLines(renderInline((token as Tokens.Del).tokens, style, context));
+				builder.appendLines(renderInline((token as Tokens.Del).tokens, mergeStyles(style, STRIKE), context));
 				continue;
 			case "codespan":
 				builder.append(decorate((token as Tokens.Codespan).text, mergeStyles(style, INLINE_CODE), context));
@@ -255,7 +294,7 @@ function renderInline(tokens: readonly Token[], style: Style | undefined, contex
 				builder.appendLines(renderInline((token as Tokens.Link).tokens, mergeStyles(style, LINK), context));
 				continue;
 			case "image":
-				builder.append(decorate(`[image: ${(token as Tokens.Image).text}]`, mergeStyles(style, DIM), context));
+				builder.append(decorate(`[image: ${(token as Tokens.Image).text}]`, mergeStyles(style, MUTED), context));
 				continue;
 			case "br":
 				builder.break();
@@ -290,7 +329,7 @@ class InlineBuilder {
 }
 
 function decorate(text: string, style: Style | undefined, context: Context): Line {
-	const merged = mergeStyles(style, context.base);
+	const merged = mergeStyles(context.base, style);
 	return merged === undefined ? plain(text) : styled(text, merged);
 }
 

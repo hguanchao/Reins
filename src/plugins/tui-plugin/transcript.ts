@@ -18,7 +18,7 @@ import { formatDuration } from "../../tui/widgets/spinner.ts";
 import { formatTokens } from "./format.ts";
 import { ACCENT_WIDTH, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { ACCENT, BAD, BAND, DIM, FAINT, TEXT, THEME } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, DIM, FAINT, TEXT, THEME } from "./theme.ts";
 
 /**
  * 会话的显示状态。
@@ -27,7 +27,8 @@ import { ACCENT, BAD, BAND, DIM, FAINT, TEXT, THEME } from "./theme.ts";
  * 把鼠标行号映射回块。块的内容按当前宽度重新排版，所以窗口变化时历史也会跟着重排。
  *
  * 块与块之间留一行空白；用户消息整块铺底并上下各留一行，思考与工具块带彩色竖线。模型正文
- * 没有竖线，但仍保留竖线列与左留白，和工具正文从同一列开始。
+ * 没有竖线，但仍保留竖线列与左留白，和工具正文从同一列开始。连续的可汇总工具（读取、检索、
+ * 列目录）会折叠成一行「◈ Read 3 files」；展开后逐个列出成员。
  *
  * 流式输出按 markdown 渲染，并且跟踪「已经交出去几行」：重新渲染整段文本后再跳过前面已
  * 提交的部分，得到的就是还没显示的尾部。这样不必去维护文本偏移量与行号之间的换算。
@@ -56,7 +57,7 @@ const PULSE_MIN = 0.35;
 /** 工具行的右端离块右缘的距离：耗时对齐到这里。 */
 const HEADER_WIDTH = (entryWidth: number): number => Math.max(1, entryWidth - BLOCK_PAD_RIGHT);
 
-export type BlockKind = "user" | "agent" | "thinking" | "tool" | "system";
+export type BlockKind = "user" | "agent" | "thinking" | "tool" | "group" | "system";
 export type BlockMode = "collapsed" | "truncated" | "expanded";
 
 /** 一个已定型块在行数组里的位置；界面用它做命中测试与选中框。 */
@@ -113,6 +114,17 @@ interface ToolBlock extends BlockBase {
 	readonly durationMs: number;
 }
 
+type ToolGroupKind = "file" | "search" | "dir" | "web";
+
+const GROUP_VERBS: Readonly<
+	Record<ToolGroupKind, { readonly done: string; readonly running: string; readonly one: string; readonly many: string }>
+> = {
+	file: { done: "Read", running: "Reading", one: "file", many: "files" },
+	search: { done: "Searched", running: "Searching", one: "pattern", many: "patterns" },
+	dir: { done: "Listed", running: "Listing", one: "dir", many: "dirs" },
+	web: { done: "Fetched", running: "Fetching", one: "website", many: "websites" },
+};
+
 interface SystemBlock extends BlockBase {
 	readonly kind: "system";
 	readonly lines: readonly Line[];
@@ -133,6 +145,10 @@ export class Transcript {
 	/** 条目总宽：竖线、左右留白与正文一起。 */
 	#width: number;	#blocks: Block[] = [];
 	#nextId = 1;
+	/** 展开的汇总组，按组内第一个工具块的 id 记。 */
+	#expandedGroups = new Set<number>();
+	/** 最近一次扫描出的汇总组：组头 id → 成员工具块。 */
+	#groupAnchors = new Map<number, ToolBlock[]>();
 	#streaming = "";
 	#reasoning = "";
 	#reasoningStartedAt: number | undefined;
@@ -294,27 +310,50 @@ export class Transcript {
 		const turns: number[] = [];
 		let first = true;
 
-		const push = (lines: readonly Line[], block: Block | undefined): void => {
+		interface SpanInfo {
+			readonly id: number;
+			readonly kind: BlockKind;
+			readonly mode: BlockMode;
+			readonly foldable: boolean;
+		}
+
+		const push = (lines: readonly Line[], span: SpanInfo | undefined): void => {
 			if (lines.length === 0) return;
 			// 块与块之间固定留一行：用户消息自己的上下留白是块内空间，不再兼作块间距
 			if (!first) rows.push([]);
 			first = false;
 			const start = rows.length;
 			rows.push(...lines);
-			if (block === undefined) return;
+			if (span === undefined) return;
 
-			blocks.push({
-				id: block.id,
-				kind: block.kind,
-				foldable: this.#foldable(block),
-				mode: block.mode,
-				start,
-				height: lines.length,
-			});
-			if (block.kind === "user") turns.push(start);
+			blocks.push({ ...span, start, height: lines.length });
+			if (span.kind === "user") turns.push(start);
 		};
 
-		for (const block of this.#blocks) push(this.#renderBlock(block), block);
+		this.#syncGroups();
+		for (let index = 0; index < this.#blocks.length; index += 1) {
+			const block = this.#blocks[index];
+			const members = this.#groupRunAt(index);
+			if (members !== undefined) {
+				const anchor = members[0];
+				const expanded = this.#expandedGroups.has(anchor.id);
+				push(this.#groupLines(members, expanded), {
+					id: anchor.id,
+					kind: "group",
+					mode: expanded ? "expanded" : "collapsed",
+					foldable: true,
+				});
+				index += members.length - 1;
+				continue;
+			}
+
+			push(this.#renderBlock(block), {
+				id: block.id,
+				kind: block.kind,
+				mode: block.mode,
+				foldable: this.#foldable(block),
+			});
+		}
 
 		let live = this.#liveRows(now);
 		if (options.maxLiveRows !== undefined && live.length > options.maxLiveRows) {
@@ -330,6 +369,13 @@ export class Transcript {
 
 	/** 切换一个块的展开/收起；不可折叠的块原样返回。 */
 	toggleFold(id: number): void {
+		this.#syncGroups();
+		if (this.#groupAnchors.has(id)) {
+			if (this.#expandedGroups.has(id)) this.#expandedGroups.delete(id);
+			else this.#expandedGroups.add(id);
+			return;
+		}
+
 		const block = this.#blocks.find((item) => item.id === id);
 		if (block === undefined || !this.#foldable(block)) return;
 		block.mode = block.mode === "expanded" ? "collapsed" : "expanded";
@@ -337,21 +383,42 @@ export class Transcript {
 
 	/** 收起一个块；已经收起的保持原状。 */
 	collapse(id: number): void {
+		this.#syncGroups();
+		if (this.#groupAnchors.has(id)) {
+			this.#expandedGroups.delete(id);
+			return;
+		}
+
 		const block = this.#blocks.find((item) => item.id === id);
 		if (block !== undefined && this.#foldable(block)) block.mode = "collapsed";
 	}
 
 	/** 展开一个块；已经展开的保持原状。 */
 	expand(id: number): void {
+		this.#syncGroups();
+		if (this.#groupAnchors.has(id)) {
+			this.#expandedGroups.add(id);
+			return;
+		}
+
 		const block = this.#blocks.find((item) => item.id === id);
 		if (block !== undefined && this.#foldable(block)) block.mode = "expanded";
 	}
 
 	/** 全部展开或全部收起：只要还有展开的就全部收起，否则全部展开。 */
 	toggleAll(): void {
+		this.#syncGroups();
 		const foldable = this.#blocks.filter((block) => this.#foldable(block));
-		const collapse = foldable.some((block) => block.mode === "expanded");
+		const groups = [...this.#groupAnchors.keys()];
+		const collapse =
+			foldable.some((block) => block.mode === "expanded") ||
+			groups.some((id) => this.#expandedGroups.has(id));
+
 		for (const block of foldable) block.mode = collapse ? "collapsed" : "expanded";
+		for (const id of groups) {
+			if (collapse) this.#expandedGroups.delete(id);
+			else this.#expandedGroups.add(id);
+		}
 	}
 
 	/** 只切换思考块。 */
@@ -363,6 +430,10 @@ export class Transcript {
 
 	/** 一个块的完整正文，折叠状态下也返回全部内容；用于复制。 */
 	blockText(id: number): string | undefined {
+		this.#syncGroups();
+		const members = this.#groupAnchors.get(id);
+		if (members !== undefined) return members.map((member) => this.#toolText(member)).join("\n\n");
+
 		const block = this.#blocks.find((item) => item.id === id);
 		if (block === undefined) return undefined;
 
@@ -378,6 +449,77 @@ export class Transcript {
 			default:
 				return undefined;
 		}
+	}
+
+	/** 扫描连续的可汇总工具，记下每个组的组头 id 与成员。 */
+	#syncGroups(): void {
+		this.#groupAnchors.clear();
+		for (let index = 0; index < this.#blocks.length; index += 1) {
+			const members = this.#groupRunAt(index);
+			if (members === undefined) continue;
+			this.#groupAnchors.set(members[0].id, members);
+			index += members.length - 1;
+		}
+	}
+
+	#groupRunAt(index: number): ToolBlock[] | undefined {
+		const first = this.#blocks[index];
+		if (first === undefined || first.kind !== "tool" || groupKindOf(first.name) === undefined) {
+			return undefined;
+		}
+
+		const members: ToolBlock[] = [];
+		for (let cursor = index; cursor < this.#blocks.length; cursor += 1) {
+			const block = this.#blocks[cursor];
+			if (block.kind !== "tool" || groupKindOf(block.name) === undefined) break;
+			members.push(block);
+		}
+		return members;
+	}
+
+	/** 汇总组：收起时只有组头，展开后逐个列出成员工具的完整内容。 */
+	#groupLines(members: readonly ToolBlock[], expanded: boolean): readonly Line[] {
+		const header = this.#groupHeader(members);
+		if (!expanded) return [header];
+
+		const lines: Line[] = [header];
+		for (const member of members) {
+			lines.push([]);
+			lines.push(...this.#toolLines(member, true));
+		}
+		return lines;
+	}
+
+	#groupHeader(members: readonly ToolBlock[]): Line {
+		const buckets = new Map<ToolGroupKind, number>();
+		let failed = 0;
+		for (const member of members) {
+			const kind = groupKindOf(member.name);
+			if (kind === undefined) continue;
+			buckets.set(kind, (buckets.get(kind) ?? 0) + 1);
+			if (member.isError) failed += 1;
+		}
+
+		let label = "";
+		for (const [kind, count] of buckets) {
+			const verb = GROUP_VERBS[kind];
+			if (label.length > 0) label += ", ";
+			label += `${verb.done} ${count} ${count === 1 ? verb.one : verb.many}`;
+		}
+
+		return blockLine(
+			plain(" "),
+			concat(
+				styled("◈ ", failed > 0 ? BAD : FAINT),
+				styled(label, { bold: true, color: BRIGHT.color }),
+				failed > 0 ? styled(` · ${failed} failed`, BAD) : plain(""),
+			),
+		);
+	}
+
+	#toolText(member: ToolBlock): string {
+		const header = `${member.name}${member.args.length > 0 ? ` ${member.args}` : ""}`;
+		return member.output.length > 0 ? `${header}\n${member.output}` : header;
 	}
 
 	#renderBlock(block: Block): readonly Line[] {
@@ -429,8 +571,8 @@ export class Transcript {
 		return [header, ...body.map((line) => blockLine(rail(accent), line))];
 	}
 
-	#toolLines(block: ToolBlock): readonly Line[] {
-		const collapsed = block.mode === "collapsed";
+	#toolLines(block: ToolBlock, forceExpanded = false): readonly Line[] {
+		const collapsed = !forceExpanded && block.mode === "collapsed";
 		// 折叠行没有竖线，和参考实现的折叠态一致；展开后才画出块的范围
 		const accent = collapsed ? undefined : block.isError ? BAD : FAINT;
 		const mark = block.isError ? BAD : FAINT;
@@ -596,6 +738,28 @@ function summarizeArgs(args: Record<string, unknown>): string {
 	const text = JSON.stringify(args);
 	if (text === undefined || text === "{}") return "";
 	return text.length > ARGS_LIMIT ? `${text.slice(0, ARGS_LIMIT)}…` : text;
+}
+
+/** 可汇总的工具按动词归类；其余工具（写文件、编辑、执行命令）各自成行。 */
+function groupKindOf(name: string): ToolGroupKind | undefined {
+	switch (name.toLowerCase()) {
+		case "read":
+			return "file";
+		case "grep":
+		case "find":
+		case "glob":
+			return "search";
+		case "ls":
+		case "list_dir":
+			return "dir";
+		case "webfetch":
+		case "web_fetch":
+		case "websearch":
+		case "web_search":
+			return "web";
+		default:
+			return undefined;
+	}
 }
 
 /** 阶段性输出的最后一行：它是给「还在动」这件事作证的。 */

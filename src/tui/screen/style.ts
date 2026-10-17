@@ -42,6 +42,7 @@ export function styleSequence(style: Style | undefined, colors: boolean): string
 	if (style.dim === true) codes.push(2);
 	if (style.italic === true) codes.push(3);
 	if (style.underline === true) codes.push(4);
+	if (style.strikethrough === true) codes.push(9);
 	if (style.reverse === true) codes.push(7);
 	if (style.color !== undefined) codes.push(...colorCodes(style.color, 30));
 	if (style.background !== undefined) codes.push(...colorCodes(style.background, 40));
