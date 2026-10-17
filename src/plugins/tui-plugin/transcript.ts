@@ -19,8 +19,8 @@ import { ACCENT, BAD, BAND, DIM, FAINT, TEXT } from "./theme.ts";
 /**
  * 会话的显示状态。
  *
- * 每一类内容在这里有自己的形状：使用者的消息整行铺底并带「› 」前缀，模型的回答与工具调用
- * 从顶格开始，工具名与耗时压暗，只有失败才用红色。区分靠的是形状与深浅，不是满屏的彩色。
+ * 每一类内容在这里有自己的形状：使用者的消息上下各留一行、整行铺底，正文与模型的回答从同
+ * 一列开始；工具名与耗时压暗，只有失败才用红色。区分靠的是形状与深浅，不是满屏的彩色。
  *
  * 内容分两半：定稿的行（写进会话区的历史）与活动块（还在变的部分——正在流式输出的回答、
  * 正在跑的工具、推理预览）。事件进来只改状态，什么时候画、画多少由界面决定。
@@ -82,14 +82,11 @@ export class Transcript {
 		this.#width = Math.max(1, width);
 	}
 
-	/** 使用者提交了一句话：整行铺底写进会话，一眼能在历史里找到自己说过的话。 */
+	/** 使用者提交了一句话：上下各留一行铺底，正文垂直居中；多行消息整块增高，不截断。 */
 	userTurn(text: string): readonly Line[] {
-		const lines = wrapLine(plain(text), {
-			width: this.#width,
-			firstIndent: styled("› ", ACCENT),
-			restIndent: plain("  "),
-		});
-		return lines.map((line) => this.#band(line));
+		const lines = wrapLine(plain(text), { width: this.#width });
+		const blank = this.#band(plain(""));
+		return [blank, ...lines.map((line) => this.#band(line)), blank];
 	}
 
 	/** 处理一个事件，返回因此要提交进会话区的行。 */
