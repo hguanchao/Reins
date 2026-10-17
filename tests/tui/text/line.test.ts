@@ -11,6 +11,7 @@ import {
 	lineWidth,
 	mapLine,
 	mergeStyles,
+	overlayChar,
 	padLine,
 	plain,
 	sameColor,
@@ -123,6 +124,12 @@ describe("改样式与补齐", () => {
 		// gap < 1 就放不下：右段整个消失，左段原样保留
 		assert.equal(lineText(alignEnds(plain("a"), plain("b"), 2)), "a");
 		assert.equal(lineText(alignEnds(plain("a"), plain("b"), 3)), "a b");
+	});
+
+	it("overlayChar 按显示列覆盖一个格子，超出时补空格", () => {
+		assert.equal(lineText(overlayChar(plain("abc"), 1, "X", RED)), "aXc");
+		assert.equal(lineText(overlayChar(plain("abc"), 5, "X", RED)), "abc  X");
+		assert.equal(lineText(overlayChar(plain("中a"), 1, "X", RED)), "Xa", "宽字符占两列");
 	});
 });
 

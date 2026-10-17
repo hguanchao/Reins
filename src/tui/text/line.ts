@@ -160,6 +160,24 @@ export function alignEnds(left: Line, right: Line, width: number): Line {
 	return gap < 1 ? left : concat(left, plain(" ".repeat(gap)), right);
 }
 
+/** 在指定显示列写一个字符；选中框边线、块操作图标都用它覆盖在现有内容上。 */
+export function overlayChar(line: Line, column: number, text: string, style: Style): Line {
+	const cells = cellsOf(line);
+	let width = 0;
+	for (let index = 0; index < cells.length; index += 1) {
+		const cell = cells[index];
+		if (column >= width && column < width + cell.width) {
+			return lineOfCells([
+				...cells.slice(0, index),
+				{ text, width: 1, style },
+				...cells.slice(index + 1),
+			]);
+		}
+		width += cell.width;
+	}
+	return concat(line, plain(" ".repeat(Math.max(0, column - width))), styled(text, style));
+}
+
 /** 按字素簇摊平片段。 */
 export function cellsOf(line: Line): readonly Cell[] {
 	const cells: Cell[] = [];

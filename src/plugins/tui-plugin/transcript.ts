@@ -12,14 +12,22 @@ import {
 	truncateLine,
 	wrapLine,
 	type Line,
-	type Rgb,
 	type Style,
 } from "../../tui/index.ts";
 import { formatDuration } from "../../tui/widgets/spinner.ts";
 import { formatTokens } from "./format.ts";
 import { ACCENT_WIDTH, BLOCK_CONTENT_OFFSET, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { ACCENT, BAD, BAND, BRIGHT, DIM, FAINT, OK, TEXT, THEME } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, DIM, FAINT, OK, TEXT } from "./theme.ts";
+import {
+	describeTool,
+	firstLine,
+	lastOutputLine,
+	thoughtLabel,
+	timestampText,
+} from "./transcript-format.ts";
+import { groupKindOf, groupLabel, runningGroupLabel } from "./transcript-group.ts";
+import { agentLine, blockLine, pulseStyle, rail } from "./transcript-style.ts";
 
 /**
  * 会话的显示状态。
@@ -43,22 +51,12 @@ const USER_PREVIEW_LINES = 3;
 /** 用户与模型消息右侧留出的时间戳宽度。 */
 const TIMESTAMP_WIDTH = 10;
 
-/** 工具参数在界面上只显示个大概，完整内容在会话文件里。 */
-const ARGS_LIMIT = 60;
-
-/** 块的左侧竖线：思考与工具块靠它标出范围。 */
-const BAR = "┃";
-
 /** 工具行/思考行的前缀，与正文区分开。 */
 const TOOL_MARK = "◆ ";
 const THOUGHT_MARK = "◇ ";
 
 /** 工具/思考完成后的绿色闪烁时长；与参考实现一致。 */
 const FINISH_FLASH_MS = 400;
-
-/** 正在跑的块：沿块内行号传播的明暗波，周期约四分之一秒。 */
-const PULSE_RADIANS_PER_MS = 1 / 240;
-const PULSE_MIN = 0.35;
 
 /** 工具行的右端离块右缘的距离：耗时对齐到这里。 */
 const HEADER_WIDTH = (entryWidth: number): number => Math.max(1, entryWidth - BLOCK_PAD_RIGHT);
@@ -137,17 +135,6 @@ interface ToolBlock extends BlockBase {
 	readonly durationMs: number;
 	readonly finishedAt: number;
 }
-
-type ToolGroupKind = "file" | "search" | "dir" | "web";
-
-const GROUP_VERBS: Readonly<
-	Record<ToolGroupKind, { readonly done: string; readonly running: string; readonly one: string; readonly many: string }>
-> = {
-	file: { done: "Read", running: "Reading", one: "file", many: "files" },
-	search: { done: "Searched", running: "Searching", one: "pattern", many: "patterns" },
-	dir: { done: "Listed", running: "Listing", one: "dir", many: "dirs" },
-	web: { done: "Fetched", running: "Fetching", one: "website", many: "websites" },
-};
 
 interface SystemBlock extends BlockBase {
 	readonly kind: "system";
@@ -564,22 +551,7 @@ export class Transcript {
 	}
 
 	#groupHeader(members: readonly ToolBlock[]): Line {
-		const buckets = new Map<ToolGroupKind, number>();
-		let failed = 0;
-		for (const member of members) {
-			const kind = groupKindOf(member.name);
-			if (kind === undefined) continue;
-			buckets.set(kind, (buckets.get(kind) ?? 0) + 1);
-			if (member.isError) failed += 1;
-		}
-
-		let label = "";
-		for (const [kind, count] of buckets) {
-			const verb = GROUP_VERBS[kind];
-			if (label.length > 0) label += ", ";
-			label += `${verb.done} ${count} ${count === 1 ? verb.one : verb.many}`;
-		}
-
+		const { label, failed } = groupLabel(members);
 		return blockLine(
 			plain(" "),
 			truncateLine(
@@ -775,20 +747,7 @@ export class Transcript {
 
 	/** 正在跑的汇总组：用进行时聚合，不给每个调用单独刷一行细节。 */
 	#runningGroupLine(members: readonly RunningTool[], now: number): Line {
-		const buckets = new Map<ToolGroupKind, number>();
-		for (const member of members) {
-			const kind = groupKindOf(member.name);
-			if (kind === undefined) continue;
-			buckets.set(kind, (buckets.get(kind) ?? 0) + 1);
-		}
-
-		let label = "";
-		for (const [kind, count] of buckets) {
-			const verb = GROUP_VERBS[kind];
-			if (label.length > 0) label += ", ";
-			label += `${verb.running} ${count} ${count === 1 ? verb.one : verb.many}`;
-		}
-
+		const label = runningGroupLabel(members);
 		const accent = pulseStyle(now);
 		return truncateLine(
 			blockLine(
@@ -846,159 +805,4 @@ export class Transcript {
 	#contentWidth(): number {
 		return entryContentWidth(this.#width);
 	}
-}
-
-/** 块的左竖线；没有颜色时留一格空白，正文列不会因为块类型而漂移。 */
-function rail(style: Style | undefined): Line {
-	return style === undefined ? plain(" ") : styled(BAR, style);
-}
-
-/** 竖线、正文前留白与正文。 */
-function blockLine(accent: Line, content: Line): Line {
-	return concat(accent, plain(" ".repeat(BLOCK_PAD_LEFT)), content);
-}
-
-/** 模型正文没有竖线，但仍保留竖线列与左留白，和工具行从同一列开始。 */
-function agentLine(line: Line): Line {
-	return line.length === 0 ? [] : blockLine(plain(" "), line);
-}
-
-/** 运行中块的强调色：沿行号错开相位的明暗波。 */
-function pulseStyle(now: number, row = 0): Style {
-	const wave = (Math.sin(now * PULSE_RADIANS_PER_MS + row * 0.9) + 1) / 2;
-	return { color: blend(THEME.base, THEME.accent, PULSE_MIN + (1 - PULSE_MIN) * wave) };
-}
-
-function blend(from: Rgb, to: Rgb, amount: number): Rgb {
-	return [
-		Math.round(from[0] + (to[0] - from[0]) * amount),
-		Math.round(from[1] + (to[1] - from[1]) * amount),
-		Math.round(from[2] + (to[2] - from[2]) * amount),
-	];
-}
-
-function thoughtLabel(elapsedMs: number): string {
-	return `Thought for ${formatDuration(elapsedMs)}`;
-}
-
-/** 消息右上角的时间：小时不补零，分补零，12 小时制。 */
-function timestampText(ms: number): string {
-	const date = new Date(ms);
-	const hour = date.getHours() % 12 || 12;
-	const minute = date.getMinutes().toString().padStart(2, "0");
-	const suffix = date.getHours() < 12 ? "AM" : "PM";
-	return `  ${hour}:${minute} ${suffix}`;
-}
-
-/** 工具行显示哪几个参数：按工具类型取主参数，路径缩成相对当前工作目录。 */
-function describeTool(name: string, args: Record<string, unknown>, cwd: string | undefined): string {
-	const text = toolSummary(name, args, cwd);
-	return text.length > ARGS_LIMIT ? `${text.slice(0, ARGS_LIMIT)}…` : text;
-}
-
-export function toolSummary(name: string, args: Record<string, unknown>, cwd: string | undefined): string {
-	switch (name.toLowerCase()) {
-		case "read":
-		case "write":
-		case "edit": {
-			const path = displayPath(stringArg(args.path) ?? ".", cwd);
-			const offset = numberArg(args.offset);
-			const limit = numberArg(args.limit);
-			if (offset === undefined && limit === undefined) return path;
-			const end = limit === undefined ? "" : `–${(offset ?? 0) + limit}`;
-			return `${path} (${offset ?? 0}${end})`;
-		}
-		case "ls":
-		case "list_dir":
-			return displayPath(stringArg(args.path) ?? ".", cwd);
-		case "find": {
-			const pattern = stringArg(args.pattern) ?? "";
-			const path = stringArg(args.path);
-			return path === undefined ? pattern : `${pattern} in ${displayPath(path, cwd)}`;
-		}
-		case "grep":
-		case "glob": {
-			const pattern = stringArg(args.pattern);
-			const path = stringArg(args.path) ?? stringArg(args.glob);
-			if (pattern !== undefined && path !== undefined) return `"${pattern}" ${displayPath(path, cwd)}`;
-			if (pattern !== undefined) return `"${pattern}"`;
-			return path === undefined ? "" : displayPath(path, cwd);
-		}
-		case "bash":
-		case "shell":
-			return stringArg(args.command) ?? "";
-		case "webfetch":
-		case "web_fetch":
-			return stringArg(args.url) ?? "";
-		case "websearch":
-		case "web_search":
-			return stringArg(args.query) ?? "";
-		default: {
-			const parts: string[] = [];
-			for (const [key, value] of Object.entries(args)) {
-				if (parts.length >= 3) break;
-				parts.push(`${key}=${inlineValue(value)}`);
-			}
-			return parts.join(" ");
-		}
-	}
-}
-
-function stringArg(value: unknown): string | undefined {
-	return typeof value === "string" ? value : undefined;
-}
-
-function numberArg(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function inlineValue(value: unknown): string {
-	if (typeof value === "string") return value;
-	if (typeof value === "number" || typeof value === "boolean") return String(value);
-	if (Array.isArray(value)) return value.map(inlineValue).join(",");
-	if (value === null) return "null";
-	return "…";
-}
-
-/** 绝对路径缩成工作目录内的相对路径，Windows 反斜杠统一成 `/`。 */
-function displayPath(path: string, cwd: string | undefined): string {
-	const normalized = path.replace(/\\/g, "/");
-	if (cwd === undefined) return normalized;
-	const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-	if (normalized === root) return ".";
-	return normalized.startsWith(`${root}/`) ? normalized.slice(root.length + 1) : normalized;
-}
-
-/** 可汇总的工具按动词归类；其余工具（写文件、编辑、执行命令）各自成行。 */
-function groupKindOf(name: string): ToolGroupKind | undefined {
-	switch (name.toLowerCase()) {
-		case "read":
-			return "file";
-		case "grep":
-		case "find":
-		case "glob":
-			return "search";
-		case "ls":
-		case "list_dir":
-			return "dir";
-		case "webfetch":
-		case "web_fetch":
-		case "websearch":
-		case "web_search":
-			return "web";
-		default:
-			return undefined;
-	}
-}
-
-/** 阶段性输出的最后一行：它是给「还在动」这件事作证的。 */
-function lastOutputLine(update: string | undefined): string | undefined {
-	if (update === undefined) return undefined;
-	const lines = update.split("\n").filter((line) => line.trim().length > 0);
-	return lines.at(-1);
-}
-
-/** 回合预览只取第一行非空文本。 */
-function firstLine(text: string): string {
-	return text.split("\n").find((line) => line.trim().length > 0)?.trim() ?? "";
 }

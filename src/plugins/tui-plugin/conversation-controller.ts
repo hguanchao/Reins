@@ -1,0 +1,409 @@
+import type { AgentEvent } from "../../agent/events.ts";
+import {
+	cellIndexAtColumn,
+	concat,
+	padLine,
+	plain,
+	Viewport,
+	type Line,
+	type ViewportWindow,
+} from "../../tui/index.ts";
+import { drawCopyIcon, drawSelectionBox } from "./conversation-view.ts";
+import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
+import { appendRail, railCells, railWidth } from "./rail.ts";
+import { scrollbarCell } from "./scrollbar.ts";
+import {
+	highlightSelection,
+	selectionRange,
+	selectionText,
+	type SelectionPoint,
+	type SelectionRegion,
+} from "./selection.ts";
+import { Transcript, type BlockSpan, type TimestampSpan } from "./transcript.ts";
+
+/**
+ * 主区控制器。
+ *
+ * 会话记录、视口、选区和折叠状态都在这里：它们彼此耦合（折叠会重排行、选区依赖行号、
+ * 悬停依赖时间戳位置），拆到多个类里只会让每次重画都要来回同步。界面类只负责按键与帧的
+ * 编排。
+ */
+
+const SELECTION_STYLE = { reverse: true } as const;
+
+interface MainFrame {
+	readonly total: number;
+	readonly rows: number;
+	readonly window: ViewportWindow;
+}
+
+export class ConversationController {
+	readonly transcript: Transcript;
+	readonly #viewport = new Viewport();
+	#main: MainFrame = { total: 0, rows: 1, window: { start: 0, following: true } };
+	#rows: readonly Line[] = [];
+	#blocks: readonly BlockSpan[] = [];
+	#turns: readonly number[] = [];
+	#turnPreviews: readonly string[] = [];
+	#timestamps: readonly TimestampSpan[] = [];
+	#selection: SelectionRegion | undefined;
+	#selecting = false;
+	#dragged = false;
+	#selectedBlock: number | undefined;
+	#copyIcon: { line: number; col: number } | undefined;
+	#lastBlockClick: { id: number; at: number } | undefined;
+	#hoverTurn: number | undefined;
+	#hoverPreview = "";
+	#hoverTimestamp: number | undefined;
+
+	constructor(width: number) {
+		this.transcript = new Transcript(width);
+	}
+
+	setCwd(cwd: string): void {
+		this.transcript.setCwd(cwd);
+	}
+
+	resize(width: number): void {
+		this.transcript.resize(width);
+	}
+
+	userTurn(text: string, now = Date.now()): void {
+		this.transcript.userTurn(text, now);
+	}
+
+	appendSystem(lines: readonly Line[], accent?: Parameters<Transcript["appendSystem"]>[1]): void {
+		this.transcript.appendSystem(lines, accent);
+	}
+
+	handle(event: AgentEvent, now: number): void {
+		this.transcript.handle(event, now);
+	}
+
+	clearRunning(): void {
+		this.transcript.clearRunning();
+	}
+
+	get blocks(): readonly BlockSpan[] {
+		return this.#blocks;
+	}
+
+	get turns(): readonly number[] {
+		return this.#turns;
+	}
+
+	get window(): ViewportWindow {
+		return this.#main.window;
+	}
+
+	get total(): number {
+		return this.#main.total;
+	}
+
+	get height(): number {
+		return this.#main.rows;
+	}
+
+	get selectedBlockId(): number | undefined {
+		return this.#selectedBlock;
+	}
+
+	set selectedBlockId(id: number | undefined) {
+		this.#selectedBlock = id;
+	}
+
+	get hoverTurnNumber(): number | undefined {
+		if (this.#hoverTurn === undefined) return undefined;
+		const index = this.#turns.indexOf(this.#hoverTurn);
+		return index >= 0 ? index + 1 : 0;
+	}
+
+	get hoverPreview(): string {
+		return this.#hoverPreview;
+	}
+
+	get hoverTimestamp(): number | undefined {
+		return this.#hoverTimestamp;
+	}
+
+	blockText(id: number): string | undefined {
+		return this.transcript.blockText(id);
+	}
+
+	blockMeta(id: number): string | undefined {
+		return this.transcript.blockMeta(id);
+	}
+
+	toggleAll(): void {
+		this.transcript.toggleAll();
+	}
+
+	toggleAllThinking(): void {
+		this.transcript.toggleAllThinking();
+	}
+
+	/** 选中视口里的第一个块；没有块时保持 undefined。 */
+	selectFirstVisible(): void {
+		const block = this.#blocks.find((span) => span.start + span.height > this.#main.window.start);
+		this.#selectedBlock = block?.id;
+	}
+
+	selectAdjacent(delta: number): void {
+		const blocks = this.#blocks;
+		if (blocks.length === 0) return;
+		const current = blocks.findIndex((block) => block.id === this.#selectedBlock);
+		const next =
+			current < 0
+				? delta > 0
+					? 0
+					: blocks.length - 1
+				: Math.max(0, Math.min(blocks.length - 1, current + delta));
+		const block = blocks[next];
+		this.#selectedBlock = block.id;
+		this.#ensureBlockVisible(block);
+	}
+
+	foldSelected(): void {
+		if (this.#selectedBlock === undefined) return;
+		this.toggleBlock(this.#selectedBlock);
+	}
+
+	changeSelectedFold(mode: "collapsed" | "expanded"): void {
+		if (this.#selectedBlock === undefined) return;
+		if (mode === "collapsed") this.transcript.collapse(this.#selectedBlock);
+		else this.transcript.expand(this.#selectedBlock);
+		this.#selection = undefined;
+		this.#selecting = false;
+		const block = this.#blocks.find((span) => span.id === this.#selectedBlock);
+		if (block !== undefined) this.#ensureBlockVisible(block);
+	}
+
+	/** 双击一个块：可折叠的切换展开/收起，并保证它仍在视野里。 */
+	toggleBlock(id: number): void {
+		this.transcript.toggleFold(id);
+		this.#selection = undefined;
+		this.#selecting = false;
+		const block = this.#blocks.find((span) => span.id === id);
+		if (block === undefined) return;
+		if (block.kind === "user") this.scrollTo(block.start);
+		else this.#ensureBlockVisible(block);
+	}
+
+	/**
+	 * 单击主区：选中块，300ms 内的第二次按下切换折叠。
+	 * 返回 none/selected/toggled；调用方负责切焦点与重画。
+	 */
+	clickBlock(row: number): "none" | "selected" | "toggled" {
+		const block = this.#blockAt(row);
+		if (block === undefined) return "none";
+		this.#selectedBlock = block.id;
+		const now = Date.now();
+		const last = this.#lastBlockClick;
+		this.#lastBlockClick = { id: block.id, at: now };
+		if (last !== undefined && last.id === block.id && now - last.at <= 300) {
+			this.#lastBlockClick = undefined;
+			this.toggleBlock(block.id);
+			return "toggled";
+		}
+		return "selected";
+	}
+
+	blockAt(row: number): BlockSpan | undefined {
+		return this.#blockAt(row);
+	}
+
+	/** 屏幕坐标落在哪一行文字的哪个字素簇上；落在竖线、边距、轨道、滚动条上则不算。 */
+	selectionPoint(col: number, row: number, entryWidth: number): SelectionPoint | undefined {
+		if (row < 0 || row >= this.#main.rows) return undefined;
+
+		const line = this.#main.window.start + row;
+		if (line < 0 || line >= this.#rows.length) return undefined;
+
+		const contentWidth = entryContentWidth(entryWidth);
+		const contentCol = col - CONTENT_OFFSET;
+		if (contentCol < 0 || contentCol >= contentWidth) return undefined;
+
+		return { line, cell: cellIndexAtColumn(this.#rows[line], BLOCK_CONTENT_OFFSET + contentCol) };
+	}
+
+	beginSelection(point: SelectionPoint): void {
+		this.#selection = { anchor: point, focus: point };
+		this.#selecting = true;
+		this.#dragged = false;
+	}
+
+	updateSelection(point: SelectionPoint): boolean {
+		if (!this.#selecting || this.#selection === undefined) return false;
+		this.#selection = { ...this.#selection, focus: point };
+		this.#dragged = true;
+		this.#lastBlockClick = undefined;
+		return true;
+	}
+
+	/** 松开鼠标：拖过就返回选区文本，否则清掉端点。 */
+	finishSelection(): string | undefined {
+		this.#selecting = false;
+		if (!this.#dragged) {
+			this.#selection = undefined;
+			return undefined;
+		}
+		return this.selectionText();
+	}
+
+	cancelSelection(): void {
+		this.#selection = undefined;
+		this.#selecting = false;
+		this.#dragged = false;
+	}
+
+	get hasSelection(): boolean {
+		return this.#selection !== undefined;
+	}
+
+	selectionText(): string | undefined {
+		if (this.#selection === undefined) return undefined;
+		const text = selectionText(this.#rows, this.#selection);
+		return text.length > 0 ? text : undefined;
+	}
+
+	/** 选中块上的复制按钮是否被点到。 */
+	copyIconHit(row: number, col: number): boolean {
+		if (this.#copyIcon === undefined) return false;
+		const line = this.#main.window.start + row;
+		return line === this.#copyIcon.line && col === this.#copyIcon.col;
+	}
+
+	/** 轨道刻度或时间戳的悬停；返回是否发生了变化。 */
+	hoverAt(row: number, col: number, cols: number): boolean {
+		const body = Math.max(16, cols - OUTER_PAD);
+		const onRail =
+			railWidth({ width: body, turns: this.#turns.length }) > 0 &&
+			col === cols - GUTTER_WIDTH &&
+			row >= 0 &&
+			row < this.#main.rows;
+
+		let turn: number | undefined;
+		let preview = "";
+		if (onRail) {
+			const cells = railCells(this.#main.rows, this.#turns, this.#main.window.start);
+			turn = cells[row]?.target;
+			const index = turn === undefined ? -1 : this.#turns.indexOf(turn);
+			preview = index < 0 ? "" : (this.#turnPreviews[index] ?? "");
+		}
+
+		let timestamp: number | undefined;
+		if (!onRail && row >= 0 && row < this.#main.rows) {
+			const line = this.#main.window.start + row;
+			const contentCol = col - OUTER_PAD;
+			const span = this.#timestamps.find(
+				(item) => item.row === line && contentCol >= item.col && contentCol < item.col + item.width,
+			);
+			timestamp = span?.createdAt;
+		}
+
+		if (turn === this.#hoverTurn && timestamp === this.#hoverTimestamp) return false;
+		this.#hoverTurn = turn;
+		this.#hoverPreview = preview;
+		this.#hoverTimestamp = timestamp;
+		return true;
+	}
+
+	clearHover(): void {
+		this.#hoverTurn = undefined;
+		this.#hoverPreview = "";
+		this.#hoverTimestamp = undefined;
+	}
+
+	scrollTo(index: number): void {
+		this.clearHover();
+		this.#viewport.scrollTo(index, this.#main.total, this.#main.rows);
+	}
+
+	scrollBy(delta: number): void {
+		this.clearHover();
+		this.#viewport.scrollBy(delta, this.#main.total, this.#main.rows);
+	}
+
+	scrollPages(pages: number): void {
+		this.clearHover();
+		this.#viewport.scrollPages(pages, this.#main.total, this.#main.rows);
+	}
+
+	toTop(): void {
+		this.clearHover();
+		this.#viewport.toTop();
+	}
+
+	toEnd(): void {
+		this.clearHover();
+		this.#viewport.toEnd();
+	}
+
+	/** 跳到上一个或下一个回合的开头。 */
+	jumpTurn(delta: number): void {
+		if (this.#turns.length === 0) return;
+		const top = this.#main.window.start;
+		const target =
+			delta > 0
+				? this.#turns.find((row) => row > top)
+				: [...this.#turns].reverse().find((row) => row < top);
+		if (target !== undefined) this.scrollTo(target);
+	}
+
+	/** 主屏：会话区的可见窗口，右侧是轨道与滚动条。 */
+	conversationRows(body: number, rows: number): readonly Line[] {
+		const mainRows = Math.max(1, rows);
+		const entryWidth = Math.max(1, body - GUTTER_WIDTH);
+		this.transcript.resize(entryWidth);
+
+		const view = this.transcript.view({ maxLiveRows: mainRows });
+		this.#rows = view.rows;
+		this.#blocks = view.blocks;
+		this.#turns = view.turns;
+		this.#turnPreviews = view.turnPreviews;
+		this.#timestamps = view.timestamps;
+		this.#copyIcon = undefined;
+
+		const rail = railWidth({ width: body, turns: view.turns.length });
+		const window = this.#viewport.window(view.rows.length, mainRows);
+		this.#main = { total: view.rows.length, rows: mainRows, window };
+
+		const visible = view.rows.slice(window.start, window.start + mainRows);
+		while (visible.length < mainRows) visible.push(plain(""));
+
+		const cells = rail > 0 ? railCells(mainRows, view.turns, window.start) : [];
+		const conversation = visible.map((line, index) => {
+			const absolute = window.start + index;
+			const range =
+				this.#selection === undefined ? undefined : selectionRange(absolute, this.#selection, view.rows);
+			const base =
+				range === undefined ? line : highlightSelection(line, range.from, range.to, SELECTION_STYLE);
+			const scroll = scrollbarCell(index, view.rows.length, mainRows, window.start);
+			const entry = padLine(base, entryWidth);
+			const gutter = rail === 0 ? concat(entry, plain(" ")) : appendRail(entry, cells[index]);
+			return concat(plain(" ".repeat(OUTER_PAD)), gutter, [scroll]);
+		});
+
+		const selected =
+			this.#selectedBlock === undefined
+				? undefined
+				: this.#blocks.find((block) => block.id === this.#selectedBlock);
+		if (selected === undefined) return conversation;
+		const boxed = drawSelectionBox(conversation, selected, window.start, entryWidth);
+		const decorated = drawCopyIcon(boxed, selected, window.start, entryWidth, view.rows);
+		this.#copyIcon = decorated.icon;
+		return decorated.lines;
+	}
+
+	#blockAt(row: number): BlockSpan | undefined {
+		if (row < 0 || row >= this.#main.rows) return undefined;
+		const line = this.#main.window.start + row;
+		return this.#blocks.find((span) => line >= span.start && line < span.start + span.height);
+	}
+
+	#ensureBlockVisible(block: BlockSpan): void {
+		const { start } = this.#main.window;
+		const end = start + this.#main.rows;
+		if (block.start < start || block.start + block.height > end) this.scrollTo(block.start);
+	}
+}
