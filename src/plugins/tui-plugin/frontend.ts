@@ -7,12 +7,14 @@ import {
 	formatDuration,
 	KeyDecoder,
 	LineEditor,
+	padLine,
 	plain,
 	ScreenRegion,
 	spinnerFrame,
 	styled,
 	truncateLine,
 	Viewport,
+	wrapLine,
 	type KeyEvent,
 	type Line,
 	type Span,
@@ -51,8 +53,9 @@ const PROMPT_CHROME_ROWS = 4;
 /** 跑起来时多出的两行：空行与回合状态行。 */
 const RUNNING_ROWS = 2;
 
-/** 确认卡片占的六行。 */
-const CARD_ROWS = 6;
+/** 审批弹窗的最大宽度，以及它与内容区两侧之间至少留出的空白。 */
+const DIALOG_MAX_WIDTH = 56;
+const DIALOG_MARGIN = 8;
 
 /** 滚轮一格翻几行。终端只报「上滚」「下滚」，格与行之间的换算由界面定。 */
 const WHEEL_LINES = 3;
@@ -546,10 +549,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const editor = this.#editor.render({ width: size.cols, prompt: PROMPT, placeholder: PLACEHOLDER });
 		const footerRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const dialog = this.#dialog;
-		const card = dialog === undefined ? 0 : CARD_ROWS;
 		const status = this.#running ? RUNNING_ROWS : 0;
-		// 确认卡片压在会话区里面，因此只影响「会话区分到几行」，不额外占屏幕
-		const height = Math.max(footerRows + status + card + 1, size.rows);
+		// 弹窗盖在会话区上，不再额外占行；这里只要保证至少剩下一行会话
+		const height = Math.max(footerRows + status + 1, size.rows);
 		const rows = Math.max(1, height - footerRows - status);
 
 		const conversation = this.#conversationRows(body, rows, dialog);
@@ -574,9 +576,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 		});
 	}
 
-	/** 主屏：会话区的可见窗口，右侧一列轨道。 */
+	/** 主屏：会话区的可见窗口，右侧一列轨道；有审批时把弹窗盖在中间。 */
 	#conversationRows(body: number, rows: number, dialog: ConfirmDialog | undefined): readonly Line[] {
-		const mainRows = Math.max(1, rows - (dialog === undefined ? 0 : CARD_ROWS));
+		const mainRows = Math.max(1, rows);
 		const rail = railWidth({ width: body, turns: this.#turns.length });
 		// 轨道占走的列要让出来：正文按扣掉轨道之后的宽度重排
 		this.#transcript.resize(Math.max(1, body - rail));
@@ -598,24 +600,59 @@ export class TerminalFrontend implements InteractiveFrontend {
 		);
 
 		if (dialog === undefined) return conversation;
-		return [...conversation, ...this.#cardRows(body, dialog)];
+		return this.#overlayDialog(conversation, dialog, body);
 	}
 
-	/** 确认卡片：压在会话区底下，问句在上，选项在下。 */
-	#cardRows(body: number, dialog: ConfirmDialog): readonly Line[] {
+	/** 把审批弹窗盖在会话区正中：弹窗自己占的行替换掉背后的内容。 */
+	#overlayDialog(conversation: readonly Line[], dialog: ConfirmDialog, body: number): readonly Line[] {
+		const popup = this.#dialogRows(dialog, body, conversation.length);
+		const top = Math.max(0, Math.floor((conversation.length - popup.length) / 2));
+		return conversation.map((line, index) => {
+			const popupLine = popup[index - top];
+			return popupLine === undefined ? line : concat(plain(" ".repeat(PAD)), popupLine);
+		});
+	}
+
+	/** 弹窗本体：标题嵌在上边框里，下面是问句、调用详情和横排的两个选项。 */
+	#dialogRows(dialog: ConfirmDialog, body: number, rows: number): readonly Line[] {
+		const width = Math.min(body, Math.max(24, Math.min(DIALOG_MAX_WIDTH, body - DIALOG_MARGIN * 2)));
+		const inner = Math.max(1, width - 2);
+		const left = Math.max(0, Math.floor((body - width) / 2));
 		const [allow, deny] = DIALOG_OPTIONS;
-		return [
-			plain(""),
-			concat(plain(" ".repeat(PAD)), truncateLine(styled(dialog.question, TITLE), body)),
-			concat(
-				plain(" ".repeat(PAD)),
-				styled("┃ ", ACCENT),
-				truncateLine(styled(dialog.detail, DIM), Math.max(0, body - 2)),
-			),
-			concat(plain(" ".repeat(PAD)), styled(`▶ ${allow.key}  ${allow.label}`, ACCENT)),
-			concat(plain(" ".repeat(PAD + 2)), styled(`${deny.key}  ${deny.label}`, DIM)),
-			concat(plain(" ".repeat(PAD)), this.#hintLine(CARD_HINTS, body)),
+
+		const title = " Approval required ";
+		const header = concat(
+			styled("╭─", FAINT),
+			styled(title, TITLE),
+			styled(`${"─".repeat(Math.max(0, width - 3 - title.length))}╮`, FAINT),
+		);
+		const footer = styled(`╰${"─".repeat(Math.max(0, width - 2))}╯`, FAINT);
+		const row = (content: Line): Line => concat(styled("│", FAINT), padLine(content, inner), styled("│", FAINT));
+
+		// 详情可能很长；弹窗最多占满整个会话区，超出部分由换行器加省略号
+		const detailWidth = inner;
+		const detail = wrapLine(styled(dialog.detail, DIM), {
+			width: detailWidth,
+			firstIndent: concat(plain("  "), styled("┃ ", ACCENT)),
+			restIndent: concat(plain("  "), styled("┃ ", ACCENT)),
+			maxLines: Math.max(1, rows - 6),
+		});
+		const options = concat(
+			styled(`▶ ${allow.key}  ${allow.label}`, ACCENT),
+			plain("      "),
+			styled(`${deny.key}  ${deny.label}`, DIM),
+		);
+
+		const lines: Line[] = [
+			header,
+			row(plain("")),
+			row(concat(plain("  "), truncateLine(styled(dialog.question, TITLE), Math.max(1, inner - 2)))),
+			...detail.map(row),
+			row(plain("")),
+			row(concat(plain("  "), truncateLine(options, Math.max(1, inner - 2)))),
+			footer,
 		];
+		return lines.map((line) => concat(plain(" ".repeat(left)), line));
 	}
 
 	/** 跑起来时的那一行：左边是当前动作，右边是这一轮已经跑了多久。 */
@@ -678,10 +715,3 @@ export class TerminalFrontend implements InteractiveFrontend {
 		];
 	}
 }
-
-/** 确认卡片上的按键：与底部快捷键条同一套写法。 */
-const CARD_HINTS: readonly KeyHint[] = [
-	{ keys: "1-2", label: "select" },
-	{ keys: "Enter", label: "confirm" },
-	{ keys: "Esc", label: "deny" },
-];
