@@ -132,6 +132,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#abort: AbortController | undefined;
 	#ticker: NodeJS.Timeout | undefined;
 	#escapeTimer: NodeJS.Timeout | undefined;
+	/** 完成闪烁过期后再画一帧，免得最后一帧停在绿色上。 */
+	#flashTimer: NodeJS.Timeout | undefined;
 	/** 正在拖选时的两个端点；脱离按下状态后仍保留，直到下一次点击。 */
 	#selection: { anchor: SelectionPoint; focus: SelectionPoint } | undefined;
 	#selecting = false;
@@ -219,6 +221,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#region.clear();
 		this.#stopTicker();
 		if (this.#escapeTimer !== undefined) clearTimeout(this.#escapeTimer);
+		if (this.#flashTimer !== undefined) clearTimeout(this.#flashTimer);
 		if (this.#noticeTimer !== undefined) clearTimeout(this.#noticeTimer);
 		this.#terminal.setAlternateScreen(false);
 		this.#terminal.setMouseTracking(false);
@@ -862,6 +865,26 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		this.#transcript.handle(event, now);
 		this.#refresh();
+
+		if (
+			event.type === "tool_end" ||
+			event.type === "text_delta" ||
+			event.type === "tool_start" ||
+			event.type === "error" ||
+			event.type === "aborted" ||
+			event.type === "run_end"
+		) {
+			this.#scheduleFlashRefresh();
+		}
+	}
+
+	/** 完成闪烁只持续几百毫秒，安静下来后也要再画一帧把它落回静态色。 */
+	#scheduleFlashRefresh(): void {
+		if (this.#flashTimer !== undefined) clearTimeout(this.#flashTimer);
+		this.#flashTimer = setTimeout(() => {
+			this.#flashTimer = undefined;
+			this.#refresh();
+		}, 500);
 	}
 
 	#interrupt(exitWhenIdle: boolean): void {

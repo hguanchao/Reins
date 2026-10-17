@@ -2,16 +2,20 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { Transcript } from "../../../src/plugins/tui-plugin/transcript.ts";
+import { THEME } from "../../../src/plugins/tui-plugin/theme.ts";
 import { lineText, lineWidth } from "../../../src/tui/text/line.ts";
 
 describe("用户消息", () => {
-	it("单行消息占三行，正文在中间", () => {
+	it("单行消息占三行，正文在中间并带时间戳", () => {
 		const transcript = new Transcript(40);
-		transcript.userTurn("hello");
+		transcript.userTurn("hello", 0);
 		const rows = transcript.view().rows;
 
 		assert.equal(rows.length, 3);
-		assert.equal(lineText(rows[1]), `   › hello${" ".repeat(30)}`);
+		const text = lineText(rows[1]);
+		assert.ok(text.startsWith("   › hello"));
+		assert.match(text, /\d{1,2}:\d{2} (AM|PM)/);
+		assert.equal(lineWidth(rows[1]), 40);
 		assert.equal(lineText(rows[0]).trim(), "");
 		assert.equal(lineText(rows[2]).trim(), "");
 	});
@@ -35,8 +39,8 @@ describe("用户消息", () => {
 	});
 
 	it("多行消息上下各留一行，正文不截断，续行与提示符后的正文对齐", () => {
-		const transcript = new Transcript(20);
-		transcript.userTurn("one two three four");
+		const transcript = new Transcript(25);
+		transcript.userTurn("one two three four", 0);
 
 		const rows = transcript.view().rows;
 		assert.ok(rows.length > 3, "message wrapped");
@@ -47,6 +51,16 @@ describe("用户消息", () => {
 		for (const line of content.slice(1)) assert.ok(line.startsWith("     "), "continuation aligns after the prompt");
 		assert.ok(content.join("").includes("three"));
 		assert.ok(content.join("").includes("four"));
+	});
+
+	it("模型回答的第一行也带时间戳", () => {
+		const transcript = new Transcript(40);
+		transcript.handle({ type: "text_delta", text: "answer" }, 0);
+		transcript.handle({ type: "run_end" }, 0);
+
+		const row = transcript.view().rows.find((line) => lineText(line).includes("answer"));
+		assert.ok(row);
+		assert.match(lineText(row), /\d{1,2}:\d{2} (AM|PM)/);
 	});
 
 	it("长消息可折叠，折叠后只留三行并以省略号收尾", () => {
@@ -148,6 +162,28 @@ describe("块折叠", () => {
 		transcript.appendSystem([[{ text: "output" }]]);
 		const block = transcript.view().blocks[0];
 		assert.equal(block.foldable, false);
+	});
+
+	it("工具完成后的展开块会短暂闪绿", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "Read", args: { path: "a" } }, 0);
+		transcript.handle(
+			{ type: "tool_end", callId: "1", name: "Read", isError: false, durationMs: 1, summary: "ok" },
+			400,
+		);
+
+		const collapsed = transcript.view({ now: 500 });
+		const group = collapsed.blocks.find((item) => item.kind === "group");
+		assert.ok(group);
+		transcript.toggleFold(group.id);
+
+		const flashing = transcript.view({ now: 500 }).rows;
+		const flashingHeader = flashing[group.start + 2];
+		assert.equal(flashingHeader?.[0]?.text, "┃");
+		assert.equal(flashingHeader?.[0]?.style?.color, THEME.ok);
+
+		const settled = transcript.view({ now: 900 }).rows;
+		assert.equal(settled[group.start + 2]?.[0]?.style?.color, THEME.faint);
 	});
 
 	it("blockText 在折叠状态下仍返回完整正文", () => {

@@ -22,14 +22,14 @@ describe("Markdown 渲染", () => {
 		assert.equal(findSpan(findLine(lines, "Three"), "Three")?.style?.color, THEME.accent);
 	});
 
-	it("代码块有底色并铺满正文宽度，正文用主文字色", () => {
+	it("代码块有底色并铺满正文宽度，关键字按语法着色", () => {
 		const { lines } = renderMarkdown("```ts\nconst x = 1;\n```", { width: 20 });
 		const code = findLine(lines, "const x = 1;");
 
 		assert.ok(code);
 		assert.equal(lineWidth(code), 20);
 		assert.ok(code.every((span) => span.style?.background === THEME.codeBg));
-		assert.equal(findSpan(code, "const")?.style?.color, THEME.text);
+		assert.equal(findSpan(code, "const")?.style?.color, THEME.accent);
 	});
 
 	it("任务列表的勾选状态用成功色，未勾选压暗", () => {
@@ -55,6 +55,13 @@ describe("Markdown 渲染", () => {
 
 		const loose = renderMarkdown("- one\n\n- two", { width: 40 });
 		assert.ok(loose.lines.length > 2);
+	});
+
+	it("表格按对齐方式补空格", () => {
+		const { lines } = renderMarkdown("| A | Long |\n| - | ---: |\n| 1 | 2 |", { width: 40 });
+		const row = findLine(lines, "1");
+		assert.ok(row);
+		assert.ok(lineText(row).includes("│    2"), lineText(row));
 	});
 
 	it("引用块压暗，表格表头用二级标题样式", () => {

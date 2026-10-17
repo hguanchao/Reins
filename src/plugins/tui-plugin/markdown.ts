@@ -1,3 +1,5 @@
+import { common, createLowlight } from "lowlight";
+import type { Element, Root, RootContent } from "hast";
 import { Lexer, type Token, type Tokens } from "marked";
 
 import {
@@ -69,6 +71,111 @@ const CODE_GUTTER_STYLE: Style = { color: THEME.muted, background: THEME.codeBg,
 const QUOTE_PREFIX = "▏ ";
 const CODE_BAR = "│ ";
 const SEPARATOR_WIDTH = 40;
+
+const lowlight = createLowlight(common);
+
+/** 低亮语言名与 highlight.js 的注册名不一致时先归一。 */
+const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
+	ts: "typescript",
+	tsx: "typescript",
+	js: "javascript",
+	jsx: "javascript",
+	sh: "bash",
+	shell: "bash",
+	zsh: "bash",
+	py: "python",
+	rs: "rust",
+	yml: "yaml",
+	md: "markdown",
+	html: "xml",
+	htm: "xml",
+};
+
+/** 语法记号类别到界面样式的映射；只覆盖常见类别，认不出的按普通代码画。 */
+const SYNTAX_STYLES: Readonly<Record<string, Style>> = {
+	keyword: { color: THEME.accent },
+	"selector-tag": { color: THEME.accent },
+	built_in: { color: THEME.system },
+	type: { color: THEME.teal },
+	literal: { color: THEME.system },
+	number: { color: THEME.path },
+	string: { color: THEME.ok },
+	regexp: { color: THEME.ok },
+	comment: { color: THEME.muted, italic: true },
+	quote: { color: THEME.muted, italic: true },
+	meta: { color: THEME.muted },
+	title: { color: THEME.system },
+	section: { color: THEME.system },
+	"selector-id": { color: THEME.system },
+	attr: { color: THEME.text },
+	attribute: { color: THEME.text },
+	variable: { color: THEME.text },
+	"template-variable": { color: THEME.path },
+	symbol: { color: THEME.accent },
+	bullet: { color: THEME.accent },
+	link: { color: THEME.system, underline: true },
+	emphasis: { italic: true },
+	strong: { bold: true },
+	deletion: { color: THEME.bad },
+	addition: { color: THEME.ok },
+};
+
+interface CodeToken {
+	readonly text: string;
+	readonly style: Style | undefined;
+}
+
+function highlightLines(code: string, language: string | undefined, base: Style): Line[] {
+	const resolved = language === undefined ? undefined : (LANGUAGE_ALIASES[language.toLowerCase()] ?? language.toLowerCase());
+	if (resolved === undefined || resolved.length === 0 || !lowlight.registered(resolved)) {
+		return code.split("\n").map((line) => styled(line, base));
+	}
+
+	const tokens: CodeToken[] = [];
+	for (const child of lowlight.highlight(resolved, code).children) collectCode(child, undefined, tokens);
+
+	const lines: Span[][] = [[]];
+	for (const token of tokens) {
+		const parts = token.text.split("\n");
+		parts.forEach((part, index) => {
+			if (index > 0) lines.push([]);
+			if (part.length > 0) {
+				lines[lines.length - 1].push({
+					text: part,
+					style: mergeStyles(base, token.style) ?? base,
+				});
+			}
+		});
+	}
+	return lines;
+}
+
+function collectCode(node: Root | RootContent, inherited: Style | undefined, out: CodeToken[]): void {
+	if (node.type === "text") {
+		if (node.value.length > 0) out.push({ text: node.value, style: inherited });
+		return;
+	}
+	if (node.type !== "root" && node.type !== "element") return;
+
+	const classes = node.type === "element" ? classNameOf(node) : "";
+	const style = classes.length === 0 ? inherited : (syntaxStyle(classes) ?? inherited);
+	for (const child of node.children) collectCode(child, style, out);
+}
+
+function classNameOf(element: Element): string {
+	const value = element.properties?.className;
+	if (Array.isArray(value)) return value.join(" ");
+	return typeof value === "string" ? value : "";
+}
+
+function syntaxStyle(classes: string): Style | undefined {
+	for (const name of classes.split(/\s+/)) {
+		if (!name.startsWith("hljs-")) continue;
+		const style = SYNTAX_STYLES[name.slice(5)];
+		if (style !== undefined) return style;
+	}
+	return undefined;
+}
 
 function headingStyle(depth: number): Style {
 	switch (depth) {
@@ -175,7 +282,12 @@ function renderCode(token: Tokens.Code, context: Context): Line[] {
 	const gutterStyle: Style = mergeStyles(context.base, CODE_GUTTER_STYLE) ?? CODE_GUTTER_STYLE;
 	const gutter = styled(CODE_BAR, gutterStyle);
 	// 代码里的缩进有意义，原样保留；行尾空白没有意义，去掉
-	const lines = token.text.split("\n").map((raw) => styled(raw.replace(/\s+$/, ""), codeStyle));
+	const code = token.text
+		.split("\n")
+		.map((raw) => raw.replace(/\s+$/, ""))
+		.join("\n");
+	const language = token.lang?.trim().split(/\s+/)[0];
+	const lines = highlightLines(code, language, codeStyle);
 	// 竖线由换行器的前缀负责，空行也照样有，看起来才是一条连续的代码块
 	const wrapped = wrapLogical(lines, {
 		...context,
@@ -245,21 +357,51 @@ function renderList(token: Tokens.List, context: Context): Line[] {
 }
 
 function renderTable(token: Tokens.Table, context: Context): Line[] {
-	const cellLines = (cells: readonly Tokens.TableCell[], style: Style | undefined): readonly Line[] =>
-		cells.map((cell) => renderInline(cell.tokens, style, context).flat());
+	const header = token.header.map((cell) => renderInline(cell.tokens, TABLE_HEADER, context).flat());
+	const body = token.rows.map((row) =>
+		row.map((cell) => renderInline(cell.tokens, undefined, context).flat()),
+	);
+	const columns = header.length;
+	const widths = Array.from({ length: columns }, (_, index) =>
+		Math.max(lineWidth(header[index] ?? []), ...body.map((row) => lineWidth(row[index] ?? []))),
+	);
+	const tableWidth = Math.max(
+		1,
+		Math.min(
+			availableWidth(context),
+			widths.reduce((total, width) => total + width, 0) + 3 * Math.max(0, columns - 1),
+		),
+	);
 
-	const rows: Line[] = [joinCells(cellLines(token.header, TABLE_HEADER))];
-	rows.push(styled("─".repeat(availableWidth(context)), RULE));
-	for (const row of token.rows) rows.push(joinCells(cellLines(row, undefined)));
+	const rows: Line[] = [joinCells(header)];
+	rows.push(styled("─".repeat(tableWidth), RULE));
+	for (const row of body) rows.push(joinCells(row));
 	return wrapLogical(rows, context);
 
-	function joinCells(lines: readonly Line[]): Line {
+	function joinCells(cells: readonly Line[]): Line {
 		const joined: Span[] = [];
-		lines.forEach((line, index) => {
+		for (let index = 0; index < columns; index += 1) {
 			if (index > 0) joined.push(...styled(" │ ", TABLE_BORDER));
-			joined.push(...line);
-		});
+			joined.push(...alignCell(cells[index] ?? [], index));
+		}
 		return joined;
+	}
+
+	function alignCell(line: Line, index: number): Line {
+		const width = widths[index] ?? 0;
+		const gap = width - lineWidth(line);
+		if (gap <= 0) return line;
+
+		switch (token.align[index] ?? "left") {
+			case "right":
+				return concat(plain(" ".repeat(gap)), line);
+			case "center": {
+				const left = Math.floor(gap / 2);
+				return concat(plain(" ".repeat(left)), line, plain(" ".repeat(gap - left)));
+			}
+			default:
+				return padLine(line, width);
+		}
 	}
 }
 

@@ -16,9 +16,9 @@ import {
 } from "../../tui/index.ts";
 import { formatDuration } from "../../tui/widgets/spinner.ts";
 import { formatTokens } from "./format.ts";
-import { ACCENT_WIDTH, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
+import { ACCENT_WIDTH, BLOCK_CONTENT_OFFSET, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { ACCENT, BAD, BAND, BRIGHT, DIM, FAINT, TEXT, THEME } from "./theme.ts";
+import { ACCENT, BAD, BAND, BRIGHT, DIM, FAINT, OK, TEXT, THEME } from "./theme.ts";
 
 /**
  * 会话的显示状态。
@@ -40,6 +40,9 @@ const REASONING_PREVIEW_LINES = 3;
 /** 用户消息收起时最多显示几行。 */
 const USER_PREVIEW_LINES = 3;
 
+/** 用户与模型消息右侧留出的时间戳宽度。 */
+const TIMESTAMP_WIDTH = 10;
+
 /** 工具参数在界面上只显示个大概，完整内容在会话文件里。 */
 const ARGS_LIMIT = 60;
 
@@ -49,6 +52,9 @@ const BAR = "┃";
 /** 工具行/思考行的前缀，与正文区分开。 */
 const TOOL_MARK = "◆ ";
 const THOUGHT_MARK = "◇ ";
+
+/** 工具/思考完成后的绿色闪烁时长；与参考实现一致。 */
+const FINISH_FLASH_MS = 400;
 
 /** 正在跑的块：沿块内行号传播的明暗波，周期约四分之一秒。 */
 const PULSE_RADIANS_PER_MS = 1 / 240;
@@ -82,6 +88,8 @@ export interface TranscriptView {
 export interface ViewOptions {
 	/** 活动块最多占几行，超出的部分从上往下丢弃。 */
 	readonly maxLiveRows?: number;
+	/** 当前时刻；测试可以传入固定值来检查完成闪烁。 */
+	readonly now?: number;
 }
 
 interface BlockBase {
@@ -92,17 +100,20 @@ interface BlockBase {
 interface UserBlock extends BlockBase {
 	readonly kind: "user";
 	readonly text: string;
+	readonly createdAt: number;
 }
 
 interface AgentBlock extends BlockBase {
 	readonly kind: "agent";
 	readonly text: string;
+	readonly createdAt: number;
 }
 
 interface ThinkingBlock extends BlockBase {
 	readonly kind: "thinking";
 	readonly text: string;
 	readonly elapsedMs: number;
+	readonly finishedAt: number;
 }
 
 interface ToolBlock extends BlockBase {
@@ -112,6 +123,7 @@ interface ToolBlock extends BlockBase {
 	readonly output: string;
 	readonly isError: boolean;
 	readonly durationMs: number;
+	readonly finishedAt: number;
 }
 
 type ToolGroupKind = "file" | "search" | "dir" | "web";
@@ -150,6 +162,7 @@ export class Transcript {
 	/** 最近一次扫描出的汇总组：组头 id → 成员工具块。 */
 	#groupAnchors = new Map<number, ToolBlock[]>();
 	#streaming = "";
+	#streamStartedAt: number | undefined;
 	#reasoning = "";
 	#reasoningStartedAt: number | undefined;
 	#running: RunningTool[] = [];
@@ -164,8 +177,8 @@ export class Transcript {
 	}
 
 	/** 使用者提交了一句话：新建一个展开的用户块。 */
-	userTurn(text: string): void {
-		this.#blocks.push({ id: this.#nextId++, kind: "user", text, mode: "expanded" });
+	userTurn(text: string, now = Date.now()): void {
+		this.#blocks.push({ id: this.#nextId++, kind: "user", text, createdAt: now, mode: "expanded" });
 	}
 
 	/** 追加一段不带块样式的内容（命令输出、系统提示），整体作为一个不可折叠的系统块。 */
@@ -179,6 +192,7 @@ export class Transcript {
 		switch (event.type) {
 			case "text_delta":
 				this.#closeThinking(now);
+				this.#streamStartedAt ??= now;
 				this.#streaming += event.text;
 				return;
 			case "reasoning_delta":
@@ -214,6 +228,7 @@ export class Transcript {
 					output: tool?.update ?? event.summary,
 					isError: event.isError,
 					durationMs: event.durationMs,
+					finishedAt: now,
 					mode: "collapsed",
 				});
 				return;
@@ -304,7 +319,7 @@ export class Transcript {
 	 * 活动块只追加在末尾，不参与折叠与命中测试；它们随时会变成定型块。
 	 */
 	view(options: ViewOptions = {}): TranscriptView {
-		const now = Date.now();
+		const now = options.now ?? Date.now();
 		const rows: Line[] = [];
 		const blocks: BlockSpan[] = [];
 		const turns: number[] = [];
@@ -337,7 +352,7 @@ export class Transcript {
 			if (members !== undefined) {
 				const anchor = members[0];
 				const expanded = this.#expandedGroups.has(anchor.id);
-				push(this.#groupLines(members, expanded), {
+				push(this.#groupLines(members, expanded, now), {
 					id: anchor.id,
 					kind: "group",
 					mode: expanded ? "expanded" : "collapsed",
@@ -347,7 +362,7 @@ export class Transcript {
 				continue;
 			}
 
-			push(this.#renderBlock(block), {
+			push(this.#renderBlock(block, now), {
 				id: block.id,
 				kind: block.kind,
 				mode: block.mode,
@@ -478,14 +493,14 @@ export class Transcript {
 	}
 
 	/** 汇总组：收起时只有组头，展开后逐个列出成员工具的完整内容。 */
-	#groupLines(members: readonly ToolBlock[], expanded: boolean): readonly Line[] {
+	#groupLines(members: readonly ToolBlock[], expanded: boolean, now: number): readonly Line[] {
 		const header = this.#groupHeader(members);
 		if (!expanded) return [header];
 
 		const lines: Line[] = [header];
 		for (const member of members) {
 			lines.push([]);
-			lines.push(...this.#toolLines(member, true));
+			lines.push(...this.#toolLines(member, true, now));
 		}
 		return lines;
 	}
@@ -522,16 +537,16 @@ export class Transcript {
 		return member.output.length > 0 ? `${header}\n${member.output}` : header;
 	}
 
-	#renderBlock(block: Block): readonly Line[] {
+	#renderBlock(block: Block, now: number): readonly Line[] {
 		switch (block.kind) {
 			case "user":
 				return this.#userLines(block);
 			case "agent":
 				return this.#agentLines(block);
 			case "thinking":
-				return this.#thinkingLines(block);
+				return this.#thinkingLines(block, now);
 			case "tool":
-				return this.#toolLines(block);
+				return this.#toolLines(block, false, now);
 			case "system":
 				return this.#systemLines(block);
 			default:
@@ -541,29 +556,50 @@ export class Transcript {
 
 	#userLines(block: UserBlock): readonly Line[] {
 		const collapsed = block.mode === "collapsed";
+		const contentWidth = this.#contentWidth();
 		const lines = wrapLine(plain(block.text), {
-			width: this.#contentWidth(),
+			width: Math.max(1, contentWidth - TIMESTAMP_WIDTH),
 			firstIndent: styled("› ", ACCENT),
 			restIndent: plain("  "),
 			maxLines: collapsed ? USER_PREVIEW_LINES : undefined,
 		});
 		const prefix = plain(" ".repeat(ACCENT_WIDTH + BLOCK_PAD_LEFT));
-		const band = (line: Line): Line => this.#band(concat(prefix, line), this.#width);
+		const time = styled(timestampText(block.createdAt), DIM);
+		const band = (line: Line, index: number): Line => {
+			const content = concat(prefix, line);
+			const withTime =
+				index === 0 ? alignEnds(content, time, BLOCK_CONTENT_OFFSET + contentWidth) : content;
+			return this.#band(withTime, this.#width);
+		};
 		const blank = this.#band(plain(""), this.#width);
 		return [blank, ...lines.map(band), blank];
 	}
 
 	#agentLines(block: AgentBlock): readonly Line[] {
-		return renderMarkdown(block.text, { width: this.#contentWidth() }).lines.map(agentLine);
+		const contentWidth = this.#contentWidth();
+		const lines = renderMarkdown(block.text, { width: Math.max(1, contentWidth - TIMESTAMP_WIDTH) }).lines.map(
+			agentLine,
+		);
+		const first = lines.findIndex((line) => line.length > 0);
+		if (first >= 0) {
+			lines[first] = alignEnds(
+				lines[first],
+				styled(timestampText(block.createdAt), DIM),
+				BLOCK_CONTENT_OFFSET + contentWidth,
+			);
+		}
+		return lines;
 	}
 
-	#thinkingLines(block: ThinkingBlock): readonly Line[] {
-		const accent = block.mode === "collapsed" ? undefined : ACCENT;
+	#thinkingLines(block: ThinkingBlock, now: number): readonly Line[] {
+		const collapsed = block.mode === "collapsed";
+		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
+		const accent = collapsed ? undefined : flashing ? OK : ACCENT;
 		const header = blockLine(
 			rail(accent),
-			concat(styled(THOUGHT_MARK, accent === undefined ? FAINT : accent), styled(thoughtLabel(block.elapsedMs), DIM)),
+			concat(styled(THOUGHT_MARK, FAINT), styled(thoughtLabel(block.elapsedMs), DIM)),
 		);
-		if (block.mode === "collapsed") return [header];
+		if (collapsed) return [header];
 
 		const body = wrapLine(mapLine(plain(block.text), (style) => mergeStyles(style, DIM)), {
 			width: this.#contentWidth(),
@@ -571,10 +607,11 @@ export class Transcript {
 		return [header, ...body.map((line) => blockLine(rail(accent), line))];
 	}
 
-	#toolLines(block: ToolBlock, forceExpanded = false): readonly Line[] {
+	#toolLines(block: ToolBlock, forceExpanded: boolean, now: number): readonly Line[] {
 		const collapsed = !forceExpanded && block.mode === "collapsed";
 		// 折叠行没有竖线，和参考实现的折叠态一致；展开后才画出块的范围
-		const accent = collapsed ? undefined : block.isError ? BAD : FAINT;
+		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
+		const accent = collapsed ? undefined : flashing ? OK : block.isError ? BAD : FAINT;
 		const mark = block.isError ? BAD : FAINT;
 		const header = alignEnds(
 			blockLine(
@@ -666,6 +703,7 @@ export class Transcript {
 			kind: "thinking",
 			text: this.#reasoning,
 			elapsedMs: now - (this.#reasoningStartedAt ?? now),
+			finishedAt: now,
 			mode: "collapsed",
 		});
 		this.#reasoning = "";
@@ -678,9 +716,11 @@ export class Transcript {
 			id: this.#nextId++,
 			kind: "agent",
 			text: this.#streaming,
+			createdAt: this.#streamStartedAt ?? Date.now(),
 			mode: "expanded",
 		});
 		this.#streaming = "";
+		this.#streamStartedAt = undefined;
 	}
 
 	#foldable(block: Block): boolean {
@@ -731,6 +771,15 @@ function blend(from: Rgb, to: Rgb, amount: number): Rgb {
 
 function thoughtLabel(elapsedMs: number): string {
 	return `Thought for ${formatDuration(elapsedMs)}`;
+}
+
+/** 消息右上角的时间：小时不补零，分补零，12 小时制。 */
+function timestampText(ms: number): string {
+	const date = new Date(ms);
+	const hour = date.getHours() % 12 || 12;
+	const minute = date.getMinutes().toString().padStart(2, "0");
+	const suffix = date.getHours() < 12 ? "AM" : "PM";
+	return `  ${hour}:${minute} ${suffix}`;
 }
 
 /** 把工具参数压成一行：界面上只显示个大概。 */
