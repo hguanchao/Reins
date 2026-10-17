@@ -1,21 +1,23 @@
 import {
 	alignEnds,
 	concat,
-	formatDuration,
-	spinnerFrame,
+	lineWidth,
+	plain,
 	styled,
+	spinnerFrame,
+	formatDuration,
 	truncateLine,
 	type Line,
 	type Span,
 } from "../../tui/index.ts";
-import { fullTimestamp } from "./session-format.ts";
+import { OUTER_PAD } from "./layout.ts";
 import { ACCENT, BRIGHT, DIM, FAINT, TEXT } from "./theme.ts";
 
 /**
- * 输入框下面的两行：运行状态与快捷键条。
+ * 输入框下面的两行：运行状态与快捷键条，都与会话条目共用同一段左外边距。
  *
- * 状态行左侧是当前动作，右侧是本轮耗时；快捷键条按当前场景切换，复制结果、时间戳展开和
- * 回合预览都会临时占用这一行，用完再让回给按键提示。
+ * 状态行左侧是当前动作，右侧是本轮耗时；快捷键条按当前场景切换，复制结果与粘贴提示会临时
+ * 占用这一行，用完再让回给按键提示。
  */
 
 export interface KeyHint {
@@ -23,56 +25,47 @@ export interface KeyHint {
 	readonly label: string;
 }
 
-export interface HintState {
-	readonly dialog: boolean;
-	readonly pane: "prompt" | "scrollback";
-	readonly menu: "slash" | "file" | undefined;
-	readonly running: boolean;
-	readonly following: boolean;
-	readonly editorEmpty: boolean;
-}
-
 export interface FooterState {
 	readonly width: number;
 	readonly notice: string;
-	readonly hoverTimestamp: number | undefined;
-	readonly hoverTurn: number | undefined;
-	readonly hoverPreview: string;
 	readonly hints: readonly KeyHint[];
 }
 
 /** 跑起来时的那一行：左边是当前动作，右边是这一轮已经跑了多久。 */
 export function runningRow(activity: string, startedAt: number, width: number, now = Date.now()): Line {
 	const elapsed = now - startedAt;
-	const head = concat(styled(`${spinnerFrame(elapsed)} `, ACCENT), styled(activity, TEXT));
-	return alignEnds(head, styled(formatDuration(elapsed), DIM), width);
+	const head = plain(" ".repeat(OUTER_PAD + 3));
+	const body = concat(styled(`${spinnerFrame(elapsed)} `, ACCENT), styled(activity, TEXT));
+	const right = styled(formatDuration(elapsed), DIM);
+	return alignEnds(concat(head, body), right, Math.max(1, width - OUTER_PAD));
 }
 
 /** 底部快捷键条：临时信息优先，其次才是按键提示。 */
 export function footerRow(state: FooterState): Line {
-	if (state.notice.length > 0) return truncateLine(styled(state.notice, ACCENT), state.width);
-	if (state.hoverTimestamp !== undefined) {
-		return truncateLine(
-			concat(styled("▸ ", FAINT), styled(fullTimestamp(state.hoverTimestamp), BRIGHT)),
-			state.width,
-		);
-	}
-	if (state.hoverTurn !== undefined) {
-		const label = state.hoverTurn > 0 ? `Turn ${state.hoverTurn}` : "Turn";
-		return truncateLine(
-			concat(
-				styled("▸ ", FAINT),
-				styled(label, BRIGHT),
-				styled(state.hoverPreview.length > 0 ? ` · ${state.hoverPreview}` : "", DIM),
-			),
-			state.width,
-		);
-	}
-	return hintLine(state.hints, state.width);
+	const line = noticeOrHints(state);
+	const space = concat(plain(" ".repeat(OUTER_PAD)), line);
+	return padTo(space, state.width);
+}
+
+function noticeOrHints(state: FooterState): Line {
+	if (state.notice.length > 0) return truncateLine(styled(state.notice, ACCENT), state.width - OUTER_PAD);
+	return hintLine(state.hints, state.width - OUTER_PAD);
+}
+
+function padTo(line: Line, width: number): Line {
+	if (lineWidth(line) >= width) return line;
+	return concat(line, plain(" ".repeat(width - lineWidth(line))));
 }
 
 /** 当前该显示哪几条按键。 */
-export function footerHints(state: HintState): readonly KeyHint[] {
+export function footerHints(state: {
+	readonly dialog: boolean;
+	readonly pane: "prompt" | "scrollback";
+	readonly menu: "slash" | "file" | undefined;
+	readonly running: boolean;
+	readonly following: boolean;
+	readonly editorEmpty: boolean;
+}): readonly KeyHint[] {
 	const help: KeyHint = { keys: "/help", label: "shortcuts" };
 	if (state.dialog) {
 		return [

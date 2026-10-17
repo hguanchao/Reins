@@ -4,6 +4,8 @@ import {
 	Clipboard,
 	colorSupport,
 	KeyDecoder,
+	mapLine,
+	padLine,
 	plain,
 	ScreenRegion,
 	styled,
@@ -20,12 +22,13 @@ import { panelRows } from "./dialog-view.ts";
 import { footerHints, footerRow, runningRow } from "./footer-view.ts";
 import { inputBoxRows, INPUT_CHROME, INPUT_LEFT } from "./input-box.ts";
 import { GUTTER_WIDTH, OUTER_PAD } from "./layout.ts";
+import { MENU_CHROME_ROWS } from "./menu-view.ts";
 import { decideNotify, desktopNotificationsSupported, notificationSequence } from "./notify.ts";
 import { PromptController } from "./prompt-controller.ts";
-import { railWidth, railCells } from "./rail.ts";
+import { railWidth, railCells, RAIL_WIDTH } from "./rail.ts";
 import { scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
 import { copyNotice } from "./session-format.ts";
-import { ACCENT, BAD, PASTE_BG, WARN } from "./theme.ts";
+import { ACCENT, BAD, PASTE_BG, THEME, WARN } from "./theme.ts";
 
 /**
  * 交互式界面。
@@ -236,7 +239,11 @@ export class TerminalFrontend implements InteractiveFrontend {
 			if (event.type === "wheel") {
 				const wheelRow = event.row - 1;
 				const relative = wheelRow - this.#menuTopScreen;
-				if (relative >= 0 && relative < this.#prompt.menuVisible) {
+				// 面板第一行是框线，候选从它下面一行开始
+				if (
+					relative >= MENU_CHROME_ROWS &&
+					relative < MENU_CHROME_ROWS + this.#prompt.menuVisible
+				) {
 					this.#prompt.scrollMenu(event.direction === "up" ? -1 : 1);
 					this.#refresh();
 					continue;
@@ -486,11 +493,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 			return;
 		}
 
-		// 轨道在滚动条左边一格：点刻度或箭头跳到对应回合
+		// 轨道在滚动条左边两列：点刻度或箭头跳到对应回合
 		if (
 			event.button === "left" &&
 			event.action === "down" &&
-			col === cols - GUTTER_WIDTH &&
+			col >= cols - RAIL_WIDTH &&
+			col <= cols - 2 &&
 			row >= 0 &&
 			row < this.#conversation.height
 		) {
@@ -502,10 +510,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 			return;
 		}
 
-		// 下拉：单击选中，300ms 内再点一次接受
+		// 下拉：单击选中，300ms 内再点一次接受；面板首行是框线
 		if (event.button === "left" && event.action === "down" && row >= this.#menuTopScreen) {
 			const relative = row - this.#menuTopScreen;
-			if (relative < this.#prompt.menuVisible && this.#prompt.clickMenu(relative)) {
+			if (
+				relative >= MENU_CHROME_ROWS &&
+				relative < MENU_CHROME_ROWS + this.#prompt.menuVisible &&
+				this.#prompt.clickMenu(relative)
+			) {
 				this.#pane = "prompt";
 				this.#refresh();
 				return;
@@ -1040,7 +1052,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		// 审批面板没有硬件光标；输入框里光标位于边框与内边距之后
 		this.#setCursorVisible(panel === undefined && this.#pane === "prompt");
 		this.#region.draw({
-			lines,
+			lines: this.#paintBackground(lines, size.cols),
 			cursor:
 				panel === undefined
 					? {
@@ -1055,9 +1067,6 @@ export class TerminalFrontend implements InteractiveFrontend {
 		return footerRow({
 			width,
 			notice: this.#notice,
-			hoverTimestamp: this.#conversation.hoverTimestamp,
-			hoverTurn: this.#conversation.hoverTurnNumber,
-			hoverPreview: this.#conversation.hoverPreview,
 			hints: footerHints({
 				dialog: this.#dialog !== undefined,
 				pane: this.#pane,
@@ -1067,5 +1076,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 				editorEmpty: this.#prompt.editor.isEmpty,
 			}),
 		});
+	}
+
+	/** 整屏铺底色：没写背景的格子补上底色，行宽不足时一路铺到右缘。 */
+	#paintBackground(lines: readonly Line[], width: number): readonly Line[] {
+		return lines.map((line) =>
+			padLine(mapLine(line, (style) => ({ ...style, background: style?.background ?? THEME.base })), width, {
+				background: THEME.base,
+			}),
+		);
 	}
 }

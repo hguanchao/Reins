@@ -8,10 +8,11 @@ import {
 	type Line,
 	type ViewportWindow,
 } from "../../tui/index.ts";
-import { drawCopyIcon, drawSelectionBox } from "./conversation-view.ts";
+import { drawCopyIcon, drawHoverCard, drawSelectionBox, expandTimestamp } from "./conversation-view.ts";
 import { BLOCK_CONTENT_OFFSET, CONTENT_OFFSET, GUTTER_WIDTH, OUTER_PAD, entryContentWidth } from "./layout.ts";
-import { appendRail, railCells, railWidth } from "./rail.ts";
+import { appendRail, railCells, railWidth, RAIL_WIDTH } from "./rail.ts";
 import { scrollbarCell } from "./scrollbar.ts";
+import { fullTimestamp } from "./session-format.ts";
 import {
 	highlightSelection,
 	selectionRange,
@@ -55,6 +56,8 @@ export class ConversationController {
 	#hoverTurn: number | undefined;
 	#hoverPreview = "";
 	#hoverTimestamp: number | undefined;
+	/** 悬停刻度所在的屏幕行：浮卡以它为竖直中心。 */
+	#hoverRow: number | undefined;
 
 	constructor(width: number) {
 		this.transcript = new Transcript(width);
@@ -273,19 +276,21 @@ export class ConversationController {
 		return line === this.#copyIcon.line && col === this.#copyIcon.col;
 	}
 
-	/** 轨道刻度或时间戳的悬停；返回是否发生了变化。 */
+	/** 轨道刻度或时间戳的悬停；返回是否发生了变化。刻度占两列，两列都是命中区。 */
 	hoverAt(row: number, col: number, cols: number): boolean {
 		const body = Math.max(16, cols - OUTER_PAD);
+		const railStart = cols - RAIL_WIDTH;
 		const onRail =
 			railWidth({ width: body, turns: this.#turns.length }) > 0 &&
-			col === cols - GUTTER_WIDTH &&
+			col >= railStart &&
+			col < railStart + RAIL_WIDTH &&
 			row >= 0 &&
 			row < this.#main.rows;
 
 		let turn: number | undefined;
 		let preview = "";
 		if (onRail) {
-			const cells = railCells(this.#main.rows, this.#turns, this.#main.window.start);
+			const cells = railCells(this.#main.rows, this.#turns, this.#main.window.start, this.#hoverTurn);
 			turn = cells[row]?.target;
 			const index = turn === undefined ? -1 : this.#turns.indexOf(turn);
 			preview = index < 0 ? "" : (this.#turnPreviews[index] ?? "");
@@ -305,6 +310,7 @@ export class ConversationController {
 		this.#hoverTurn = turn;
 		this.#hoverPreview = preview;
 		this.#hoverTimestamp = timestamp;
+		this.#hoverRow = turn === undefined ? undefined : row;
 		return true;
 	}
 
@@ -312,6 +318,7 @@ export class ConversationController {
 		this.#hoverTurn = undefined;
 		this.#hoverPreview = "";
 		this.#hoverTimestamp = undefined;
+		this.#hoverRow = undefined;
 	}
 
 	scrollTo(index: number): void {
@@ -371,7 +378,8 @@ export class ConversationController {
 		const visible = view.rows.slice(window.start, window.start + mainRows);
 		while (visible.length < mainRows) visible.push(plain(""));
 
-		const cells = rail > 0 ? railCells(mainRows, view.turns, window.start) : [];
+		const cells = rail > 0 ? railCells(mainRows, view.turns, window.start, this.#hoverTurn) : [];
+		const filler = plain(" ".repeat(rail > 0 ? 0 : GUTTER_WIDTH - 1));
 		const conversation = visible.map((line, index) => {
 			const absolute = window.start + index;
 			const range =
@@ -380,19 +388,48 @@ export class ConversationController {
 				range === undefined ? line : highlightSelection(line, range.from, range.to, SELECTION_STYLE);
 			const scroll = scrollbarCell(index, view.rows.length, mainRows, window.start);
 			const entry = padLine(base, entryWidth);
-			const gutter = rail === 0 ? concat(entry, plain(" ")) : appendRail(entry, cells[index]);
+			const gutter = rail === 0 ? concat(entry, filler) : appendRail(entry, cells[index]);
 			return concat(plain(" ".repeat(OUTER_PAD)), gutter, [scroll]);
 		});
 
+		let frame = conversation;
 		const selected =
 			this.#selectedBlock === undefined
 				? undefined
 				: this.#blocks.find((block) => block.id === this.#selectedBlock);
-		if (selected === undefined) return conversation;
-		const boxed = drawSelectionBox(conversation, selected, window.start, entryWidth);
-		const decorated = drawCopyIcon(boxed, selected, window.start, entryWidth, view.rows);
-		this.#copyIcon = decorated.icon;
-		return decorated.lines;
+		if (selected !== undefined) {
+			const boxed = drawSelectionBox(conversation, selected, window.start, entryWidth);
+			const decorated = drawCopyIcon(boxed, selected, window.start, entryWidth, view.rows);
+			this.#copyIcon = decorated.icon;
+			frame = decorated.lines;
+		}
+		return this.#overlayHover(frame, body + OUTER_PAD);
+	}
+
+	/** 悬停的落点画在会话区里：轨道旁的预览浮卡、时间戳原地展开。 */
+	#overlayHover(lines: readonly Line[], cols: number): readonly Line[] {
+		let result = lines;
+		const stamp = this.#hoverTimestamp;
+		if (stamp !== undefined) {
+			const start = this.#main.window.start;
+			const end = start + this.#main.rows;
+			const span = this.#timestamps.find(
+				(item) => item.createdAt === stamp && item.row >= start && item.row < end,
+			);
+			if (span !== undefined && span.row - start < result.length) {
+				const row = span.row - start;
+				result = result.map((line, index) =>
+					index === row ? expandTimestamp(line, OUTER_PAD + span.col, span.width, fullTimestamp(stamp)) : line,
+				);
+			}
+		}
+		if (this.#hoverTurn !== undefined && this.#hoverRow !== undefined) {
+			const index = this.#turns.indexOf(this.#hoverTurn);
+			if (index >= 0) {
+				result = drawHoverCard(result, this.#hoverRow, cols, this.#turnPreviews[index] ?? "");
+			}
+		}
+		return result;
 	}
 
 	#blockAt(row: number): BlockSpan | undefined {

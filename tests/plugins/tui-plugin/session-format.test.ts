@@ -4,11 +4,11 @@ import { describe, it } from "node:test";
 import { copyNotice, fullTimestamp } from "../../../src/plugins/tui-plugin/session-format.ts";
 
 describe("会话提示文字", () => {
-	it("完整日期带年月日与 12 小时时间", () => {
+	it("完整日期是 24 小时制到秒，月份用缩写", () => {
 		const morning = new Date(2026, 9, 17, 9, 5).getTime();
 		const afternoon = new Date(2026, 9, 17, 14, 33).getTime();
-		assert.equal(fullTimestamp(morning), "2026-10-17 9:05 AM");
-		assert.equal(fullTimestamp(afternoon), "2026-10-17 2:33 PM");
+		assert.equal(fullTimestamp(morning), "09:05:00 | Oct 17");
+		assert.equal(fullTimestamp(afternoon), "14:33:00 | Oct 17");
 	});
 
 	it("复制提示带字符数与行数", () => {

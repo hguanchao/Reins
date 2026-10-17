@@ -43,13 +43,15 @@ describe("前端：会话区交互", () => {
 
 		terminal.inputListener?.(`\x1b[<35;79;${hover.index + 1}M`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const footer = lastFrameRows(terminal.output).at(-1) ?? "";
-		assert.ok(footer.includes("Turn 2"), footer);
-		assert.ok(footer.includes("second"), footer);
+		// 悬停刻度如今在轨道旁弹出浮卡：卡片框线贴着回合预览
+		const card = lastFrameRows(terminal.output).slice(0, 19);
+		assert.ok(card.some((line) => line.includes("─╮")), "hover card top border");
+		assert.ok(card.some((line) => line.includes("second") && line.includes("│")), "preview inside the card");
 
 		terminal.inputListener?.("\x1b[<35;10;1M");
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		assert.ok(!(lastFrameRows(terminal.output).at(-1) ?? "").includes("Turn 2"), "hover clears");
+		const after = lastFrameRows(terminal.output).slice(0, 19);
+		assert.ok(!after.some((line) => line.includes("second") && line.includes("│")), "hover card closes");
 
 		terminal.quit();
 		await running;
@@ -76,12 +78,16 @@ describe("前端：会话区交互", () => {
 		terminal.inputListener?.(`\x1b[<35;${col};${row + 1}M`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const footer = lastFrameRows(terminal.output).at(-1) ?? "";
-		assert.match(footer, /\d{4}-\d{2}-\d{2} \d{1,2}:\d{2} (AM|PM)/, footer);
+		// 时间戳原地展开：24 小时制到秒，月份缩写
+		const expanded = lastFrameRows(terminal.output).find((line) => /\d{2}:\d{2}:\d{2} \| \w{3} \d{1,2}/.test(line));
+		assert.ok(expanded, "timestamp expands in place");
 
 		terminal.inputListener?.("\x1b[<35;10;1M");
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		assert.ok(!(lastFrameRows(terminal.output).at(-1) ?? "").includes("▸"), "timestamp hover clears");
+		assert.ok(
+			!lastFrameRows(terminal.output).some((line) => /\d{2}:\d{2}:\d{2} \|/.test(line)),
+			"timestamp hover clears",
+		);
 
 		terminal.quit();
 		await running;
@@ -125,7 +131,6 @@ describe("前端：会话区交互", () => {
 
 		let rows = lastFrameRows(terminal.output).slice(0, 19);
 		assert.ok(rows.some((line) => line.endsWith("█")), "thumb shown");
-		assert.ok(rows.some((line) => line.endsWith("│")), "track shown");
 
 		// 最右一列是滚动条：点顶端轨道，滑块回到顶部
 		terminal.inputListener?.("\x1b[<0;80;1M");

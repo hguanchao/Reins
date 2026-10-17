@@ -1,19 +1,20 @@
 import type { Line, Style } from "../../tui/index.ts";
-import { ACCENT, EDGE_LIT, FAINT } from "./theme.ts";
+import { ACCENT, FAINT, EDGE_LIT } from "./theme.ts";
 
 /**
  * 回合轨道。
  *
  * 一格刻度代表一个回合，位置只表示会话里的先后顺序，不表示滚动的比例——滚动条告诉你
- * 「看到哪儿了」，轨道告诉你「哪几个回合在屏幕里」。视口顶端所在的那个回合点亮，另外两个
- * 回合（视口上方最近的、下方最近的）由两端的箭头指向；翻到顶或翻到底时对应的箭头变暗。
+ * 「看到哪儿了」，轨道告诉你「哪几个回合在屏幕里」。视口顶端所在的那个回合用双线点亮，
+ * 鼠标悬停的刻度亮起，其余刻度退成一半；视口上、下的最近回合由两端的箭头指向，翻到顶或
+ * 底时对应的箭头变暗。
  *
- * 轨道只占一列：主区右侧的两列里，左边一列是它，右边一列是滚动条。太窄的终端不放轨道：
- * 会话内容比导航更需要那几列。
+ * 轨道占两列：刻度横跨两列，箭头只落在靠右那格。太窄的终端不放轨道：会话内容比导航更需要
+ * 那几列。
  */
 
-/** 轨道占的列数。刻度与箭头都只有一格。 */
-export const RAIL_WIDTH = 1;
+/** 轨道占的列数。刻度横跨两列，箭头只在靠右一列。 */
+export const RAIL_WIDTH = 2;
 
 /** 窄于这个宽度就不放轨道。 */
 const MIN_WIDTH = 60;
@@ -23,8 +24,9 @@ const MIN_TURNS = 2;
 
 const CHEVRON_UP = "▴";
 const CHEVRON_DOWN = "▾";
-const TICK_ACTIVE = "━";
-const TICK_IDLE = "─";
+const TICK_ACTIVE = "━━";
+const TICK_HOVER = "──";
+const TICK_IDLE = " ─";
 
 /** 一格轨道。调用方直接拼到行尾。 */
 export interface RailCell {
@@ -34,7 +36,7 @@ export interface RailCell {
 	readonly target?: number;
 }
 
-const BLANK: RailCell = { text: " ", style: undefined };
+const BLANK: RailCell = { text: " ".repeat(RAIL_WIDTH), style: undefined };
 
 /** 轨道要不要出现：够宽，而且回合已经多到值得导航。 */
 export function railWidth(options: { readonly width: number; readonly turns: number }): number {
@@ -46,10 +48,16 @@ export function railWidth(options: { readonly width: number; readonly turns: num
 /**
  * 算出轨道的每一格。
  *
- * `turns` 是每个回合起始行的行号（升序），`top` 是视口顶端所在的行号。返回的长度就是主区
- * 高度，每格要么是箭头、要么是刻度、要么是空的；刻度与箭头都带着点击后要跳到的行号。
+ * `turns` 是每个回合起始行的行号（升序），`top` 是视口顶端所在的行号，`hover` 是鼠标停在
+ * 哪个回合的刻度上（没有则省略）。返回的长度就是主区高度，每格要么是箭头、要么是刻度、
+ * 要么是空的；刻度与箭头都带着点击后要跳到的行号。
  */
-export function railCells(rows: number, turns: readonly number[], top: number): readonly RailCell[] {
+export function railCells(
+	rows: number,
+	turns: readonly number[],
+	top: number,
+	hover?: number,
+): readonly RailCell[] {
 	const cells: RailCell[] = new Array<RailCell>(Math.max(0, rows)).fill(BLANK);
 	if (rows < 4 || turns.length === 0) return cells;
 
@@ -57,24 +65,26 @@ export function railCells(rows: number, turns: readonly number[], top: number): 
 	const above = [...turns].reverse().find((turn) => turn < top);
 	const below = turns.find((turn) => turn > top);
 
-	cells[0] =
-		above === undefined
-			? { text: CHEVRON_UP, style: FAINT }
-			: { text: CHEVRON_UP, style: EDGE_LIT, target: above };
-	cells[rows - 1] =
-		below === undefined
-			? { text: CHEVRON_DOWN, style: FAINT }
-			: { text: CHEVRON_DOWN, style: EDGE_LIT, target: below };
+	// 箭头只占靠右那列，左边一格留空，刻度才不会被顶歪
+	cells[0] = {
+		text: ` ${CHEVRON_UP}`,
+		style: above === undefined ? FAINT : EDGE_LIT,
+		target: above,
+	};
+	cells[rows - 1] = {
+		text: ` ${CHEVRON_DOWN}`,
+		style: below === undefined ? FAINT : EDGE_LIT,
+		target: below,
+	};
 
 	// 中间留给刻度：装得下就整体居中，装不下就以当前回合为中心开一扇窗
 	const area = rows - 2;
 	const visible = turns.length <= area ? turns : window(turns, active, area);
 	const first = 1 + Math.floor((area - visible.length) / 2);
 	visible.forEach((turn, index) => {
-		const lit = turn === active;
 		cells[first + index] = {
-			text: lit ? TICK_ACTIVE : TICK_IDLE,
-			style: lit ? ACCENT : FAINT,
+			text: turn === active ? TICK_ACTIVE : turn === hover ? TICK_HOVER : TICK_IDLE,
+			style: turn === active ? ACCENT : turn === hover ? EDGE_LIT : FAINT,
 			target: turn,
 		};
 	});

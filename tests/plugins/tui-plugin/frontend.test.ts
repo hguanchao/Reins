@@ -17,13 +17,15 @@ describe("前端：帧与输入", () => {
 	it("输入框是完整方框：上边框与嵌了信息的下边框", async () => {
 		const { lines } = await framesWith(24, 80);
 		const visible = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
-		const top = visible.find((line) => line.startsWith("╭") && line.endsWith("╮"));
-		const bottom = visible.find((line) => line.startsWith("╰") && line.endsWith("╯"));
+		const box = visible.filter((line) => line.trim().startsWith("╭") || line.trim().endsWith("╯") || line.trim().endsWith("╮"));
+		const top = box.find((line) => line.trim().startsWith("╭") && line.trimEnd().endsWith("╮"));
+		const bottom = box.find((line) => line.trim().startsWith("╰") && line.trimEnd().endsWith("╯"));
 
 		assert.ok(top, "top border");
 		assert.ok(bottom, "bottom border");
-		assert.equal(top!.length, 80);
-		assert.equal(bottom!.length, 80);
+		// 输入框缩进外边距：框体占 76 列，两侧各留 2 列
+		assert.equal(top!.trim().length, 76);
+		assert.equal(bottom!.trim().length, 76);
 		assert.ok(top!.includes("─"));
 		assert.ok(bottom!.includes("m1"), "model in the bottom border");
 		assert.ok(bottom!.includes("approval=ask"), "approval mode in the bottom border");
@@ -35,15 +37,16 @@ describe("前端：帧与输入", () => {
 		const editorRow = lines.find((line) => line.includes("❯"));
 		assert.ok(editorRow, "editor row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-		assert.ok(visible.startsWith("│"), "left border");
-		assert.ok(visible.endsWith("│"), "right border");
-		assert.equal(visible.indexOf("❯"), 3, "border plus two padding columns");
+		assert.ok(visible.trimStart().startsWith("│"), "left border");
+		assert.ok(visible.trimEnd().endsWith("│"), "right border");
+		// 左边距(2) + 左竖线在可见文本里的位置：margin(2) + border + pad(2)
+		assert.equal(visible.indexOf("❯"), 5, "margin, border and two padding columns");
 	});
 
 	it("模型与审批方式嵌在下边框，顶部没有单独状态条", async () => {
 		const { lines } = await framesWith(24, 80);
 		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
-		const bottom = visibleLines.find((line) => line.startsWith("╰") && line.endsWith("╯"));
+		const bottom = visibleLines.find((line) => line.trim().startsWith("╰") && line.trimEnd().endsWith("╯"));
 
 		assert.ok(bottom);
 		assert.ok(bottom!.includes("m1"));
@@ -74,8 +77,8 @@ describe("前端：帧与输入", () => {
 		const lastFrame = frame.slice(frame.lastIndexOf("\x1b[H"));
 		const anchorMatch = /(?:\x1b\[)(\d+);(\d+)H(?!.*\x1b\[\d+;\d+H)/.exec(lastFrame);
 		assert.ok(anchorMatch, "cursor positioned");
-		// 边框(1)+内边距(2)+提示符(2)+输入内容(1)，从 1 开始计数
-		assert.equal(anchorMatch[2], "7");
+		// 边距(2)+边框(1)+内边距(2)+提示符(2)+输入内容(1)，从 1 开始计数
+		assert.equal(anchorMatch[2], "9");
 		// 清空再退出:Ctrl+D 只在空输入时退出
 		terminal.inputListener?.("\x7f");
 		terminal.quit();
@@ -95,9 +98,10 @@ describe("前端：帧与输入", () => {
 
 		terminal.inputListener?.("a\nb");
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const editorRows = lastFrameRows(terminal.output).filter(
-			(line) => line.startsWith("│") && line.endsWith("│"),
-		);
+		const editorRows = lastFrameRows(terminal.output).filter((line) => {
+			const text = line.trim();
+			return text.startsWith("│") && text.endsWith("│");
+		});
 		assert.equal(editorRows.length, 2, "editor grows to two rows");
 		assert.ok(editorRows[0].includes("❯ a"));
 		assert.ok(editorRows[1].includes("b"));
@@ -128,7 +132,7 @@ describe("前端：帧与输入", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		let rows = lastFrameRows(terminal.output);
 		assert.equal(
-			rows.filter((line) => line.startsWith("│") && line.endsWith("│")).length,
+			rows.filter((line) => line.trim().startsWith("│") && line.trim().endsWith("│")).length,
 			2,
 			"continuation keeps two editor rows",
 		);
@@ -145,15 +149,15 @@ describe("前端：帧与输入", () => {
 		await running;
 	});
 
-	it("底部快捷键条从第一列开始", async () => {
+	it("底部快捷键条缩进外边距，与会话条目同列", async () => {
 		const { lines } = await framesWith(24, 80);
 		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
 		const hint = visibleLines.find((line) => line.includes("Enter:send"));
 		assert.ok(hint, "key hint row exists");
-		assert.ok(hint!.startsWith("Enter:send"), "no left padding");
+		assert.ok(hint!.startsWith("  Enter:send"), "aligned with the outer padding");
 	});
 
-	it("运行状态行从第一列开始", async () => {
+	it("运行状态行缩进正文列，耗时贴住内容区右缘", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		let releaseRun: (() => void) | undefined;
@@ -179,7 +183,9 @@ describe("前端：帧与输入", () => {
 		const visible = lastFrameRows(frame);
 		const status = visible.find((line) => line.includes("Thinking"));
 		assert.ok(status, "running row exists");
-		assert.ok(!status!.startsWith(" "), "spinner at the first column");
+		// 竖线列与正文列之间：与块的正文同列，而不是顶到屏边
+		assert.ok(status!.startsWith("     "), "spinner aligned with block content");
+		assert.ok(!status!.startsWith("      "), "no deeper indent");
 
 		releaseRun?.();
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -240,7 +246,7 @@ describe("前端：帧与输入", () => {
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		const cleared = lastFrameRows(terminal.output);
 		assert.ok(!cleared.some((line) => line.includes("abc")), "input cleared");
-		const editor = cleared.find((line) => line.startsWith("│") && line.includes("❯"));
+		const editor = cleared.find((line) => line.trimStart().startsWith("│") && line.includes("❯"));
 		assert.ok(editor, "prompt is empty");
 
 		// Esc 不退出:还能继续输入

@@ -1,11 +1,12 @@
 import type { Span } from "../../tui/index.ts";
-import { DIM, EDGE } from "./theme.ts";
+import { SCROLL_THUMB, SCROLL_TRACK } from "./theme.ts";
 
 /**
  * 会话区右侧的滚动条。
  *
- * 轨道占一列，滑块的高度按「可见行数 / 总行数」算，位置直接由视口顶端映射过来。它只负责
- * 显示和把鼠标行换算成视口行号，真正的滚动状态仍由 Viewport 持有。
+ * 滑块的高度按「可见行数 / 总行数」算，位置直接由视口顶端映射过来。它只负责显示和把鼠标
+ * 行换算成视口行号，真正的滚动状态仍由 Viewport 持有。轨道只是一层比屏幕底色更暗的底色，
+ * 滑块浮在上面——滚动条应当被余光看见，而不是注视。
  */
 
 /** 滚动条占的列数。 */
@@ -33,13 +34,13 @@ export function scrollbarState(total: number, height: number, start: number): Sc
 	return { top, size, maxTop, maxScroll };
 }
 
-/** 某一行的滚动条格子：滑块用实心块，轨道用细线。 */
+/** 某一行的滚动条格子：滑块是实心块，轨道只铺一层更暗的底色。 */
 export function scrollbarCell(row: number, total: number, height: number, start: number): Span {
 	const state = scrollbarState(total, height, start);
 	if (state.size === 0) return { text: " " };
 	return row >= state.top && row < state.top + state.size
-		? { text: "█", style: DIM }
-		: { text: "│", style: EDGE };
+		? { text: "█", style: SCROLL_THUMB }
+		: { text: " ", style: SCROLL_TRACK };
 }
 
 /**

@@ -21,11 +21,16 @@ describe("滚动条", () => {
 		assert.equal(scrollbarState(1000, 20, 0).size, 1);
 	});
 
-	it("滑块位置跟随视口顶端，轨道用细线", () => {
+	it("滑块位置跟随视口顶端，轨道只铺底色", () => {
 		assert.equal(scrollbarState(100, 20, 0).top, 0);
 		assert.equal(scrollbarState(100, 20, 80).top, 16);
-		assert.equal(scrollbarCell(0, 100, 20, 0).text, "█");
-		assert.equal(scrollbarCell(19, 100, 20, 0).text, "│");
+		const thumb = scrollbarCell(0, 100, 20, 0);
+		assert.equal(thumb.text, "█");
+		// 实心块：前后景色同源，靠色块而不是字形浮出
+		assert.deepEqual(thumb.style?.background, thumb.style?.color);
+		const track = scrollbarCell(19, 100, 20, 0);
+		assert.equal(track.text, " ");
+		assert.ok(track.style?.background, "track is a background-colored blank");
 	});
 
 	it("按在滑块上抓偏移，按在轨道上抓滑块中心", () => {

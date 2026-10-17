@@ -20,7 +20,7 @@ export const THEME = {
 	/** 正文 */
 	text: rgb(0xe1, 0xe1, 0xe1),
 	/** 次要文字：工具名、耗时、说明 */
-	muted: rgb(0x78, 0x78, 0x78),
+	muted: rgb(0x6c, 0x6c, 0x6c),
 	/** 再淡一层：菱形、竖线、分段符 */
 	faint: rgb(0x58, 0x58, 0x58),
 	/** 比次要文字亮一档：按键、菜单项 */
@@ -51,6 +51,10 @@ export const THEME = {
 	edge: rgb(0x32, 0x32, 0x37),
 	/** 亮一档的边框：轨道刻度、将来的聚焦态 */
 	edgeLit: rgb(0x50, 0x50, 0x58),
+	/** 滚动条轨道的底色：比屏幕底色还暗一档，让滑块自己浮起来 */
+	scrollTrack: rgb(0x11, 0x11, 0x11),
+	/** 滚动条滑块：和色带同色，够看见又不抢眼 */
+	scrollThumb: rgb(0x24, 0x24, 0x24),
 } as const;
 
 export const TEXT: Style = { color: THEME.text };
@@ -77,3 +81,9 @@ export const BOLD: Style = { bold: true };
 export const TITLE: Style = { bold: true, color: THEME.text };
 /** 整行铺底。 */
 export const BAND: Style = { background: THEME.band };
+/** 全屏底色：备用屏里每一行都铺满它，界面与非界面的输出才像同一块屏。 */
+export const BG: Style = { background: THEME.base };
+/** 滚动条滑块：实心块，前后景色同色。 */
+export const SCROLL_THUMB: Style = { color: THEME.scrollThumb, background: THEME.scrollThumb };
+/** 滚动条轨道：只换底色的空格，在屏幕底色上若隐若现。 */
+export const SCROLL_TRACK: Style = { background: THEME.scrollTrack };

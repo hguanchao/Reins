@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { drawCopyIcon, drawSelectionBox } from "../../../src/plugins/tui-plugin/conversation-view.ts";
+import { drawCopyIcon, drawHoverCard, drawSelectionBox, expandTimestamp } from "../../../src/plugins/tui-plugin/conversation-view.ts";
 import { lineText, plain } from "../../../src/tui/text/line.ts";
 
 describe("主区装饰", () => {
@@ -26,5 +26,25 @@ describe("主区装饰", () => {
 		assert.deepEqual(boxed.map(lineText), ["aa"]);
 		const copy = drawCopyIcon(lines, { start: 5, height: 2 }, 0, 8, []);
 		assert.equal(copy.icon, undefined);
+	});
+
+	it("悬停浮卡贴着轨道左缘，盖住当行正文且列数不变", () => {
+		const lines = Array.from({ length: 10 }, () => plain("x".repeat(40)));
+		const card = drawHoverCard(lines, 5, 40, "hello");
+		const mid = lineText(card[5]);
+		const top = lineText(card[4]);
+		assert.ok(top.includes("╭─") && top.includes("╮"), "card top border");
+		assert.ok(mid.includes("│ hello │"), "preview sits inside the card");
+		assert.ok(mid.includes("x".repeat(20)), "content left of the card survives");
+		// 卡片右缘在轨道左边，右侧的尾段原样保留
+		assert.equal(mid.length, 40);
+		assert.ok(lineText(card[6]).includes("╰"), "card bottom border");
+	});
+
+	it("悬停时间戳原地向左展开，右对齐到时间戳右缘", () => {
+		const line = plain(".".repeat(40));
+		const expanded = lineText(expandTimestamp(line, 20, 10, "14:33:00 | Oct 17"));
+		assert.equal(expanded.slice(13, 30), "14:33:00 | Oct 17");
+		assert.ok(expanded.startsWith(".".repeat(13)));
 	});
 });

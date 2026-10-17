@@ -8,8 +8,8 @@
 /** 整块与终端左右边缘之间的距离。 */
 export const OUTER_PAD = 2;
 
-/** 右侧留给轨道与滚动条的列数。 */
-export const GUTTER_WIDTH = 2;
+/** 右侧留给轨道与滚动条的列数：轨道两列，滚动条一列。 */
+export const GUTTER_WIDTH = 3;
 
 /** 块内最左边的竖线。 */
 export const ACCENT_WIDTH = 1;

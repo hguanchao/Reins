@@ -15,7 +15,7 @@ import {
 	type AtContext,
 	type FileEntry,
 } from "./file-search.ts";
-import { fileMenuRows, MAX_MENU_ROWS, slashMenuRows } from "./menu-view.ts";
+import { fileMenuRows, MAX_MENU_ROWS, MENU_CHROME_ROWS, slashMenuRows } from "./menu-view.ts";
 import { matchSlashCommands, slashContext, type SlashCommand, type SlashContext } from "./slash-menu.ts";
 
 /**
@@ -134,7 +134,8 @@ export class PromptController {
 
 		const file = this.#fileState();
 		if (file !== undefined) {
-			const layout = fileMenuRows(file.items, this.#fileIndexSelected, width, limit);
+			const hint = `${file.items.length}/${this.#fileIndex.length}`;
+			const layout = fileMenuRows(file.items, this.#fileIndexSelected, width, limit, hint);
 			this.#menuKind = "file";
 			this.#menuTop = layout.top;
 			this.#menuVisible = layout.visible;
@@ -146,10 +147,12 @@ export class PromptController {
 		return [];
 	}
 
-	/** 鼠标落在下拉第 relativeRow 行时对应的候选项。 */
+	/** 鼠标落在下拉第 relativeRow 行时对应的候选项；面板第一行是框线，先扣掉。 */
 	menuIndexAt(relativeRow: number): { readonly kind: MenuKind; readonly index: number } | undefined {
-		if (this.#menuKind === undefined || relativeRow < 0 || relativeRow >= this.#menuVisible) return undefined;
-		return { kind: this.#menuKind, index: this.#menuTop + relativeRow };
+		if (this.#menuKind === undefined) return undefined;
+		const itemRow = relativeRow - MENU_CHROME_ROWS;
+		if (itemRow < 0 || itemRow >= this.#menuVisible) return undefined;
+		return { kind: this.#menuKind, index: this.#menuTop + itemRow };
 	}
 
 	/** 单击选中；300ms 内的第二下接受该项。返回是否命中下拉。 */
