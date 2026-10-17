@@ -68,7 +68,6 @@ const DIALOG_MARGIN = 8;
 const WHEEL_LINES = 3;
 
 const PROMPT: Line = styled("› ", ACCENT);
-const PLACEHOLDER = "Build anything";
 
 /** 输入框的上下边框：细线铺满整行宽，颜色用正文白。 */
 const boxRule = (width: number): Line => styled("─".repeat(Math.max(0, width)), TEXT);
@@ -701,7 +700,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const size = this.#terminal.size();
 		const body = this.#body(size.cols);
 		// 输入框没有左右边框，正文从第一列开始排，占满整行；它多高先算出来，会话区才好分剩下的行
-		const editor = this.#editor.render({ width: size.cols, prompt: PROMPT, placeholder: PLACEHOLDER });
+		const editor = this.#editor.render({ width: size.cols, prompt: PROMPT });
 		const footerRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const dialog = this.#dialog;
 		const status = this.#running ? RUNNING_ROWS : 0;

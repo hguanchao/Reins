@@ -139,11 +139,11 @@ describe("输入框边框", () => {
 
 	it("输入行没有左右竖线,内容从第一列开始排", async () => {
 		const { lines } = await framesWith(24, 80);
-		const editorRow = lines.find((line) => line.includes("Build anything"));
-		assert.ok(editorRow, "placeholder row exists");
+		const editorRow = lines.find((line) => line.includes("›"));
+		assert.ok(editorRow, "editor row exists");
 		const visible = editorRow!.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 		assert.ok(!visible.includes("│"), "no vertical border");
-		assert.ok(visible.startsWith("› Build anything"), "prompt flushes left");
+		assert.ok(visible.startsWith("›"), "prompt flushes left");
 	});
 
 	it("下边框不嵌模型与审批状态,屏幕上也没有头部状态条", async () => {
@@ -280,7 +280,7 @@ describe("输入框边框", () => {
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		const cleared = lastFrameRows(terminal.output);
 		assert.ok(!cleared.some((line) => line.includes("abc")), "input cleared");
-		assert.ok(cleared.some((line) => line.includes("Build anything")), "placeholder is back");
+		assert.ok(cleared.some((line) => line.trimEnd() === "›"), "prompt is empty");
 
 		// Esc 不退出:还能继续输入
 		terminal.inputListener?.("z");
