@@ -98,7 +98,7 @@ describe("parseArgs 拒绝非法输入", () => {
 		assert.equal(options.resume, undefined);
 	});
 
-	it("空输入进交互界面", () => {
-		assert.equal(parseArgs([]).command, "chat");
+	it("空输入展示帮助", () => {
+		assert.equal(parseArgs([]).command, "help");
 	});
 });

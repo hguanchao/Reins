@@ -6,7 +6,7 @@ export class UsageError extends Error {
 	}
 }
 
-export type CliCommand = "print" | "chat" | "config-check" | "sessions" | "help" | "version";
+export type CliCommand = "print" | "config-check" | "sessions" | "help" | "version";
 
 /** sessions 子命令。 */
 export type SessionsAction = "list" | "show" | "export";
@@ -190,8 +190,8 @@ function resolveCommand(positionals: readonly string[], explicitPrint: boolean):
 		return "config-check";
 	}
 	if (positionals[0] === "sessions") return "sessions";
-	// 没有句子、也没有要求非交互，就是进交互界面
-	if (!explicitPrint && positionals.length === 0) return "chat";
+	// 没有句子也没要求非交互：没有交互界面可进，就展示用法
+	if (!explicitPrint && positionals.length === 0) return "help";
 	if (positionals.length === 0) throw new UsageError("-p requires a prompt");
 	return "print";
 }
@@ -199,7 +199,6 @@ function resolveCommand(positionals: readonly string[], explicitPrint: boolean):
 export const HELP_TEXT = `Reins — terminal coding agent
 
 Usage:
-  reins                       Start the interactive UI
   reins <prompt>              Run one prompt, write the answer to stdout
   reins -p <prompt>           Same, explicitly non-interactive
   reins sessions list         List sessions under the current directory
@@ -216,7 +215,7 @@ Sessions:
   --at <entry id>             Fork point; defaults to the session's current position
 
 Options:
-  --yes                       In non-interactive mode, every approval request counts as granted; deny rules and the review model still apply
+  --yes                       Every approval request counts as granted; deny rules and the review model still apply
   --trust                     Read the config shipped in this workspace and record the decision
   --no-trust                  Do not read the workspace config, and record the decision
   --config <path>             Use the given config.toml instead of the one in the config directory

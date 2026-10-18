@@ -128,26 +128,6 @@ export type NewSessionEntry =
 	| Omit<SessionUsageEntry, keyof SessionEntryBase>
 	| Omit<SessionCompactionEntry, keyof SessionEntryBase>;
 
-/**
- * 会话历史在界面上的形状。
- *
- * 只保留「给人看」的那一层：消息已按角色拆开，思考、工具调用与工具结果各自成项。
- * 界面不需要认识 LlmMessage 的块结构，也不必重新配对 callId。
- */
-export type SessionHistoryItem =
-	| { readonly kind: "user"; readonly text: string; readonly at: number }
-	| { readonly kind: "assistant"; readonly text: string; readonly at: number }
-	| { readonly kind: "thinking"; readonly text: string; readonly at: number; readonly elapsedMs: number }
-	| {
-			readonly kind: "tool";
-			readonly name: string;
-			readonly args: Readonly<Record<string, unknown>>;
-			readonly output: string;
-			readonly isError: boolean;
-			readonly at: number;
-	  }
-	| { readonly kind: "system"; readonly text: string; readonly at: number };
-
 /** 重放条目得到的状态，也就是下一次请求要用的全部信息。 */
 export interface SessionState {
 	/** 提示词分段。渲染顺序由提示词模块的固定顺序决定，这里只管内容。 */

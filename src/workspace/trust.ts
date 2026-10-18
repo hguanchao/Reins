@@ -34,7 +34,7 @@ export function findProjectResources(root: string): ProjectResources {
 export interface TrustDecision {
 	readonly trusted: boolean;
 	/** 结论来自哪里，用于告诉使用者为什么是这个结果 */
-	readonly source: "flag" | "saved" | "asked" | "default" | "none";
+	readonly source: "flag" | "saved" | "default" | "none";
 }
 
 /**
@@ -57,28 +57,23 @@ export function findSavedDecision(trustedRoots: readonly string[], root: string)
 /**
  * 定下这次运行的信任结果。
  *
- * 链条是：命令行给出的一票 → 已记录的清单 → 有人可问就问 → 没有人可问时按不信任处理。
+ * 链条是：命令行给出的一票 → 已记录的清单 → 都没有时按不信任处理。
  * 默认不信任是刻意的：从别处拿来的目录默认让它的配置生效，等于让一个目录在没人同意的情况下
  * 改变程序的行为。
- *
- * 询问可以是异步的（要等使用者在终端上敲一个键），因此这个函数也是异步的。
  */
-export async function resolveTrust(options: {
+export function resolveTrust(options: {
 	readonly root: string;
 	/** 命令行给出的结论 */
 	readonly override: boolean | undefined;
 	readonly trustedRoots: readonly string[];
-	/** 有交互界面时才会去问 */
-	readonly ask: (() => boolean | Promise<boolean>) | undefined;
 	readonly hasProtectedResources: boolean;
-}): Promise<TrustDecision> {
+}): TrustDecision {
 	if (!options.hasProtectedResources) return { trusted: false, source: "none" };
 	if (options.override !== undefined) return { trusted: options.override, source: "flag" };
 
 	const saved = findSavedDecision(options.trustedRoots, options.root);
 	if (saved !== undefined) return { trusted: saved, source: "saved" };
 
-	if (options.ask !== undefined) return { trusted: await options.ask(), source: "asked" };
 	return { trusted: false, source: "default" };
 }
 

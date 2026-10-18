@@ -21,48 +21,31 @@ describe("信任清单匹配", () => {
 });
 
 describe("信任决议", () => {
-	it("没有需要保护的资源时不必问，按不信任", async () => {
-		const decision = await resolveTrust({ root: "E:\\w", override: undefined, trustedRoots: [], ask: () => true, hasProtectedResources: false });
+	it("没有需要保护的资源时按不信任", async () => {
+		const decision = await resolveTrust({ root: "E:\\w", override: undefined, trustedRoots: [], hasProtectedResources: false });
 		assert.deepEqual(decision, { trusted: false, source: "none" });
 	});
 
 	it("命令行给出的一票优先", async () => {
-		const trusted = await resolveTrust({ root: "E:\\w", override: true, trustedRoots: [], ask: () => false, hasProtectedResources: true });
+		const trusted = await resolveTrust({ root: "E:\\w", override: true, trustedRoots: [], hasProtectedResources: true });
 		assert.deepEqual(trusted, { trusted: true, source: "flag" });
 
-		const denied = await resolveTrust({ root: "E:\\w", override: false, trustedRoots: [], ask: () => true, hasProtectedResources: true });
+		const denied = await resolveTrust({ root: "E:\\w", override: false, trustedRoots: [], hasProtectedResources: true });
 		assert.deepEqual(denied, { trusted: false, source: "flag" });
 	});
 
-	it("已记录的清单次之:命中即不问", async () => {
+	it("已记录的清单次之", async () => {
 		const decision = await resolveTrust({
 			root: "E:\\w",
 			override: undefined,
 			trustedRoots: ["E:\\w"],
-			ask: () => false,
 			hasProtectedResources: true,
 		});
 		assert.deepEqual(decision, { trusted: true, source: "saved" });
 	});
 
-	it("没有记录且有人可问时问一次", async () => {
-		let asked = 0;
-		const decision = await resolveTrust({
-			root: "E:\\w",
-			override: undefined,
-			trustedRoots: [],
-			ask: () => {
-				asked += 1;
-				return true;
-			},
-			hasProtectedResources: true,
-		});
-		assert.equal(asked, 1);
-		assert.deepEqual(decision, { trusted: true, source: "asked" });
-	});
-
-	it("无人可问时默认不信任", async () => {
-		const decision = await resolveTrust({ root: "E:\\w", override: undefined, trustedRoots: [], ask: undefined, hasProtectedResources: true });
+	it("没有命令行结论与记录时默认不信任", async () => {
+		const decision = await resolveTrust({ root: "E:\\w", override: undefined, trustedRoots: [], hasProtectedResources: true });
 		assert.deepEqual(decision, { trusted: false, source: "default" });
 	});
 });

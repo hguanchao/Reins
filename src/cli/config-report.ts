@@ -1,16 +1,15 @@
 import type { Config } from "../config/config-file.ts";
 import type { ModelCost, ModelEntry, ProvidersConfig } from "../config/providers-file.ts";
 import type { ModelSelection } from "../config/selection.ts";
-import { displayWidth } from "../tui/text/width.ts";
 
 /** 未声明的值就写「未声明」。用 0 或某个数字代替会让人以为程序知道真实情况。 */
 const UNKNOWN = "not declared";
 
-/** 标签列的宽度，按显示列数算而不是字符数：中文标签占两列。 */
+/** 标签列的宽度；标签都是 ASCII，字符数就是列数。 */
 const LABEL_WIDTH = 14;
 
 function row(label: string, value: string): string {
-	return `  ${label}${" ".repeat(padTo(LABEL_WIDTH - displayWidth(label)))}${value}`;
+	return `  ${label}${" ".repeat(padTo(LABEL_WIDTH - label.length))}${value}`;
 }
 
 function padTo(columns: number): number {

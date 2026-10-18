@@ -28,8 +28,6 @@ export interface ToolCallOutcome {
 	readonly content: string;
 	readonly isError: boolean;
 	readonly durationMs: number;
-	/** 工具给界面的结构化信息；不发给模型 */
-	readonly details?: unknown;
 }
 
 /**
@@ -200,7 +198,6 @@ export class ToolRegistry {
 			content: this.#spiller.spill(request.name, result.content),
 			isError: result.isError ?? false,
 			durationMs: elapsed(startedAt),
-			...(result.details === undefined ? {} : { details: result.details }),
 		};
 	}
 }

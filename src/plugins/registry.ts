@@ -4,7 +4,6 @@ import { createMcpPlugin } from "./mcp-plugin/index.ts";
 import sandboxPlugin from "./sandbox-plugin/index.ts";
 import sessionPlugin from "./session-plugin/index.ts";
 import toolsPlugin from "./tools-plugin/index.ts";
-import tuiPlugin from "./tui-plugin/index.ts";
 
 /**
  * 组合根。
@@ -33,9 +32,8 @@ export function bundledPlugins(context: BundledPluginContext): readonly Plugin[]
 		toolsPlugin,
 		sessionPlugin,
 		sandboxPlugin,
-		tuiPlugin,
 		createMcpPlugin({ cwd: context.cwd, version: context.version, servers: context.mcpServers }),
 	];
 }
 
-export { sandboxPlugin, sessionPlugin, toolsPlugin, tuiPlugin };
+export { sandboxPlugin, sessionPlugin, toolsPlugin };

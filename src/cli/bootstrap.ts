@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { TurnDriver } from "../agent/driver.ts";
-import { Compactor, estimateTokens } from "../agent/compactor.ts";
+import { Compactor } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
@@ -17,26 +17,21 @@ import {
 	spillDir,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
-import { updateUserConfigValue } from "../config/write-back.ts";
 import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
-import { PermissionGate, PermissionPolicy, type Confirmer } from "../permission/policy.ts";
+import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PluginHost, type PluginFailure } from "../plugins/host.ts";
 import { ExternalPlugins } from "../plugins/external.ts";
 import { bundledPlugins } from "../plugins/registry.ts";
-import { historyFromEntries } from "../session/history.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
-import { sumUsage } from "../session/usage.ts";
-import { currentBranch } from "../workspace/git.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
 import { createCoreTools } from "../tools/builtin/index.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
-import type { InteractiveRuntime } from "../tui/frontend.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
@@ -44,7 +39,6 @@ import { formatConfigReport } from "./config-report.ts";
 import { runPrintMode } from "./print-mode.ts";
 import { openSession } from "./session-target.ts";
 import { runSessions } from "./sessions.ts";
-import { askYesNo } from "./prompt.ts";
 
 /**
  * 运行时装配。
@@ -53,9 +47,6 @@ import { askYesNo } from "./prompt.ts";
  * 插件可以往策略里加规则，所以策略必须先存在，插件在装载时才能往它里面放东西。工具注册表
  * 再建，它持有审批入口。插件最后装载——在信任与工作区之后，因此插件在结构上无法影响这两件
  * 事。沙箱要等插件装载完，因为平台手段由插件提供。
- *
- * 交互模式还多一步：界面由插件提供，因此它在插件装载之后才存在；界面起来之前没有人可以问，
- * 审批确认这时按拒绝处理。
  */
 export async function main(argv: readonly string[]): Promise<number> {
 	let options: CliOptions;
@@ -82,8 +73,6 @@ export async function main(argv: readonly string[]): Promise<number> {
 			return runSessionsCommand(options);
 		case "print":
 			return runPrint(options);
-		case "chat":
-			return runChat(options);
 	}
 }
 
@@ -227,155 +216,6 @@ async function runPrint(options: CliOptions): Promise<number> {
 }
 
 /**
- * 交互模式。
- *
- * 与非交互模式共用同一套装配，区别只有三处：审批确认接到界面上；界面由插件提供，没有界面就
- * 明确报错而不是退回到别的方式；退出时把会话文件位置说出来，使用者才知道东西存在哪。
- */
-async function runChat(options: CliOptions): Promise<number> {
-	if (options.assumeYes) {
-		// 界面上随时可以选「允许」，这个开关在这里没有意义。静默忽略会让人以为它生效了
-		writeStderr(
-			"--yes has no meaning in the interactive UI: the UI asks anyway. To skip the asking, set approval to yolo in config.toml.\n",
-		);
-		return 2;
-	}
-	if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
-		writeStderr("The interactive UI needs a terminal. To run a single prompt, use reins -p <prompt>; see reins --help for usage.\n");
-		return 2;
-	}
-
-	const configFile = options.configPath ?? configFilePath();
-	const providersFile = options.providersPath ?? providersFilePath();
-
-	let effective: Awaited<ReturnType<typeof loadEffectiveConfig>>;
-	let selection: ModelSelection;
-	try {
-		effective = await loadEffectiveConfig(options, askTrust);
-		selection = resolveSelection(effective.config, effective.providersConfig, configFile, providersFile);
-	} catch (error) {
-		if (error instanceof ConfigError) {
-			writeStderr(`${error.display}\n`);
-			return 1;
-		}
-		throw error;
-	}
-	const { config } = effective;
-
-	const workRoot = process.cwd();
-	const workspace = new WorkspaceBoundary(workRoot);
-
-	// 审批确认先留一个空位：界面接管终端之后由界面填上；在那之前没有人可以问，按拒绝处理
-	let confirmer: Confirmer | undefined;
-	const policy = new PermissionPolicy(config.approval);
-	const gate = new PermissionGate({
-		policy,
-		reviewer: config.approval === "auto" ? createReviewer(config, selection, workRoot) : undefined,
-		confirmer: async (question, detail) => (confirmer === undefined ? false : confirmer(question, detail)),
-	});
-
-	const registry = new ToolRegistry(
-		new ResultSpiller(config.spillThreshold, spillDir()),
-		gate,
-	);
-	for (const tool of createCoreTools()) registry.register(tool, "core");
-
-	const host = new PluginHost(registry, policy);
-	const external = prepareExternalPlugins(host);
-	const failures = await host.load(
-		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
-			(plugin) => !disabledPlugins(config).has(plugin.name),
-		),
-	);
-	for (const failure of failures) writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
-	reportExternalFailures(await external.load());
-
-	const frontend = host.frontend();
-	if (frontend === undefined) {
-		writeStderr(
-			"No interactive UI available: the UI plugin is disabled or failed to load. To run a single prompt, use reins -p <prompt>.\n",
-		);
-		return 1;
-	}
-
-	let sandbox: SandboxView;
-	try {
-		sandbox = createSandboxFor(config, workRoot, host);
-	} catch (error) {
-		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
-		return 1;
-	}
-
-	warnUnsandboxedMcpServers(config);
-
-	const session = openSessionFor(options, workRoot, host.sessionStore());
-	if (session === undefined) return 1;
-	const compactor = createCompactor(config, selection);
-
-	const runtime: InteractiveRuntime = {
-		cwd: workRoot,
-		session: {
-			id: session.id,
-			path: session.path,
-			entries: session.entryCount,
-			history: historyFromEntries(session.entries()),
-		},
-		provider: selection.provider.id,
-		model: selection.model.id,
-		branch: currentBranch(workRoot),
-		contextWindow: selection.model.contextWindow ?? config.contextWindow,
-		approval: config.approval,
-		sandbox: config.sandbox,
-		notify: config.ui.notify,
-		trust: {
-			trusted: effective.trust.trusted,
-			root: workRoot,
-			files: effective.resources,
-		},
-		commands: host.commands(),
-		runCommand: async (name, args) => {
-			const lines: string[] = [];
-			await host.runCommand(name, args, { cwd: workRoot, print: (line) => lines.push(line) });
-			return lines;
-		},
-		createDriver: (onEvent) =>
-			createDriverFor({ config, selection, compactor }, { registry, session, workspace, sandbox }, onEvent),
-		sessionUsage: () => sumUsage(session.entries()),
-		// 每帧都要问一次，所以只做一次线性估算；上下文大小决定了这点开销的上限，且只在回合运行时有调用方
-		contextTokens: () => estimateTokens(session.state().messages),
-		setConfirmer: (value) => {
-			confirmer = value;
-		},
-		// 通知方式与信任清单写回用户级配置；界面只负责显示与触发，写文件这件事由宿主做
-		setNotify: (mode) => updateUserConfigValue(["ui", "notify"], () => mode, configFile),
-		setTrusted: (trusted) => recordTrust(workRoot, trusted),
-	};
-
-	try {
-		await frontend.run(runtime);
-		return 0;
-	} catch (error) {
-		writeStderr(`UI error: ${error instanceof Error ? error.message : String(error)}\n`);
-		return 1;
-	} finally {
-		await session.close();
-	}
-}
-
-/**
- * 进入交互界面之前的信任询问。
- *
- * 问在界面起来之前：答案决定哪些配置生效，而配置决定界面按什么规矩跑。项目配置里的
- * 危险项已经被合并规则挡住（只能更严，不能放宽），所以先读不构成安全缺口。
- */
-async function askTrust(): Promise<boolean> {
-	const workRoot = process.cwd();
-	const resources = findProjectResources(workRoot);
-	const files = resources.files.join(", ");
-	return askYesNo(`The workspace ships config that affects this run: ${files}. Read it?`);
-}
-
-/**
  * 读出生效的配置。
  *
  * 用户级配置总是读；工作区自带的配置要先取得信任。缺少信任时不读，并且明确说出来——安静地
@@ -386,7 +226,6 @@ async function askTrust(): Promise<boolean> {
  */
 async function loadEffectiveConfig(
 	options: CliOptions,
-	ask?: () => Promise<boolean>,
 ): Promise<{
 	readonly config: Config;
 	readonly providersConfig: ProvidersConfig;
@@ -413,25 +252,24 @@ async function loadEffectiveConfig(
 		};
 	}
 
-	const decision = await resolveTrust({
+	const decision = resolveTrust({
 		root: workRoot,
 		override: options.trust,
 		trustedRoots: userConfig.config.plugins.trusted,
-		// 非交互模式没有人可以问，因此不给询问入口，结论按不信任处理
-		ask,
 		hasProtectedResources: resources.length > 0,
 	});
 
-	if (decision.source === "flag" || decision.source === "asked") {
-		// 命令行给出的结论与询问得到的结论都会被记下来，下次不必再给
+	if (decision.source === "flag") {
+		// 命令行给出的结论会被记下来，下次不必再给
 		recordTrust(workRoot, decision.trusted);
 		writeStderr(`Recorded ${workRoot} as ${decision.trusted ? "trusted" : "untrusted"}\n`);
 	}
 
 	if (!decision.trusted) {
 		if (resources.length > 0) {
-			const how = ask === undefined ? "Pass --trust to use them." : "Use /trust in the UI to enable them.";
-			writeStderr(`Skipped the workspace config that needs trust: ${resources.join(", ")}\n${how}\n`);
+			writeStderr(
+				`Skipped the workspace config that needs trust: ${resources.join(", ")}\nPass --trust to use them.\n`,
+			);
 		}
 		return {
 			config: userConfig.config,

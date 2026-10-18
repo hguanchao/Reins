@@ -3,7 +3,6 @@ import type { SandboxBackend } from "../sandbox/policy.ts";
 import type { SessionStore } from "../session/store.ts";
 import type { AnyToolDefinition } from "../tools/contract.ts";
 import type { ToolRegistry } from "../tools/registry.ts";
-import type { InteractiveFrontend } from "../tui/frontend.ts";
 
 /**
  * 插件宿主。
@@ -26,8 +25,6 @@ export interface PluginApi {
 	registerSandboxBackend(backend: SandboxBackend): void;
 	/** 注册一条审批规则。规则只能加严，不能放行。 */
 	registerPermissionRule(rule: PermissionRule): void;
-	/** 提供一个交互形态。只能有一个：两套界面同时抢终端，谁也画不清楚。 */
-	registerFrontend(frontend: InteractiveFrontend): void;
 	/** 提供会话的落盘方式。只能有一个，否则条目该写到哪里就没有定论。 */
 	registerSessionStore(store: SessionStore): void;
 }
@@ -73,7 +70,6 @@ interface Pending {
 	readonly backends: SandboxBackend[];
 	readonly commands: PluginCommand[];
 	store: SessionStore | undefined;
-	frontend: InteractiveFrontend | undefined;
 	/** 这个插件的装载是否还在进行。结束后再注册就直接生效——已经没有可回滚的对象了 */
 	open: boolean;
 	/** 这一代是否已经被换掉。作废之后它的 api 再往里注册一律拒绝 */
@@ -87,7 +83,6 @@ export class PluginHost {
 	readonly #policy: PermissionPolicy;
 	readonly #commands = new Map<string, PluginCommand>();
 	readonly #backends: SandboxBackend[] = [];
-	#frontend: InteractiveFrontend | undefined;
 	#sessionStore: SessionStore | undefined;
 	/** 已装载的外部插件。重载时按这份记录卸下 */
 	#external: Pending[] = [];
@@ -132,7 +127,7 @@ export class PluginHost {
 	/**
 	 * 宿主自己的命令。
 	 *
-	 * 与插件命令放在同一份清单里：界面照同一份清单显示与转发，不必区分谁提供的。
+	 * 与插件命令放在同一份清单里：调用方照同一份清单显示与转发，不必区分谁提供的。
 	 */
 	addCommand(command: PluginCommand): void {
 		if (this.#commands.has(command.name)) throw new Error(`Command /${command.name} is already registered`);
@@ -141,11 +136,6 @@ export class PluginHost {
 
 	backends(): readonly SandboxBackend[] {
 		return [...this.#backends];
-	}
-
-	/** 交互形态。没有任何插件提供时返回 undefined，调用方据此明确报错。 */
-	frontend(): InteractiveFrontend | undefined {
-		return this.#frontend;
 	}
 
 	/** 会话存储。没有插件提供时返回 undefined，调用方据此退回内存会话并明确说出来。 */
@@ -220,13 +210,6 @@ export class PluginHost {
 				assertLive();
 				pending.rules.push(rule);
 			},
-			registerFrontend: (frontend) => {
-				assertLive();
-				if (this.#frontend !== undefined || pending.frontend !== undefined) {
-					throw new Error("A frontend is already registered; only one is allowed");
-				}
-				pending.frontend = frontend;
-			},
 			registerSessionStore: (store) => {
 				assertLive();
 				if (this.#sessionStore !== undefined || pending.store !== undefined) {
@@ -250,7 +233,6 @@ export class PluginHost {
 			pending.registeredCommands.push(command.name);
 		}
 		if (pending.store !== undefined) this.#sessionStore = pending.store;
-		if (pending.frontend !== undefined) this.#frontend = pending.frontend;
 	}
 }
 
@@ -261,7 +243,6 @@ function newPending(): Pending {
 		backends: [],
 		commands: [],
 		store: undefined,
-		frontend: undefined,
 		open: true,
 		stale: false,
 		registeredTools: [],

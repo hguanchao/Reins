@@ -43,7 +43,6 @@ describe("插件宿主", () => {
 				api.registerPermissionRule({ decision: "deny", reason: "blocked", matches: () => false });
 				api.registerSandboxBackend({ id: "fake", available: false, wrap: () => undefined });
 				api.registerSessionStore({} as never);
-				api.registerFrontend({} as never);
 			}),
 		);
 		assert.equal(registry.get("first_tool")?.name, "first_tool");
@@ -51,7 +50,6 @@ describe("插件宿主", () => {
 		assert.equal(policy.ruleCount(), 1);
 		assert.equal(host.backends().length, 1);
 		assert.ok(host.sessionStore() !== undefined);
-		assert.ok(host.frontend() !== undefined);
 	});
 
 	it("装载半途抛错的插件不留下任何注册项", async () => {
@@ -98,13 +96,13 @@ describe("插件宿主", () => {
 		assert.deepEqual(host.commands().map((command) => command.name), ["dup"]);
 	});
 
-	it("前端与会话存储各只允许一个", async () => {
+	it("会话存储只允许一个", async () => {
 		const { failures } = await hostWith(
 			pluginOf("one", (api) => {
-				api.registerFrontend({} as never);
+				api.registerSessionStore({} as never);
 			}),
 			pluginOf("two", (api) => {
-				api.registerFrontend({} as never);
+				api.registerSessionStore({} as never);
 			}),
 		);
 		assert.equal(failures.length, 1);

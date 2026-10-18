@@ -179,14 +179,12 @@ export class TurnDriver {
 			durationMs: outcome.durationMs,
 			summary: firstLine(outcome.content),
 			content: outcome.content,
-			...(outcome.details === undefined ? {} : { details: outcome.details }),
 		});
 		return {
 			callId: call.id,
 			toolName: call.name,
 			content: outcome.content,
 			isError: outcome.isError,
-			...(outcome.details === undefined ? {} : { details: outcome.details }),
 		};
 	}
 
@@ -348,5 +346,4 @@ interface ToolOutcome {
 	readonly toolName: string;
 	readonly content: string;
 	readonly isError: boolean;
-	readonly details?: unknown;
 }
