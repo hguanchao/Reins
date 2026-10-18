@@ -3,10 +3,11 @@ import { eastAsianWidth } from "get-east-asian-width";
 /**
  * 页脚输入框。
  *
- * 五行：运行时状态、上边框、输入行、下边框、常驻信息行；边框铺满整个终端宽度。运行时状态
- * 在有任务时显示加载符号与状态文字，空闲时留空；常驻信息行显示项目、分支、模型、思考强度、
- * 上下文与缓存命中率。光标交给终端自己画，下方输入区只算出实际显示哪一段以及光标应落在
- * 第几列。边框与提示符随焦点切换颜色，正文保持默认颜色。
+ * 六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行；边框铺满整个终端宽度。
+ * 空白间隔把对话流和运行时状态行分开，正文滚到底时不会贴在一起。运行时状态在有任务时显示
+ * 加载符号与状态文字，空闲时留空；常驻信息行显示项目、分支、模型、思考强度、上下文与缓存
+ * 命中率。光标交给终端自己画，下方输入区只算出实际显示哪一段以及光标应落在第几列。边框与
+ * 提示符随焦点切换颜色，正文保持默认颜色。
  */
 
 export interface InputView {
@@ -53,8 +54,8 @@ const STATUS_META_COLOR = "\x1b[38;2;102;102;102m";
 /** 输入框下方常驻信息行的颜色 #242424。 */
 const INFO_COLOR = "\x1b[38;2;36;36;36m";
 
-/** 页脚固定五行：运行时状态、上边框、输入行、下边框、常驻信息行。 */
-export const FOOTER_HEIGHT = 5;
+/** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
+export const FOOTER_HEIGHT = 6;
 
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";
@@ -100,6 +101,7 @@ export function renderFooter(
 	const columns = Math.max(0, width);
 	const view = inputView(input, columns);
 	return [
+		"",
 		statusLine(columns, status),
 		colored(horizontal(columns), focused),
 		colored(view.prefix, focused) + view.text,

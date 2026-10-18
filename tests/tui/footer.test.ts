@@ -28,37 +28,38 @@ describe("页脚输入框", () => {
 
 		assert.equal(lines.length, FOOTER_HEIGHT);
 		assert.equal(lines[0], "");
-		assert.equal(lines[4], "");
-		assert.ok(lines[1].startsWith(FOCUS));
-		assert.equal(plain(lines[1]), BORDER.repeat(10));
+		assert.equal(lines[1], "");
 		assert.ok(lines[2].startsWith(FOCUS));
-		assert.equal(plain(lines[2]), " › ");
+		assert.equal(plain(lines[2]), BORDER.repeat(10));
 		assert.ok(lines[3].startsWith(FOCUS));
-		assert.equal(plain(lines[3]), BORDER.repeat(10));
+		assert.equal(plain(lines[3]), " › ");
+		assert.ok(lines[4].startsWith(FOCUS));
+		assert.equal(plain(lines[4]), BORDER.repeat(10));
+		assert.equal(lines[5], "");
 	});
 
 	it("失去焦点时边框和提示符用 #242424", () => {
 		const lines = renderFooter(10, "", false);
 
 		assert.equal(lines[0], "");
-		assert.ok(lines[1].startsWith(BLUR));
 		assert.ok(lines[2].startsWith(BLUR));
-		assert.equal(plain(lines[1]), BORDER.repeat(10));
-		assert.equal(plain(lines[2]), " › ");
-		assert.equal(plain(lines[3]), BORDER.repeat(10));
+		assert.ok(lines[3].startsWith(BLUR));
+		assert.equal(plain(lines[2]), BORDER.repeat(10));
+		assert.equal(plain(lines[3]), " › ");
+		assert.equal(plain(lines[4]), BORDER.repeat(10));
 	});
 
 	it("输入文字排在提示符之后，不受焦点颜色影响", () => {
 		const lines = renderFooter(10, "abc", true);
 
-		assert.equal(plain(lines[2]), " › abc");
-		assert.ok(lines[2].startsWith(FOCUS));
-		assert.ok(lines[2].endsWith("abc"));
+		assert.equal(plain(lines[3]), " › abc");
+		assert.ok(lines[3].startsWith(FOCUS));
+		assert.ok(lines[3].endsWith("abc"));
 	});
 
 	it("输入框下方显示项目、分支、模型、思考强度、上下文与缓存命中率", () => {
 		const lines = renderFooter(120, "", true, undefined, SESSION_INFO);
-		const line = lines[4] ?? "";
+		const line = lines[5] ?? "";
 
 		assert.equal(
 			plain(line),
@@ -71,7 +72,7 @@ describe("页脚输入框", () => {
 	it("不在 git 仓库时不显示分支项", () => {
 		const lines = renderFooter(120, "", true, undefined, { ...SESSION_INFO, branch: undefined });
 
-		assert.equal(plain(lines[4] ?? ""), "📁 Reins | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M | ⚡ 98%");
+		assert.equal(plain(lines[5] ?? ""), "📁 Reins | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M | ⚡ 98%");
 	});
 
 	it("上下文上限未声明时只显示已用量", () => {
@@ -80,36 +81,37 @@ describe("页脚输入框", () => {
 			contextWindow: undefined,
 		});
 
-		assert.ok(plain(lines[4] ?? "").includes("📊 100K |"));
+		assert.ok(plain(lines[5] ?? "").includes("📊 100K |"));
 	});
 
 	it("常驻信息行按显示宽度截断，不切半个 emoji", () => {
-		assert.equal(plain(renderFooter(10, "", true, undefined, SESSION_INFO)[4] ?? ""), "📁 Reins");
-		assert.equal(plain(renderFooter(9, "", true, undefined, SESSION_INFO)[4] ?? ""), "📁 Rein");
+		assert.equal(plain(renderFooter(10, "", true, undefined, SESSION_INFO)[5] ?? ""), "📁 Reins");
+		assert.equal(plain(renderFooter(9, "", true, undefined, SESSION_INFO)[5] ?? ""), "📁 Rein");
 	});
 
 	it("缓存命中率按整数百分比显示", () => {
 		const lines = renderFooter(120, "", true, undefined, { ...SESSION_INFO, cacheHitRate: 0.984 });
 
-		assert.ok(plain(lines[4] ?? "").endsWith("⚡ 98%"));
+		assert.ok(plain(lines[5] ?? "").endsWith("⚡ 98%"));
 	});
 
 	it("输入超出宽度时保留尾部", () => {
 		const lines = renderFooter(5, "abcdef", true);
-		assert.equal(plain(lines[2]), " › f");
+		assert.equal(plain(lines[3]), " › f");
 	});
 
 	it("宽字符按两列计算，不留下半个字", () => {
 		const lines = renderFooter(6, "你好世界", true);
-		assert.equal(plain(lines[2]), " › 界");
+		assert.equal(plain(lines[3]), " › 界");
 	});
 
 	it("有运行时状态时显示加载符号与文字", () => {
 		const lines = renderFooter(40, "", true, { symbol: "⠋", text: "Waiting for response..." });
 
-		assert.equal(lines[0], " ⠋ Waiting for response...");
-		assert.equal(lines[0]?.length, 26);
-		assert.equal(plain(lines[2]), " › ");
+		assert.equal(lines[0], "");
+		assert.equal(lines[1], " ⠋ Waiting for response...");
+		assert.equal(lines[1]?.length, 26);
+		assert.equal(plain(lines[3]), " › ");
 	});
 
 	it("状态行显示计时与 token 数，右侧对齐", () => {
@@ -121,7 +123,7 @@ describe("页脚输入框", () => {
 		});
 		const left = " ⠋ Thinking...";
 		const right = "1.2s  ⇣128";
-		const raw = lines[0] ?? "";
+		const raw = lines[1] ?? "";
 
 		assert.equal(plain(raw), left + " ".repeat(58 - left.length - right.length) + right);
 		assert.ok(raw.includes("\x1b[38;2;102;102;102m"));
@@ -138,7 +140,7 @@ describe("页脚输入框", () => {
 		});
 		const left = " ⠧ Writing response...  2.5s";
 		const right = "5.3s  ⇣21.4K";
-		const raw = lines[0] ?? "";
+		const raw = lines[1] ?? "";
 
 		assert.equal(plain(raw), left + " ".repeat(68 - left.length - right.length) + right);
 		assert.ok(raw.includes("\x1b[38;2;102;102;102m  2.5s"));
@@ -155,7 +157,7 @@ describe("页脚输入框", () => {
 			sweep: 0.5,
 		});
 		const meta = "\x1b[38;2;102;102;102m";
-		const raw = lines[0] ?? "";
+		const raw = lines[1] ?? "";
 		const tail = raw.slice(raw.lastIndexOf(meta));
 
 		assert.ok(tail.includes("2.5s"));
@@ -166,7 +168,7 @@ describe("页脚输入框", () => {
 
 	it("状态行超出宽度时截断", () => {
 		const lines = renderFooter(12, "", true, { symbol: "⠋", text: "Waiting for response..." });
-		assert.equal(lines[0], " ⠋ Waiting");
+		assert.equal(lines[1], " ⠋ Waiting");
 	});
 
 	it("运行时状态可以带扫光", () => {
@@ -176,9 +178,9 @@ describe("页脚输入框", () => {
 			sweep: 0.5,
 		});
 
-		assert.equal(plain(lines[0] ?? ""), " ⠋ Waiting for response...");
-		assert.ok(lines[0]?.includes("\x1b[38;2;255;255;255m"));
-		assert.ok(lines[0]?.endsWith("\x1b[0m"));
+		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting for response...");
+		assert.ok(lines[1]?.includes("\x1b[38;2;255;255;255m"));
+		assert.ok(lines[1]?.endsWith("\x1b[0m"));
 	});
 
 	it("光标列跟着提示符和可见文字走", () => {

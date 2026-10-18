@@ -190,20 +190,20 @@ describe("全屏布局", () => {
 
 		try {
 			output.columns = 20;
-			output.rows = 6;
+			output.rows = 7;
 			output.emit("resize");
 
 			const lines = frameLines(output);
-			assert.equal(lines.length, 6);
+			assert.equal(lines.length, 7);
 			assert.equal(lines[0], `${" ".repeat(7)}Reins`);
 			assert.equal(lines.join("\n").includes("v1.2.3"), false);
-			assert.equal(plain(lines[2] ?? ""), BORDER.repeat(20));
-			assert.equal(plain(lines[3] ?? ""), " › ");
-			assert.equal(plain(lines[4] ?? ""), BORDER.repeat(20));
-			assert.equal(plain(lines[5] ?? ""), "📁 Reins · 🌿 main");
-			assert.ok(lines[2]?.startsWith(FOCUS));
+			assert.equal(plain(lines[3] ?? ""), BORDER.repeat(20));
+			assert.equal(plain(lines[4] ?? ""), " › ");
+			assert.equal(plain(lines[5] ?? ""), BORDER.repeat(20));
+			assert.equal(plain(lines[6] ?? ""), "📁 Reins · 🌿 main");
 			assert.ok(lines[3]?.startsWith(FOCUS));
-			assert.ok(cursorAt(output, 4, 4));
+			assert.ok(lines[4]?.startsWith(FOCUS));
+			assert.ok(cursorAt(output, 5, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -268,7 +268,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("a"));
 
 			const typed = frameLines(output);
-			const main = typed.slice(0, 7).join("\n");
+			const main = typed.slice(0, 6).join("\n");
 			assert.equal(main.includes("Reins"), false);
 			assert.equal(main.includes("v1.2.3"), false);
 			assert.equal(plain(typed[9] ?? ""), " › a");
@@ -351,7 +351,7 @@ describe("全屏布局", () => {
 			t.mock.timers.tick(2500);
 
 			const lines = frameLines(output);
-			const main = lines.slice(0, 7).map(plain);
+			const main = lines.slice(0, 6).map(plain);
 			assert.ok(main[1]?.startsWith(" › hello"));
 			assert.equal(main[0]?.includes("›"), false);
 			assert.equal(main[2]?.includes("›"), false);
@@ -379,29 +379,29 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(2500);
 
-			const bottom = frameLines(output).slice(0, 7).map(plain);
+			const bottom = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(bottom.slice(2).join("\n").includes("模拟回复第 16 行"));
 
 			// 拖到顶部，看到最早的回复
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
-			const top = frameLines(output).slice(0, 7).map(plain);
+			const top = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(top[1]?.startsWith(" › hello"));
 			assert.ok(top.slice(2).join("\n").includes("模拟回复第 1 行"));
 
 			// 拖回底部
 			input.emit("data", Buffer.from("\x1b[<32;40;7M"));
-			const back = frameLines(output).slice(0, 7).map(plain);
+			const back = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(back.slice(2).join("\n").includes("模拟回复第 16 行"));
 
 			// 松开后滚轮向上，再向下回到跟随
 			input.emit("data", Buffer.from("\x1b[<0;40;7m"));
 			input.emit("data", Buffer.from("\x1b[<64;20;4M"));
-			const scrolled = frameLines(output).slice(0, 7).map(plain);
+			const scrolled = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(scrolled[1]?.startsWith(" › hello"));
 			assert.notEqual(scrolled.join("\n"), back.join("\n"));
 
 			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
-			const followed = frameLines(output).slice(0, 7).map(plain);
+			const followed = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(followed.slice(2).join("\n").includes("模拟回复第 16 行"));
 		} finally {
 			exitTui(input);
@@ -420,12 +420,12 @@ describe("全屏布局", () => {
 			t.mock.timers.tick(2500);
 			input.emit("data", Buffer.from("two\r"));
 
-			const latest = frameLines(output).slice(0, 7).map(plain);
+			const latest = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(latest[1]?.startsWith(" › two"));
 
 			// 拖到顶部可以看到旧提示
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
-			const top = frameLines(output).slice(0, 7).map(plain);
+			const top = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(top[1]?.startsWith(" › one"));
 		} finally {
 			exitTui(input);
@@ -457,7 +457,7 @@ describe("全屏布局", () => {
 
 			assert.equal(output.chunks.length, written);
 			const lines = frameLines(output);
-			const main = lines.slice(0, 7).join("\n");
+			const main = lines.slice(0, 6).join("\n");
 			assert.ok(main.includes("Reins"));
 			assert.ok(main.includes("v1.2.3"));
 		} finally {
@@ -492,14 +492,14 @@ describe("全屏布局", () => {
 
 			const lines = frameLines(output);
 			assert.equal(plain(lines[9] ?? ""), " › ab");
-			assert.equal(lines.slice(0, 7).join("\n").includes("Reins"), false);
+			assert.equal(lines.slice(0, 6).join("\n").includes("Reins"), false);
 			assert.ok(cursorAt(output, 10, 6));
 
 			input.emit("data", Buffer.from([0x7f]));
 			input.emit("data", Buffer.from([0x7f]));
 			const cleared = frameLines(output);
-			assert.equal(cleared.slice(0, 7).join("\n").includes("Reins"), false);
-			assert.equal(cleared.slice(0, 7).join("\n").includes("v1.2.3"), false);
+			assert.equal(cleared.slice(0, 6).join("\n").includes("Reins"), false);
+			assert.equal(cleared.slice(0, 6).join("\n").includes("v1.2.3"), false);
 			assert.equal(plain(cleared[9] ?? ""), " › ");
 			assert.ok(cursorAt(output, 10, 4));
 		} finally {

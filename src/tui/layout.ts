@@ -160,7 +160,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...footer].slice(0, height);
-		const cursorRow = mainHeight + 3;
+		const cursorRow = mainHeight + 4;
 		const cursor =
 			focused && cursorRow <= height
 				? moveCursor(cursorRow, inputView(input, width).column) + SHOW_CURSOR
