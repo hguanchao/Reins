@@ -37,12 +37,12 @@ class FakeOutput extends EventEmitter {
 	}
 }
 
-const ENTER = "\x1b[?1049h\x1b[?25l";
+const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l";
 const CLEAR = "\x1b[H\x1b[2J";
-const LEAVE = "\x1b[?25h\x1b[?1049l";
+const LEAVE = "\x1b[0 q\x1b[?25h\x1b[?1049l";
 const HINT = "Press Ctrl+C again to exit";
-const CURSOR = "\x1b[7m \x1b[0m";
 const BORDER = "─";
+const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h$/;
 
 function pressCtrlC(input: FakeInput): void {
 	input.emit("data", Buffer.from([3]));
@@ -54,9 +54,22 @@ function exitTui(input: FakeInput): void {
 	pressCtrlC(input);
 }
 
+function rawFrame(output: FakeOutput): string {
+	return output.chunks.at(-1) ?? "";
+}
+
+/** 去掉末尾的光标定位序列，只看画面本身。 */
+function lastFrame(output: FakeOutput): string {
+	return rawFrame(output).replace(CURSOR_SUFFIX, "");
+}
+
 function frameLines(output: FakeOutput): string[] {
-	const frame = output.chunks.at(-1) ?? "";
-	return frame.slice(CLEAR.length).split("\r\n");
+	const frame = lastFrame(output);
+	return frame.slice(frame.indexOf(CLEAR) + CLEAR.length).split("\r\n");
+}
+
+function cursorAt(output: FakeOutput, row: number, column: number): boolean {
+	return rawFrame(output).endsWith(`\x1b[${row};${column}H\x1b[?25h`);
 }
 
 describe("全屏布局", () => {
@@ -69,10 +82,11 @@ describe("全屏布局", () => {
 			assert.equal(output.chunks[0], ENTER);
 			assert.equal(input.rawMode, true);
 			assert.equal(input.resumed, true);
+			assert.ok(cursorAt(output, 11, 1));
 
 			pressCtrlC(input);
 			assert.equal(input.rawMode, true);
-			assert.ok((output.chunks.at(-1) ?? "").includes(HINT));
+			assert.ok(lastFrame(output).includes(HINT));
 		} finally {
 			exitTui(input);
 		}
@@ -91,7 +105,7 @@ describe("全屏布局", () => {
 		try {
 			pressCtrlC(input);
 
-			assert.ok((output.chunks.at(-1) ?? "").includes(HINT));
+			assert.ok(lastFrame(output).includes(HINT));
 			assert.equal(
 				output.chunks.some((chunk) => chunk.includes(LEAVE)),
 				false,
@@ -112,11 +126,11 @@ describe("全屏布局", () => {
 
 		try {
 			pressCtrlC(input);
-			assert.ok((output.chunks.at(-1) ?? "").includes(HINT));
+			assert.ok(lastFrame(output).includes(HINT));
 
 			t.mock.timers.tick(2000);
 
-			assert.equal((output.chunks.at(-1) ?? "").includes(HINT), false);
+			assert.equal(lastFrame(output).includes(HINT), false);
 		} finally {
 			exitTui(input);
 		}
@@ -133,8 +147,9 @@ describe("全屏布局", () => {
 			assert.equal(lines[3], `${" ".repeat(17)}Reins`);
 			assert.equal(lines[4], `${" ".repeat(17)}v1.2.3`);
 			assert.equal(lines[9], BORDER.repeat(40));
-			assert.equal(lines[10], CURSOR);
+			assert.equal(lines[10], "");
 			assert.equal(lines[11], BORDER.repeat(40));
+			assert.ok(cursorAt(output, 11, 1));
 		} finally {
 			exitTui(input);
 		}
@@ -155,8 +170,9 @@ describe("全屏布局", () => {
 			assert.equal(lines[0], `${" ".repeat(7)}Reins`);
 			assert.equal(lines[1], `${" ".repeat(7)}v1.2.3`);
 			assert.equal(lines[3], BORDER.repeat(20));
-			assert.equal(lines[4], CURSOR);
+			assert.equal(lines[4], "");
 			assert.equal(lines[5], BORDER.repeat(20));
+			assert.ok(cursorAt(output, 5, 1));
 		} finally {
 			exitTui(input);
 		}
@@ -173,7 +189,24 @@ describe("全屏布局", () => {
 			const typed = frameLines(output);
 			assert.equal(typed.join("\n").includes("Reins"), false);
 			assert.equal(typed.join("\n").includes("v1.2.3"), false);
-			assert.equal(typed[10], `a${CURSOR}`);
+			assert.equal(typed[10], "a");
+			assert.ok(cursorAt(output, 11, 2));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("宽字符输入后光标停在字符之后", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("你好"));
+
+			const lines = frameLines(output);
+			assert.equal(lines[10], "你好");
+			assert.ok(cursorAt(output, 11, 5));
 		} finally {
 			exitTui(input);
 		}
@@ -189,15 +222,17 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from([0x7f]));
 
 			const lines = frameLines(output);
-			assert.equal(lines[10], `ab${CURSOR}`);
+			assert.equal(lines[10], "ab");
 			assert.equal(lines.join("\n").includes("Reins"), false);
+			assert.ok(cursorAt(output, 11, 3));
 
 			input.emit("data", Buffer.from([0x7f]));
 			input.emit("data", Buffer.from([0x7f]));
 			const cleared = frameLines(output);
 			assert.ok(cleared.join("\n").includes("Reins"));
 			assert.ok(cleared.join("\n").includes("v1.2.3"));
-			assert.equal(cleared[10], CURSOR);
+			assert.equal(cleared[10], "");
+			assert.ok(cursorAt(output, 11, 1));
 		} finally {
 			exitTui(input);
 		}
