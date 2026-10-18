@@ -37,9 +37,9 @@ class FakeOutput extends EventEmitter {
 	}
 }
 
-const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h";
+const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1000h\x1b[?1006h";
 const CLEAR = "\x1b[H\x1b[2J";
-const LEAVE = "\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
+const LEAVE = "\x1b[?1006l\x1b[?1000l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
 const FOCUS = "\x1b[38;2;204;204;204m";
 const BLUR = "\x1b[38;2;46;46;46m";
 const BORDER = "─";
@@ -209,6 +209,30 @@ describe("全屏布局", () => {
 			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
 
 			input.emit("data", Buffer.from("\x1b[I"));
+			frame = rawFrame(output);
+			assert.ok(frame.includes(FOCUS));
+			assert.equal(frame.includes(BLUR), false);
+			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("点击输入框外失去焦点，点击输入框内恢复", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			// 12 行终端里页脚是 10-12 行，点第 5 行算输入框外
+			input.emit("data", Buffer.from("\x1b[<0;5;5M"));
+			let frame = rawFrame(output);
+			assert.ok(frame.includes(BLUR));
+			assert.equal(frame.includes(FOCUS), false);
+			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
+
+			// 点输入行（第 11 行）重新获得焦点
+			input.emit("data", Buffer.from("\x1b[<0;5;11M"));
 			frame = rawFrame(output);
 			assert.ok(frame.includes(FOCUS));
 			assert.equal(frame.includes(BLUR), false);

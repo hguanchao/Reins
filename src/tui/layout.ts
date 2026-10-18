@@ -24,6 +24,9 @@ const ENABLE_FOCUS_REPORTING = "\x1b[?1004h";
 const DISABLE_FOCUS_REPORTING = "\x1b[?1004l";
 const FOCUS_IN = "\x1b[I";
 const FOCUS_OUT = "\x1b[O";
+/** 基础鼠标上报加 SGR 坐标；只用来判断点击落在输入框内还是外面。 */
+const ENABLE_MOUSE = "\x1b[?1000h\x1b[?1006h";
+const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1000l";
 const CLEAR_SCREEN = "\x1b[2J";
 const CURSOR_HOME = "\x1b[H";
 const DEFAULT_COLUMNS = 80;
@@ -83,7 +86,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	const render = (): void => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
-		const height = Math.max(1, stdout.rows ?? DEFAULT_ROWS);
+		const height = terminalHeight(stdout);
 		const footer = renderFooter(width, input, focused);
 		const mainHeight = Math.max(0, height - footer.length);
 		const main =
@@ -119,7 +122,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		process.off("SIGINT", onInterrupt);
 		stdin.setRawMode?.(false);
 		stdin.pause();
-		stdout.write(DISABLE_FOCUS_REPORTING + CURSOR_DEFAULT + SHOW_CURSOR + LEAVE_ALTERNATE_SCREEN);
+		stdout.write(DISABLE_MOUSE + DISABLE_FOCUS_REPORTING + CURSOR_DEFAULT + SHOW_CURSOR + LEAVE_ALTERNATE_SCREEN);
 		finish();
 	};
 
@@ -150,9 +153,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
+		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;
-		const lastIn = text.lastIndexOf(FOCUS_IN);
-		const lastOut = text.lastIndexOf(FOCUS_OUT);
+
+		const lastIn = withoutMouse.lastIndexOf(FOCUS_IN);
+		const lastOut = withoutMouse.lastIndexOf(FOCUS_OUT);
 		if (lastIn >= 0 || lastOut >= 0) {
 			const next = lastIn > lastOut;
 			if (next !== focused) {
@@ -161,8 +166,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			}
 		}
 
+		const clickedFocus = mouseClickFocus(text, terminalHeight(stdout));
+		if (clickedFocus !== undefined && clickedFocus !== focused) {
+			focused = clickedFocus;
+			focusChanged = true;
+		}
+
 		const previous = input;
-		const result = appendInput(input, text);
+		const result = appendInput(input, withoutMouse);
 		input = result.text;
 		if (input.length > 0) hasInput = true;
 
@@ -183,7 +194,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	});
 
 	try {
-		stdout.write(ENTER_ALTERNATE_SCREEN + CURSOR_BLINKING_BAR + HIDE_CURSOR + ENABLE_FOCUS_REPORTING);
+		stdout.write(
+			ENTER_ALTERNATE_SCREEN + CURSOR_BLINKING_BAR + HIDE_CURSOR + ENABLE_FOCUS_REPORTING + ENABLE_MOUSE,
+		);
 		stdin.setRawMode?.(true);
 		stdin.resume();
 		stdout.on("resize", render);
@@ -200,6 +213,35 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 function moveCursor(row: number, column: number): string {
 	return `\x1b[${row};${column}H`;
+}
+
+function terminalHeight(output: TuiOutput): number {
+	return Math.max(1, output.rows ?? DEFAULT_ROWS);
+}
+
+/** 去掉 SGR 鼠标事件，避免它们被当成普通输入。 */
+function stripMouseEvents(text: string): string {
+	return text.replace(/\x1b\[<[0-9;]+[Mm]/g, "");
+}
+
+/**
+ * 最后一次左键按下落在页脚输入框内还是外面。
+ *
+ * 页脚固定占最后三行，所以从 height-2 行往下的点击都算输入框内部。滚轮、拖动、右键和
+ * 松开都不改变焦点。
+ */
+function mouseClickFocus(text: string, height: number): boolean | undefined {
+	let result: boolean | undefined;
+	const footerStart = Math.max(1, height - 2);
+
+	for (const match of text.matchAll(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/g)) {
+		const button = Number(match[1]);
+		if ((button & 3) === 0 && button < 32 && match[4] === "M") {
+			result = Number(match[3]) >= footerStart;
+		}
+	}
+
+	return result;
 }
 
 /**
