@@ -223,11 +223,11 @@ describe("全屏布局", () => {
 
 			const main = lines.slice(0, 9);
 			assert.equal(main.filter((line) => line.includes("\x1b[48;2;36;36;36m")).length, 3);
-			assert.equal(main[6]?.includes("›"), false);
-			assert.ok(main[7]?.includes("› hello"));
-			assert.equal(main[8]?.includes("›"), false);
+			assert.equal(main[0]?.includes("›"), false);
+			assert.ok(main[1]?.includes("› hello"));
+			assert.equal(main[2]?.includes("›"), false);
 
-			const content = plain(main[7] ?? "");
+			const content = plain(main[1] ?? "");
 			assert.equal(content.length, 40);
 			assert.ok(content.startsWith(" › hello"));
 			assert.equal(lines.join("\n").includes("Reins"), false);
@@ -248,8 +248,8 @@ describe("全屏布局", () => {
 
 			const main = frameLines(output).slice(0, 9);
 			assert.equal(main.filter((line) => line.includes("\x1b[48;2;36;36;36m")).length, 6);
-			assert.ok(main[4]?.includes("› one"));
-			assert.ok(main[7]?.includes("› two"));
+			assert.ok(main[1]?.includes("› one"));
+			assert.ok(main[4]?.includes("› two"));
 		} finally {
 			exitTui(input);
 		}

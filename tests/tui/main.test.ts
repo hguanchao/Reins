@@ -29,9 +29,9 @@ describe("用户消息块", () => {
 		const lines = renderMessages(20, 9, ["hello"]);
 
 		assert.equal(lines.length, 9);
-		assert.deepEqual(lines.slice(0, 6), ["", "", "", "", "", ""]);
+		assert.deepEqual(lines.slice(3), ["", "", "", "", "", ""]);
 
-		const block = lines.slice(6);
+		const block = lines.slice(0, 3);
 		assert.equal(block.length, 3);
 		assert.ok(block.every((line) => line.startsWith("\x1b[48;2;36;36;36m") && line.endsWith("\x1b[0m")));
 		assert.equal(plain(block[0]), " ".repeat(20));
@@ -42,10 +42,10 @@ describe("用户消息块", () => {
 	it("正文超出宽度时用省略号收尾", () => {
 		const lines = renderMessages(10, 9, ["abcdefghijklmnopqrstuvwxyz"]);
 
-		assert.deepEqual(lines.slice(6).map(plain), [" ".repeat(10), " › abcdef…", " ".repeat(10)]);
+		assert.deepEqual(lines.slice(0, 3).map(plain), [" ".repeat(10), " › abcdef…", " ".repeat(10)]);
 	});
 
-	it("消息从底部往上排列，超出时保留最新的", () => {
+	it("消息从顶部往下排列，超出时保留最新的", () => {
 		const lines = renderMessages(20, 9, ["one", "two", "three", "four"]);
 		const text = lines.map(plain).join("\n");
 
@@ -60,7 +60,7 @@ describe("用户消息块", () => {
 		assert.deepEqual(renderMessages(10, 6, []), ["", "", "", "", "", ""]);
 	});
 
-	it("宽字符按显示宽度居中，不留下半个字", () => {
+	it("宽字符按显示宽度截断，不留下半个字", () => {
 		const lines = renderMessages(8, 3, ["你好世界"]);
 
 		assert.deepEqual(lines.map(plain), [" ".repeat(8), " › 你好…", " ".repeat(8)]);
