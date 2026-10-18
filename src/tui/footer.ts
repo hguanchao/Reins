@@ -41,12 +41,18 @@ export interface RuntimeStatus {
 	readonly phaseMs?: number;
 	readonly elapsedMs?: number;
 	readonly tokens?: number;
+	/** 扫光位置，0 到 1；省略时静态显示。 */
+	readonly sweep?: number;
 }
 
-/** 运行时状态行整行的颜色 #e1e1e1。 */
-const STATUS_TEXT_COLOR = "\x1b[38;2;225;225;225m";
-/** 输入框下方常驻信息行的颜色 #242424。 */
-const INFO_COLOR = "\x1b[38;2;36;36;36m";
+/** 扫光的底色、高光和半径（字符数）。 */
+const SWEEP_BASE = 0x66;
+const SWEEP_HIGHLIGHT = 0xff;
+const SWEEP_RADIUS = 6;
+/** 阶段计时、总计时与 token 数的静态颜色 #666666。 */
+const STATUS_META_COLOR = "\x1b[38;2;102;102;102m";
+/** 输入框下方常驻信息行的颜色 #e1e1e1。 */
+const INFO_COLOR = "\x1b[38;2;225;225;225m";
 
 /** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
 export const FOOTER_HEIGHT = 6;
@@ -149,8 +155,23 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 		line = `${left}  ${right}`.slice(0, statusWidth);
 	}
 
-	// 整行统一颜色：活动描述、阶段计时与用量不再分色
-	return line.length === 0 ? "" : `${STATUS_TEXT_COLOR}${line}${RESET}`;
+	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态的 #666666
+	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
+	const rest = line.slice(visibleActivity.length);
+	const head = status.sweep === undefined ? visibleActivity : swept(visibleActivity, status.sweep);
+	return head + (rest.length > 0 ? `${STATUS_META_COLOR}${rest}${RESET}` : "");
+}
+
+function swept(text: string, sweep: number): string {
+	const center = -SWEEP_RADIUS + sweep * (text.length + SWEEP_RADIUS * 2);
+	let output = "";
+	for (let index = 0; index < text.length; index += 1) {
+		const distance = Math.abs(index - center);
+		const intensity = Math.max(0, 1 - distance / SWEEP_RADIUS);
+		const value = Math.round(SWEEP_BASE + (SWEEP_HIGHLIGHT - SWEEP_BASE) * intensity);
+		output += `\x1b[38;2;${value};${value};${value}m${text[index]}`;
+	}
+	return output + RESET;
 }
 
 function formatDuration(ms: number): string {

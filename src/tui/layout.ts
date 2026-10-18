@@ -39,6 +39,8 @@ const EXIT_CONFIRM_WINDOW_MS = 2000;
 /** 运行时状态前的加载动画。 */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SPINNER_INTERVAL_MS = 100;
+/** 每帧把扫光往前推多少；整个状态行约 1.25 秒扫一遍。 */
+const SWEEP_STEP = 0.08;
 /** 滚轮每格滚动固定行数，保持手感稳定。 */
 const WHEEL_STEP = 3;
 
@@ -124,6 +126,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
 	let spinnerFrame = 0;
+	let sweepPhase = 0;
 	let mock: MockState | undefined;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	let exitArmed = false;
@@ -146,6 +149,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				: {
 						symbol: SPINNER_FRAMES[spinnerFrame] ?? "",
 						text: statusText,
+						sweep: sweepPhase,
 						phaseMs: statusPhaseMs,
 						elapsedMs: statusElapsedMs,
 						tokens: statusTokens,
@@ -263,6 +267,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		spinnerTimer = setInterval(() => {
 			spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
+			sweepPhase = (sweepPhase + SWEEP_STEP) % 1;
 			const active = advanceMock();
 			render();
 			if (!active) {

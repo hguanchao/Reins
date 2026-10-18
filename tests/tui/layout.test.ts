@@ -42,7 +42,7 @@ const CLEAR = "\x1b[H\x1b[2J";
 const LEAVE = "\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
 const FOCUS = "\x1b[38;2;225;225;225m";
 const BLUR = "\x1b[38;2;36;36;36m";
-const INFO = "\x1b[38;2;36;36;36m";
+const INFO = "\x1b[38;2;225;225;225m";
 const BORDER = "─";
 const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h$/;
 const FOOTER_INFO = {
@@ -218,7 +218,8 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("\x1b[O"));
 			let frame = rawFrame(output);
 			assert.ok(frame.includes(BLUR));
-			assert.equal(frame.includes(FOCUS), false);
+			assert.ok(frameLines(output)[9]?.startsWith(BLUR));
+			assert.ok(frameLines(output)[11]?.startsWith(FOCUS));
 			assert.equal(frame.includes("\x1b[?25h"), false);
 			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
 
@@ -243,7 +244,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("\x1b[<0;5;5M"));
 			let frame = rawFrame(output);
 			assert.ok(frame.includes(BLUR));
-			assert.equal(frame.includes(FOCUS), false);
+			assert.ok(frameLines(output)[9]?.startsWith(BLUR));
 			assert.equal(frame.includes("\x1b[?25h"), false);
 			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
 
