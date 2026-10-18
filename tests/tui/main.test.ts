@@ -77,6 +77,7 @@ describe("用户消息块", () => {
 		assert.equal(plainLines.filter((line) => line.endsWith("█")).length, 9);
 		assert.equal(plainLines.slice(0, 3).every((line) => line.endsWith("│")), true);
 		assert.equal(plainLines[0]?.length, 20);
+		assert.equal(plainLines[0]?.at(-2), " ");
 		assert.ok(lines[0]?.includes("\x1b[38;2;46;46;46m"));
 	});
 

@@ -54,8 +54,8 @@ export function renderMessages(width: number, height: number, messages: readonly
 
 	const totalLines = messages.length * MESSAGE_LINES + (messages.length - 1);
 	const overflow = totalLines > rows;
-	// 有滚动条时把最右一列让出来，消息正文就不会被滚动条盖住
-	const contentWidth = Math.max(0, columns - (overflow ? 1 : 0));
+	// 有滚动条时把最右一列让给滚动条，再留一列空隙，消息背景不会贴着滚动条
+	const contentWidth = Math.max(0, columns - (overflow ? 2 : 0));
 	const blockLines = messages.flatMap((message, index) => {
 		const block = messageBlock(message, contentWidth);
 		// 第一块从顶部开始，后面的块前面留一行，避免相邻灰底粘成一整片
@@ -67,10 +67,11 @@ export function renderMessages(width: number, height: number, messages: readonly
 	if (!overflow) return [...visible, ...Array.from({ length: padding }, () => "")];
 
 	const scrollbar = renderScrollbar(rows, blockLines.length);
+	const gap = " ".repeat(Math.max(0, columns - contentWidth - 1));
 	return Array.from({ length: rows }, (_, index) => {
 		const line = visible[index] ?? "";
 		const content = line === "" ? " ".repeat(contentWidth) : line;
-		return content + scrollbar[index];
+		return content + gap + scrollbar[index];
 	});
 }
 

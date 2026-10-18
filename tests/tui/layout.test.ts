@@ -329,6 +329,7 @@ describe("全屏布局", () => {
 			assert.equal(main[2]?.endsWith("█"), true);
 			assert.equal(main[8]?.endsWith("█"), true);
 			assert.equal(main[0]?.length, 40);
+			assert.equal(main[0]?.at(-2), " ");
 			assert.equal(main.join("\n").includes("› one"), false);
 			assert.ok(main.join("\n").includes("› two"));
 			assert.ok(main.join("\n").includes("› three"));
