@@ -246,7 +246,7 @@ describe("前端：帧与输入", () => {
 		await running;
 	});
 
-	it("运行中按 Esc 中止这一轮", async () => {
+	it("运行中 Esc 只提示 Ctrl+C，不打断回合", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		let aborted = false;
@@ -278,13 +278,21 @@ describe("前端：帧与输入", () => {
 		terminal.inputListener?.("\x1b");
 		await new Promise((resolve) => setTimeout(resolve, 50));
 
-		assert.equal(aborted, true, "turn aborted by Esc");
+		assert.equal(aborted, false, "回合继续跑");
+		assert.ok(
+			lastFrameRows(terminal.output).some((line) => line.includes("Press Ctrl+C to cancel the turn")),
+			"提示改按 Ctrl+C",
+		);
+
+		terminal.inputListener?.("\x03");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		assert.equal(aborted, true, "Ctrl+C 才打断回合");
 
 		terminal.quit();
 		await running;
 	});
 
-	it("空闲时按 Esc 清空输入，界面继续运行", async () => {
+	it("空闲时 Esc 连按两次才清空输入", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		const frontend = new TerminalFrontend({ terminal, env: {} });
@@ -297,18 +305,39 @@ describe("前端：帧与输入", () => {
 
 		terminal.inputListener?.("\x1b");
 		await new Promise((resolve) => setTimeout(resolve, 50));
+		const armed = lastFrameRows(terminal.output);
+		assert.ok(armed.some((line) => line.includes("abc")), "第一次不清空");
+		assert.ok(armed.some((line) => line.includes("press again to clear")), "提示再按一次");
+
+		terminal.inputListener?.("\x1b");
+		await new Promise((resolve) => setTimeout(resolve, 50));
 		const cleared = lastFrameRows(terminal.output);
 		assert.ok(!cleared.some((line) => line.includes("abc")), "input cleared");
-		const editor = cleared.find((line) => line.trimStart().startsWith("│") && line.includes("❯"));
-		assert.ok(editor, "prompt is empty");
 
-		// Esc 不退出:还能继续输入
+		// 还是不退出:还能继续输入
 		terminal.inputListener?.("z");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("z")), "still running");
 
-		terminal.inputListener?.("\x03"); // Ctrl+C 清空输入
 		terminal.quit();
+		await running;
+	});
+
+	it("退出要连按两次 Ctrl+D", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("\x04");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(
+			lastFrameRows(terminal.output).some((line) => line.includes("press again to quit")),
+			"第一次只提示",
+		);
+
+		terminal.inputListener?.("\x04");
 		await running;
 	});
 

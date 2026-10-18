@@ -71,8 +71,16 @@ export class MemoryTerminal implements Terminal {
 		return replayScreen(output, this.sizeValue);
 	}
 
+	/** 退出：Ctrl+D 要连按两次，两次都发出去才算数。 */
 	quit(): void {
-		this.inputListener?.("\x04"); // Ctrl+D
+		this.inputListener?.("\x04");
+		this.inputListener?.("\x04");
+	}
+
+	/** 从主区退出：主区里 Ctrl+D 是半页向下，先 Tab 回输入框再连按两次。 */
+	quitFromScrollback(): void {
+		this.inputListener?.("\t");
+		this.quit();
 	}
 }
 

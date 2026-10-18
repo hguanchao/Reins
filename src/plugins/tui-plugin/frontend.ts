@@ -69,7 +69,19 @@ const RUNNING_ROWS = 2;
 /** 滚轮一格翻几行。终端只报「上滚」「下滚」，格与行之间的换算由界面定。 */
 const WHEEL_LINES = 3;
 
+/** 退出要连按两次的时限：第一次只在提示行说明，第二次才真的退。 */
+const QUIT_CONFIRM_MS = 1_000;
+
+/** 清空草稿要连按两次的时限。比退出短：清空是可逆的，确认只是防手滑。 */
+const CLEAR_CONFIRM_MS = 800;
+
+/** 翻页键走整页：视口里的一步是半屏，翻两下才是一屏。Ctrl+U/D 才走半页。 */
+const FULL_PAGE = 2;
+
 const PROMPT: Line = styled("❯ ", ACCENT);
+
+/** 需要连按两次的动作。 */
+type ConfirmAction = "clear" | "quit";
 
 export interface FrontendOptions {
 	readonly terminal: Terminal;
@@ -117,6 +129,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 	/** 底部临时提示（复制成功之类），过一会儿让回给快捷键条。 */
 	#notice = "";
 	#noticeTimer: NodeJS.Timeout | undefined;
+	/** 正在等待第二次按键的动作；过期或换了动作就作废。 */
+	#confirm: { action: ConfirmAction; at: number } | undefined;
 	/** 本轮开始的时刻。事件里没有耗时，指示器按它算「这一轮跑了多久」。 */
 	#turnStartedAt = 0;
 	#done: (() => void) | undefined;
@@ -267,9 +281,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 			if (this.#dialog !== undefined) {
 				if (event.type === "key") {
-					if (event.name === "ctrl-c" || event.name === "escape") {
-						// 询问期间按 Ctrl+C 或 Esc：拒绝，并把这一轮停掉
-						this.#interrupt(true);
+					if (event.name === "escape") {
+						// 拒绝这次请求，回合继续走：Esc 从不打断回合
+						this.#answer(false);
+						continue;
+					}
+					if (event.name === "ctrl-c") {
+						// Ctrl+C 才是停掉这一轮的键：拒绝，并把这一轮也停掉
+						this.#answer(false);
+						this.#abort?.abort();
 						continue;
 					}
 					if (event.name === "up" || event.name === "ctrl-p") {
@@ -315,20 +335,32 @@ export class TerminalFrontend implements InteractiveFrontend {
 			if (this.#pane === "scrollback") {
 				if (event.type === "key") {
 					if (event.name === "ctrl-c") {
-						this.#interrupt(true);
+						if (this.#running) this.#abort?.abort();
 						continue;
 					}
 					if (event.name === "ctrl-d") {
-						if (this.#prompt.editor.isEmpty && !this.#running) this.#exit();
+						// 主区里的 Ctrl+D 是半页向下；退出归输入框那边
+						this.#scrollPages(1);
+						continue;
+					}
+					if (event.name === "ctrl-u") {
+						this.#scrollPages(-1);
+						continue;
+					}
+					if (event.name === "newline") {
+						// Ctrl+J：主区里向下一行（输入框那边它是换行）
+						this.#scrollBy(1);
+						continue;
+					}
+					if (event.name === "ctrl-k") {
+						this.#scrollBy(-1);
 						continue;
 					}
 					if (event.name === "escape") {
-						// 回合还在跑：Esc 直接中止；空闲时只是把焦点还给输入框
-						if (this.#running) this.#interrupt(true);
-						else {
-							this.#pane = "prompt";
-							this.#refresh();
-						}
+						// 先让选中与悬停让位，再走全局策略：Esc 不打断回合，也不切窗格
+						this.#conversation.cancelSelection();
+						this.#conversation.clearHover();
+						this.#escape();
 						continue;
 					}
 					if (event.name === "ctrl-e") {
@@ -359,7 +391,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 						continue;
 					}
 				}
-				if (event.type === "text") this.#handleScrollbackText(event.text);
+				if (event.type === "text") {
+					// 空格不参与主区的字母命令：它把焦点还给输入框
+					if (event.text === " ") {
+						this.#pane = "prompt";
+						this.#refresh();
+						continue;
+					}
+					this.#handleScrollbackText(event.text);
+				}
 				continue;
 			}
 
@@ -632,6 +672,46 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 
 	/**
+	 * 装弹一次要连按的动作：提示行改成「再按一次做什么」，时限内的第二次才真的执行。
+	 *
+	 * 退出与清空草稿都是按错代价不小的动作，第一次按只用来表明意图。
+	 */
+	#armConfirm(action: ConfirmAction, label: string, ttl: number): void {
+		this.#confirm = { action, at: Date.now() };
+		this.#showNotice(`press again to ${label}`, ttl);
+	}
+
+	/** 时限内的第二次按键：认领这次动作；过期或不是同一个动作都当作没按过。 */
+	#claimConfirm(action: ConfirmAction, ttl: number): boolean {
+		const pending = this.#confirm;
+		if (pending === undefined || pending.action !== action || Date.now() - pending.at > ttl) {
+			return false;
+		}
+		this.#confirm = undefined;
+		return true;
+	}
+
+	/**
+	 * Esc。
+	 *
+	 * 它从不打断回合——那是 Ctrl+C 的职责，按了 Esc 只把这句话写在提示行上。有草稿时连按两次
+	 * 才清空：一次就抹掉长草稿太容易出事，而空输入框没什么可清的，直接吞掉。
+	 */
+	#escape(): void {
+		if (this.#running) {
+			this.#showNotice("Press Ctrl+C to cancel the turn");
+			return;
+		}
+		if (this.#prompt.editor.isEmpty) return;
+		if (this.#claimConfirm("clear", CLEAR_CONFIRM_MS)) {
+			this.#prompt.editor.clear();
+			this.#refresh();
+			return;
+		}
+		this.#armConfirm("clear", "clear", CLEAR_CONFIRM_MS);
+	}
+
+	/**
 	 * 翻阅会话的按键。用掉了返回 true。
 	 *
 	 * Home/End 在跟尾时属于输入框（行首行尾），只有正翻阅历史时才是「跳到最早/回到末尾」：
@@ -648,10 +728,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		switch (event.name) {
 			case "pageup":
-				this.#scrollPages(-1);
+				this.#scrollPages(-FULL_PAGE);
 				return true;
 			case "pagedown":
-				this.#scrollPages(1);
+				this.#scrollPages(FULL_PAGE);
 				return true;
 			case "ctrl-p":
 				this.#scrollBy(-1);
@@ -741,13 +821,24 @@ export class TerminalFrontend implements InteractiveFrontend {
 				this.#region.clear();
 				break;
 			case "ctrl-c":
-				this.#interrupt(true);
-				break;
+				// 有草稿先清草稿：手滑按到 Ctrl+C 不该把整轮对话停掉
+				if (!this.#prompt.editor.isEmpty) {
+					this.#prompt.editor.clear();
+					break;
+				}
+				if (this.#running) this.#abort?.abort();
+				// 空闲且空输入：什么都不做——退出是 Ctrl+D，而且要连按两次
+				return;
 			case "escape":
-				this.#interrupt(false);
-				break;
+				this.#escape();
+				return;
 			case "ctrl-d":
-				if (this.#prompt.editor.isEmpty && !this.#running) this.#exit();
+			case "ctrl-q":
+				if (this.#claimConfirm("quit", QUIT_CONFIRM_MS)) {
+					this.#exit();
+					return;
+				}
+				this.#armConfirm("quit", "quit", QUIT_CONFIRM_MS);
 				return;
 			default:
 				// 其余按键目前没有绑定，按了就当没按
@@ -932,26 +1023,6 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#flashTimer = undefined;
 			this.#refresh();
 		}, 500);
-	}
-
-	#interrupt(exitWhenIdle: boolean): void {
-		if (this.#dialog !== undefined) {
-			// 询问期间按 Ctrl+C：拒绝，并且把这一轮也停掉
-			this.#answer(false);
-			this.#abort?.abort();
-			return;
-		}
-		if (this.#running) {
-			this.#abort?.abort();
-			return;
-		}
-		if (!this.#prompt.editor.isEmpty) {
-			this.#prompt.editor.clear();
-			this.#refresh();
-			return;
-		}
-		// Esc 在空闲、没有输入时什么都不做：它只用来打断，不承担退出的职责
-		if (exitWhenIdle) this.#exit();
 	}
 
 	#exit(): void {

@@ -169,7 +169,7 @@ describe("前端：会话区交互", () => {
 		assert.ok(terminal.output.includes("\x1b]52;c;aGVsbA=="), "copied selected text");
 		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("Copied! (4 chars, 1 line)")));
 
-		terminal.quit();
+		terminal.quitFromScrollback();
 		await running;
 	});
 
@@ -275,8 +275,11 @@ describe("前端：会话区交互", () => {
 		await running;
 	});
 
-	it("主区焦点下 Esc 与 Ctrl+C 都能中止运行中的回合", async () => {
-		for (const key of ["\x1b", "\x03"]) {
+	it("主区焦点下只有 Ctrl+C 中止回合，Esc 只提示", async () => {
+		for (const [key, abortedExpected] of [
+			["\x1b", false],
+			["\x03", true],
+		] as const) {
 			let aborted = false;
 			const terminal = new MemoryTerminal();
 			terminal.sizeValue = { rows: 24, cols: 80 };
@@ -315,15 +318,24 @@ describe("前端：会话区交互", () => {
 
 			terminal.inputListener?.(key);
 			await new Promise((resolve) => setTimeout(resolve, key === "\x1b" ? 50 : 0));
-			assert.equal(aborted, true, key === "\x1b" ? "aborted by Esc" : "aborted by Ctrl+C");
+			assert.equal(aborted, abortedExpected, abortedExpected ? "Ctrl+C 中止回合" : "Esc 不中止回合");
+			if (!abortedExpected) {
+				assert.ok(
+					lastFrameRows(terminal.output).some((line) => line.includes("Press Ctrl+C to cancel the turn")),
+					"Esc 提示改按 Ctrl+C",
+				);
+			}
 
-			terminal.quit();
+			terminal.quitFromScrollback();
 			await running;
 		}
 	});
 
-	it("审批弹窗在主区焦点下显示，Esc 与 Ctrl+C 都拒绝并中止", async () => {
-		for (const key of ["\x1b", "\x03"]) {
+	it("审批弹窗在主区焦点下显示：Esc 只拒绝，Ctrl+C 拒绝并中止", async () => {
+		for (const [key, abortedExpected] of [
+			["\x1b", false],
+			["\x03", true],
+		] as const) {
 			let aborted = false;
 			let confirmer: ((question: string, detail: string) => Promise<boolean>) | undefined;
 			const terminal = new MemoryTerminal();
@@ -369,13 +381,13 @@ describe("前端：会话区交互", () => {
 			terminal.inputListener?.(key);
 			await new Promise((resolve) => setTimeout(resolve, key === "\x1b" ? 50 : 0));
 			assert.equal(await decision, false, "dialog denied");
-			assert.equal(aborted, true, "turn aborted");
+			assert.equal(aborted, abortedExpected, abortedExpected ? "Ctrl+C 中止回合" : "Esc 不中止回合");
 			assert.ok(
 				!lastFrameRows(terminal.output).some((line) => line.includes("Allow Bash to run?")),
 				"dialog closed",
 			);
 
-			terminal.quit();
+			terminal.quitFromScrollback();
 			await running;
 		}
 	});

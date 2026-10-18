@@ -142,7 +142,7 @@ export function footerHints(state: {
 	}
 	if (state.running) {
 		return [
-			{ keys: "Esc/Ctrl+C", label: "cancel" },
+			{ keys: "Ctrl+C", label: "cancel" },
 			{ keys: "PageUp", label: "page" },
 			help,
 		];

@@ -34,6 +34,8 @@ export type KeyName =
 	| "ctrl-l"
 	| "ctrl-n"
 	| "ctrl-p"
+	/** Ctrl+Q：与 Ctrl+D 同为退出键 */
+	| "ctrl-q"
 	| "ctrl-u"
 	| "ctrl-v"
 	/** Ctrl+Shift+V：内联粘贴，不生成粘贴 chip */
@@ -99,6 +101,7 @@ const CONTROL_KEYS: ReadonlyMap<string, KeyName> = new Map([
 	["\x0c", "ctrl-l"],
 	["\x0e", "ctrl-n"],
 	["\x10", "ctrl-p"],
+	["\x11", "ctrl-q"],
 	["\x15", "ctrl-u"],
 	["\x16", "ctrl-v"],
 	["\x17", "ctrl-w"],
