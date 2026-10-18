@@ -112,8 +112,30 @@ describe("整屏绘制 ScreenRegion", () => {
 		region.draw({ lines: [plain("a"), plain("b")], cursor: { row: 5, col: 2 } });
 		assert.ok(device.output.startsWith("\x1b[H"));
 		assert.ok(device.output.includes("\x1b[6;3H"));
-		// 行与行之间是回车、清行、内容
-		assert.ok(device.output.includes("\r\x1b[2Ka\r\n\r\x1b[2Kb"));
+		// 行与行之间用回车换行衔接，不做整行擦除——擦除按默认底色填充，会闪
+		assert.ok(device.output.includes("a\r\nb"));
+		assert.ok(!device.output.includes("\x1b[2K"));
+	});
+
+	it("与上一帧相同的行跳过，只写发生变化的行", () => {
+		const device = new MemoryDevice();
+		const region = new ScreenRegion(device, { colors: true });
+		region.draw({ lines: [plain("a"), plain("b"), plain("c")] });
+		device.output = "";
+		region.draw({ lines: [plain("a"), plain("B"), plain("c")] });
+		assert.ok(device.output.includes("B"));
+		assert.ok(!device.output.includes("a"), "未变的行不重写");
+		assert.ok(!device.output.includes("c"), "未变的行不重写");
+		assert.ok(!device.output.includes("\x1b[2K"), "未变的行也不擦除");
+	});
+
+	it("新行比旧行短时先擦掉旧行的尾巴", () => {
+		const device = new MemoryDevice();
+		const region = new ScreenRegion(device, { colors: true });
+		region.draw({ lines: [plain("abcdef")] });
+		device.output = "";
+		region.draw({ lines: [plain("ab")] });
+		assert.ok(device.output.includes("\r\x1b[2Kab"));
 	});
 
 	it("内容未变时不写", () => {

@@ -100,6 +100,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#escapeTimer: NodeJS.Timeout | undefined;
 	/** 完成闪烁过期后再画一帧，免得最后一帧停在绿色上。 */
 	#flashTimer: NodeJS.Timeout | undefined;
+	/** 合并高频重画用的延迟帧；一个事件风暴里只画最后一帧。 */
+	#paintTimer: NodeJS.Timeout | undefined;
 	/** 当前焦点在哪：输入框还是主区。 */
 	#pane: "prompt" | "scrollback" = "prompt";
 	/** 终端光标当前是否可见，避免每帧都写一次显隐序列。 */
@@ -197,6 +199,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (this.#escapeTimer !== undefined) clearTimeout(this.#escapeTimer);
 		if (this.#flashTimer !== undefined) clearTimeout(this.#flashTimer);
 		if (this.#noticeTimer !== undefined) clearTimeout(this.#noticeTimer);
+		if (this.#paintTimer !== undefined) clearTimeout(this.#paintTimer);
+		this.#paintTimer = undefined;
 		this.#terminal.setAlternateScreen(false);
 		this.#terminal.setMouseTracking(false);
 		this.#terminal.setBracketedPaste(false);
@@ -886,7 +890,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 
 		this.#conversation.handle(event, now);
-		this.#refresh();
+		this.#requestRefresh();
 
 		if (
 			event.type === "tool_end" ||
@@ -898,6 +902,18 @@ export class TerminalFrontend implements InteractiveFrontend {
 		) {
 			this.#scheduleFlashRefresh();
 		}
+	}
+
+	/**
+	 * 合并高频重画：流式输出的增量会在极短的时间窗里连发多个事件，若每个都立刻整帧重画，
+	 * 画面追不上字节就闪。排一个 0ms 的延迟帧，风暴里的中间态统统跳过，只画最后一帧。
+	 */
+	#requestRefresh(): void {
+		if (this.#stopped || this.#paintTimer !== undefined) return;
+		this.#paintTimer = setTimeout(() => {
+			this.#paintTimer = undefined;
+			this.#refresh();
+		}, 0);
 	}
 
 	/** 完成闪烁只持续几百毫秒，安静下来后也要再画一帧把它落回静态色。 */

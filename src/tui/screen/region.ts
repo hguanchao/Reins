@@ -139,22 +139,47 @@ export class ScreenRegion {
 	readonly #device: TerminalDevice;
 	readonly #colors: boolean;
 	#live: LiveFrame | undefined;
+	/** 上一帧按终端宽度截断后的各行：行级差分用。 */
+	#fitted: readonly Line[] | undefined;
+	#lastWidth: number | undefined;
 
 	constructor(device: TerminalDevice, options: { readonly colors: boolean }) {
 		this.#device = device;
 		this.#colors = options.colors;
 	}
 
-	/** 画一帧。内容与上一帧一致时一个字节都不写。 */
+	/**
+	 * 画一帧。内容与上一帧一致时一个字节都不写。
+	 *
+	 * 逐行做差分：与上一帧同一位置的行完全一致时只把光标挪下去，不重写也不擦除。擦除序列
+	 * （`\x1b[2K`）按终端默认底色填充，若每一行都先擦再写，交替底色与时钟驱动的重画叠加在
+	 * 一起，画面就会一行行闪。帧里的行总是铺满整屏宽度，因此重写一行就是完整覆盖，不必先擦。
+	 */
 	draw(frame: LiveFrame): void {
 		if (this.#live !== undefined && sameFrame(this.#live, frame)) return;
 
-		let text = "\x1b[H";
+		const width = this.#width();
+		// 终端宽度变了：旧行与新行的列不再对齐，整屏清掉重画最省事
+		const resized = this.#lastWidth !== undefined && this.#lastWidth !== width;
+		let text = resized ? `\x1b[2J\x1b[H` : "\x1b[H";
+		const fittedRows: Line[] = [];
+
 		frame.lines.forEach((line, index) => {
-			const fitted = lineWidth(line) > this.#width() ? truncateLine(line, this.#width()) : line;
-			text += `\r\x1b[2K${serializeLine(fitted, this.#colors)}`;
-			if (index < frame.lines.length - 1) text += "\r\n";
+			const fitted = lineWidth(line) > width ? truncateLine(line, width) : line;
+			fittedRows.push(fitted);
+			const move = index < frame.lines.length - 1 ? "\r\n" : "";
+			const unchanged =
+				!resized && this.#fitted !== undefined && sameLine(this.#fitted[index] ?? [], fitted);
+			if (unchanged) {
+				text += move;
+				return;
+			}
+			// 只在新行比旧行短时才需要擦尾：整屏帧的行都铺满宽度，平时走不到这里
+			const stale =
+				this.#fitted !== undefined && lineWidth(this.#fitted[index] ?? []) > lineWidth(fitted);
+			text += `${stale ? "\r\x1b[2K" : ""}${serializeLine(fitted, this.#colors)}${move}`;
 		});
+
 		// 上一帧比这一帧长时（窗口变大、确认框收起），把残余的行整段清掉
 		if (this.#live !== undefined && this.#live.lines.length > frame.lines.length) text += "\x1b[J";
 
@@ -162,6 +187,8 @@ export class ScreenRegion {
 		if (cursor !== undefined) text += `\x1b[${cursor.row + 1};${cursor.col + 1}H`;
 
 		this.#live = frame;
+		this.#fitted = fittedRows;
+		this.#lastWidth = width;
 		this.#device.write(text);
 	}
 
@@ -169,6 +196,8 @@ export class ScreenRegion {
 	clear(): void {
 		if (this.#live === undefined) return;
 		this.#live = undefined;
+		this.#fitted = undefined;
+		this.#lastWidth = undefined;
 		this.#device.write("\x1b[H\x1b[2J");
 	}
 

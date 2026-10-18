@@ -1,4 +1,5 @@
 import type { Color, ColorName, Line, Style } from "../text/line.ts";
+import { sameStyle } from "../text/line.ts";
 
 /**
  * 样式到控制序列的转换。
@@ -63,16 +64,51 @@ export function colorSupport(env: Readonly<Record<string, string | undefined>>):
 	return true;
 }
 
-/** 把一行写成可直接送到终端的字节；每个带样式的片段结束后复位，样式不会漏到下一段。 */
+/**
+ * 把一行写成可直接送到终端的字节。
+ *
+ * 样式只在变化时才发序列：相邻片段样式相同时不重复输出，行尾才复位一次。一行里动辄几十个
+ * 片段，若每个片段都「开样式—复位」，重画整屏时控制序列的字节数会放大好几倍，慢终端上一
+ * 帧都解析不完，画面就开始闪。
+ */
 export function serializeLine(line: Line, colors: boolean): string {
 	let text = "";
+	let current: Style | undefined;
+	/** 行内是否留下了没复位的样式；只有留下过才需要在行尾补一次复位。 */
+	let styled = false;
+	let openLink: string | undefined;
+
 	for (const span of line) {
-		const sequence = styleSequence(span.style, colors);
-		const body = sequence === "" ? span.text : `${sequence}${span.text}${RESET}`;
 		const link = colors ? safeLink(span.style?.link) : undefined;
-		text += link === undefined ? body : `\x1b]8;;${link}\x07${body}\x1b]8;;\x07`;
+		if (openLink !== undefined && openLink !== link) {
+			text += "\x1b]8;;\x07";
+			openLink = undefined;
+		}
+		// 链接不占 SGR，比较与输出都只看可见属性：只有链接不同的相邻片段不该重发一遍样式
+		const style = colors ? visible(span.style) : undefined;
+		if (!sameStyle(style, current)) {
+			const sequence = styleSequence(style, colors);
+			// 前一样式的属性是后一个的子集时直接叠加；否则先复位，把旧属性一并清掉
+			text += styleExtends(current, style) ? sequence : `${RESET}${sequence}`;
+			// 只有链接、没有可见属性的样式发不出序列，此时终端已经回到默认样式
+			styled = sequence !== "";
+			current = style;
+		}
+		if (link !== undefined && link !== openLink) {
+			text += `\x1b]8;;${link}\x07`;
+			openLink = link;
+		}
+		text += span.text;
 	}
+
+	if (openLink !== undefined) text += "\x1b]8;;\x07";
+	if (styled) text += RESET;
 	return text;
+}
+
+/** 去掉链接的样式：链接靠 OSC 8 表达，与样式序列无关。 */
+function visible(style: Style | undefined): Style | undefined {
+	return style === undefined || style.link === undefined ? style : { ...style, link: undefined };
 }
 
 /**
@@ -85,4 +121,22 @@ function safeLink(link: string | undefined): string | undefined {
 	if (link === undefined || link.length === 0 || link.length > 2048) return undefined;
 	if (/[\x00-\x1f\x7f]/.test(link)) return undefined;
 	return /^(?:https?|mailto):/i.test(link) ? link : undefined;
+}
+
+/**
+ * 后一个样式的属性是否完全包含前一个：包含时可以只发增量序列。
+ *
+ * 反过来（比如加粗之后变普通）就必须先整段复位，否则旧属性会漏进新片段。颜色变了也要复位：
+ * 我们做不到单独把前景色退回默认。
+ */
+function styleExtends(prev: Style | undefined, next: Style | undefined): boolean {
+	if (next === undefined) return false;
+	if (prev === undefined) return true;
+	for (const flag of ["bold", "dim", "italic", "underline", "strikethrough", "reverse"] as const) {
+		if (prev[flag] === true && next[flag] !== true) return false;
+	}
+	return (
+		(prev.color === undefined || prev.color === next.color) &&
+		(prev.background === undefined || prev.background === next.background)
+	);
 }

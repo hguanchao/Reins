@@ -15,7 +15,7 @@ import { framesWith, lastFrameRows, MemoryTerminal, runtimeOf } from "./frontend
 
 describe("前端：帧与输入", () => {
 	it("输入框是完整方框：上边框与嵌了信息的下边框", async () => {
-		const { lines } = await framesWith(24, 80);
+		const { lines, styled } = await framesWith(24, 80);
 		const visible = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
 		const box = visible.filter((line) => line.trim().startsWith("╭") || line.trim().endsWith("╯") || line.trim().endsWith("╮"));
 		const top = box.find((line) => line.trim().startsWith("╭") && line.trimEnd().endsWith("╮"));
@@ -29,7 +29,7 @@ describe("前端：帧与输入", () => {
 		assert.ok(top!.includes("─"));
 		assert.ok(bottom!.includes("m1"), "model in the bottom border");
 		assert.ok(bottom!.includes("approval=ask"), "approval mode in the bottom border");
-		assert.ok(lines.some((line) => line.includes("╭") && line.includes("38;2;80;80;88")), "focused border color");
+		assert.ok(styled.some((line) => line.includes("╭") && line.includes("38;2;80;80;88")), "focused border color");
 	});
 
 	it("输入行左右有竖线，提示符与左边框直接相贴", async () => {

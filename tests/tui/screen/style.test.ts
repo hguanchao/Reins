@@ -51,6 +51,24 @@ import { concat, plain, styled } from "../../../src/tui/text/line.ts";
 		assert.equal(serializeLine(line, true), "a\x1b[1mb\x1b[0mc");
 	});
 
+	it("相邻片段样式相同时不重复发序列，行尾只复位一次", () => {
+		const line = concat(styled("a", { bold: true }), styled("b", { bold: true }), plain("c"), styled("d", { bold: true }));
+		assert.equal(serializeLine(line, true), "\x1b[1mab\x1b[0mc\x1b[1md\x1b[0m");
+	});
+
+	it("后一样式包含前一样式时直接叠加，中间不插复位", () => {
+		const line = concat(styled("a", { bold: true }), styled("b", { bold: true, color: "red" }));
+		assert.equal(serializeLine(line, true), "\x1b[1ma\x1b[1;31mb\x1b[0m");
+	});
+
+	it("只有链接不同的相邻片段不重发样式", () => {
+		const line = concat(
+			styled("a", { bold: true, link: "https://a.example" }),
+			styled("b", { bold: true, link: "https://a.example" }),
+		);
+		assert.equal(serializeLine(line, true), "\x1b[1m\x1b]8;;https://a.example\x07ab\x1b]8;;\x07\x1b[0m");
+	});
+
 	it("colors 关闭时只输出纯文本", () => {
 		const line = concat(plain("a"), styled("b", { bold: true }));
 		assert.equal(serializeLine(line, false), "ab");
