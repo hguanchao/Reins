@@ -71,6 +71,10 @@ function cursorAt(output: FakeOutput, row: number, column: number): boolean {
 	return rawFrame(output).endsWith(`\x1b[${row};${column}H\x1b[?25h`);
 }
 
+function plain(line: string): string {
+	return line.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 describe("全屏布局", () => {
 	it("进入备用屏，按当前尺寸绘制，连按两次 Ctrl+C 后恢复", async () => {
 		const input = new FakeInput();
@@ -219,7 +223,13 @@ describe("全屏布局", () => {
 
 			const main = lines.slice(0, 9);
 			assert.equal(main.filter((line) => line.includes("\x1b[100m")).length, 3);
-			assert.ok(main.join("\n").includes("› hello"));
+			assert.equal(main[6]?.includes("›"), false);
+			assert.ok(main[7]?.includes("› hello"));
+			assert.equal(main[8]?.includes("›"), false);
+
+			const centered = plain(main[7] ?? "");
+			assert.equal(centered.length, 40);
+			assert.equal(centered.indexOf("›"), 16);
 			assert.equal(lines.join("\n").includes("Reins"), false);
 			assert.ok(cursorAt(output, 11, 4));
 		} finally {
@@ -238,8 +248,8 @@ describe("全屏布局", () => {
 
 			const main = frameLines(output).slice(0, 9);
 			assert.equal(main.filter((line) => line.includes("\x1b[100m")).length, 6);
-			assert.ok(main.join("\n").includes("› one"));
-			assert.ok(main.join("\n").includes("› two"));
+			assert.ok(main[4]?.includes("› one"));
+			assert.ok(main[7]?.includes("› two"));
 		} finally {
 			exitTui(input);
 		}

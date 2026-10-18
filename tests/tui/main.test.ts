@@ -25,7 +25,7 @@ describe("主区域", () => {
 });
 
 describe("用户消息块", () => {
-	it("每条消息固定三行，三行都铺灰色背景", () => {
+	it("每条消息固定三行，正文在第二行居中", () => {
 		const lines = renderMessages(20, 9, ["hello"]);
 
 		assert.equal(lines.length, 9);
@@ -34,15 +34,15 @@ describe("用户消息块", () => {
 		const block = lines.slice(6);
 		assert.equal(block.length, 3);
 		assert.ok(block.every((line) => line.startsWith("\x1b[100m") && line.endsWith("\x1b[0m")));
-		assert.equal(plain(block[0]), `› hello${" ".repeat(13)}`);
-		assert.equal(plain(block[1]), " ".repeat(20));
+		assert.equal(plain(block[0]), " ".repeat(20));
+		assert.equal(plain(block[1]), `${" ".repeat(6)}› hello${" ".repeat(7)}`);
 		assert.equal(plain(block[2]), " ".repeat(20));
 	});
 
-	it("正文在三行内换行，超出时末行用省略号收尾", () => {
+	it("正文超出宽度时用省略号收尾", () => {
 		const lines = renderMessages(10, 9, ["abcdefghijklmnopqrstuvwxyz"]);
 
-		assert.deepEqual(lines.slice(6).map(plain), ["› abcdefgh", "  ijklmnop", "  qrstuvw…"]);
+		assert.deepEqual(lines.slice(6).map(plain), [" ".repeat(10), "› abcdefg…", " ".repeat(10)]);
 	});
 
 	it("消息从底部往上排列，超出时保留最新的", () => {
@@ -60,9 +60,9 @@ describe("用户消息块", () => {
 		assert.deepEqual(renderMessages(10, 6, []), ["", "", "", "", "", ""]);
 	});
 
-	it("宽字符按显示宽度换行，不留下半个字", () => {
+	it("宽字符按显示宽度居中，不留下半个字", () => {
 		const lines = renderMessages(8, 3, ["你好世界"]);
 
-		assert.deepEqual(lines.map(plain), ["› 你好世", "  界    ", "        "]);
+		assert.deepEqual(lines.map(plain), [" ".repeat(8), "› 你好… ", " ".repeat(8)]);
 	});
 });
