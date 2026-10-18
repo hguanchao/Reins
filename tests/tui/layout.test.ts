@@ -277,7 +277,7 @@ describe("全屏布局", () => {
 			assert.equal(lines.length, 12);
 			assert.equal(plain(lines[10] ?? ""), " › ");
 
-			const main = lines.slice(0, 9);
+			const main = lines.slice(0, 8);
 			assert.equal(main.filter((line) => line.includes("\x1b[48;2;46;46;46m")).length, 3);
 			assert.equal(main[0]?.includes("›"), false);
 			assert.ok(main[1]?.includes("› hello"));
@@ -286,8 +286,30 @@ describe("全屏布局", () => {
 			const content = plain(main[1] ?? "");
 			assert.equal(content.length, 40);
 			assert.ok(content.startsWith(" › hello"));
+			assert.equal(lines[8], " ⠋ Waiting for response...");
 			assert.equal(lines.join("\n").includes("Reins"), false);
 			assert.ok(cursorAt(output, 11, 4));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("发送后状态行的加载符号会转动", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			assert.ok(frameLines(output)[8]?.includes("⠋"));
+
+			t.mock.timers.tick(100);
+			assert.ok(frameLines(output)[8]?.includes("⠙"));
+
+			t.mock.timers.tick(100);
+			assert.ok(frameLines(output)[8]?.includes("⠹"));
 		} finally {
 			exitTui(input);
 		}
@@ -302,7 +324,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("one\r"));
 			input.emit("data", Buffer.from("two\r"));
 
-			const main = frameLines(output).slice(0, 9);
+			const main = frameLines(output).slice(0, 8);
 			assert.equal(main.filter((line) => line.includes("\x1b[48;2;46;46;46m")).length, 6);
 			assert.ok(main[1]?.includes("› two"));
 			assert.equal(main[3], "");
@@ -322,12 +344,12 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("two\r"));
 			input.emit("data", Buffer.from("three\r"));
 
-			const main = frameLines(output).slice(0, 9).map(plain);
+			const main = frameLines(output).slice(0, 8).map(plain);
 			assert.equal(main.every((line) => line.endsWith("█") || line.endsWith("│")), true);
 			assert.equal(main[0]?.endsWith("█"), true);
-			assert.equal(main[6]?.endsWith("█"), true);
+			assert.equal(main[4]?.endsWith("█"), true);
+			assert.equal(main[5]?.endsWith("│"), true);
 			assert.equal(main[7]?.endsWith("│"), true);
-			assert.equal(main[8]?.endsWith("│"), true);
 			assert.equal(main[0]?.length, 40);
 			assert.equal(main[0]?.at(-2), " ");
 			assert.equal(main.join("\n").includes("› one"), false);
@@ -349,23 +371,23 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("three\r"));
 			input.emit("data", Buffer.from("four\r"));
 
-			const top = frameLines(output).slice(0, 9).map(plain);
+			const top = frameLines(output).slice(0, 8).map(plain);
 			assert.equal(top[1]?.endsWith("█"), true);
-			assert.equal(top[8]?.endsWith("│"), true);
+			assert.equal(top[7]?.endsWith("│"), true);
 			assert.ok(top.join("\n").includes("› four"));
 			assert.equal(top.join("\n").includes("› two"), false);
 
 			// 滚轮向下看更早的消息
 			input.emit("data", Buffer.from("\x1b[<65;20;5M"));
-			const scrolled = frameLines(output).slice(0, 9).map(plain);
+			const scrolled = frameLines(output).slice(0, 8).map(plain);
 			assert.equal(scrolled[1]?.endsWith("│"), true);
 			assert.equal(scrolled[2]?.endsWith("█"), true);
-			assert.equal(scrolled[8]?.endsWith("│"), true);
+			assert.equal(scrolled[7]?.endsWith("│"), true);
 			assert.ok(scrolled.join("\n").includes("› two"));
 
 			// 滚轮向上回到最新消息
 			input.emit("data", Buffer.from("\x1b[<64;20;5M"));
-			const back = frameLines(output).slice(0, 9).map(plain);
+			const back = frameLines(output).slice(0, 8).map(plain);
 			assert.equal(back[1]?.endsWith("█"), true);
 			assert.ok(back.join("\n").includes("› four"));
 		} finally {
@@ -386,20 +408,20 @@ describe("全屏布局", () => {
 
 			// 按住滚动条中上部，视图移到中间
 			input.emit("data", Buffer.from("\x1b[<0;40;5M"));
-			const middle = frameLines(output).slice(0, 9).map(plain);
-			assert.equal(middle[8]?.endsWith("│"), true);
+			const middle = frameLines(output).slice(0, 8).map(plain);
+			assert.equal(middle[7]?.endsWith("│"), true);
 			assert.ok(middle.join("\n").includes("› two"));
 
 			// 拖到底部，滑块回到最下端
-			input.emit("data", Buffer.from("\x1b[<32;40;9M"));
-			const bottom = frameLines(output).slice(0, 9).map(plain);
-			assert.equal(bottom[8]?.endsWith("█"), true);
+			input.emit("data", Buffer.from("\x1b[<32;40;8M"));
+			const bottom = frameLines(output).slice(0, 8).map(plain);
+			assert.equal(bottom[7]?.endsWith("█"), true);
 
 			// 松开后移动鼠标不再滚动
-			input.emit("data", Buffer.from("\x1b[<0;40;9m"));
+			input.emit("data", Buffer.from("\x1b[<0;40;8m"));
 			input.emit("data", Buffer.from("\x1b[<32;40;1M"));
-			const afterRelease = frameLines(output).slice(0, 9).map(plain);
-			assert.equal(afterRelease[8]?.endsWith("█"), true);
+			const afterRelease = frameLines(output).slice(0, 8).map(plain);
+			assert.equal(afterRelease[7]?.endsWith("█"), true);
 		} finally {
 			exitTui(input);
 		}

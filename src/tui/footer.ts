@@ -3,9 +3,9 @@ import { eastAsianWidth } from "get-east-asian-width";
 /**
  * 页脚输入框。
  *
- * 三行：上边框、输入行、下边框；边框铺满整个终端宽度。光标交给终端自己画，这一层只算出
- * 输入行实际显示哪一段，以及光标应落在第几列。边框与提示符随焦点切换颜色，正文保持默认
- * 颜色，避免整行一起变色影响阅读。
+ * 四行：运行时状态、上边框、输入行、下边框；边框铺满整个终端宽度。状态行在有任务时显示
+ * 加载符号与状态文字，空闲时留空。光标交给终端自己画，下方输入区只算出实际显示哪一段以及
+ * 光标应落在第几列。边框与提示符随焦点切换颜色，正文保持默认颜色。
  */
 
 export interface InputView {
@@ -17,8 +17,14 @@ export interface InputView {
 	readonly column: number;
 }
 
-/** 页脚固定三行：上边框、输入行、下边框。 */
-export const FOOTER_HEIGHT = 3;
+/** 运行时状态：加载符号加状态文字。 */
+export interface RuntimeStatus {
+	readonly symbol: string;
+	readonly text: string;
+}
+
+/** 页脚固定四行：状态行、上边框、输入行、下边框。 */
+export const FOOTER_HEIGHT = 4;
 
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";
@@ -46,14 +52,27 @@ export function inputView(input: string, width: number): InputView {
 	};
 }
 
-export function renderFooter(width: number, input: string, focused: boolean): readonly string[] {
+export function renderFooter(
+	width: number,
+	input: string,
+	focused: boolean,
+	status?: RuntimeStatus,
+): readonly string[] {
 	const columns = Math.max(0, width);
 	const view = inputView(input, columns);
 	return [
+		statusLine(columns, status),
 		colored(horizontal(columns), focused),
 		colored(view.prefix, focused) + view.text,
 		colored(horizontal(columns), focused),
 	];
+}
+
+function statusLine(width: number, status: RuntimeStatus | undefined): string {
+	if (status === undefined) return "";
+
+	const line = ` ${status.symbol} ${status.text}`;
+	return line.slice(0, Math.max(0, width));
 }
 
 function colored(text: string, focused: boolean): string {

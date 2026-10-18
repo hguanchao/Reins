@@ -37,6 +37,10 @@ const CTRL_C = "\x03";
 const EXIT_CONFIRM_WINDOW_MS = 2000;
 /** 滚轮每格滚动多少行。 */
 const WHEEL_STEP = 3;
+/** 运行时状态前的加载动画。 */
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
+const SPINNER_INTERVAL_MS = 100;
+const WAITING_FOR_RESPONSE = "Waiting for response...";
 
 /** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
 export interface TuiInput {
@@ -84,6 +88,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let scrollOffset = 0;
 	/** 是否正按住滚动条拖动。 */
 	let draggingScrollbar = false;
+	/** 当前运行时状态；为空表示空闲。 */
+	let statusText: string | undefined;
+	let spinnerFrame = 0;
+	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
 	let finished = false;
@@ -93,7 +101,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const render = (): void => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
-		const footer = renderFooter(width, input, focused);
+		const status =
+			statusText === undefined
+				? undefined
+				: { symbol: SPINNER_FRAMES[spinnerFrame] ?? "", text: statusText };
+		const footer = renderFooter(width, input, focused, status);
 		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
 		scrollOffset = Math.min(scrollOffset, Math.max(0, messageLineCount(messages) - mainHeight));
 		const main =
@@ -102,7 +114,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...footer].slice(0, height);
-		const cursorRow = mainHeight + 2;
+		const cursorRow = mainHeight + 3;
 		const cursor =
 			focused && cursorRow <= height
 				? moveCursor(cursorRow, inputView(input, width).column) + SHOW_CURSOR
@@ -126,6 +138,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			clearTimeout(exitTimer);
 			exitTimer = undefined;
 		}
+		if (spinnerTimer !== undefined) {
+			clearInterval(spinnerTimer);
+			spinnerTimer = undefined;
+		}
 		stdout.off("resize", render);
 		stdin.off("data", onData);
 		process.off("SIGINT", onInterrupt);
@@ -144,13 +160,26 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
+	const startSpinner = (): void => {
+		if (spinnerTimer !== undefined) return;
+
+		spinnerTimer = setInterval(() => {
+			spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
+			render();
+		}, SPINNER_INTERVAL_MS);
+	};
+
 	/** 回车发送：把当前输入交给主区域，输入框清空。返回是否真的发生了可见变化。 */
 	const submit = (): boolean => {
 		if (input.length === 0) return false;
 
 		const message = input.trim();
 		input = "";
-		if (message.length > 0) messages.push(message);
+		if (message.length > 0) {
+			messages.push(message);
+			statusText = WAITING_FOR_RESPONSE;
+			startSpinner();
+		}
 		// 新消息总是回到最上面
 		scrollOffset = 0;
 		render();
@@ -194,12 +223,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			} else if (event.press && event.button === 65) {
 				wheelSteps += 1;
 			} else if (event.press && left && !motion) {
-				const insideFooter = event.row >= Math.max(1, height - FOOTER_HEIGHT + 1);
-				if (insideFooter !== focused) {
-					focused = insideFooter;
+				const insideInput = event.row >= Math.max(1, height - 2);
+				if (insideInput !== focused) {
+					focused = insideInput;
 					focusChanged = true;
 				}
-				if (!insideFooter && event.column === width && event.row <= mainHeight) {
+				if (!insideInput && event.column === width && event.row <= mainHeight) {
 					draggingScrollbar = true;
 					dragRow = event.row;
 				} else {
