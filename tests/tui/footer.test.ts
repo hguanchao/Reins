@@ -6,7 +6,7 @@ import { FOOTER_HEIGHT, inputView, renderFooter, type FooterInfo } from "../../s
 const BORDER = "─";
 const FOCUS = "\x1b[38;2;225;225;225m";
 const BLUR = "\x1b[38;2;36;36;36m";
-const INFO = "\x1b[38;2;225;225;225m";
+const INFO = "\x1b[38;2;200;200;200m";
 
 const SESSION_INFO: FooterInfo = {
 	project: "Reins",

@@ -51,8 +51,8 @@ const SWEEP_HIGHLIGHT = 0xff;
 const SWEEP_RADIUS = 6;
 /** 阶段计时、总计时与 token 数的静态颜色 #666666。 */
 const STATUS_META_COLOR = "\x1b[38;2;102;102;102m";
-/** 输入框下方常驻信息行的颜色 #e1e1e1。 */
-const INFO_COLOR = "\x1b[38;2;225;225;225m";
+/** 输入框下方常驻信息行的颜色 #c8c8c8。 */
+const INFO_COLOR = "\x1b[38;2;200;200;200m";
 
 /** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
 export const FOOTER_HEIGHT = 6;
