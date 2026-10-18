@@ -117,12 +117,12 @@ function makeTools(executed: { calls: string[] } = { calls: [] }) {
 	};
 }
 
-function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor }): TurnDriver {
+function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor; requests?: LlmRequest[] }): TurnDriver {
 	const queue = [...turns];
 	const client: LlmClient = {
 		api: "fake",
 		stream: (request: LlmRequest) => {
-			void request;
+			hooks.requests?.push(request);
 			const turn = queue.shift() ?? { content: [] };
 			return scriptedStream(turn);
 		},
@@ -174,6 +174,30 @@ describe("回合驱动", () => {
 		const types = hooks.session.entries.map((entry) => entry.type);
 		assert.ok(types.includes("message") && types.includes("usage"));
 		assert.ok(hooks.events.some((event) => event.type === "run_end"));
+	});
+
+	it("带图片的输入原样写进会话并进入下一次请求", async () => {
+		const hooks = {
+			events: [] as AgentEvent[],
+			session: new MemorySession(),
+			tools: makeTools(),
+			requests: [] as LlmRequest[],
+		};
+		const content = [
+			{ type: "text" as const, text: "look" },
+			{ type: "image" as const, data: "AAAA", mimeType: "image/png" },
+		];
+		await depsOf([{ content: [{ type: "text", text: "ok" }], usage: STOP }], hooks).run(content, SIGNAL);
+
+		const stored = hooks.session.entries.find(
+			(entry) => entry.type === "message" && entry.message.role === "user",
+		);
+		assert.ok(stored?.type === "message" && stored.message.role === "user");
+		assert.deepEqual(stored.message.content, content);
+		assert.deepEqual(
+			hooks.requests[0]?.messages.find((message) => message.role === "user"),
+			{ role: "user", content },
+		);
 	});
 
 	it("工具调用:结果写回再起一回合", async () => {

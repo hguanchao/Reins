@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { foldEntries, SessionFolder, summaryMessage } from "../../src/session/fold.ts";
 import type { SessionEntry } from "../../src/session/port.ts";
-import type { LlmMessage } from "../../src/llm/messages.ts";
+import { userText, type LlmMessage } from "../../src/llm/messages.ts";
 
 const T = "2026-01-01T00:00:00Z";
 
@@ -129,7 +129,8 @@ describe("摘要外壳", () => {
 	it("说明这是先前对话的替代品", () => {
 		const message = summaryMessage("handover");
 		assert.equal(message.role, "user");
-		assert.match(message.content, /^\(Summary of the earlier conversation/);
-		assert.ok(message.content.includes("handover"));
+		const text = userText(message);
+		assert.match(text, /^\(Summary of the earlier conversation/);
+		assert.ok(text.includes("handover"));
 	});
 });

@@ -3,7 +3,7 @@ import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../c
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
 import { postSse } from "../http.ts";
-import type { LlmContentBlock, LlmStopReason, LlmUsage } from "../messages.ts";
+import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
 import { createLlmStream, joinUrl } from "./stream-runner.ts";
@@ -25,10 +25,14 @@ const TOOL_CALL_BASE = 2;
 
 interface WireMessage {
 	readonly role: string;
-	readonly content: string | null;
+	readonly content: string | readonly WireContentPart[] | null;
 	readonly tool_calls?: readonly WireToolCall[];
 	readonly tool_call_id?: string;
 }
+
+type WireContentPart =
+	| { readonly type: "text"; readonly text: string }
+	| { readonly type: "image_url"; readonly image_url: { readonly url: string } };
 
 interface WireToolCall {
 	readonly id: string;
@@ -141,7 +145,7 @@ export class OpenAiCompletionsClient implements LlmClient {
 	#buildBody(request: LlmRequest): Record<string, unknown> {
 		const body: Record<string, unknown> = {
 			model: request.model,
-			messages: toWireMessages(request),
+			messages: toWireMessages(request, this.#model.input.includes("image")),
 			stream: true,
 			// 不带这个字段时端点不会在流里给出用量
 			stream_options: { include_usage: true },
@@ -194,13 +198,13 @@ function applyDelta(
 	}
 }
 
-function toWireMessages(request: LlmRequest): WireMessage[] {
+function toWireMessages(request: LlmRequest, supportsImages: boolean): WireMessage[] {
 	const messages: WireMessage[] = [{ role: "system", content: request.system }];
 
 	for (const message of request.messages) {
 		switch (message.role) {
 			case "user":
-				messages.push({ role: "user", content: message.content });
+				messages.push({ role: "user", content: toWireUserContent(message, supportsImages) });
 				break;
 			case "assistant":
 				messages.push(toWireAssistant(message.content));
@@ -215,6 +219,46 @@ function toWireMessages(request: LlmRequest): WireMessage[] {
 		}
 	}
 	return messages;
+}
+
+/**
+ * 用户消息的内容。
+ *
+ * 纯文本仍按字符串发送，兼容只认字符串的端点；带图片时按协议要求换成内容分片数组。
+ * 模型不接受图片时用文本说明代替，避免把整张图片发给一个读不了的端点。
+ */
+function toWireUserContent(
+	message: LlmUserMessage,
+	supportsImages: boolean,
+): string | readonly WireContentPart[] {
+	if (typeof message.content === "string") return message.content;
+
+	const parts: WireContentPart[] = [];
+	for (const block of message.content) {
+		if (block.type === "text") {
+			if (block.text.length > 0) parts.push({ type: "text", text: block.text });
+			continue;
+		}
+		if (supportsImages) {
+			parts.push({
+				type: "image_url",
+				image_url: { url: `data:${block.mimeType};base64,${block.data}` },
+			});
+		} else {
+			parts.push({ type: "text", text: "(image omitted: model does not support images)" });
+		}
+	}
+
+	if (!parts.some((part) => part.type === "text")) {
+		parts.unshift({ type: "text", text: "(see attached image)" });
+	}
+	// 没有图片时退回字符串，避免无谓地改变普通文本请求的形状
+	if (!parts.some((part) => part.type === "image_url")) {
+		return parts
+			.map((part) => (part.type === "text" ? part.text : ""))
+			.join("\n");
+	}
+	return parts;
 }
 
 function toWireAssistant(content: readonly LlmContentBlock[]): WireMessage {

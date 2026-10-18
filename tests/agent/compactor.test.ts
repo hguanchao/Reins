@@ -61,6 +61,18 @@ describe("用量估算", () => {
 		const doubled = estimateTokens([userMessage("x"), userMessage("")]);
 		assert.ok(doubled > single);
 	});
+
+	it("图片按固定开销计入,不按 base64 长度", () => {
+		const withImage = estimateTokens([
+			{
+				role: "user",
+				content: [{ type: "image", data: "A".repeat(100_000), mimeType: "image/png" }],
+			},
+		]);
+		const empty = estimateTokens([userMessage("")]);
+		assert.ok(withImage - empty >= 1200);
+		assert.ok(withImage < 2000, "base64 数据本身不能按字符数计入");
+	});
 });
 
 describe("压缩计划", () => {

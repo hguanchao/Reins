@@ -3,7 +3,7 @@ import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../c
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
 import { postSse } from "../http.ts";
-import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage } from "../messages.ts";
+import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
 import { createLlmStream, joinUrl } from "./stream-runner.ts";
@@ -219,7 +219,7 @@ export class OpenAiResponsesClient implements LlmClient {
 	#buildBody(request: LlmRequest): Record<string, unknown> {
 		const body: Record<string, unknown> = {
 			model: request.model,
-			input: toInput(request.messages),
+			input: toInput(request.messages, this.#model.input.includes("image")),
 			stream: true,
 			// 会话由本程序保存；关闭服务端存储，避免两套历史各说各话
 			store: false,
@@ -339,13 +339,13 @@ function splitToolCallId(id: string): { readonly callId: string; readonly itemId
 }
 
 /** 助手消息回放成输入项；只有思考项的轮次整轮丢弃，孤立的 reasoning 项会被端点拒绝。 */
-function toInput(messages: readonly LlmMessage[]): readonly unknown[] {
+function toInput(messages: readonly LlmMessage[], supportsImages: boolean): readonly unknown[] {
 	const input: unknown[] = [];
 
 	for (const message of messages) {
 		switch (message.role) {
 			case "user":
-				input.push({ role: "user", content: [{ type: "input_text", text: message.content }] });
+				input.push({ role: "user", content: toUserContent(message, supportsImages) });
 				break;
 			case "assistant": {
 				const items: { readonly item: unknown; readonly reasoning: boolean }[] = [];
@@ -392,6 +392,44 @@ function toInput(messages: readonly LlmMessage[]): readonly unknown[] {
 	}
 
 	return input;
+}
+
+/**
+ * 用户消息的内容。
+ *
+ * 图片按 Responses 的输入分片发送；模型不接受图片时用文本说明代替。只有图片、没有文字时
+ * 补一句说明，避免端点收到一个没有文字锚点的内容数组。
+ */
+function toUserContent(message: LlmUserMessage, supportsImages: boolean): readonly unknown[] {
+	if (typeof message.content === "string") {
+		return [{ type: "input_text", text: message.content }];
+	}
+
+	const parts: unknown[] = [];
+	for (const block of message.content) {
+		if (block.type === "text") {
+			if (block.text.length > 0) parts.push({ type: "input_text", text: block.text });
+			continue;
+		}
+		parts.push(
+			supportsImages
+				? {
+						type: "input_image",
+						detail: "auto",
+						image_url: `data:${block.mimeType};base64,${block.data}`,
+					}
+				: { type: "input_text", text: "(image omitted: model does not support images)" },
+		);
+	}
+
+	if (!parts.some((part) => isInputText(part))) {
+		parts.unshift({ type: "input_text", text: "(see attached image)" });
+	}
+	return parts;
+}
+
+function isInputText(part: unknown): boolean {
+	return typeof part === "object" && part !== null && (part as { type?: unknown }).type === "input_text";
 }
 
 /**

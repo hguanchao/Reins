@@ -2,7 +2,7 @@ import { eastAsianWidth } from "get-east-asian-width";
 
 import { computeCost, type ModelEntry } from "../config/providers-file.ts";
 import type { LlmClient } from "../llm/client.ts";
-import { assistantText, type LlmMessage, type LlmUsage } from "../llm/messages.ts";
+import { assistantText, userImages, userText, type LlmMessage, type LlmUsage } from "../llm/messages.ts";
 
 /**
  * 上下文压缩。
@@ -23,6 +23,14 @@ const KEEP_RATIO = 0.25;
 
 /** 每条消息的固定开销（角色标记与协议外壳），按条计一点，免得整体低估。 */
 const MESSAGE_OVERHEAD_TOKENS = 8;
+
+/**
+ * 一张图片的估算开销。
+ *
+ * 图片按分块计价，与像素和端点都有关，精确值要问提供方。这里取一个偏大的固定值：
+ * 估算只用于判断「离上限还有多远」，早压缩只损失细节，晚压缩会被端点直接拒绝。
+ */
+const ESTIMATED_IMAGE_TOKENS = 1200;
 
 const SUMMARY_SYSTEM = `You compress a conversation between a coding assistant and its user into a handover summary that lets the work continue.
 
@@ -143,7 +151,11 @@ export function estimateTokens(messages: readonly LlmMessage[]): number {
 function estimateMessageTokens(message: LlmMessage): number {
 	switch (message.role) {
 		case "user":
-			return roughTokens(message.content) + MESSAGE_OVERHEAD_TOKENS;
+			return (
+				roughTokens(userText(message)) +
+				userImages(message).length * ESTIMATED_IMAGE_TOKENS +
+				MESSAGE_OVERHEAD_TOKENS
+			);
 		case "assistant": {
 			let total = MESSAGE_OVERHEAD_TOKENS;
 			for (const block of message.content) {

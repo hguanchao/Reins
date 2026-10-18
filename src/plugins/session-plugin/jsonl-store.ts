@@ -2,6 +2,7 @@ import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSy
 import { dirname, join } from "node:path";
 
 import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../session/port.ts";
+import { userText } from "../../llm/messages.ts";
 import type {
 	SessionCreateOptions,
 	SessionFile,
@@ -69,7 +70,7 @@ export class JsonlSessionStore implements SessionStore {
 				entryCount: parsed.entries.length,
 				title:
 					userTurn?.type === "message" && userTurn.message.role === "user"
-						? firstLine(userTurn.message.content)
+						? firstLine(userText(userTurn.message))
 						: undefined,
 				forkedFrom: header?.forkedFrom,
 			});

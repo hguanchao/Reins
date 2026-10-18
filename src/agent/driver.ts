@@ -6,6 +6,7 @@ import {
 	assistantToolCalls,
 	type LlmAssistantMessage,
 	type LlmToolCallBlock,
+	type LlmUserContentBlock,
 } from "../llm/messages.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionPort } from "../session/port.ts";
@@ -53,8 +54,8 @@ export class TurnDriver {
 		this.#deps = deps;
 	}
 
-	/** 把一句话交给模型，一直跑到它不再要求调用工具为止。 */
-	async run(prompt: string, signal: AbortSignal): Promise<void> {
+	/** 把一句话（可带图片）交给模型，一直跑到它不再要求调用工具为止。 */
+	async run(prompt: string | readonly LlmUserContentBlock[], signal: AbortSignal): Promise<void> {
 		await this.#syncSessionState();
 		await this.#deps.session.append({
 			type: "message",

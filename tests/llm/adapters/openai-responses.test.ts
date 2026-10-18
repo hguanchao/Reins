@@ -244,6 +244,53 @@ describe("OpenAI Responses 请求映射", () => {
 		await run(clientFor({ thinkingLevelMap: { off: null } }), request());
 		assert.equal(second[0]?.body?.["reasoning"], undefined);
 	});
+
+	it("用户图片映射为 input_image；非视觉模型降级为文本", async () => {
+		const image = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
+		const content = [
+			{ type: "text" as const, text: "what is this" },
+			image,
+		];
+
+		const vision = respondWith([{ type: "response.completed", response: { status: "completed" } }]);
+		await run(clientFor({ input: ["text", "image"] }), request({ messages: [{ role: "user", content }] }));
+		assert.deepEqual(vision[0]?.body?.["input"], [
+			{
+				role: "user",
+				content: [
+					{ type: "input_text", text: "what is this" },
+					{ type: "input_image", detail: "auto", image_url: "data:image/png;base64,AAAA" },
+				],
+			},
+		]);
+
+		const textOnly = respondWith([{ type: "response.completed", response: { status: "completed" } }]);
+		await run(clientFor({ input: ["text"] }), request({ messages: [{ role: "user", content }] }));
+		assert.deepEqual(textOnly[0]?.body?.["input"], [
+			{
+				role: "user",
+				content: [
+					{ type: "input_text", text: "what is this" },
+					{ type: "input_text", text: "(image omitted: model does not support images)" },
+				],
+			},
+		]);
+
+		const imageOnly = respondWith([{ type: "response.completed", response: { status: "completed" } }]);
+		await run(
+			clientFor({ input: ["text", "image"] }),
+			request({ messages: [{ role: "user", content: [image] }] }),
+		);
+		assert.deepEqual(imageOnly[0]?.body?.["input"], [
+			{
+				role: "user",
+				content: [
+					{ type: "input_text", text: "(see attached image)" },
+					{ type: "input_image", detail: "auto", image_url: "data:image/png;base64,AAAA" },
+				],
+			},
+		]);
+	});
 });
 
 describe("OpenAI Responses 流式处理", () => {

@@ -33,9 +33,21 @@ export interface LlmToolCallBlock {
 
 export type LlmContentBlock = LlmTextBlock | LlmThinkingBlock | LlmToolCallBlock;
 
+/** 用户消息里的图片。数据是 base64，不带 data URL 前缀。 */
+export interface LlmImageBlock {
+	readonly type: "image";
+	readonly data: string;
+	/** 如 image/png、image/jpeg、image/gif、image/webp */
+	readonly mimeType: string;
+}
+
+/** 用户消息能携带的内容。文本与图片可以混排。 */
+export type LlmUserContentBlock = LlmTextBlock | LlmImageBlock;
+
 export interface LlmUserMessage {
 	readonly role: "user";
-	readonly content: string;
+	/** 纯文本可以省略块数组；带图片时必须用块数组 */
+	readonly content: string | readonly LlmUserContentBlock[];
 }
 
 export interface LlmAssistantMessage {
@@ -69,6 +81,21 @@ export function assistantText(message: LlmAssistantMessage): string {
 		.filter((block): block is LlmTextBlock => block.type === "text")
 		.map((block) => block.text)
 		.join("\n\n");
+}
+
+/** 取用户消息里的文本；图片不参与。 */
+export function userText(message: LlmUserMessage): string {
+	if (typeof message.content === "string") return message.content;
+	return message.content
+		.filter((block): block is LlmTextBlock => block.type === "text")
+		.map((block) => block.text)
+		.join("\n\n");
+}
+
+/** 取用户消息里的图片。 */
+export function userImages(message: LlmUserMessage): readonly LlmImageBlock[] {
+	if (typeof message.content === "string") return [];
+	return message.content.filter((block): block is LlmImageBlock => block.type === "image");
 }
 
 /** 取助手消息里的工具调用。 */

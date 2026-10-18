@@ -3,7 +3,7 @@ import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../c
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
 import { postSse } from "../http.ts";
-import type { LlmContentBlock, LlmStopReason, LlmUsage } from "../messages.ts";
+import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
 import { createLlmStream, joinUrl } from "./stream-runner.ts";
@@ -30,11 +30,16 @@ interface WireBlock {
 	readonly tool_use_id?: string;
 	readonly content?: string;
 	readonly is_error?: boolean;
+	readonly source?: {
+		readonly type: "base64";
+		readonly media_type: string;
+		readonly data: string;
+	};
 }
 
 interface WireMessage {
 	readonly role: "user" | "assistant";
-	readonly content: readonly WireBlock[];
+	readonly content: string | readonly WireBlock[];
 }
 
 interface StreamEvent {
@@ -155,7 +160,7 @@ export class AnthropicMessagesClient implements LlmClient {
 		const body: Record<string, unknown> = {
 			model: request.model,
 			system: request.system,
-			messages: toWireMessages(request),
+			messages: toWireMessages(request, this.#model.input.includes("image")),
 			max_tokens: request.maxTokens,
 			stream: true,
 		};
@@ -267,7 +272,7 @@ function toStopReason(stopReason: string): LlmStopReason {
 	}
 }
 
-function toWireMessages(request: LlmRequest): WireMessage[] {
+function toWireMessages(request: LlmRequest, supportsImages: boolean): WireMessage[] {
 	const messages: WireMessage[] = [];
 	let pendingResults: WireBlock[] = [];
 
@@ -281,7 +286,7 @@ function toWireMessages(request: LlmRequest): WireMessage[] {
 		switch (message.role) {
 			case "user":
 				flushResults();
-				messages.push({ role: "user", content: [{ type: "text", text: message.content }] });
+				messages.push({ role: "user", content: toWireUserContent(message, supportsImages) });
 				break;
 			case "assistant": {
 				flushResults();
@@ -302,6 +307,37 @@ function toWireMessages(request: LlmRequest): WireMessage[] {
 	}
 	flushResults();
 	return messages;
+}
+
+/**
+ * 用户消息的内容。
+ *
+ * 纯文本仍按字符串发送；带图片时换成内容块数组，图片按 base64 内联。模型不接受图片时
+ * 用文本说明代替，避免把一张读不了的图片发过去。
+ */
+function toWireUserContent(message: LlmUserMessage, supportsImages: boolean): string | WireBlock[] {
+	if (typeof message.content === "string") return message.content;
+
+	const blocks: WireBlock[] = [];
+	for (const block of message.content) {
+		if (block.type === "text") {
+			if (block.text.length > 0) blocks.push({ type: "text", text: block.text });
+			continue;
+		}
+		blocks.push(
+			supportsImages
+				? {
+						type: "image",
+						source: { type: "base64", media_type: block.mimeType, data: block.data },
+					}
+				: { type: "text", text: "(image omitted: model does not support images)" },
+		);
+	}
+
+	if (!blocks.some((block) => block.type === "text")) {
+		blocks.unshift({ type: "text", text: "(see attached image)" });
+	}
+	return blocks;
 }
 
 function toWireAssistant(content: readonly LlmContentBlock[]): WireBlock[] {
