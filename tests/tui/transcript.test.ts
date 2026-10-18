@@ -15,7 +15,7 @@ describe("对话流", () => {
 		const lines = renderTranscript(40, 8, [{ prompt: "hello", response: [] }], 0);
 
 		assert.equal(lines.length, 8);
-		assert.ok(plain(lines[1] ?? "").startsWith("› hello"));
+		assert.ok(plain(lines[1] ?? "").startsWith(" › hello"));
 		assert.equal(plain(lines[1] ?? "").length, 40);
 		assert.ok((lines[0] ?? "").includes(PROMPT_BG));
 		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
@@ -40,7 +40,7 @@ describe("对话流", () => {
 		const response = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 		const lines = renderTranscript(40, 6, [{ prompt: "hello", response }], 6);
 
-		assert.ok(plain(lines[1] ?? "").startsWith("› hello"));
+		assert.ok(plain(lines[1] ?? "").startsWith(" › hello"));
 		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
 		assert.equal(plain(lines[3] ?? "").includes("›"), false);
 		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
@@ -63,9 +63,9 @@ describe("对话流", () => {
 			4,
 		).map(plain);
 
-		assert.ok(lines[1]?.startsWith("› one"));
+		assert.ok(lines[1]?.startsWith(" › one"));
 		assert.equal(lines[4]?.includes("›"), false);
-		assert.ok(lines[5]?.startsWith("› two"));
+		assert.ok(lines[5]?.startsWith(" › two"));
 		assert.equal(lines[6]?.includes("›"), false);
 	});
 
@@ -83,7 +83,7 @@ describe("对话流", () => {
 		assert.ok(plain(lines[4] ?? "").includes("x"));
 		assert.equal((lines[5] ?? "").includes(PROMPT_BG), false);
 		assert.ok((lines[6] ?? "").includes(PROMPT_BG));
-		assert.ok(plain(lines[7] ?? "").startsWith("› two"));
+		assert.ok(plain(lines[7] ?? "").startsWith(" › two"));
 	});
 
 	it("给出最后一条提示的起始行，供发送后翻页", () => {

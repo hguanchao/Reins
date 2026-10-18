@@ -23,7 +23,11 @@ const SCROLLBAR_TRACK = " ";
 const SCROLLBAR_THUMB = "█";
 const RESET = "\x1b[0m";
 
-const PROMPT_PREFIX = "› ";
+/** 用户提示首行符号前留一列，正文因此比模型回复多缩进一列。 */
+const PROMPT_PREFIX = " › ";
+/** 提示续行与首行正文对齐。 */
+const PROMPT_INDENT = "   ";
+/** 模型回复的缩进。 */
 const RESPONSE_INDENT = "  ";
 const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
@@ -154,7 +158,7 @@ function promptBlock(prompt: string, width: number): readonly string[] {
 	const prefixWidth = Math.min(PROMPT_PREFIX.length, width);
 	const lines = wrapPrompt(prompt, Math.max(0, width - prefixWidth), PROMPT_MAX_LINES);
 	const content = lines.map((line, index) => {
-		const prefix = (index === 0 ? PROMPT_PREFIX : RESPONSE_INDENT).slice(0, width);
+		const prefix = (index === 0 ? PROMPT_PREFIX : PROMPT_INDENT).slice(0, width);
 		const usedPrefixWidth = displayWidth(prefix);
 		const text = truncateToWidth(line, Math.max(0, width - usedPrefixWidth));
 		const padding = " ".repeat(Math.max(0, width - usedPrefixWidth - displayWidth(text)));

@@ -290,7 +290,7 @@ describe("全屏布局", () => {
 			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
 			const prompt = plain(lines[1] ?? "");
-			assert.ok(prompt.startsWith("› hello"));
+			assert.ok(prompt.startsWith(" › hello"));
 			assert.equal(prompt.length, 60);
 			assert.ok((lines[0] ?? "").includes("\x1b[48;2;36;36;36m"));
 			assert.ok((lines[1] ?? "").includes("\x1b[48;2;36;36;36m"));
@@ -352,7 +352,7 @@ describe("全屏布局", () => {
 
 			const lines = frameLines(output);
 			const main = lines.slice(0, 7).map(plain);
-			assert.ok(main[1]?.startsWith("› hello"));
+			assert.ok(main[1]?.startsWith(" › hello"));
 			assert.equal(main[0]?.includes("›"), false);
 			assert.equal(main[2]?.includes("›"), false);
 			assert.equal(main[3]?.includes("›"), false);
@@ -385,7 +385,7 @@ describe("全屏布局", () => {
 			// 拖到顶部，看到最早的回复
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
 			const top = frameLines(output).slice(0, 7).map(plain);
-			assert.ok(top[1]?.startsWith("› hello"));
+			assert.ok(top[1]?.startsWith(" › hello"));
 			assert.ok(top.slice(2).join("\n").includes("模拟回复第 1 行"));
 
 			// 拖回底部
@@ -397,7 +397,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("\x1b[<0;40;7m"));
 			input.emit("data", Buffer.from("\x1b[<64;20;4M"));
 			const scrolled = frameLines(output).slice(0, 7).map(plain);
-			assert.ok(scrolled[1]?.startsWith("› hello"));
+			assert.ok(scrolled[1]?.startsWith(" › hello"));
 			assert.notEqual(scrolled.join("\n"), back.join("\n"));
 
 			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
@@ -421,12 +421,12 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("two\r"));
 
 			const latest = frameLines(output).slice(0, 7).map(plain);
-			assert.ok(latest[1]?.startsWith("› two"));
+			assert.ok(latest[1]?.startsWith(" › two"));
 
 			// 拖到顶部可以看到旧提示
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
 			const top = frameLines(output).slice(0, 7).map(plain);
-			assert.ok(top[1]?.startsWith("› one"));
+			assert.ok(top[1]?.startsWith(" › one"));
 		} finally {
 			exitTui(input);
 		}
