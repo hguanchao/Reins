@@ -73,7 +73,7 @@ describe("全屏布局", () => {
 
 			assert.equal(lines.length, 12);
 			assert.equal(lines[4], `${" ".repeat(17)}Reins`);
-			assert.equal(lines[5], `${" ".repeat(17)}1.2.3`);
+			assert.equal(lines[5], `${" ".repeat(17)}v1.2.3`);
 			assert.equal(lines[11], "");
 		} finally {
 			input.emit("data", Buffer.from([3]));
@@ -94,7 +94,7 @@ describe("全屏布局", () => {
 			const lines = frame.slice(CLEAR.length).split("\r\n");
 			assert.equal(lines.length, 6);
 			assert.equal(lines[1], `${" ".repeat(7)}Reins`);
-			assert.equal(lines[2], `${" ".repeat(7)}1.2.3`);
+			assert.equal(lines[2], `${" ".repeat(7)}v1.2.3`);
 		} finally {
 			input.emit("data", Buffer.from([3]));
 		}

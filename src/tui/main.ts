@@ -13,7 +13,7 @@ const BRAND = "Reins";
  * 不做截断：截断会把品牌名或版本号变成半截，宁可让它超出边界。
  */
 export function renderMain(width: number, height: number, version: string): readonly string[] {
-	const content = [BRAND, version];
+	const content = [BRAND, `v${version}`];
 	const lines: string[] = Array.from({ length: Math.max(0, height) }, () => "");
 	const top = Math.max(0, Math.floor((lines.length - content.length) / 2));
 

@@ -8,7 +8,7 @@ describe("主区域", () => {
 		const pad = " ".repeat(7);
 		const lines = renderMain(20, 5, "1.2.3");
 
-		assert.deepEqual(lines, ["", `${pad}Reins`, `${pad}1.2.3`, "", ""]);
+		assert.deepEqual(lines, ["", `${pad}Reins`, `${pad}v1.2.3`, "", ""]);
 	});
 
 	it("高度不足时先保住品牌名", () => {
@@ -16,6 +16,6 @@ describe("主区域", () => {
 	});
 
 	it("宽度不足时不产生负缩进", () => {
-		assert.deepEqual(renderMain(2, 2, "1.0.0"), ["Reins", "1.0.0"]);
+		assert.deepEqual(renderMain(2, 2, "1.0.0"), ["Reins", "v1.0.0"]);
 	});
 });
