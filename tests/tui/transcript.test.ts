@@ -68,14 +68,31 @@ describe("对话流", () => {
 		assert.equal(lines[6]?.includes("›"), false);
 	});
 
+	it("上一条回复和下一条提示之间留一行间距", () => {
+		const lines = renderTranscript(
+			40,
+			20,
+			[
+				{ prompt: "one", response: ["x"] },
+				{ prompt: "two", response: [] },
+			],
+			0,
+		);
+
+		assert.ok(plain(lines[4] ?? "").includes("x"));
+		assert.equal((lines[5] ?? "").includes(PROMPT_BG), false);
+		assert.ok((lines[6] ?? "").includes(PROMPT_BG));
+		assert.ok(plain(lines[7] ?? "").startsWith("› two"));
+	});
+
 	it("给出最后一条提示的起始行，供发送后翻页", () => {
 		const metrics = transcriptMetrics(40, 6, [
 			{ prompt: "a", response: ["x"] },
 			{ prompt: "b", response: [] },
 		]);
 
-		assert.equal(metrics.totalLines, 9);
-		assert.equal(metrics.scrollLines, 11);
-		assert.equal(metrics.lastPromptStart, 5);
+		assert.equal(metrics.totalLines, 10);
+		assert.equal(metrics.scrollLines, 12);
+		assert.equal(metrics.lastPromptStart, 6);
 	});
 });

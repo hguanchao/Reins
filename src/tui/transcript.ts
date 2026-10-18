@@ -127,8 +127,12 @@ function contentWidth(terminalWidth: number): number {
 function build(width: number, turns: readonly TranscriptTurn[]): BuiltTranscript {
 	const lines: string[] = [];
 	const prompts: PromptRange[] = [];
+	let previousHadResponse = false;
 
 	for (const turn of turns) {
+		// 上一条回复和下一条提示之间留一行默认背景，避免提示块直接贴住回复
+		if (previousHadResponse) lines.push(" ".repeat(width));
+
 		const promptLines = promptBlock(turn.prompt, width);
 		const start = lines.length;
 		lines.push(...promptLines);
@@ -139,6 +143,7 @@ function build(width: number, turns: readonly TranscriptTurn[]): BuiltTranscript
 			lines.push(...responseLines(line, width));
 		}
 		prompts.push({ start, height: promptLines.length, responseStart });
+		previousHadResponse = turn.response.length > 0;
 	}
 
 	return { lines, prompts };
