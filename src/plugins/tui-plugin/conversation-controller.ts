@@ -419,7 +419,7 @@ export class ConversationController {
 				: this.#blocks.find((block) => block.id === this.#selectedBlock);
 		if (selected !== undefined) {
 			const range = this.#selectionExtent(this.#blocks, selected);
-			// 收起的一行铺高亮底色并画 ▸ 护栏；所有选中块都再画一圈 ┌┐ 框
+			// 收起的一行铺高亮底色并画 ▸ 护栏；选中块再画一圈 ┌┐ 框，展开的块只留四角
 			if (selected.mode === "collapsed" && range.height === selected.height) {
 				frame = drawSelectionBand(conversation, range, window.start, entryWidth);
 			} else {

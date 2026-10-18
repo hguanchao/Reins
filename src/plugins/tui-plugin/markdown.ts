@@ -145,6 +145,24 @@ interface CodeToken {
 	readonly style: Style | undefined;
 }
 
+/**
+ * 给一整段文件内容着色，按路径的扩展名挑语言；认不出类型就整段按 base 画。
+ *
+ * 展开的工具详情走这条路：读取的源码与 Markdown 都该有颜色，和正文里的围栏代码块共用同一套
+ * 记号映射，同一个文件在哪儿看都是同一种画法。
+ */
+export function highlightSourceLines(text: string, path: string | undefined, base: Style): Line[] {
+	return highlightLines(text, languageOf(path), base);
+}
+
+/** 扩展名就是语言名，别名归一交给 highlightLines；没有扩展名的名字当作认不出。 */
+function languageOf(path: string | undefined): string | undefined {
+	if (path === undefined) return undefined;
+	const name = path.split(/[\\/]/).pop() ?? "";
+	const dot = name.lastIndexOf(".");
+	return dot <= 0 || dot === name.length - 1 ? undefined : name.slice(dot + 1).toLowerCase();
+}
+
 function highlightLines(code: string, language: string | undefined, base: Style): Line[] {
 	const resolved = language === undefined ? undefined : (LANGUAGE_ALIASES[language.toLowerCase()] ?? language.toLowerCase());
 	if (resolved === undefined || resolved.length === 0 || !lowlight.registered(resolved)) {

@@ -18,8 +18,8 @@ import {
 import type { CopyAffordance } from "./markdown.ts";
 import { formatTokens } from "./format.ts";
 import { ACCENT_WIDTH, BLOCK_CONTENT_OFFSET, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
-import { renderMarkdown } from "./markdown.ts";
-import { ACCENT, BAD, BAND, BRIGHT, CODE_BG, CODE_TEXT, DIM, FAINT, OK, TEXT } from "./theme.ts";
+import { renderMarkdown, highlightSourceLines } from "./markdown.ts";
+import { ACCENT, BAD, BAND, BRIGHT, CODE_BG, DIM, FAINT, OK, TEXT } from "./theme.ts";
 import {
 	describeTool,
 	displayToolName,
@@ -27,6 +27,7 @@ import {
 	lastOutputLine,
 	thoughtLabel,
 	timestampText,
+	toolFilePath,
 } from "./transcript-format.ts";
 import { groupKindOf, groupLabel, runningGroupLabel } from "./transcript-group.ts";
 import { agentLine, blockLine, pulseStyle, rail } from "./transcript-style.ts";
@@ -160,6 +161,8 @@ interface ToolBlock extends BlockBase {
 	readonly kind: "tool";
 	readonly name: string;
 	readonly args: string;
+	/** 工具作用的主要文件：读取详情按它的扩展名挑语法着色 */
+	readonly path: string | undefined;
 	readonly output: string;
 	readonly isError: boolean;
 	readonly durationMs: number;
@@ -178,6 +181,7 @@ interface RunningTool {
 	readonly callId: string;
 	readonly name: string;
 	readonly args: string;
+	readonly path: string | undefined;
 	readonly startedAt: number;
 	update: string | undefined;
 }
@@ -244,6 +248,7 @@ export class Transcript {
 					callId: event.callId,
 					name: event.name,
 					args: describeTool(event.name, event.args, this.#cwd),
+					path: toolFilePath(event.name, event.args),
 					startedAt: now,
 					update: undefined,
 				});
@@ -263,6 +268,7 @@ export class Transcript {
 					kind: "tool",
 					name: event.name,
 					args: tool?.args ?? "",
+					path: tool?.path,
 					output: tool?.update ?? event.content ?? event.summary,
 					isError: event.isError,
 					durationMs: event.durationMs,
@@ -725,7 +731,7 @@ export class Transcript {
 	/** 展开的工具正文：读取类给行号预览，其余只留最后一段输出。 */
 	#toolBody(block: ToolBlock, accent: Style | undefined): readonly Line[] {
 		const lines = block.output.split("\n");
-		if (block.name.toLowerCase() === "read") return this.#numberedBody(lines);
+		if (block.name.toLowerCase() === "read") return this.#numberedBody(lines, block.path);
 
 		const shown = lines.length > TOOL_TAIL_LINES ? [undefined, ...lines.slice(-TOOL_TAIL_LINES)] : lines;
 		const rows: Line[] = [];
@@ -740,10 +746,10 @@ export class Transcript {
 	}
 
 	/**
-	 * 读取详情的行号预览：开头多行加结尾多行，中间用 ⋮ 省略；行号右对齐，
-	 * 正文斜体压暗，整块铺代码底色。
+	 * 读取详情的行号预览：开头多行加结尾多行，中间用 ⋮ 省略。整块缩到正文列（与工具头同一列）
+	 * 并铺代码底色，行号用次要色，正文按文件类型着色——和模型正文里的代码块是同一种画法。
 	 */
-	#numberedBody(lines: readonly string[]): readonly Line[] {
+	#numberedBody(lines: readonly string[], path: string | undefined): readonly Line[] {
 		const total = lines.length;
 		const segments =
 			total > READ_FIRST_LINES + READ_LAST_LINES
@@ -753,23 +759,29 @@ export class Transcript {
 					]
 				: [{ from: 0, to: total }];
 		const gutterWidth = String(total).length;
+		// 着色按整段算：逐行着理会丢掉跨行的注释与多行字符串
+		const colored = highlightSourceLines(lines.join("\n"), path, TEXT);
 		const rows: Line[] = [];
 		for (const segment of segments) {
-			if (segment.from > 0 && rows.length > 0) rows.push(plain(" ⋮"));
+			if (segment.from > 0 && rows.length > 0) rows.push(this.#codeLine(styled("⋮", DIM)));
 			for (let index = segment.from; index < segment.to; index += 1) {
 				const number = String(index + 1).padStart(gutterWidth);
 				const width = Math.max(1, this.#contentWidth() - gutterWidth - 2);
-				for (const wrapped of wrapLine(styled(lines[index] ?? "", CODE_TEXT), { width })) {
-					rows.push(this.#codeLine(concat(plain(`${number}  `), wrapped)));
+				const source = colored[index] ?? styled(lines[index] ?? "", TEXT);
+				for (const wrapped of wrapLine(source, { width })) {
+					rows.push(this.#codeLine(concat(styled(`${number}  `, DIM), wrapped)));
 				}
 			}
 		}
 		return rows;
 	}
 
-	/** 代码行整行铺代码底色，后续行与行号共用同一层。 */
+	/** 代码行：缩到正文列（与工具头同列），整行铺代码底色，续行与行号共用同一层。 */
 	#codeLine(line: Line): Line {
-		return padLine(mapLine(line, (style) => mergeStyles(style, CODE_BG) ?? CODE_BG), this.#contentWidth(), CODE_BG);
+		return concat(
+			plain(" ".repeat(BLOCK_CONTENT_OFFSET)),
+			padLine(mapLine(line, (style) => mergeStyles(style, CODE_BG) ?? CODE_BG), this.#contentWidth(), CODE_BG),
+		);
 	}
 
 	#systemLines(block: SystemBlock): readonly Line[] {

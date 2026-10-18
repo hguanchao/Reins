@@ -125,6 +125,18 @@ function inlineValue(value: unknown): string {
 	return "…";
 }
 
+/** 工具主要作用在哪个文件上：读取类的展开详情按它挑语法着色。 */
+export function toolFilePath(name: string, args: Record<string, unknown>): string | undefined {
+	switch (name.toLowerCase()) {
+		case "read":
+		case "write":
+		case "edit":
+			return stringArg(args.path);
+		default:
+			return undefined;
+	}
+}
+
 /** 绝对路径缩成工作目录内的相对路径，Windows 反斜杠统一成 `/`。 */
 export function displayPath(path: string, cwd: string | undefined): string {
 	const normalized = path.replace(/\\/g, "/");

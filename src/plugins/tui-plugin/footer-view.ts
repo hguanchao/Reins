@@ -10,6 +10,7 @@ import {
 	type Line,
 	type Span,
 } from "../../tui/index.ts";
+import { formatTokens } from "./format.ts";
 import { OUTER_PAD } from "./layout.ts";
 import { INPUT_LEFT } from "./input-box.ts";
 import { ACCENT, BRIGHT, DIM, FAINT, TEXT } from "./theme.ts";
@@ -69,16 +70,6 @@ export function runningRow(state: RunningRowState): Line {
 	const room = Math.max(1, span - INPUT_LEFT - lineWidth(spin) - lineWidth(phase) - lineWidth(right) - 1);
 	const label = truncateLine(styled(state.activity, TEXT), room);
 	return alignEnds(concat(plain(" ".repeat(INPUT_LEFT)), spin, label, phase), right, span);
-}
-
-/** 上下文规模的紧凑写法：一万以内留两位小数，十万以内一位，再往上按千、兆取整。 */
-function formatTokens(tokens: number): string {
-	if (tokens < 1_000) return `${tokens}`;
-	if (tokens < 10_000) return `${(tokens / 1_000).toFixed(2)}k`;
-	if (tokens < 100_000) return `${(tokens / 1_000).toFixed(1)}k`;
-	if (tokens < 1_000_000) return `${Math.floor(tokens / 1_000)}k`;
-	if (tokens < 10_000_000) return `${(tokens / 1_000_000).toFixed(2)}m`;
-	return `${(tokens / 1_000_000).toFixed(1)}m`;
 }
 
 /** 底部快捷键条：临时信息优先，其次才是按键提示。 */

@@ -18,6 +18,18 @@ describe("主区装饰", () => {
 		assert.ok(boxed[1].includes("b"));
 	});
 
+	it("展开的块只画四角，竖线不切过详情", () => {
+		const lines = Array.from({ length: 6 }, (_, index) => plain(`row${index}`));
+		const boxed = drawSelectionBox(lines, { start: 1, height: 4 }, 0, 8).map(lineText);
+		for (const row of boxed.slice(1, 5)) {
+			assert.ok(!row.includes("│"), `块内不画竖线: ${row}`);
+		}
+		assert.equal(boxed[0][1], "┌");
+		assert.equal(boxed[0][10], "┐");
+		assert.equal(boxed[5][1], "└");
+		assert.equal(boxed[5][10], "┘");
+	});
+
 	it("块完全滚出视口时原样返回", () => {
 		const lines = [plain("aa")];
 		const boxed = drawSelectionBand(lines, { start: 5, height: 1 }, 0, 8);

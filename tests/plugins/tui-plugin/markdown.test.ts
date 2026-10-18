@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderMarkdown } from "../../../src/plugins/tui-plugin/markdown.ts";
+import { highlightSourceLines, renderMarkdown } from "../../../src/plugins/tui-plugin/markdown.ts";
 import { THEME } from "../../../src/plugins/tui-plugin/theme.ts";
 import { lineText, lineWidth, type Line } from "../../../src/tui/text/line.ts";
 
@@ -109,5 +109,30 @@ describe("Markdown 渲染", () => {
 		const header = findSpan(findLine(table.lines, "A"), "A");
 		assert.equal(header?.style?.bold, true);
 		assert.equal(header?.style?.color, THEME.bright);
+	});
+});
+
+describe("文件正文按类型着色", () => {
+	it("按扩展名挑语言：ts 的关键字与字符串各有着色", () => {
+		const lines = highlightSourceLines('const s = "hi";', "src/a.ts", { color: THEME.text });
+		const colors = lines[0].map((span) => span.style?.color);
+		assert.ok(colors.includes(THEME.accent), `关键字上色: ${JSON.stringify(lines[0])}`);
+		assert.ok(colors.includes(THEME.ok), `字符串上色: ${JSON.stringify(lines[0])}`);
+	});
+
+	it("认不出扩展名时整段按给定底色画", () => {
+		const lines = highlightSourceLines("const s = 1;", "notes.unknownext", { color: THEME.text });
+		assert.deepEqual(
+			lines[0].map((span) => span.style?.color),
+			[THEME.text],
+		);
+	});
+
+	it("没有扩展名的文件也按底色画", () => {
+		const lines = highlightSourceLines("hello", "Makefile", { color: THEME.text });
+		assert.deepEqual(
+			lines[0].map((span) => span.style?.color),
+			[THEME.text],
+		);
 	});
 });

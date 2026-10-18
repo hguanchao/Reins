@@ -219,6 +219,47 @@ describe("块折叠", () => {
 		assert.ok(!lineText(member).includes("{"));
 	});
 
+	it("展开的读取详情：行号从工具头那一列开始，正文按文件类型着色", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "read", args: { path: "a.ts" } }, 0);
+		transcript.handle(
+			{
+				type: "tool_end",
+				callId: "1",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "ok",
+				content: 'const n = "x";\nlet m = 2;',
+			},
+			0,
+		);
+
+		const group = transcript.view().blocks.find((item) => item.kind === "group");
+		assert.ok(group);
+		transcript.toggleFold(group.id);
+		const member = transcript.view().blocks.find((item) => item.kind === "tool");
+		assert.ok(member);
+		transcript.toggleFold(member.id);
+
+		const view = transcript.view();
+		const header = view.rows[member.start];
+		const first = view.rows[member.start + 1];
+		const second = view.rows[member.start + 2];
+		assert.ok(header && first && second);
+		// 行号列与工具头的符号同列，不再是贴着块的左缘
+		assert.equal(lineText(header).indexOf("◆"), 3);
+		assert.equal(lineText(first).indexOf("1"), 3);
+		assert.ok(lineText(first).startsWith("   1  "), lineText(first));
+		assert.ok(lineText(second).startsWith("   2  "), lineText(second));
+		// 行号留在代码底色之外，正文一整行铺底，整块才连成一片
+		assert.equal(first[0]?.style?.background, undefined);
+		assert.equal(lineText(first).slice(0, 3), "   ");
+		// 正文按 ts 着色：关键字拿到强调色，不再是一整行的灰
+		assert.equal(first.find((span) => span.text.includes("const"))?.style?.color, THEME.accent);
+		assert.equal(second.at(-1)?.style?.background, THEME.codeBg);
+	});
+
 	it("思考块默认收起，展开后显示完整草稿", () => {
 		const transcript = new Transcript(60);
 		transcript.handle({ type: "reasoning_delta", text: "first thought\nsecond thought" }, 0);
