@@ -54,6 +54,8 @@ export interface InteractiveRuntime {
 	createDriver(onEvent: AgentEventListener): TurnDriver;
 	/** 本次会话到目前为止的用量。界面在自己的出口处报出来，免得使用者还得再去查一次 */
 	sessionUsage(): UsageTotals;
+	/** 当前上下文里估算有多少 token：状态行拿它显示上下文占用，和压缩用的是同一个估算 */
+	contextTokens(): number;
 	/** 界面接管后把审批确认接到界面上；undefined 表示交还给宿主。 */
 	setConfirmer(confirmer: Confirmer | undefined): void;
 	/** 改通知方式：写回用户配置，本次运行立刻生效。 */

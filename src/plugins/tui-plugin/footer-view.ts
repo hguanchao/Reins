@@ -11,6 +11,7 @@ import {
 	type Span,
 } from "../../tui/index.ts";
 import { OUTER_PAD } from "./layout.ts";
+import { INPUT_LEFT } from "./input-box.ts";
 import { ACCENT, BRIGHT, DIM, FAINT, TEXT } from "./theme.ts";
 
 /**
@@ -38,6 +39,8 @@ export interface RunningRowState {
 	readonly startedAt: number;
 	/** 当前动作的起点：这一步已经跑了多久从它算 */
 	readonly phaseStartedAt: number;
+	/** 当前上下文里的 token 估算；0 表示还没有数，不显示 */
+	readonly tokens: number;
 	readonly width: number;
 	readonly now?: number;
 }
@@ -46,22 +49,41 @@ export interface RunningRowState {
  * 跑起来时的那一行。
  *
  * 两个耗时回答的是不同的问题——「这一步卡了多久」与「这一轮总共多久」，所以都留着：判断卡死
- * 看前者，说进度看后者。动作名放不下时截断，两个计时都不截，它们是这两个问题的唯一依据。
+ * 看前者，说进度看后者。左侧与输入框的提示符同列，指示器正好落在正文的左沿上。
+ * 动作名放不下时截断，两个计时都不截，它们是这两个问题的唯一依据。
  */
 export function runningRow(state: RunningRowState): Line {
 	const now = state.now ?? Date.now();
 	const elapsed = now - state.startedAt;
-	const indent = OUTER_PAD + 3;
 	const spin = styled(`${spinnerFrame(elapsed)} `, ACCENT);
 	const phase = styled(` ${formatDuration(now - state.phaseStartedAt)}`, DIM);
-	const right = styled(formatDuration(elapsed), DIM);
+	const right = styled(
+		state.tokens > 0
+			? `${formatDuration(elapsed)} ⇣${formatTokens(state.tokens)}`
+			: formatDuration(elapsed),
+		DIM,
+	);
 	// 先给两个计时与它们之间的一格空档留位，余下的宽度才归动作名
 	const room = Math.max(
 		1,
-		state.width - OUTER_PAD - indent - lineWidth(spin) - lineWidth(phase) - lineWidth(right) - 1,
+		state.width - OUTER_PAD - INPUT_LEFT - lineWidth(spin) - lineWidth(phase) - lineWidth(right) - 1,
 	);
 	const label = truncateLine(styled(state.activity, TEXT), room);
-	return alignEnds(concat(plain(" ".repeat(indent)), spin, label, phase), right, Math.max(1, state.width - OUTER_PAD));
+	return alignEnds(
+		concat(plain(" ".repeat(INPUT_LEFT)), spin, label, phase),
+		right,
+		Math.max(1, state.width - OUTER_PAD),
+	);
+}
+
+/** 上下文规模的紧凑写法：一万以内留两位小数，十万以内一位，再往上按千、兆取整。 */
+function formatTokens(tokens: number): string {
+	if (tokens < 1_000) return `${tokens}`;
+	if (tokens < 10_000) return `${(tokens / 1_000).toFixed(2)}k`;
+	if (tokens < 100_000) return `${(tokens / 1_000).toFixed(1)}k`;
+	if (tokens < 1_000_000) return `${Math.floor(tokens / 1_000)}k`;
+	if (tokens < 10_000_000) return `${(tokens / 1_000_000).toFixed(2)}m`;
+	return `${(tokens / 1_000_000).toFixed(1)}m`;
 }
 
 /** 底部快捷键条：临时信息优先，其次才是按键提示。 */

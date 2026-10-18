@@ -1089,6 +1089,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 							activity: this.#activity,
 							startedAt: this.#turnStartedAt,
 							phaseStartedAt: this.#activityStartedAt,
+							tokens: this.#runtime?.contextTokens() ?? 0,
 							width: size.cols,
 						}),
 					]

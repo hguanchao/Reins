@@ -300,6 +300,7 @@ export function runtimeOf(): InteractiveRuntime {
 			cost: undefined,
 			unpriced: 0,
 		}),
+		contextTokens: () => 12_345,
 		setConfirmer: () => undefined,
 		setNotify: () => undefined,
 		setTrusted: () => undefined,

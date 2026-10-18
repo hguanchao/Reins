@@ -158,7 +158,7 @@ describe("前端：帧与输入", () => {
 		assert.ok(hint!.startsWith("  Enter:send"), "aligned with the outer padding");
 	});
 
-	it("运行状态行缩进正文列，耗时贴住内容区右缘", async () => {
+	it("运行状态行与输入框同列：指示器落在提示符列，右缘落在右边框列", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		let releaseRun: (() => void) | undefined;
@@ -180,13 +180,14 @@ describe("前端：帧与输入", () => {
 		terminal.inputListener?.("hello\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		const frame = terminal.output;
-		const visible = lastFrameRows(frame);
+		const visible = lastFrameRows(terminal.output);
 		const status = visible.find((line) => line.includes("Thinking"));
-		assert.ok(status, "running row exists");
-		// 竖线列与正文列之间：与块的正文同列，而不是顶到屏边
-		assert.ok(status!.startsWith("     "), "spinner aligned with block content");
-		assert.ok(!status!.startsWith("      "), "no deeper indent");
+		const editor = visible.find((line) => line.includes("❯") && line.trimStart().startsWith("│"));
+		const bottom = visible.find((line) => line.trim().startsWith("╰") && line.trimEnd().endsWith("╯"));
+		assert.ok(status && editor && bottom, "行、输入框与下边框都在");
+		assert.equal(status!.search(/\S/), editor!.indexOf("❯"), "指示器与输入框的提示符同列");
+		assert.equal(status!.trimEnd().length, bottom!.trimEnd().length, "右缘与输入框右边框同列");
+		assert.ok(status!.includes("⇣12.3k"), `右缘带上下文规模: ${status}`);
 
 		releaseRun?.();
 		await new Promise((resolve) => setTimeout(resolve, 0));

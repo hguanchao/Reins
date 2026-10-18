@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { TurnDriver } from "../agent/driver.ts";
-import { Compactor } from "../agent/compactor.ts";
+import { Compactor, estimateTokens } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
@@ -332,6 +332,8 @@ async function runChat(options: CliOptions): Promise<number> {
 		createDriver: (onEvent) =>
 			createDriverFor({ config, selection, compactor }, { registry, session, workspace, sandbox }, onEvent),
 		sessionUsage: () => sumUsage(session.entries()),
+		// 每帧都要问一次，所以只做一次线性估算；上下文大小决定了这点开销的上限，且只在回合运行时有调用方
+		contextTokens: () => estimateTokens(session.state().messages),
 		setConfirmer: (value) => {
 			confirmer = value;
 		},
