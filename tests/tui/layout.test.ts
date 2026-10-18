@@ -178,7 +178,7 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("输入框一有内容，品牌名与版本号就隐藏", () => {
+	it("输入框一有输入，品牌名与版本号就隐藏", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
@@ -191,6 +191,24 @@ describe("全屏布局", () => {
 			assert.equal(typed.join("\n").includes("v1.2.3"), false);
 			assert.equal(typed[10], "a");
 			assert.ok(cursorAt(output, 11, 2));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("还没输入就按退格，品牌名与版本号仍然显示", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			const written = output.chunks.length;
+			input.emit("data", Buffer.from([0x7f]));
+
+			assert.equal(output.chunks.length, written);
+			const lines = frameLines(output);
+			assert.ok(lines.join("\n").includes("Reins"));
+			assert.ok(lines.join("\n").includes("v1.2.3"));
 		} finally {
 			exitTui(input);
 		}
@@ -212,7 +230,7 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("退格清空输入后品牌名与版本号恢复", () => {
+	it("退格清空输入后品牌名与版本号仍然隐藏", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
@@ -229,8 +247,8 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from([0x7f]));
 			input.emit("data", Buffer.from([0x7f]));
 			const cleared = frameLines(output);
-			assert.ok(cleared.join("\n").includes("Reins"));
-			assert.ok(cleared.join("\n").includes("v1.2.3"));
+			assert.equal(cleared.join("\n").includes("Reins"), false);
+			assert.equal(cleared.join("\n").includes("v1.2.3"), false);
 			assert.equal(cleared[10], "");
 			assert.ok(cursorAt(output, 11, 1));
 		} finally {

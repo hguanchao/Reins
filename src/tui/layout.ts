@@ -7,8 +7,9 @@ import { renderMain } from "./main.ts";
  * 全屏启动。
  *
  * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是一个带上下边框的输入框，
- * 输入框里一有内容，主区域的品牌名与版本号就让位隐藏。输入光标用终端自己的光标：画成闪烁
- * 竖线，并在每次重画后停到输入末尾。Ctrl+C 要连按两次才退出，第一次在页脚下边框里提示。
+ * 输入框一旦有过输入，主区域的品牌名与版本号就永久让位，即使随后清空也不再回来。输入光标
+ * 用终端自己的光标：画成闪烁竖线，并在每次重画后停到输入末尾。Ctrl+C 要连按两次才退出，
+ * 第一次在页脚下边框里提示。
  */
 
 const ENTER_ALTERNATE_SCREEN = "\x1b[?1049h";
@@ -63,6 +64,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const stdout: TuiOutput = options.stdout ?? process.stdout;
 
 	let input = "";
+	/** 只要输入过内容就置位，之后清空输入也不再显示品牌名与版本号。 */
+	let hasInput = false;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
 	let finished = false;
@@ -75,9 +78,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const footer = renderFooter(width, input, exitArmed);
 		const mainHeight = Math.max(0, height - footer.length);
 		const main =
-			input.length === 0
-				? renderMain(width, mainHeight, options.version)
-				: Array.from({ length: mainHeight }, () => "");
+			hasInput
+				? Array.from({ length: mainHeight }, () => "")
+				: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...footer].slice(0, height);
 		const cursorRow = mainHeight + 2;
@@ -133,6 +136,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const next = appendInput(input, text);
 		if (next === input) return;
 		input = next;
+		if (next.length > 0) hasInput = true;
 		render();
 	};
 
