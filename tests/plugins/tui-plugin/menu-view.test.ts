@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { fileMenuRows, slashMenuRows } from "../../../src/plugins/tui-plugin/menu-view.ts";
+import { THEME } from "../../../src/plugins/tui-plugin/theme.ts";
 import { lineText, lineWidth } from "../../../src/tui/text/line.ts";
 
 const COMMANDS = [
@@ -24,6 +25,17 @@ describe("斜杠命令下拉", () => {
 		assert.ok(lineText(layout.rows[1]).includes("/help"));
 		assert.ok(lineText(layout.rows[1]).includes("Show help"));
 		for (const row of layout.rows) assert.equal(lineWidth(row), 38);
+	});
+
+	it("框线不铺候选行的底色，色带止步于框线", () => {
+		const layout = slashMenuRows(COMMANDS, 0, 40, 2);
+		// 框线只染字形（前景色），整行连同补齐的空格都不写背景，由整屏铺底补成 base 色
+		for (const span of [layout.rows[0], layout.rows.at(-1) ?? []].flat()) {
+			assert.equal(span.style?.background, undefined);
+		}
+		// 候选行整行铺底：行尾补齐的空格也带着色带
+		assert.equal(layout.rows[1].at(-1)?.style?.background, THEME.selectBg);
+		assert.equal(layout.rows[2].at(-1)?.style?.background, THEME.band);
 	});
 
 	it("选中行带 ❯ 前缀，未选中行不带", () => {

@@ -9,6 +9,7 @@ import { ACCENT, BAND, BRIGHT, DIM, EDGE, PATH, SELECT_BG, TITLE } from "./theme
  *
  * 命令与文件共用同一套版式：先一条横贯面板的框线（右侧嵌结果计数），下面是候选行，收尾再
  * 一条框线。候选行整行铺底，被选中的一行亮一档并带 ❯ 前缀；文件目录带尾斜杠并用强调色。
+ * 色带只属于候选行，止步于框线——框线压在屏幕底色上，面板才像一块浮起来的浅色区。
  * 面板整体缩进会话区外边距，候选内容再比框线缩进两列。
  */
 
@@ -96,19 +97,21 @@ function itemRow(content: Line, panel: number, background: Style): Line {
 	return padLine(line, panel, background);
 }
 
-/** 面板框线：上下两条横线，右上角嵌结果计数；整个面板缩进外边距。 */
+/**
+ * 面板框线：上下两条横线，右上角嵌结果计数；整个面板缩进外边距。
+ *
+ * 框线行不写背景——候选行的色带不覆盖到框线，框线连同补齐的空格都落在屏幕底色上，由整屏
+ * 铺底补成 base 色。
+ */
 function withPanelChrome(rows: readonly Line[], panel: number, hint: string | undefined): readonly Line[] {
 	return [rule(panel, hint), ...rows.map(margin), rule(panel, undefined)];
 
 	function rule(width: number, text: string | undefined): Line {
 		const line =
 			text === undefined || text.length + 4 > width
-				? styled("─".repeat(width), { color: EDGE.color, background: BAND.background })
-				: concat(
-						styled("─".repeat(width - text.length - 4), { color: EDGE.color, background: BAND.background }),
-						styled(`  ${text} ─`, { color: DIM.color, background: BAND.background }),
-					);
-		return margin(padLine(line, width, BAND));
+				? styled("─".repeat(width), EDGE)
+				: concat(styled("─".repeat(width - text.length - 4), EDGE), styled(`  ${text} ─`, DIM));
+		return margin(padLine(line, width));
 	}
 
 	function margin(line: readonly Span[]): Line {
