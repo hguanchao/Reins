@@ -71,8 +71,11 @@ describe("页脚输入框", () => {
 		});
 		const left = " ⠋ Thinking...";
 		const right = "1.2s  ⇣128";
+		const raw = lines[0] ?? "";
 
-		assert.equal(lines[0], left + " ".repeat(58 - left.length - right.length) + right);
+		assert.equal(plain(raw), left + " ".repeat(58 - left.length - right.length) + right);
+		assert.ok(raw.includes("\x1b[38;2;102;102;102m"));
+		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
 	it("阶段计时在左，总计时与 token 数在右", () => {
@@ -85,8 +88,11 @@ describe("页脚输入框", () => {
 		});
 		const left = " ⠧ Writing response...  2.5s";
 		const right = "5.3s  ⇣21.4K";
+		const raw = lines[0] ?? "";
 
-		assert.equal(lines[0], left + " ".repeat(68 - left.length - right.length) + right);
+		assert.equal(plain(raw), left + " ".repeat(68 - left.length - right.length) + right);
+		assert.ok(raw.includes("\x1b[38;2;102;102;102m  2.5s"));
+		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
 	it("扫光只作用于活动描述，计时和 token 保持静态", () => {
@@ -98,12 +104,13 @@ describe("页脚输入框", () => {
 			tokens: 21400,
 			sweep: 0.5,
 		});
+		const meta = "\x1b[38;2;102;102;102m";
 		const raw = lines[0] ?? "";
-		const tail = raw.slice(raw.lastIndexOf("\x1b[0m") + 4);
+		const tail = raw.slice(raw.lastIndexOf(meta));
 
 		assert.ok(tail.includes("2.5s"));
 		assert.ok(tail.includes("5.3s  ⇣21.4K"));
-		assert.equal(tail.includes("\x1b["), false);
+		assert.ok(tail.endsWith("\x1b[0m"));
 		assert.equal(plain(raw).length, 68);
 	});
 

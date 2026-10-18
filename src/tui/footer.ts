@@ -32,6 +32,8 @@ export interface RuntimeStatus {
 const SWEEP_BASE = 0x66;
 const SWEEP_HIGHLIGHT = 0xff;
 const SWEEP_RADIUS = 6;
+/** 阶段计时、总计时与 token 数的静态颜色 #666666。 */
+const STATUS_META_COLOR = "\x1b[38;2;102;102;102m";
 
 /** 页脚固定四行：状态行、上边框、输入行、下边框。 */
 export const FOOTER_HEIGHT = 4;
@@ -101,11 +103,11 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 		line = `${left}  ${right}`.slice(0, statusWidth);
 	}
 
-	if (status.sweep === undefined || line.length === 0) return line;
-
-	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态
+	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态的 #666666
 	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
-	return swept(visibleActivity, status.sweep) + line.slice(visibleActivity.length);
+	const rest = line.slice(visibleActivity.length);
+	const head = status.sweep === undefined ? visibleActivity : swept(visibleActivity, status.sweep);
+	return head + (rest.length > 0 ? `${STATUS_META_COLOR}${rest}${RESET}` : "");
 }
 
 function swept(text: string, sweep: number): string {
