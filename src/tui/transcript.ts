@@ -19,7 +19,7 @@ const PROMPT_BG = "\x1b[48;2;36;36;36m";
 const MESSAGE_TEXT_COLOR = "\x1b[38;2;225;225;225m";
 /** 滚动条 #242424。 */
 const SCROLLBAR_COLOR = "\x1b[38;2;36;36;36m";
-const SCROLLBAR_TRACK = "│";
+const SCROLLBAR_TRACK = " ";
 const SCROLLBAR_THUMB = "█";
 const RESET = "\x1b[0m";
 

@@ -47,7 +47,8 @@ describe("对话流", () => {
 		assert.ok(plain(lines[4] ?? "").startsWith("  g"));
 		assert.ok(plain(lines[5] ?? "").startsWith("  h"));
 		assert.ok((lines[4] ?? "").includes(MESSAGE_TEXT));
-		assert.ok(plain(lines[0] ?? "").endsWith("│"));
+		assert.equal(plain(lines[0] ?? "").endsWith("│"), false);
+		assert.ok(plain(lines[0] ?? "").endsWith(" "));
 		assert.ok(plain(lines[3] ?? "").endsWith("█"));
 	});
 
