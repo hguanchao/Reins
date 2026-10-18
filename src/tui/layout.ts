@@ -97,7 +97,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const lines = [...main, ...footer].slice(0, height);
 		const cursorRow = mainHeight + 2;
 		const cursor =
-			cursorRow <= height ? moveCursor(cursorRow, inputView(input, width).column) + SHOW_CURSOR : "";
+			focused && cursorRow <= height
+				? moveCursor(cursorRow, inputView(input, width).column) + SHOW_CURSOR
+				: "";
 		stdout.write(HIDE_CURSOR + CURSOR_HOME + CLEAR_SCREEN + lines.join("\r\n") + cursor);
 	};
 

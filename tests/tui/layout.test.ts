@@ -206,6 +206,7 @@ describe("全屏布局", () => {
 			let frame = rawFrame(output);
 			assert.ok(frame.includes(BLUR));
 			assert.equal(frame.includes(FOCUS), false);
+			assert.equal(frame.includes("\x1b[?25h"), false);
 			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
 
 			input.emit("data", Buffer.from("\x1b[I"));
@@ -213,6 +214,7 @@ describe("全屏布局", () => {
 			assert.ok(frame.includes(FOCUS));
 			assert.equal(frame.includes(BLUR), false);
 			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
+			assert.ok(cursorAt(output, 11, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -229,6 +231,7 @@ describe("全屏布局", () => {
 			let frame = rawFrame(output);
 			assert.ok(frame.includes(BLUR));
 			assert.equal(frame.includes(FOCUS), false);
+			assert.equal(frame.includes("\x1b[?25h"), false);
 			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
 
 			// 点输入行（第 11 行）重新获得焦点
@@ -237,6 +240,7 @@ describe("全屏布局", () => {
 			assert.ok(frame.includes(FOCUS));
 			assert.equal(frame.includes(BLUR), false);
 			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
+			assert.ok(cursorAt(output, 11, 4));
 		} finally {
 			exitTui(input);
 		}
