@@ -18,11 +18,12 @@ describe("主区装饰", () => {
 		assert.ok(boxed[1].includes("b"));
 	});
 
-	it("展开的块只画四角，竖线不切过详情", () => {
+	it("展开的选中块也画满两侧竖线，框不缺口", () => {
 		const lines = Array.from({ length: 6 }, (_, index) => plain(`row${index}`));
 		const boxed = drawSelectionBox(lines, { start: 1, height: 4 }, 0, 8).map(lineText);
 		for (const row of boxed.slice(1, 5)) {
-			assert.ok(!row.includes("│"), `块内不画竖线: ${row}`);
+			assert.equal(row[1], "│", `块内两侧竖线: ${row}`);
+			assert.equal(row[10], "│", `块内两侧竖线: ${row}`);
 		}
 		assert.equal(boxed[0][1], "┌");
 		assert.equal(boxed[0][10], "┐");

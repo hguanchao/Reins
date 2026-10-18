@@ -29,7 +29,7 @@ export interface BlockRange {
 	readonly height: number;
 }
 
-/** 选中块的边框：竖线只画在单行块上，上下角覆盖在相邻一行的格子上。 */
+/** 选中块的边框：左右竖线贴着块的可见行，上下角覆盖在相邻一行的格子上。 */
 export function drawSelectionBox(
 	lines: readonly Line[],
 	block: BlockRange,
@@ -41,14 +41,14 @@ export function drawSelectionBox(
 	if (last < 0 || first >= lines.length) return [...lines];
 
 	const top = Math.max(0, first);
+	const bottom = Math.min(lines.length - 1, last);
 	const left = OUTER_PAD - 1;
 	const right = OUTER_PAD + entryWidth;
 	const result = [...lines];
 
-	// 竖线只在单行块上围一圈；展开的块再拉两条会一路切过详情，只留四角标范围
-	if (block.height === 1) {
-		result[top] = overlayChar(result[top], left, "│", EDGE);
-		result[top] = overlayChar(result[top], right, "│", EDGE);
+	for (let row = top; row <= bottom; row += 1) {
+		result[row] = overlayChar(result[row], left, "│", EDGE);
+		result[row] = overlayChar(result[row], right, "│", EDGE);
 	}
 	// 角永远画出来：相邻一行不管有没有内容，覆盖一格就好——跳过它框就成了无头的竖线
 	if (first - 1 >= 0 && first - 1 < lines.length) {

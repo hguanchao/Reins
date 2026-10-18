@@ -701,13 +701,13 @@ export class Transcript {
 
 	#toolLines(block: ToolBlock, forceExpanded: boolean, now: number): readonly Line[] {
 		const collapsed = !forceExpanded && block.mode === "collapsed";
-		// 折叠行没有竖线，和参考实现的折叠态一致；展开后才画出块的范围
+		// 工具行不画竖线：展开后详情自己成一块面板，竖线只会把头与正文切开。
+		// 完成时闪的绿落在菱形上，收起、展开两种状态都有它，标记不随折叠态漂移。
 		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
-		const accent = collapsed ? undefined : flashing ? OK : block.isError ? BAD : FAINT;
-		const mark = block.isError ? BAD : FAINT;
+		const mark = flashing ? OK : block.isError ? BAD : FAINT;
 		const detail = block.isError ? styled(" (failed)", BAD) : (this.#listDetail(block) ?? plain(""));
 		const head = blockLine(
-			rail(accent),
+			rail(undefined),
 			concat(
 				styled(TOOL_MARK, mark),
 				styled(displayToolName(block.name), block.isError ? BAD : TEXT),

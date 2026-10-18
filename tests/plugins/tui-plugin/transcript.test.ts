@@ -278,7 +278,8 @@ describe("块折叠", () => {
 		const body = view.rows[block.start + 1];
 		assert.ok(body);
 		assert.ok(header.includes("Bash"), header);
-		assert.equal(header.indexOf("┃"), 0, "工具头保留竖线");
+		assert.ok(!header.includes("┃"), "工具行不画竖线");
+		assert.equal(header.indexOf("◆"), 3, "工具头仍在正文列");
 		assert.ok(lineText(body).includes("output line"), lineText(body));
 		assert.ok(!lineText(body).includes("┃"), "详情行不画竖线");
 		assert.equal(lineText(body).slice(0, 3), "   ", "详情缩到正文列");
@@ -355,12 +356,12 @@ describe("块折叠", () => {
 		transcript.toggleFold(member.id);
 
 		const flashing = transcript.view({ now: 500 }).rows;
-		const flashingHeader = flashing[group.start + 1];
-		assert.equal(flashingHeader?.[0]?.text, "┃");
-		assert.equal(flashingHeader?.[0]?.style?.color, THEME.ok);
+		const flashingMark = flashing[group.start + 1]?.find((span) => span.text.startsWith("◆"));
+		assert.equal(flashingMark?.style?.color, THEME.ok);
 
 		const settled = transcript.view({ now: 900 }).rows;
-		assert.equal(settled[group.start + 1]?.[0]?.style?.color, THEME.faint);
+		const settledMark = settled[group.start + 1]?.find((span) => span.text.startsWith("◆"));
+		assert.equal(settledMark?.style?.color, THEME.faint);
 	});
 
 	it("blockText 在折叠状态下仍返回完整正文", () => {
