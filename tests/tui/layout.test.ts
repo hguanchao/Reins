@@ -41,6 +41,8 @@ const ENTER = "\x1b[?1049h\x1b[?25l";
 const CLEAR = "\x1b[H\x1b[2J";
 const LEAVE = "\x1b[?25h\x1b[?1049l";
 const HINT = "Press Ctrl+C again to exit";
+const CURSOR = "\x1b[7m \x1b[0m";
+const BORDER = "─";
 
 function pressCtrlC(input: FakeInput): void {
 	input.emit("data", Buffer.from([3]));
@@ -50,6 +52,11 @@ function pressCtrlC(input: FakeInput): void {
 function exitTui(input: FakeInput): void {
 	pressCtrlC(input);
 	pressCtrlC(input);
+}
+
+function frameLines(output: FakeOutput): string[] {
+	const frame = output.chunks.at(-1) ?? "";
+	return frame.slice(CLEAR.length).split("\r\n");
 }
 
 describe("全屏布局", () => {
@@ -115,20 +122,19 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("主区域在页脚之上居中", () => {
+	it("主区域在输入框之上居中", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
 
 		try {
-			const frame = output.chunks[1] ?? "";
-			assert.ok(frame.startsWith(CLEAR));
-			const lines = frame.slice(CLEAR.length).split("\r\n");
-
+			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
-			assert.equal(lines[4], `${" ".repeat(17)}Reins`);
-			assert.equal(lines[5], `${" ".repeat(17)}v1.2.3`);
-			assert.equal(lines[11], "");
+			assert.equal(lines[3], `${" ".repeat(17)}Reins`);
+			assert.equal(lines[4], `${" ".repeat(17)}v1.2.3`);
+			assert.equal(lines[9], BORDER.repeat(40));
+			assert.equal(lines[10], CURSOR);
+			assert.equal(lines[11], BORDER.repeat(40));
 		} finally {
 			exitTui(input);
 		}
@@ -144,11 +150,68 @@ describe("全屏布局", () => {
 			output.rows = 6;
 			output.emit("resize");
 
-			const frame = output.chunks.at(-1) ?? "";
-			const lines = frame.slice(CLEAR.length).split("\r\n");
+			const lines = frameLines(output);
 			assert.equal(lines.length, 6);
-			assert.equal(lines[1], `${" ".repeat(7)}Reins`);
-			assert.equal(lines[2], `${" ".repeat(7)}v1.2.3`);
+			assert.equal(lines[0], `${" ".repeat(7)}Reins`);
+			assert.equal(lines[1], `${" ".repeat(7)}v1.2.3`);
+			assert.equal(lines[3], BORDER.repeat(20));
+			assert.equal(lines[4], CURSOR);
+			assert.equal(lines[5], BORDER.repeat(20));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("输入框一有内容，品牌名与版本号就隐藏", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("a"));
+
+			const typed = frameLines(output);
+			assert.equal(typed.join("\n").includes("Reins"), false);
+			assert.equal(typed.join("\n").includes("v1.2.3"), false);
+			assert.equal(typed[10], `a${CURSOR}`);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("退格清空输入后品牌名与版本号恢复", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from([0x7f]));
+
+			const lines = frameLines(output);
+			assert.equal(lines[10], `ab${CURSOR}`);
+			assert.equal(lines.join("\n").includes("Reins"), false);
+
+			input.emit("data", Buffer.from([0x7f]));
+			input.emit("data", Buffer.from([0x7f]));
+			const cleared = frameLines(output);
+			assert.ok(cleared.join("\n").includes("Reins"));
+			assert.ok(cleared.join("\n").includes("v1.2.3"));
+			assert.equal(cleared[10], CURSOR);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("方向键等转义序列不会进入输入框", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			const written = output.chunks.length;
+			input.emit("data", Buffer.from("\x1b[A"));
+			assert.equal(output.chunks.length, written);
 		} finally {
 			exitTui(input);
 		}
@@ -160,10 +223,12 @@ describe("全屏布局", () => {
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
 
 		try {
-			const written = output.chunks.length;
 			input.emit("data", Buffer.from("x"));
 
-			assert.equal(output.chunks.length, written);
+			assert.equal(
+				output.chunks.some((chunk) => chunk.includes(LEAVE)),
+				false,
+			);
 			assert.equal(input.rawMode, true);
 		} finally {
 			exitTui(input);
