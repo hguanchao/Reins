@@ -81,34 +81,42 @@ export function renderFooter(
 function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	if (status === undefined) return "";
 
-	const leftParts = [`${status.symbol} ${status.text}`];
-	if (status.phaseMs !== undefined) leftParts.push(formatDuration(status.phaseMs));
-	const left = ` ${leftParts.join("  ")}`;
+	// 状态行和对话流一样避开最右侧两列：一列间距加一列滚动条
+	const statusWidth = Math.max(0, width - 2);
+	const activity = ` ${status.symbol} ${status.text}`;
+	const phase = status.phaseMs === undefined ? "" : formatDuration(status.phaseMs);
+	const left = phase.length > 0 ? `${activity}  ${phase}` : activity;
 
 	const rightParts: string[] = [];
 	if (status.elapsedMs !== undefined) rightParts.push(formatDuration(status.elapsedMs));
 	if (status.tokens !== undefined) rightParts.push(`⇣${formatTokens(status.tokens)}`);
 	const right = rightParts.join("  ");
 
-	let line = left;
-	if (right.length > 0) {
-		line =
-			left.length + right.length + 2 <= width
-				? left + " ".repeat(width - left.length - right.length) + right
-				: `${left}  ${right}`;
+	let line: string;
+	if (right.length === 0) {
+		line = left.slice(0, statusWidth);
+	} else if (left.length + right.length + 2 <= statusWidth) {
+		line = left + " ".repeat(statusWidth - left.length - right.length) + right;
+	} else {
+		line = `${left}  ${right}`.slice(0, statusWidth);
 	}
-	line = line.slice(0, Math.max(0, width));
+
 	if (status.sweep === undefined || line.length === 0) return line;
 
-	const center = -SWEEP_RADIUS + status.sweep * (line.length + SWEEP_RADIUS * 2);
+	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态
+	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
+	return swept(visibleActivity, status.sweep) + line.slice(visibleActivity.length);
+}
+
+function swept(text: string, sweep: number): string {
+	const center = -SWEEP_RADIUS + sweep * (text.length + SWEEP_RADIUS * 2);
 	let output = "";
-	for (let index = 0; index < line.length; index += 1) {
+	for (let index = 0; index < text.length; index += 1) {
 		const distance = Math.abs(index - center);
 		const intensity = Math.max(0, 1 - distance / SWEEP_RADIUS);
 		const value = Math.round(SWEEP_BASE + (SWEEP_HIGHLIGHT - SWEEP_BASE) * intensity);
-		output += `\x1b[38;2;${value};${value};${value}m${line[index]}`;
+		output += `\x1b[38;2;${value};${value};${value}m${text[index]}`;
 	}
-
 	return output + RESET;
 }
 

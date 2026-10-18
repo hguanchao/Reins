@@ -72,7 +72,7 @@ describe("页脚输入框", () => {
 		const left = " ⠋ Thinking...";
 		const right = "1.2s  ⇣128";
 
-		assert.equal(lines[0], left + " ".repeat(60 - left.length - right.length) + right);
+		assert.equal(lines[0], left + " ".repeat(58 - left.length - right.length) + right);
 	});
 
 	it("阶段计时在左，总计时与 token 数在右", () => {
@@ -86,11 +86,29 @@ describe("页脚输入框", () => {
 		const left = " ⠧ Writing response...  2.5s";
 		const right = "5.3s  ⇣21.4K";
 
-		assert.equal(lines[0], left + " ".repeat(70 - left.length - right.length) + right);
+		assert.equal(lines[0], left + " ".repeat(68 - left.length - right.length) + right);
+	});
+
+	it("扫光只作用于活动描述，计时和 token 保持静态", () => {
+		const lines = renderFooter(70, "", true, {
+			symbol: "⠧",
+			text: "Writing response...",
+			phaseMs: 2500,
+			elapsedMs: 5300,
+			tokens: 21400,
+			sweep: 0.5,
+		});
+		const raw = lines[0] ?? "";
+		const tail = raw.slice(raw.lastIndexOf("\x1b[0m") + 4);
+
+		assert.ok(tail.includes("2.5s"));
+		assert.ok(tail.includes("5.3s  ⇣21.4K"));
+		assert.equal(tail.includes("\x1b["), false);
+		assert.equal(plain(raw).length, 68);
 	});
 
 	it("状态行超出宽度时截断", () => {
-		const lines = renderFooter(10, "", true, { symbol: "⠋", text: "Waiting for response..." });
+		const lines = renderFooter(12, "", true, { symbol: "⠋", text: "Waiting for response..." });
 		assert.equal(lines[0], " ⠋ Waiting");
 	});
 

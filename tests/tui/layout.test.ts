@@ -286,7 +286,7 @@ describe("全屏布局", () => {
 			const status = plain(lines[8] ?? "");
 			assert.ok(status.startsWith(" ⠋ Waiting for response...  0.0s"));
 			assert.ok(status.endsWith("0.0s  ⇣0"));
-			assert.equal(status.length, 60);
+			assert.equal(status.length, 58);
 			assert.ok((lines[8] ?? "").includes("\x1b[38;2;"));
 			assert.equal(plain(lines[10] ?? ""), " › ");
 			assert.ok(cursorAt(output, 11, 4));
