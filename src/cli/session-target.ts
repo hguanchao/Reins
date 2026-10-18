@@ -3,87 +3,20 @@ import { join } from "node:path";
 
 import { sessionsDir } from "../config/paths.ts";
 import { Session } from "../session/session.ts";
-import type { SessionListing, SessionStore } from "../session/store.ts";
-import type { CliOptions } from "./args.ts";
+import type { SessionStore } from "../session/store.ts";
 
 /**
- * 这次运行要用哪个会话。
+ * 新建一个会话。
  *
- * 三种来法：新建（默认）、接续（--continue 或 --resume）、分叉（在接续的基础上 --fork）。
- * 选择逻辑放在这里而不是装配处，是为了能单独验证：接续与分叉最容易做错的地方是「接错了
- * 会话」或「把原会话改了」，这两件事都只靠这几个函数决定。
+ * 会话文件要等到真正写入时才建立：启动后只问一句、或直接出错退出，不该在磁盘上留下空会话。
+ * 没有会话仓库时退回内存会话，这件事由调用方负责告诉使用者。
  */
-
-export interface SessionTarget {
-	readonly workRoot: string;
-	/** 会话仓库；没有它就只能新建内存会话 */
-	readonly store: SessionStore | undefined;
-}
-
-/**
- * 按命令行选项准备会话。
- *
- * 没有会话仓库时新建仍然可用（会话只留在内存里），但要接续或分叉就必须明确报错：读不到
- * 历史时悄无声息地开一个新会话，使用者会以为自己在接着原来的话题。
- */
-export function openSession(options: CliOptions, target: SessionTarget): Session {
-	const { workRoot, store } = target;
-	const wantsExisting = options.continueSession || options.resume !== undefined;
-
-	if (!wantsExisting) {
-		return createSession(workRoot, store);
-	}
-	if (store === undefined) {
-		throw new Error("No session store (session-plugin is disabled or failed to load), cannot resume or fork a session");
-	}
-
-	const listings = store.list(sessionsDir(workRoot));
-	// 清单按更新时间从新到旧：最近更新过的那个就是 --continue 要找的
-	const listing =
-		options.resume === undefined ? listings[0] : resolveListing(listings, options.resume);
-	if (listing === undefined) {
-		throw new Error(
-			options.resume === undefined
-				? `No session to continue under ${workRoot}`
-				: `Session ${options.resume} not found; run reins sessions list to see what is available`,
-		);
-	}
-
-	const source = Session.open(listing.file, store);
-	if (!options.fork) return source;
-
-	return Session.fork(source, {
-		id: randomBytes(8).toString("hex"),
-		cwd: workRoot,
-		file: sessionFilePath(workRoot),
-		store,
-		...(options.forkAt === undefined ? {} : { at: options.forkAt }),
-	});
-}
-
-/** 新建一个会话。没有仓库时退回内存会话，这件事由调用方负责告诉使用者。 */
 export function createSession(workRoot: string, store: SessionStore | undefined): Session {
 	const id = randomBytes(8).toString("hex");
 	if (store === undefined) return new Session({ id, cwd: workRoot, file: null });
 
 	const file = sessionFilePath(workRoot);
 	return new Session({ id, cwd: workRoot, file, writer: store.create({ id, cwd: workRoot, file }) });
-}
-
-/** 按标识找一个会话：先按完整标识，再按唯一前缀。找不到或有歧义都如实报错。 */
-export function resolveListing(
-	listings: readonly SessionListing[],
-	ref: string,
-): SessionListing | undefined {
-	const exact = listings.find((listing) => listing.id === ref);
-	if (exact !== undefined) return exact;
-
-	const matches = listings.filter((listing) => listing.id.startsWith(ref));
-	if (matches.length === 1) return matches[0];
-	if (matches.length > 1) {
-		throw new Error(`Id ${ref} is ambiguous, matches: ${matches.map((item) => item.id).join(", ")}`);
-	}
-	return undefined;
 }
 
 /**
