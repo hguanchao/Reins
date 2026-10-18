@@ -284,11 +284,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const message = input.trim();
 		input = "";
 		if (message.length > 0) {
-			// 上一条还没有任何回复就被新提示打断：直接移除，避免留下空提示
-			while (turns.length > 0 && turns[turns.length - 1].response.length === 0) {
-				turns.pop();
-			}
-
 			const turn: MockTurn = { prompt: message, response: [] };
 			turns.push(turn);
 			mock = { turn, tick: 0, phase: "waiting", phaseStartTick: 0, doneTick: undefined };
