@@ -4,8 +4,7 @@ import { describe, it } from "node:test";
 import { renderTranscript, transcriptMetrics } from "../../src/tui/transcript.ts";
 
 const PROMPT_BG = "\x1b[48;2;36;36;36m";
-const PROMPT_PREFIX = "\x1b[38;2;200;200;200m";
-const PROMPT_TEXT = "\x1b[38;2;225;225;225m";
+const MESSAGE_TEXT = "\x1b[38;2;225;225;225m";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");
@@ -21,8 +20,7 @@ describe("对话流", () => {
 		assert.ok((lines[0] ?? "").includes(PROMPT_BG));
 		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
 		assert.ok((lines[2] ?? "").includes(PROMPT_BG));
-		assert.ok((lines[1] ?? "").includes(PROMPT_PREFIX));
-		assert.ok((lines[1] ?? "").includes(PROMPT_TEXT));
+		assert.ok((lines[1] ?? "").includes(MESSAGE_TEXT));
 		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
 	});
 
@@ -48,6 +46,7 @@ describe("对话流", () => {
 		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
 		assert.ok(plain(lines[4] ?? "").startsWith("  g"));
 		assert.ok(plain(lines[5] ?? "").startsWith("  h"));
+		assert.ok((lines[4] ?? "").includes(MESSAGE_TEXT));
 		assert.ok(plain(lines[0] ?? "").endsWith("│"));
 		assert.ok(plain(lines[3] ?? "").endsWith("█"));
 	});

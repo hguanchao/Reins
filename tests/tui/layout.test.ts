@@ -281,7 +281,6 @@ describe("全屏布局", () => {
 			assert.ok((lines[0] ?? "").includes("\x1b[48;2;36;36;36m"));
 			assert.ok((lines[1] ?? "").includes("\x1b[48;2;36;36;36m"));
 			assert.ok((lines[2] ?? "").includes("\x1b[48;2;36;36;36m"));
-			assert.ok((lines[1] ?? "").includes("\x1b[38;2;200;200;200m"));
 			assert.ok((lines[1] ?? "").includes("\x1b[38;2;225;225;225m"));
 			assert.equal((lines[3] ?? "").includes("\x1b[48;2;36;36;36m"), false);
 			assert.equal(plain(lines[8] ?? ""), " ⠋ Waiting for response...  0.0s  0 tokens");

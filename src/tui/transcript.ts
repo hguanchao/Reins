@@ -15,10 +15,8 @@ export interface TranscriptTurn {
 
 /** 用户提示背景 #242424。 */
 const PROMPT_BG = "\x1b[48;2;36;36;36m";
-/** 提示前缀 #c8c8c8。 */
-const PROMPT_PREFIX_COLOR = "\x1b[38;2;200;200;200m";
-/** 提示正文 #e1e1e1。 */
-const PROMPT_TEXT_COLOR = "\x1b[38;2;225;225;225m";
+/** 用户提示与回复正文统一 #e1e1e1。 */
+const MESSAGE_TEXT_COLOR = "\x1b[38;2;225;225;225m";
 /** 滚动条 #242424。 */
 const SCROLLBAR_COLOR = "\x1b[38;2;36;36;36m";
 const SCROLLBAR_TRACK = "│";
@@ -155,7 +153,7 @@ function promptBlock(prompt: string, width: number): readonly string[] {
 		const usedPrefixWidth = displayWidth(prefix);
 		const text = truncateToWidth(line, Math.max(0, width - usedPrefixWidth));
 		const padding = " ".repeat(Math.max(0, width - usedPrefixWidth - displayWidth(text)));
-		return `${PROMPT_BG}${PROMPT_PREFIX_COLOR}${prefix}${PROMPT_TEXT_COLOR}${text}${padding}${RESET}`;
+		return `${PROMPT_BG}${MESSAGE_TEXT_COLOR}${prefix}${text}${padding}${RESET}`;
 	});
 	const empty = `${PROMPT_BG}${" ".repeat(width)}${RESET}`;
 	return [empty, ...content, empty];
@@ -168,7 +166,7 @@ function responseLines(text: string, width: number): readonly string[] {
 	return lines.map((line) => {
 		const content = truncateToWidth(RESPONSE_INDENT + line, width);
 		const padding = " ".repeat(Math.max(0, width - displayWidth(content)));
-		return content + padding;
+		return `${MESSAGE_TEXT_COLOR}${content}${padding}${RESET}`;
 	});
 }
 
