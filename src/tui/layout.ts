@@ -1,14 +1,15 @@
 import { StringDecoder } from "node:string_decoder";
 
 import { inputView, renderFooter } from "./footer.ts";
-import { renderMain } from "./main.ts";
+import { renderMain, renderMessages } from "./main.ts";
 
 /**
  * 全屏启动。
  *
  * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是一个带上下边框的输入框，
- * 输入框一旦有过输入，主区域的品牌名与版本号就永久让位，即使随后清空也不再回来。输入光标
- * 用终端自己的光标：画成闪烁竖线，并在每次重画后停到输入末尾。Ctrl+C 要连按两次才退出。
+ * 输入框一旦有过输入，主区域的品牌名与版本号就永久让位，即使随后清空也不再回来。回车把输入
+ * 作为用户消息发到主区域，消息以三行灰色背景块展示。输入光标用终端自己的光标：画成闪烁
+ * 竖线，并在每次重画后停到输入末尾。Ctrl+C 要连按两次才退出。
  */
 
 const ENTER_ALTERNATE_SCREEN = "\x1b[?1049h";
@@ -63,6 +64,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const stdout: TuiOutput = options.stdout ?? process.stdout;
 
 	let input = "";
+	/** 已经发送的用户消息，按发送顺序排列。 */
+	const messages: string[] = [];
 	/** 只要输入过内容就置位，之后清空输入也不再显示品牌名与版本号。 */
 	let hasInput = false;
 	let exitArmed = false;
@@ -78,7 +81,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const mainHeight = Math.max(0, height - footer.length);
 		const main =
 			hasInput
-				? Array.from({ length: mainHeight }, () => "")
+				? renderMessages(width, mainHeight, messages)
 				: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...footer].slice(0, height);
@@ -122,6 +125,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
+	/** 回车发送：把当前输入交给主区域，输入框清空。 */
+	const submit = (): void => {
+		if (input.length === 0) return;
+
+		const message = input.trim();
+		input = "";
+		if (message.length > 0) messages.push(message);
+		render();
+	};
+
 	const onData = (chunk: Buffer): void => {
 		const text = decoder.write(chunk);
 		if (text.includes(CTRL_C)) {
@@ -129,11 +142,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
-		const next = appendInput(input, text);
-		if (next === input) return;
-		input = next;
-		if (next.length > 0) hasInput = true;
-		render();
+		const previous = input;
+		const result = appendInput(input, text);
+		input = result.text;
+		if (input.length > 0) hasInput = true;
+
+		if (result.submit) {
+			submit();
+			return;
+		}
+		if (input !== previous) render();
 	};
 
 	const onInterrupt = (): void => {
@@ -167,11 +185,12 @@ function moveCursor(row: number, column: number): string {
 /**
  * 把终端读到的字符并进输入框。
  *
- * 光标固定在最末，因此退格就是删掉最后一个字符；方向键等转义序列整段丢弃，不能当成文字
- * 填进去。转义序列通常在一次读取里完整到达，所以状态只需在这次调用内保持。
+ * 光标固定在最末，因此退格就是删掉最后一个字符；回车表示发送；方向键等转义序列整段丢弃，
+ * 不能当成文字填进去。转义序列通常在一次读取里完整到达，所以状态只需在这次调用内保持。
  */
-function appendInput(current: string, chunk: string): string {
+function appendInput(current: string, chunk: string): { text: string; submit: boolean } {
 	let next = current;
+	let submit = false;
 	let escape: "none" | "escape" | "csi" | "ss3" = "none";
 
 	for (const char of chunk) {
@@ -193,6 +212,10 @@ function appendInput(current: string, chunk: string): string {
 			escape = "escape";
 			continue;
 		}
+		if (char === "\r" || char === "\n") {
+			submit = true;
+			break;
+		}
 		if (char === "\x7f" || char === "\b") {
 			next = next.replace(/.$/u, "");
 			continue;
@@ -200,5 +223,5 @@ function appendInput(current: string, chunk: string): string {
 		if (char >= " ") next += char;
 	}
 
-	return next;
+	return { text: next, submit };
 }

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderMain } from "../../src/tui/main.ts";
+import { renderMain, renderMessages } from "../../src/tui/main.ts";
+
+function plain(line: string): string {
+	return line.replace(/\x1b\[[0-9;]*m/g, "");
+}
 
 describe("主区域", () => {
 	it("品牌名在上、版本号在下，整体居中", () => {
@@ -17,5 +21,48 @@ describe("主区域", () => {
 
 	it("宽度不足时不产生负缩进", () => {
 		assert.deepEqual(renderMain(2, 2, "1.0.0"), ["Reins", "v1.0.0"]);
+	});
+});
+
+describe("用户消息块", () => {
+	it("每条消息固定三行，三行都铺灰色背景", () => {
+		const lines = renderMessages(20, 9, ["hello"]);
+
+		assert.equal(lines.length, 9);
+		assert.deepEqual(lines.slice(0, 6), ["", "", "", "", "", ""]);
+
+		const block = lines.slice(6);
+		assert.equal(block.length, 3);
+		assert.ok(block.every((line) => line.startsWith("\x1b[100m") && line.endsWith("\x1b[0m")));
+		assert.equal(plain(block[0]), `› hello${" ".repeat(13)}`);
+		assert.equal(plain(block[1]), " ".repeat(20));
+		assert.equal(plain(block[2]), " ".repeat(20));
+	});
+
+	it("正文在三行内换行，超出时末行用省略号收尾", () => {
+		const lines = renderMessages(10, 9, ["abcdefghijklmnopqrstuvwxyz"]);
+
+		assert.deepEqual(lines.slice(6).map(plain), ["› abcdefgh", "  ijklmnop", "  qrstuvw…"]);
+	});
+
+	it("消息从底部往上排列，超出时保留最新的", () => {
+		const lines = renderMessages(20, 9, ["one", "two", "three", "four"]);
+		const text = lines.map(plain).join("\n");
+
+		assert.equal(lines.length, 9);
+		assert.equal(text.includes("› one"), false);
+		assert.ok(text.includes("› two"));
+		assert.ok(text.includes("› three"));
+		assert.ok(text.includes("› four"));
+	});
+
+	it("没有消息时只返回空白行", () => {
+		assert.deepEqual(renderMessages(10, 6, []), ["", "", "", "", "", ""]);
+	});
+
+	it("宽字符按显示宽度换行，不留下半个字", () => {
+		const lines = renderMessages(8, 3, ["你好世界"]);
+
+		assert.deepEqual(lines.map(plain), ["› 你好世", "  界    ", "        "]);
 	});
 });

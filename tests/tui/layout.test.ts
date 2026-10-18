@@ -204,6 +204,61 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("回车发送后主区域显示三行用户消息块", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello"));
+			input.emit("data", Buffer.from("\r"));
+
+			const lines = frameLines(output);
+			assert.equal(lines.length, 12);
+			assert.equal(lines[10], " › ");
+
+			const main = lines.slice(0, 9);
+			assert.equal(main.filter((line) => line.includes("\x1b[100m")).length, 3);
+			assert.ok(main.join("\n").includes("› hello"));
+			assert.equal(lines.join("\n").includes("Reins"), false);
+			assert.ok(cursorAt(output, 11, 4));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("连续发送的消息依次堆叠", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			input.emit("data", Buffer.from("two\r"));
+
+			const main = frameLines(output).slice(0, 9);
+			assert.equal(main.filter((line) => line.includes("\x1b[100m")).length, 6);
+			assert.ok(main.join("\n").includes("› one"));
+			assert.ok(main.join("\n").includes("› two"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("空输入回车不发送", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			const written = output.chunks.length;
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(output.chunks.length, written);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("还没输入就按退格，品牌名与版本号仍然显示", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
