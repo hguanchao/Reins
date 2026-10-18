@@ -260,6 +260,31 @@ describe("块折叠", () => {
 		assert.equal(second.at(-1)?.style?.background, THEME.codeBg);
 	});
 
+	it("非读取工具的展开详情：同一层面板，不画竖线", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "bash", args: { command: "ls -a" } }, 0);
+		transcript.handle({ type: "tool_update", callId: "1", text: "output line" }, 1);
+		transcript.handle(
+			{ type: "tool_end", callId: "1", name: "bash", isError: false, durationMs: 3, summary: "ok" },
+			2,
+		);
+
+		const block = transcript.view().blocks[0];
+		assert.ok(block);
+		transcript.toggleFold(block.id);
+
+		const view = transcript.view();
+		const header = lineText(view.rows[block.start]);
+		const body = view.rows[block.start + 1];
+		assert.ok(body);
+		assert.ok(header.includes("Bash"), header);
+		assert.equal(header.indexOf("┃"), 0, "工具头保留竖线");
+		assert.ok(lineText(body).includes("output line"), lineText(body));
+		assert.ok(!lineText(body).includes("┃"), "详情行不画竖线");
+		assert.equal(lineText(body).slice(0, 3), "   ", "详情缩到正文列");
+		assert.equal(body.at(-1)?.style?.background, THEME.codeBg, "详情铺面板底色");
+	});
+
 	it("思考块默认收起，展开后显示完整草稿", () => {
 		const transcript = new Transcript(60);
 		transcript.handle({ type: "reasoning_delta", text: "first thought\nsecond thought" }, 0);

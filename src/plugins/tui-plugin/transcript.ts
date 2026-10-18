@@ -717,7 +717,7 @@ export class Transcript {
 		);
 		const header = truncateLine(head, HEADER_WIDTH(this.#width));
 		if (collapsed || block.output.length === 0) return [header];
-		return [header, ...this.#toolBody(block, accent)];
+		return [header, ...this.#toolBody(block)];
 	}
 
 	/** 收起行的括号详情：列表工具给出条目数，其余工具不啰嗦。 */
@@ -728,18 +728,23 @@ export class Transcript {
 		return styled(` (${count} entries)`, FAINT);
 	}
 
-	/** 展开的工具正文：读取类给行号预览，其余只留最后一段输出。 */
-	#toolBody(block: ToolBlock, accent: Style | undefined): readonly Line[] {
+	/**
+	 * 展开的工具正文。
+	 *
+	 * 读取类给行号预览，其余只留最后一段输出；两者都缩到正文列、铺同一层面板底色、不画竖线——
+	 * 详情是挂在工具头下面的正文，再拉一条竖线会把它和头割成两块。
+	 */
+	#toolBody(block: ToolBlock): readonly Line[] {
 		const lines = block.output.split("\n");
 		if (block.name.toLowerCase() === "read") return this.#numberedBody(lines, block.path);
 
 		const shown = lines.length > TOOL_TAIL_LINES ? [undefined, ...lines.slice(-TOOL_TAIL_LINES)] : lines;
 		const rows: Line[] = [];
-		if (shown[0] === undefined) rows.push(plain(" ⋮"));
+		if (shown[0] === undefined) rows.push(this.#detailLine(styled("⋮", DIM)));
 		for (const text of shown) {
 			if (text === undefined) continue;
-			for (const wrapped of wrapLine(styled(text, block.isError ? BAD : DIM), { width: this.#contentWidth() })) {
-				rows.push(blockLine(rail(accent), wrapped));
+			for (const wrapped of wrapLine(styled(text, block.isError ? BAD : TEXT), { width: this.#contentWidth() })) {
+				rows.push(this.#detailLine(wrapped));
 			}
 		}
 		return rows;
@@ -763,21 +768,21 @@ export class Transcript {
 		const colored = highlightSourceLines(lines.join("\n"), path, TEXT);
 		const rows: Line[] = [];
 		for (const segment of segments) {
-			if (segment.from > 0 && rows.length > 0) rows.push(this.#codeLine(styled("⋮", DIM)));
+			if (segment.from > 0 && rows.length > 0) rows.push(this.#detailLine(styled("⋮", DIM)));
 			for (let index = segment.from; index < segment.to; index += 1) {
 				const number = String(index + 1).padStart(gutterWidth);
 				const width = Math.max(1, this.#contentWidth() - gutterWidth - 2);
 				const source = colored[index] ?? styled(lines[index] ?? "", TEXT);
 				for (const wrapped of wrapLine(source, { width })) {
-					rows.push(this.#codeLine(concat(styled(`${number}  `, DIM), wrapped)));
+					rows.push(this.#detailLine(concat(styled(`${number}  `, DIM), wrapped)));
 				}
 			}
 		}
 		return rows;
 	}
 
-	/** 代码行：缩到正文列（与工具头同列），整行铺代码底色，续行与行号共用同一层。 */
-	#codeLine(line: Line): Line {
+	/** 详情行：缩到正文列（与工具头同列），整行铺面板底色，续行与行号共用同一层。 */
+	#detailLine(line: Line): Line {
 		return concat(
 			plain(" ".repeat(BLOCK_CONTENT_OFFSET)),
 			padLine(mapLine(line, (style) => mergeStyles(style, CODE_BG) ?? CODE_BG), this.#contentWidth(), CODE_BG),
