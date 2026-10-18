@@ -25,7 +25,7 @@ describe("主区域", () => {
 });
 
 describe("用户消息块", () => {
-	it("每条消息固定三行，正文在第二行居中", () => {
+	it("每条消息固定三行，正文在第二行左对齐", () => {
 		const lines = renderMessages(20, 9, ["hello"]);
 
 		assert.equal(lines.length, 9);
@@ -35,7 +35,7 @@ describe("用户消息块", () => {
 		assert.equal(block.length, 3);
 		assert.ok(block.every((line) => line.startsWith("\x1b[100m") && line.endsWith("\x1b[0m")));
 		assert.equal(plain(block[0]), " ".repeat(20));
-		assert.equal(plain(block[1]), `${" ".repeat(6)}› hello${" ".repeat(7)}`);
+		assert.equal(plain(block[1]), `› hello${" ".repeat(13)}`);
 		assert.equal(plain(block[2]), " ".repeat(20));
 	});
 

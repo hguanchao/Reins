@@ -34,7 +34,7 @@ export function renderMain(width: number, height: number, version: string): read
 /**
  * 用户消息块。
  *
- * 每条消息固定三行：正文只占中间一行并水平居中，上下两行留空，三行都铺满终端宽度并加灰色
+ * 每条消息固定三行：正文只占中间一行并左对齐，上下两行留空，三行都铺满终端宽度并加灰色
  * 背景。正文超出宽度时用 … 收尾；消息从底部往上排列，超出可视区域时保留最新的那几条。
  */
 export function renderMessages(width: number, height: number, messages: readonly string[]): readonly string[] {
@@ -47,7 +47,7 @@ export function renderMessages(width: number, height: number, messages: readonly
 }
 
 function messageBlock(message: string, width: number): readonly string[] {
-	const content = centerWithin(`${USER_PREFIX}${message}`, width);
+	const content = truncateWithEllipsis(`${USER_PREFIX}${message}`, width);
 	const blank = grayLine("", width);
 	return [blank, grayLine(content, width), blank];
 }
@@ -78,13 +78,6 @@ function truncateWithEllipsis(text: string, width: number): string {
 	return chars.slice(0, end).join("") + ellipsis;
 }
 
-function centerWithin(text: string, width: number): string {
-	const truncated = truncateWithEllipsis(text, width);
-	const used = displayWidth(truncated);
-	const leading = Math.max(0, Math.floor((width - used) / 2));
-	return " ".repeat(leading) + truncated;
-}
-
 function grayLine(text: string, width: number): string {
 	return `${GRAY_BACKGROUND}${fitLine(text, width)}${RESET}`;
 }
@@ -103,12 +96,6 @@ function fitLine(text: string, width: number): string {
 	}
 
 	return chars.slice(0, end).join("") + " ".repeat(Math.max(0, width - used));
-}
-
-function displayWidth(text: string): number {
-	let width = 0;
-	for (const char of text) width += characterWidth(char);
-	return width;
 }
 
 function characterWidth(char: string): number {
