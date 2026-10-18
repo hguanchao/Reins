@@ -52,6 +52,23 @@ describe("对话流", () => {
 		assert.ok(plain(lines[3] ?? "").endsWith("█"));
 	});
 
+	it("吸顶时不会把下一条提示切掉顶部留白", () => {
+		const lines = renderTranscript(
+			40,
+			8,
+			[
+				{ prompt: "one", response: ["x"] },
+				{ prompt: "two", response: ["a", "b", "c"] },
+			],
+			4,
+		).map(plain);
+
+		assert.ok(lines[1]?.startsWith("› one"));
+		assert.equal(lines[4]?.includes("›"), false);
+		assert.ok(lines[5]?.startsWith("› two"));
+		assert.equal(lines[6]?.includes("›"), false);
+	});
+
 	it("给出最后一条提示的起始行，供发送后翻页", () => {
 		const metrics = transcriptMetrics(40, 6, [
 			{ prompt: "a", response: ["x"] },

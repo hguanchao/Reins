@@ -103,8 +103,14 @@ export function renderTranscript(
 			.slice(prompt.start, prompt.start + prompt.height + HEADER_GAP_LINES)
 			.slice(0, rows);
 		// header 盖住视口顶部；正文从被盖住的那几行之后继续，保证底部仍是最新内容
-		const contentTop =
+		let contentTop =
 			top >= prompt.responseStart ? top + header.length : prompt.responseStart;
+		// 不要把下一条提示块切在中间：从它的顶部留白开始，避免提示块少一行
+		const nextPrompt = built.prompts.find(
+			(item) => item.start > prompt.start && item.start < contentTop && contentTop < item.responseStart,
+		);
+		if (nextPrompt !== undefined) contentTop = nextPrompt.start;
+
 		const contentHeight = Math.max(0, rows - header.length);
 		const content = Array.from({ length: contentHeight }, (_, index) => lineAt(contentTop + index));
 		visible = [...header, ...content];
