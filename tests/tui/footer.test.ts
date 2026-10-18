@@ -62,15 +62,31 @@ describe("页脚输入框", () => {
 		assert.equal(plain(lines[2]), " › ");
 	});
 
-	it("状态行显示计时与 token 数", () => {
+	it("状态行显示计时与 token 数，右侧对齐", () => {
 		const lines = renderFooter(60, "", true, {
 			symbol: "⠋",
 			text: "Thinking...",
 			elapsedMs: 1200,
 			tokens: 128,
 		});
+		const left = " ⠋ Thinking...";
+		const right = "1.2s  ⇣128";
 
-		assert.equal(lines[0], " ⠋ Thinking...  1.2s  128 tokens");
+		assert.equal(lines[0], left + " ".repeat(60 - left.length - right.length) + right);
+	});
+
+	it("阶段计时在左，总计时与 token 数在右", () => {
+		const lines = renderFooter(70, "", true, {
+			symbol: "⠧",
+			text: "Writing response...",
+			phaseMs: 2500,
+			elapsedMs: 5300,
+			tokens: 21400,
+		});
+		const left = " ⠧ Writing response...  2.5s";
+		const right = "5.3s  ⇣21.4K";
+
+		assert.equal(lines[0], left + " ".repeat(70 - left.length - right.length) + right);
 	});
 
 	it("状态行超出宽度时截断", () => {

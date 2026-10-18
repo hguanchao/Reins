@@ -17,10 +17,11 @@ export interface InputView {
 	readonly column: number;
 }
 
-/** 运行时状态：加载符号、状态文字、计时与 token 数。 */
+/** 运行时状态：加载符号、状态文字、阶段计时、总计时与 token 数。 */
 export interface RuntimeStatus {
 	readonly symbol: string;
 	readonly text: string;
+	readonly phaseMs?: number;
 	readonly elapsedMs?: number;
 	readonly tokens?: number;
 	/** 扫光位置，0 到 1；省略时静态显示。 */
@@ -80,10 +81,23 @@ export function renderFooter(
 function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	if (status === undefined) return "";
 
-	const parts = [`${status.symbol} ${status.text}`];
-	if (status.elapsedMs !== undefined) parts.push(`${(status.elapsedMs / 1000).toFixed(1)}s`);
-	if (status.tokens !== undefined) parts.push(`${status.tokens} tokens`);
-	const line = ` ${parts.join("  ")}`.slice(0, Math.max(0, width));
+	const leftParts = [`${status.symbol} ${status.text}`];
+	if (status.phaseMs !== undefined) leftParts.push(formatDuration(status.phaseMs));
+	const left = ` ${leftParts.join("  ")}`;
+
+	const rightParts: string[] = [];
+	if (status.elapsedMs !== undefined) rightParts.push(formatDuration(status.elapsedMs));
+	if (status.tokens !== undefined) rightParts.push(`⇣${formatTokens(status.tokens)}`);
+	const right = rightParts.join("  ");
+
+	let line = left;
+	if (right.length > 0) {
+		line =
+			left.length + right.length + 2 <= width
+				? left + " ".repeat(width - left.length - right.length) + right
+				: `${left}  ${right}`;
+	}
+	line = line.slice(0, Math.max(0, width));
 	if (status.sweep === undefined || line.length === 0) return line;
 
 	const center = -SWEEP_RADIUS + status.sweep * (line.length + SWEEP_RADIUS * 2);
@@ -96,6 +110,14 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	}
 
 	return output + RESET;
+}
+
+function formatDuration(ms: number): string {
+	return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function formatTokens(tokens: number): string {
+	return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K` : `${tokens}`;
 }
 
 function colored(text: string, focused: boolean): string {

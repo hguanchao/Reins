@@ -283,7 +283,10 @@ describe("全屏布局", () => {
 			assert.ok((lines[2] ?? "").includes("\x1b[48;2;36;36;36m"));
 			assert.ok((lines[1] ?? "").includes("\x1b[38;2;225;225;225m"));
 			assert.equal((lines[3] ?? "").includes("\x1b[48;2;36;36;36m"), false);
-			assert.equal(plain(lines[8] ?? ""), " ⠋ Waiting for response...  0.0s  0 tokens");
+			const status = plain(lines[8] ?? "");
+			assert.ok(status.startsWith(" ⠋ Waiting for response...  0.0s"));
+			assert.ok(status.endsWith("0.0s  ⇣0"));
+			assert.equal(status.length, 60);
 			assert.ok((lines[8] ?? "").includes("\x1b[38;2;"));
 			assert.equal(plain(lines[10] ?? ""), " › ");
 			assert.ok(cursorAt(output, 11, 4));
@@ -297,6 +300,7 @@ describe("全屏布局", () => {
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		output.columns = 60;
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
 
 		try {
@@ -304,22 +308,18 @@ describe("全屏布局", () => {
 
 			t.mock.timers.tick(300);
 			let status = plain(frameLines(output)[8] ?? "");
-			assert.ok(status.includes("⠸"));
-			assert.ok(status.includes("Waiting for response..."));
-			assert.ok(status.includes("0.3s"));
+			assert.ok(status.startsWith(" ⠸ Waiting for response...  0.3s"));
+			assert.ok(status.endsWith("0.3s  ⇣0"));
 
 			t.mock.timers.tick(400);
 			status = plain(frameLines(output)[8] ?? "");
-			assert.ok(status.includes("⠧"));
-			assert.ok(status.includes("Thinking..."));
-			assert.ok(status.includes("0.7s"));
+			assert.ok(status.startsWith(" ⠧ Thinking...  0.2s"));
+			assert.ok(status.endsWith("0.7s  ⇣0"));
 
 			t.mock.timers.tick(500);
 			status = plain(frameLines(output)[8] ?? "");
-			assert.ok(status.includes("⠹"));
-			assert.ok(status.includes("Writing response..."));
-			assert.ok(status.includes("1.2s"));
-			assert.match(status, /[1-9][0-9]* tokens/);
+			assert.ok(status.startsWith(" ⠹ Writing response...  0.2s"));
+			assert.ok(status.includes("1.2s  ⇣"));
 		} finally {
 			exitTui(input);
 		}
@@ -347,7 +347,7 @@ describe("全屏布局", () => {
 			const status = plain(lines[8] ?? "");
 			assert.ok(status.includes("Writing response..."));
 			assert.ok(status.includes("2.5s"));
-			assert.ok(status.includes(" tokens"));
+			assert.ok(status.includes("⇣"));
 			assert.equal(plain(lines[10] ?? ""), " › ");
 		} finally {
 			exitTui(input);

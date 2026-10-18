@@ -68,6 +68,8 @@ interface MockState {
 	readonly turn: MockTurn;
 	tick: number;
 	phase: "waiting" | "thinking" | "writing" | "done";
+	/** 当前阶段从哪一帧开始，用来显示阶段计时。 */
+	phaseStartTick: number;
 	doneTick: number | undefined;
 }
 
@@ -122,6 +124,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let draggingScrollbar = false;
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
+	let statusPhaseMs = 0;
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
 	let spinnerFrame = 0;
@@ -149,6 +152,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						symbol: SPINNER_FRAMES[spinnerFrame] ?? "",
 						text: statusText,
 						sweep: sweepPhase,
+						phaseMs: statusPhaseMs,
 						elapsedMs: statusElapsedMs,
 						tokens: statusTokens,
 					};
@@ -218,9 +222,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		if (mock.phase === "waiting" && mock.tick >= MOCK_WAITING_TICKS) {
 			mock.phase = "thinking";
+			mock.phaseStartTick = mock.tick;
 		}
 		if (mock.phase === "thinking" && mock.tick >= MOCK_WAITING_TICKS + MOCK_THINKING_TICKS) {
 			mock.phase = "writing";
+			mock.phaseStartTick = mock.tick;
 		}
 
 		if (mock.phase === "writing") {
@@ -231,6 +237,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			}
 			if (mock.turn.response.length >= MOCK_REPLY_LINES.length) {
 				mock.phase = "done";
+				mock.phaseStartTick = mock.tick;
 				mock.doneTick = mock.tick;
 				statusText = DONE;
 			} else {
@@ -243,9 +250,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			statusText = WAITING_FOR_RESPONSE;
 		}
 
+		statusPhaseMs = (mock.tick - mock.phaseStartTick) * SPINNER_INTERVAL_MS;
+
 		if (mock.phase === "done" && mock.doneTick !== undefined && mock.tick - mock.doneTick >= MOCK_DONE_TICKS) {
 			mock = undefined;
 			statusText = undefined;
+			statusPhaseMs = 0;
 			statusElapsedMs = 0;
 			statusTokens = 0;
 			return false;
@@ -280,8 +290,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (message.length > 0) {
 			const turn: MockTurn = { prompt: message, response: [] };
 			turns.push(turn);
-			mock = { turn, tick: 0, phase: "waiting", doneTick: undefined };
+			mock = { turn, tick: 0, phase: "waiting", phaseStartTick: 0, doneTick: undefined };
 			statusText = WAITING_FOR_RESPONSE;
+			statusPhaseMs = 0;
 			statusElapsedMs = 0;
 			statusTokens = 0;
 			follow = true;
