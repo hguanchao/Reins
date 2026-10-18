@@ -40,9 +40,20 @@ class FakeOutput extends EventEmitter {
 const ENTER = "\x1b[?1049h\x1b[?25l";
 const CLEAR = "\x1b[H\x1b[2J";
 const LEAVE = "\x1b[?25h\x1b[?1049l";
+const HINT = "Press Ctrl+C again to exit";
+
+function pressCtrlC(input: FakeInput): void {
+	input.emit("data", Buffer.from([3]));
+}
+
+/** 第一次按键提示，第二次才退出；测试失败时也要保证界面收尾。 */
+function exitTui(input: FakeInput): void {
+	pressCtrlC(input);
+	pressCtrlC(input);
+}
 
 describe("全屏布局", () => {
-	it("进入备用屏，按当前尺寸绘制，Ctrl+C 后恢复", async () => {
+	it("进入备用屏，按当前尺寸绘制，连按两次 Ctrl+C 后恢复", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		const running = runTui({ version: "1.2.3", stdin: input, stdout: output });
@@ -51,14 +62,57 @@ describe("全屏布局", () => {
 			assert.equal(output.chunks[0], ENTER);
 			assert.equal(input.rawMode, true);
 			assert.equal(input.resumed, true);
+
+			pressCtrlC(input);
+			assert.equal(input.rawMode, true);
+			assert.ok((output.chunks.at(-1) ?? "").includes(HINT));
 		} finally {
-			input.emit("data", Buffer.from([3]));
+			exitTui(input);
 		}
 
 		assert.equal(await running, 0);
 		assert.equal(input.rawMode, false);
 		assert.equal(input.resumed, false);
 		assert.equal(output.chunks.at(-1), LEAVE);
+	});
+
+	it("第一次 Ctrl+C 只提示，不离开备用屏", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			pressCtrlC(input);
+
+			assert.ok((output.chunks.at(-1) ?? "").includes(HINT));
+			assert.equal(
+				output.chunks.some((chunk) => chunk.includes(LEAVE)),
+				false,
+			);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("提示只保留一小段时间", (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			pressCtrlC(input);
+			assert.ok((output.chunks.at(-1) ?? "").includes(HINT));
+
+			t.mock.timers.tick(2000);
+
+			assert.equal((output.chunks.at(-1) ?? "").includes(HINT), false);
+		} finally {
+			exitTui(input);
+		}
 	});
 
 	it("主区域在页脚之上居中", () => {
@@ -76,7 +130,7 @@ describe("全屏布局", () => {
 			assert.equal(lines[5], `${" ".repeat(17)}v1.2.3`);
 			assert.equal(lines[11], "");
 		} finally {
-			input.emit("data", Buffer.from([3]));
+			exitTui(input);
 		}
 	});
 
@@ -96,7 +150,7 @@ describe("全屏布局", () => {
 			assert.equal(lines[1], `${" ".repeat(7)}Reins`);
 			assert.equal(lines[2], `${" ".repeat(7)}v1.2.3`);
 		} finally {
-			input.emit("data", Buffer.from([3]));
+			exitTui(input);
 		}
 	});
 
@@ -112,7 +166,7 @@ describe("全屏布局", () => {
 			assert.equal(output.chunks.length, written);
 			assert.equal(input.rawMode, true);
 		} finally {
-			input.emit("data", Buffer.from([3]));
+			exitTui(input);
 		}
 	});
 });

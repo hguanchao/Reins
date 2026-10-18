@@ -132,6 +132,12 @@ export class Session implements SessionPort {
 		return this.#leafId;
 	}
 
+	/** 让会话文件立刻出现（只含头部），即使还没有任何条目也能被接续。 */
+	begin(): void {
+		if (this.#closed) throw new Error("Session is closed");
+		this.#writer?.begin();
+	}
+
 	async append(entry: NewSessionEntry): Promise<void> {
 		if (this.#closed) throw new Error("Session is closed");
 

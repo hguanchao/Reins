@@ -50,6 +50,24 @@ describe("JSONL 会话文件", () => {
 		assert.equal(existsSync(file), false);
 	});
 
+	it("begin 只写头部，空会话也能接续", () => {
+		const dir = workdir("begin");
+		const file = join(dir, "empty.jsonl");
+		const store = new JsonlSessionStore();
+		const writer = store.create({ id: "empty", cwd: dir, file });
+		writer.begin();
+		writer.end();
+
+		const read = store.read(file);
+		assert.equal(read.header?.id, "empty");
+		assert.deepEqual(read.entries, []);
+
+		const appended = store.append(file);
+		appended.write(entry("a", "later"));
+		appended.end();
+		assert.equal(store.read(file).entries.length, 1);
+	});
+
 	it("append 接续既有文件", () => {
 		const dir = workdir("append");
 		const file = join(dir, "s.jsonl");

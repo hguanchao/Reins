@@ -29,6 +29,9 @@ function memoryStore(): SessionStore & { files: Map<string, string> } {
 			let text = `${JSON.stringify(header)}\n`;
 			existsInFile(options.file, text);
 			return {
+				begin() {
+					files.set(options.file, text);
+				},
 				write(entry: SessionEntry) {
 					text += `${JSON.stringify(entry)}\n`;
 					files.set(options.file, text);
@@ -82,6 +85,29 @@ describe("会话对象", () => {
 			() => session.append({ type: "message", message: { role: "user", content: "x" } }),
 			/Session is closed/,
 		);
+		assert.throws(() => session.begin(), /Session is closed/);
+	});
+
+	it("begin 立即写头部，空会话也能接续", async () => {
+		const dir = DIR + "-begin";
+		mkdirSync(dir, { recursive: true });
+		const store = new JsonlSessionStore();
+		const file = join(dir, "empty.jsonl");
+		const session = new Session({
+			id: "empty",
+			cwd: dir,
+			file,
+			writer: store.create({ id: "empty", cwd: dir, file }),
+		});
+		session.begin();
+		await session.close();
+		assert.ok(existsSync(file));
+
+		const resumed = Session.open(file, store);
+		assert.equal(resumed.id, "empty");
+		assert.equal(resumed.entryCount, 0);
+		await resumed.close();
+		rmSync(dir, { recursive: true, force: true });
 	});
 
 	it("接续既有历史:叶子取最后一条路径的末尾,旧条目不再落盘", async () => {

@@ -108,27 +108,48 @@ class JsonlWriter implements SessionWriter {
 		};
 	}
 
+	begin(): void {
+		const file = this.#file;
+		if (file === null) return;
+		this.#assertWritable();
+
+		try {
+			this.#begin(file);
+		} catch (error) {
+			this.#fail(error);
+		}
+	}
+
 	write(entry: SessionEntry): void {
 		const file = this.#file;
 		if (file === null) return;
-		if (this.#failure !== undefined) {
-			throw new Error(`The session file already failed to write; stopping: ${this.#failure}`);
-		}
+		this.#assertWritable();
 
 		try {
 			this.#begin(file);
 			appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
 		} catch (error) {
-			this.#lock?.release();
-			this.#lock = null;
-			this.#failure = error instanceof Error ? error.message : String(error);
-			throw new Error(`Cannot write the session file: ${this.#failure}`);
+			this.#fail(error);
 		}
 	}
 
 	end(): void {
 		this.#lock?.release();
 		this.#lock = null;
+	}
+
+	#assertWritable(): void {
+		if (this.#failure !== undefined) {
+			throw new Error(`The session file already failed to write; stopping: ${this.#failure}`);
+		}
+	}
+
+	/** 写失败之后不能再以无锁状态接着写，否则「只有一个写入者」这个承诺就没了。 */
+	#fail(error: unknown): never {
+		this.#lock?.release();
+		this.#lock = null;
+		this.#failure = error instanceof Error ? error.message : String(error);
+		throw new Error(`Cannot write the session file: ${this.#failure}`);
 	}
 
 	#begin(file: string): void {

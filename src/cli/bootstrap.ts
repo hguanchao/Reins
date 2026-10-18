@@ -23,7 +23,7 @@ import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PluginHost, type PluginFailure } from "../plugins/host.ts";
 import { ExternalPlugins } from "../plugins/external.ts";
-import { bundledPlugins } from "../plugins/registry.ts";
+import { bundledPlugins, createBundledSessionStore } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
 import { createSandbox } from "../sandbox/setup.ts";
@@ -37,7 +37,7 @@ import { findProjectResources, recordTrust, resolveTrust } from "../workspace/tr
 import { runTui } from "../tui/layout.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { runPrintMode } from "./print-mode.ts";
-import { createSession } from "./session-target.ts";
+import { createSession, resumeCommand, resumeSession } from "./session-target.ts";
 
 /**
  * 运行时装配。
@@ -69,7 +69,7 @@ export async function main(argv: readonly string[]): Promise<number> {
 		case "print":
 			return runPrint(options);
 		case "tui":
-			return runTuiMode();
+			return runTuiMode(options);
 	}
 }
 
@@ -78,13 +78,42 @@ export async function main(argv: readonly string[]): Promise<number> {
  *
  * 备用屏只有在真实终端上才有意义；输入输出被重定向时直接报错，避免程序在管道里挂起等待
  * 一个永远不会到来的按键。
+ *
+ * 进入界面之前就把会话落成文件：界面退出后要在主屏给出接续命令，没有文件的会话接到命令
+ * 也找不回来。
  */
-async function runTuiMode(): Promise<number> {
+async function runTuiMode(options: CliOptions): Promise<number> {
 	if (!process.stdin.isTTY || !process.stdout.isTTY) {
 		writeStderr("reins: the full-screen interface needs an interactive terminal; pass a prompt to run non-interactively\n");
 		return 1;
 	}
-	return runTui({ version: readVersion() });
+
+	const workRoot = process.cwd();
+	const store = createBundledSessionStore();
+	let session: Session | undefined;
+	try {
+		session =
+			options.resume === undefined
+				? createSession(workRoot, store)
+				: resumeSession(workRoot, options.resume, store);
+		if (options.resume === undefined) session.begin();
+	} catch (error) {
+		await session?.close();
+		writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
+	}
+	if (session === undefined) return 1;
+
+	try {
+		const code = await runTui({ version: readVersion() });
+		writeStdout(`${resumeCommand(session.id)}\n`);
+		return code;
+	} catch (error) {
+		writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
+	} finally {
+		await session.close();
+	}
 }
 
 async function runPrint(options: CliOptions): Promise<number> {

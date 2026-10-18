@@ -23,6 +23,8 @@ export interface CliOptions {
 	readonly assumeYes: boolean;
 	/** 对当前工作区信任与否给出的明确结论；没给就是 undefined */
 	readonly trust: boolean | undefined;
+	/** 全屏界面要接续的会话标识；没给就是新建会话 */
+	readonly resume: string | undefined;
 }
 
 /**
@@ -38,6 +40,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	let explicitPrint = false;
 	let assumeYes = false;
 	let trust: boolean | undefined;
+	let resume: string | undefined;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
@@ -59,6 +62,19 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		}
 		if (argument === "--no-trust") {
 			trust = false;
+			continue;
+		}
+		if (argument === "--resume") {
+			const value = argv[index + 1];
+			if (value === undefined || value.startsWith("-")) throw new UsageError("--resume requires an id");
+			resume = value;
+			index += 1;
+			continue;
+		}
+		if (argument.startsWith("--resume=")) {
+			const value = argument.slice("--resume=".length);
+			if (value.length === 0) throw new UsageError("--resume requires an id");
+			resume = value;
 			continue;
 		}
 		if (argument === "--config" || argument === "--providers") {
@@ -87,6 +103,9 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	}
 
 	const command = resolveCommand(positionals, explicitPrint);
+	if (resume !== undefined && command === "print") {
+		throw new UsageError("--resume only works with the full-screen interface");
+	}
 	return {
 		command,
 		prompt: command === "print" ? positionals.join(" ") : "",
@@ -94,6 +113,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		providersPath,
 		assumeYes,
 		trust,
+		resume,
 	};
 }
 
@@ -105,6 +125,7 @@ function optionsOf(command: CliCommand): CliOptions {
 		providersPath: undefined,
 		assumeYes: false,
 		trust: undefined,
+		resume: undefined,
 	};
 }
 
@@ -130,6 +151,7 @@ Options:
   --no-trust                  Do not read the workspace config, and record the decision
   --config <path>             Use the given config.toml instead of the one in the config directory
   --providers <path>          Use the given providers.json instead of the one in the config directory
+  --resume <id>               Resume the given session in the full-screen interface
 
 The config directory is set by REINS_HOME, defaulting to .reins under the home directory
 `;

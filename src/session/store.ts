@@ -10,6 +10,13 @@ import type { ForkOrigin, SessionEntry, SessionHeaderEntry } from "./port.ts";
 
 /** 向一个会话写入条目。落盘细节（建文件、写首行、加锁）由实现负责。 */
 export interface SessionWriter {
+	/**
+	 * 立刻建立会话文件，只写头部。
+	 *
+	 * 空会话也要能给出接续命令，所以「还没有任何条目」不等于「文件不该存在」。只在确实需要
+	 * 让会话可被接续时调用；普通运行仍然等到第一条条目再落盘。
+	 */
+	begin(): void;
 	/** 写一条已经填好 id、parentId 与时间的条目。 */
 	write(entry: SessionEntry): void;
 	/** 释放占用的资源，主要是文件锁。 */

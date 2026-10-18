@@ -46,6 +46,18 @@ describe("parseArgs 的配置选项", () => {
 		assert.equal(parseArgs(["--trust"]).trust, true);
 		assert.equal(parseArgs(["--no-trust"]).trust, false);
 	});
+
+	it("--resume 指定接续会话", () => {
+		const options = parseArgs(["--resume", "abc"]);
+		assert.equal(options.command, "tui");
+		assert.equal(options.resume, "abc");
+		assert.equal(parseArgs(["--resume=abc"]).resume, "abc");
+	});
+
+	it("--resume 缺 id 报错", () => {
+		assert.throws(() => parseArgs(["--resume"]), /--resume requires an id/);
+		assert.throws(() => parseArgs(["--resume="]), /--resume requires an id/);
+	});
 });
 
 describe("parseArgs 拒绝非法输入", () => {
@@ -57,5 +69,16 @@ describe("parseArgs 拒绝非法输入", () => {
 		const options = parseArgs(["--", "--resume", "-p"]);
 		assert.equal(options.prompt, "--resume -p");
 		assert.equal(options.command, "print");
+	});
+
+	it("--resume 不能和一次性提问一起用", () => {
+		assert.throws(
+			() => parseArgs(["--resume", "abc", "-p", "x"]),
+			/--resume only works with the full-screen interface/,
+		);
+		assert.throws(
+			() => parseArgs(["--resume", "abc", "x"]),
+			/--resume only works with the full-screen interface/,
+		);
 	});
 });

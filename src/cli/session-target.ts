@@ -20,6 +20,23 @@ export function createSession(workRoot: string, store: SessionStore | undefined)
 }
 
 /**
+ * 按标识接续一个既有会话。
+ *
+ * 标识写在会话文件头部，文件名只是创建时的快照，不能从标识反推出路径，所以先查清单。
+ */
+export function resumeSession(workRoot: string, id: string, store: SessionStore): Session {
+	const directory = sessionsDir(workRoot);
+	const listing = store.list(directory).find((item) => item.id === id);
+	if (listing === undefined) throw new Error(`Session ${id} not found in ${directory}`);
+	return Session.open(listing.file, store);
+}
+
+/** 退出全屏界面后留在主屏上的命令，使用者也据此回到同一个会话。 */
+export function resumeCommand(id: string): string {
+	return `reins --resume ${id}`;
+}
+
+/**
  * 会话文件路径。
  *
  * 文件名里带创建时间，便于按时间找人；后缀是短随机串，避免同一秒内启动两次时撞名。
