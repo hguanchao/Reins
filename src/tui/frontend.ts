@@ -3,6 +3,7 @@ import type { AgentEventListener } from "../agent/events.ts";
 import type { ApprovalMode, NotifyMode, SandboxMode } from "../config/config-file.ts";
 import type { Confirmer } from "../permission/policy.ts";
 import type { PluginCommand } from "../plugins/host.ts";
+import type { SessionHistoryItem } from "../session/port.ts";
 import type { UsageTotals } from "../session/usage.ts";
 
 /**
@@ -27,6 +28,8 @@ export interface SessionView {
 	readonly path: string | null;
 	/** 已有的条目数。接续一个旧会话时，界面至少要让人知道屏幕之外还有多少历史 */
 	readonly entries: number;
+	/** 接续旧会话时的对话内容；新会话为空 */
+	readonly history: readonly SessionHistoryItem[];
 }
 
 /** 工作区信任在界面上的样子。 */
@@ -42,6 +45,10 @@ export interface InteractiveRuntime {
 	readonly session: SessionView;
 	readonly provider: string;
 	readonly model: string;
+	/** 当前分支；不是 git 仓库时为空 */
+	readonly branch: string | undefined;
+	/** 模型声明的上下文上限；没有声明时为空，顶部就不显示占用条 */
+	readonly contextWindow: number | undefined;
 	readonly approval: ApprovalMode;
 	readonly sandbox: SandboxMode;
 	readonly notify: NotifyMode;

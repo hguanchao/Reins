@@ -25,9 +25,11 @@ import { ModelReviewer } from "../permission/reviewer.ts";
 import { PluginHost, type PluginFailure } from "../plugins/host.ts";
 import { ExternalPlugins } from "../plugins/external.ts";
 import { bundledPlugins } from "../plugins/registry.ts";
+import { historyFromEntries } from "../session/history.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
 import { sumUsage } from "../session/usage.ts";
+import { currentBranch } from "../workspace/git.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -312,9 +314,16 @@ async function runChat(options: CliOptions): Promise<number> {
 
 	const runtime: InteractiveRuntime = {
 		cwd: workRoot,
-		session: { id: session.id, path: session.path, entries: session.entryCount },
+		session: {
+			id: session.id,
+			path: session.path,
+			entries: session.entryCount,
+			history: historyFromEntries(session.entries()),
+		},
 		provider: selection.provider.id,
 		model: selection.model.id,
+		branch: currentBranch(workRoot),
+		contextWindow: selection.model.contextWindow ?? config.contextWindow,
 		approval: config.approval,
 		sandbox: config.sandbox,
 		notify: config.ui.notify,
