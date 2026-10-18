@@ -102,7 +102,9 @@ export function renderTranscript(
 		const header = built.lines
 			.slice(prompt.start, prompt.start + prompt.height + HEADER_GAP_LINES)
 			.slice(0, rows);
-		const contentTop = Math.max(top, prompt.responseStart);
+		// header 盖住视口顶部；正文从被盖住的那几行之后继续，保证底部仍是最新内容
+		const contentTop =
+			top >= prompt.responseStart ? top + header.length : prompt.responseStart;
 		const contentHeight = Math.max(0, rows - header.length);
 		const content = Array.from({ length: contentHeight }, (_, index) => lineAt(contentTop + index));
 		visible = [...header, ...content];
@@ -138,18 +140,19 @@ function build(width: number, turns: readonly TranscriptTurn[]): BuiltTranscript
 	return { lines, prompts };
 }
 
-/** 提示块最多三行，放不下时在第三行末尾补省略号。 */
+/** 提示块上下各留一行背景，正文最多三行，放不下时在第三行末尾补省略号。 */
 function promptBlock(prompt: string, width: number): readonly string[] {
 	const prefixWidth = Math.min(PROMPT_PREFIX.length, width);
 	const lines = wrapPrompt(prompt, Math.max(0, width - prefixWidth), PROMPT_MAX_LINES);
-
-	return lines.map((line, index) => {
+	const content = lines.map((line, index) => {
 		const prefix = (index === 0 ? PROMPT_PREFIX : RESPONSE_INDENT).slice(0, width);
 		const usedPrefixWidth = displayWidth(prefix);
 		const text = truncateToWidth(line, Math.max(0, width - usedPrefixWidth));
 		const padding = " ".repeat(Math.max(0, width - usedPrefixWidth - displayWidth(text)));
 		return `${PROMPT_BG}${PROMPT_PREFIX_COLOR}${prefix}${PROMPT_TEXT_COLOR}${text}${padding}${RESET}`;
 	});
+	const empty = `${PROMPT_BG}${" ".repeat(width)}${RESET}`;
+	return [empty, ...content, empty];
 }
 
 function responseLines(text: string, width: number): readonly string[] {

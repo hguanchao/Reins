@@ -275,13 +275,15 @@ describe("全屏布局", () => {
 
 			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
-			const prompt = plain(lines[0] ?? "");
+			const prompt = plain(lines[1] ?? "");
 			assert.ok(prompt.startsWith("› hello"));
 			assert.equal(prompt.length, 60);
 			assert.ok((lines[0] ?? "").includes("\x1b[48;2;36;36;36m"));
-			assert.ok((lines[0] ?? "").includes("\x1b[38;2;200;200;200m"));
-			assert.ok((lines[0] ?? "").includes("\x1b[38;2;225;225;225m"));
-			assert.equal((lines[1] ?? "").includes("\x1b[48;2;36;36;36m"), false);
+			assert.ok((lines[1] ?? "").includes("\x1b[48;2;36;36;36m"));
+			assert.ok((lines[2] ?? "").includes("\x1b[48;2;36;36;36m"));
+			assert.ok((lines[1] ?? "").includes("\x1b[38;2;200;200;200m"));
+			assert.ok((lines[1] ?? "").includes("\x1b[38;2;225;225;225m"));
+			assert.equal((lines[3] ?? "").includes("\x1b[48;2;36;36;36m"), false);
 			assert.equal(plain(lines[8] ?? ""), " ⠋ Waiting for response...  0.0s  0 tokens");
 			assert.ok((lines[8] ?? "").includes("\x1b[38;2;"));
 			assert.equal(plain(lines[10] ?? ""), " › ");
@@ -337,9 +339,11 @@ describe("全屏布局", () => {
 
 			const lines = frameLines(output);
 			const main = lines.slice(0, 8).map(plain);
-			assert.ok(main[0]?.startsWith("› hello"));
-			assert.equal(main[1]?.includes("›"), false);
-			assert.ok(main.slice(2).join("\n").includes("模拟回复"));
+			assert.ok(main[1]?.startsWith("› hello"));
+			assert.equal(main[0]?.includes("›"), false);
+			assert.equal(main[2]?.includes("›"), false);
+			assert.equal(main[3]?.includes("›"), false);
+			assert.ok(main.slice(4).join("\n").includes("模拟回复"));
 
 			const status = plain(lines[8] ?? "");
 			assert.ok(status.includes("Writing response..."));
@@ -368,7 +372,7 @@ describe("全屏布局", () => {
 			// 拖到顶部，看到最早的回复
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
 			const top = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(top[0]?.startsWith("› hello"));
+			assert.ok(top[1]?.startsWith("› hello"));
 			assert.ok(top.slice(2).join("\n").includes("模拟回复第 1 行"));
 
 			// 拖回底部
@@ -380,7 +384,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("\x1b[<0;40;8m"));
 			input.emit("data", Buffer.from("\x1b[<64;20;4M"));
 			const scrolled = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(scrolled[0]?.startsWith("› hello"));
+			assert.ok(scrolled[1]?.startsWith("› hello"));
 			assert.notEqual(scrolled.join("\n"), back.join("\n"));
 
 			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
@@ -404,12 +408,12 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("two\r"));
 
 			const latest = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(latest[0]?.startsWith("› two"));
+			assert.ok(latest[1]?.startsWith("› two"));
 
 			// 拖到顶部可以看到旧提示
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
 			const top = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(top[0]?.startsWith("› one"));
+			assert.ok(top[1]?.startsWith("› one"));
 		} finally {
 			exitTui(input);
 		}

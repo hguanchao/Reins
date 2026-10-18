@@ -12,16 +12,18 @@ function plain(line: string): string {
 }
 
 describe("对话流", () => {
-	it("用户提示使用 #242424 背景和指定前缀/正文颜色", () => {
+	it("用户提示使用 #242424 背景和指定前缀/正文颜色，上下留一行背景", () => {
 		const lines = renderTranscript(40, 8, [{ prompt: "hello", response: [] }], 0);
 
 		assert.equal(lines.length, 8);
-		assert.ok(plain(lines[0] ?? "").startsWith("› hello"));
-		assert.equal(plain(lines[0] ?? "").length, 40);
+		assert.ok(plain(lines[1] ?? "").startsWith("› hello"));
+		assert.equal(plain(lines[1] ?? "").length, 40);
 		assert.ok((lines[0] ?? "").includes(PROMPT_BG));
-		assert.ok((lines[0] ?? "").includes(PROMPT_PREFIX));
-		assert.ok((lines[0] ?? "").includes(PROMPT_TEXT));
-		assert.equal((lines[1] ?? "").includes(PROMPT_BG), false);
+		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
+		assert.ok((lines[2] ?? "").includes(PROMPT_BG));
+		assert.ok((lines[1] ?? "").includes(PROMPT_PREFIX));
+		assert.ok((lines[1] ?? "").includes(PROMPT_TEXT));
+		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
 	});
 
 	it("提示正文最多三行，超出用省略号", () => {
@@ -30,20 +32,22 @@ describe("对话流", () => {
 		assert.ok((lines[0] ?? "").includes(PROMPT_BG));
 		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
 		assert.ok((lines[2] ?? "").includes(PROMPT_BG));
-		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
-		assert.ok(plain(lines[2] ?? "").includes("…"));
+		assert.ok((lines[3] ?? "").includes(PROMPT_BG));
+		assert.ok((lines[4] ?? "").includes(PROMPT_BG));
+		assert.equal((lines[5] ?? "").includes(PROMPT_BG), false);
+		assert.ok(plain(lines[3] ?? "").includes("…"));
 	});
 
 	it("回复滚出视口后提示吸顶，下面固定一行 gap", () => {
 		const response = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 		const lines = renderTranscript(40, 6, [{ prompt: "hello", response }], 6);
 
-		assert.ok(plain(lines[0] ?? "").startsWith("› hello"));
-		assert.ok((lines[0] ?? "").includes(PROMPT_BG));
-		assert.equal(plain(lines[1] ?? "").includes("›"), false);
-		assert.equal((lines[1] ?? "").includes(PROMPT_BG), false);
-		assert.ok(plain(lines[2] ?? "").startsWith("  e"));
-		assert.ok(plain(lines[3] ?? "").startsWith("  f"));
+		assert.ok(plain(lines[1] ?? "").startsWith("› hello"));
+		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
+		assert.equal(plain(lines[3] ?? "").includes("›"), false);
+		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
+		assert.ok(plain(lines[4] ?? "").startsWith("  g"));
+		assert.ok(plain(lines[5] ?? "").startsWith("  h"));
 		assert.ok(plain(lines[0] ?? "").endsWith("│"));
 		assert.ok(plain(lines[3] ?? "").endsWith("█"));
 	});
@@ -54,8 +58,8 @@ describe("对话流", () => {
 			{ prompt: "b", response: [] },
 		]);
 
-		assert.equal(metrics.totalLines, 5);
-		assert.equal(metrics.scrollLines, 9);
-		assert.equal(metrics.lastPromptStart, 3);
+		assert.equal(metrics.totalLines, 9);
+		assert.equal(metrics.scrollLines, 11);
+		assert.equal(metrics.lastPromptStart, 5);
 	});
 });
