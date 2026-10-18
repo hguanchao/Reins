@@ -4,8 +4,7 @@ import { eastAsianWidth } from "get-east-asian-width";
  * 页脚输入框。
  *
  * 三行：上边框、输入行、下边框；边框铺满整个终端宽度。光标交给终端自己画，这一层只算出
- * 输入行实际显示哪一段，以及光标应落在第几列。第一次按 Ctrl+C 时，提示嵌在下边框里，不
- * 挤占输入。
+ * 输入行实际显示哪一段，以及光标应落在第几列。
  */
 
 export interface InputView {
@@ -14,8 +13,6 @@ export interface InputView {
 	/** 光标所在列，从 1 起算 */
 	readonly column: number;
 }
-
-const EXIT_HINT = "Press Ctrl+C again to exit";
 
 /**
  * 输入行的可见部分与光标列。
@@ -31,13 +28,9 @@ export function inputView(input: string, width: number): InputView {
 	};
 }
 
-export function renderFooter(width: number, input: string, exitArmed: boolean): readonly string[] {
+export function renderFooter(width: number, input: string): readonly string[] {
 	const columns = Math.max(0, width);
-	return [
-		horizontal(columns),
-		inputView(input, columns).text,
-		exitArmed ? hintBorder(columns) : horizontal(columns),
-	];
+	return [horizontal(columns), inputView(input, columns).text, horizontal(columns)];
 }
 
 /** 从尾部往前留出不超过 limit 列，避免宽字符被切成半个。 */
@@ -55,14 +48,6 @@ function tailWithin(text: string, limit: number): { text: string; width: number 
 	}
 
 	return { text: chars.slice(start).join(""), width: used };
-}
-
-function hintBorder(width: number): string {
-	const text = ` ${EXIT_HINT} `;
-	if (width < text.length) return horizontal(width);
-
-	const left = Math.floor((width - text.length) / 2);
-	return "─".repeat(left) + text + "─".repeat(width - text.length - left);
 }
 
 function horizontal(width: number): string {

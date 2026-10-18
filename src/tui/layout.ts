@@ -8,8 +8,7 @@ import { renderMain } from "./main.ts";
  *
  * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是一个带上下边框的输入框，
  * 输入框一旦有过输入，主区域的品牌名与版本号就永久让位，即使随后清空也不再回来。输入光标
- * 用终端自己的光标：画成闪烁竖线，并在每次重画后停到输入末尾。Ctrl+C 要连按两次才退出，
- * 第一次在页脚下边框里提示。
+ * 用终端自己的光标：画成闪烁竖线，并在每次重画后停到输入末尾。Ctrl+C 要连按两次才退出。
  */
 
 const ENTER_ALTERNATE_SCREEN = "\x1b[?1049h";
@@ -75,7 +74,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const render = (): void => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = Math.max(1, stdout.rows ?? DEFAULT_ROWS);
-		const footer = renderFooter(width, input, exitArmed);
+		const footer = renderFooter(width, input);
 		const mainHeight = Math.max(0, height - footer.length);
 		const main =
 			hasInput
@@ -94,9 +93,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			clearTimeout(exitTimer);
 			exitTimer = undefined;
 		}
-		if (!exitArmed) return;
 		exitArmed = false;
-		render();
 	};
 
 	const cleanup = (): void => {
@@ -122,7 +119,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 		exitArmed = true;
-		render();
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 

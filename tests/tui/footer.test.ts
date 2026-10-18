@@ -7,7 +7,7 @@ const BORDER = "─";
 
 describe("页脚输入框", () => {
 	it("上下边框铺满屏幕宽度，输入行默认为空", () => {
-		const lines = renderFooter(10, "", false);
+		const lines = renderFooter(10, "");
 
 		assert.equal(lines.length, 3);
 		assert.equal(lines[0], BORDER.repeat(10));
@@ -16,17 +16,17 @@ describe("页脚输入框", () => {
 	});
 
 	it("输入文字原样显示", () => {
-		const lines = renderFooter(10, "abc", false);
+		const lines = renderFooter(10, "abc");
 		assert.equal(lines[1], "abc");
 	});
 
 	it("输入超出宽度时保留尾部", () => {
-		const lines = renderFooter(5, "abcdef", false);
+		const lines = renderFooter(5, "abcdef");
 		assert.equal(lines[1], "cdef");
 	});
 
 	it("宽字符按两列计算，不留下半个字", () => {
-		const lines = renderFooter(6, "你好世界", false);
+		const lines = renderFooter(6, "你好世界");
 		assert.equal(lines[1], "世界");
 	});
 
@@ -36,14 +36,5 @@ describe("页脚输入框", () => {
 		assert.equal(inputView("你好", 10).column, 5);
 		assert.equal(inputView("abcdef", 5).column, 5);
 		assert.equal(inputView("你好世界", 6).column, 5);
-	});
-
-	it("第一次按 Ctrl+C 的提示嵌在下边框里", () => {
-		const lines = renderFooter(40, "", true);
-
-		assert.equal(lines[0], BORDER.repeat(40));
-		assert.equal(lines[1], "");
-		assert.ok(lines[2].includes("Press Ctrl+C again to exit"));
-		assert.equal(lines[2].length, 40);
 	});
 });
