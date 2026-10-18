@@ -6,8 +6,8 @@ export class UsageError extends Error {
 	}
 }
 
-/** CLI 只做纯文本聊天：一次提问，答案写到标准输出。 */
-export type CliCommand = "print" | "help" | "version";
+/** CLI 有两种运行方式：启动全屏界面，或一次提问把答案写到标准输出。 */
+export type CliCommand = "tui" | "print" | "help" | "version";
 
 export interface CliOptions {
 	readonly command: CliCommand;
@@ -109,8 +109,8 @@ function optionsOf(command: CliCommand): CliOptions {
 }
 
 function resolveCommand(positionals: readonly string[], explicitPrint: boolean): CliCommand {
-	// 没有句子也没要求非交互：没有交互界面可进，就展示用法
-	if (!explicitPrint && positionals.length === 0) return "help";
+	// 没有句子也没要求非交互：进入全屏界面
+	if (!explicitPrint && positionals.length === 0) return "tui";
 	if (positionals.length === 0) throw new UsageError("-p requires a prompt");
 	return "print";
 }
@@ -118,6 +118,7 @@ function resolveCommand(positionals: readonly string[], explicitPrint: boolean):
 export const HELP_TEXT = `Reins — terminal coding agent
 
 Usage:
+  reins                       Start the full-screen interface
   reins <prompt>              Run one prompt, write the answer to stdout
   reins -p <prompt>           Same, explicitly non-interactive
   reins --help                Show this help

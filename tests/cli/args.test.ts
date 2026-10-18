@@ -24,8 +24,8 @@ describe("parseArgs 命令", () => {
 		assert.throws(() => parseArgs(["-p"]), /-p requires a prompt/);
 	});
 
-	it("空输入展示帮助", () => {
-		assert.equal(parseArgs([]).command, "help");
+	it("空输入启动全屏界面", () => {
+		assert.equal(parseArgs([]).command, "tui");
 	});
 });
 

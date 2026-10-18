@@ -34,6 +34,7 @@ import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
+import { runTui } from "../tui/layout.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { runPrintMode } from "./print-mode.ts";
 import { createSession } from "./session-target.ts";
@@ -67,7 +68,23 @@ export async function main(argv: readonly string[]): Promise<number> {
 			return 0;
 		case "print":
 			return runPrint(options);
+		case "tui":
+			return runTuiMode();
 	}
+}
+
+/**
+ * 启动全屏界面。
+ *
+ * 备用屏只有在真实终端上才有意义；输入输出被重定向时直接报错，避免程序在管道里挂起等待
+ * 一个永远不会到来的按键。
+ */
+async function runTuiMode(): Promise<number> {
+	if (!process.stdin.isTTY || !process.stdout.isTTY) {
+		writeStderr("reins: the full-screen interface needs an interactive terminal; pass a prompt to run non-interactively\n");
+		return 1;
+	}
+	return runTui({ version: readVersion() });
 }
 
 async function runPrint(options: CliOptions): Promise<number> {
