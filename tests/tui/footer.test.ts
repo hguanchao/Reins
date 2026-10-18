@@ -109,8 +109,9 @@ describe("页脚输入框", () => {
 		const lines = renderFooter(40, "", true, { symbol: "⠋", text: "Waiting for response..." });
 
 		assert.equal(lines[0], "");
-		assert.equal(lines[1], " ⠋ Waiting for response...");
-		assert.equal(lines[1]?.length, 26);
+		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting for response...");
+		assert.equal(plain(lines[1] ?? "").length, 26);
+		assert.ok(lines[1]?.startsWith(FOCUS));
 		assert.equal(plain(lines[3]), " › ");
 	});
 
@@ -126,7 +127,7 @@ describe("页脚输入框", () => {
 		const raw = lines[1] ?? "";
 
 		assert.equal(plain(raw), left + " ".repeat(58 - left.length - right.length) + right);
-		assert.ok(raw.includes("\x1b[38;2;102;102;102m"));
+		assert.ok(raw.startsWith(FOCUS));
 		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
@@ -143,44 +144,29 @@ describe("页脚输入框", () => {
 		const raw = lines[1] ?? "";
 
 		assert.equal(plain(raw), left + " ".repeat(68 - left.length - right.length) + right);
-		assert.ok(raw.includes("\x1b[38;2;102;102;102m  2.5s"));
+		assert.ok(raw.startsWith(FOCUS));
 		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
-	it("扫光只作用于活动描述，计时和 token 保持静态", () => {
+	it("运行时状态整行使用 #e1e1e1，计时和 token 不再分色", () => {
 		const lines = renderFooter(70, "", true, {
 			symbol: "⠧",
 			text: "Writing response...",
 			phaseMs: 2500,
 			elapsedMs: 5300,
 			tokens: 21400,
-			sweep: 0.5,
 		});
-		const meta = "\x1b[38;2;102;102;102m";
 		const raw = lines[1] ?? "";
-		const tail = raw.slice(raw.lastIndexOf(meta));
 
-		assert.ok(tail.includes("2.5s"));
-		assert.ok(tail.includes("5.3s  ⇣21.4K"));
-		assert.ok(tail.endsWith("\x1b[0m"));
+		assert.equal(raw, `${FOCUS}${plain(raw)}\x1b[0m`);
+		assert.equal(raw.indexOf("\x1b[38;2;"), 0);
 		assert.equal(plain(raw).length, 68);
 	});
 
 	it("状态行超出宽度时截断", () => {
 		const lines = renderFooter(12, "", true, { symbol: "⠋", text: "Waiting for response..." });
-		assert.equal(lines[1], " ⠋ Waiting");
-	});
-
-	it("运行时状态可以带扫光", () => {
-		const lines = renderFooter(40, "", true, {
-			symbol: "⠋",
-			text: "Waiting for response...",
-			sweep: 0.5,
-		});
-
-		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting for response...");
-		assert.ok(lines[1]?.includes("\x1b[38;2;255;255;255m"));
-		assert.ok(lines[1]?.endsWith("\x1b[0m"));
+		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting");
+		assert.ok(lines[1]?.startsWith(FOCUS));
 	});
 
 	it("光标列跟着提示符和可见文字走", () => {
