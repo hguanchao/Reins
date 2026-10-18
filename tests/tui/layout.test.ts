@@ -81,7 +81,7 @@ describe("全屏布局", () => {
 			assert.equal(output.chunks[0], ENTER);
 			assert.equal(input.rawMode, true);
 			assert.equal(input.resumed, true);
-			assert.ok(cursorAt(output, 11, 1));
+			assert.ok(cursorAt(output, 11, 4));
 
 			const written = output.chunks.length;
 			pressCtrlC(input);
@@ -155,9 +155,9 @@ describe("全屏布局", () => {
 			assert.equal(lines[3], `${" ".repeat(17)}Reins`);
 			assert.equal(lines[4], `${" ".repeat(17)}v1.2.3`);
 			assert.equal(lines[9], BORDER.repeat(40));
-			assert.equal(lines[10], "");
+			assert.equal(lines[10], " › ");
 			assert.equal(lines[11], BORDER.repeat(40));
-			assert.ok(cursorAt(output, 11, 1));
+			assert.ok(cursorAt(output, 11, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -178,9 +178,9 @@ describe("全屏布局", () => {
 			assert.equal(lines[0], `${" ".repeat(7)}Reins`);
 			assert.equal(lines[1], `${" ".repeat(7)}v1.2.3`);
 			assert.equal(lines[3], BORDER.repeat(20));
-			assert.equal(lines[4], "");
+			assert.equal(lines[4], " › ");
 			assert.equal(lines[5], BORDER.repeat(20));
-			assert.ok(cursorAt(output, 5, 1));
+			assert.ok(cursorAt(output, 5, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -197,8 +197,8 @@ describe("全屏布局", () => {
 			const typed = frameLines(output);
 			assert.equal(typed.join("\n").includes("Reins"), false);
 			assert.equal(typed.join("\n").includes("v1.2.3"), false);
-			assert.equal(typed[10], "a");
-			assert.ok(cursorAt(output, 11, 2));
+			assert.equal(typed[10], " › a");
+			assert.ok(cursorAt(output, 11, 5));
 		} finally {
 			exitTui(input);
 		}
@@ -231,8 +231,8 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("你好"));
 
 			const lines = frameLines(output);
-			assert.equal(lines[10], "你好");
-			assert.ok(cursorAt(output, 11, 5));
+			assert.equal(lines[10], " › 你好");
+			assert.ok(cursorAt(output, 11, 8));
 		} finally {
 			exitTui(input);
 		}
@@ -248,17 +248,17 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from([0x7f]));
 
 			const lines = frameLines(output);
-			assert.equal(lines[10], "ab");
+			assert.equal(lines[10], " › ab");
 			assert.equal(lines.join("\n").includes("Reins"), false);
-			assert.ok(cursorAt(output, 11, 3));
+			assert.ok(cursorAt(output, 11, 6));
 
 			input.emit("data", Buffer.from([0x7f]));
 			input.emit("data", Buffer.from([0x7f]));
 			const cleared = frameLines(output);
 			assert.equal(cleared.join("\n").includes("Reins"), false);
 			assert.equal(cleared.join("\n").includes("v1.2.3"), false);
-			assert.equal(cleared[10], "");
-			assert.ok(cursorAt(output, 11, 1));
+			assert.equal(cleared[10], " › ");
+			assert.ok(cursorAt(output, 11, 4));
 		} finally {
 			exitTui(input);
 		}

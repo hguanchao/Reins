@@ -8,23 +8,29 @@ import { eastAsianWidth } from "get-east-asian-width";
  */
 
 export interface InputView {
-	/** 输入行实际显示的文字；超出宽度时只保留尾部 */
+	/** 输入行实际显示的内容（含提示符）；正文超出宽度时只保留尾部 */
 	readonly text: string;
 	/** 光标所在列，从 1 起算 */
 	readonly column: number;
 }
 
+/** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
+const INPUT_PREFIX = " › ";
+
 /**
  * 输入行的可见部分与光标列。
  *
- * 最后一列留给终端光标，所以正文最多用 width-1 列；这样光标始终有地方停，输入再长也不会
- * 把整行挤出去。
+ * 最后一列留给终端光标，所以提示符加正文最多用 width-1 列；这样光标始终有地方停，输入
+ * 再长也不会把整行挤出去。
  */
 export function inputView(input: string, width: number): InputView {
-	const tail = tailWithin(input, Math.max(0, width - 1));
+	const available = Math.max(0, width - 1);
+	const prefix = INPUT_PREFIX.slice(0, available);
+	const prefixWidth = displayWidth(prefix);
+	const tail = tailWithin(input, Math.max(0, available - prefixWidth));
 	return {
-		text: tail.text,
-		column: Math.min(Math.max(1, width), tail.width + 1),
+		text: prefix + tail.text,
+		column: Math.min(Math.max(1, width), prefixWidth + tail.width + 1),
 	};
 }
 
@@ -48,6 +54,12 @@ function tailWithin(text: string, limit: number): { text: string; width: number 
 	}
 
 	return { text: chars.slice(start).join(""), width: used };
+}
+
+function displayWidth(text: string): number {
+	let width = 0;
+	for (const char of text) width += eastAsianWidth(char.codePointAt(0) ?? 0);
+	return width;
 }
 
 function horizontal(width: number): string {
