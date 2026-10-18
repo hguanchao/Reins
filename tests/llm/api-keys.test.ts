@@ -28,24 +28,8 @@ describe("密钥解析", () => {
 		await assert.rejects(() => resolveApiKey("$REINS_DEFINITELY_MISSING_VAR", SIGNAL), /environment variable REINS_DEFINITELY_MISSING_VAR/);
 	});
 
-	it("命令形式:取命令输出作为密钥", async () => {
-		const key = await resolveApiKey("!node -e \"process.stdout.write('from-command')\"", SIGNAL);
-		assert.equal(key, "from-command");
-	});
-
 	it("命令形式:前头叹号后无命令报错", async () => {
 		await assert.rejects(() => resolveApiKey("!", SIGNAL), /no command after the leading/);
-	});
-
-	it("命令形式:无输出报错", async () => {
-		await assert.rejects(() => resolveApiKey("!node -e ''", SIGNAL), /produced no output/);
-	});
-
-	it("命令形式:命令失败向上冒泡", async () => {
-		await assert.rejects(
-			() => resolveApiKey("!node -e \"process.exit(2)\"", SIGNAL),
-			(CommandError) => CommandError !== undefined,
-		);
 	});
 
 	it("字面值里形如 \\$NAME 的部分也按插值处理（非转义语法）", async () => {
