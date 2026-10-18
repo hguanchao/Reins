@@ -1,7 +1,7 @@
 import { StringDecoder } from "node:string_decoder";
 
 import { FOOTER_HEIGHT, inputView, renderFooter } from "./footer.ts";
-import { messageLineCount, renderMain, renderMessages } from "./main.ts";
+import { renderMain, renderMessages } from "./main.ts";
 
 /**
  * 全屏启动。
@@ -35,8 +35,6 @@ const DEFAULT_ROWS = 24;
 const CTRL_C = "\x03";
 /** 第一次 Ctrl+C 之后等待第二次的时间；超过就回到未确认状态。 */
 const EXIT_CONFIRM_WINDOW_MS = 2000;
-/** 滚轮每格滚动多少行。 */
-const WHEEL_STEP = 3;
 /** 运行时状态前的加载动画。 */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SPINNER_INTERVAL_MS = 100;
@@ -84,8 +82,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let hasInput = false;
 	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
 	let focused = true;
-	/** 消息区从顶部往下滚过的行数；0 停在最新消息处。 */
-	let scrollOffset = 0;
+	/** 当前展开的是从最新一条往上数第几条消息；0 就是最新。 */
+	let messageOffset = 0;
 	/** 是否正按住滚动条拖动。 */
 	let draggingScrollbar = false;
 	/** 当前运行时状态；为空表示空闲。 */
@@ -107,10 +105,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				: { symbol: SPINNER_FRAMES[spinnerFrame] ?? "", text: statusText };
 		const footer = renderFooter(width, input, focused, status);
 		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
-		scrollOffset = Math.min(scrollOffset, Math.max(0, messageLineCount(messages) - mainHeight));
+		messageOffset = Math.min(messageOffset, Math.max(0, messages.length - 1));
 		const main =
 			hasInput
-				? renderMessages(width, mainHeight, messages, scrollOffset)
+				? renderMessages(width, mainHeight, messages, messageOffset)
 				: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...footer].slice(0, height);
@@ -180,8 +178,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			statusText = WAITING_FOR_RESPONSE;
 			startSpinner();
 		}
-		// 新消息总是回到最上面
-		scrollOffset = 0;
+		// 新消息总是回到最新一条
+		messageOffset = 0;
 		render();
 		return true;
 	};
@@ -196,8 +194,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
 		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
-		const maxScroll = Math.max(0, messageLineCount(messages) - mainHeight);
-		const beforeScroll = scrollOffset;
+		const maxOffset = Math.max(0, messages.length - 1);
+		const beforeOffset = messageOffset;
 		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;
 		let wheelSteps = 0;
@@ -228,7 +226,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					focused = insideInput;
 					focusChanged = true;
 				}
-				if (!insideInput && event.column === width && event.row <= mainHeight) {
+				if (!insideInput && event.column === width && event.row <= mainHeight && messages.length > 1) {
 					draggingScrollbar = true;
 					dragRow = event.row;
 				} else {
@@ -242,12 +240,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 
 		if (wheelSteps !== 0) {
-			scrollOffset = Math.min(maxScroll, Math.max(0, scrollOffset + wheelSteps * WHEEL_STEP));
+			messageOffset = Math.min(maxOffset, Math.max(0, messageOffset + wheelSteps));
 		}
 		if (dragRow !== undefined) {
-			scrollOffset = scrollTopFromRow(dragRow, mainHeight, maxScroll);
+			messageOffset = messageOffsetFromRow(dragRow, mainHeight, maxOffset);
 		}
-		const scrollChanged = scrollOffset !== beforeScroll;
+		const offsetChanged = messageOffset !== beforeOffset;
 
 		const previous = input;
 		const result = appendInput(input, withoutMouse);
@@ -256,10 +254,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		if (result.submit) {
 			const submitted = submit();
-			if (!submitted && (focusChanged || scrollChanged)) render();
+			if (!submitted && (focusChanged || offsetChanged)) render();
 			return;
 		}
-		if (input !== previous || focusChanged || scrollChanged) render();
+		if (input !== previous || focusChanged || offsetChanged) render();
 	};
 
 	const onInterrupt = (): void => {
@@ -322,12 +320,12 @@ function mouseEvents(text: string): readonly MouseInput[] {
 	return events;
 }
 
-/** 滚动条上某一行对应“从顶部往下滚多少行”。 */
-function scrollTopFromRow(row: number, height: number, maxScroll: number): number {
-	if (maxScroll === 0 || height <= 1) return 0;
+/** 滚动条上某一行对应从最新一条往上翻几条消息。 */
+function messageOffsetFromRow(row: number, height: number, maxOffset: number): number {
+	if (maxOffset === 0 || height <= 1) return 0;
 
 	const clamped = Math.min(Math.max(1, row), height);
-	return Math.round(((clamped - 1) / (height - 1)) * maxScroll);
+	return Math.round(((clamped - 1) / (height - 1)) * maxOffset);
 }
 
 /**

@@ -10,8 +10,6 @@ const BRAND = "Reins";
 const USER_PREFIX = "› ";
 /** 消息正文左侧留一列，和输入行的缩进对齐。 */
 const MESSAGE_INDENT = " ";
-/** 每条消息块固定占三行。 */
-const MESSAGE_LINES = 3;
 /** 用户消息块背景色 #2e2e2e。 */
 const GRAY_BACKGROUND = "\x1b[48;2;46;46;46m";
 /** 滚动条轨道与滑块，颜色同为 #2e2e2e。 */
@@ -41,64 +39,52 @@ export function renderMain(width: number, height: number, version: string): read
 }
 
 /**
- * 用户消息块。
+ * 用户消息区。
  *
- * 每条消息固定三行：正文只占中间一行，左侧缩进一列并左对齐，上下两行留空，三行都铺满
- * 终端宽度并加灰色背景。消息块之间留一行间距；正文超出宽度时用 … 收尾。最新的消息块
- * 排在最上面，往下是更早的消息；内容超出可视区域时在右侧显示滚动条。scrollTop 是从顶部
- * 滚过的行数，0 表示停在最新消息处。
+ * 每次只展开一条消息：最新消息固定在最上面，旧消息收起，通过滚动切换。每条消息块固定
+ * 三行，正文在第二行左对齐，背景 #2e2e2e，正文超出宽度时用 … 收尾。有旧消息时右侧显示
+ * 滚动条。scrollIndex 表示从最新一条往上翻了几条，0 就是最新。
  */
 export function renderMessages(
 	width: number,
 	height: number,
 	messages: readonly string[],
-	scrollTop = 0,
+	scrollIndex = 0,
 ): readonly string[] {
 	const columns = Math.max(0, width);
 	const rows = Math.max(0, height);
-	if (messages.length === 0) return Array.from({ length: rows }, () => "");
+	if (messages.length === 0 || rows === 0) return Array.from({ length: rows }, () => "");
 
-	const totalLines = messageLineCount(messages);
-	const overflow = totalLines > rows;
-	// 有滚动条时把最右一列让给滚动条，再留一列空隙，消息背景不会贴着滚动条
-	const contentWidth = Math.max(0, columns - (overflow ? 2 : 0));
-	const ordered = [...messages].reverse();
-	const blockLines = ordered.flatMap((message, index) => {
-		const block = messageBlock(message, contentWidth);
-		// 第一块从顶部开始，后面的块前面留一行，避免相邻灰底粘成一整片
-		return index === 0 ? block : ["", ...block];
-	});
+	const maxIndex = messages.length - 1;
+	const index = Math.min(Math.max(0, scrollIndex), maxIndex);
+	const message = messages[maxIndex - index];
+	const hasHistory = messages.length > 1;
+	const contentWidth = Math.max(0, columns - (hasHistory ? 2 : 0));
+	const block = messageBlock(message, contentWidth);
 
-	const maxScroll = Math.max(0, totalLines - rows);
-	const start = Math.min(Math.max(0, scrollTop), maxScroll);
-	const visible = blockLines.slice(start, start + rows);
-	const padding = Math.max(0, rows - visible.length);
+	if (!hasHistory) {
+		return [...block, ...Array.from({ length: Math.max(0, rows - block.length) }, () => "")].slice(0, rows);
+	}
 
-	if (!overflow) return [...visible, ...Array.from({ length: padding }, () => "")];
-
-	const scrollbar = renderScrollbar(rows, totalLines, start);
+	const scrollbar = renderHistoryScrollbar(rows, messages.length, index);
 	const gap = " ".repeat(Math.max(0, columns - contentWidth - 1));
-	return Array.from({ length: rows }, (_, index) => {
-		const line = visible[index] ?? "";
-		const content = line === "" ? " ".repeat(contentWidth) : line;
-		return content + gap + scrollbar[index];
+	const blank = " ".repeat(contentWidth);
+	return Array.from({ length: rows }, (_, row) => {
+		const line = row < block.length ? block[row] : "";
+		const content = line === "" ? blank : line;
+		return content + gap + scrollbar[row];
 	});
 }
 
-/** 消息区的总行数：每条消息三行，块与块之间各一行间距。 */
-export function messageLineCount(messages: readonly string[]): number {
-	return messages.length === 0 ? 0 : messages.length * MESSAGE_LINES + (messages.length - 1);
-}
-
-/** 滑块高度按可视区比例计算，位置跟着可视窗口在内容里的起点移动。 */
-function renderScrollbar(height: number, totalLines: number, start: number): readonly string[] {
-	const thumbHeight = Math.max(1, Math.floor((height * height) / totalLines));
+/** 滑块高度按“当前只展开一条”计算，位置随翻到第几条消息移动。 */
+function renderHistoryScrollbar(height: number, total: number, index: number): readonly string[] {
+	const thumbHeight = Math.max(1, Math.floor(height / total));
 	const maxThumbTop = height - thumbHeight;
-	const maxStart = Math.max(1, totalLines - height);
-	const thumbTop = Math.round((start / maxStart) * maxThumbTop);
+	const maxIndex = total - 1;
+	const thumbTop = maxIndex === 0 ? 0 : Math.round((index / maxIndex) * maxThumbTop);
 
-	return Array.from({ length: height }, (_, index) => {
-		const char = index >= thumbTop && index < thumbTop + thumbHeight ? SCROLLBAR_THUMB : SCROLLBAR_TRACK;
+	return Array.from({ length: height }, (_, row) => {
+		const char = row >= thumbTop && row < thumbTop + thumbHeight ? SCROLLBAR_THUMB : SCROLLBAR_TRACK;
 		return `${SCROLLBAR_COLOR}${char}${RESET}`;
 	});
 }

@@ -25,7 +25,7 @@ describe("主区域", () => {
 });
 
 describe("用户消息块", () => {
-	it("每条消息固定三行，正文在第二行左对齐", () => {
+	it("单条消息固定三行，正文在第二行左对齐", () => {
 		const lines = renderMessages(20, 9, ["hello"]);
 
 		assert.equal(lines.length, 9);
@@ -45,49 +45,43 @@ describe("用户消息块", () => {
 		assert.deepEqual(lines.slice(0, 3).map(plain), [" ".repeat(10), " › abcdef…", " ".repeat(10)]);
 	});
 
-	it("消息块之间留一行间距", () => {
-		const lines = renderMessages(20, 9, ["one", "two"]);
+	it("只有一条消息时不显示滚动条", () => {
+		const lines = renderMessages(20, 9, ["hello"]).map(plain);
 
-		assert.ok(plain(lines[1] ?? "").startsWith(" › two"));
-		assert.equal(lines[3], "");
-		assert.ok(plain(lines[5] ?? "").startsWith(" › one"));
+		assert.equal(lines.some((line) => line.endsWith("█") || line.endsWith("│")), false);
 	});
 
-	it("内容没有溢出时不显示滚动条", () => {
-		const lines = renderMessages(20, 9, ["one", "two"]);
-
-		assert.equal(
-			lines.map(plain).some((line) => line.endsWith("█") || line.endsWith("│")),
-			false,
-		);
-	});
-
-	it("最新消息在顶部，内容溢出时显示滚动条", () => {
-		const lines = renderMessages(20, 12, ["one", "two", "three", "four"]);
+	it("有旧消息时默认只展开最新一条", () => {
+		const lines = renderMessages(20, 9, ["one", "two", "three", "four"]);
 		const plainLines = lines.map(plain);
 		const text = plainLines.join("\n");
 
-		assert.equal(lines.length, 12);
-		assert.equal(text.includes("› one"), false);
-		assert.ok(text.includes("› two"));
-		assert.ok(text.includes("› three"));
 		assert.ok(text.includes("› four"));
+		assert.equal(text.includes("› three"), false);
+		assert.equal(text.includes("› two"), false);
+		assert.equal(text.includes("› one"), false);
 
 		assert.equal(plainLines.every((line) => line.endsWith("█") || line.endsWith("│")), true);
-		assert.equal(plainLines.filter((line) => line.endsWith("█")).length, 9);
-		assert.equal(plainLines.slice(0, 9).every((line) => line.endsWith("█")), true);
-		assert.equal(plainLines.slice(9).every((line) => line.endsWith("│")), true);
+		assert.equal(plainLines.filter((line) => line.endsWith("█")).length, 2);
+		assert.equal(plainLines.slice(2).every((line) => line.endsWith("│")), true);
 		assert.equal(plainLines[0]?.length, 20);
 		assert.equal(plainLines[0]?.at(-2), " ");
 		assert.ok(lines[0]?.includes("\x1b[38;2;46;46;46m"));
 	});
 
-	it("滚动偏移把可视窗口移向更旧的消息", () => {
-		const lines = renderMessages(20, 12, ["one", "two", "three", "four"], 3).map(plain);
+	it("滚动索引切换到更旧的消息", () => {
+		const middle = renderMessages(20, 9, ["one", "two", "three", "four"], 1).map(plain);
 
-		assert.ok(lines.join("\n").includes("› one"));
-		assert.equal(lines.slice(0, 3).every((line) => line.endsWith("│")), true);
-		assert.equal(lines.slice(3).every((line) => line.endsWith("█")), true);
+		assert.ok(middle.join("\n").includes("› three"));
+		assert.equal(middle.join("\n").includes("› four"), false);
+		assert.equal(middle[1]?.endsWith("│"), true);
+		assert.equal(middle[2]?.endsWith("█"), true);
+
+		const oldest = renderMessages(20, 9, ["one", "two", "three", "four"], 3).map(plain);
+
+		assert.ok(oldest.join("\n").includes("› one"));
+		assert.equal(oldest[7]?.endsWith("█"), true);
+		assert.equal(oldest[8]?.endsWith("█"), true);
 	});
 
 	it("没有消息时只返回空白行", () => {
