@@ -62,6 +62,17 @@ describe("页脚输入框", () => {
 		assert.equal(plain(lines[2]), " › ");
 	});
 
+	it("状态行显示计时与 token 数", () => {
+		const lines = renderFooter(60, "", true, {
+			symbol: "⠋",
+			text: "Thinking...",
+			elapsedMs: 1200,
+			tokens: 128,
+		});
+
+		assert.equal(lines[0], " ⠋ Thinking...  1.2s  128 tokens");
+	});
+
 	it("状态行超出宽度时截断", () => {
 		const lines = renderFooter(10, "", true, { symbol: "⠋", text: "Waiting for response..." });
 		assert.equal(lines[0], " ⠋ Waiting");

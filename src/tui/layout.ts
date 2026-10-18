@@ -1,15 +1,16 @@
+import { eastAsianWidth } from "get-east-asian-width";
 import { StringDecoder } from "node:string_decoder";
 
 import { FOOTER_HEIGHT, inputView, renderFooter } from "./footer.ts";
-import { renderMain, renderMessages } from "./main.ts";
+import { renderMain } from "./main.ts";
+import { renderTranscript, transcriptMetrics, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 全屏启动。
  *
- * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是一个带上下边框的输入框，
- * 输入框一旦有过输入，主区域的品牌名与版本号就永久让位，即使随后清空也不再回来。回车把输入
- * 作为用户消息发到主区域，消息以三行灰色背景块展示。输入光标用终端自己的光标：画成闪烁
- * 竖线，并在每次重画后停到输入末尾。Ctrl+C 要连按两次才退出。
+ * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是带运行时状态和输入框的
+ * 区域。回车把输入作为用户提示送进对话流，提示落在视口顶部；模拟回复在它下方流式增长，
+ * 回复滚出视口后提示块吸顶。Ctrl+C 要连按两次才退出。
  */
 
 const ENTER_ALTERNATE_SCREEN = "\x1b[?1049h";
@@ -40,7 +41,33 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 const SPINNER_INTERVAL_MS = 100;
 /** 每帧把扫光往前推多少；整个状态行约 1.25 秒扫一遍。 */
 const SWEEP_STEP = 0.08;
+/** 滚轮每格滚动多少行。 */
+const WHEEL_STEP = 3;
+
 const WAITING_FOR_RESPONSE = "Waiting for response...";
+const THINKING = "Thinking...";
+const WRITING_RESPONSE = "Writing response...";
+const DONE = "Done";
+
+/** 模拟回复的节奏：前 0.5 秒等待，再 0.5 秒思考，然后每帧写一行。 */
+const MOCK_WAITING_TICKS = 5;
+const MOCK_THINKING_TICKS = 5;
+const MOCK_DONE_TICKS = 10;
+const MOCK_REPLY_LINES = Array.from(
+	{ length: 48 },
+	(_, index) => `模拟回复第 ${index + 1} 行：用户提示固定在顶部，回复内容在下面滚动。`,
+);
+
+interface MockTurn extends TranscriptTurn {
+	response: string[];
+}
+
+interface MockState {
+	readonly turn: MockTurn;
+	tick: number;
+	phase: "waiting" | "thinking" | "writing" | "done";
+	doneTick: number | undefined;
+}
 
 /** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
 export interface TuiInput {
@@ -78,20 +105,24 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const stdout: TuiOutput = options.stdout ?? process.stdout;
 
 	let input = "";
-	/** 已经发送的用户消息，按发送顺序排列。 */
-	const messages: string[] = [];
+	const turns: MockTurn[] = [];
 	/** 只要输入过内容就置位，之后清空输入也不再显示品牌名与版本号。 */
 	let hasInput = false;
 	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
 	let focused = true;
-	/** 当前展开的是从最新一条往上数第几条消息；0 就是最新。 */
-	let messageOffset = 0;
+	/** 对话流从顶部滚过的行数。 */
+	let scrollTop = 0;
+	/** 是否跟随新内容滚到底部。 */
+	let follow = true;
 	/** 是否正按住滚动条拖动。 */
 	let draggingScrollbar = false;
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
+	let statusElapsedMs = 0;
+	let statusTokens = 0;
 	let spinnerFrame = 0;
 	let sweepPhase = 0;
+	let mock: MockState | undefined;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -102,17 +133,25 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const render = (): void => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
+		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
+		const metrics = transcriptMetrics(width, mainHeight, turns);
+		const maxScroll = Math.max(0, metrics.scrollLines - mainHeight);
+		scrollTop = Math.min(scrollTop, maxScroll);
+
 		const status =
 			statusText === undefined
 				? undefined
-				: { symbol: SPINNER_FRAMES[spinnerFrame] ?? "", text: statusText, sweep: sweepPhase };
+				: {
+						symbol: SPINNER_FRAMES[spinnerFrame] ?? "",
+						text: statusText,
+						sweep: sweepPhase,
+						elapsedMs: statusElapsedMs,
+						tokens: statusTokens,
+					};
 		const footer = renderFooter(width, input, focused, status);
-		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
-		messageOffset = Math.min(messageOffset, Math.max(0, messages.length - 1));
-		const main =
-			hasInput
-				? renderMessages(width, mainHeight, messages, messageOffset)
-				: renderMain(width, mainHeight, options.version);
+		const main = hasInput
+			? renderTranscript(width, mainHeight, turns, scrollTop)
+			: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...footer].slice(0, height);
 		const cursorRow = mainHeight + 3;
@@ -121,6 +160,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				? moveCursor(cursorRow, inputView(input, width).column) + SHOW_CURSOR
 				: "";
 		stdout.write(HIDE_CURSOR + CURSOR_HOME + CLEAR_SCREEN + lines.join("\r\n") + cursor);
+	};
+
+	const maxScroll = (): number => {
+		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+		const mainHeight = Math.max(0, terminalHeight(stdout) - FOOTER_HEIGHT);
+		return Math.max(0, transcriptMetrics(width, mainHeight, turns).scrollLines - mainHeight);
 	};
 
 	const disarm = (): void => {
@@ -161,29 +206,87 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
+	const advanceMock = (): boolean => {
+		if (mock === undefined) return false;
+
+		mock.tick += 1;
+		statusElapsedMs = mock.tick * SPINNER_INTERVAL_MS;
+
+		if (mock.phase === "waiting" && mock.tick >= MOCK_WAITING_TICKS) {
+			mock.phase = "thinking";
+		}
+		if (mock.phase === "thinking" && mock.tick >= MOCK_WAITING_TICKS + MOCK_THINKING_TICKS) {
+			mock.phase = "writing";
+		}
+
+		if (mock.phase === "writing") {
+			const next = MOCK_REPLY_LINES[mock.turn.response.length];
+			if (next !== undefined) {
+				mock.turn.response.push(next);
+				statusTokens = estimateTokens(mock.turn.response.join(" "));
+			}
+			if (mock.turn.response.length >= MOCK_REPLY_LINES.length) {
+				mock.phase = "done";
+				mock.doneTick = mock.tick;
+				statusText = DONE;
+			} else {
+				statusText = WRITING_RESPONSE;
+			}
+			if (follow) scrollTop = maxScroll();
+		} else if (mock.phase === "thinking") {
+			statusText = THINKING;
+		} else if (mock.phase === "waiting") {
+			statusText = WAITING_FOR_RESPONSE;
+		}
+
+		if (mock.phase === "done" && mock.doneTick !== undefined && mock.tick - mock.doneTick >= MOCK_DONE_TICKS) {
+			mock = undefined;
+			statusText = undefined;
+			statusElapsedMs = 0;
+			statusTokens = 0;
+			return false;
+		}
+
+		return true;
+	};
+
 	const startSpinner = (): void => {
 		if (spinnerTimer !== undefined) return;
 
 		spinnerTimer = setInterval(() => {
 			spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
 			sweepPhase = (sweepPhase + SWEEP_STEP) % 1;
+			const active = advanceMock();
 			render();
+			if (!active) {
+				if (spinnerTimer !== undefined) {
+					clearInterval(spinnerTimer);
+					spinnerTimer = undefined;
+				}
+			}
 		}, SPINNER_INTERVAL_MS);
 	};
 
-	/** 回车发送：把当前输入交给主区域，输入框清空。返回是否真的发生了可见变化。 */
+	/** 回车发送：把当前输入交给对话流，并启动一次模拟回复。 */
 	const submit = (): boolean => {
 		if (input.length === 0) return false;
 
 		const message = input.trim();
 		input = "";
 		if (message.length > 0) {
-			messages.push(message);
+			const turn: MockTurn = { prompt: message, response: [] };
+			turns.push(turn);
+			mock = { turn, tick: 0, phase: "waiting", doneTick: undefined };
 			statusText = WAITING_FOR_RESPONSE;
+			statusElapsedMs = 0;
+			statusTokens = 0;
+			follow = true;
+
+			const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+			const mainHeight = Math.max(0, terminalHeight(stdout) - FOOTER_HEIGHT);
+			scrollTop = transcriptMetrics(width, mainHeight, turns).lastPromptStart;
 			startSpinner();
 		}
-		// 新消息总是回到最新一条
-		messageOffset = 0;
 		render();
 		return true;
 	};
@@ -198,8 +301,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
 		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
-		const maxOffset = Math.max(0, messages.length - 1);
-		const beforeOffset = messageOffset;
+		const limit = maxScroll();
+		const beforeScroll = scrollTop;
 		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;
 		let wheelSteps = 0;
@@ -230,7 +333,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					focused = insideInput;
 					focusChanged = true;
 				}
-				if (!insideInput && event.column === width && event.row <= mainHeight && messages.length > 1) {
+				if (!insideInput && event.column === width && event.row <= mainHeight && turns.length > 0) {
 					draggingScrollbar = true;
 					dragRow = event.row;
 				} else {
@@ -244,12 +347,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 
 		if (wheelSteps !== 0) {
-			messageOffset = Math.min(maxOffset, Math.max(0, messageOffset + wheelSteps));
+			scrollTop = Math.min(limit, Math.max(0, scrollTop + wheelSteps * WHEEL_STEP));
+			follow = scrollTop >= limit;
 		}
 		if (dragRow !== undefined) {
-			messageOffset = messageOffsetFromRow(dragRow, mainHeight, maxOffset);
+			scrollTop = scrollTopFromRow(dragRow, mainHeight, limit);
+			follow = scrollTop >= limit;
 		}
-		const offsetChanged = messageOffset !== beforeOffset;
+		const scrollChanged = scrollTop !== beforeScroll;
 
 		const previous = input;
 		const result = appendInput(input, withoutMouse);
@@ -258,10 +363,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		if (result.submit) {
 			const submitted = submit();
-			if (!submitted && (focusChanged || offsetChanged)) render();
+			if (!submitted && (focusChanged || scrollChanged)) render();
 			return;
 		}
-		if (input !== previous || focusChanged || offsetChanged) render();
+		if (input !== previous || focusChanged || scrollChanged) render();
 	};
 
 	const onInterrupt = (): void => {
@@ -290,12 +395,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	return done;
 }
 
+function terminalHeight(output: TuiOutput): number {
+	return Math.max(1, output.rows ?? DEFAULT_ROWS);
+}
+
 function moveCursor(row: number, column: number): string {
 	return `\x1b[${row};${column}H`;
 }
 
-function terminalHeight(output: TuiOutput): number {
-	return Math.max(1, output.rows ?? DEFAULT_ROWS);
+function estimateTokens(text: string): number {
+	let wide = 0;
+	for (const char of text) {
+		if (eastAsianWidth(char.codePointAt(0) ?? 0) === 2) wide += 1;
+	}
+	return wide + Math.ceil((text.length - wide) / 4);
 }
 
 /** 去掉 SGR 鼠标事件，避免它们被当成普通输入。 */
@@ -324,12 +437,11 @@ function mouseEvents(text: string): readonly MouseInput[] {
 	return events;
 }
 
-/** 滚动条上某一行对应从最新一条往上翻几条消息。 */
-function messageOffsetFromRow(row: number, height: number, maxOffset: number): number {
-	if (maxOffset === 0 || height <= 1) return 0;
+function scrollTopFromRow(row: number, height: number, maxScroll: number): number {
+	if (maxScroll === 0 || height <= 1) return 0;
 
 	const clamped = Math.min(Math.max(1, row), height);
-	return Math.round(((clamped - 1) / (height - 1)) * maxOffset);
+	return Math.round(((clamped - 1) / (height - 1)) * maxScroll);
 }
 
 /**

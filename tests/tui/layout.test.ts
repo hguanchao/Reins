@@ -264,38 +264,34 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("回车发送后主区域显示三行用户消息块", () => {
+	it("回车后提示在顶部，状态行开始等待", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		output.columns = 60;
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
 
 		try {
-			input.emit("data", Buffer.from("hello"));
-			input.emit("data", Buffer.from("\r"));
+			input.emit("data", Buffer.from("hello\r"));
 
 			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
+			const prompt = plain(lines[0] ?? "");
+			assert.ok(prompt.startsWith("› hello"));
+			assert.equal(prompt.length, 60);
+			assert.ok((lines[0] ?? "").includes("\x1b[48;2;36;36;36m"));
+			assert.ok((lines[0] ?? "").includes("\x1b[38;2;200;200;200m"));
+			assert.ok((lines[0] ?? "").includes("\x1b[38;2;225;225;225m"));
+			assert.equal((lines[1] ?? "").includes("\x1b[48;2;36;36;36m"), false);
+			assert.equal(plain(lines[8] ?? ""), " ⠋ Waiting for response...  0.0s  0 tokens");
+			assert.ok((lines[8] ?? "").includes("\x1b[38;2;"));
 			assert.equal(plain(lines[10] ?? ""), " › ");
-
-			const main = lines.slice(0, 8);
-			assert.equal(main.filter((line) => line.includes("\x1b[48;2;46;46;46m")).length, 3);
-			assert.equal(main[0]?.includes("›"), false);
-			assert.ok(main[1]?.includes("› hello"));
-			assert.equal(main[2]?.includes("›"), false);
-
-			const content = plain(main[1] ?? "");
-			assert.equal(content.length, 40);
-			assert.ok(content.startsWith(" › hello"));
-			assert.equal(plain(lines[8] ?? ""), " ⠋ Waiting for response...");
-			assert.ok(lines[8]?.includes("\x1b[38;2;"));
-			assert.equal(lines.join("\n").includes("Reins"), false);
 			assert.ok(cursorAt(output, 11, 4));
 		} finally {
 			exitTui(input);
 		}
 	});
 
-	it("发送后状态行的加载符号会转动", (t) => {
+	it("运行时状态按 Waiting、Thinking、Writing 推进", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 
 		const input = new FakeInput();
@@ -304,135 +300,116 @@ describe("全屏布局", () => {
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
-			assert.ok(frameLines(output)[8]?.includes("⠋"));
 
-			t.mock.timers.tick(100);
-			assert.ok(frameLines(output)[8]?.includes("⠙"));
+			t.mock.timers.tick(300);
+			let status = plain(frameLines(output)[8] ?? "");
+			assert.ok(status.includes("⠸"));
+			assert.ok(status.includes("Waiting for response..."));
+			assert.ok(status.includes("0.3s"));
 
-			t.mock.timers.tick(100);
-			assert.ok(frameLines(output)[8]?.includes("⠹"));
+			t.mock.timers.tick(400);
+			status = plain(frameLines(output)[8] ?? "");
+			assert.ok(status.includes("⠧"));
+			assert.ok(status.includes("Thinking..."));
+			assert.ok(status.includes("0.7s"));
+
+			t.mock.timers.tick(500);
+			status = plain(frameLines(output)[8] ?? "");
+			assert.ok(status.includes("⠹"));
+			assert.ok(status.includes("Writing response..."));
+			assert.ok(status.includes("1.2s"));
+			assert.match(status, /[1-9][0-9]* tokens/);
 		} finally {
 			exitTui(input);
 		}
 	});
 
-	it("连续发送只展开最新一条", () => {
+	it("模拟回复在提示下方增长并保持提示吸顶", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
 
 		try {
-			input.emit("data", Buffer.from("one\r"));
-			input.emit("data", Buffer.from("two\r"));
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(2500);
 
-			const main = frameLines(output).slice(0, 8);
-			assert.equal(main.filter((line) => line.includes("\x1b[48;2;46;46;46m")).length, 3);
-			assert.ok(main[1]?.includes("› two"));
-			assert.equal(main.join("\n").includes("› one"), false);
-			assert.equal(plain(main[0] ?? "").endsWith("█"), true);
-			assert.equal(plain(main[4] ?? "").endsWith("│"), true);
+			const lines = frameLines(output);
+			const main = lines.slice(0, 8).map(plain);
+			assert.ok(main[0]?.startsWith("› hello"));
+			assert.equal(main[1]?.includes("›"), false);
+			assert.ok(main.slice(2).join("\n").includes("模拟回复"));
+
+			const status = plain(lines[8] ?? "");
+			assert.ok(status.includes("Writing response..."));
+			assert.ok(status.includes("2.5s"));
+			assert.ok(status.includes(" tokens"));
+			assert.equal(plain(lines[10] ?? ""), " › ");
 		} finally {
 			exitTui(input);
 		}
 	});
 
-	it("有旧消息时右侧显示滚动条", () => {
+	it("滚轮和拖动可以滚动对话流", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", stdin: input, stdout: output });
 
 		try {
-			input.emit("data", Buffer.from("one\r"));
-			input.emit("data", Buffer.from("two\r"));
-			input.emit("data", Buffer.from("three\r"));
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(2500);
 
-			const main = frameLines(output).slice(0, 8).map(plain);
-			assert.equal(main.every((line) => line.endsWith("█") || line.endsWith("│")), true);
-			assert.equal(main[0]?.endsWith("█"), true);
-			assert.equal(main[1]?.endsWith("█"), true);
-			assert.equal(main[2]?.endsWith("│"), true);
-			assert.equal(main[7]?.endsWith("│"), true);
-			assert.equal(main[0]?.length, 40);
-			assert.equal(main[0]?.at(-2), " ");
-			assert.ok(main.join("\n").includes("› three"));
-			assert.equal(main.join("\n").includes("› two"), false);
-			assert.equal(main.join("\n").includes("› one"), false);
-		} finally {
-			exitTui(input);
-		}
-	});
-
-	it("滚轮可以滚动消息区", () => {
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
-
-		try {
-			input.emit("data", Buffer.from("one\r"));
-			input.emit("data", Buffer.from("two\r"));
-			input.emit("data", Buffer.from("three\r"));
-			input.emit("data", Buffer.from("four\r"));
-
-			const top = frameLines(output).slice(0, 8).map(plain);
-			assert.equal(top[1]?.endsWith("█"), true);
-			assert.equal(top[2]?.endsWith("│"), true);
-			assert.equal(top[7]?.endsWith("│"), true);
-			assert.ok(top.join("\n").includes("› four"));
-			assert.equal(top.join("\n").includes("› three"), false);
-
-			// 滚轮向下翻到上一条消息
-			input.emit("data", Buffer.from("\x1b[<65;20;5M"));
-			const scrolled = frameLines(output).slice(0, 8).map(plain);
-			assert.equal(scrolled[1]?.endsWith("│"), true);
-			assert.equal(scrolled[2]?.endsWith("█"), true);
-			assert.equal(scrolled[7]?.endsWith("│"), true);
-			assert.ok(scrolled.join("\n").includes("› three"));
-			assert.equal(scrolled.join("\n").includes("› four"), false);
-
-			// 再向下翻到更旧的消息
-			input.emit("data", Buffer.from("\x1b[<65;20;5M"));
-			const older = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(older.join("\n").includes("› two"));
-			assert.equal(older[4]?.endsWith("█"), true);
-
-			// 滚轮向上回到最新消息
-			input.emit("data", Buffer.from("\x1b[<64;20;5M"));
-			input.emit("data", Buffer.from("\x1b[<64;20;5M"));
-			const back = frameLines(output).slice(0, 8).map(plain);
-			assert.equal(back[1]?.endsWith("█"), true);
-			assert.ok(back.join("\n").includes("› four"));
-		} finally {
-			exitTui(input);
-		}
-	});
-
-	it("可以拖动滚动条", () => {
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
-
-		try {
-			input.emit("data", Buffer.from("one\r"));
-			input.emit("data", Buffer.from("two\r"));
-			input.emit("data", Buffer.from("three\r"));
-			input.emit("data", Buffer.from("four\r"));
-
-			// 按住滚动条中上部，视图移到中间
-			input.emit("data", Buffer.from("\x1b[<0;40;5M"));
-			const middle = frameLines(output).slice(0, 8).map(plain);
-			assert.equal(middle[7]?.endsWith("│"), true);
-			assert.ok(middle.join("\n").includes("› two"));
-
-			// 拖到底部，滑块回到最下端
-			input.emit("data", Buffer.from("\x1b[<32;40;8M"));
 			const bottom = frameLines(output).slice(0, 8).map(plain);
-			assert.equal(bottom[7]?.endsWith("█"), true);
+			assert.ok(bottom.slice(2).join("\n").includes("模拟回复第 15 行"));
 
-			// 松开后移动鼠标不再滚动
+			// 拖到顶部，看到最早的回复
+			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
+			const top = frameLines(output).slice(0, 8).map(plain);
+			assert.ok(top[0]?.startsWith("› hello"));
+			assert.ok(top.slice(2).join("\n").includes("模拟回复第 1 行"));
+
+			// 拖回底部
+			input.emit("data", Buffer.from("\x1b[<32;40;8M"));
+			const back = frameLines(output).slice(0, 8).map(plain);
+			assert.ok(back.slice(2).join("\n").includes("模拟回复第 15 行"));
+
+			// 松开后滚轮向上，再向下回到跟随
 			input.emit("data", Buffer.from("\x1b[<0;40;8m"));
-			input.emit("data", Buffer.from("\x1b[<32;40;1M"));
-			const afterRelease = frameLines(output).slice(0, 8).map(plain);
-			assert.equal(afterRelease[7]?.endsWith("█"), true);
+			input.emit("data", Buffer.from("\x1b[<64;20;4M"));
+			const scrolled = frameLines(output).slice(0, 8).map(plain);
+			assert.ok(scrolled[0]?.startsWith("› hello"));
+			assert.notEqual(scrolled.join("\n"), back.join("\n"));
+
+			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
+			const followed = frameLines(output).slice(0, 8).map(plain);
+			assert.ok(followed.slice(2).join("\n").includes("模拟回复第 15 行"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("发送第二条后新提示落在顶部，旧内容留在上方", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			t.mock.timers.tick(2500);
+			input.emit("data", Buffer.from("two\r"));
+
+			const latest = frameLines(output).slice(0, 8).map(plain);
+			assert.ok(latest[0]?.startsWith("› two"));
+
+			// 拖到顶部可以看到旧提示
+			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
+			const top = frameLines(output).slice(0, 8).map(plain);
+			assert.ok(top[0]?.startsWith("› one"));
 		} finally {
 			exitTui(input);
 		}

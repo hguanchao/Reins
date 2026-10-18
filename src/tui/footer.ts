@@ -17,10 +17,12 @@ export interface InputView {
 	readonly column: number;
 }
 
-/** 运行时状态：加载符号加状态文字。 */
+/** 运行时状态：加载符号、状态文字、计时与 token 数。 */
 export interface RuntimeStatus {
 	readonly symbol: string;
 	readonly text: string;
+	readonly elapsedMs?: number;
+	readonly tokens?: number;
 	/** 扫光位置，0 到 1；省略时静态显示。 */
 	readonly sweep?: number;
 }
@@ -78,7 +80,10 @@ export function renderFooter(
 function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	if (status === undefined) return "";
 
-	const line = ` ${status.symbol} ${status.text}`.slice(0, Math.max(0, width));
+	const parts = [`${status.symbol} ${status.text}`];
+	if (status.elapsedMs !== undefined) parts.push(`${(status.elapsedMs / 1000).toFixed(1)}s`);
+	if (status.tokens !== undefined) parts.push(`${status.tokens} tokens`);
+	const line = ` ${parts.join("  ")}`.slice(0, Math.max(0, width));
 	if (status.sweep === undefined || line.length === 0) return line;
 
 	const center = -SWEEP_RADIUS + status.sweep * (line.length + SWEEP_RADIUS * 2);
