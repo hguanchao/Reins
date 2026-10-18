@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { TurnDriver } from "../../../src/agent/driver.ts";
+import type { AgentEvent } from "../../../src/agent/events.ts";
 import { TerminalFrontend } from "../../../src/plugins/tui-plugin/frontend.ts";
 import type { InteractiveRuntime } from "../../../src/tui/frontend.ts";
 import { framesWith, lastFrameRows, MemoryTerminal, runtimeOf } from "./frontend-harness.ts";
@@ -186,6 +187,57 @@ describe("前端：帧与输入", () => {
 		// 竖线列与正文列之间：与块的正文同列，而不是顶到屏边
 		assert.ok(status!.startsWith("     "), "spinner aligned with block content");
 		assert.ok(!status!.startsWith("      "), "no deeper indent");
+
+		releaseRun?.();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.quit();
+		await running;
+	});
+
+	it("运行状态行跟着动作切换：思考、跑工具、作答", async () => {
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 24, cols: 80 };
+		let emitEvent: ((event: AgentEvent) => void) | undefined;
+		let releaseRun: (() => void) | undefined;
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: (onEvent) => {
+				emitEvent = onEvent;
+				return {
+					run: async () => {
+						onEvent({ type: "turn_start" });
+						await new Promise<void>((resolve) => {
+							releaseRun = resolve;
+						});
+					},
+				} as unknown as TurnDriver;
+			},
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("hello\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(
+			lastFrameRows(terminal.output).some((line) => line.includes("Thinking")),
+			"回合开始是思考",
+		);
+
+		emitEvent?.({ type: "tool_start", callId: "c1", name: "Bash", args: {} });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		// 阶段耗时紧跟在动作后面，与整轮耗时分开
+		assert.ok(
+			lastFrameRows(terminal.output).some((line) => /Running Bash \d/.test(line)),
+			"跑工具时显示动作与这一步的耗时",
+		);
+
+		emitEvent?.({ type: "text_delta", text: "hi" });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(
+			lastFrameRows(terminal.output).some((line) => line.includes("Responding")),
+			"开始写答案后不再显示思考",
+		);
 
 		releaseRun?.();
 		await new Promise((resolve) => setTimeout(resolve, 0));

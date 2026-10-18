@@ -14,10 +14,10 @@ import { OUTER_PAD } from "./layout.ts";
 import { ACCENT, BRIGHT, DIM, FAINT, TEXT } from "./theme.ts";
 
 /**
- * 输入框下面的两行：运行状态与快捷键条，都与会话条目共用同一段左外边距。
+ * 输入区上下各有一行：上面是运行状态，下面是快捷键条，都与会话条目共用同一段左外边距。
  *
- * 状态行左侧是当前动作，右侧是本轮耗时；快捷键条按当前场景切换，复制结果与粘贴提示会临时
- * 占用这一行，用完再让回给按键提示。
+ * 状态行左侧是指示器、当前动作和这一步的耗时，右侧是整轮的耗时；快捷键条按当前场景切换，
+ * 复制结果与粘贴提示会临时占用这一行，用完再让给按键提示。
  */
 
 export interface KeyHint {
@@ -31,13 +31,37 @@ export interface FooterState {
 	readonly hints: readonly KeyHint[];
 }
 
-/** 跑起来时的那一行：左边是当前动作，右边是这一轮已经跑了多久。 */
-export function runningRow(activity: string, startedAt: number, width: number, now = Date.now()): Line {
-	const elapsed = now - startedAt;
-	const head = plain(" ".repeat(OUTER_PAD + 3));
-	const body = concat(styled(`${spinnerFrame(elapsed)} `, ACCENT), styled(activity, TEXT));
+export interface RunningRowState {
+	/** 当前动作：思考、跑某个工具、压上下文 */
+	readonly activity: string;
+	/** 这一轮的起点 */
+	readonly startedAt: number;
+	/** 当前动作的起点：这一步已经跑了多久从它算 */
+	readonly phaseStartedAt: number;
+	readonly width: number;
+	readonly now?: number;
+}
+
+/**
+ * 跑起来时的那一行。
+ *
+ * 两个耗时回答的是不同的问题——「这一步卡了多久」与「这一轮总共多久」，所以都留着：判断卡死
+ * 看前者，说进度看后者。动作名放不下时截断，两个计时都不截，它们是这两个问题的唯一依据。
+ */
+export function runningRow(state: RunningRowState): Line {
+	const now = state.now ?? Date.now();
+	const elapsed = now - state.startedAt;
+	const indent = OUTER_PAD + 3;
+	const spin = styled(`${spinnerFrame(elapsed)} `, ACCENT);
+	const phase = styled(` ${formatDuration(now - state.phaseStartedAt)}`, DIM);
 	const right = styled(formatDuration(elapsed), DIM);
-	return alignEnds(concat(head, body), right, Math.max(1, width - OUTER_PAD));
+	// 先给两个计时与它们之间的一格空档留位，余下的宽度才归动作名
+	const room = Math.max(
+		1,
+		state.width - OUTER_PAD - indent - lineWidth(spin) - lineWidth(phase) - lineWidth(right) - 1,
+	);
+	const label = truncateLine(styled(state.activity, TEXT), room);
+	return alignEnds(concat(plain(" ".repeat(indent)), spin, label, phase), right, Math.max(1, state.width - OUTER_PAD));
 }
 
 /** 底部快捷键条：临时信息优先，其次才是按键提示。 */

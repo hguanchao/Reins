@@ -94,6 +94,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#focus: boolean | undefined;
 	#notifyMode: NotifyMode = "auto";
 	#activity = "";
+	/** 当前动作的起点：运行状态行拿它显示这一步已经跑了多久 */
+	#activityStartedAt = 0;
 	#running = false;
 	#abort: AbortController | undefined;
 	#ticker: NodeJS.Timeout | undefined;
@@ -834,8 +836,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	async #runTurn(runtime: InteractiveRuntime, prompt: string): Promise<void> {
 		this.#running = true;
-		this.#activity = "Thinking";
 		this.#turnStartedAt = Date.now();
+		this.#setActivity("Thinking", this.#turnStartedAt);
 		const controller = new AbortController();
 		this.#abort = controller;
 		this.#startTicker();
@@ -870,20 +872,27 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const now = Date.now();
 		switch (event.type) {
 			case "turn_start":
-				this.#activity = "Thinking";
+				this.#setActivity("Thinking", now);
+				break;
+			case "reasoning_delta":
+				this.#setActivity("Thinking", now);
+				break;
+			case "text_delta":
+				// 开始往外写答案：与还在想要分开，两者的等待感受完全不同
+				this.#setActivity("Responding", now);
 				break;
 			case "tool_start":
-				this.#activity = `Running ${event.name}`;
+				this.#setActivity(`Running ${event.name}`, now);
 				break;
 			case "tool_end":
-				this.#activity = "Thinking";
+				this.#setActivity("Thinking", now);
 				break;
 			case "compaction_start":
-				this.#activity = "Compacting context";
+				this.#setActivity("Compacting context", now);
 				break;
 			case "compaction_end":
 			case "compaction_failed":
-				this.#activity = "Thinking";
+				this.#setActivity("Thinking", now);
 				break;
 			default:
 				break;
@@ -1005,6 +1014,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#ticker = undefined;
 	}
 
+	/** 换一个动作。同一个动作接连上报不算换，阶段计时不该被重复的上报清零。 */
+	#setActivity(text: string, at: number): void {
+		if (this.#activity === text) return;
+		this.#activity = text;
+		this.#activityStartedAt = at;
+	}
+
 	#setCursorVisible(visible: boolean): void {
 		if (this.#cursorVisible === visible) return;
 		this.#cursorVisible = visible;
@@ -1066,7 +1082,17 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		const lines: Line[] = [
 			...conversation,
-			...(this.#running ? [plain(""), runningRow(this.#activity, this.#turnStartedAt, size.cols)] : []),
+			...(this.#running
+				? [
+						plain(""),
+						runningRow({
+							activity: this.#activity,
+							startedAt: this.#turnStartedAt,
+							phaseStartedAt: this.#activityStartedAt,
+							width: size.cols,
+						}),
+					]
+				: []),
 			...menu,
 			...input,
 			this.#footerLine(size.cols),
