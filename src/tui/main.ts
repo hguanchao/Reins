@@ -8,7 +8,8 @@ import { eastAsianWidth } from "get-east-asian-width";
 
 const BRAND = "Reins";
 const USER_PREFIX = "› ";
-/** 用户消息块背景色 #242424。 */
+/** 消息正文左侧留一列，和输入行的缩进对齐。 */
+const MESSAGE_INDENT = " ";
 const GRAY_BACKGROUND = "\x1b[48;2;36;36;36m";
 const RESET = "\x1b[0m";
 
@@ -35,8 +36,9 @@ export function renderMain(width: number, height: number, version: string): read
 /**
  * 用户消息块。
  *
- * 每条消息固定三行：正文只占中间一行并左对齐，上下两行留空，三行都铺满终端宽度并加灰色
- * 背景。正文超出宽度时用 … 收尾；消息从底部往上排列，超出可视区域时保留最新的那几条。
+ * 每条消息固定三行：正文只占中间一行，左侧缩进一列并左对齐，上下两行留空，三行都铺满
+ * 终端宽度并加灰色背景。正文超出宽度时用 … 收尾；消息从底部往上排列，超出可视区域时保留
+ * 最新的那几条。
  */
 export function renderMessages(width: number, height: number, messages: readonly string[]): readonly string[] {
 	const columns = Math.max(0, width);
@@ -48,7 +50,7 @@ export function renderMessages(width: number, height: number, messages: readonly
 }
 
 function messageBlock(message: string, width: number): readonly string[] {
-	const content = truncateWithEllipsis(`${USER_PREFIX}${message}`, width);
+	const content = truncateWithEllipsis(`${MESSAGE_INDENT}${USER_PREFIX}${message}`, width);
 	const blank = grayLine("", width);
 	return [blank, grayLine(content, width), blank];
 }

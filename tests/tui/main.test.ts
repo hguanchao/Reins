@@ -35,14 +35,14 @@ describe("用户消息块", () => {
 		assert.equal(block.length, 3);
 		assert.ok(block.every((line) => line.startsWith("\x1b[48;2;36;36;36m") && line.endsWith("\x1b[0m")));
 		assert.equal(plain(block[0]), " ".repeat(20));
-		assert.equal(plain(block[1]), `› hello${" ".repeat(13)}`);
+		assert.equal(plain(block[1]), ` › hello${" ".repeat(12)}`);
 		assert.equal(plain(block[2]), " ".repeat(20));
 	});
 
 	it("正文超出宽度时用省略号收尾", () => {
 		const lines = renderMessages(10, 9, ["abcdefghijklmnopqrstuvwxyz"]);
 
-		assert.deepEqual(lines.slice(6).map(plain), [" ".repeat(10), "› abcdefg…", " ".repeat(10)]);
+		assert.deepEqual(lines.slice(6).map(plain), [" ".repeat(10), " › abcdef…", " ".repeat(10)]);
 	});
 
 	it("消息从底部往上排列，超出时保留最新的", () => {
@@ -63,6 +63,6 @@ describe("用户消息块", () => {
 	it("宽字符按显示宽度居中，不留下半个字", () => {
 		const lines = renderMessages(8, 3, ["你好世界"]);
 
-		assert.deepEqual(lines.map(plain), [" ".repeat(8), "› 你好… ", " ".repeat(8)]);
+		assert.deepEqual(lines.map(plain), [" ".repeat(8), " › 你好…", " ".repeat(8)]);
 	});
 });

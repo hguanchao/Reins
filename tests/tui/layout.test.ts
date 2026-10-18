@@ -229,7 +229,7 @@ describe("全屏布局", () => {
 
 			const content = plain(main[7] ?? "");
 			assert.equal(content.length, 40);
-			assert.ok(content.startsWith("› hello"));
+			assert.ok(content.startsWith(" › hello"));
 			assert.equal(lines.join("\n").includes("Reins"), false);
 			assert.ok(cursorAt(output, 11, 4));
 		} finally {
