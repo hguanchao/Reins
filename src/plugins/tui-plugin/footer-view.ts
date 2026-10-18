@@ -49,8 +49,8 @@ export interface RunningRowState {
  * 跑起来时的那一行。
  *
  * 两个耗时回答的是不同的问题——「这一步卡了多久」与「这一轮总共多久」，所以都留着：判断卡死
- * 看前者，说进度看后者。左侧与输入框的提示符同列，指示器正好落在正文的左沿上。
- * 动作名放不下时截断，两个计时都不截，它们是这两个问题的唯一依据。
+ * 看前者，说进度看后者。整行占的正是输入框的内区：左沿与提示符同列，右缘收在右边框内侧，
+ * 上下两块才对得齐。动作名放不下时截断，两个计时都不截，它们是这两个问题的唯一依据。
  */
 export function runningRow(state: RunningRowState): Line {
 	const now = state.now ?? Date.now();
@@ -63,17 +63,12 @@ export function runningRow(state: RunningRowState): Line {
 			: formatDuration(elapsed),
 		DIM,
 	);
+	// 输入框内区右沿：右边框那一格留给边框自己
+	const span = Math.max(1, state.width - OUTER_PAD - 1);
 	// 先给两个计时与它们之间的一格空档留位，余下的宽度才归动作名
-	const room = Math.max(
-		1,
-		state.width - OUTER_PAD - INPUT_LEFT - lineWidth(spin) - lineWidth(phase) - lineWidth(right) - 1,
-	);
+	const room = Math.max(1, span - INPUT_LEFT - lineWidth(spin) - lineWidth(phase) - lineWidth(right) - 1);
 	const label = truncateLine(styled(state.activity, TEXT), room);
-	return alignEnds(
-		concat(plain(" ".repeat(INPUT_LEFT)), spin, label, phase),
-		right,
-		Math.max(1, state.width - OUTER_PAD),
-	);
+	return alignEnds(concat(plain(" ".repeat(INPUT_LEFT)), spin, label, phase), right, span);
 }
 
 /** 上下文规模的紧凑写法：一万以内留两位小数，十万以内一位，再往上按千、兆取整。 */

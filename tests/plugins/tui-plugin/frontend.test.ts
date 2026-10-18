@@ -158,7 +158,7 @@ describe("前端：帧与输入", () => {
 		assert.ok(hint!.startsWith("  Enter:send"), "aligned with the outer padding");
 	});
 
-	it("运行状态行与输入框同列：指示器落在提示符列，右缘落在右边框列", async () => {
+	it("运行状态行占输入框的内区：指示器落在提示符列，右缘收在右边框内侧", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
 		let releaseRun: (() => void) | undefined;
@@ -186,7 +186,7 @@ describe("前端：帧与输入", () => {
 		const bottom = visible.find((line) => line.trim().startsWith("╰") && line.trimEnd().endsWith("╯"));
 		assert.ok(status && editor && bottom, "行、输入框与下边框都在");
 		assert.equal(status!.search(/\S/), editor!.indexOf("❯"), "指示器与输入框的提示符同列");
-		assert.equal(status!.trimEnd().length, bottom!.trimEnd().length, "右缘与输入框右边框同列");
+		assert.equal(status!.trimEnd().length, bottom!.trimEnd().length - 1, "右缘收在右边框内侧一格");
 		assert.ok(status!.includes("⇣12.3k"), `右缘带上下文规模: ${status}`);
 
 		releaseRun?.();

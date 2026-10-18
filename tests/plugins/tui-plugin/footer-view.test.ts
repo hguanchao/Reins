@@ -19,7 +19,8 @@ describe("运行状态行", () => {
 		assert.equal(text.indexOf("⠸"), INPUT_LEFT, "指示器与输入框的提示符同列");
 		assert.ok(text.includes("Running Read 500ms"), `阶段耗时紧跟动作: ${text}`);
 		assert.ok(text.endsWith("10.0s ⇣12.3k"), `整轮耗时与令牌数贴住右缘: ${text}`);
-		assert.equal(lineWidth(line), 60 - 2);
+		// 占输入框的内区：右侧让出右边框那一格
+		assert.equal(lineWidth(line), 60 - 3);
 	});
 
 	it("还没有令牌数时只显示整轮耗时", () => {
@@ -43,6 +44,6 @@ describe("运行状态行", () => {
 		assert.ok(text.includes("…"), `动作名截断: ${text}`);
 		assert.ok(text.includes("500ms"), `阶段耗时仍在: ${text}`);
 		assert.ok(text.endsWith("10.0s ⇣12.3k"), `整轮耗时与令牌数仍在: ${text}`);
-		assert.equal(lineWidth(line), 40 - 2);
+		assert.equal(lineWidth(line), 40 - 3);
 	});
 });
