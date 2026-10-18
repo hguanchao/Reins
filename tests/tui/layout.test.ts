@@ -418,6 +418,26 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("没有回复的旧提示会被移除", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			input.emit("data", Buffer.from("two\r"));
+
+			const main = frameLines(output)
+				.slice(0, 8)
+				.map(plain)
+				.join("\n");
+			assert.ok(main.includes("› two"));
+			assert.equal(main.includes("› one"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("空输入回车不发送", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
