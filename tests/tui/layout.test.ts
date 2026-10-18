@@ -42,8 +42,18 @@ const CLEAR = "\x1b[H\x1b[2J";
 const LEAVE = "\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
 const FOCUS = "\x1b[38;2;225;225;225m";
 const BLUR = "\x1b[38;2;36;36;36m";
+const INFO = "\x1b[38;2;36;36;36m";
 const BORDER = "─";
 const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h$/;
+const FOOTER_INFO = {
+	project: "Reins",
+	branch: "main",
+	model: "gpt-5.6-luna",
+	effort: "max",
+	contextUsed: 100_000,
+	contextWindow: 1_000_000,
+	cacheHitRate: 0.98,
+};
 
 function pressCtrlC(input: FakeInput): void {
 	input.emit("data", Buffer.from([3]));
@@ -81,13 +91,13 @@ describe("全屏布局", () => {
 	it("进入备用屏，按当前尺寸绘制，连按两次 Ctrl+C 后恢复", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		const running = runTui({ version: "1.2.3", stdin: input, stdout: output });
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			assert.equal(output.chunks[0], ENTER);
 			assert.equal(input.rawMode, true);
 			assert.equal(input.resumed, true);
-			assert.ok(cursorAt(output, 11, 4));
+			assert.ok(cursorAt(output, 10, 4));
 
 			const written = output.chunks.length;
 			pressCtrlC(input);
@@ -110,7 +120,7 @@ describe("全屏布局", () => {
 	it("第一次 Ctrl+C 不退出，第二次才退出", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		const running = runTui({ version: "1.2.3", stdin: input, stdout: output });
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			pressCtrlC(input);
@@ -132,7 +142,7 @@ describe("全屏布局", () => {
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		const running = runTui({ version: "1.2.3", stdin: input, stdout: output });
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			pressCtrlC(input);
@@ -153,19 +163,21 @@ describe("全屏布局", () => {
 	it("主区域在输入框之上居中", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
-			assert.equal(lines[3], `${" ".repeat(17)}Reins`);
-			assert.equal(lines[4], `${" ".repeat(17)}v1.2.3`);
-			assert.equal(plain(lines[9] ?? ""), BORDER.repeat(40));
-			assert.equal(plain(lines[10] ?? ""), " › ");
-			assert.equal(plain(lines[11] ?? ""), BORDER.repeat(40));
+			assert.equal(lines[2], `${" ".repeat(17)}Reins`);
+			assert.equal(lines[3], `${" ".repeat(17)}v1.2.3`);
+			assert.equal(plain(lines[8] ?? ""), BORDER.repeat(40));
+			assert.equal(plain(lines[9] ?? ""), " › ");
+			assert.equal(plain(lines[10] ?? ""), BORDER.repeat(40));
+			assert.equal(plain(lines[11] ?? "").startsWith("📁 Reins"), true);
+			assert.ok(lines[8]?.startsWith(FOCUS));
 			assert.ok(lines[9]?.startsWith(FOCUS));
-			assert.ok(lines[10]?.startsWith(FOCUS));
-			assert.ok(cursorAt(output, 11, 4));
+			assert.ok(lines[11]?.startsWith(INFO));
+			assert.ok(cursorAt(output, 10, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -174,7 +186,7 @@ describe("全屏布局", () => {
 	it("尺寸变化时按新尺寸重画", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			output.columns = 20;
@@ -184,13 +196,14 @@ describe("全屏布局", () => {
 			const lines = frameLines(output);
 			assert.equal(lines.length, 6);
 			assert.equal(lines[0], `${" ".repeat(7)}Reins`);
-			assert.equal(lines[1], `${" ".repeat(7)}v1.2.3`);
-			assert.equal(plain(lines[3] ?? ""), BORDER.repeat(20));
-			assert.equal(plain(lines[4] ?? ""), " › ");
-			assert.equal(plain(lines[5] ?? ""), BORDER.repeat(20));
+			assert.equal(lines.join("\n").includes("v1.2.3"), false);
+			assert.equal(plain(lines[2] ?? ""), BORDER.repeat(20));
+			assert.equal(plain(lines[3] ?? ""), " › ");
+			assert.equal(plain(lines[4] ?? ""), BORDER.repeat(20));
+			assert.equal(plain(lines[5] ?? ""), "📁 Reins · 🌿 main");
+			assert.ok(lines[2]?.startsWith(FOCUS));
 			assert.ok(lines[3]?.startsWith(FOCUS));
-			assert.ok(lines[4]?.startsWith(FOCUS));
-			assert.ok(cursorAt(output, 5, 4));
+			assert.ok(cursorAt(output, 4, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -199,7 +212,7 @@ describe("全屏布局", () => {
 	it("终端失去焦点时输入框变暗，重新获得焦点后恢复", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("\x1b[O"));
@@ -207,14 +220,14 @@ describe("全屏布局", () => {
 			assert.ok(frame.includes(BLUR));
 			assert.equal(frame.includes(FOCUS), false);
 			assert.equal(frame.includes("\x1b[?25h"), false);
-			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
+			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
 
 			input.emit("data", Buffer.from("\x1b[I"));
 			frame = rawFrame(output);
 			assert.ok(frame.includes(FOCUS));
-			assert.equal(frame.includes(BLUR), false);
-			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
-			assert.ok(cursorAt(output, 11, 4));
+			assert.ok(frameLines(output)[9]?.startsWith(FOCUS));
+			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
+			assert.ok(cursorAt(output, 10, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -223,24 +236,24 @@ describe("全屏布局", () => {
 	it("点击输入框外失去焦点，点击输入框内恢复", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
-			// 12 行终端里页脚是 10-12 行，点第 5 行算输入框外
+			// 12 行终端里页脚是 8-12 行，点第 5 行算输入框外
 			input.emit("data", Buffer.from("\x1b[<0;5;5M"));
 			let frame = rawFrame(output);
 			assert.ok(frame.includes(BLUR));
 			assert.equal(frame.includes(FOCUS), false);
 			assert.equal(frame.includes("\x1b[?25h"), false);
-			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
+			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
 
-			// 点输入行（第 11 行）重新获得焦点
-			input.emit("data", Buffer.from("\x1b[<0;5;11M"));
+			// 点输入行（第 10 行）重新获得焦点
+			input.emit("data", Buffer.from("\x1b[<0;5;10M"));
 			frame = rawFrame(output);
 			assert.ok(frame.includes(FOCUS));
-			assert.equal(frame.includes(BLUR), false);
-			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
-			assert.ok(cursorAt(output, 11, 4));
+			assert.ok(frameLines(output)[9]?.startsWith(FOCUS));
+			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
+			assert.ok(cursorAt(output, 10, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -249,16 +262,17 @@ describe("全屏布局", () => {
 	it("输入框一有输入，品牌名与版本号就隐藏", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("a"));
 
 			const typed = frameLines(output);
-			assert.equal(typed.join("\n").includes("Reins"), false);
-			assert.equal(typed.join("\n").includes("v1.2.3"), false);
-			assert.equal(plain(typed[10] ?? ""), " › a");
-			assert.ok(cursorAt(output, 11, 5));
+			const main = typed.slice(0, 7).join("\n");
+			assert.equal(main.includes("Reins"), false);
+			assert.equal(main.includes("v1.2.3"), false);
+			assert.equal(plain(typed[9] ?? ""), " › a");
+			assert.ok(cursorAt(output, 10, 5));
 		} finally {
 			exitTui(input);
 		}
@@ -268,7 +282,7 @@ describe("全屏布局", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 60;
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
@@ -283,13 +297,13 @@ describe("全屏布局", () => {
 			assert.ok((lines[2] ?? "").includes("\x1b[48;2;36;36;36m"));
 			assert.ok((lines[1] ?? "").includes("\x1b[38;2;225;225;225m"));
 			assert.equal((lines[3] ?? "").includes("\x1b[48;2;36;36;36m"), false);
-			const status = plain(lines[8] ?? "");
+			const status = plain(lines[7] ?? "");
 			assert.ok(status.startsWith(" ⠋ Waiting for response...  0.0s"));
 			assert.ok(status.endsWith("0.0s  ⇣0"));
 			assert.equal(status.length, 58);
-			assert.ok((lines[8] ?? "").includes("\x1b[38;2;"));
-			assert.equal(plain(lines[10] ?? ""), " › ");
-			assert.ok(cursorAt(output, 11, 4));
+			assert.ok((lines[7] ?? "").includes("\x1b[38;2;"));
+			assert.equal(plain(lines[9] ?? ""), " › ");
+			assert.ok(cursorAt(output, 10, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -301,23 +315,23 @@ describe("全屏布局", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 60;
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
 
 			t.mock.timers.tick(300);
-			let status = plain(frameLines(output)[8] ?? "");
+			let status = plain(frameLines(output)[7] ?? "");
 			assert.ok(status.startsWith(" ⠸ Waiting for response...  0.3s"));
 			assert.ok(status.endsWith("0.3s  ⇣0"));
 
 			t.mock.timers.tick(400);
-			status = plain(frameLines(output)[8] ?? "");
+			status = plain(frameLines(output)[7] ?? "");
 			assert.ok(status.startsWith(" ⠧ Thinking...  0.2s"));
 			assert.ok(status.endsWith("0.7s  ⇣0"));
 
 			t.mock.timers.tick(500);
-			status = plain(frameLines(output)[8] ?? "");
+			status = plain(frameLines(output)[7] ?? "");
 			assert.ok(status.startsWith(" ⠹ Writing response...  0.2s"));
 			assert.ok(status.includes("1.2s  ⇣"));
 		} finally {
@@ -330,25 +344,25 @@ describe("全屏布局", () => {
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(2500);
 
 			const lines = frameLines(output);
-			const main = lines.slice(0, 8).map(plain);
+			const main = lines.slice(0, 7).map(plain);
 			assert.ok(main[1]?.startsWith("› hello"));
 			assert.equal(main[0]?.includes("›"), false);
 			assert.equal(main[2]?.includes("›"), false);
 			assert.equal(main[3]?.includes("›"), false);
 			assert.ok(main.slice(4).join("\n").includes("模拟回复"));
 
-			const status = plain(lines[8] ?? "");
+			const status = plain(lines[7] ?? "");
 			assert.ok(status.includes("Writing response..."));
 			assert.ok(status.includes("2.5s"));
 			assert.ok(status.includes("⇣"));
-			assert.equal(plain(lines[10] ?? ""), " › ");
+			assert.equal(plain(lines[9] ?? ""), " › ");
 		} finally {
 			exitTui(input);
 		}
@@ -359,36 +373,36 @@ describe("全屏布局", () => {
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(2500);
 
-			const bottom = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(bottom.slice(2).join("\n").includes("模拟回复第 15 行"));
+			const bottom = frameLines(output).slice(0, 7).map(plain);
+			assert.ok(bottom.slice(2).join("\n").includes("模拟回复第 16 行"));
 
 			// 拖到顶部，看到最早的回复
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
-			const top = frameLines(output).slice(0, 8).map(plain);
+			const top = frameLines(output).slice(0, 7).map(plain);
 			assert.ok(top[1]?.startsWith("› hello"));
 			assert.ok(top.slice(2).join("\n").includes("模拟回复第 1 行"));
 
 			// 拖回底部
-			input.emit("data", Buffer.from("\x1b[<32;40;8M"));
-			const back = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(back.slice(2).join("\n").includes("模拟回复第 15 行"));
+			input.emit("data", Buffer.from("\x1b[<32;40;7M"));
+			const back = frameLines(output).slice(0, 7).map(plain);
+			assert.ok(back.slice(2).join("\n").includes("模拟回复第 16 行"));
 
 			// 松开后滚轮向上，再向下回到跟随
-			input.emit("data", Buffer.from("\x1b[<0;40;8m"));
+			input.emit("data", Buffer.from("\x1b[<0;40;7m"));
 			input.emit("data", Buffer.from("\x1b[<64;20;4M"));
-			const scrolled = frameLines(output).slice(0, 8).map(plain);
+			const scrolled = frameLines(output).slice(0, 7).map(plain);
 			assert.ok(scrolled[1]?.startsWith("› hello"));
 			assert.notEqual(scrolled.join("\n"), back.join("\n"));
 
 			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
-			const followed = frameLines(output).slice(0, 8).map(plain);
-			assert.ok(followed.slice(2).join("\n").includes("模拟回复第 15 行"));
+			const followed = frameLines(output).slice(0, 7).map(plain);
+			assert.ok(followed.slice(2).join("\n").includes("模拟回复第 16 行"));
 		} finally {
 			exitTui(input);
 		}
@@ -399,19 +413,19 @@ describe("全屏布局", () => {
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("one\r"));
 			t.mock.timers.tick(2500);
 			input.emit("data", Buffer.from("two\r"));
 
-			const latest = frameLines(output).slice(0, 8).map(plain);
+			const latest = frameLines(output).slice(0, 7).map(plain);
 			assert.ok(latest[1]?.startsWith("› two"));
 
 			// 拖到顶部可以看到旧提示
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
-			const top = frameLines(output).slice(0, 8).map(plain);
+			const top = frameLines(output).slice(0, 7).map(plain);
 			assert.ok(top[1]?.startsWith("› one"));
 		} finally {
 			exitTui(input);
@@ -421,7 +435,7 @@ describe("全屏布局", () => {
 	it("空输入回车不发送", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			const written = output.chunks.length;
@@ -435,7 +449,7 @@ describe("全屏布局", () => {
 	it("还没输入就按退格，品牌名与版本号仍然显示", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			const written = output.chunks.length;
@@ -443,8 +457,9 @@ describe("全屏布局", () => {
 
 			assert.equal(output.chunks.length, written);
 			const lines = frameLines(output);
-			assert.ok(lines.join("\n").includes("Reins"));
-			assert.ok(lines.join("\n").includes("v1.2.3"));
+			const main = lines.slice(0, 7).join("\n");
+			assert.ok(main.includes("Reins"));
+			assert.ok(main.includes("v1.2.3"));
 		} finally {
 			exitTui(input);
 		}
@@ -453,14 +468,14 @@ describe("全屏布局", () => {
 	it("宽字符输入后光标停在字符之后", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("你好"));
 
 			const lines = frameLines(output);
-			assert.equal(plain(lines[10] ?? ""), " › 你好");
-			assert.ok(cursorAt(output, 11, 8));
+			assert.equal(plain(lines[9] ?? ""), " › 你好");
+			assert.ok(cursorAt(output, 10, 8));
 		} finally {
 			exitTui(input);
 		}
@@ -469,24 +484,24 @@ describe("全屏布局", () => {
 	it("退格清空输入后品牌名与版本号仍然隐藏", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("abc"));
 			input.emit("data", Buffer.from([0x7f]));
 
 			const lines = frameLines(output);
-			assert.equal(plain(lines[10] ?? ""), " › ab");
-			assert.equal(lines.join("\n").includes("Reins"), false);
-			assert.ok(cursorAt(output, 11, 6));
+			assert.equal(plain(lines[9] ?? ""), " › ab");
+			assert.equal(lines.slice(0, 7).join("\n").includes("Reins"), false);
+			assert.ok(cursorAt(output, 10, 6));
 
 			input.emit("data", Buffer.from([0x7f]));
 			input.emit("data", Buffer.from([0x7f]));
 			const cleared = frameLines(output);
-			assert.equal(cleared.join("\n").includes("Reins"), false);
-			assert.equal(cleared.join("\n").includes("v1.2.3"), false);
-			assert.equal(plain(cleared[10] ?? ""), " › ");
-			assert.ok(cursorAt(output, 11, 4));
+			assert.equal(cleared.slice(0, 7).join("\n").includes("Reins"), false);
+			assert.equal(cleared.slice(0, 7).join("\n").includes("v1.2.3"), false);
+			assert.equal(plain(cleared[9] ?? ""), " › ");
+			assert.ok(cursorAt(output, 10, 4));
 		} finally {
 			exitTui(input);
 		}
@@ -495,7 +510,7 @@ describe("全屏布局", () => {
 	it("方向键等转义序列不会进入输入框", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			const written = output.chunks.length;
@@ -509,7 +524,7 @@ describe("全屏布局", () => {
 	it("普通按键不退出", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
 			input.emit("data", Buffer.from("x"));

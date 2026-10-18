@@ -72,6 +72,17 @@ export function sumUsage(entries: readonly SessionEntry[]): UsageTotals {
 	};
 }
 
+/**
+ * 缓存命中率：缓存读取占全部输入侧 token 的比例。
+ *
+ * 输入侧由未命中缓存的新输入、缓存读取和缓存写入三部分组成；输出不经过缓存，不参与计算。
+ * 一次请求都没有时没有命中率可言，返回 0，避免把「还没有数据」显示成 100%。
+ */
+export function cacheHitRate(totals: UsageTotals): number {
+	const inputSide = totals.input + totals.cacheRead + totals.cacheWrite;
+	return inputSide === 0 ? 0 : totals.cacheRead / inputSide;
+}
+
 /** 把用量写成人看的一行，界面上与导出里都用它。 */
 export function describeUsage(totals: UsageTotals): string {
 	const breakdown: string[] = [];

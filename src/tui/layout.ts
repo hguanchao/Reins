@@ -1,15 +1,15 @@
 import { eastAsianWidth } from "get-east-asian-width";
 import { StringDecoder } from "node:string_decoder";
 
-import { FOOTER_HEIGHT, inputView, renderFooter } from "./footer.ts";
+import { FOOTER_HEIGHT, inputView, renderFooter, type FooterInfo } from "./footer.ts";
 import { renderMain } from "./main.ts";
 import { renderTranscript, transcriptMetrics, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 全屏启动。
  *
- * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是带运行时状态和输入框的
- * 区域。回车把输入作为用户提示送进对话流，提示落在视口顶部；模拟回复在它下方流式增长，
+ * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是带运行时状态、输入框与
+ * 常驻信息行的区域。回车把输入作为用户提示送进对话流，提示落在视口顶部；模拟回复在它下方流式增长，
  * 回复滚出视口后提示块吸顶。Ctrl+C 要连按两次才退出。
  */
 
@@ -92,6 +92,8 @@ export interface TuiOutput {
 
 export interface TuiOptions {
 	readonly version: string;
+	/** 输入框下方常驻信息：项目、分支、模型、思考强度、上下文与缓存命中率 */
+	readonly info: FooterInfo;
 	readonly stdin?: TuiInput;
 	readonly stdout?: TuiOutput;
 }
@@ -152,7 +154,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						elapsedMs: statusElapsedMs,
 						tokens: statusTokens,
 					};
-		const footer = renderFooter(width, input, focused, status);
+		const footer = renderFooter(width, input, focused, status, options.info);
 		const main = hasInput
 			? renderTranscript(width, mainHeight, turns, scrollTop)
 			: renderMain(width, mainHeight, options.version);

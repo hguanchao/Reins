@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
-import { Compactor } from "../agent/compactor.ts";
+import { Compactor, estimateTokens } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
@@ -18,6 +19,7 @@ import {
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
 import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
+import { clampEffort } from "../llm/effort.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
@@ -26,6 +28,7 @@ import { ExternalPlugins } from "../plugins/external.ts";
 import { bundledPlugins, createBundledSessionStore } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
+import { cacheHitRate as usageCacheHitRate, sumUsage } from "../session/usage.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -33,8 +36,10 @@ import { createCoreTools } from "../tools/builtin/index.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
+import { currentBranch } from "../workspace/git.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
 import { runTui } from "../tui/layout.ts";
+import type { FooterInfo } from "../tui/footer.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { runPrintMode } from "./print-mode.ts";
 import { createSession, resumeCommand, resumeSession } from "./session-target.ts";
@@ -89,6 +94,10 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	}
 
 	const workRoot = process.cwd();
+	// 配置先读：模型名写错时不该留下一个空会话文件
+	const loaded = await loadSelection(options);
+	if (loaded === undefined) return 1;
+
 	const store = createBundledSessionStore();
 	let session: Session | undefined;
 	try {
@@ -105,7 +114,10 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	if (session === undefined) return 1;
 
 	try {
-		const code = await runTui({ version: readVersion() });
+		const code = await runTui({
+			version: readVersion(),
+			info: createFooterInfo(workRoot, loaded.config, loaded.selection, session),
+		});
 		writeStdout(`${resumeCommand(session.id)}\n`);
 		return code;
 	} catch (error) {
@@ -116,25 +128,38 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	}
 }
 
-async function runPrint(options: CliOptions): Promise<number> {
-	const configFile = options.configPath ?? configFilePath();
-	const providersFile = options.providersPath ?? providersFilePath();
+/**
+ * 输入框下方的常驻信息。
+ *
+ * 全部取自本次运行的配置与会话：模型与思考强度是实际会发出去的那一组，上下文与缓存命中率
+ * 来自会话记录，界面不自己猜。接续旧会话时，这两项从历史里算出来；新会话则是零。
+ */
+function createFooterInfo(
+	workRoot: string,
+	config: Config,
+	selection: ModelSelection,
+	session: Session,
+): FooterInfo {
+	return {
+		project: basename(workRoot),
+		branch: currentBranch(workRoot),
+		model: selection.model.id,
+		effort:
+			clampEffort(
+				config.reasoningEffort,
+				selection.model.reasoning,
+				selection.model.thinkingLevelMap,
+			) ?? "off",
+		contextUsed: estimateTokens(session.state().messages),
+		contextWindow: selection.model.contextWindow ?? config.contextWindow,
+		cacheHitRate: usageCacheHitRate(sumUsage(session.entries())),
+	};
+}
 
-	let config: Config;
-	let providersConfig: ProvidersConfig;
-	let selection: ModelSelection;
-	try {
-		const effective = await loadEffectiveConfig(options);
-		config = effective.config;
-		providersConfig = effective.providersConfig;
-		selection = resolveSelection(config, providersConfig, configFile, providersFile);
-	} catch (error) {
-		if (error instanceof ConfigError) {
-			writeStderr(`${error.display}\n`);
-			return 1;
-		}
-		throw error;
-	}
+async function runPrint(options: CliOptions): Promise<number> {
+	const loaded = await loadSelection(options);
+	if (loaded === undefined) return 1;
+	const { config, selection } = loaded;
 
 	const workRoot = process.cwd();
 	const workspace = new WorkspaceBoundary(workRoot);
@@ -191,6 +216,37 @@ async function runPrint(options: CliOptions): Promise<number> {
 		});
 	} finally {
 		await session.close();
+	}
+}
+
+/**
+ * 读出生效配置并解析出所使用的模型。
+ *
+ * 交互与非交互两种启动方式共用同一条校验：模型名写错时两边都该在进入界面前停下，而不是
+ * 一边正常启动、另一边报错。
+ */
+async function loadSelection(
+	options: CliOptions,
+): Promise<{ readonly config: Config; readonly selection: ModelSelection } | undefined> {
+	const configFile = options.configPath ?? configFilePath();
+	const providersFile = options.providersPath ?? providersFilePath();
+	try {
+		const effective = await loadEffectiveConfig(options);
+		return {
+			config: effective.config,
+			selection: resolveSelection(
+				effective.config,
+				effective.providersConfig,
+				configFile,
+				providersFile,
+			),
+		};
+	} catch (error) {
+		if (error instanceof ConfigError) {
+			writeStderr(`${error.display}\n`);
+			return undefined;
+		}
+		throw error;
 	}
 }
 

@@ -1,11 +1,22 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FOOTER_HEIGHT, inputView, renderFooter } from "../../src/tui/footer.ts";
+import { FOOTER_HEIGHT, inputView, renderFooter, type FooterInfo } from "../../src/tui/footer.ts";
 
 const BORDER = "─";
 const FOCUS = "\x1b[38;2;225;225;225m";
 const BLUR = "\x1b[38;2;36;36;36m";
+const INFO = "\x1b[38;2;36;36;36m";
+
+const SESSION_INFO: FooterInfo = {
+	project: "Reins",
+	branch: "main",
+	model: "gpt-5.6-luna",
+	effort: "max",
+	contextUsed: 100_000,
+	contextWindow: 1_000_000,
+	cacheHitRate: 0.98,
+};
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");
@@ -17,6 +28,7 @@ describe("页脚输入框", () => {
 
 		assert.equal(lines.length, FOOTER_HEIGHT);
 		assert.equal(lines[0], "");
+		assert.equal(lines[4], "");
 		assert.ok(lines[1].startsWith(FOCUS));
 		assert.equal(plain(lines[1]), BORDER.repeat(10));
 		assert.ok(lines[2].startsWith(FOCUS));
@@ -42,6 +54,44 @@ describe("页脚输入框", () => {
 		assert.equal(plain(lines[2]), " › abc");
 		assert.ok(lines[2].startsWith(FOCUS));
 		assert.ok(lines[2].endsWith("abc"));
+	});
+
+	it("输入框下方显示项目、分支、模型、思考强度、上下文与缓存命中率", () => {
+		const lines = renderFooter(120, "", true, undefined, SESSION_INFO);
+		const line = lines[4] ?? "";
+
+		assert.equal(
+			plain(line),
+			"📁 Reins · 🌿 main | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M | ⚡ 98%",
+		);
+		assert.ok(line.startsWith(INFO));
+		assert.ok(line.endsWith("\x1b[0m"));
+	});
+
+	it("不在 git 仓库时不显示分支项", () => {
+		const lines = renderFooter(120, "", true, undefined, { ...SESSION_INFO, branch: undefined });
+
+		assert.equal(plain(lines[4] ?? ""), "📁 Reins | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M | ⚡ 98%");
+	});
+
+	it("上下文上限未声明时只显示已用量", () => {
+		const lines = renderFooter(120, "", true, undefined, {
+			...SESSION_INFO,
+			contextWindow: undefined,
+		});
+
+		assert.ok(plain(lines[4] ?? "").includes("📊 100K |"));
+	});
+
+	it("常驻信息行按显示宽度截断，不切半个 emoji", () => {
+		assert.equal(plain(renderFooter(10, "", true, undefined, SESSION_INFO)[4] ?? ""), "📁 Reins");
+		assert.equal(plain(renderFooter(9, "", true, undefined, SESSION_INFO)[4] ?? ""), "📁 Rein");
+	});
+
+	it("缓存命中率按整数百分比显示", () => {
+		const lines = renderFooter(120, "", true, undefined, { ...SESSION_INFO, cacheHitRate: 0.984 });
+
+		assert.ok(plain(lines[4] ?? "").endsWith("⚡ 98%"));
 	});
 
 	it("输入超出宽度时保留尾部", () => {

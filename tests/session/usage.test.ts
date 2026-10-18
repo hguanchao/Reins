@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { describeUsage, sumUsage } from "../../src/session/usage.ts";
+import { cacheHitRate, describeUsage, sumUsage } from "../../src/session/usage.ts";
 import type { SessionEntry } from "../../src/session/port.ts";
 
 const T = "2026-01-01T00:00:00Z";
@@ -61,6 +61,45 @@ describe("用量统计", () => {
 		]);
 		assert.equal(totals.cost, 0.02);
 		assert.equal(totals.unpriced, 1);
+	});
+});
+
+describe("缓存命中率", () => {
+	it("缓存读取占输入侧 token 的比例", () => {
+		const entry: SessionEntry = {
+			type: "usage",
+			id: "u",
+			parentId: null,
+			timestamp: T,
+			provider: "p",
+			model: "m",
+			kind: "turn",
+			usage: { input: 10, output: 5, cacheRead: 90, cacheWrite: 0, total: 105 },
+			cost: undefined,
+		};
+
+		assert.equal(cacheHitRate(sumUsage([entry])), 0.9);
+	});
+
+	it("缓存写入也算输入侧，不命中缓存的新输入越多命中率越低", () => {
+		const totals = {
+			requests: 1,
+			compactions: 0,
+			subagents: 0,
+			input: 50,
+			output: 0,
+			cacheRead: 30,
+			cacheWrite: 20,
+			total: 100,
+			cost: undefined,
+			unpriced: 1,
+		};
+
+		assert.equal(cacheHitRate(totals), 0.3);
+	});
+
+	it("没有任何输入侧 token 时返回 0", () => {
+		assert.equal(cacheHitRate(sumUsage([])), 0);
 	});
 });
 
