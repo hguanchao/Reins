@@ -4,38 +4,69 @@ import { describe, it } from "node:test";
 import { inputView, renderFooter } from "../../src/tui/footer.ts";
 
 const BORDER = "─";
+const FOCUS = "\x1b[38;2;204;204;204m";
+const BLUR = "\x1b[38;2;46;46;46m";
+
+function plain(line: string): string {
+	return line.replace(/\x1b\[[0-9;]*m/g, "");
+}
 
 describe("页脚输入框", () => {
-	it("上下边框铺满屏幕宽度，输入行带缩进和提示符", () => {
-		const lines = renderFooter(10, "");
+	it("获得焦点时边框和提示符用 #cccccc", () => {
+		const lines = renderFooter(10, "", true);
 
 		assert.equal(lines.length, 3);
-		assert.equal(lines[0], BORDER.repeat(10));
-		assert.equal(lines[1], " › ");
-		assert.equal(lines[2], BORDER.repeat(10));
+		assert.ok(lines[0].startsWith(FOCUS));
+		assert.equal(plain(lines[0]), BORDER.repeat(10));
+		assert.ok(lines[1].startsWith(FOCUS));
+		assert.equal(plain(lines[1]), " › ");
+		assert.ok(lines[2].startsWith(FOCUS));
+		assert.equal(plain(lines[2]), BORDER.repeat(10));
 	});
 
-	it("输入文字排在提示符之后", () => {
-		const lines = renderFooter(10, "abc");
-		assert.equal(lines[1], " › abc");
+	it("失去焦点时边框和提示符用 #2e2e2e", () => {
+		const lines = renderFooter(10, "", false);
+
+		assert.ok(lines[0].startsWith(BLUR));
+		assert.ok(lines[1].startsWith(BLUR));
+		assert.equal(plain(lines[0]), BORDER.repeat(10));
+		assert.equal(plain(lines[1]), " › ");
+		assert.equal(plain(lines[2]), BORDER.repeat(10));
+	});
+
+	it("输入文字排在提示符之后，不受焦点颜色影响", () => {
+		const lines = renderFooter(10, "abc", true);
+
+		assert.equal(plain(lines[1]), " › abc");
+		assert.ok(lines[1].startsWith(FOCUS));
+		assert.ok(lines[1].endsWith("abc"));
 	});
 
 	it("输入超出宽度时保留尾部", () => {
-		const lines = renderFooter(5, "abcdef");
-		assert.equal(lines[1], " › f");
+		const lines = renderFooter(5, "abcdef", true);
+		assert.equal(plain(lines[1]), " › f");
 	});
 
 	it("宽字符按两列计算，不留下半个字", () => {
-		const lines = renderFooter(6, "你好世界");
-		assert.equal(lines[1], " › 界");
+		const lines = renderFooter(6, "你好世界", true);
+		assert.equal(plain(lines[1]), " › 界");
 	});
 
 	it("光标列跟着提示符和可见文字走", () => {
-		assert.equal(inputView("", 10).text, " › ");
-		assert.equal(inputView("", 10).column, 4);
-		assert.equal(inputView("abc", 10).column, 7);
+		const empty = inputView("", 10);
+		assert.equal(empty.prefix, " › ");
+		assert.equal(empty.text, "");
+		assert.equal(empty.column, 4);
+
+		const ascii = inputView("abc", 10);
+		assert.equal(ascii.prefix, " › ");
+		assert.equal(ascii.text, "abc");
+		assert.equal(ascii.column, 7);
+
 		assert.equal(inputView("你好", 10).column, 8);
 		assert.equal(inputView("abcdef", 5).column, 5);
+		assert.equal(inputView("abcdef", 5).text, "f");
 		assert.equal(inputView("你好世界", 6).column, 6);
+		assert.equal(inputView("你好世界", 6).text, "界");
 	});
 });

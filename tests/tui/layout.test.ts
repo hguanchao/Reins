@@ -37,9 +37,11 @@ class FakeOutput extends EventEmitter {
 	}
 }
 
-const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l";
+const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h";
 const CLEAR = "\x1b[H\x1b[2J";
-const LEAVE = "\x1b[0 q\x1b[?25h\x1b[?1049l";
+const LEAVE = "\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
+const FOCUS = "\x1b[38;2;204;204;204m";
+const BLUR = "\x1b[38;2;46;46;46m";
 const BORDER = "─";
 const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h$/;
 
@@ -158,9 +160,11 @@ describe("全屏布局", () => {
 			assert.equal(lines.length, 12);
 			assert.equal(lines[3], `${" ".repeat(17)}Reins`);
 			assert.equal(lines[4], `${" ".repeat(17)}v1.2.3`);
-			assert.equal(lines[9], BORDER.repeat(40));
-			assert.equal(lines[10], " › ");
-			assert.equal(lines[11], BORDER.repeat(40));
+			assert.equal(plain(lines[9] ?? ""), BORDER.repeat(40));
+			assert.equal(plain(lines[10] ?? ""), " › ");
+			assert.equal(plain(lines[11] ?? ""), BORDER.repeat(40));
+			assert.ok(lines[9]?.startsWith(FOCUS));
+			assert.ok(lines[10]?.startsWith(FOCUS));
 			assert.ok(cursorAt(output, 11, 4));
 		} finally {
 			exitTui(input);
@@ -181,10 +185,34 @@ describe("全屏布局", () => {
 			assert.equal(lines.length, 6);
 			assert.equal(lines[0], `${" ".repeat(7)}Reins`);
 			assert.equal(lines[1], `${" ".repeat(7)}v1.2.3`);
-			assert.equal(lines[3], BORDER.repeat(20));
-			assert.equal(lines[4], " › ");
-			assert.equal(lines[5], BORDER.repeat(20));
+			assert.equal(plain(lines[3] ?? ""), BORDER.repeat(20));
+			assert.equal(plain(lines[4] ?? ""), " › ");
+			assert.equal(plain(lines[5] ?? ""), BORDER.repeat(20));
+			assert.ok(lines[3]?.startsWith(FOCUS));
+			assert.ok(lines[4]?.startsWith(FOCUS));
 			assert.ok(cursorAt(output, 5, 4));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("终端失去焦点时输入框变暗，重新获得焦点后恢复", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("\x1b[O"));
+			let frame = rawFrame(output);
+			assert.ok(frame.includes(BLUR));
+			assert.equal(frame.includes(FOCUS), false);
+			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
+
+			input.emit("data", Buffer.from("\x1b[I"));
+			frame = rawFrame(output);
+			assert.ok(frame.includes(FOCUS));
+			assert.equal(frame.includes(BLUR), false);
+			assert.equal(plain(frameLines(output)[10] ?? ""), " › ");
 		} finally {
 			exitTui(input);
 		}
@@ -201,7 +229,7 @@ describe("全屏布局", () => {
 			const typed = frameLines(output);
 			assert.equal(typed.join("\n").includes("Reins"), false);
 			assert.equal(typed.join("\n").includes("v1.2.3"), false);
-			assert.equal(typed[10], " › a");
+			assert.equal(plain(typed[10] ?? ""), " › a");
 			assert.ok(cursorAt(output, 11, 5));
 		} finally {
 			exitTui(input);
@@ -219,10 +247,10 @@ describe("全屏布局", () => {
 
 			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
-			assert.equal(lines[10], " › ");
+			assert.equal(plain(lines[10] ?? ""), " › ");
 
 			const main = lines.slice(0, 9);
-			assert.equal(main.filter((line) => line.includes("\x1b[48;2;36;36;36m")).length, 3);
+			assert.equal(main.filter((line) => line.includes("\x1b[48;2;46;46;46m")).length, 3);
 			assert.equal(main[0]?.includes("›"), false);
 			assert.ok(main[1]?.includes("› hello"));
 			assert.equal(main[2]?.includes("›"), false);
@@ -247,7 +275,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("two\r"));
 
 			const main = frameLines(output).slice(0, 9);
-			assert.equal(main.filter((line) => line.includes("\x1b[48;2;36;36;36m")).length, 6);
+			assert.equal(main.filter((line) => line.includes("\x1b[48;2;46;46;46m")).length, 6);
 			assert.ok(main[1]?.includes("› one"));
 			assert.ok(main[4]?.includes("› two"));
 		} finally {
@@ -296,7 +324,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("你好"));
 
 			const lines = frameLines(output);
-			assert.equal(lines[10], " › 你好");
+			assert.equal(plain(lines[10] ?? ""), " › 你好");
 			assert.ok(cursorAt(output, 11, 8));
 		} finally {
 			exitTui(input);
@@ -313,7 +341,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from([0x7f]));
 
 			const lines = frameLines(output);
-			assert.equal(lines[10], " › ab");
+			assert.equal(plain(lines[10] ?? ""), " › ab");
 			assert.equal(lines.join("\n").includes("Reins"), false);
 			assert.ok(cursorAt(output, 11, 6));
 
@@ -322,7 +350,7 @@ describe("全屏布局", () => {
 			const cleared = frameLines(output);
 			assert.equal(cleared.join("\n").includes("Reins"), false);
 			assert.equal(cleared.join("\n").includes("v1.2.3"), false);
-			assert.equal(cleared[10], " › ");
+			assert.equal(plain(cleared[10] ?? ""), " › ");
 			assert.ok(cursorAt(output, 11, 4));
 		} finally {
 			exitTui(input);

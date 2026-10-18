@@ -10,7 +10,8 @@ const BRAND = "Reins";
 const USER_PREFIX = "› ";
 /** 消息正文左侧留一列，和输入行的缩进对齐。 */
 const MESSAGE_INDENT = " ";
-const GRAY_BACKGROUND = "\x1b[48;2;36;36;36m";
+/** 用户消息块背景色 #2e2e2e。 */
+const GRAY_BACKGROUND = "\x1b[48;2;46;46;46m";
 const RESET = "\x1b[0m";
 
 /**

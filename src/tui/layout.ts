@@ -19,6 +19,11 @@ const SHOW_CURSOR = "\x1b[?25h";
 /** 终端光标形状：5 是闪烁竖线，0 是恢复终端默认。 */
 const CURSOR_BLINKING_BAR = "\x1b[5 q";
 const CURSOR_DEFAULT = "\x1b[0 q";
+/** 打开/关闭终端的焦点上报；关闭后终端不会再往输入里塞焦点事件。 */
+const ENABLE_FOCUS_REPORTING = "\x1b[?1004h";
+const DISABLE_FOCUS_REPORTING = "\x1b[?1004l";
+const FOCUS_IN = "\x1b[I";
+const FOCUS_OUT = "\x1b[O";
 const CLEAR_SCREEN = "\x1b[2J";
 const CURSOR_HOME = "\x1b[H";
 const DEFAULT_COLUMNS = 80;
@@ -68,6 +73,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const messages: string[] = [];
 	/** 只要输入过内容就置位，之后清空输入也不再显示品牌名与版本号。 */
 	let hasInput = false;
+	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
+	let focused = true;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
 	let finished = false;
@@ -77,7 +84,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const render = (): void => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = Math.max(1, stdout.rows ?? DEFAULT_ROWS);
-		const footer = renderFooter(width, input);
+		const footer = renderFooter(width, input, focused);
 		const mainHeight = Math.max(0, height - footer.length);
 		const main =
 			hasInput
@@ -112,7 +119,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		process.off("SIGINT", onInterrupt);
 		stdin.setRawMode?.(false);
 		stdin.pause();
-		stdout.write(CURSOR_DEFAULT + SHOW_CURSOR + LEAVE_ALTERNATE_SCREEN);
+		stdout.write(DISABLE_FOCUS_REPORTING + CURSOR_DEFAULT + SHOW_CURSOR + LEAVE_ALTERNATE_SCREEN);
 		finish();
 	};
 
@@ -125,14 +132,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
-	/** 回车发送：把当前输入交给主区域，输入框清空。 */
-	const submit = (): void => {
-		if (input.length === 0) return;
+	/** 回车发送：把当前输入交给主区域，输入框清空。返回是否真的发生了可见变化。 */
+	const submit = (): boolean => {
+		if (input.length === 0) return false;
 
 		const message = input.trim();
 		input = "";
 		if (message.length > 0) messages.push(message);
 		render();
+		return true;
 	};
 
 	const onData = (chunk: Buffer): void => {
@@ -142,16 +150,28 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
+		let focusChanged = false;
+		const lastIn = text.lastIndexOf(FOCUS_IN);
+		const lastOut = text.lastIndexOf(FOCUS_OUT);
+		if (lastIn >= 0 || lastOut >= 0) {
+			const next = lastIn > lastOut;
+			if (next !== focused) {
+				focused = next;
+				focusChanged = true;
+			}
+		}
+
 		const previous = input;
 		const result = appendInput(input, text);
 		input = result.text;
 		if (input.length > 0) hasInput = true;
 
 		if (result.submit) {
-			submit();
+			const submitted = submit();
+			if (!submitted && focusChanged) render();
 			return;
 		}
-		if (input !== previous) render();
+		if (input !== previous || focusChanged) render();
 	};
 
 	const onInterrupt = (): void => {
@@ -163,7 +183,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	});
 
 	try {
-		stdout.write(ENTER_ALTERNATE_SCREEN + CURSOR_BLINKING_BAR + HIDE_CURSOR);
+		stdout.write(ENTER_ALTERNATE_SCREEN + CURSOR_BLINKING_BAR + HIDE_CURSOR + ENABLE_FOCUS_REPORTING);
 		stdin.setRawMode?.(true);
 		stdin.resume();
 		stdout.on("resize", render);
