@@ -40,8 +40,8 @@ class FakeOutput extends EventEmitter {
 const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1006h";
 const CLEAR = "\x1b[H\x1b[2J";
 const LEAVE = "\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
-const FOCUS = "\x1b[38;2;204;204;204m";
-const BLUR = "\x1b[38;2;46;46;46m";
+const FOCUS = "\x1b[38;2;225;225;225m";
+const BLUR = "\x1b[38;2;36;36;36m";
 const BORDER = "─";
 const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h$/;
 

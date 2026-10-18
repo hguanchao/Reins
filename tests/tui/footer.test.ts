@@ -4,15 +4,15 @@ import { describe, it } from "node:test";
 import { FOOTER_HEIGHT, inputView, renderFooter } from "../../src/tui/footer.ts";
 
 const BORDER = "─";
-const FOCUS = "\x1b[38;2;204;204;204m";
-const BLUR = "\x1b[38;2;46;46;46m";
+const FOCUS = "\x1b[38;2;225;225;225m";
+const BLUR = "\x1b[38;2;36;36;36m";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 describe("页脚输入框", () => {
-	it("获得焦点时边框和提示符用 #cccccc", () => {
+	it("获得焦点时边框和提示符用 #e1e1e1", () => {
 		const lines = renderFooter(10, "", true);
 
 		assert.equal(lines.length, FOOTER_HEIGHT);
@@ -25,7 +25,7 @@ describe("页脚输入框", () => {
 		assert.equal(plain(lines[3]), BORDER.repeat(10));
 	});
 
-	it("失去焦点时边框和提示符用 #2e2e2e", () => {
+	it("失去焦点时边框和提示符用 #242424", () => {
 		const lines = renderFooter(10, "", false);
 
 		assert.equal(lines[0], "");

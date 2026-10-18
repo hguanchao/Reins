@@ -19,8 +19,8 @@ const PROMPT_BG = "\x1b[48;2;36;36;36m";
 const PROMPT_PREFIX_COLOR = "\x1b[38;2;200;200;200m";
 /** 提示正文 #e1e1e1。 */
 const PROMPT_TEXT_COLOR = "\x1b[38;2;225;225;225m";
-/** 滚动条 #2e2e2e。 */
-const SCROLLBAR_COLOR = "\x1b[38;2;46;46;46m";
+/** 滚动条 #242424。 */
+const SCROLLBAR_COLOR = "\x1b[38;2;36;36;36m";
 const SCROLLBAR_TRACK = "│";
 const SCROLLBAR_THUMB = "█";
 const RESET = "\x1b[0m";

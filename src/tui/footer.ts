@@ -37,10 +37,10 @@ export const FOOTER_HEIGHT = 4;
 
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";
-/** 获得焦点时边框与提示符的颜色 #cccccc。 */
-const FOCUS_COLOR = "\x1b[38;2;204;204;204m";
-/** 失去焦点时边框与提示符的颜色 #2e2e2e。 */
-const BLUR_COLOR = "\x1b[38;2;46;46;46m";
+/** 获得焦点时边框与提示符的颜色 #e1e1e1。 */
+const FOCUS_COLOR = "\x1b[38;2;225;225;225m";
+/** 失去焦点时边框与提示符的颜色 #242424。 */
+const BLUR_COLOR = "\x1b[38;2;36;36;36m";
 const RESET = "\x1b[0m";
 
 /**
