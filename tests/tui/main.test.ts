@@ -53,15 +53,31 @@ describe("用户消息块", () => {
 		assert.ok(plain(lines[5] ?? "").startsWith(" › two"));
 	});
 
-	it("消息从顶部往下排列，超出时保留最新的", () => {
+	it("内容没有溢出时不显示滚动条", () => {
+		const lines = renderMessages(20, 9, ["one", "two"]);
+
+		assert.equal(
+			lines.map(plain).some((line) => line.endsWith("█") || line.endsWith("│")),
+			false,
+		);
+	});
+
+	it("消息从顶部往下排列，内容溢出时显示滚动条", () => {
 		const lines = renderMessages(20, 12, ["one", "two", "three", "four"]);
-		const text = lines.map(plain).join("\n");
+		const plainLines = lines.map(plain);
+		const text = plainLines.join("\n");
 
 		assert.equal(lines.length, 12);
 		assert.equal(text.includes("› one"), false);
 		assert.ok(text.includes("› two"));
 		assert.ok(text.includes("› three"));
 		assert.ok(text.includes("› four"));
+
+		assert.equal(plainLines.every((line) => line.endsWith("█") || line.endsWith("│")), true);
+		assert.equal(plainLines.filter((line) => line.endsWith("█")).length, 9);
+		assert.equal(plainLines.slice(0, 3).every((line) => line.endsWith("│")), true);
+		assert.equal(plainLines[0]?.length, 20);
+		assert.ok(lines[0]?.includes("\x1b[38;2;46;46;46m"));
 	});
 
 	it("没有消息时只返回空白行", () => {

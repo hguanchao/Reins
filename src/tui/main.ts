@@ -10,8 +10,14 @@ const BRAND = "Reins";
 const USER_PREFIX = "› ";
 /** 消息正文左侧留一列，和输入行的缩进对齐。 */
 const MESSAGE_INDENT = " ";
+/** 每条消息块固定占三行。 */
+const MESSAGE_LINES = 3;
 /** 用户消息块背景色 #2e2e2e。 */
 const GRAY_BACKGROUND = "\x1b[48;2;46;46;46m";
+/** 滚动条轨道与滑块，颜色同为 #2e2e2e。 */
+const SCROLLBAR_COLOR = "\x1b[38;2;46;46;46m";
+const SCROLLBAR_TRACK = "│";
+const SCROLLBAR_THUMB = "█";
 const RESET = "\x1b[0m";
 
 /**
@@ -39,19 +45,44 @@ export function renderMain(width: number, height: number, version: string): read
  *
  * 每条消息固定三行：正文只占中间一行，左侧缩进一列并左对齐，上下两行留空，三行都铺满
  * 终端宽度并加灰色背景。消息块之间留一行间距；正文超出宽度时用 … 收尾。消息从顶部往下
- * 排列，空余区域留在底部，超出可视区域时保留最新的那几条。
+ * 排列，空余区域留在底部；内容超出可视区域时保留最新的部分，并在右侧显示滚动条。
  */
 export function renderMessages(width: number, height: number, messages: readonly string[]): readonly string[] {
 	const columns = Math.max(0, width);
 	const rows = Math.max(0, height);
+	if (messages.length === 0) return Array.from({ length: rows }, () => "");
+
+	const totalLines = messages.length * MESSAGE_LINES + (messages.length - 1);
+	const overflow = totalLines > rows;
+	// 有滚动条时把最右一列让出来，消息正文就不会被滚动条盖住
+	const contentWidth = Math.max(0, columns - (overflow ? 1 : 0));
 	const blockLines = messages.flatMap((message, index) => {
-		const block = messageBlock(message, columns);
+		const block = messageBlock(message, contentWidth);
 		// 第一块从顶部开始，后面的块前面留一行，避免相邻灰底粘成一整片
 		return index === 0 ? block : ["", ...block];
 	});
 	const visible = blockLines.slice(Math.max(0, blockLines.length - rows));
 	const padding = Math.max(0, rows - visible.length);
-	return [...visible, ...Array.from({ length: padding }, () => "")];
+
+	if (!overflow) return [...visible, ...Array.from({ length: padding }, () => "")];
+
+	const scrollbar = renderScrollbar(rows, blockLines.length);
+	return Array.from({ length: rows }, (_, index) => {
+		const line = visible[index] ?? "";
+		const content = line === "" ? " ".repeat(contentWidth) : line;
+		return content + scrollbar[index];
+	});
+}
+
+/** 滚动条始终停在最新内容处，滑块占可视高度的比例。 */
+function renderScrollbar(height: number, totalLines: number): readonly string[] {
+	const thumbHeight = Math.max(1, Math.floor((height * height) / totalLines));
+	const thumbTop = height - thumbHeight;
+
+	return Array.from({ length: height }, (_, index) => {
+		const char = index >= thumbTop ? SCROLLBAR_THUMB : SCROLLBAR_TRACK;
+		return `${SCROLLBAR_COLOR}${char}${RESET}`;
+	});
 }
 
 function messageBlock(message: string, width: number): readonly string[] {

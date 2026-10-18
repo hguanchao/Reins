@@ -308,6 +308,31 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("消息溢出主区域时右侧显示滚动条", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			input.emit("data", Buffer.from("two\r"));
+			input.emit("data", Buffer.from("three\r"));
+
+			const main = frameLines(output).slice(0, 9).map(plain);
+			assert.equal(main.every((line) => line.endsWith("█") || line.endsWith("│")), true);
+			assert.equal(main[0]?.endsWith("│"), true);
+			assert.equal(main[1]?.endsWith("│"), true);
+			assert.equal(main[2]?.endsWith("█"), true);
+			assert.equal(main[8]?.endsWith("█"), true);
+			assert.equal(main[0]?.length, 40);
+			assert.equal(main.join("\n").includes("› one"), false);
+			assert.ok(main.join("\n").includes("› two"));
+			assert.ok(main.join("\n").includes("› three"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("空输入回车不发送", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
