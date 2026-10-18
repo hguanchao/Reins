@@ -38,13 +38,17 @@ export function renderMain(width: number, height: number, version: string): read
  * 用户消息块。
  *
  * 每条消息固定三行：正文只占中间一行，左侧缩进一列并左对齐，上下两行留空，三行都铺满
- * 终端宽度并加灰色背景。正文超出宽度时用 … 收尾；消息从顶部往下排列，空余区域留在底部，
- * 超出可视区域时保留最新的那几条。
+ * 终端宽度并加灰色背景。消息块之间留一行间距；正文超出宽度时用 … 收尾。消息从顶部往下
+ * 排列，空余区域留在底部，超出可视区域时保留最新的那几条。
  */
 export function renderMessages(width: number, height: number, messages: readonly string[]): readonly string[] {
 	const columns = Math.max(0, width);
 	const rows = Math.max(0, height);
-	const blockLines = messages.flatMap((message) => messageBlock(message, columns));
+	const blockLines = messages.flatMap((message, index) => {
+		const block = messageBlock(message, columns);
+		// 第一块从顶部开始，后面的块前面留一行，避免相邻灰底粘成一整片
+		return index === 0 ? block : ["", ...block];
+	});
 	const visible = blockLines.slice(Math.max(0, blockLines.length - rows));
 	const padding = Math.max(0, rows - visible.length);
 	return [...visible, ...Array.from({ length: padding }, () => "")];

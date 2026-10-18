@@ -277,7 +277,8 @@ describe("全屏布局", () => {
 			const main = frameLines(output).slice(0, 9);
 			assert.equal(main.filter((line) => line.includes("\x1b[48;2;46;46;46m")).length, 6);
 			assert.ok(main[1]?.includes("› one"));
-			assert.ok(main[4]?.includes("› two"));
+			assert.equal(main[3], "");
+			assert.ok(main[5]?.includes("› two"));
 		} finally {
 			exitTui(input);
 		}

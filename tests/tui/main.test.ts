@@ -45,11 +45,19 @@ describe("用户消息块", () => {
 		assert.deepEqual(lines.slice(0, 3).map(plain), [" ".repeat(10), " › abcdef…", " ".repeat(10)]);
 	});
 
+	it("消息块之间留一行间距", () => {
+		const lines = renderMessages(20, 9, ["one", "two"]);
+
+		assert.ok(plain(lines[1] ?? "").startsWith(" › one"));
+		assert.equal(lines[3], "");
+		assert.ok(plain(lines[5] ?? "").startsWith(" › two"));
+	});
+
 	it("消息从顶部往下排列，超出时保留最新的", () => {
-		const lines = renderMessages(20, 9, ["one", "two", "three", "four"]);
+		const lines = renderMessages(20, 12, ["one", "two", "three", "four"]);
 		const text = lines.map(plain).join("\n");
 
-		assert.equal(lines.length, 9);
+		assert.equal(lines.length, 12);
 		assert.equal(text.includes("› one"), false);
 		assert.ok(text.includes("› two"));
 		assert.ok(text.includes("› three"));
