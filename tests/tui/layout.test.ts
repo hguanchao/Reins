@@ -286,7 +286,8 @@ describe("全屏布局", () => {
 			const content = plain(main[1] ?? "");
 			assert.equal(content.length, 40);
 			assert.ok(content.startsWith(" › hello"));
-			assert.equal(lines[8], " ⠋ Waiting for response...");
+			assert.equal(plain(lines[8] ?? ""), " ⠋ Waiting for response...");
+			assert.ok(lines[8]?.includes("\x1b[38;2;"));
 			assert.equal(lines.join("\n").includes("Reins"), false);
 			assert.ok(cursorAt(output, 11, 4));
 		} finally {

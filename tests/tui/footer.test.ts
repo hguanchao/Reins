@@ -67,6 +67,18 @@ describe("页脚输入框", () => {
 		assert.equal(lines[0], " ⠋ Waiting");
 	});
 
+	it("运行时状态可以带扫光", () => {
+		const lines = renderFooter(40, "", true, {
+			symbol: "⠋",
+			text: "Waiting for response...",
+			sweep: 0.5,
+		});
+
+		assert.equal(plain(lines[0] ?? ""), " ⠋ Waiting for response...");
+		assert.ok(lines[0]?.includes("\x1b[38;2;255;255;255m"));
+		assert.ok(lines[0]?.endsWith("\x1b[0m"));
+	});
+
 	it("光标列跟着提示符和可见文字走", () => {
 		const empty = inputView("", 10);
 		assert.equal(empty.prefix, " › ");

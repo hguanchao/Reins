@@ -38,6 +38,8 @@ const EXIT_CONFIRM_WINDOW_MS = 2000;
 /** 运行时状态前的加载动画。 */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SPINNER_INTERVAL_MS = 100;
+/** 每帧把扫光往前推多少；整个状态行约 1.25 秒扫一遍。 */
+const SWEEP_STEP = 0.08;
 const WAITING_FOR_RESPONSE = "Waiting for response...";
 
 /** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
@@ -89,6 +91,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
 	let spinnerFrame = 0;
+	let sweepPhase = 0;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -102,7 +105,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const status =
 			statusText === undefined
 				? undefined
-				: { symbol: SPINNER_FRAMES[spinnerFrame] ?? "", text: statusText };
+				: { symbol: SPINNER_FRAMES[spinnerFrame] ?? "", text: statusText, sweep: sweepPhase };
 		const footer = renderFooter(width, input, focused, status);
 		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
 		messageOffset = Math.min(messageOffset, Math.max(0, messages.length - 1));
@@ -163,6 +166,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		spinnerTimer = setInterval(() => {
 			spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
+			sweepPhase = (sweepPhase + SWEEP_STEP) % 1;
 			render();
 		}, SPINNER_INTERVAL_MS);
 	};

@@ -21,7 +21,14 @@ export interface InputView {
 export interface RuntimeStatus {
 	readonly symbol: string;
 	readonly text: string;
+	/** 扫光位置，0 到 1；省略时静态显示。 */
+	readonly sweep?: number;
 }
+
+/** 扫光的底色、高光和半径（字符数）。 */
+const SWEEP_BASE = 0x66;
+const SWEEP_HIGHLIGHT = 0xff;
+const SWEEP_RADIUS = 6;
 
 /** 页脚固定四行：状态行、上边框、输入行、下边框。 */
 export const FOOTER_HEIGHT = 4;
@@ -71,8 +78,19 @@ export function renderFooter(
 function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	if (status === undefined) return "";
 
-	const line = ` ${status.symbol} ${status.text}`;
-	return line.slice(0, Math.max(0, width));
+	const line = ` ${status.symbol} ${status.text}`.slice(0, Math.max(0, width));
+	if (status.sweep === undefined || line.length === 0) return line;
+
+	const center = -SWEEP_RADIUS + status.sweep * (line.length + SWEEP_RADIUS * 2);
+	let output = "";
+	for (let index = 0; index < line.length; index += 1) {
+		const distance = Math.abs(index - center);
+		const intensity = Math.max(0, 1 - distance / SWEEP_RADIUS);
+		const value = Math.round(SWEEP_BASE + (SWEEP_HIGHLIGHT - SWEEP_BASE) * intensity);
+		output += `\x1b[38;2;${value};${value};${value}m${line[index]}`;
+	}
+
+	return output + RESET;
 }
 
 function colored(text: string, focused: boolean): string {
