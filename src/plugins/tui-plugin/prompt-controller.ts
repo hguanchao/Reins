@@ -15,8 +15,15 @@ import {
 	type AtContext,
 	type FileEntry,
 } from "./file-search.ts";
-import { fileMenuRows, MAX_MENU_ROWS, MENU_CHROME_ROWS, slashMenuRows } from "./menu-view.ts";
+import {
+	fileMenuRows,
+	historyMenuRows,
+	MAX_MENU_ROWS,
+	MENU_CHROME_ROWS,
+	slashMenuRows,
+} from "./menu-view.ts";
 import { matchSlashCommands, slashContext, type SlashCommand, type SlashContext } from "./slash-menu.ts";
+import { PATH } from "./theme.ts";
 
 /**
  * 输入区控制器。
@@ -38,7 +45,7 @@ export interface PromptControllerOptions {
 	readonly onChange: () => void;
 }
 
-type MenuKind = "slash" | "file";
+type MenuKind = "slash" | "file" | "history";
 
 export class PromptController {
 	readonly editor: LineEditor;
@@ -57,10 +64,19 @@ export class PromptController {
 	#fileIndexKey: string | undefined;
 	#fileDrillPrefix: string | undefined;
 	#fileClosedFor: string | undefined;
+	/** `@!` 用的清单：包含隐藏与被 .gitignore 忽略的文件 */
+	#hiddenIndex: readonly FileEntry[] = [];
+	#hiddenRoot: string | undefined;
+	#hiddenLoading = false;
+	#hiddenAt = 0;
+
+	#historyOpen = false;
+	#historySelected = 0;
 
 	#menuKind: MenuKind | undefined;
 	#menuTop = 0;
 	#menuVisible = 0;
+	#menuHover: number | undefined;
 	#lastClick: { kind: MenuKind; index: number; at: number } | undefined;
 	#editorElements: EditorRender["elements"] = [];
 	#lastElementClick: { id: number; at: number } | undefined;
@@ -79,8 +95,8 @@ export class PromptController {
 		return this.#menuVisible;
 	}
 
-	render(width: number, maxRows: number, pasteStyle: Style, prompt: Line): EditorRender {
-		const rendered = this.editor.render({ width, prompt, maxRows, pasteStyle });
+	render(width: number, maxRows: number, pasteStyle: Style, prompt: Line, placeholder?: string): EditorRender {
+		const rendered = this.editor.render({ width, prompt, maxRows, pasteStyle, placeholder });
 		this.#editorElements = rendered.elements;
 		return rendered;
 	}
@@ -111,31 +127,108 @@ export class PromptController {
 
 	/** 当前打开的菜单类型；提示条与布局用它。 */
 	menuKind(): MenuKind | undefined {
+		if (this.#historyState() !== undefined) return "history";
 		if (this.#slashState() !== undefined) return "slash";
 		if (this.#fileState() !== undefined) return "file";
 		return undefined;
+	}
+
+	/**
+	 * 空输入时按 Up：把已提交的历史铺成面板。
+	 *
+	 * 面板只负责挑选，不覆盖草稿；选中后回车才写回输入框，使用者还能接着改。
+	 */
+	openHistory(): boolean {
+		if (!this.editor.isEmpty || this.editor.historyEntries().length === 0) return false;
+		this.#historyOpen = true;
+		this.#historySelected = 0;
+		return true;
+	}
+
+	closeHistory(): void {
+		this.#historyOpen = false;
+	}
+
+	#historyState(): readonly string[] | undefined {
+		if (!this.#historyOpen) return undefined;
+		const entries = [...this.editor.historyEntries()].reverse();
+		if (entries.length === 0) {
+			this.#historyOpen = false;
+			return undefined;
+		}
+		this.#historySelected = Math.max(0, Math.min(entries.length - 1, this.#historySelected));
+		return entries;
+	}
+
+	#acceptHistory(): void {
+		const entries = this.#historyState();
+		const text = entries?.[this.#historySelected];
+		this.#historyOpen = false;
+		if (text !== undefined) this.editor.insert(text);
 	}
 
 	hasMenu(): boolean {
 		return this.menuKind() !== undefined;
 	}
 
+	/** 鼠标悬停的候选下标；菜单换类型时作废。 */
+	get menuHover(): number | undefined {
+		return this.#menuHover;
+	}
+
+	setMenuHover(index: number | undefined): void {
+		this.#menuHover = index;
+	}
+
 	/** 渲染下拉并记下窗口位置；没有候选时返回空数组。 */
 	menuRows(width: number, terminalRows: number): readonly Line[] {
 		const limit = Math.max(1, Math.min(MAX_MENU_ROWS, terminalRows - 10));
+		const history = this.#historyState();
+		if (history !== undefined) {
+			if (this.#menuKind !== "history") this.#menuHover = undefined;
+			const layout = historyMenuRows(
+				history,
+				this.#historySelected,
+				width,
+				limit,
+				this.#menuHover,
+			);
+			this.#menuKind = "history";
+			this.#menuTop = layout.top;
+			this.#menuVisible = layout.visible;
+			return layout.rows;
+		}
+
 		const slash = this.#slashState();
 		if (slash !== undefined) {
-			const layout = slashMenuRows(slash.items, this.#slashIndex, width, limit);
+			if (this.#menuKind !== "slash") this.#menuHover = undefined;
+			const layout = slashMenuRows(
+				slash.items,
+				this.#slashIndex,
+				width,
+				limit,
+				slash.context.query,
+				this.#menuHover,
+			);
 			this.#menuKind = "slash";
 			this.#menuTop = layout.top;
 			this.#menuVisible = layout.visible;
 			return layout.rows;
 		}
 
-		const file = this.#fileState();
+		const file = this.#slashState() === undefined ? this.#fileState() : undefined;
 		if (file !== undefined) {
-			const hint = `${file.items.length}/${this.#fileIndex.length}`;
-			const layout = fileMenuRows(file.items, this.#fileIndexSelected, width, limit, hint);
+			if (this.#menuKind !== "file") this.#menuHover = undefined;
+				const hint = `${file.items.length}/${file.total}`;
+			const layout = fileMenuRows(
+				file.items,
+				this.#fileIndexSelected,
+				width,
+				limit,
+				hint,
+				file.context.query,
+				this.#menuHover,
+			);
 			this.#menuKind = "file";
 			this.#menuTop = layout.top;
 			this.#menuVisible = layout.visible;
@@ -143,6 +236,7 @@ export class PromptController {
 		}
 
 		this.#menuKind = undefined;
+		this.#menuHover = undefined;
 		this.#menuVisible = 0;
 		return [];
 	}
@@ -184,6 +278,11 @@ export class PromptController {
 			if (state !== undefined) {
 				this.#fileIndexSelected = Math.max(0, Math.min(state.items.length - 1, this.#fileIndexSelected + delta));
 			}
+		} else if (kind === "history") {
+			const state = this.#historyState();
+			if (state !== undefined) {
+				this.#historySelected = Math.max(0, Math.min(state.length - 1, this.#historySelected + delta));
+			}
 		}
 	}
 
@@ -194,6 +293,31 @@ export class PromptController {
 	 * 这一下 Enter 应该发送）。
 	 */
 	handleMenuKey(event: Extract<KeyEvent, { type: "key" }>): boolean {
+		const history = this.#historyState();
+		if (history !== undefined) {
+			if (event.name === "up" || event.name === "ctrl-p") {
+				this.#historySelected = Math.max(0, this.#historySelected - 1);
+				return true;
+			}
+			if (event.name === "down" || event.name === "ctrl-n") {
+				this.#historySelected = Math.min(history.length - 1, this.#historySelected + 1);
+				return true;
+			}
+			if (event.name === "enter" || event.name === "tab") {
+				this.#acceptHistory();
+				return true;
+			}
+			if (event.name === "escape" || event.name === "ctrl-c") {
+				this.#historyOpen = false;
+				return true;
+			}
+			if (event.name === "backspace" || event.name === "delete") {
+				this.#historyOpen = false;
+				return true;
+			}
+			return false;
+		}
+
 		const slash = this.#slashState();
 		if (slash !== undefined) {
 			if (event.name === "up" || event.name === "ctrl-p") return this.#moveSlash(-1);
@@ -246,8 +370,9 @@ export class PromptController {
 		return false;
 	}
 
-	/** 往输入框插入普通文本。 */
+	/** 往输入框插入普通文本。输入即视为离开历史面板。 */
 	insertText(text: string): void {
+		this.#historyOpen = false;
 		this.editor.insert(text);
 	}
 
@@ -261,6 +386,7 @@ export class PromptController {
 
 	/** 粘贴分流：重粘贴展开 chip，多行/大文本折成 chip，其余内联。 */
 	insertPaste(text: string, inline: boolean): void {
+		this.#historyOpen = false;
 		const normalized = text.replaceAll(/\r\n?/g, "\n");
 		if (normalized.length === 0) return;
 
@@ -296,6 +422,7 @@ export class PromptController {
 		const builtins: SlashCommand[] = BUILTIN_COMMANDS.map((command) => ({
 			name: command.name,
 			description: command.description,
+			tag: "built-in",
 			insertText: `/${command.name}${command.takesArgs === true ? " " : ""}`,
 		}));
 		const names = new Set(builtins.map((command) => command.name));
@@ -304,6 +431,7 @@ export class PromptController {
 			.map((command) => ({
 				name: command.name,
 				description: command.description,
+				tag: "plugin",
 				insertText: `/${command.name} `,
 			}));
 		return [...builtins, ...plugins];
@@ -352,7 +480,7 @@ export class PromptController {
 		this.#slashQuery = undefined;
 	}
 
-	#fileState(): { context: AtContext; items: readonly FileEntry[] } | undefined {
+	#fileState(): { context: AtContext; items: readonly FileEntry[]; total: number } | undefined {
 		const text = this.editor.displayText;
 		if (this.#fileClosedFor !== undefined && this.#fileClosedFor !== text) this.#fileClosedFor = undefined;
 		if (this.#fileClosedFor === text) return undefined;
@@ -369,21 +497,54 @@ export class PromptController {
 			this.#fileDrillPrefix = undefined;
 		}
 
-		if (this.#fileIndex.length === 0) {
+		// `@!` 用另一份包含被忽略文件的清单；第一次用到时才建立
+		if (context.hidden) {
+			this.#loadHiddenIndex();
+			if (this.#hiddenIndex.length === 0) {
+				this.#fileIndexKey = undefined;
+				return undefined;
+			}
+		}
+
+		const index = context.hidden ? this.#hiddenIndex : this.#fileIndex;
+		if (index.length === 0) {
 			this.#fileIndexKey = undefined;
 			return undefined;
 		}
 
-		const items = matchFiles(this.#fileIndex, context.query);
+		const items = matchFiles(index, context.query);
 		if (items.length === 0) return undefined;
 
-		const key = `${context.start}:${context.end}:${context.query}`;
+		const key = `${context.hidden ? "hidden" : "normal"}:${context.start}:${context.end}:${context.query}`;
 		if (key !== this.#fileIndexKey) {
 			this.#fileIndexKey = key;
 			this.#fileIndexSelected = 0;
 		}
 		this.#fileIndexSelected = Math.max(0, Math.min(items.length - 1, this.#fileIndexSelected));
-		return { context, items };
+		return { context, items, total: index.length };
+	}
+
+	/** 隐藏文件清单按需建立；同一根目录 30 秒内不重复扫描。 */
+	#loadHiddenIndex(): void {
+		const root = this.#fileIndexRoot;
+		if (root === undefined || this.#hiddenLoading) return;
+		if (this.#hiddenRoot === root && Date.now() - this.#hiddenAt < 30_000) return;
+
+		this.#hiddenRoot = root;
+		this.#hiddenLoading = true;
+		this.#hiddenAt = Date.now();
+		void indexWorkspaceFiles(root, { includeIgnored: true })
+			.then((entries) => {
+				if (this.#hiddenRoot !== root) return;
+				this.#hiddenIndex = entries;
+				this.#hiddenLoading = false;
+				this.#onChange();
+			})
+			.catch(() => {
+				if (this.#hiddenRoot !== root) return;
+				this.#hiddenLoading = false;
+				this.#onChange();
+			});
 	}
 
 	#moveFile(delta: number): boolean {
@@ -410,15 +571,43 @@ export class PromptController {
 	#acceptFile(item: FileEntry, context: AtContext, drill: boolean): void {
 		const directory = item.kind === "directory";
 		const drillDown = directory && (drill || context.query.endsWith("/"));
-		const replacement = drillDown ? `@${item.path}/` : `@${item.path} `;
-		if (!this.editor.replaceDisplayRange(context.start, context.end, replacement)) return;
+		if (drillDown) {
+			// 钻进目录时保留可继续编辑的查询文本，不折成整体
+			const replacement = `@${item.path}/`;
+			if (!this.editor.replaceDisplayRange(context.start, context.end, replacement)) return;
+			this.#fileIndexKey = undefined;
+			this.#fileDrillPrefix = `${item.path}/`;
+			this.#fileClosedFor = undefined;
+			return;
+		}
 
+		// 选定的文件是一个整体：退格一次删掉整段引用，光标不会停在路径中间
+		const reference = `@${item.path}`;
+		if (
+			!this.editor.replaceDisplayRangeElement(
+				context.start,
+				context.end,
+				reference,
+				reference,
+				PATH,
+				" ",
+			)
+		) {
+			return;
+		}
 		this.#fileIndexKey = undefined;
-		this.#fileDrillPrefix = drillDown ? `${item.path}/` : undefined;
-		this.#fileClosedFor = drillDown ? undefined : this.editor.displayText;
+		this.#fileDrillPrefix = undefined;
+		this.#fileClosedFor = this.editor.displayText;
 	}
 
 	#selectMenu(kind: MenuKind, index: number): void {
+		if (kind === "history") {
+			const state = this.#historyState();
+			if (state !== undefined) {
+				this.#historySelected = Math.max(0, Math.min(state.length - 1, index));
+			}
+			return;
+		}
 		if (kind === "slash") {
 			const state = this.#slashState();
 			if (state !== undefined) this.#slashIndex = Math.max(0, Math.min(state.items.length - 1, index));
@@ -429,6 +618,14 @@ export class PromptController {
 	}
 
 	#acceptMenu(kind: MenuKind, index: number, drill: boolean): void {
+		if (kind === "history") {
+			const state = this.#historyState();
+			if (state !== undefined) {
+				this.#historySelected = Math.max(0, Math.min(state.length - 1, index));
+				this.#acceptHistory();
+			}
+			return;
+		}
 		if (kind === "slash") {
 			const state = this.#slashState();
 			const item = state?.items[index];

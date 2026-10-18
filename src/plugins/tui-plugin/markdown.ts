@@ -16,6 +16,7 @@ import {
 	type Style,
 } from "../../tui/text/line.ts";
 import { wrapLine } from "../../tui/text/wrap.ts";
+import { renderMermaid } from "./mermaid.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -70,10 +71,10 @@ const EMPHASIS: Style = { italic: true };
 const STRIKE: Style = { strikethrough: true };
 const H1: Style = { bold: true, color: THEME.mdTeal };
 const H2: Style = { bold: true, color: THEME.system };
-const H3: Style = { bold: true, color: THEME.accent };
+const H3: Style = { bold: true, color: THEME.mdPurple };
 const H4: Style = { bold: true, color: THEME.grayBright };
 const H5: Style = { bold: true, color: THEME.muted };
-const H6: Style = { color: THEME.faint };
+const H6: Style = { color: THEME.mdDark };
 const INLINE_CODE: Style = { color: THEME.code, bold: true };
 const LINK: Style = { color: THEME.system, underline: true };
 const QUOTE: Style = { color: THEME.muted, dim: true };
@@ -326,6 +327,17 @@ function renderCode(token: Tokens.Code, context: Context): Line[] {
 		.map((raw) => raw.replace(/\s+$/, ""))
 		.join("\n");
 	const language = token.lang?.trim().split(/\s+/)[0];
+	if (language === "mermaid") {
+		const indent = Math.max(lineWidth(context.firstIndent), lineWidth(context.restIndent));
+		const diagram = renderMermaid(code, Math.max(1, context.width - indent));
+		if (diagram !== undefined) {
+			const lines = diagram.map((line, index) =>
+				concat(index === 0 ? context.firstIndent : context.restIndent, line),
+			);
+			pushCopyRow(context, lines, "mermaid", [{ name: "Copy Source", content: code }]);
+			return lines;
+		}
+	}
 	const lines = highlightLines(code, language, codeStyle);
 	// 背景铺满整行，代码块才是一整块面板；不需要竖线边框
 	const wrapped = wrapLogical(lines, context);

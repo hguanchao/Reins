@@ -13,7 +13,7 @@ import {
 import { formatTokens } from "./format.ts";
 import { OUTER_PAD } from "./layout.ts";
 import { INPUT_LEFT } from "./input-box.ts";
-import { ACCENT, BRIGHT, DIM, FAINT, TEXT } from "./theme.ts";
+import { ACCENT, BAD, BRIGHT, DIM, FAINT } from "./theme.ts";
 
 /**
  * 输入区上下各有一行：上面是运行状态，下面是快捷键条，都与会话条目共用同一段左外边距。
@@ -29,7 +29,6 @@ export interface KeyHint {
 
 export interface FooterState {
 	readonly width: number;
-	readonly notice: string;
 	readonly hints: readonly KeyHint[];
 }
 
@@ -44,6 +43,24 @@ export interface RunningRowState {
 	readonly tokens: number;
 	readonly width: number;
 	readonly now?: number;
+	/** 是否还在跟尾；翻上去看历史时右侧出现回到底部的按钮 */
+	readonly following?: boolean;
+	/** 已经发出中止请求：动作名改成 Cancelling…，收起停止按钮 */
+	readonly cancelling?: boolean;
+	/** 队列里还有几条后续消息 */
+	readonly queued?: number;
+	/** 指针是否停在停止/跟随按钮上 */
+	readonly stopHover?: boolean;
+	readonly followHover?: boolean;
+}
+
+/** 运行状态行以及其中可点击按钮的列范围。 */
+export interface RunningRowRender {
+	readonly line: Line;
+	/** 回到底部的 `[↓]`；跟尾时不出现 */
+	readonly follow?: { readonly from: number; readonly to: number };
+	/** 中止本轮的 `[stop]`；已经在中止时不出现 */
+	readonly stop?: { readonly from: number; readonly to: number };
 }
 
 /**
@@ -52,36 +69,65 @@ export interface RunningRowState {
  * 两个耗时回答的是不同的问题——「这一步卡了多久」与「这一轮总共多久」，所以都留着：判断卡死
  * 看前者，说进度看后者。整行占的正是输入框的内区：左沿与提示符同列，右缘收在右边框内侧，
  * 上下两块才对得齐。动作名放不下时截断，两个计时都不截，它们是这两个问题的唯一依据。
+ *
+ * 右侧按钮贴着右缘：翻上去时先出现 `[↓]` 回到底部，`[stop]` 始终在最后。
  */
-export function runningRow(state: RunningRowState): Line {
+export function runningRow(state: RunningRowState): RunningRowRender {
 	const now = state.now ?? Date.now();
 	const elapsed = now - state.startedAt;
 	const spin = styled(`${spinnerFrame(elapsed)} `, ACCENT);
-	const phase = styled(` ${formatDuration(now - state.phaseStartedAt)}`, DIM);
-	const right = styled(
+	const queueLabel =
+		state.queued !== undefined && state.queued > 0 ? ` · ${state.queued} queued` : "";
+	// 窄屏先让阶段计时让位：动作名与整轮计时更要紧
+	const phase =
+		state.width < 60
+			? plain("")
+			: styled(` ${formatDuration(now - state.phaseStartedAt)}${queueLabel}`, DIM);
+	const timers = styled(
 		state.tokens > 0
 			? `${formatDuration(elapsed)} ⇣${formatTokens(state.tokens)}`
 			: formatDuration(elapsed),
 		DIM,
 	);
+
+	const followText = state.following === false ? "[↓]" : "";
+	const stopText = state.cancelling === true ? "" : "[stop]";
+	const followStyle = state.followHover === true ? ACCENT : DIM;
+	const stopStyle = state.stopHover === true ? BAD : DIM;
+	const right = concat(
+		timers,
+		followText.length > 0 || stopText.length > 0 ? styled("  ", DIM) : plain(""),
+		followText.length > 0 ? styled(followText, followStyle) : plain(""),
+		followText.length > 0 && stopText.length > 0 ? plain(" ") : plain(""),
+		stopText.length > 0 ? styled(stopText, stopStyle) : plain(""),
+	);
+
 	// 输入框内区右沿：右边框那一格留给边框自己
 	const span = Math.max(1, state.width - OUTER_PAD - 1);
-	// 先给两个计时与它们之间的一格空档留位，余下的宽度才归动作名
+	// 先给两个计时、按钮与它们之间的空档留位，余下的宽度才归动作名
 	const room = Math.max(1, span - INPUT_LEFT - lineWidth(spin) - lineWidth(phase) - lineWidth(right) - 1);
-	const label = truncateLine(styled(state.activity, TEXT), room);
-	return alignEnds(concat(plain(" ".repeat(INPUT_LEFT)), spin, label, phase), right, span);
+	const activity = state.cancelling === true ? "Cancelling…" : state.activity;
+	const label = truncateLine(styled(activity, BRIGHT), room);
+	const line = alignEnds(concat(plain(" ".repeat(INPUT_LEFT)), spin, label, phase), right, span);
+
+	// 左右两段撑不下时 alignEnds 会整段丢弃右侧，按钮也就不存在了
+	if (lineWidth(line) < lineWidth(right)) return { line };
+
+	const stop = stopText.length === 0 ? undefined : { from: span - stopText.length, to: span };
+	const follow =
+		followText.length === 0
+			? undefined
+			: {
+					from: span - stopText.length - (stopText.length > 0 ? 1 : 0) - followText.length,
+					to: span - stopText.length - (stopText.length > 0 ? 1 : 0),
+				};
+	return { line, ...(follow === undefined ? {} : { follow }), ...(stop === undefined ? {} : { stop }) };
 }
 
-/** 底部快捷键条：临时信息优先，其次才是按键提示。 */
+/** 底部快捷键条。临时信息不再占用这一行，改成输入框上方的 toast。 */
 export function footerRow(state: FooterState): Line {
-	const line = noticeOrHints(state);
-	const space = concat(plain(" ".repeat(OUTER_PAD)), line);
+	const space = concat(plain(" ".repeat(OUTER_PAD)), hintLine(state.hints, state.width - OUTER_PAD));
 	return padTo(space, state.width);
-}
-
-function noticeOrHints(state: FooterState): Line {
-	if (state.notice.length > 0) return truncateLine(styled(state.notice, ACCENT), state.width - OUTER_PAD);
-	return hintLine(state.hints, state.width - OUTER_PAD);
 }
 
 function padTo(line: Line, width: number): Line {
@@ -92,13 +138,22 @@ function padTo(line: Line, width: number): Line {
 /** 当前该显示哪几条按键。 */
 export function footerHints(state: {
 	readonly dialog: boolean;
+	readonly viewer: boolean;
 	readonly pane: "prompt" | "scrollback";
-	readonly menu: "slash" | "file" | undefined;
+	readonly menu: "slash" | "file" | "history" | undefined;
 	readonly running: boolean;
 	readonly following: boolean;
 	readonly editorEmpty: boolean;
+	readonly hasStash: boolean;
 }): readonly KeyHint[] {
 	const help: KeyHint = { keys: "/help", label: "shortcuts" };
+	if (state.viewer) {
+		return [
+			{ keys: "j/k", label: "scroll" },
+			{ keys: "PgUp/PgDn", label: "page" },
+			{ keys: "Esc", label: "close" },
+		];
+	}
 	if (state.dialog) {
 		return [
 			{ keys: "↑/↓", label: "select" },
@@ -111,7 +166,9 @@ export function footerHints(state: {
 			{ keys: "j/k", label: "entry" },
 			{ keys: "e", label: "fold" },
 			{ keys: "h/l", label: "fold" },
-			{ keys: "y/Y", label: "copy/meta" },
+			{ keys: "r", label: "raw" },
+			{ keys: "v", label: "view" },
+			{ keys: "y/Y/c", label: "copy/meta/arg" },
 			{ keys: "g/G", label: "top/btm" },
 			{ keys: "Tab", label: "prompt" },
 		];
@@ -132,6 +189,13 @@ export function footerHints(state: {
 			{ keys: "Esc", label: "close" },
 		];
 	}
+	if (state.menu === "history") {
+		return [
+			{ keys: "↑/↓", label: "select" },
+			{ keys: "Enter", label: "insert" },
+			{ keys: "Esc", label: "close" },
+		];
+	}
 	if (!state.following) {
 		return [
 			{ keys: "PageUp/PageDown", label: "page" },
@@ -142,6 +206,7 @@ export function footerHints(state: {
 	}
 	if (state.running) {
 		return [
+			...(state.editorEmpty ? [] : [{ keys: "Enter", label: "queue" }]),
 			{ keys: "Ctrl+C", label: "cancel" },
 			{ keys: "PageUp", label: "page" },
 			help,
@@ -151,6 +216,7 @@ export function footerHints(state: {
 		{ keys: "Enter", label: "send" },
 		{ keys: "Ctrl+J", label: "newline" },
 		{ keys: "Ctrl+V", label: "paste" },
+		{ keys: "Ctrl+S", label: state.hasStash && state.editorEmpty ? "restore" : "stash" },
 		{ keys: "↑/↓", label: state.editorEmpty ? "history" : "move" },
 		{ keys: "Ctrl+D", label: "quit" },
 		help,

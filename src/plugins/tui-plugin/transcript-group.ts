@@ -5,7 +5,7 @@
  * 决定：已经定型的组说「Read 3 files」，正在跑的组说「Reading 3 files」。
  */
 
-export type ToolGroupKind = "file" | "search" | "dir" | "web";
+export type ToolGroupKind = "file" | "search" | "dir" | "web" | "subagent";
 
 const GROUP_VERBS: Readonly<
 	Record<
@@ -17,6 +17,7 @@ const GROUP_VERBS: Readonly<
 	search: { done: "Searched", running: "Searching", one: "pattern", many: "patterns" },
 	dir: { done: "Listed", running: "Listing", one: "dir", many: "dirs" },
 	web: { done: "Fetched", running: "Fetching", one: "website", many: "websites" },
+	subagent: { done: "Ran", running: "Running", one: "subagent", many: "subagents" },
 };
 
 /** 目录与读取混在一组时是一趟「熟悉」：合并成一个动词，单位也说全称。 */
@@ -46,6 +47,8 @@ export function groupKindOf(name: string): ToolGroupKind | undefined {
 		case "websearch":
 		case "web_search":
 			return "web";
+		case "subagent":
+			return "subagent";
 		default:
 			return undefined;
 	}

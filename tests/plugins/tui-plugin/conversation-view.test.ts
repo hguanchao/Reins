@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+	drawHoverBand,
 	drawHoverCard,
 	drawSelectionBand,
 	drawSelectionBox,
 	expandTimestamp,
 } from "../../../src/plugins/tui-plugin/conversation-view.ts";
+import { THEME } from "../../../src/plugins/tui-plugin/theme.ts";
 import { lineText, plain } from "../../../src/tui/text/line.ts";
 
 describe("主区装饰", () => {
@@ -26,9 +28,48 @@ describe("主区装饰", () => {
 			assert.equal(row[10], "│", `块内两侧竖线: ${row}`);
 		}
 		assert.equal(boxed[0][1], "┌");
-		assert.equal(boxed[0][10], "┐");
+		assert.equal(boxed[0][10], "✗", "top-right corner is the close button");
 		assert.equal(boxed[5][1], "└");
 		assert.equal(boxed[5][10], "┘");
+	});
+
+	it("块被视口裁掉的一端画虚线，不画那一端的角", () => {
+		const lines = Array.from({ length: 4 }, (_, index) => plain(`row${index}`));
+		const clippedTop = drawSelectionBox(lines, { start: -2, height: 4 }, 0, 8).map(lineText);
+		assert.equal(clippedTop[0][1], "┆", "top edge is dashed when the block starts above the viewport");
+		assert.ok(!clippedTop.some((line) => line.includes("┌")), "no top corners");
+		assert.equal(clippedTop[2][1], "└", "bottom corner still drawn");
+
+		const clippedBottom = drawSelectionBox(lines, { start: 1, height: 9 }, 0, 8).map(lineText);
+		assert.equal(clippedBottom[3][1], "┆", "bottom edge is dashed when the block continues below");
+		assert.ok(!clippedBottom.some((line) => line.includes("└")), "no bottom corners");
+		assert.equal(clippedBottom[0][1], "┌", "top corner still drawn");
+	});
+
+	it("悬停收起行铺浅底色，菱形换成折叠指示符", () => {
+		const lines = [plain("   ◆ List  src"), plain("other")];
+		const hovered = drawHoverBand(
+			lines,
+			{ start: 0, height: 1, kind: "tool", mode: "collapsed" },
+			0,
+			20,
+		);
+		const text = lineText(hovered[0]);
+		assert.ok(text.includes("›"), "caret becomes the expand indicator");
+		assert.ok(!text.includes("◆"), "bullet replaced");
+		assert.equal(hovered[0].find((span) => span.text.includes("List"))?.style?.background, THEME.hover);
+		assert.equal(lineText(hovered[1]), "other", "neighbouring row untouched");
+	});
+
+	it("展开的汇总组悬停时用 ⌄ 表示可收起", () => {
+		const lines = [plain("   ◈ Read 2 files"), plain("other")];
+		const hovered = drawHoverBand(
+			lines,
+			{ start: 0, height: 1, kind: "group", mode: "expanded" },
+			0,
+			20,
+		);
+		assert.ok(lineText(hovered[0]).includes("⌄"));
 	});
 
 	it("块完全滚出视口时原样返回", () => {

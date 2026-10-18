@@ -134,6 +134,15 @@ describe("工作区索引", () => {
 		assert.equal(entries.length, 2);
 	});
 
+	it("includeIgnored 收录隐藏文件，仍跳过 .git 与 node_modules", async () => {
+		const paths = (await indexWorkspaceFiles(workspace(), { includeIgnored: true })).map(
+			(entry) => entry.path,
+		);
+		assert.ok(paths.includes(".env"));
+		assert.ok(!paths.some((path) => path.startsWith(".git/")));
+		assert.ok(!paths.some((path) => path.startsWith("node_modules/")));
+	});
+
 	it("git 仓库按 .gitignore 过滤", { skip: !HAS_GIT }, async () => {
 		const root = mkdtempSync(join(tmpdir(), "reins-files-git-"));
 		tempDirs.push(root);
@@ -150,5 +159,9 @@ describe("工作区索引", () => {
 		assert.ok(paths.includes(".gitignore"));
 		assert.ok(!paths.includes("ignored/secret.txt"));
 		assert.ok(!paths.includes("debug.log"));
+
+		const all = (await indexWorkspaceFiles(root, { includeIgnored: true })).map((entry) => entry.path);
+		assert.ok(all.includes("ignored/secret.txt"), "@! 能看到被 ignore 的文件");
+		assert.ok(all.includes("debug.log"));
 	});
 });

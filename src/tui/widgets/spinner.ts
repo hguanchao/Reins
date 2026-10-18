@@ -25,14 +25,23 @@ export function spinnerLine(text: string, elapsedMs: number): Line {
 	return [{ text: spinnerFrame(elapsedMs), style: { color: "gray" } }, ...plain(` ${text} ${formatDuration(elapsedMs)}`)];
 }
 
-/** 耗时。毫秒级的直接给毫秒，工具调用大多数在一秒以内。 */
+/**
+ * 耗时。
+ *
+ * 毫秒级直接给毫秒；十秒以内保留一位小数，再往上取整到秒；超过一分钟才出现分钟与小时。
+ * 单位越小越精确，但显示越啰嗦，读的人只关心大概多久。
+ */
 export function formatDuration(elapsedMs: number): string {
 	const ms = Math.max(0, Math.round(elapsedMs));
 	if (ms < 1000) return `${ms}ms`;
-	if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+	if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
 
-	const minutes = Math.floor(ms / 60_000);
-	return `${minutes}m${Math.round((ms % 60_000) / 1000)
-		.toString()
-		.padStart(2, "0")}s`;
+	const totalSeconds = Math.round(ms / 1000);
+	if (totalSeconds < 60) return `${totalSeconds}s`;
+
+	const minutes = Math.floor(totalSeconds / 60);
+	if (minutes < 60) return `${minutes}m${totalSeconds % 60}s`;
+
+	const hours = Math.floor(minutes / 60);
+	return `${hours}h${minutes % 60}m`;
 }

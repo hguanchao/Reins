@@ -183,6 +183,7 @@ describe("粘贴 chip", () => {
 		const render = editor.render({ width: 40, prompt: plain("❯ "), maxRows: 5 });
 		assert.equal(render.lines.length, 5);
 		assert.equal(render.cursor.row, 4);
+		assert.deepEqual(render.scroll, { start: 25, total: 30 }, "internal scroll position");
 		const text = render.lines.map((line) => line.map((span) => span.text).join("")).join("\n");
 		assert.ok(text.includes("line 30"), "last line is visible");
 		assert.ok(!text.includes("line 1\n"), "top is scrolled out");
@@ -195,6 +196,29 @@ describe("粘贴 chip", () => {
 		assert.equal(editor.displayText, CONTENT);
 		editor.undo();
 		assert.equal(editor.displayText, LABEL);
+	});
+
+	it("文件引用是原子元素：带自己的颜色，退格一次删掉整段", () => {
+		const editor = new LineEditor();
+		editor.insert("open @app");
+		assert.equal(
+			editor.replaceDisplayRangeElement(5, 9, "@src/app.ts", "@src/app.ts", { color: "red" }, " "),
+			true,
+		);
+		assert.equal(editor.displayText, "open @src/app.ts ");
+		assert.equal(editor.text, "open @src/app.ts ");
+
+		const render = editor.render({ width: 40, prompt: plain(""), pasteStyle: { background: "black" } });
+		assert.equal(render.elements.length, 1);
+		assert.equal(render.elements[0].width, "@src/app.ts".length);
+		const span = render.lines[0].find((item) => item.text === "@src/app.ts");
+		assert.equal(span?.style?.color, "red");
+		assert.equal(span?.style?.background, "black");
+
+		// 光标在尾随空格之后：左移一格再退格，删掉的是整个引用而不是最后一个字符
+		editor.moveLeft();
+		editor.backspace();
+		assert.equal(editor.displayText, "open  ");
 	});
 });
 

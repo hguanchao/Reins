@@ -28,6 +28,8 @@ export interface EditorRender {
 	readonly cursor: { readonly row: number; readonly col: number };
 	/** 粘贴 chip 在渲染结果里的位置，供鼠标命中测试。 */
 	readonly elements: readonly EditorElement[];
+	/** 输入区内部滚动的位置；没有超过最大行数时为 undefined。 */
+	readonly scroll?: { readonly start: number; readonly total: number };
 }
 
 /** 一个粘贴 chip 在某一行上占据的列范围；跨行时会有多条。 */
@@ -58,13 +60,15 @@ interface TextAtom {
 	readonly text: string;
 }
 
-/** 一个粘贴 chip：显示标签，提交时展开成完整内容。 */
+/** 一个原子元素：显示标签，提交时展开成完整内容。粘贴内容与文件引用都用它。 */
 interface PasteAtom {
 	readonly kind: "paste";
 	/** 稳定标识：鼠标双击要按它找到对应的原子，编辑后下标会变。 */
 	readonly id: number;
 	readonly text: string;
 	readonly label: string;
+	/** 元素自己的前景色等样式；与整块粘贴底色合并。 */
+	readonly style?: Style;
 }
 
 type Atom = TextAtom | PasteAtom;
@@ -107,6 +111,11 @@ export class LineEditor {
 		return this.#atoms.length === 0;
 	}
 
+	/** 已提交的历史，最早的在前。 */
+	historyEntries(): readonly string[] {
+		return [...this.#history];
+	}
+
 	insert(text: string): void {
 		// 只统一换行符，保留换行：输入框支持多行，粘贴进来的换行不再折成空格
 		const inserted = normalizeLineBreaks(text);
@@ -116,14 +125,14 @@ export class LineEditor {
 		this.#resetHistoryCursor();
 	}
 
-	/** 插入一个粘贴 chip；完整内容保存在原子里，屏幕上只占一行标签。 */
-	insertElement(text: string, label: string): void {
+	/** 插入一个原子元素；完整内容保存在原子里，屏幕上只占一行标签。 */
+	insertElement(text: string, label: string, style?: Style): void {
 		const normalized = normalizeLineBreaks(text);
 		if (normalized.length === 0 || label.length === 0) return;
 		this.#snapshot();
 		this.#atoms = [
 			...this.#atoms.slice(0, this.#cursor),
-			{ kind: "paste", id: this.#nextElementId++, text: normalized, label },
+			{ kind: "paste", id: this.#nextElementId++, text: normalized, label, style },
 			...this.#atoms.slice(this.#cursor),
 		];
 		this.#cursor += 1;
@@ -157,6 +166,38 @@ export class LineEditor {
 	replacePrefix(length: number, replacement: string): void {
 		if (length <= 0) return;
 		this.replaceDisplayRange(0, length, replacement);
+	}
+
+	/**
+	 * 把一段显示文本换成一个原子元素，后面可以再跟一段普通文本。
+	 *
+	 * `@` 文件引用走这里：补全后的整段路径是一个整体，退格与光标都不会钻进路径中间。
+	 * 起点和终点同样必须落在原子边界上。
+	 */
+	replaceDisplayRangeElement(
+		start: number,
+		end: number,
+		text: string,
+		label: string,
+		style?: Style,
+		suffix = "",
+	): boolean {
+		if (start < 0 || end < start) return false;
+		const normalized = normalizeLineBreaks(text);
+		if (normalized.length === 0 || label.length === 0) return false;
+		const from = this.#atomAtOffset(start);
+		const to = this.#atomAtOffset(end);
+		if (from === undefined || to === undefined) return false;
+
+		this.#snapshot();
+		const inserted: Atom[] = [
+			{ kind: "paste", id: this.#nextElementId++, text: normalized, label, style },
+			...segmentGraphemes(normalizeLineBreaks(suffix)).map((value) => ({ kind: "text" as const, text: value })),
+		];
+		this.#atoms = [...this.#atoms.slice(0, from), ...inserted, ...this.#atoms.slice(to)];
+		this.#cursor = from + inserted.length;
+		this.#resetHistoryCursor();
+		return true;
 	}
 
 	/** 显示偏移对应的原子下标；不在边界上返回 undefined。 */
@@ -446,6 +487,9 @@ export class LineEditor {
 			lines: visible,
 			cursor: { row: cursorRow - start, col: cursorCol },
 			elements: visibleElements,
+			...(options.maxRows === undefined || lines.length <= options.maxRows
+				? {}
+				: { scroll: { start, total: lines.length } }),
 		};
 	}
 
@@ -474,7 +518,8 @@ export class LineEditor {
 			if (atom.kind === "text") {
 				spans.push({ text: atom.text });
 			} else {
-				spans.push(pasteStyle === undefined ? { text: atom.label } : { text: atom.label, style: pasteStyle });
+				const style = mergeStyles(pasteStyle, atom.style);
+				spans.push(style === undefined ? { text: atom.label } : { text: atom.label, style });
 			}
 		}
 		return spans;

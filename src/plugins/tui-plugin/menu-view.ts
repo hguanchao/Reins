@@ -1,8 +1,19 @@
-import { concat, mergeStyles, padLine, plain, styled, truncateLine, type Line, type Span, type Style } from "../../tui/index.ts";
+import {
+	concat,
+	mergeStyles,
+	padLine,
+	plain,
+	styled,
+	truncateLine,
+	type Line,
+	type Span,
+	type Style,
+} from "../../tui/index.ts";
+import { pasteLineCount } from "../../tui/input/paste.ts";
 import { OUTER_PAD } from "./layout.ts";
 import type { FileEntry } from "./file-search.ts";
 import type { SlashCommand } from "./slash-menu.ts";
-import { ACCENT, BAND, BRIGHT, DIM, EDGE, PATH, SELECT_BG, TITLE } from "./theme.ts";
+import { ACCENT, BAND, BRIGHT, DIM, EDGE, MENU_HOVER, PATH, SELECT_BG, SYSTEM, TEXT, TITLE } from "./theme.ts";
 
 /**
  * 输入框上方的候选面板。
@@ -33,23 +44,34 @@ export function slashMenuRows(
 	selected: number,
 	width: number,
 	limit: number,
+	query = "",
+	hover?: number,
 ): MenuLayout {
 	const window = menuWindow(items.length, selected, limit);
 	if (window.visible === 0) return { rows: [], top: 0, visible: 0 };
 
 	const panel = panelWidth(width);
 	const visible = items.slice(window.top, window.top + window.visible);
-	const labelWidth = Math.min(LABEL_CAP, Math.max(...visible.map((item) => item.name.length + 1)));
+	const labelWidth = Math.min(
+		LABEL_CAP,
+		Math.max(...visible.map((item) => item.name.length + 1 + slashTag(item).length)),
+	);
 	const rows = visible.map((item, offset) => {
-		const active = window.top + offset === selected;
-		const background = active ? SELECT_BG : BAND;
+		const index = window.top + offset;
+		const active = index === selected;
+		const hovered = !active && index === hover;
+		const background = active ? SELECT_BG : hovered ? MENU_HOVER : BAND;
 		const label = `/${item.name}`;
-		const gap = Math.max(2, labelWidth - label.length + 2);
+		const tag = slashTag(item);
+		const gap = Math.max(2, labelWidth - label.length - tag.length + 2);
+		// 查询只作用于命令名；前缀的斜杠不在匹配范围内，所以列号要右移一格
+		const matches = fuzzyMatchIndices(item.name, query).map((index) => index + 1);
 		const content = concat(
 			styled(active ? "❯ " : "  ", mergeStyles(active ? TITLE : undefined, background) ?? background),
-			styled(label, mergeStyles(active ? TITLE : ACCENT, background) ?? background),
+			highlighted(label, matches, active ? TITLE : ACCENT, background),
+			tag.length === 0 ? plain("") : styled(tag, mergeStyles(SYSTEM, background) ?? background),
 			styled(" ".repeat(gap), background),
-			styled(item.description, mergeStyles(active ? BRIGHT : DIM, background) ?? background),
+			styled(item.description, mergeStyles(active || hovered ? BRIGHT : DIM, background) ?? background),
 		);
 		return itemRow(content, panel, background);
 	});
@@ -66,24 +88,104 @@ export function fileMenuRows(
 	width: number,
 	limit: number,
 	hint?: string,
+	query = "",
+	hover?: number,
 ): MenuLayout {
 	const window = menuWindow(items.length, selected, limit);
 	if (window.visible === 0) return { rows: [], top: 0, visible: 0 };
 
 	const panel = panelWidth(width);
 	const rows = items.slice(window.top, window.top + window.visible).map((item, offset) => {
-		const active = window.top + offset === selected;
-		const background = active ? SELECT_BG : BAND;
+		const index = window.top + offset;
+		const active = index === selected;
+		const hovered = !active && index === hover;
+		const background = active ? SELECT_BG : hovered ? MENU_HOVER : BAND;
 		const color = active ? TITLE : item.kind === "directory" ? ACCENT : PATH;
 		const path = item.kind === "directory" ? `${item.path}/` : item.path;
+		// 查询匹配的是路径本身；@ 是单独的一段，不参与着色
+		const matches = fuzzyMatchIndices(item.path, query);
 		const content = concat(
 			styled(active ? "❯ " : "  ", mergeStyles(active ? TITLE : undefined, background) ?? background),
 			styled("@", mergeStyles(DIM, background) ?? background),
-			styled(path, mergeStyles(color, background) ?? background),
+			highlighted(path, matches, color, background),
 		);
 		return itemRow(content, panel, background);
 	});
 	return { rows: withPanelChrome(rows, panel, hint), top: window.top, visible: rows.length };
+}
+
+/** 历史面板：最近提交的在前，多行消息只显示首行与行数。 */
+export function historyMenuRows(
+	entries: readonly string[],
+	selected: number,
+	width: number,
+	limit: number,
+	hover?: number,
+): MenuLayout {
+	const window = menuWindow(entries.length, selected, limit);
+	if (window.visible === 0) return { rows: [], top: 0, visible: 0 };
+
+	const panel = panelWidth(width);
+	const rows = entries.slice(window.top, window.top + window.visible).map((text, offset) => {
+		const index = window.top + offset;
+		const active = index === selected;
+		const hovered = !active && index === hover;
+		const background = active ? SELECT_BG : hovered ? MENU_HOVER : BAND;
+		const first = text.split("\n").find((line) => line.trim().length > 0)?.trim() ?? "";
+		const total = pasteLineCount(text);
+		const suffix = total > 1 ? ` (+${total - 1} line${total - 1 === 1 ? "" : "s"})` : "";
+		const content = concat(
+			styled(active ? "❯ " : "  ", mergeStyles(active ? TITLE : undefined, background) ?? background),
+			styled(first, mergeStyles(active ? TITLE : TEXT, background) ?? background),
+			styled(suffix, mergeStyles(DIM, background) ?? background),
+		);
+		return itemRow(content, panel, background);
+	});
+	return { rows: withPanelChrome(rows, panel, entries.length.toString()), top: window.top, visible: rows.length };
+}
+
+/** 子序列命中的字符下标；查询为空或匹配不上时返回空数组。 */
+export function fuzzyMatchIndices(text: string, query: string): readonly number[] {
+	if (query.length === 0) return [];
+	const haystack = text.toLowerCase();
+	const indices: number[] = [];
+	let cursor = 0;
+	for (const char of query.toLowerCase()) {
+		const found = haystack.indexOf(char, cursor);
+		if (found < 0) return [];
+		indices.push(found);
+		cursor = found + 1;
+	}
+	return indices;
+}
+
+/** 把命中的字符染成系统蓝；其余部分用候选行本来的颜色。 */
+function highlighted(text: string, indices: readonly number[], base: Style, background: Style): Line {
+	if (indices.length === 0) {
+		return styled(text, mergeStyles(base, background) ?? background);
+	}
+	const matched = new Set(indices);
+	const spans: Span[] = [];
+	let start = 0;
+	for (let index = 0; index <= text.length; index += 1) {
+		const isMatch = matched.has(index);
+		const wasMatch = index > 0 && matched.has(index - 1);
+		if (index === text.length || isMatch !== wasMatch) {
+			if (index > start) {
+				const style = wasMatch
+					? mergeStyles({ ...base, color: SYSTEM.color, bold: true }, background)
+					: mergeStyles(base, background);
+				spans.push({ text: text.slice(start, index), ...(style === undefined ? {} : { style }) });
+			}
+			start = index;
+		}
+	}
+	return spans;
+}
+
+/** 命令来源标记：自带命令与插件命令各自一个短标签。 */
+function slashTag(item: SlashCommand): string {
+	return item.tag === undefined ? "" : ` [${item.tag}]`;
 }
 
 /** 面板内部可用的宽度：扣掉两侧外边距。 */

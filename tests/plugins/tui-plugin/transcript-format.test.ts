@@ -23,6 +23,7 @@ describe("工具摘要", () => {
 		assert.equal(toolSummary("grep", { pattern: "needle", path: "src" }, "E:\\w"), '"needle" src');
 		assert.equal(toolSummary("bash", { command: "npm test" }, "E:\\w"), "npm test");
 		assert.equal(toolSummary("websearch", { query: "terminal" }, "E:\\w"), "terminal");
+		assert.equal(toolSummary("subagent", { task: "fix the parser" }, "E:\\w"), "fix the parser");
 	});
 
 	it("未知工具只列前三个键值", () => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { inputBoxRows, INPUT_LEFT } from "../../../src/plugins/tui-plugin/input-box.ts";
+import { THEME } from "../../../src/plugins/tui-plugin/theme.ts";
 import { lineText } from "../../../src/tui/text/line.ts";
 import type { EditorRender } from "../../../src/tui/input/editor.ts";
 
@@ -28,7 +29,7 @@ describe("输入框排版", () => {
 		// 框体 36 列加 2 列左边距；右外边距由整屏底色补齐
 		assert.equal(body.length, 38);
 		const info = lineText(rows[2]);
-		assert.ok(info.includes("m1 · approval=ask"));
+		assert.ok(info.includes("m1 · ask"));
 		assert.ok(info.trim().startsWith("╰"));
 	});
 
@@ -47,6 +48,56 @@ describe("输入框排版", () => {
 		});
 		const hi = rows[1].find((span) => span.text.includes("hi"));
 		assert.equal(hi?.style?.dim, true);
+	});
+
+	it("草稿里有换行时在右下角标出 multiline", () => {
+		const rows = inputBoxRows({
+			width: 40,
+			editor: editorOf("hi"),
+			focused: true,
+			model: "m1",
+			approval: "ask",
+			multiline: true,
+		});
+		assert.ok(lineText(rows[2]).includes("m1 · ask  multiline"));
+	});
+
+	it("草稿超过可见行数时在右侧内边距里画滚动条", () => {
+		const editor: EditorRender = {
+			lines: [[{ text: "one" }], [{ text: "two" }], [{ text: "three" }]],
+			cursor: { row: 2, col: 5 },
+			elements: [],
+			scroll: { start: 0, total: 9 },
+		};
+		const rows = inputBoxRows({
+			width: 40,
+			editor,
+			focused: true,
+			model: "m1",
+			approval: "ask",
+		});
+		assert.ok(lineText(rows[1]).includes("█"), "thumb in the padding column");
+		assert.ok(
+			rows[1].some(
+				(span) => span.style?.background === THEME.scrollTrack || span.text === "█",
+			),
+		);
+		for (const row of rows.slice(1, 4)) assert.equal(lineText(row).length, 38);
+	});
+
+	it("顶边框右侧可以嵌暂存标题", () => {
+		const rows = inputBoxRows({
+			width: 40,
+			editor: editorOf(""),
+			focused: true,
+			model: "m1",
+			approval: "ask",
+			caption: "Stashed",
+		});
+		const top = lineText(rows[0]);
+		assert.ok(top.includes("Stashed"), top);
+		assert.ok(top.trimEnd().endsWith("╮"), top);
+		assert.equal(top.trim().length, 36);
 	});
 
 	it("窄到放不下时不嵌信息", () => {

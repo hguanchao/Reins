@@ -24,8 +24,11 @@ describe("耗时写法", () => {
 		assert.equal(formatDuration(5), "5ms");
 		assert.equal(formatDuration(999), "999ms");
 		assert.equal(formatDuration(1000), "1.0s");
-		assert.equal(formatDuration(15_400), "15.4s");
-		assert.equal(formatDuration(61_000), "1m01s");
+		assert.equal(formatDuration(9_960), "10.0s");
+		assert.equal(formatDuration(15_400), "15s");
+		assert.equal(formatDuration(61_000), "1m1s");
+		assert.equal(formatDuration(59_600), "1m0s");
+		assert.equal(formatDuration(3_725_000), "1h2m");
 		assert.equal(formatDuration(-2), "0ms");
 	});
 });

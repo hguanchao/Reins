@@ -12,8 +12,8 @@ import { cleanupTempDirs, lastFrameRows, MemoryTerminal, runtimeOf, waitForRows,
  * Esc 只收起不清稿。
  */
 
-afterEach(() => {
-	cleanupTempDirs();
+afterEach(async () => {
+	await cleanupTempDirs();
 });
 
 describe("前端：命令与文件下拉", () => {

@@ -14,22 +14,43 @@ import { framesWith, lastFrameRows, MemoryTerminal, runtimeOf } from "./frontend
  * 光标定位、快捷键条、运行状态行、审批面板）与提交路径（换行、续行、Esc 的语义）。
  */
 
+/** 从整帧里取出输入框：底部边框带模型信息，向上找最近的一条顶边框。 */
+function inputBox(rows: readonly string[]): {
+	readonly top: string;
+	readonly bottom: string;
+	readonly body: readonly string[];
+} {
+	const bottomIndex = rows.findLastIndex(
+		(line) => line.trimStart().startsWith("╰") && line.includes("m1"),
+	);
+	let topIndex = -1;
+	for (let index = bottomIndex - 1; index >= 0; index -= 1) {
+		if (rows[index].trimStart().startsWith("╭")) {
+			topIndex = index;
+			break;
+		}
+	}
+	return {
+		top: rows[topIndex] ?? "",
+		bottom: rows[bottomIndex] ?? "",
+		body: rows.slice(topIndex + 1, bottomIndex),
+	};
+}
+
 describe("前端：帧与输入", () => {
 	it("输入框是完整方框：上边框与嵌了信息的下边框", async () => {
 		const { lines, styled } = await framesWith(24, 80);
 		const visible = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
-		const box = visible.filter((line) => line.trim().startsWith("╭") || line.trim().endsWith("╯") || line.trim().endsWith("╮"));
-		const top = box.find((line) => line.trim().startsWith("╭") && line.trimEnd().endsWith("╮"));
-		const bottom = box.find((line) => line.trim().startsWith("╰") && line.trimEnd().endsWith("╯"));
+		const box = inputBox(visible);
 
-		assert.ok(top, "top border");
-		assert.ok(bottom, "bottom border");
+		assert.ok(box.top, "top border");
+		assert.ok(box.bottom, "bottom border");
 		// 输入框缩进外边距：框体占 76 列，两侧各留 2 列
-		assert.equal(top!.trim().length, 76);
-		assert.equal(bottom!.trim().length, 76);
-		assert.ok(top!.includes("─"));
-		assert.ok(bottom!.includes("m1"), "model in the bottom border");
-		assert.ok(bottom!.includes("approval=ask"), "approval mode in the bottom border");
+		assert.equal(box.top.trim().length, 76);
+		assert.equal(box.bottom.trim().length, 76);
+		assert.ok(box.top.includes("─"));
+		assert.ok(box.bottom.includes("m1"), "model in the bottom border");
+		assert.ok(box.bottom.includes(" · ask"), "approval mode in the bottom border");
 		assert.ok(styled.some((line) => line.includes("╭") && line.includes("38;2;80;80;88")), "focused border color");
 	});
 
@@ -44,25 +65,67 @@ describe("前端：帧与输入", () => {
 		assert.equal(visible.indexOf("❯"), 3, "prompt right after the border");
 	});
 
-	it("模型与审批方式嵌在下边框，顶部没有单独状态条", async () => {
+	it("输入框失焦时收成一行并显示占位提示", async () => {
+		const terminal = new MemoryTerminal();
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		assert.ok(!lastFrameRows(terminal.output).some((line) => line.includes("Build anything")));
+
+		terminal.inputListener?.("\t"); // 焦点切到主区
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("Build anything")), "placeholder when unfocused");
+		const box = inputBox(rows);
+		assert.equal(
+			box.body.filter((line) => line.trimStart().startsWith("│") && line.trimEnd().endsWith("│")).length,
+			1,
+			"editor collapses to one row",
+		);
+
+		terminal.quitFromScrollback();
+		await running;
+	});
+
+	it("模型与审批方式嵌在下边框，顶部状态行只放位置与上下文", async () => {
 		const { lines } = await framesWith(24, 80);
 		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
-		const bottom = visibleLines.find((line) => line.trim().startsWith("╰") && line.trimEnd().endsWith("╯"));
+		const bottom = inputBox(visibleLines).bottom;
 
 		assert.ok(bottom);
 		assert.ok(bottom!.includes("m1"));
-		assert.ok(bottom!.includes("approval=ask"));
-		// 第一行是会话区，不是单独的头部状态条
-		assert.ok(!visibleLines[0].includes("p/m1"));
+		assert.ok(bottom!.includes(" · ask"));
+		// 顶部状态行放分支、目录与上下文占用；模型留在输入框下边框
+		assert.ok(visibleLines[0].includes("⎇ main"), visibleLines[0]);
+		assert.ok(visibleLines[0].includes("12.3k / 128.0k"), visibleLines[0]);
+		assert.ok(!visibleLines[0].includes("m1"), "model is not duplicated in the top bar");
 	});
 
-	it("没有首屏欢迎:标题、提示语、菜单、Ready 一概不出现", async () => {
+	it("新会话首屏显示品牌与入口提示，提交后让给会话记录", async () => {
 		const { lines } = await framesWith(24, 80);
 		const visibleLines = lines.map((line) => line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, ""));
-		assert.ok(!visibleLines.some((line) => line.includes("Reins")), "no title");
-		assert.ok(!visibleLines.some((line) => line.includes("Type a message")), "no hint line");
-		assert.ok(!visibleLines.some((line) => line.includes("Commands")), "no menu");
-		assert.ok(!visibleLines.some((line) => line.includes("Ready")), "no top bar");
+		assert.ok(visibleLines.some((line) => line.includes("REINS")), "wordmark");
+		assert.ok(visibleLines.some((line) => line.includes("A terminal coding agent")), "tagline");
+		assert.ok(visibleLines.some((line) => line.includes("@file")), "file hint");
+
+		const terminal = new MemoryTerminal();
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: () => ({ run: async () => undefined }) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("hello\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const rows = lastFrameRows(terminal.output);
+		assert.ok(!rows.some((line) => line.includes("A terminal coding agent")), "welcome is gone");
+		assert.ok(rows.some((line) => line.includes("❯ hello")), "conversation takes over");
+
+		terminal.quit();
+		await running;
 	});
 
 	it("输入时光标列落在提示符之后:屏幕列 = 提示符 + 输入位置", async () => {
@@ -99,7 +162,7 @@ describe("前端：帧与输入", () => {
 
 		terminal.inputListener?.("a\nb");
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const editorRows = lastFrameRows(terminal.output).filter((line) => {
+		const editorRows = inputBox(lastFrameRows(terminal.output)).body.filter((line) => {
 			const text = line.trim();
 			return text.startsWith("│") && text.endsWith("│");
 		});
@@ -133,7 +196,7 @@ describe("前端：帧与输入", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		let rows = lastFrameRows(terminal.output);
 		assert.equal(
-			rows.filter((line) => line.trim().startsWith("│") && line.trim().endsWith("│")).length,
+			inputBox(rows).body.filter((line) => line.trim().startsWith("│") && line.trim().endsWith("│")).length,
 			2,
 			"continuation keeps two editor rows",
 		);
@@ -183,7 +246,7 @@ describe("前端：帧与输入", () => {
 		const visible = lastFrameRows(terminal.output);
 		const status = visible.find((line) => line.includes("Thinking"));
 		const editor = visible.find((line) => line.includes("❯") && line.trimStart().startsWith("│"));
-		const bottom = visible.find((line) => line.trim().startsWith("╰") && line.trimEnd().endsWith("╯"));
+		const bottom = inputBox(visible).bottom;
 		assert.ok(status && editor && bottom, "行、输入框与下边框都在");
 		assert.equal(status!.search(/\S/), editor!.indexOf("❯"), "指示器与输入框的提示符同列");
 		assert.equal(status!.trimEnd().length, bottom!.trimEnd().length - 1, "右缘收在右边框内侧一格");
@@ -292,6 +355,30 @@ describe("前端：帧与输入", () => {
 		await running;
 	});
 
+	it("Ctrl+S 暂存草稿并在顶边框标出，再按一次取回", async () => {
+		const terminal = new MemoryTerminal();
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("draft text");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("\x13");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		let rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("Stashed")), "top border marks the stash");
+		assert.ok(!rows.some((line) => line.includes("❯ draft text")), "editor is cleared");
+
+		terminal.inputListener?.("\x13");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ draft text")), "draft is restored");
+		assert.ok(!rows.some((line) => line.includes("Stashed")), "stash marker is gone");
+
+		terminal.quit();
+		await running;
+	});
+
 	it("空闲时 Esc 连按两次才清空输入", async () => {
 		const terminal = new MemoryTerminal();
 		terminal.sizeValue = { rows: 24, cols: 80 };
@@ -373,6 +460,162 @@ describe("前端：帧与输入", () => {
 
 		terminal.inputListener?.("2");
 		assert.equal(await decision, false);
+		terminal.quit();
+		await running;
+	});
+
+	it("接续旧会话时先把历史铺进会话区", async () => {
+		const at = new Date(2026, 9, 18, 9, 30).getTime();
+		const terminal = new MemoryTerminal();
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			session: {
+				...runtimeOf().session,
+				entries: 3,
+				history: [
+					{ kind: "user", text: "old question", at },
+					{ kind: "assistant", text: "old answer", at },
+					{ kind: "tool", name: "read", args: { path: "a.ts" }, output: "old output", isError: false, at },
+				],
+			},
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ old question")), "user message is replayed");
+		assert.ok(rows.some((line) => line.includes("old answer")), "assistant message is replayed");
+		assert.ok(rows.some((line) => line.includes("Read 1 file")), "tool call is replayed as a group");
+
+		terminal.quit();
+		await running;
+	});
+
+	it("顶部上下文占用条悬停时换成进度条", async () => {
+		const terminal = new MemoryTerminal();
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtimeOf());
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		let rows = lastFrameRows(terminal.output);
+		assert.ok(rows[0].includes("12.3k / 128.0k"), rows[0]);
+		const from = rows[0].indexOf("12.3k");
+		terminal.inputListener?.(`\x1b[<35;${from + 1};1M`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows[0].includes("█") && rows[0].includes("░"), rows[0]);
+		assert.ok(rows[0].endsWith("9.6%"), rows[0]);
+
+		terminal.inputListener?.("\x1b[<35;10;10M");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows[0].includes("12.3k / 128.0k"), "hover leaves the token form");
+
+		terminal.quit();
+		await running;
+	});
+
+	it("运行中提交的消息进入队列，这一轮结束后自动接着跑", async () => {
+		const prompts: string[] = [];
+		const releases: (() => void)[] = [];
+		const terminal = new MemoryTerminal();
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			createDriver: (onEvent) =>
+				({
+					run: async (prompt: string) => {
+						prompts.push(prompt);
+						onEvent({ type: "turn_start" });
+						await new Promise<void>((resolve) => releases.push(resolve));
+						onEvent({ type: "run_end" });
+					},
+				}) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("first\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("second\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		let rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("#1 second")), "queued message is listed");
+		assert.ok(rows.some((line) => line.includes("1 queued")), "running row counts the queue");
+		assert.deepEqual(prompts, ["first"], "the current turn keeps running");
+
+		releases[0]?.();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		assert.deepEqual(prompts, ["first", "second"], "queued prompt starts after the turn");
+		rows = lastFrameRows(terminal.output);
+		assert.ok(rows.some((line) => line.includes("❯ second")), "queued prompt becomes a user turn");
+		assert.ok(!rows.some((line) => line.includes("#1 second")), "queue row is gone");
+
+		releases[1]?.();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.quit();
+		await running;
+	});
+
+	it("运行行上的 [↓] 回到末尾，[stop] 中止回合", async () => {
+		let aborted = false;
+		const terminal = new MemoryTerminal();
+		terminal.sizeValue = { rows: 20, cols: 80 };
+		const runtime: InteractiveRuntime = {
+			...runtimeOf(),
+			runCommand: async () => Array.from({ length: 40 }, (_, index) => `line ${index}`),
+			createDriver: (onEvent) =>
+				({
+					run: async (_prompt: string, signal: AbortSignal) => {
+						onEvent({ type: "turn_start" });
+						await new Promise<void>((resolve) => {
+							signal.addEventListener(
+								"abort",
+								() => {
+									aborted = true;
+									setTimeout(resolve, 30);
+								},
+								{ once: true },
+							);
+						});
+						onEvent({ type: "aborted" });
+					},
+				}) as unknown as TurnDriver,
+		};
+		const frontend = new TerminalFrontend({ terminal, env: {} });
+		const running = frontend.run(runtime);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("/long\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		terminal.inputListener?.("hello\r");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		terminal.inputListener?.("\x1b[5~"); // PageUp：翻上去看历史
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		let rows = lastFrameRows(terminal.output);
+		let statusRow = rows.findIndex((line) => line.includes("[↓]") && line.includes("[stop]"));
+		assert.ok(statusRow >= 0, "follow button appears while scrolled up");
+		terminal.inputListener?.(`\x1b[<0;${rows[statusRow].indexOf("[↓]") + 1};${statusRow + 1}M`);
+		terminal.inputListener?.(`\x1b[<0;${rows[statusRow].indexOf("[↓]") + 1};${statusRow + 1}m`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		rows = lastFrameRows(terminal.output);
+		statusRow = rows.findIndex((line) => line.includes("[stop]"));
+		assert.ok(statusRow >= 0);
+		assert.ok(!rows[statusRow].includes("[↓]"), "following again hides the follow button");
+
+		terminal.inputListener?.(`\x1b[<0;${rows[statusRow].indexOf("[stop]") + 1};${statusRow + 1}M`);
+		terminal.inputListener?.(`\x1b[<0;${rows[statusRow].indexOf("[stop]") + 1};${statusRow + 1}m`);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(aborted, true, "stop button aborts the turn");
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("Cancelling…")), "cancelling state is visible");
+
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("Cancelled")), "turn ends as cancelled");
+
 		terminal.quit();
 		await running;
 	});

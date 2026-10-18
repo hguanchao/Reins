@@ -286,9 +286,11 @@ export async function framesWith(rows: number, cols: number): Promise<{ lines: s
 export function runtimeOf(): InteractiveRuntime {
 	return {
 		cwd: "E:\\w",
-		session: { id: "s1", path: null, entries: 0 },
+		session: { id: "s1", path: null, entries: 0, history: [] },
 		provider: "p",
 		model: "m1",
+		branch: "main",
+		contextWindow: 128_000,
 		approval: "ask",
 		sandbox: "off",
 		notify: "auto",
@@ -340,9 +342,25 @@ export function textClipboard(terminal: MemoryTerminal, text: string): Clipboard
 
 const tempDirs: string[] = [];
 
-/** 删掉测试期间建的工作区目录；每个测试文件在自己的 afterEach 里调用。 */
-export function cleanupTempDirs(): void {
-	while (tempDirs.length > 0) rmSync(tempDirs.pop()!, { recursive: true, force: true });
+/**
+ * 删掉测试期间建的工作区目录；每个测试文件在自己的 afterEach 里调用。
+ *
+ * 文件索引是异步的，断言一通过测试就结束，后台扫描可能还握着目录句柄。Windows 上这会
+ * 让删除报 EPERM，因此短暂重试几次再放弃。
+ */
+export async function cleanupTempDirs(): Promise<void> {
+	while (tempDirs.length > 0) {
+		const dir = tempDirs.pop() as string;
+		for (let attempt = 0; attempt < 5; attempt += 1) {
+			try {
+				rmSync(dir, { recursive: true, force: true });
+				break;
+			} catch (error) {
+				if (attempt === 4) throw error;
+				await new Promise((resolve) => setTimeout(resolve, 20));
+			}
+		}
+	}
 }
 
 /** 一个可被 @ 搜索的工作区。 */
@@ -355,15 +373,16 @@ export function workspaceFixture(): string {
 	writeFileSync(join(root, "src", "util.ts"), "util");
 	writeFileSync(join(root, "my dir", "note.txt"), "note");
 	writeFileSync(join(root, "README.md"), "readme");
+	writeFileSync(join(root, ".env"), "secret");
 	return root;
 }
 
-/** 等文件索引完成或某个界面状态出现；最多等半秒。 */
+/** 等文件索引完成或某个界面状态出现；最多等两百毫秒，失败时也别把测试拖住。 */
 export async function waitForRows(
 	terminal: MemoryTerminal,
 	predicate: (rows: string[]) => boolean,
 ): Promise<string[]> {
-	for (let attempt = 0; attempt < 50; attempt += 1) {
+	for (let attempt = 0; attempt < 20; attempt += 1) {
 		await new Promise((resolve) => setTimeout(resolve, 10));
 		const rows = lastFrameRows(terminal.output);
 		if (predicate(rows)) return rows;

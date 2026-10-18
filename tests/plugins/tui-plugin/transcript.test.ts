@@ -84,18 +84,20 @@ describe("用户消息", () => {
 		assert.match(lineText(row), /\d{1,2}:\d{2} (AM|PM)/);
 	});
 
-	it("长消息可折叠，折叠后只留三行并以省略号收尾", () => {
+	it("长消息默认折叠，只留三行并以省略号收尾；展开后显示全文", () => {
 		const transcript = new Transcript(20);
 		transcript.userTurn("one two three four five six seven eight nine ten");
 
-		const expanded = transcript.view();
-		const block = expanded.blocks[0];
+		const collapsed = transcript.view();
+		const block = collapsed.blocks[0];
+		assert.equal(block.mode, "collapsed", "long message folds by default");
 		assert.ok(block.foldable);
+		assert.ok(collapsed.rows.some((row) => lineText(row).includes("…")), "folded tail is marked");
 
 		transcript.toggleFold(block.id);
-		const collapsed = transcript.view();
-		assert.ok(collapsed.rows.length < expanded.rows.length);
-		assert.ok(collapsed.rows.some((row) => lineText(row).includes("…")));
+		const expanded = transcript.view();
+		assert.ok(expanded.rows.length > collapsed.rows.length);
+		assert.ok(expanded.rows.some((row) => lineText(row).includes("ten")), "full text after expanding");
 	});
 
 	it("代码块下面的复制操作行带正确的行号与列范围", () => {
@@ -131,7 +133,7 @@ describe("块折叠", () => {
 
 		transcript.toggleFold(block.id);
 		const expanded = transcript.view();
-		assert.ok(expanded.rows.some((row) => lineText(row).includes("Read  a.ts")));
+		assert.ok(expanded.rows.some((row) => lineText(row).includes("Read a.ts")));
 
 		const member = expanded.blocks.find((item) => item.kind === "tool");
 		assert.ok(member);
@@ -160,7 +162,7 @@ describe("块折叠", () => {
 		const block = view.blocks.find((item) => item.kind === "group");
 		assert.ok(block);
 		const header = lineText(view.rows[block.start]);
-		assert.ok(header.includes("◆ Read 2 files"), header);
+		assert.ok(header.includes("◈ Read 2 files"), header);
 		assert.ok(header.includes("Searched 1 pattern"), header);
 		assert.ok(header.includes("1 failed"), header);
 	});
@@ -206,17 +208,36 @@ describe("块折叠", () => {
 			0,
 		);
 		transcript.handle(
-			{ type: "tool_end", callId: "1", name: "read", isError: false, durationMs: 1, summary: "ok" },
+			{
+				type: "tool_end",
+				callId: "1",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "ok",
+				details: { startLine: 10, endLine: 14, totalLines: 200 },
+			},
 			0,
 		);
 
 		const group = transcript.view().blocks.find((item) => item.kind === "group");
 		assert.ok(group);
 		transcript.toggleFold(group.id);
-		const member = transcript.view().rows.find((row) => lineText(row).includes("Read  "));
-		assert.ok(member);
-		assert.ok(lineText(member).includes("Read  src/a.ts (10–15)"));
-		assert.ok(!lineText(member).includes("{"));
+		const member = transcript.view().rows.find((row) => lineText(row).includes("◆ Read a.ts (10–14 of 200)"));
+		assert.ok(member, "collapsed shows the basename and the file total");
+		const collapsedName = member.find((span) => span.text === "Read");
+		assert.equal(collapsedName?.style?.bold, true, "verb is bold");
+		assert.equal(collapsedName?.style?.color, THEME.muted, "collapsed row is muted");
+
+		// 展开成员后恢复相对路径
+		const tool = transcript.view().blocks.find((block) => block.kind === "tool");
+		assert.ok(tool);
+		transcript.toggleFold(tool.id);
+		const expanded = transcript.view().rows.find((row) => lineText(row).includes("◆ Read src/a.ts (10–14 of 200)"));
+		assert.ok(expanded, "expanded shows the relative path and the file total");
+		assert.equal(expanded.find((span) => span.text === "Read")?.style?.color, THEME.text);
+		assert.equal(expanded.find((span) => span.text.trim() === "src/a.ts")?.style?.color, THEME.path);
+		assert.ok(!lineText(expanded).includes("{"));
 	});
 
 	it("展开的读取详情：行号从工具头那一列开始，正文按文件类型着色", () => {
@@ -260,6 +281,36 @@ describe("块折叠", () => {
 		assert.equal(second.at(-1)?.style?.background, THEME.codeBg);
 	});
 
+	it("工具输出的 ANSI 颜色被还原，回车按覆盖处理", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "bash", args: { command: "run" } }, 0);
+		transcript.handle(
+			{
+				type: "tool_end",
+				callId: "1",
+				name: "bash",
+				isError: false,
+				durationMs: 5,
+				summary: "ok",
+				content: "\x1b[31mred\x1b[0m line\r\nsecond\rthird",
+			},
+			1,
+		);
+
+		const block = transcript.view().blocks[0];
+		assert.ok(block);
+		transcript.toggleFold(block.id);
+		const view = transcript.view();
+		const text = view.rows.map(lineText).join("\n");
+		assert.ok(text.includes("red line"), text);
+		assert.ok(text.includes("third"), "lone carriage return overwrites the line");
+		assert.ok(!text.includes("second"), "earlier progress state is gone");
+		assert.ok(!text.includes("\x1b"), "escape sequences are not shown");
+		assert.ok(!text.includes("\r"), "carriage returns are not shown");
+		const red = view.rows.flat().find((span) => span.text === "red");
+		assert.deepEqual(red?.style?.color, [128, 0, 0], "ANSI colour is preserved");
+	});
+
 	it("非读取工具的展开详情：同一层面板，不画竖线", () => {
 		const transcript = new Transcript(60);
 		transcript.handle({ type: "tool_start", callId: "1", name: "bash", args: { command: "ls -a" } }, 0);
@@ -277,7 +328,7 @@ describe("块折叠", () => {
 		const header = lineText(view.rows[block.start]);
 		const body = view.rows[block.start + 1];
 		assert.ok(body);
-		assert.ok(header.includes("Bash"), header);
+		assert.ok(header.includes("Run"), header);
 		assert.ok(!header.includes("┃"), "工具行不画竖线");
 		assert.equal(header.indexOf("◆"), 3, "工具头仍在正文列");
 		assert.ok(lineText(body).includes("output line"), lineText(body));
@@ -373,6 +424,170 @@ describe("块折叠", () => {
 		assert.equal(transcript.blockText(block.id), "one two three four five six");
 	});
 
+	it("编辑块收起行显示增删行数，展开后按差异铺底色", () => {
+		const transcript = new Transcript(60);
+		transcript.handle(
+			{
+				type: "tool_start",
+				callId: "1",
+				name: "edit",
+				args: { path: "a.ts", edits: [{ oldText: "old", newText: "new" }] },
+			},
+			0,
+		);
+		transcript.handle(
+			{
+				type: "tool_end",
+				callId: "1",
+				name: "edit",
+				isError: false,
+				durationMs: 5,
+				summary: "ok",
+				content:
+					"Updated a.ts: 1 edits applied\n\n@@ line 2 @@\n context\n- old line\n+ new line\n context",
+			},
+			1,
+		);
+
+		const opened = transcript.view();
+		const block = opened.blocks[0];
+		assert.ok(block);
+		assert.equal(block.mode, "expanded", "edit diffs start expanded");
+		const header = lineText(opened.rows[block.start]);
+		assert.ok(header.includes("Edit"), header);
+		assert.ok(header.includes("+1/-1"), header);
+		assert.ok(!opened.rows.some((row) => lineText(row).includes("Updated a.ts")), "leading summary is dropped");
+
+		// 收起后只留一行
+		transcript.toggleFold(block.id);
+		const collapsed = transcript.view();
+		assert.ok(!collapsed.rows.some((row) => lineText(row).includes("+ new line")));
+		transcript.toggleFold(block.id);
+		const expanded = transcript.view();
+		const added = expanded.rows.find((row) => lineText(row).includes("+ new line"));
+		const removed = expanded.rows.find((row) => lineText(row).includes("- old line"));
+		assert.ok(added && removed);
+		assert.ok(lineText(added).includes("   3  + new line"), lineText(added));
+		assert.ok(lineText(removed).includes("   3  - old line"), lineText(removed));
+		assert.equal(added.find((span) => span.text === "   3  ")?.style?.background, undefined, "gutter has no band");
+		assert.ok(added.some((span) => span.style?.background === THEME.diffInsertBg), "added line background");
+		assert.ok(removed.some((span) => span.style?.background === THEME.diffDeleteBg), "removed line background");
+	});
+
+	it("检索块收起时给出命中数，展开后路径与行号分开着色", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "grep", args: { pattern: "needle" } }, 0);
+		transcript.handle(
+			{
+				type: "tool_end",
+				callId: "1",
+				name: "grep",
+				isError: false,
+				durationMs: 5,
+				summary: "ok",
+				content: "src/a.ts:3: needle here\nsrc/b.ts:9: needle there",
+			},
+			1,
+		);
+
+		let view = transcript.view();
+		const group = view.blocks.find((item) => item.kind === "group");
+		assert.ok(group);
+		transcript.toggleFold(group.id);
+		view = transcript.view();
+		const member = view.blocks.find((item) => item.kind === "tool");
+		assert.ok(member);
+		const header = lineText(view.rows[member.start]);
+		assert.ok(header.includes("Search"), header);
+		assert.ok(header.includes("(2 matches in 2 files)"), header);
+
+		transcript.toggleFold(member.id);
+		view = transcript.view();
+		const rows = view.rows.map(lineText);
+		assert.ok(rows.some((line) => line.includes("src/a.ts")), "file header");
+		assert.ok(rows.some((line) => line.includes("src/b.ts")), "second file header");
+		assert.ok(rows.some((line) => line.includes("   3  needle here")), "line number for the first match");
+		assert.ok(rows.some((line) => line.includes("   9  needle there")), "line number for the second match");
+		const fileRow = view.rows.find((line) => lineText(line).includes("src/a.ts"));
+		assert.ok(fileRow);
+		assert.equal(fileRow.find((span) => span.text === "src/a.ts")?.style?.color, THEME.path);
+	});
+
+	it("很长的收起组只报 N more，展开后给出聚合标签", () => {
+		const transcript = new Transcript(60);
+		for (let index = 0; index < 12; index += 1) {
+			transcript.handle(
+				{ type: "tool_start", callId: String(index), name: "Read", args: { path: `f${index}` } },
+				0,
+			);
+			transcript.handle(
+				{ type: "tool_end", callId: String(index), name: "Read", isError: false, durationMs: 1, summary: "ok" },
+				0,
+			);
+		}
+
+		const collapsed = transcript.view();
+		const group = collapsed.blocks.find((item) => item.kind === "group");
+		assert.ok(group);
+		assert.ok(lineText(collapsed.rows[group.start]).includes("◈ 11 more"), lineText(collapsed.rows[group.start]));
+
+		transcript.toggleFold(group.id);
+		const expanded = transcript.view();
+		const opened = expanded.blocks.find((item) => item.kind === "group");
+		assert.ok(opened);
+		assert.ok(lineText(expanded.rows[opened.start]).includes("◈ Read 12 files"));
+	});
+
+	it("收起的思考块被汇总组吸收，不打断连续工具", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "tool_start", callId: "1", name: "Read", args: { path: "a" } }, 0);
+		transcript.handle({ type: "tool_end", callId: "1", name: "Read", isError: false, durationMs: 1, summary: "ok" }, 0);
+		transcript.handle({ type: "reasoning_delta", text: "let me look at the next one" }, 1);
+		transcript.handle({ type: "tool_start", callId: "2", name: "Read", args: { path: "b" } }, 2);
+		transcript.handle({ type: "tool_end", callId: "2", name: "Read", isError: false, durationMs: 1, summary: "ok" }, 2);
+		transcript.handle({ type: "run_end" }, 2);
+
+		const view = transcript.view();
+		const group = view.blocks.find((block) => block.kind === "group");
+		assert.ok(group);
+		assert.ok(lineText(view.rows[group.start]).includes("◈ Read 2 files"));
+		assert.ok(!view.rows.some((row) => lineText(row).includes("let me look")), "claimed thinking is hidden");
+	});
+
+	it("回答块可以切换 markdown 源码与渲染视图", () => {
+		const transcript = new Transcript(60);
+		transcript.handle({ type: "text_delta", text: "# Title\n\nbody" }, 0);
+		transcript.handle({ type: "run_end" }, 0);
+
+		const block = transcript.view().blocks.find((item) => item.kind === "agent");
+		assert.ok(block);
+		const rendered = transcript.view().rows.map(lineText).join("\n");
+		assert.ok(rendered.includes("Title"));
+		assert.ok(!rendered.includes("# Title"), "markdown markers are hidden");
+
+		assert.equal(transcript.toggleRaw(block.id), true);
+		const raw = transcript.view().rows.map(lineText).join("\n");
+		assert.ok(raw.includes("# Title"), raw);
+	});
+
+	it("历史回放把用户、思考、回答、工具与系统提示都变成块", () => {
+		const transcript = new Transcript(60);
+		transcript.appendHistory([
+			{ kind: "user", text: "hello", at: 0 },
+			{ kind: "thinking", text: "hmm", at: 1, elapsedMs: 0 },
+			{ kind: "assistant", text: "answer", at: 2 },
+			{ kind: "tool", name: "read", args: { path: "a.ts" }, output: "body", isError: false, at: 3 },
+			{ kind: "system", text: "Context compacted", at: 4 },
+		]);
+
+		const view = transcript.view();
+		assert.ok(view.rows.some((row) => lineText(row).includes("❯ hello")));
+		assert.ok(view.rows.some((row) => lineText(row).includes("Thought")));
+		assert.ok(view.rows.some((row) => lineText(row).includes("answer")));
+		assert.ok(view.rows.some((row) => lineText(row).includes("Read 1 file")));
+		assert.ok(view.rows.some((row) => lineText(row).includes("Context compacted")));
+	});
+
 	it("blockMeta 返回工具调用，汇总组按成员逐条返回", () => {
 		const transcript = new Transcript(80);
 		transcript.handle({ type: "tool_start", callId: "1", name: "Read", args: { path: "a.ts" } }, 0);
@@ -387,7 +602,7 @@ describe("块折叠", () => {
 		);
 
 		const group = transcript.view().blocks[0];
-		assert.equal(transcript.blockMeta(group.id), "Read a.ts\n\ngrep \"needle\"");
+		assert.equal(transcript.blockMeta(group.id), "Read a.ts\n\nSearch \"needle\"");
 
 		const user = new Transcript(20);
 		user.userTurn("hi");

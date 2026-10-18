@@ -11,7 +11,8 @@ import { formatDuration } from "../../tui/widgets/spinner.ts";
 const ARGS_LIMIT = 60;
 
 export function thoughtLabel(elapsedMs: number): string {
-	return `Thought for ${formatDuration(elapsedMs)}`;
+	// 历史里没有保留耗时：只知道想过，不知道想了多久
+	return elapsedMs > 0 ? `Thought for ${formatDuration(elapsedMs)}` : "Thought";
 }
 
 /** 消息右上角的时间：小时不补零，分补零，12 小时制。 */
@@ -42,10 +43,10 @@ export function displayToolName(name: string): string {
 		case "find":
 		case "glob":
 		case "grep":
-			return "Grep";
+			return "Search";
 		case "bash":
 		case "shell":
-			return "Bash";
+			return "Run";
 		case "webfetch":
 		case "web_fetch":
 			return "Fetch";
@@ -89,6 +90,8 @@ export function toolSummary(
 			if (pattern !== undefined) return `"${pattern}"`;
 			return path === undefined ? "" : displayPath(path, cwd);
 		}
+		case "subagent":
+			return stringArg(args.task) ?? "";
 		case "bash":
 		case "shell":
 			return stringArg(args.command) ?? "";

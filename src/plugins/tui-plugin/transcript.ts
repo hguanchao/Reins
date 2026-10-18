@@ -1,4 +1,8 @@
+import { stripVTControlCharacters } from "node:util";
+
 import type { AgentEvent } from "../../agent/events.ts";
+import type { SessionHistoryItem } from "../../session/port.ts";
+import { ansiLines } from "./ansi.ts";
 import {
 	alignEnds,
 	concat,
@@ -19,12 +23,24 @@ import type { CopyAffordance } from "./markdown.ts";
 import { formatTokens } from "./format.ts";
 import { ACCENT_WIDTH, BLOCK_CONTENT_OFFSET, BLOCK_PAD_LEFT, BLOCK_PAD_RIGHT, entryContentWidth } from "./layout.ts";
 import { renderMarkdown, highlightSourceLines } from "./markdown.ts";
-import { ACCENT, BAD, BAND, BRIGHT, CODE_BG, DIM, FAINT, OK, TEXT } from "./theme.ts";
+import {
+	ACCENT,
+	BAD,
+	BAND,
+	CODE_BG,
+	COMMAND,
+	DIM,
+	FAINT,
+	OK,
+	PATH,
+	TEXT,
+	THEME,
+	USER,
+} from "./theme.ts";
 import {
 	describeTool,
 	displayToolName,
 	firstLine,
-	lastOutputLine,
 	thoughtLabel,
 	timestampText,
 	toolFilePath,
@@ -57,6 +73,8 @@ const TIMESTAMP_WIDTH = 10;
 /** 工具行/思考行的前缀，与正文区分开。 */
 const TOOL_MARK = "◆ ";
 const THOUGHT_MARK = "◇ ";
+/** 汇总组的组头单独用一个空心菱形，和组内成员的工具行区分开。 */
+const GROUP_MARK = "◈ ";
 
 /** 工具/思考完成后的绿色闪烁时长；与参考实现一致。 */
 const FINISH_FLASH_MS = 400;
@@ -71,9 +89,100 @@ const READ_LAST_LINES = 3;
 /** 其他工具的展开输出只留最后几行，更早的省略。 */
 const TOOL_TAIL_LINES = 12;
 
+/** 差异可以长一些，但仍给一个上限。 */
+const EDIT_MAX_LINES = 24;
+
+/** 收起组超过这么多参与行时，组头只报「N more」。 */
+const GROUP_MAX_VISIBLE = 10;
+
 /**
  * 列表输出里的条目数：截断过的输出自带「N entries」标记，完整清单按行数数。
  */
+/**
+ * 工具输出可能是另一个终端程序写的：里面会带颜色转义与回车覆盖。
+ *
+ * 这些字节直接写进界面会改掉屏幕颜色、把光标移回行首。这里统一去掉转义序列，并把
+ * `\r\n` / 单独的回车折成普通换行；颜色不保留，但内容完整可读。
+ */
+function cleanToolOutput(text: string): string {
+	return stripVTControlCharacters(text.replaceAll("\r\n", "\n").replaceAll("\r", ""));
+}
+
+/** 实时预览的最后一行：保留颜色，按显示宽度取最后一个非空行。 */
+function lastAnsiLine(text: string): Line | undefined {
+	const lines = ansiLines(text, { color: DIM.color });
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		if (lineWidth(lines[index]) > 0) return lines[index];
+	}
+	return undefined;
+}
+
+/** 编辑默认展开差异；其余工具先收成一行。 */
+function defaultToolMode(name: string): BlockMode {
+	return name.toLowerCase() === "edit" ? "expanded" : "collapsed";
+}
+
+/** 收起时只显示文件名；路径与范围在后缀里分开。 */
+function collapsedArgs(block: ToolBlock): string {
+	const name = block.name.toLowerCase();
+	if (name !== "read" && name !== "edit" && name !== "write") return block.args;
+	const { path, suffix } = splitArgs(block.args);
+	return `${basename(path)}${suffix}`;
+}
+
+interface ReadRange {
+	readonly start: number;
+	readonly end: number;
+	readonly total: number;
+}
+
+/** Read 的结构化行范围；工具没带 details 时返回 undefined。 */
+function readRange(details: unknown): ReadRange | undefined {
+	if (details === null || typeof details !== "object") return undefined;
+	const record = details as Record<string, unknown>;
+	const start = record["startLine"];
+	const end = record["endLine"];
+	const total = record["totalLines"];
+	if (typeof start !== "number" || typeof end !== "number" || typeof total !== "number") {
+		return undefined;
+	}
+	return { start, end, total };
+}
+
+/** 把 `path (10–15)` 拆成路径与括号后缀。 */
+function splitArgs(args: string): { readonly path: string; readonly suffix: string } {
+	const index = args.lastIndexOf(" (");
+	if (index < 0) return { path: args, suffix: "" };
+	return { path: args.slice(0, index), suffix: args.slice(index) };
+}
+
+function basename(path: string): string {
+	const normalized = path.replaceAll("\\", "/").replace(/\/+$/u, "");
+	return normalized.split("/").at(-1) ?? normalized;
+}
+
+/** 差异里的新增/删除行数；没有差异标记时返回 undefined。 */
+function diffCounts(output: string): { readonly added: number; readonly removed: number } | undefined {
+	const start = output.indexOf("@@");
+	if (start < 0) return undefined;
+	let added = 0;
+	let removed = 0;
+	for (const line of output.slice(start).split("\n")) {
+		if (line.startsWith("+")) added += 1;
+		else if (line.startsWith("-")) removed += 1;
+	}
+	return { added, removed };
+}
+
+/** 数满足条件的行；一行都没有时返回 undefined，避免显示 `(0 …)`。 */
+function countLines(output: string, match: (line: string) => boolean): number | undefined {
+	let count = 0;
+	for (const line of output.split("\n")) {
+		if (match(line)) count += 1;
+	}
+	return count === 0 ? undefined : count;
+}
+
 function countEntries(output: string): number | undefined {
 	const marked = /(\d+) entries/.exec(output);
 	const markedCount = Number(marked?.[1]);
@@ -148,6 +257,8 @@ interface AgentBlock extends BlockBase {
 	readonly kind: "agent";
 	readonly text: string;
 	readonly createdAt: number;
+	/** 显示 markdown 源码而不是渲染结果 */
+	raw: boolean;
 }
 
 interface ThinkingBlock extends BlockBase {
@@ -167,6 +278,8 @@ interface ToolBlock extends BlockBase {
 	readonly isError: boolean;
 	readonly durationMs: number;
 	readonly finishedAt: number;
+	/** 工具给界面的结构化信息，例如 Read 的总行数 */
+	readonly details?: unknown;
 }
 
 interface SystemBlock extends BlockBase {
@@ -184,6 +297,14 @@ interface RunningTool {
 	readonly path: string | undefined;
 	readonly startedAt: number;
 	update: string | undefined;
+}
+
+/** 一次连续的可汇总工具扫描；end 是扫描停下时下一个块的下标。 */
+interface GroupRun {
+	readonly members: readonly ToolBlock[];
+	readonly end: number;
+	/** 这一段里占可见行的块数（工具与被吸收的思考） */
+	readonly participants: number;
 }
 
 export class Transcript {
@@ -218,15 +339,78 @@ export class Transcript {
 		this.#cwd = cwd;
 	}
 
-	/** 使用者提交了一句话：新建一个展开的用户块。 */
+	/**
+	 * 使用者提交了一句话。
+	 *
+	 * 长消息默认收起：整段铺满屏幕会把模型刚给出的结果推到看不见的地方，超过预览行数的
+	 * 消息先折成三行，需要时再展开。
+	 */
 	userTurn(text: string, now = Date.now()): void {
-		this.#blocks.push({ id: this.#nextId++, kind: "user", text, createdAt: now, mode: "expanded" });
+		const mode = this.#userWrapped(text).length > USER_PREVIEW_LINES ? "collapsed" : "expanded";
+		this.#blocks.push({ id: this.#nextId++, kind: "user", text, createdAt: now, mode });
 	}
 
 	/** 追加一段不带块样式的内容（命令输出、系统提示），整体作为一个不可折叠的系统块。 */
 	appendSystem(lines: readonly Line[], accent?: Style): void {
 		if (lines.length === 0) return;
 		this.#blocks.push({ id: this.#nextId++, kind: "system", lines, mode: "expanded", accent });
+	}
+
+	/**
+	 * 接续旧会话时把历史一次性铺进会话区。
+	 *
+	 * 历史已经是「人看的样子」，不经过流式事件，也不会触发完成闪烁；时间戳用条目自己的
+	 * 时间，回看时能对上是哪一天说的。
+	 */
+	appendHistory(items: readonly SessionHistoryItem[]): void {
+		for (const item of items) {
+			switch (item.kind) {
+				case "user": {
+					const mode = this.#userWrapped(item.text).length > USER_PREVIEW_LINES ? "collapsed" : "expanded";
+					this.#blocks.push({ id: this.#nextId++, kind: "user", text: item.text, createdAt: item.at, mode });
+					continue;
+				}
+				case "assistant":
+					if (item.text.length > 0) {
+						this.#blocks.push({
+							id: this.#nextId++,
+							kind: "agent",
+							text: item.text,
+							createdAt: item.at,
+							raw: false,
+							mode: "expanded",
+						});
+					}
+					continue;
+				case "thinking":
+					this.#blocks.push({
+						id: this.#nextId++,
+						kind: "thinking",
+						text: item.text,
+						elapsedMs: item.elapsedMs,
+						finishedAt: item.at,
+						mode: "collapsed",
+					});
+					continue;
+				case "tool":
+					this.#blocks.push({
+						id: this.#nextId++,
+						kind: "tool",
+						name: item.name,
+						args: describeTool(item.name, item.args, this.#cwd),
+						path: toolFilePath(item.name, item.args),
+						output: item.output,
+						isError: item.isError,
+						durationMs: 0,
+						finishedAt: item.at,
+						mode: defaultToolMode(item.name),
+					});
+					continue;
+				case "system":
+					this.appendSystem([styled(item.text, DIM)]);
+					continue;
+			}
+		}
 	}
 
 	/** 处理一个事件。块的增删都发生在这里，界面随后重画。 */
@@ -273,7 +457,8 @@ export class Transcript {
 					isError: event.isError,
 					durationMs: event.durationMs,
 					finishedAt: now,
-					mode: "collapsed",
+					details: event.details,
+					mode: defaultToolMode(event.name),
 				});
 				return;
 			}
@@ -423,12 +608,13 @@ export class Transcript {
 		const copies: CopyRegion[] = [];
 		for (let index = 0; index < this.#blocks.length; index += 1) {
 			const block = this.#blocks[index];
-			const members = this.#groupRunAt(index);
-			if (members !== undefined) {
+			const run = this.#groupRunAt(index);
+			if (run !== undefined) {
+				const members = run.members;
 				const anchor = members[0];
 				const groupId = -anchor.id;
 				const expanded = this.#expandedGroups.has(groupId);
-				push([this.#groupHeader(members)], {
+				push([this.#groupHeader(run, expanded)], {
 					id: groupId,
 					kind: "group",
 					mode: expanded ? "expanded" : "collapsed",
@@ -445,7 +631,8 @@ export class Transcript {
 						}, true);
 					}
 				}
-				index += members.length - 1;
+				// 组里可能夹着已经被吸收的思考块，直接跳到扫描停下的位置
+				index = run.end - 1;
 				continue;
 			}
 
@@ -519,6 +706,14 @@ export class Transcript {
 		if (block !== undefined && this.#foldable(block)) block.mode = "expanded";
 	}
 
+	/** 切换一条模型回答的 markdown 源码/渲染视图。 */
+	toggleRaw(id: number): boolean {
+		const block = this.#blocks.find((item) => item.id === id);
+		if (block === undefined || block.kind !== "agent") return false;
+		block.raw = !block.raw;
+		return true;
+	}
+
 	/** 全部展开或全部收起：只要还有展开的就全部收起，否则全部展开。 */
 	toggleAll(): void {
 		this.#syncGroups();
@@ -575,44 +770,75 @@ export class Transcript {
 		return block?.kind === "tool" ? this.#toolMeta(block) : undefined;
 	}
 
+	/** 工具的主参数（路径、命令、查询），供单独复制。 */
+	blockPrimary(id: number): string | undefined {
+		this.#syncGroups();
+		const members = this.#groupAnchors.get(id);
+		if (members !== undefined) {
+			const args = members.map((member) => member.args).filter((value) => value.length > 0);
+			return args.length === 0 ? undefined : args.join("\n");
+		}
+
+		const block = this.#blocks.find((item) => item.id === id);
+		return block?.kind === "tool" && block.args.length > 0 ? block.args : undefined;
+	}
+
 	#toolMeta(member: ToolBlock): string {
-		return `${member.name}${member.args.length > 0 ? ` ${member.args}` : ""}`;
+		return `${displayToolName(member.name)}${member.args.length > 0 ? ` ${member.args}` : ""}`;
 	}
 
 	/** 扫描连续的可汇总工具，记下每个组的组头 id 与成员。 */
 	#syncGroups(): void {
 		this.#groupAnchors.clear();
 		for (let index = 0; index < this.#blocks.length; index += 1) {
-			const members = this.#groupRunAt(index);
-			if (members === undefined) continue;
-			this.#groupAnchors.set(-members[0].id, members);
-			index += members.length - 1;
+			const run = this.#groupRunAt(index);
+			if (run === undefined) continue;
+			this.#groupAnchors.set(-run.members[0].id, [...run.members]);
+			index = run.end - 1;
 		}
 	}
 
-	#groupRunAt(index: number): ToolBlock[] | undefined {
+	/**
+	 * 扫描一段连续的可汇总工具。
+	 *
+	 * 已经收起的思考块会被这一组吸收：模型常在两次工具调用之间想一句，那些草稿不该把
+	 * 「Read 3 files」拆成三段。展开的思考仍然保留自己的行，并中断这一段扫描。
+	 */
+	#groupRunAt(index: number): GroupRun | undefined {
 		const first = this.#blocks[index];
 		if (first === undefined || first.kind !== "tool" || groupKindOf(first.name) === undefined) {
 			return undefined;
 		}
 
 		const members: ToolBlock[] = [];
-		for (let cursor = index; cursor < this.#blocks.length; cursor += 1) {
+		let cursor = index;
+		while (cursor < this.#blocks.length) {
 			const block = this.#blocks[cursor];
-			if (block.kind !== "tool" || groupKindOf(block.name) === undefined) break;
-			members.push(block);
+			if (block.kind === "tool" && groupKindOf(block.name) !== undefined) {
+				members.push(block);
+				cursor += 1;
+				continue;
+			}
+			if (block.kind === "thinking" && block.mode === "collapsed") {
+				cursor += 1;
+				continue;
+			}
+			break;
 		}
-		return members;
+		return { members, end: cursor, participants: cursor - index };
 	}
 
-	#groupHeader(members: readonly ToolBlock[]): Line {
-		const { label, failed } = groupLabel(members);
+	#groupHeader(run: GroupRun, expanded: boolean): Line {
+		const { label, failed } = groupLabel(run.members);
+		// 很长的收起组只报剩余行数：展开后才给出按动词聚合的完整标签
+		const truncated = !expanded && run.participants > GROUP_MAX_VISIBLE + 1;
+		const text = truncated ? `${run.participants - 1} more` : label;
 		return blockLine(
 			plain(" "),
 			truncateLine(
 				concat(
-					styled(`${TOOL_MARK}`, FAINT),
-					styled(label, { bold: true, color: BRIGHT.color }),
+					styled(`${GROUP_MARK}`, DIM),
+					styled(text, { bold: true, color: THEME.grayBright }),
 					failed > 0 ? styled(` · ${failed} failed`, BAD) : plain(""),
 				),
 				this.#contentWidth(),
@@ -644,15 +870,9 @@ export class Transcript {
 
 	#userLines(block: UserBlock): readonly Line[] {
 		const collapsed = block.mode === "collapsed";
-		const contentWidth = this.#contentWidth();
 		// 符号直接贴着色带左缘，缩进格全部去掉；续行对齐到符号后的正文列
-		const textWidth = contentWidth + ACCENT_WIDTH + BLOCK_PAD_LEFT - BLOCK_PAD_RIGHT;
-		const lines = wrapLine(plain(block.text), {
-			width: Math.max(1, textWidth - TIMESTAMP_WIDTH),
-			firstIndent: styled("❯ ", ACCENT),
-			restIndent: plain("  "),
-			maxLines: collapsed ? USER_PREVIEW_LINES : undefined,
-		});
+		const lines = this.#userWrapped(block.text, collapsed ? USER_PREVIEW_LINES : undefined);
+		const contentWidth = this.#contentWidth();
 		const time = styled(timestampText(block.createdAt), DIM);
 		const band = (line: Line, index: number): Line => {
 			const withTime =
@@ -665,7 +885,10 @@ export class Transcript {
 
 	#agentLines(block: AgentBlock): readonly Line[] {
 		const contentWidth = this.#contentWidth();
-		const rendered = renderMarkdown(block.text, { width: Math.max(1, contentWidth - TIMESTAMP_WIDTH) });
+		const width = Math.max(1, contentWidth - TIMESTAMP_WIDTH);
+		const rendered = block.raw
+			? { lines: wrapLine(styled(block.text, TEXT), { width }), copies: [] }
+			: renderMarkdown(block.text, { width });
 		this.#mdCopies = rendered.copies;
 		const lines = rendered.lines.map(agentLine);
 		const first = lines.findIndex((line) => line.length > 0);
@@ -683,7 +906,13 @@ export class Transcript {
 		const collapsed = block.mode === "collapsed";
 		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
 		const accent = collapsed ? undefined : flashing ? OK : ACCENT;
-		const label = concat(styled(THOUGHT_MARK, FAINT), styled(thoughtLabel(block.elapsedMs), DIM));
+		const thought = thoughtLabel(block.elapsedMs);
+		const elapsed = thought.indexOf(" for ");
+		const label = concat(
+			styled(THOUGHT_MARK, FAINT),
+			styled(elapsed < 0 ? thought : thought.slice(0, elapsed), { bold: true, color: DIM.color }),
+			elapsed < 0 ? plain("") : styled(thought.slice(elapsed), DIM),
+		);
 		// 收起时补一条展开提示；放不下就整条省略，不把提示截成半句
 		const hint = plain("  (ctrl+e to expand)");
 		const content =
@@ -702,30 +931,115 @@ export class Transcript {
 	#toolLines(block: ToolBlock, forceExpanded: boolean, now: number): readonly Line[] {
 		const collapsed = !forceExpanded && block.mode === "collapsed";
 		// 工具行不画竖线：展开后详情自己成一块面板，竖线只会把头与正文切开。
-		// 完成时闪的绿落在菱形上，收起、展开两种状态都有它，标记不随折叠态漂移。
-		const flashing = !collapsed && now - block.finishedAt < FINISH_FLASH_MS;
-		const mark = flashing ? OK : block.isError ? BAD : FAINT;
-		const detail = block.isError ? styled(" (failed)", BAD) : (this.#listDetail(block) ?? plain(""));
+		// 完成时闪的绿落在菱形上；失败保持红色，不会被完成闪烁盖掉。
+		const flashing = !collapsed && !block.isError && now - block.finishedAt < FINISH_FLASH_MS;
+		const mark = block.isError ? BAD : flashing ? OK : FAINT;
+		const detail = block.isError ? plain("") : (this.#toolDetail(block) ?? plain(""));
 		const head = blockLine(
 			rail(undefined),
-			concat(
-				styled(TOOL_MARK, mark),
-				styled(displayToolName(block.name), block.isError ? BAD : TEXT),
-				plain(block.args === "" ? "" : `  ${block.args}`),
-				detail,
-			),
+			concat(styled(TOOL_MARK, mark), this.#toolTitle(block, collapsed), detail),
 		);
 		const header = truncateLine(head, HEADER_WIDTH(this.#width));
 		if (collapsed || block.output.length === 0) return [header];
 		return [header, ...this.#toolBody(block)];
 	}
 
-	/** 收起行的括号详情：列表工具给出条目数，其余工具不啰嗦。 */
-	#listDetail(block: ToolBlock): Line | undefined {
-		if (groupKindOf(block.name) !== "dir") return undefined;
-		const count = countEntries(block.output);
-		if (count === undefined) return undefined;
-		return styled(` (${count} entries)`, FAINT);
+	/**
+	 * 工具头：动词加粗，参数跟在后面一个空格。
+	 *
+	 * 收起时整行压到次要色，路径只留文件名——排在一起的工具调用不该抢正文的注意力；
+	 * 展开后才恢复主色，路径、命令与查询各用自己的颜色。
+	 */
+	#toolTitle(block: ToolBlock, collapsed: boolean): Line {
+		const nameStyle: Style = collapsed
+			? { bold: true, color: DIM.color }
+			: { bold: true, color: block.isError ? BAD.color : TEXT.color };
+		return concat(styled(displayToolName(block.name), nameStyle), this.#toolArgs(block, collapsed));
+	}
+
+	#toolArgs(block: ToolBlock, collapsed: boolean): Line {
+		if (block.args.length === 0) return plain("");
+		const name = block.name.toLowerCase();
+
+		// Read 的路径与行范围在收起/展开两种状态下都要带上；范围用工具给的结构化数据修正
+		if (name === "read") {
+			const { path, suffix } = splitArgs(block.args);
+			const range = readRange(block.details);
+			const shownRange =
+				range === undefined || suffix.length === 0
+					? suffix
+					: range.total > range.end - range.start + 1
+						? ` (${range.start}–${range.end} of ${range.total})`
+						: ` (${range.start}–${range.end})`;
+			if (collapsed) return styled(` ${basename(path)}${shownRange}`, DIM);
+			return concat(
+				styled(` ${path}`, block.isError ? BAD : PATH),
+				shownRange.length === 0 ? plain("") : styled(shownRange, DIM),
+			);
+		}
+
+		const args = collapsed ? collapsedArgs(block) : block.args;
+		if (collapsed) return styled(` ${args}`, DIM);
+		if (name === "bash" || name === "shell") return styled(` ${args}`, COMMAND);
+		if (name === "edit" || name === "write" || name === "ls" || name === "list_dir") {
+			const { path, suffix } = splitArgs(args);
+			return concat(
+				styled(` ${path}`, block.isError ? BAD : PATH),
+				suffix.length === 0 ? plain("") : styled(suffix, DIM),
+			);
+		}
+		if (name === "grep" || name === "glob") {
+			const match = /^("[^"]*")(.*)$/.exec(args);
+			if (match !== null) {
+				return concat(styled(` ${match[1]}`, OK), styled(match[2], PATH));
+			}
+		}
+		if (name === "find") {
+			const match = /^(.*?)( in )(.*)$/.exec(args);
+			if (match !== null) {
+				return concat(styled(` ${match[1]}`, OK), styled(match[2], DIM), styled(match[3], PATH));
+			}
+		}
+		return styled(` ${args}`, block.isError ? BAD : TEXT);
+	}
+
+	/** 收起行的括号详情：列表给条目数，检索给命中数，编辑给增删行数。 */
+	#toolDetail(block: ToolBlock): Line | undefined {
+		const name = block.name.toLowerCase();
+		const output = cleanToolOutput(block.output);
+		if (name === "edit") {
+			const counts = diffCounts(output);
+			if (counts === undefined) return undefined;
+			return concat(
+				styled(` +${counts.added}`, OK),
+				styled("/", DIM),
+				styled(`-${counts.removed}`, BAD),
+			);
+		}
+		if (name === "grep") {
+			let matches = 0;
+			const files = new Set<string>();
+			for (const line of output.split("\n")) {
+				const match = /^(.*?):\d+: /.exec(line);
+				if (match === null) continue;
+				matches += 1;
+				files.add(match[1]);
+			}
+			if (matches === 0) return undefined;
+			const matchNoun = matches === 1 ? "match" : "matches";
+			const fileNoun = files.size === 1 ? "file" : "files";
+			return styled(` (${matches} ${matchNoun} in ${files.size} ${fileNoun})`, FAINT);
+		}
+		if (name === "find" || name === "glob") {
+			const count = countLines(output, (line) => line.length > 0 && !line.startsWith("["));
+			return count === undefined ? undefined : styled(` (${count} files)`, FAINT);
+		}
+		if (groupKindOf(block.name) === "dir") {
+			const count = countEntries(output);
+			if (count === undefined) return undefined;
+			return styled(` (${count} entries)`, FAINT);
+		}
+		return undefined;
 	}
 
 	/**
@@ -735,15 +1049,179 @@ export class Transcript {
 	 * 详情是挂在工具头下面的正文，再拉一条竖线会把它和头割成两块。
 	 */
 	#toolBody(block: ToolBlock): readonly Line[] {
-		const lines = block.output.split("\n");
-		if (block.name.toLowerCase() === "read") return this.#numberedBody(lines, block.path);
+		const lines = cleanToolOutput(block.output).split("\n");
+		// 失败时输出是错误说明，不是结构化结果；先统一按红字铺开
+		if (block.isError) return this.#tailBody(lines, (text) => styled(text, BAD));
 
+		const name = block.name.toLowerCase();
+		if (name === "read") return this.#numberedBody(lines, block.path);
+		if (name === "edit") return this.#editBody(lines);
+		if (name === "grep") return this.#searchBody(lines);
+		if (name === "find" || name === "glob") return this.#pathListBody(lines);
+		// 执行类与未知工具保留 ANSI 颜色；结构化工具上面的文本分支不需要
+		return this.#ansiBody(block.output);
+	}
+
+	/** 通用工具输出：保留命令自己的颜色，只留最后几行。 */
+	#ansiBody(text: string): readonly Line[] {
+		const lines = ansiLines(text, { color: TEXT.color, background: THEME.codeBg });
 		const shown = lines.length > TOOL_TAIL_LINES ? [undefined, ...lines.slice(-TOOL_TAIL_LINES)] : lines;
+		const rows: Line[] = [];
+		if (shown[0] === undefined) rows.push(this.#detailLine(styled("⋮", DIM)));
+		for (const line of shown) {
+			if (line === undefined) continue;
+			for (const wrapped of wrapLine(line, { width: this.#contentWidth() })) {
+				rows.push(this.#ansiLine(wrapped));
+			}
+		}
+		return rows;
+	}
+
+	/** ANSI 行：有背景的片段保留自己的底色，其余补面板底色。 */
+	#ansiLine(line: Line): Line {
+		const width = this.#contentWidth();
+		const filled = mapLine(line, (style) =>
+			style?.background === undefined ? (mergeStyles(style, CODE_BG) ?? CODE_BG) : style,
+		);
+		return concat(plain(" ".repeat(BLOCK_CONTENT_OFFSET)), padLine(filled, width, CODE_BG));
+	}
+
+	/**
+	 * 编辑详情：只画差异部分。
+	 *
+	 * 工具输出开头还有一行「更新了哪个文件」，工具头已经写了，正文从第一个 `@@` 开始。
+	 * 新增与删除行各自铺底色，和代码块的面板区分开。
+	 */
+	#editBody(lines: readonly string[]): readonly Line[] {
+		const start = lines.findIndex((line) => line.startsWith("@@"));
+		if (start < 0) return this.#tailBody(lines, (text) => styled(text, DIM), EDIT_MAX_LINES);
+
+		const diff = lines.slice(start);
+		const entries: ({ readonly text: string; readonly style: Style; readonly band?: Style; readonly number?: number } | undefined)[] = [];
+		let oldLine = 0;
+		let newLine = 0;
+		let delta = 0;
+
+		for (const text of diff) {
+			if (text.startsWith("@@")) {
+				const match = /@@ line (\d+) @@/.exec(text);
+				if (match !== null) {
+					oldLine = Number(match[1]);
+					newLine = oldLine + delta;
+				}
+				entries.push({ text, style: DIM });
+				continue;
+			}
+			if (text.startsWith("+")) {
+				entries.push({
+					text,
+					number: newLine,
+					style: { color: OK.color, background: THEME.diffInsertBg },
+					band: { background: THEME.diffInsertBg },
+				});
+				newLine += 1;
+				delta += 1;
+				continue;
+			}
+			if (text.startsWith("-")) {
+				entries.push({
+					text,
+					number: oldLine,
+					style: { color: BAD.color, background: THEME.diffDeleteBg },
+					band: { background: THEME.diffDeleteBg },
+				});
+				oldLine += 1;
+				continue;
+			}
+			entries.push({ text, number: newLine, style: DIM, band: CODE_BG });
+			oldLine += 1;
+			newLine += 1;
+		}
+
+		const shown = entries.length > EDIT_MAX_LINES ? [undefined, ...entries.slice(-EDIT_MAX_LINES + 1)] : entries;
+		const rows: Line[] = [];
+		for (const entry of shown) {
+			if (entry === undefined) {
+				rows.push(this.#detailLine(styled("⋮", DIM)));
+				continue;
+			}
+			if (entry.number === undefined) {
+				rows.push(this.#detailLine(styled(entry.text, entry.style)));
+				continue;
+			}
+			rows.push(this.#diffLine(entry.number, entry.text, entry.style, entry.band ?? CODE_BG));
+		}
+		return rows;
+	}
+
+	/** 差异行：行号留在底色之外，正文按增删铺满整行。 */
+	#diffLine(number: number, text: string, style: Style, band: Style): Line {
+		const gutter = styled(`${String(number).padStart(4)}  `, DIM);
+		const width = Math.max(1, this.#contentWidth() - 6);
+		const body = padLine(
+			truncateLine(mapLine(styled(text, style), (span) => mergeStyles(span, band) ?? band), width),
+			width,
+			band,
+		);
+		return concat(plain(" ".repeat(BLOCK_CONTENT_OFFSET)), gutter, body);
+	}
+
+	/**
+	 * 检索详情：按文件分组。
+	 *
+	 * 每个文件先占一行路径，命中行缩进并带上行号；同一文件的命中连在一起，跨文件之间空
+	 * 一行。这样比一长串 `path:line: text` 更容易扫。
+	 */
+	#searchBody(lines: readonly string[]): readonly Line[] {
+		const shown = lines.length > TOOL_TAIL_LINES ? [undefined, ...lines.slice(-TOOL_TAIL_LINES)] : lines;
+		const rows: Line[] = [];
+		let lastPath: string | undefined;
+
+		for (const text of shown) {
+			if (text === undefined) {
+				rows.push(this.#detailLine(styled("⋮", DIM)));
+				continue;
+			}
+			const match = /^(.*?):(\d+): (.*)$/.exec(text);
+			if (match === null) {
+				rows.push(this.#detailLine(styled(text, text.startsWith("[") ? DIM : TEXT)));
+				continue;
+			}
+
+			const [, path, line, content] = match;
+			if (path !== lastPath) {
+				if (lastPath !== undefined) rows.push(this.#detailLine(plain("")));
+				rows.push(this.#detailLine(styled(path, PATH)));
+				lastPath = path;
+			}
+			rows.push(
+				this.#detailLine(
+					concat(plain("  "), styled(line.padStart(4), DIM), plain("  "), styled(content, TEXT)),
+				),
+			);
+		}
+		return rows;
+	}
+
+	/** 路径清单：每行一个路径，末尾的截断说明压暗。 */
+	#pathListBody(lines: readonly string[]): readonly Line[] {
+		return this.#tailBody(lines, (text) =>
+			text.startsWith("[") ? styled(text, DIM) : styled(text, PATH),
+		);
+	}
+
+	/** 只留最后几行；更早的内容用一行 ⋮ 代替。 */
+	#tailBody(
+		lines: readonly string[],
+		render: (text: string) => Line,
+		maxLines = TOOL_TAIL_LINES,
+	): readonly Line[] {
+		const shown = lines.length > maxLines ? [undefined, ...lines.slice(-maxLines)] : lines;
 		const rows: Line[] = [];
 		if (shown[0] === undefined) rows.push(this.#detailLine(styled("⋮", DIM)));
 		for (const text of shown) {
 			if (text === undefined) continue;
-			for (const wrapped of wrapLine(styled(text, block.isError ? BAD : TEXT), { width: this.#contentWidth() })) {
+			for (const wrapped of wrapLine(render(text), { width: this.#contentWidth() })) {
 				rows.push(this.#detailLine(wrapped));
 			}
 		}
@@ -781,11 +1259,18 @@ export class Transcript {
 		return rows;
 	}
 
-	/** 详情行：缩到正文列（与工具头同列），整行铺面板底色，续行与行号共用同一层。 */
+	/**
+	 * 详情行：缩到正文列（与工具头同列），整行铺面板底色。
+	 *
+	 * 差异行自己带了底色时沿用它的底色，其余行统一用代码块底色；这样新增/删除的整行
+	 * 都连成一片，而不是只有文字背后有颜色。
+	 */
 	#detailLine(line: Line): Line {
+		const background = line.find((span) => span.style?.background !== undefined)?.style?.background;
+		const band: Style = background === undefined ? CODE_BG : { background };
 		return concat(
 			plain(" ".repeat(BLOCK_CONTENT_OFFSET)),
-			padLine(mapLine(line, (style) => mergeStyles(style, CODE_BG) ?? CODE_BG), this.#contentWidth(), CODE_BG),
+			padLine(mapLine(line, (style) => mergeStyles(style, band) ?? band), this.#contentWidth(), band),
 		);
 	}
 
@@ -802,7 +1287,13 @@ export class Transcript {
 		if (this.#reasoning.length > 0) {
 			const accent = pulseStyle(now, 0);
 			const lines: Line[] = [
-				blockLine(rail(accent), concat(styled(THOUGHT_MARK, accent), styled("Thinking…", DIM))),
+				blockLine(
+					rail(accent),
+					concat(
+						styled(THOUGHT_MARK, accent),
+						styled("Thinking…", { bold: true, color: DIM.color }),
+					),
+				),
 			];
 			const preview = wrapLine(mapLine(plain(this.#reasoning), (style) => mergeStyles(style, DIM)), {
 				width: this.#contentWidth(),
@@ -852,14 +1343,14 @@ export class Transcript {
 			rail(accent),
 			concat(
 				styled(TOOL_MARK, accent),
-				styled(displayToolName(tool.name), TEXT),
+				styled(displayToolName(tool.name), { bold: true, color: TEXT.color }),
 				plain(tool.args.length === 0 ? "" : ` ${tool.args}`),
 			),
 		);
 
-		const tail = lastOutputLine(tool.update);
+		const tail = tool.update === undefined ? undefined : lastAnsiLine(tool.update);
 		if (tail === undefined) return truncateLine(head, HEADER_WIDTH(this.#width));
-		const right = truncateLine(styled(tail, DIM), Math.max(1, Math.floor(this.#contentWidth() / 3)));
+		const right = truncateLine(tail, Math.max(1, Math.floor(this.#contentWidth() / 3)));
 		const headLimit = Math.max(1, HEADER_WIDTH(this.#width) - lineWidth(right) - 1);
 		return alignEnds(truncateLine(head, headLimit), right, HEADER_WIDTH(this.#width));
 	}
@@ -871,7 +1362,7 @@ export class Transcript {
 		return truncateLine(
 			blockLine(
 				rail(accent),
-				concat(styled(TOOL_MARK, accent), styled(label, { bold: true, color: BRIGHT.color })),
+				concat(styled(GROUP_MARK, accent), styled(label, { bold: true, color: THEME.grayBright })),
 			),
 			HEADER_WIDTH(this.#width),
 		);
@@ -903,6 +1394,7 @@ export class Transcript {
 			kind: "agent",
 			text: this.#streaming,
 			createdAt: this.#streamStartedAt ?? Date.now(),
+			raw: false,
 			mode: "expanded",
 		});
 		this.#streaming = "";
@@ -912,13 +1404,30 @@ export class Transcript {
 	#foldable(block: Block): boolean {
 		switch (block.kind) {
 			case "user":
-				return wrapLine(plain(block.text), { width: this.#contentWidth() }).length > USER_PREVIEW_LINES;
+				return this.#userWrapped(block.text).length > USER_PREVIEW_LINES;
 			case "thinking":
 			case "tool":
 				return true;
 			default:
 				return false;
 		}
+	}
+
+	/**
+	 * 用户消息按当前宽度折行。
+	 *
+	 * 首行有 ❯ 前缀、续行有两格缩进，两者都计入可用宽度；右侧还要给时间戳留一栏。
+	 * 判断「默认要不要收起」和真正排版用的是同一份结果，收起阈值才不会和屏上看到的行数对不上。
+	 */
+	#userWrapped(text: string, maxLines?: number): readonly Line[] {
+		const contentWidth = this.#contentWidth();
+		const textWidth = contentWidth + ACCENT_WIDTH + BLOCK_PAD_LEFT - BLOCK_PAD_RIGHT;
+		return wrapLine(styled(text, TEXT), {
+			width: Math.max(1, textWidth - TIMESTAMP_WIDTH),
+			firstIndent: styled("❯ ", USER),
+			restIndent: plain("  "),
+			maxLines,
+		});
 	}
 
 	#contentWidth(): number {

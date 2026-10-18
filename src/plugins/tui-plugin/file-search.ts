@@ -27,6 +27,8 @@ export interface FileEntry {
 
 export interface IndexOptions {
 	readonly maxEntries?: number;
+	/** 连 .gitignore 里的文件也收进来；`@!` 模式用它 */
+	readonly includeIgnored?: boolean;
 }
 
 const SKIPPED = new Set([".git", "node_modules"]);
@@ -116,8 +118,11 @@ export async function indexWorkspaceFiles(
 	options: IndexOptions = {},
 ): Promise<readonly FileEntry[]> {
 	const maxEntries = options.maxEntries ?? 20_000;
-	const fromGit = await indexWithGit(root, maxEntries);
-	if (fromGit !== undefined) return fromGit;
+	// `@!` 要看到被忽略的文件，git 清单天然看不到它们，直接走目录遍历
+	if (options.includeIgnored !== true) {
+		const fromGit = await indexWithGit(root, maxEntries);
+		if (fromGit !== undefined) return fromGit;
+	}
 	return indexByWalk(root, maxEntries);
 }
 

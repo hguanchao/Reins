@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { fileMenuRows, slashMenuRows } from "../../../src/plugins/tui-plugin/menu-view.ts";
+import {
+	fileMenuRows,
+	fuzzyMatchIndices,
+	historyMenuRows,
+	slashMenuRows,
+} from "../../../src/plugins/tui-plugin/menu-view.ts";
 import { THEME } from "../../../src/plugins/tui-plugin/theme.ts";
 import { lineText, lineWidth } from "../../../src/tui/text/line.ts";
 
 const COMMANDS = [
-	{ name: "help", description: "Show help", insertText: "/help" },
-	{ name: "exit", description: "Quit", insertText: "/exit" },
-	{ name: "notify", description: "Notifications", insertText: "/notify " },
+	{ name: "help", description: "Show help", tag: "built-in", insertText: "/help" },
+	{ name: "exit", description: "Quit", tag: "built-in", insertText: "/exit" },
+	{ name: "notify", description: "Notifications", tag: "built-in", insertText: "/notify " },
 ];
 
 describe("斜杠命令下拉", () => {
@@ -38,6 +43,13 @@ describe("斜杠命令下拉", () => {
 		assert.equal(layout.rows[2].at(-1)?.style?.background, THEME.band);
 	});
 
+	it("鼠标悬停的候选行亮一档，选中行仍用选中底色", () => {
+		const layout = slashMenuRows(COMMANDS, 0, 40, 3, "", 1);
+		assert.equal(layout.rows[1].at(-1)?.style?.background, THEME.selectBg, "selected row");
+		assert.equal(layout.rows[2].at(-1)?.style?.background, THEME.menuHover, "hovered row");
+		assert.equal(layout.rows[3].at(-1)?.style?.background, THEME.band, "idle row");
+	});
+
 	it("选中行带 ❯ 前缀，未选中行不带", () => {
 		const layout = slashMenuRows(COMMANDS, 1, 40, 2);
 		assert.ok(lineText(layout.rows[2]).includes("❯ /exit"));
@@ -50,6 +62,27 @@ describe("斜杠命令下拉", () => {
 		assert.ok(lineText(layout.rows[1]).includes("/exit"));
 		assert.ok(lineText(layout.rows[2]).includes("/notify"));
 		assert.ok(lineText(layout.rows[3]).trim().startsWith("─"), "panel closes with a rule");
+	});
+
+	it("查询字符在标签里高亮，并显示来源标记", () => {
+		const layout = slashMenuRows(COMMANDS, 0, 60, 3, "he");
+		const row = layout.rows[1];
+		const text = lineText(row);
+		assert.ok(text.includes("[built-in]"), "provenance tag");
+		assert.equal(row.find((span) => span.text === "he")?.style?.color, THEME.system, "matched characters");
+		assert.ok(text.includes("❯ /help"), "label follows the selection prefix");
+
+		assert.deepEqual(fuzzyMatchIndices("help", "hp"), [0, 3]);
+		assert.deepEqual(fuzzyMatchIndices("help", "zz"), []);
+	});
+});
+
+describe("历史下拉", () => {
+	it("最近提交的在前，多行消息带行数", () => {
+		const layout = historyMenuRows(["newer", "older\nsecond line"], 0, 40, 2);
+		assert.ok(lineText(layout.rows[1]).includes("❯ newer"));
+		assert.ok(lineText(layout.rows[2]).includes("older"));
+		assert.ok(lineText(layout.rows[2]).includes("(+1 line)"));
 	});
 });
 
@@ -73,5 +106,20 @@ describe("文件下拉", () => {
 
 	it("空结果不产生行", () => {
 		assert.deepEqual(fileMenuRows([], 0, 40, 8), { rows: [], top: 0, visible: 0 });
+	});
+
+	it("文件路径里的命中字符同样高亮", () => {
+		const layout = fileMenuRows(
+			[{ path: "src/app.ts", kind: "file" }],
+			0,
+			60,
+			8,
+			"1/1",
+			"sa",
+		);
+		const row = layout.rows[1];
+		assert.ok(lineText(row).includes("@src/app.ts"));
+		const matched = row.filter((span) => span.style?.color === THEME.system).map((span) => span.text);
+		assert.ok(matched.join("").includes("s") && matched.join("").includes("a"), "matched path characters");
 	});
 });

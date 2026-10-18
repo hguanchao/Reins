@@ -28,7 +28,13 @@ import { PromptController } from "./prompt-controller.ts";
 import { railWidth, railCells, RAIL_WIDTH } from "./rail.ts";
 import { scrollbarGrabOffset, scrollbarStart } from "./scrollbar.ts";
 import { copyNotice } from "./session-format.ts";
-import { ACCENT, BAD, PASTE_BG, THEME, WARN } from "./theme.ts";
+import { BAD, PASTE_BG, THEME, USER } from "./theme.ts";
+import { ansiLines } from "./ansi.ts";
+import { queueRows } from "./queue-view.ts";
+import { toastLine } from "./toast.ts";
+import { topBarRow } from "./top-bar.ts";
+import { viewerRows } from "./viewer.ts";
+import { welcomeRows } from "./welcome.ts";
 
 /**
  * 交互式界面。
@@ -63,6 +69,9 @@ import { ACCENT, BAD, PASTE_BG, THEME, WARN } from "./theme.ts";
 /** 输入框之外的固定行：边框上下两条、下面的快捷键条。 */
 const PROMPT_CHROME_ROWS = 3;
 
+/** 顶部状态行固定占一行。 */
+const TOP_BAR_ROWS = 1;
+
 /** 跑起来时多出的两行：空行与回合状态行。 */
 const RUNNING_ROWS = 2;
 
@@ -78,7 +87,7 @@ const CLEAR_CONFIRM_MS = 800;
 /** 翻页键走整页：视口里的一步是半屏，翻两下才是一屏。Ctrl+U/D 才走半页。 */
 const FULL_PAGE = 2;
 
-const PROMPT: Line = styled("❯ ", ACCENT);
+const PROMPT: Line = styled("❯ ", USER);
 
 /** 需要连按两次的动作。 */
 type ConfirmAction = "clear" | "quit";
@@ -109,6 +118,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 	/** 当前动作的起点：运行状态行拿它显示这一步已经跑了多久 */
 	#activityStartedAt = 0;
 	#running = false;
+	/** 已经发出中止请求，正在等这一轮收尾 */
+	#cancelling = false;
+	/** 已经决定退出：队列不再续跑 */
+	#exiting = false;
+	/** 运行中提交的后续消息；这一轮结束后按顺序接着跑 */
+	#queued: string[] = [];
+	/** Ctrl+S 暂存的草稿；顶边框会标出来 */
+	#stash: string | undefined;
 	#abort: AbortController | undefined;
 	#ticker: NodeJS.Timeout | undefined;
 	#escapeTimer: NodeJS.Timeout | undefined;
@@ -122,10 +139,23 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#cursorVisible = true;
 	/** 拖动滚动条时，抓点离滑块顶端的行数。 */
 	#scrollbarGrab: number | undefined;
-	/** 输入框在屏幕上的起始行。 */
+	/** 输入框上边框在屏幕上的行号。 */
+	#inputTop = 0;
+	/** 输入正文在屏幕上的起始行。 */
 	#editorTop = 0;
 	/** 下拉在屏幕上的起始行；鼠标行号减它得到候选行。 */
 	#menuTopScreen = 0;
+	/** 顶部上下文占用条的列范围；指针停上去时换成进度条。 */
+	#contextRange: { readonly from: number; readonly to: number } | undefined;
+	#contextHover = false;
+	/** 正在全屏查看的块与滚动位置。 */
+	#viewer: { readonly blockId: number; scroll: number } | undefined;
+	#viewerMaxScroll = 0;
+	/** 运行状态行在屏幕上的行号与其中可点的按钮。 */
+	#runningRow: number | undefined;
+	#runningStop: { readonly from: number; readonly to: number } | undefined;
+	#runningFollow: { readonly from: number; readonly to: number } | undefined;
+	#runningHover: "stop" | "follow" | undefined;
 	/** 底部临时提示（复制成功之类），过一会儿让回给快捷键条。 */
 	#notice = "";
 	#noticeTimer: NodeJS.Timeout | undefined;
@@ -158,6 +188,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 		this.#runtime = runtime;
 		this.#notifyMode = runtime.notify;
 		this.#conversation.setCwd(runtime.cwd);
+		this.#conversation.loadHistory(runtime.session.history);
 		this.#prompt.loadFileIndex(runtime.cwd);
 		this.#stopped = false;
 		this.#startTerminal();
@@ -256,6 +287,11 @@ export class TerminalFrontend implements InteractiveFrontend {
 				this.#focus = event.focused;
 				continue;
 			}
+			// 查看器是键盘模态：滚轮、翻页和关闭都归它，底层会话不再响应
+			if (this.#viewer !== undefined) {
+				this.#handleViewer(event);
+				continue;
+			}
 			if (event.type === "wheel") {
 				const wheelRow = event.row - 1;
 				const relative = wheelRow - this.#menuTopScreen;
@@ -286,12 +322,12 @@ export class TerminalFrontend implements InteractiveFrontend {
 						this.#answer(false);
 						continue;
 					}
-					if (event.name === "ctrl-c") {
-						// Ctrl+C 才是停掉这一轮的键：拒绝，并把这一轮也停掉
-						this.#answer(false);
-						this.#abort?.abort();
-						continue;
-					}
+			if (event.name === "ctrl-c") {
+				// Ctrl+C 才是停掉这一轮的键：拒绝，并把这一轮也停掉
+				this.#answer(false);
+				this.#cancelTurn();
+				continue;
+			}
 					if (event.name === "up" || event.name === "ctrl-p") {
 						this.#moveDialogFocus(-1);
 						continue;
@@ -335,7 +371,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			if (this.#pane === "scrollback") {
 				if (event.type === "key") {
 					if (event.name === "ctrl-c") {
-						if (this.#running) this.#abort?.abort();
+						if (this.#running) this.#cancelTurn();
 						continue;
 					}
 					if (event.name === "ctrl-d") {
@@ -408,7 +444,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 				continue;
 			}
 			if (event.type === "text") {
-				this.#prompt.editor.insert(event.text);
+				this.#prompt.insertText(event.text);
 				this.#refresh();
 				continue;
 			}
@@ -447,11 +483,20 @@ export class TerminalFrontend implements InteractiveFrontend {
 					this.#conversation.toggleAll();
 					this.#refresh();
 					break;
+				case "r":
+					if (this.#conversation.toggleSelectedRaw()) this.#refresh();
+					break;
 				case "y":
 					this.#copyBlock();
 					break;
 				case "Y":
 					this.#copyBlockMeta();
+					break;
+				case "c":
+					this.#copyBlockPrimary();
+					break;
+				case "v":
+					this.#openViewer();
 					break;
 				case "H":
 					this.#jumpTurn(-1);
@@ -509,10 +554,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const cols = this.#terminal.size().cols;
 		const row = event.row - 1;
 		const col = event.col - 1;
+		/** 顶部状态行之外的屏幕行。 */
+		const bodyRow = row - TOP_BAR_ROWS;
+		/** 鼠标行落在内容行上时对应的行号；上下留白里没有内容。 */
+		const contentRow = this.#conversation.toContentRow(bodyRow);
 
 		// 表格与代码块下面的 [Copy …] 标签：按下即写入剪贴板
 		if (event.button === "left" && event.action === "down") {
-			const copy = this.#conversation.copyTextAt(row, col);
+			const copy = this.#conversation.copyTextAt(bodyRow, col);
 			if (copy !== undefined) {
 				this.#writeClipboard(copy);
 				return;
@@ -520,26 +569,91 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 
 		if (event.action === "move") {
-			if (this.#conversation.hoverAt(row, col, cols)) this.#refresh();
+			const overContext =
+				row === 0 &&
+				this.#contextRange !== undefined &&
+				col >= this.#contextRange.from &&
+				col < this.#contextRange.to;
+			let changed = false;
+			if (overContext !== this.#contextHover) {
+				this.#contextHover = overContext;
+				changed = true;
+			}
+
+			// 运行行上的两个按钮：指针停上去才亮起来
+			let runningHover: "stop" | "follow" | undefined;
+			if (this.#runningRow === row) {
+				if (this.#runningStop !== undefined && col >= this.#runningStop.from && col < this.#runningStop.to) {
+					runningHover = "stop";
+				} else if (
+					this.#runningFollow !== undefined &&
+					col >= this.#runningFollow.from &&
+					col < this.#runningFollow.to
+				) {
+					runningHover = "follow";
+				}
+			}
+			if (runningHover !== this.#runningHover) {
+				this.#runningHover = runningHover;
+				changed = true;
+			}
+
+			// 输入框上方的候选面板：悬停行亮一档，点击行为保持不变
+			const menuHit = this.#prompt.menuIndexAt(row - this.#menuTopScreen);
+			const menuHover = menuHit?.index;
+			if (menuHover !== this.#prompt.menuHover) {
+				this.#prompt.setMenuHover(menuHover);
+				changed = true;
+			}
+
+			if (this.#conversation.hoverAt(bodyRow, col, cols)) changed = true;
+			if (changed) this.#refresh();
 			return;
 		}
+
+		// 选中框右上角的关闭按钮先认：它和顶部的跟随指示可能落在同一行留白里
+		if (
+			event.button === "left" &&
+			event.action === "down" &&
+			this.#conversation.selectionCloseAt(bodyRow, col, this.#entryWidth(cols))
+		) {
+			this.#conversation.clearSelectedBlock();
+			this.#conversation.cancelSelection();
+			this.#refresh();
+			return;
+		}
+
+		// 留白里的跟随指示：点一下回到那一端
+		if (event.button === "left" && event.action === "down") {
+			const action = this.#conversation.padActionAt(bodyRow);
+			if (action !== undefined) {
+				if (action === "top") this.#conversation.toTop();
+				else this.#conversation.toEnd();
+				this.#refresh();
+				return;
+			}
+		}
+
 		if (
 			event.button === "left" &&
 			event.action === "down" &&
 			col === cols - 1 &&
-			row >= 0 &&
-			row < this.#conversation.height
+			contentRow !== undefined &&
+			this.#conversation.scrollbarShown
 		) {
-			const grab = scrollbarGrabOffset(row, this.#conversation.total, this.#conversation.height, this.#conversation.window.start);
+			const grab = scrollbarGrabOffset(contentRow, this.#conversation.total, this.#conversation.height, this.#conversation.window.start);
 			if (grab !== undefined) {
 				this.#scrollbarGrab = grab;
-				this.#scrollTo(scrollbarStart(row, grab, this.#conversation.total, this.#conversation.height));
+				this.#scrollTo(scrollbarStart(contentRow, grab, this.#conversation.total, this.#conversation.height));
 			}
 			return;
 		}
 
 		if (event.action === "drag" && this.#scrollbarGrab !== undefined) {
-			this.#scrollTo(scrollbarStart(row, this.#scrollbarGrab, this.#conversation.total, this.#conversation.height));
+			const target =
+				contentRow ??
+				Math.max(0, Math.min(this.#conversation.height - 1, bodyRow - this.#conversation.topPad));
+			this.#scrollTo(scrollbarStart(target, this.#scrollbarGrab, this.#conversation.total, this.#conversation.height));
 			return;
 		}
 
@@ -552,14 +666,13 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (
 			event.button === "left" &&
 			event.action === "down" &&
-			col >= cols - RAIL_WIDTH &&
-			col <= cols - 2 &&
-			row >= 0 &&
-			row < this.#conversation.height
+			contentRow !== undefined &&
+			col >= cols - GUTTER_WIDTH &&
+			col < cols - GUTTER_WIDTH + RAIL_WIDTH
 		) {
 			if (railWidth({ width: this.#body(cols), turns: this.#conversation.turns.length }) > 0) {
 				const cells = railCells(this.#conversation.height, this.#conversation.turns, this.#conversation.window.start);
-				const target = cells[row]?.target;
+				const target = cells[contentRow]?.target;
 				if (target !== undefined) this.#scrollTo(target);
 			}
 			return;
@@ -579,8 +692,29 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 		}
 
+		// 运行状态行上的按钮：中止本轮，或从历史里回到末尾
+		if (event.button === "left" && event.action === "down" && this.#runningRow === row) {
+			if (
+				this.#runningStop !== undefined &&
+				col >= this.#runningStop.from &&
+				col < this.#runningStop.to
+			) {
+				this.#cancelTurn();
+				return;
+			}
+			if (
+				this.#runningFollow !== undefined &&
+				col >= this.#runningFollow.from &&
+				col < this.#runningFollow.to
+			) {
+				this.#conversation.toEnd();
+				this.#refresh();
+			}
+			return;
+		}
+
 		// 点到输入区：焦点回到输入框；双击粘贴 chip 则把它展开
-		if (event.button === "left" && event.action === "down" && row >= this.#conversation.height) {
+		if (event.button === "left" && event.action === "down" && row >= this.#inputTop) {
 			this.#pane = "prompt";
 			this.#handleEditorClick(row, col);
 			this.#refresh();
@@ -588,17 +722,17 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}
 
 		if (event.button === "left" && event.action === "down") {
-			const result = this.#conversation.clickBlock(row);
+			const result = this.#conversation.clickBlock(bodyRow);
 			if (result !== "none") this.#pane = "scrollback";
 
-			const point = this.#conversation.selectionPoint(col, row, this.#entryWidth(cols));
+			const point = this.#conversation.selectionPoint(col, bodyRow, this.#entryWidth(cols));
 			if (point !== undefined) this.#conversation.beginSelection(point);
 			if (result !== "none" || point !== undefined) this.#refresh();
 			return;
 		}
 
 		if (event.action === "drag") {
-			const point = this.#conversation.selectionPoint(col, row, this.#entryWidth(cols));
+			const point = this.#conversation.selectionPoint(col, bodyRow, this.#entryWidth(cols));
 			if (point !== undefined && this.#conversation.updateSelection(point)) this.#refresh();
 			return;
 		}
@@ -638,6 +772,131 @@ export class TerminalFrontend implements InteractiveFrontend {
 		if (this.#conversation.selectedBlockId === undefined) return;
 		const text = this.#conversation.blockMeta(this.#conversation.selectedBlockId);
 		if (text !== undefined && text.length > 0) this.#writeClipboard(text);
+	}
+
+	/** 只复制工具的主参数：路径、命令或查询。 */
+	#copyBlockPrimary(): void {
+		if (this.#conversation.selectedBlockId === undefined) return;
+		const text = this.#conversation.blockPrimary(this.#conversation.selectedBlockId);
+		if (text !== undefined && text.length > 0) this.#writeClipboard(text);
+	}
+
+	/** 打开选中块的全屏查看器。 */
+	#openViewer(): void {
+		const id = this.#conversation.selectedBlockId;
+		if (id === undefined) return;
+		const text = this.#conversation.blockText(id);
+		if (text === undefined || text.length === 0) return;
+		this.#viewer = { blockId: id, scroll: 0 };
+		this.#refresh();
+	}
+
+	#closeViewer(): void {
+		this.#viewer = undefined;
+		this.#refresh();
+	}
+
+	/** 查看器只认滚动与关闭；其他按键一律吞掉，避免改到下面的会话。 */
+	#handleViewer(event: KeyEvent): void {
+		if (event.type === "wheel") {
+			this.#scrollViewer(event.direction === "up" ? -WHEEL_LINES : WHEEL_LINES);
+			return;
+		}
+		if (event.type === "key") {
+			switch (event.name) {
+				case "escape":
+				case "ctrl-c":
+					this.#closeViewer();
+					return;
+				case "up":
+				case "ctrl-p":
+					this.#scrollViewer(-1);
+					return;
+				case "down":
+				case "ctrl-n":
+					this.#scrollViewer(1);
+					return;
+				case "pageup":
+				case "ctrl-u":
+					this.#scrollViewer(-10);
+					return;
+				case "pagedown":
+				case "ctrl-d":
+					this.#scrollViewer(10);
+					return;
+				case "home":
+					this.#scrollViewer(-this.#viewerMaxScroll);
+					return;
+				case "end":
+					this.#scrollViewer(this.#viewerMaxScroll);
+					return;
+				default:
+					return;
+			}
+		}
+		if (event.type !== "text") return;
+		for (const char of event.text) {
+			if (char === "q" || char === "v") {
+				this.#closeViewer();
+				return;
+			}
+			if (char === "j") this.#scrollViewer(1);
+			else if (char === "k") this.#scrollViewer(-1);
+			else if (char === "g") this.#scrollViewer(-this.#viewerMaxScroll);
+			else if (char === "G") this.#scrollViewer(this.#viewerMaxScroll);
+		}
+	}
+
+	#scrollViewer(delta: number): void {
+		const viewer = this.#viewer;
+		if (viewer === undefined || delta === 0) return;
+		viewer.scroll = Math.max(0, Math.min(this.#viewerMaxScroll, viewer.scroll + delta));
+		this.#refresh();
+	}
+
+	#viewerTitle(): string {
+		const viewer = this.#viewer;
+		if (viewer === undefined) return "View";
+		const kind = this.#conversation.blocks.find((block) => block.id === viewer.blockId)?.kind;
+		const label =
+			kind === "agent"
+				? "Answer"
+				: kind === "thinking"
+					? "Thought"
+					: kind === "user"
+						? "Prompt"
+						: kind === "group"
+							? "Tools"
+							: "Output";
+		const meta = this.#conversation.blockMeta(viewer.blockId)?.split("\n")[0]?.trim();
+		return meta === undefined || meta.length === 0 ? label : `${label} · ${meta}`;
+	}
+
+	#viewerText(): string {
+		const viewer = this.#viewer;
+		return viewer === undefined ? "" : (this.#conversation.blockText(viewer.blockId) ?? "");
+	}
+
+	/**
+	 * 暂存/取回草稿。
+	 *
+	 * 有草稿时存起来并清空输入框；输入框为空且存在暂存时放回去。暂存只留在内存里，
+	 * 退出后不再恢复。
+	 */
+	#toggleStash(): void {
+		if (!this.#prompt.editor.isEmpty) {
+			this.#stash = this.#prompt.editor.text;
+			this.#prompt.editor.clear();
+			this.#showNotice("Draft stashed · Ctrl+S to restore");
+			this.#refresh();
+			return;
+		}
+		const stashed = this.#stash;
+		if (stashed === undefined) return;
+		this.#stash = undefined;
+		this.#prompt.insertText(stashed);
+		this.#showNotice("Draft restored");
+		this.#refresh();
 	}
 
 	/**
@@ -799,6 +1058,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 			case "ctrl-y":
 				this.#prompt.editor.redo();
 				break;
+			case "ctrl-s":
+				this.#toggleStash();
+				return;
 			case "ctrl-v":
 				this.#pasteFromClipboard(false);
 				return;
@@ -806,11 +1068,14 @@ export class TerminalFrontend implements InteractiveFrontend {
 				this.#pasteFromClipboard(true);
 				return;
 			case "newline":
-				this.#prompt.editor.insert("\n");
+				this.#prompt.insertText("\n");
 				break;
 			case "up":
-				if (this.#prompt.editor.isEmpty) this.#prompt.editor.historyPrev();
-				else this.#prompt.editor.moveUp();
+				if (this.#prompt.editor.isEmpty) {
+					if (!this.#prompt.openHistory()) this.#prompt.editor.historyPrev();
+				} else {
+					this.#prompt.editor.moveUp();
+				}
 				break;
 			case "down":
 				if (this.#prompt.editor.isEmpty) this.#prompt.editor.historyNext();
@@ -826,7 +1091,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 					this.#prompt.editor.clear();
 					break;
 				}
-				if (this.#running) this.#abort?.abort();
+				if (this.#running) this.#cancelTurn();
 				// 空闲且空输入：什么都不做——退出是 Ctrl+D，而且要连按两次
 				return;
 			case "escape":
@@ -848,16 +1113,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 	}
 
 	async #submit(): Promise<void> {
-		const runtime = this.#runtime;
-		if (runtime === undefined) return;
-
-		if (this.#running) {
-			this.#conversation.appendSystem([
-				styled("A turn is still running; wait for it to finish, or press Esc or Ctrl+C to cancel.", WARN),
-			]);
-			this.#refresh();
-			return;
-		}
+		if (this.#runtime === undefined) return;
 
 		// 光标前的反斜杠表示续行：换成换行，先不发送
 		if (this.#prompt.editor.insertNewlineAfterContinuation()) {
@@ -871,6 +1127,21 @@ export class TerminalFrontend implements InteractiveFrontend {
 			return;
 		}
 
+		// 一轮还没结束时提交的内容进入队列，不打断当前回合
+		if (this.#running) {
+			this.#queued.push(text);
+			this.#refresh();
+			return;
+		}
+
+		await this.#runSubmitted(text);
+	}
+
+	/** 真正开一项工作：普通消息进入回合，斜杠命令直接执行。 */
+	async #runSubmitted(text: string): Promise<void> {
+		const runtime = this.#runtime;
+		if (runtime === undefined) return;
+
 		// 新回合从这一行开始；轨道多一格刻度，画面回到末尾——接下来要看的就是它的结果
 		this.#pane = "prompt";
 		this.#conversation.userTurn(text);
@@ -879,10 +1150,19 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 		if (text.startsWith("/")) {
 			await this.#runCommand(text.slice(1));
+			this.#drainQueue();
 			return;
 		}
 
 		await this.#runTurn(runtime, text);
+	}
+
+	/** 这一轮结束后接着跑队列里的下一条；没有就什么都不做。 */
+	#drainQueue(): void {
+		if (this.#running || this.#stopped || this.#exiting) return;
+		const next = this.#queued.shift();
+		if (next === undefined) return;
+		void this.#runSubmitted(next);
 	}
 
 	async #runCommand(input: string): Promise<void> {
@@ -916,7 +1196,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 			}
 
 			const lines = await runtime.runCommand(name, args);
-			this.#conversation.appendSystem(lines.map((line) => plain(line)));
+			// 插件命令可能带着自己的颜色；按 SGR 还原，别让转义序列直接写进终端
+			this.#conversation.appendSystem(
+				lines.flatMap((line) => ansiLines(line, { color: THEME.text })),
+			);
 			this.#refresh();
 		} catch (error) {
 			// 命令出错只影响这一条命令，界面继续用
@@ -927,8 +1210,9 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	async #runTurn(runtime: InteractiveRuntime, prompt: string): Promise<void> {
 		this.#running = true;
+		this.#runningHover = undefined;
 		this.#turnStartedAt = Date.now();
-		this.#setActivity("Thinking", this.#turnStartedAt);
+		this.#setActivity("Thinking…", this.#turnStartedAt);
 		const controller = new AbortController();
 		this.#abort = controller;
 		this.#startTicker();
@@ -944,6 +1228,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 			);
 		} finally {
 			this.#running = false;
+			this.#cancelling = false;
+			this.#runningHover = undefined;
 			this.#abort = undefined;
 			this.#activity = "";
 			this.#stopTicker();
@@ -956,6 +1242,7 @@ export class TerminalFrontend implements InteractiveFrontend {
 			this.#prompt.loadFileIndex(runtime.cwd);
 			this.#refresh();
 			this.#notify("Done");
+			this.#drainQueue();
 		}
 	}
 
@@ -963,27 +1250,27 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const now = Date.now();
 		switch (event.type) {
 			case "turn_start":
-				this.#setActivity("Thinking", now);
+				this.#setActivity("Thinking…", now);
 				break;
 			case "reasoning_delta":
-				this.#setActivity("Thinking", now);
+				this.#setActivity("Thinking…", now);
 				break;
 			case "text_delta":
 				// 开始往外写答案：与还在想要分开，两者的等待感受完全不同
-				this.#setActivity("Responding", now);
+				this.#setActivity("Responding…", now);
 				break;
 			case "tool_start":
 				this.#setActivity(`Running ${event.name}`, now);
 				break;
 			case "tool_end":
-				this.#setActivity("Thinking", now);
+				this.#setActivity("Thinking…", now);
 				break;
 			case "compaction_start":
-				this.#setActivity("Compacting context", now);
+				this.#setActivity("Compacting…", now);
 				break;
 			case "compaction_end":
 			case "compaction_failed":
-				this.#setActivity("Thinking", now);
+				this.#setActivity("Thinking…", now);
 				break;
 			default:
 				break;
@@ -1025,7 +1312,16 @@ export class TerminalFrontend implements InteractiveFrontend {
 		}, 500);
 	}
 
+	/** 中止当前回合。只发一次请求，重复按不会叠加。 */
+	#cancelTurn(): void {
+		if (this.#abort === undefined || this.#cancelling) return;
+		this.#cancelling = true;
+		this.#abort.abort();
+		this.#refresh();
+	}
+
 	#exit(): void {
+		this.#exiting = true;
 		this.#done?.();
 	}
 
@@ -1068,6 +1364,8 @@ export class TerminalFrontend implements InteractiveFrontend {
 		// 行会在新宽度下重排，旧的选区端点已经对不上
 		this.#conversation.cancelSelection();
 		this.#conversation.clearHover();
+		this.#contextHover = false;
+		this.#contextRange = undefined;
 		// 先按记住的行数擦掉旧活动区，再按新宽度重画
 		this.#region.clear();
 		this.#refresh();
@@ -1075,8 +1373,10 @@ export class TerminalFrontend implements InteractiveFrontend {
 
 	#startTicker(): void {
 		this.#stopTicker();
-		// 指示器要动起来，否则模型想十几秒的界面看起来像卡住了
+		// 指示器要动起来，否则模型想十几秒的界面看起来像卡住了。
+		// 定时器不该单独把进程拖住：界面退出或测试提前失败时，挂在这里的就是它。
 		this.#ticker = setInterval(() => this.#refresh(), 120);
+		this.#ticker.unref();
 	}
 
 	#stopTicker(): void {
@@ -1118,66 +1418,123 @@ export class TerminalFrontend implements InteractiveFrontend {
 		const body = this.#body(size.cols);
 		const dialog = this.#dialog;
 		const status = this.#running ? RUNNING_ROWS : 0;
+		const focused = this.#pane === "prompt";
 		// 输入区最多占十几行：再高就把会话区挤没了，整帧还可能超过终端高度
 		const maxEditorRows = Math.max(3, Math.min(12, size.rows - 12 - status));
-		// 输入框是带左右边框的方框，正文宽度要扣掉边框和左右内边距
+		// 输入框是带左右边框的方框，正文宽度要扣掉边框和左右内边距。
+		// 失焦时只留一行：焦点在主区，输入框只是还看得见的草稿，不该继续占高度。
 		const editor = this.#prompt.render(
 			Math.max(1, size.cols - INPUT_CHROME),
-			maxEditorRows,
+			focused ? maxEditorRows : 1,
 			PASTE_BG,
 			PROMPT,
+			focused ? undefined : "Build anything",
 		);
 		const panel =
 			dialog === undefined
 				? undefined
 				: panelRows(size.cols, dialog, this.#dialogFocus, this.#runtime?.cwd);
 		const menu = panel === undefined ? this.#prompt.menuRows(size.cols, size.rows) : [];
+		const queue = queueRows(this.#queued, size.cols);
 		const editorRows = editor.lines.length + PROMPT_CHROME_ROWS;
 		const footerRows = panel === undefined ? editorRows + menu.length : panel.length + 1;
-		const height = Math.max(footerRows + status + 1, size.rows);
-		const rows = Math.max(1, height - footerRows - status);
+		const height = Math.max(footerRows + status + TOP_BAR_ROWS + queue.length + 1, size.rows);
+		const rows = Math.max(1, height - footerRows - status - TOP_BAR_ROWS - queue.length);
 
-		const conversation = this.#conversation.conversationRows(body, rows);
+		const conversation = this.#conversation.conversationRows(
+			body,
+			rows,
+			this.#pane === "scrollback",
+		);
+		const viewer =
+			this.#viewer === undefined
+				? undefined
+				: viewerRows({
+						width: size.cols,
+						rows,
+						title: this.#viewerTitle(),
+						text: this.#viewerText(),
+						scroll: this.#viewer.scroll,
+					});
+		if (viewer !== undefined && this.#viewer !== undefined) {
+			this.#viewerMaxScroll = viewer.maxScroll;
+			this.#viewer.scroll = Math.max(0, Math.min(viewer.maxScroll, this.#viewer.scroll));
+		}
+		// 查看器盖住会话区；没有查看器时，空会话让给入口卡片
+		const bodyLines =
+			viewer?.lines ??
+			(this.#conversation.isEmpty ? welcomeRows({ width: size.cols, rows }) : conversation);
 		const input: readonly Line[] =
 			panel === undefined
 				? inputBoxRows({
 						width: size.cols,
 						editor,
-						focused: this.#pane === "prompt",
+						focused,
 						model: this.#runtime?.model ?? "",
 						approval: this.#runtime?.approval ?? "",
+						multiline: this.#prompt.editor.text.includes("\n"),
+						caption: this.#stash === undefined ? undefined : "Stashed",
 					})
 				: panel;
-		this.#menuTopScreen = rows + status;
-		this.#editorTop = rows + status + menu.length + 1;
+		const usedTokens = this.#runtime?.contextTokens() ?? 0;
+		const top = topBarRow({
+			width: size.cols,
+			branch: this.#runtime?.branch,
+			cwd: this.#runtime?.cwd ?? "",
+			sandbox: this.#runtime?.sandbox ?? "off",
+			used: usedTokens,
+			total: this.#runtime?.contextWindow,
+			hover: this.#contextHover,
+		});
+		this.#contextRange = top.context;
+		this.#menuTopScreen = TOP_BAR_ROWS + rows + queue.length + status;
+		this.#inputTop = this.#menuTopScreen + menu.length;
+		this.#editorTop = this.#inputTop + 1;
+
+		const running = this.#running
+			? runningRow({
+					activity: this.#activity,
+					startedAt: this.#turnStartedAt,
+					phaseStartedAt: this.#activityStartedAt,
+					tokens: usedTokens,
+					width: size.cols,
+					following: this.#conversation.window.following,
+					cancelling: this.#cancelling,
+					queued: this.#queued.length,
+					stopHover: this.#runningHover === "stop",
+					followHover: this.#runningHover === "follow",
+				})
+			: undefined;
+		this.#runningRow = running === undefined ? undefined : TOP_BAR_ROWS + rows + queue.length + 1;
+		this.#runningStop = running?.stop;
+		this.#runningFollow = running?.follow;
 
 		const lines: Line[] = [
-			...conversation,
-			...(this.#running
-				? [
-						plain(""),
-						runningRow({
-							activity: this.#activity,
-							startedAt: this.#turnStartedAt,
-							phaseStartedAt: this.#activityStartedAt,
-							tokens: this.#runtime?.contextTokens() ?? 0,
-							width: size.cols,
-						}),
-					]
-				: []),
+			top.line,
+			...bodyLines,
+			...queue,
+			...(running === undefined ? [] : [plain(""), running.line]),
 			...menu,
 			...input,
 			this.#footerLine(size.cols),
 		];
 
-		// 审批面板没有硬件光标；输入框里光标位于边框与内边距之后
-		this.#setCursorVisible(panel === undefined && this.#pane === "prompt");
+		// 临时提示盖在会话区最后一行右端；查看器的底边框不盖
+		if (this.#notice.length > 0 && viewer === undefined) {
+			const toastRow = TOP_BAR_ROWS + rows - 1;
+			if (toastRow >= 0 && toastRow < lines.length) {
+				lines[toastRow] = toastLine(lines[toastRow] ?? [], size.cols, this.#notice);
+			}
+		}
+
+		// 审批面板与查看器没有硬件光标；输入框里光标位于边框与内边距之后
+		this.#setCursorVisible(panel === undefined && this.#pane === "prompt" && this.#viewer === undefined);
 		this.#region.draw({
 			lines: this.#paintBackground(lines, size.cols),
 			cursor:
 				panel === undefined
 					? {
-							row: rows + status + menu.length + 1 + editor.cursor.row,
+							row: this.#editorTop + editor.cursor.row,
 							col: INPUT_LEFT + editor.cursor.col,
 						}
 					: undefined,
@@ -1187,14 +1544,15 @@ export class TerminalFrontend implements InteractiveFrontend {
 	#footerLine(width: number): Line {
 		return footerRow({
 			width,
-			notice: this.#notice,
 			hints: footerHints({
 				dialog: this.#dialog !== undefined,
+				viewer: this.#viewer !== undefined,
 				pane: this.#pane,
 				menu: this.#prompt.menuKind(),
 				running: this.#running,
 				following: this.#conversation.window.following,
 				editorEmpty: this.#prompt.editor.isEmpty,
+				hasStash: this.#stash !== undefined,
 			}),
 		});
 	}

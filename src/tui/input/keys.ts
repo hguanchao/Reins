@@ -40,6 +40,8 @@ export type KeyName =
 	| "ctrl-v"
 	/** Ctrl+Shift+V：内联粘贴，不生成粘贴 chip */
 	| "ctrl-shift-v"
+	/** Ctrl+S：暂存/取回草稿 */
+	| "ctrl-s"
 	| "ctrl-w"
 	| "ctrl-y"
 	| "ctrl-z";
@@ -102,6 +104,7 @@ const CONTROL_KEYS: ReadonlyMap<string, KeyName> = new Map([
 	["\x0e", "ctrl-n"],
 	["\x10", "ctrl-p"],
 	["\x11", "ctrl-q"],
+	["\x13", "ctrl-s"],
 	["\x15", "ctrl-u"],
 	["\x16", "ctrl-v"],
 	["\x17", "ctrl-w"],

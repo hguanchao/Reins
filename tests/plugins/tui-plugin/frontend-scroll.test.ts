@@ -132,12 +132,12 @@ describe("前端：会话区交互", () => {
 		let rows = lastFrameRows(terminal.output).slice(0, 19);
 		assert.ok(rows.some((line) => line.endsWith("█")), "thumb shown");
 
-		// 最右一列是滚动条：点顶端轨道，滑块回到顶部
-		terminal.inputListener?.("\x1b[<0;80;1M");
-		terminal.inputListener?.("\x1b[<0;80;1m");
+		// 最右一列是滚动条；顶部状态行与顶端留白不算内容，从内容首行按下，滑块回到顶部
+		terminal.inputListener?.("\x1b[<0;80;3M");
+		terminal.inputListener?.("\x1b[<0;80;3m");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		rows = lastFrameRows(terminal.output).slice(0, 19);
-		assert.ok(rows[0].endsWith("█"), "thumb moved to top");
+		assert.ok(rows[2].endsWith("█"), "thumb moved to top");
 
 		terminal.quit();
 		await running;
@@ -157,17 +157,21 @@ describe("前端：会话区交互", () => {
 		terminal.inputListener?.("hello\r");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
-		// 用户消息在第二行（❯ hello）：符号贴着色带左缘，h 在第 5 列，从 h 拖到第二个 l
-		terminal.inputListener?.("\x1b[<0;5;2M");
-		terminal.inputListener?.("\x1b[<32;8;2M");
+		// 顶部状态行与内容留白之后才是消息正文：h 在第 5 列，从 h 拖到第二个 l
+		const messageRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("❯ hello"));
+		assert.ok(messageRow >= 0, "message row is visible");
+		const pointerRow = messageRow + 1;
+		terminal.inputListener?.(`\x1b[<0;5;${pointerRow}M`);
+		terminal.inputListener?.(`\x1b[<32;8;${pointerRow}M`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		assert.ok(terminal.output.includes("\x1b[7;") || terminal.output.includes("\x1b[7m"), "selection is highlighted");
 
-		terminal.inputListener?.("\x1b[<0;8;2m");
+		terminal.inputListener?.(`\x1b[<0;8;${pointerRow}m`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		assert.ok(terminal.output.includes("\x1b]52;c;aGVsbA=="), "copied selected text");
 		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("Copied! (4 chars, 1 line)")));
+		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("j/k:entry")), "footer keeps its hints");
 
 		terminal.quitFromScrollback();
 		await running;
@@ -225,11 +229,11 @@ describe("前端：会话区交互", () => {
 		terminal.inputListener?.(`\x1b[<0;6;${clickRow}m`);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const expanded = lastFrameRows(terminal.output);
-		assert.ok(expanded.some((line) => line.includes("◆ Read  a.ts")), "group expands to member rows");
+		assert.ok(expanded.some((line) => line.includes("◆ Read a.ts")), "group expands to member rows");
 		assert.ok(!expanded.some((line) => line.includes("line one")), "member stays collapsed");
 
 		// 双击成员：展开这个工具的完整输出
-		const memberRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◆ Read  a.ts"));
+		const memberRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("◆ Read a.ts"));
 		assert.ok(memberRow >= 0, "member row exists");
 		const memberClickRow = memberRow + 1;
 		terminal.inputListener?.(`\x1b[<0;6;${memberClickRow}M`);
@@ -263,9 +267,33 @@ describe("前端：会话区交互", () => {
 		assert.ok(meta, "metadata copy sequence written");
 		assert.equal(Buffer.from(meta[1], "base64").toString("utf8"), "Read a.ts");
 
-		// Tab 回输入框，继续输入
+		// c 只复制主参数（路径）
+		terminal.inputListener?.("c");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const primary = [...terminal.output.matchAll(/(?:\x1b\]52;c;)([^\x07]*)\x07/g)].at(-1);
+		assert.ok(primary, "primary argument copy sequence written");
+		assert.equal(Buffer.from(primary[1], "base64").toString("utf8"), "a.ts");
+
+		// v 打开全屏查看器：即使成员已收起，也能看到完整正文
+		terminal.inputListener?.("v");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const viewer = lastFrameRows(terminal.output);
+		assert.ok(viewer.some((line) => line.includes("Output · Read a.ts")), "viewer title");
+		assert.ok(viewer.some((line) => line.includes("line one")), "collapsed block body is shown");
+		terminal.inputListener?.("\x1b");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		assert.ok(
+			!lastFrameRows(terminal.output).some((line) => line.includes("Output · Read a.ts")),
+			"Esc closes the viewer",
+		);
+
+		// Tab 回输入框：选中框收起，但选中状态还在
 		terminal.inputListener?.("\t");
 		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(
+			!lastFrameRows(terminal.output).some((line) => line.trimStart().startsWith("┌")),
+			"selection box is hidden while the prompt has focus",
+		);
 		terminal.inputListener?.("x");
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		assert.ok(lastFrameRows(terminal.output).some((line) => line.includes("❯ x")), "prompt accepts input");
@@ -308,8 +336,10 @@ describe("前端：会话区交互", () => {
 			terminal.inputListener?.("hello\r");
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			// 点击用户消息块，把焦点切到主区
-			terminal.inputListener?.("\x1b[<0;6;2M");
-			terminal.inputListener?.("\x1b[<0;6;2m");
+			const messageRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("❯ hello"));
+			assert.ok(messageRow >= 0, "message row is visible");
+			terminal.inputListener?.(`\x1b[<0;6;${messageRow + 1}M`);
+			terminal.inputListener?.(`\x1b[<0;6;${messageRow + 1}m`);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			assert.ok(
 				lastFrameRows(terminal.output).some((line) => line.includes("j/k:entry")),
@@ -367,8 +397,10 @@ describe("前端：会话区交互", () => {
 
 			terminal.inputListener?.("hello\r");
 			await new Promise((resolve) => setTimeout(resolve, 0));
-			terminal.inputListener?.("\x1b[<0;6;2M");
-			terminal.inputListener?.("\x1b[<0;6;2m");
+			const messageRow = lastFrameRows(terminal.output).findIndex((line) => line.includes("❯ hello"));
+			assert.ok(messageRow >= 0, "message row is visible");
+			terminal.inputListener?.(`\x1b[<0;6;${messageRow + 1}M`);
+			terminal.inputListener?.(`\x1b[<0;6;${messageRow + 1}m`);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			const decision = confirmer?.("Allow Bash to run?", "{}");

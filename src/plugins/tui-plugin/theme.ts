@@ -17,6 +17,8 @@ export const THEME = {
 	base: rgb(0x14, 0x14, 0x14),
 	/** 使用者消息的铺底 */
 	band: rgb(0x24, 0x24, 0x24),
+	/** 收起行悬停的铺底：比屏幕底色亮一档，又不到用户消息那么显眼 */
+	hover: rgb(0x18, 0x18, 0x18),
 	/** 正文 */
 	text: rgb(0xe1, 0xe1, 0xe1),
 	/** 次要文字：工具名、耗时、说明 */
@@ -27,6 +29,10 @@ export const THEME = {
 	bright: rgb(0xc8, 0xc8, 0xc8),
 	/** Markdown 一级标题的青绿 */
 	mdTeal: rgb(0x1a, 0xbc, 0x9c),
+	/** Markdown 三级标题的紫 */
+	mdPurple: rgb(0x9d, 0x7c, 0xd8),
+	/** Markdown 六级标题的暗灰 */
+	mdDark: rgb(0x5a, 0x5a, 0x5a),
 	/** Markdown 四级标题的中灰 */
 	grayBright: rgb(0x78, 0x78, 0x78),
 	/** 模型正在说的与正在做的 */
@@ -39,12 +45,20 @@ export const THEME = {
 	code: rgb(0x3a, 0x95, 0xab),
 	/** 代码块底色 */
 	codeBg: rgb(0x1c, 0x1c, 0x1c),
+	/** 编辑差异的删除行底色 */
+	diffDeleteBg: rgb(0x42, 0x0e, 0x14),
+	/** 编辑差异的新增行底色 */
+	diffInsertBg: rgb(0x06, 0x38, 0x06),
 	/** 面板里被选中的行 */
 	selectBg: rgb(0x36, 0x36, 0x36),
+	/** 面板里鼠标悬停的行：比候选底色亮一档，又不到选中 */
+	menuHover: rgb(0x2c, 0x2c, 0x2c),
 	/** 粘贴 chip 的底色：比正文低一档，提醒它是一段折叠起来的内容 */
 	pasteBg: rgb(0x2c, 0x2a, 0x36),
 	/** 路径 */
 	path: rgb(0xff, 0x9e, 0x64),
+	/** shell 命令 */
+	command: rgb(0xe0, 0xaf, 0x68),
 	/** 需要注意但不致命的事：没读的配置、被拒绝的发送 */
 	warn: rgb(0xff, 0x9e, 0x64),
 	/** 成功 */
@@ -62,6 +76,8 @@ export const THEME = {
 } as const;
 
 export const TEXT: Style = { color: THEME.text };
+/** 使用者输入的前缀与强调：浅灰，而不是模型那一侧的紫色。 */
+export const USER: Style = { color: THEME.bright };
 export const DIM: Style = { color: THEME.muted };
 export const FAINT: Style = { color: THEME.faint };
 export const BRIGHT: Style = { color: THEME.bright };
@@ -72,9 +88,12 @@ export const CODE: Style = { color: THEME.code };
 export const CODE_BG: Style = { background: THEME.codeBg };
 /** 选中行的底色。 */
 export const SELECT_BG: Style = { background: THEME.selectBg };
+/** 候选行鼠标悬停的底色。 */
+export const MENU_HOVER: Style = { background: THEME.menuHover };
 /** 粘贴 chip 的底色。 */
 export const PASTE_BG: Style = { background: THEME.pasteBg };
 export const PATH: Style = { color: THEME.path };
+export const COMMAND: Style = { color: THEME.command };
 export const WARN: Style = { color: THEME.warn };
 export const OK: Style = { color: THEME.ok };
 export const BAD: Style = { color: THEME.bad };
@@ -85,6 +104,8 @@ export const BOLD: Style = { bold: true };
 export const TITLE: Style = { bold: true, color: THEME.text };
 /** 整行铺底。 */
 export const BAND: Style = { background: THEME.band };
+/** 收起行悬停的铺底。 */
+export const HOVER: Style = { background: THEME.hover };
 /** 全屏底色：备用屏里每一行都铺满它，界面与非界面的输出才像同一块屏。 */
 export const BG: Style = { background: THEME.base };
 /** 滚动条滑块：实心块，前后景色同色。 */

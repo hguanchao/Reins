@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
-import { plain, type ClipboardPort, type KeyEvent } from "../../../src/tui/index.ts";
+import { lineText, plain, type ClipboardPort, type KeyEvent } from "../../../src/tui/index.ts";
 import { PromptController } from "../../../src/plugins/tui-plugin/prompt-controller.ts";
 import { PASTE_BG } from "../../../src/plugins/tui-plugin/theme.ts";
 import { cleanupTempDirs, workspaceFixture } from "./frontend-harness.ts";
@@ -30,8 +30,8 @@ async function until(condition: () => boolean): Promise<void> {
 	}
 }
 
-afterEach(() => {
-	cleanupTempDirs();
+afterEach(async () => {
+	await cleanupTempDirs();
 });
 
 describe("粘贴分流", () => {
@@ -132,6 +132,45 @@ describe("斜杠下拉", () => {
 	});
 });
 
+describe("历史面板", () => {
+	it("空输入 Up 打开历史，最近提交的在前，回车写回输入框", () => {
+		const prompt = controller();
+		prompt.editor.insert("first");
+		prompt.editor.submit();
+		prompt.editor.insert("second");
+		prompt.editor.submit();
+
+		assert.equal(prompt.openHistory(), true);
+		assert.equal(prompt.menuKind(), "history");
+		const rows = prompt.menuRows(80, 24);
+		assert.ok(rows.some((row) => lineText(row).includes("❯ second")), "newest first");
+
+		prompt.handleMenuKey(key("down"));
+		prompt.handleMenuKey(key("enter"));
+		assert.equal(prompt.menuKind(), undefined, "panel closes after accepting");
+		assert.equal(prompt.displayText, "first");
+	});
+
+	it("打开历史后输入文字会关闭面板并保留输入", () => {
+		const prompt = controller();
+		prompt.editor.insert("old");
+		prompt.editor.submit();
+		assert.equal(prompt.openHistory(), true);
+
+		prompt.insertText("new");
+		assert.equal(prompt.menuKind(), undefined);
+		assert.equal(prompt.displayText, "new");
+	});
+
+	it("有草稿时不打开历史面板", () => {
+		const prompt = controller();
+		prompt.editor.insert("old");
+		prompt.editor.submit();
+		prompt.editor.insert("draft");
+		assert.equal(prompt.openHistory(), false);
+	});
+});
+
 describe("文件下拉", () => {
 	it("Tab 插入文件引用；右方向键钻进目录后 Tab 插入子文件", async () => {
 		const prompt = controller();
@@ -153,5 +192,36 @@ describe("文件下拉", () => {
 
 		prompt.handleMenuKey(key("tab"));
 		assert.match(prompt.displayText, /app\.ts/, "child file is inserted");
+	});
+
+	it("@! 使用包含隐藏文件的清单", async () => {
+		const prompt = controller();
+		prompt.loadFileIndex(workspaceFixture());
+		prompt.insertText("@!env");
+		await until(() => prompt.menuKind() === "file");
+
+		const rows = prompt.menuRows(80, 24).map(lineText);
+		assert.ok(rows.some((row) => row.includes(".env")), "hidden file is listed");
+		assert.ok(prompt.handleMenuKey(key("tab")));
+		assert.equal(prompt.displayText, "@.env ", "accepted reference drops the !");
+		// 让后台文件扫描收尾，避免 Windows 上删除临时目录时撞上打开的句柄
+		await new Promise((resolve) => setTimeout(resolve, 30));
+	});
+
+	it("Tab 插入的文件引用是一个原子元素", async () => {
+		const prompt = controller();
+		prompt.loadFileIndex(workspaceFixture());
+		prompt.insertText("open @app");
+		await until(() => prompt.menuKind() !== undefined);
+
+		assert.ok(prompt.handleMenuKey(key("tab")));
+		assert.equal(prompt.displayText, "open @src/app.ts ");
+		const rendered = prompt.render(60, 8, PASTE_BG, plain("❯ "));
+		assert.equal(rendered.elements.length, 1, "reference renders as one element");
+
+		// 光标在尾随空格之后：先跨过空格，再一次退格删掉整段引用
+		prompt.editor.moveLeft();
+		prompt.editor.backspace();
+		assert.equal(prompt.displayText, "open  ");
 	});
 });

@@ -19,7 +19,7 @@ describe("Markdown 渲染", () => {
 
 		assert.equal(findSpan(findLine(lines, "One"), "One")?.style?.color, THEME.mdTeal);
 		assert.equal(findSpan(findLine(lines, "Two"), "Two")?.style?.color, THEME.system);
-		assert.equal(findSpan(findLine(lines, "Three"), "Three")?.style?.color, THEME.accent);
+		assert.equal(findSpan(findLine(lines, "Three"), "Three")?.style?.color, THEME.mdPurple);
 	});
 
 	it("代码块有底色并铺满正文宽度，关键字按语法着色", () => {

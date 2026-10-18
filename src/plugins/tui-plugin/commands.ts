@@ -78,7 +78,7 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 		plain("  Enter send   Ctrl+J/Alt+Enter newline   Esc/Ctrl+C cancel   Ctrl+D quit"),
 		plain("  Type / for the command menu; Up/Down select, Tab completes, Enter runs, Esc closes"),
 		plain("  Type @ to reference a file; Tab/Enter insert, Right drills into a folder, Esc closes"),
-		plain("  Ctrl+V paste   Ctrl+Shift+V paste inline   Ctrl+Z undo   Ctrl+L redraw"),
+		plain("  Ctrl+V paste   Ctrl+Shift+V paste inline   Ctrl+S stash/restore   Ctrl+Z undo   Ctrl+L redraw"),
 		plain("  Multi-line pastes fold into a [Pasted: N lines] chip; double-click or paste again to expand"),
 		plain("  Up/Down move in the draft or recall history"),
 		plain("  PageUp/PageDown page   Ctrl+P/Ctrl+N line   wheel scrolls the history"),
@@ -88,7 +88,7 @@ function helpLines(context: BuiltinContext): readonly Line[] {
 		plain("  Hover a rail tick for the turn preview; hover a timestamp for the full date"),
 		plain("  Click a block to select; double-click to fold; Tab focuses the transcript"),
 		plain("  Consecutive read/search/ls calls collapse into a ◈ summary; expand it to list them"),
-		plain("  j/k entry   H/L turn   e fold   h/l fold   y copy   Y meta   g/G top/btm   E all"),
+		plain("  j/k entry   H/L turn   e fold   h/l fold   r raw   v view   c arg   y copy   Y meta   g/G top/btm   E all"),
 		plain("  Ctrl+E folds every thinking block   Tab returns to the prompt"),
 	);
 	return lines;

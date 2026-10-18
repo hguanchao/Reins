@@ -8,6 +8,8 @@
 export interface SlashCommand {
 	readonly name: string;
 	readonly description: string;
+	/** 来源标记：自带命令与插件命令在下拉里要能分清。 */
+	readonly tag?: string;
 	/** 接受候选后插入输入框的文字，通常带一个尾随空格。 */
 	readonly insertText: string;
 }

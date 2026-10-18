@@ -13,7 +13,13 @@ describe("工具分组", () => {
 		assert.equal(groupKindOf("grep"), "search");
 		assert.equal(groupKindOf("list_dir"), "dir");
 		assert.equal(groupKindOf("webfetch"), "web");
+		assert.equal(groupKindOf("subagent"), "subagent");
 		assert.equal(groupKindOf("bash"), undefined);
+	});
+
+	it("子代理按 Ran / Running 汇总", () => {
+		assert.equal(groupLabel([{ name: "subagent" }, { name: "subagent" }]).label, "Ran 2 subagents");
+		assert.equal(runningGroupLabel([{ name: "subagent" }]), "Running 1 subagent");
 	});
 
 	it("定型标签按首次出现排序并统计失败", () => {
