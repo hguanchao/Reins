@@ -80,7 +80,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let hasInput = false;
 	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
 	let focused = true;
-	/** 消息区从底部往上滚过的行数。 */
+	/** 消息区从顶部往下滚过的行数；0 停在最新消息处。 */
 	let scrollOffset = 0;
 	/** 是否正按住滚动条拖动。 */
 	let draggingScrollbar = false;
@@ -151,7 +151,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const message = input.trim();
 		input = "";
 		if (message.length > 0) messages.push(message);
-		// 新消息总是让视图回到最新内容
+		// 新消息总是回到最上面
 		scrollOffset = 0;
 		render();
 		return true;
@@ -190,9 +190,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const motion = event.button >= 32 && event.button < 64;
 
 			if (event.press && event.button === 64) {
-				wheelSteps += 1;
-			} else if (event.press && event.button === 65) {
 				wheelSteps -= 1;
+			} else if (event.press && event.button === 65) {
+				wheelSteps += 1;
 			} else if (event.press && left && !motion) {
 				const insideFooter = event.row >= Math.max(1, height - FOOTER_HEIGHT + 1);
 				if (insideFooter !== focused) {
@@ -216,7 +216,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			scrollOffset = Math.min(maxScroll, Math.max(0, scrollOffset + wheelSteps * WHEEL_STEP));
 		}
 		if (dragRow !== undefined) {
-			scrollOffset = scrollOffsetFromRow(dragRow, mainHeight, maxScroll);
+			scrollOffset = scrollTopFromRow(dragRow, mainHeight, maxScroll);
 		}
 		const scrollChanged = scrollOffset !== beforeScroll;
 
@@ -293,13 +293,12 @@ function mouseEvents(text: string): readonly MouseInput[] {
 	return events;
 }
 
-/** 滚动条上某一行对应“从底部往上滚多少行”。 */
-function scrollOffsetFromRow(row: number, height: number, maxScroll: number): number {
+/** 滚动条上某一行对应“从顶部往下滚多少行”。 */
+function scrollTopFromRow(row: number, height: number, maxScroll: number): number {
 	if (maxScroll === 0 || height <= 1) return 0;
 
 	const clamped = Math.min(Math.max(1, row), height);
-	const start = Math.round(((clamped - 1) / (height - 1)) * maxScroll);
-	return maxScroll - start;
+	return Math.round(((clamped - 1) / (height - 1)) * maxScroll);
 }
 
 /**

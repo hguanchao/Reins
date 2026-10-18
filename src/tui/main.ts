@@ -44,15 +44,15 @@ export function renderMain(width: number, height: number, version: string): read
  * 用户消息块。
  *
  * 每条消息固定三行：正文只占中间一行，左侧缩进一列并左对齐，上下两行留空，三行都铺满
- * 终端宽度并加灰色背景。消息块之间留一行间距；正文超出宽度时用 … 收尾。消息从顶部往下
- * 排列，空余区域留在底部；内容超出可视区域时在右侧显示滚动条。scrollFromBottom 是从最新
- * 内容往上滚过的行数，0 表示停在底部。
+ * 终端宽度并加灰色背景。消息块之间留一行间距；正文超出宽度时用 … 收尾。最新的消息块
+ * 排在最上面，往下是更早的消息；内容超出可视区域时在右侧显示滚动条。scrollTop 是从顶部
+ * 滚过的行数，0 表示停在最新消息处。
  */
 export function renderMessages(
 	width: number,
 	height: number,
 	messages: readonly string[],
-	scrollFromBottom = 0,
+	scrollTop = 0,
 ): readonly string[] {
 	const columns = Math.max(0, width);
 	const rows = Math.max(0, height);
@@ -62,15 +62,15 @@ export function renderMessages(
 	const overflow = totalLines > rows;
 	// 有滚动条时把最右一列让给滚动条，再留一列空隙，消息背景不会贴着滚动条
 	const contentWidth = Math.max(0, columns - (overflow ? 2 : 0));
-	const blockLines = messages.flatMap((message, index) => {
+	const ordered = [...messages].reverse();
+	const blockLines = ordered.flatMap((message, index) => {
 		const block = messageBlock(message, contentWidth);
 		// 第一块从顶部开始，后面的块前面留一行，避免相邻灰底粘成一整片
 		return index === 0 ? block : ["", ...block];
 	});
 
 	const maxScroll = Math.max(0, totalLines - rows);
-	const offset = Math.min(Math.max(0, scrollFromBottom), maxScroll);
-	const start = Math.max(0, totalLines - rows - offset);
+	const start = Math.min(Math.max(0, scrollTop), maxScroll);
 	const visible = blockLines.slice(start, start + rows);
 	const padding = Math.max(0, rows - visible.length);
 

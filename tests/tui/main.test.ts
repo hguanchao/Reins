@@ -48,9 +48,9 @@ describe("用户消息块", () => {
 	it("消息块之间留一行间距", () => {
 		const lines = renderMessages(20, 9, ["one", "two"]);
 
-		assert.ok(plain(lines[1] ?? "").startsWith(" › one"));
+		assert.ok(plain(lines[1] ?? "").startsWith(" › two"));
 		assert.equal(lines[3], "");
-		assert.ok(plain(lines[5] ?? "").startsWith(" › two"));
+		assert.ok(plain(lines[5] ?? "").startsWith(" › one"));
 	});
 
 	it("内容没有溢出时不显示滚动条", () => {
@@ -62,7 +62,7 @@ describe("用户消息块", () => {
 		);
 	});
 
-	it("消息从顶部往下排列，内容溢出时显示滚动条", () => {
+	it("最新消息在顶部，内容溢出时显示滚动条", () => {
 		const lines = renderMessages(20, 12, ["one", "two", "three", "four"]);
 		const plainLines = lines.map(plain);
 		const text = plainLines.join("\n");
@@ -75,18 +75,19 @@ describe("用户消息块", () => {
 
 		assert.equal(plainLines.every((line) => line.endsWith("█") || line.endsWith("│")), true);
 		assert.equal(plainLines.filter((line) => line.endsWith("█")).length, 9);
-		assert.equal(plainLines.slice(0, 3).every((line) => line.endsWith("│")), true);
+		assert.equal(plainLines.slice(0, 9).every((line) => line.endsWith("█")), true);
+		assert.equal(plainLines.slice(9).every((line) => line.endsWith("│")), true);
 		assert.equal(plainLines[0]?.length, 20);
 		assert.equal(plainLines[0]?.at(-2), " ");
 		assert.ok(lines[0]?.includes("\x1b[38;2;46;46;46m"));
 	});
 
-	it("滚动偏移把可视窗口移向旧消息", () => {
+	it("滚动偏移把可视窗口移向更旧的消息", () => {
 		const lines = renderMessages(20, 12, ["one", "two", "three", "four"], 3).map(plain);
 
 		assert.ok(lines.join("\n").includes("› one"));
-		assert.equal(lines.slice(0, 9).every((line) => line.endsWith("█")), true);
-		assert.equal(lines.slice(9).every((line) => line.endsWith("│")), true);
+		assert.equal(lines.slice(0, 3).every((line) => line.endsWith("│")), true);
+		assert.equal(lines.slice(3).every((line) => line.endsWith("█")), true);
 	});
 
 	it("没有消息时只返回空白行", () => {
