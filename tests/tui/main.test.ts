@@ -33,7 +33,7 @@ describe("用户消息块", () => {
 
 		const block = lines.slice(6);
 		assert.equal(block.length, 3);
-		assert.ok(block.every((line) => line.startsWith("\x1b[100m") && line.endsWith("\x1b[0m")));
+		assert.ok(block.every((line) => line.startsWith("\x1b[48;2;36;36;36m") && line.endsWith("\x1b[0m")));
 		assert.equal(plain(block[0]), " ".repeat(20));
 		assert.equal(plain(block[1]), `› hello${" ".repeat(13)}`);
 		assert.equal(plain(block[2]), " ".repeat(20));

@@ -222,7 +222,7 @@ describe("全屏布局", () => {
 			assert.equal(lines[10], " › ");
 
 			const main = lines.slice(0, 9);
-			assert.equal(main.filter((line) => line.includes("\x1b[100m")).length, 3);
+			assert.equal(main.filter((line) => line.includes("\x1b[48;2;36;36;36m")).length, 3);
 			assert.equal(main[6]?.includes("›"), false);
 			assert.ok(main[7]?.includes("› hello"));
 			assert.equal(main[8]?.includes("›"), false);
@@ -247,7 +247,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("two\r"));
 
 			const main = frameLines(output).slice(0, 9);
-			assert.equal(main.filter((line) => line.includes("\x1b[100m")).length, 6);
+			assert.equal(main.filter((line) => line.includes("\x1b[48;2;36;36;36m")).length, 6);
 			assert.ok(main[4]?.includes("› one"));
 			assert.ok(main[7]?.includes("› two"));
 		} finally {

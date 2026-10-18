@@ -8,7 +8,8 @@ import { eastAsianWidth } from "get-east-asian-width";
 
 const BRAND = "Reins";
 const USER_PREFIX = "› ";
-const GRAY_BACKGROUND = "\x1b[100m";
+/** 用户消息块背景色 #242424。 */
+const GRAY_BACKGROUND = "\x1b[48;2;36;36;36m";
 const RESET = "\x1b[0m";
 
 /**
