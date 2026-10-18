@@ -1,6 +1,7 @@
 import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
 import { AnthropicMessagesClient } from "./adapters/anthropic-messages.ts";
 import { OpenAiCompletionsClient } from "./adapters/openai-completions.ts";
+import { OpenAiResponsesClient } from "./adapters/openai-responses.ts";
 import type { LlmClient } from "./client.ts";
 import type { RetryPolicy } from "./retry.ts";
 
@@ -45,7 +46,7 @@ export class LlmRegistry {
 	}
 }
 
-/** 随包分发的两个适配器。 */
+/** 随包分发的三个适配器。 */
 export function createBuiltinLlmRegistry(): LlmRegistry {
 	const registry = new LlmRegistry();
 	registry.register({
@@ -55,6 +56,10 @@ export function createBuiltinLlmRegistry(): LlmRegistry {
 	registry.register({
 		api: "openai-completions",
 		create: (provider, model, policy) => new OpenAiCompletionsClient(provider, model, policy),
+	});
+	registry.register({
+		api: "openai-responses",
+		create: (provider, model, policy) => new OpenAiResponsesClient(provider, model, policy),
 	});
 	return registry;
 }

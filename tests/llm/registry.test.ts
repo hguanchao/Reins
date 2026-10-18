@@ -29,9 +29,9 @@ function idleClient(api: string): LlmClient {
 }
 
 describe("适配器注册表", () => {
-	it("内置注册表认两种协议", () => {
+	it("内置注册表认三种协议", () => {
 		const registry = createBuiltinLlmRegistry();
-		assert.deepEqual([...registry.apis()].sort(), ["anthropic-messages", "openai-completions"]);
+		assert.deepEqual([...registry.apis()].sort(), ["anthropic-messages", "openai-completions", "openai-responses"]);
 	});
 
 	it("重复注册同一协议报错", () => {
@@ -72,5 +72,6 @@ describe("适配器注册表", () => {
 		const registry = createBuiltinLlmRegistry();
 		assert.equal(registry.create(provider(), model("anthropic-messages"), POLICY).api, "anthropic-messages");
 		assert.equal(registry.create(provider(), model("openai-completions"), POLICY).api, "openai-completions");
+		assert.equal(registry.create(provider(), model("openai-responses"), POLICY).api, "openai-responses");
 	});
 });

@@ -32,6 +32,22 @@ describe("内容累积器", () => {
 		assert.deepEqual(blocks.blocks(), [{ type: "text", text: "t" }]);
 	});
 
+	it("setText 用最终文本覆盖增量", () => {
+		const blocks = new ContentAccumulator();
+		blocks.appendText(0, "hel");
+		blocks.appendText(0, "lo");
+		blocks.setText(0, "hello");
+		assert.deepEqual(blocks.blocks(), [{ type: "text", text: "hello" }]);
+	});
+
+	it("setThinkingText 覆盖文本并保留签名", () => {
+		const blocks = new ContentAccumulator();
+		blocks.appendThinking(0, "partial");
+		blocks.setThinkingSignature(0, "sig");
+		blocks.setThinkingText(0, "complete");
+		assert.deepEqual(blocks.blocks(), [{ type: "thinking", text: "complete", signature: "sig" }]);
+	});
+
 	it("工具调用:startToolCall 首次为真,重复返回假并补齐", () => {
 		const blocks = new ContentAccumulator();
 		assert.equal(blocks.startToolCall(0, "id1", "read"), true);
@@ -56,6 +72,16 @@ describe("内容累积器", () => {
 		blocks.finish(0);
 		const call = blocks.blocks()[0] as { argumentsError?: string };
 		assert.match(call.argumentsError ?? "", /not valid JSON/);
+	});
+
+	it("finish 给出最终参数时以最终值为准", () => {
+		const blocks = new ContentAccumulator();
+		blocks.startToolCall(0, "id1", "write");
+		blocks.appendToolArguments(0, '{"path":');
+		blocks.finish(0, '{"path":"a.ts","content":"x"}');
+		assert.deepEqual(blocks.blocks(), [
+			{ type: "toolCall", id: "id1", name: "write", arguments: { path: "a.ts", content: "x" } },
+		]);
 	});
 
 	it("参数解析为非对象时也有说明", () => {

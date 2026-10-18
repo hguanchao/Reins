@@ -23,6 +23,16 @@ export class ContentAccumulator {
 		this.#blocks[index] = { type: "text", text };
 	}
 
+	/**
+	 * 用最终文本覆盖某个下标上的文本块。
+	 *
+	 * 有些协议只在块结束时给出完整文本，中途没有可靠的增量；收尾时以最终值为准，
+	 * 既补上缺失的增量，也纠正重复或乱序的分片。
+	 */
+	setText(index: number, text: string): void {
+		this.#blocks[index] = { type: "text", text };
+	}
+
 	appendThinking(index: number, text: string): void {
 		const block = this.#blocks[index];
 		if (block?.type === "thinking") {
@@ -30,6 +40,13 @@ export class ContentAccumulator {
 			return;
 		}
 		this.#blocks[index] = { type: "thinking", text };
+	}
+
+	/** 用最终文本覆盖某个下标上的思考块；已有签名继续保留。 */
+	setThinkingText(index: number, text: string): void {
+		const block = this.#blocks[index];
+		const signature = block?.type === "thinking" ? signatureOf(block) : {};
+		this.#blocks[index] = { type: "thinking", text, ...signature };
 	}
 
 	/**
@@ -67,14 +84,17 @@ export class ContentAccumulator {
 	/**
 	 * 收尾一个块。工具参数的 JSON 在这里解析成对象。
 	 *
+	 * `json` 是协议在块结束时给出的完整参数。给了就以它为准：中途的分片可能缺失或乱序，
+	 * 最终值才是端点认定的结果。未给出时用累积到的分片。
+	 *
 	 * 解析失败不抛错：原因记在块上交回给模型，它看到具体的错误才能改；直接中断整轮对话只会
 	 * 丢掉它已经想好的部分。
 	 */
-	finish(index: number): void {
+	finish(index: number, json?: string): void {
 		const block = this.#blocks[index];
 		if (block?.type !== "toolCall") return;
 
-		const parsed = parseToolArguments(this.#argumentJson.get(index) ?? "");
+		const parsed = parseToolArguments(json ?? this.#argumentJson.get(index) ?? "");
 		this.#argumentJson.delete(index);
 		this.#blocks[index] = settleToolCall(block, parsed);
 	}
