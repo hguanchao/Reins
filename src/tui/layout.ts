@@ -1,7 +1,7 @@
 import { StringDecoder } from "node:string_decoder";
 
-import { inputView, renderFooter } from "./footer.ts";
-import { renderMain, renderMessages } from "./main.ts";
+import { FOOTER_HEIGHT, inputView, renderFooter } from "./footer.ts";
+import { messageLineCount, renderMain, renderMessages } from "./main.ts";
 
 /**
  * 全屏启动。
@@ -24,9 +24,9 @@ const ENABLE_FOCUS_REPORTING = "\x1b[?1004h";
 const DISABLE_FOCUS_REPORTING = "\x1b[?1004l";
 const FOCUS_IN = "\x1b[I";
 const FOCUS_OUT = "\x1b[O";
-/** 基础鼠标上报加 SGR 坐标；只用来判断点击落在输入框内还是外面。 */
-const ENABLE_MOUSE = "\x1b[?1000h\x1b[?1006h";
-const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1000l";
+/** 按钮事件上报加 SGR 坐标；按住拖动时也会收到移动事件。 */
+const ENABLE_MOUSE = "\x1b[?1002h\x1b[?1006h";
+const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1002l";
 const CLEAR_SCREEN = "\x1b[2J";
 const CURSOR_HOME = "\x1b[H";
 const DEFAULT_COLUMNS = 80;
@@ -35,6 +35,8 @@ const DEFAULT_ROWS = 24;
 const CTRL_C = "\x03";
 /** 第一次 Ctrl+C 之后等待第二次的时间；超过就回到未确认状态。 */
 const EXIT_CONFIRM_WINDOW_MS = 2000;
+/** 滚轮每格滚动多少行。 */
+const WHEEL_STEP = 3;
 
 /** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
 export interface TuiInput {
@@ -78,6 +80,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let hasInput = false;
 	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
 	let focused = true;
+	/** 消息区从底部往上滚过的行数。 */
+	let scrollOffset = 0;
+	/** 是否正按住滚动条拖动。 */
+	let draggingScrollbar = false;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
 	let finished = false;
@@ -88,10 +94,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
 		const footer = renderFooter(width, input, focused);
-		const mainHeight = Math.max(0, height - footer.length);
+		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
+		scrollOffset = Math.min(scrollOffset, Math.max(0, messageLineCount(messages) - mainHeight));
 		const main =
 			hasInput
-				? renderMessages(width, mainHeight, messages)
+				? renderMessages(width, mainHeight, messages, scrollOffset)
 				: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...footer].slice(0, height);
@@ -144,6 +151,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const message = input.trim();
 		input = "";
 		if (message.length > 0) messages.push(message);
+		// 新消息总是让视图回到最新内容
+		scrollOffset = 0;
 		render();
 		return true;
 	};
@@ -155,8 +164,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
+		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+		const height = terminalHeight(stdout);
+		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
+		const maxScroll = Math.max(0, messageLineCount(messages) - mainHeight);
+		const beforeScroll = scrollOffset;
 		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;
+		let wheelSteps = 0;
+		let dragRow: number | undefined;
 
 		const lastIn = withoutMouse.lastIndexOf(FOCUS_IN);
 		const lastOut = withoutMouse.lastIndexOf(FOCUS_OUT);
@@ -166,13 +182,43 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				focused = next;
 				focusChanged = true;
 			}
+			if (!next) draggingScrollbar = false;
 		}
 
-		const clickedFocus = mouseClickFocus(text, terminalHeight(stdout));
-		if (clickedFocus !== undefined && clickedFocus !== focused) {
-			focused = clickedFocus;
-			focusChanged = true;
+		for (const event of mouseEvents(text)) {
+			const left = (event.button & 3) === 0;
+			const motion = event.button >= 32 && event.button < 64;
+
+			if (event.press && event.button === 64) {
+				wheelSteps += 1;
+			} else if (event.press && event.button === 65) {
+				wheelSteps -= 1;
+			} else if (event.press && left && !motion) {
+				const insideFooter = event.row >= Math.max(1, height - FOOTER_HEIGHT + 1);
+				if (insideFooter !== focused) {
+					focused = insideFooter;
+					focusChanged = true;
+				}
+				if (!insideFooter && event.column === width && event.row <= mainHeight) {
+					draggingScrollbar = true;
+					dragRow = event.row;
+				} else {
+					draggingScrollbar = false;
+				}
+			} else if (event.press && left && motion) {
+				if (draggingScrollbar) dragRow = event.row;
+			} else if (!event.press) {
+				draggingScrollbar = false;
+			}
 		}
+
+		if (wheelSteps !== 0) {
+			scrollOffset = Math.min(maxScroll, Math.max(0, scrollOffset + wheelSteps * WHEEL_STEP));
+		}
+		if (dragRow !== undefined) {
+			scrollOffset = scrollOffsetFromRow(dragRow, mainHeight, maxScroll);
+		}
+		const scrollChanged = scrollOffset !== beforeScroll;
 
 		const previous = input;
 		const result = appendInput(input, withoutMouse);
@@ -181,10 +227,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		if (result.submit) {
 			const submitted = submit();
-			if (!submitted && focusChanged) render();
+			if (!submitted && (focusChanged || scrollChanged)) render();
 			return;
 		}
-		if (input !== previous || focusChanged) render();
+		if (input !== previous || focusChanged || scrollChanged) render();
 	};
 
 	const onInterrupt = (): void => {
@@ -226,24 +272,34 @@ function stripMouseEvents(text: string): string {
 	return text.replace(/\x1b\[<[0-9;]+[Mm]/g, "");
 }
 
-/**
- * 最后一次左键按下落在页脚输入框内还是外面。
- *
- * 页脚固定占最后三行，所以从 height-2 行往下的点击都算输入框内部。滚轮、拖动、右键和
- * 松开都不改变焦点。
- */
-function mouseClickFocus(text: string, height: number): boolean | undefined {
-	let result: boolean | undefined;
-	const footerStart = Math.max(1, height - 2);
+interface MouseInput {
+	readonly button: number;
+	readonly column: number;
+	readonly row: number;
+	/** SGR 的 M 表示按下，m 表示松开 */
+	readonly press: boolean;
+}
 
+function mouseEvents(text: string): readonly MouseInput[] {
+	const events: MouseInput[] = [];
 	for (const match of text.matchAll(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/g)) {
-		const button = Number(match[1]);
-		if ((button & 3) === 0 && button < 32 && match[4] === "M") {
-			result = Number(match[3]) >= footerStart;
-		}
+		events.push({
+			button: Number(match[1]),
+			column: Number(match[2]),
+			row: Number(match[3]),
+			press: match[4] === "M",
+		});
 	}
+	return events;
+}
 
-	return result;
+/** 滚动条上某一行对应“从底部往上滚多少行”。 */
+function scrollOffsetFromRow(row: number, height: number, maxScroll: number): number {
+	if (maxScroll === 0 || height <= 1) return 0;
+
+	const clamped = Math.min(Math.max(1, row), height);
+	const start = Math.round(((clamped - 1) / (height - 1)) * maxScroll);
+	return maxScroll - start;
 }
 
 /**

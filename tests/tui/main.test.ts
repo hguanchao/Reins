@@ -81,6 +81,14 @@ describe("用户消息块", () => {
 		assert.ok(lines[0]?.includes("\x1b[38;2;46;46;46m"));
 	});
 
+	it("滚动偏移把可视窗口移向旧消息", () => {
+		const lines = renderMessages(20, 12, ["one", "two", "three", "four"], 3).map(plain);
+
+		assert.ok(lines.join("\n").includes("› one"));
+		assert.equal(lines.slice(0, 9).every((line) => line.endsWith("█")), true);
+		assert.equal(lines.slice(9).every((line) => line.endsWith("│")), true);
+	});
+
 	it("没有消息时只返回空白行", () => {
 		assert.deepEqual(renderMessages(10, 6, []), ["", "", "", "", "", ""]);
 	});

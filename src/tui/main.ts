@@ -45,14 +45,20 @@ export function renderMain(width: number, height: number, version: string): read
  *
  * 每条消息固定三行：正文只占中间一行，左侧缩进一列并左对齐，上下两行留空，三行都铺满
  * 终端宽度并加灰色背景。消息块之间留一行间距；正文超出宽度时用 … 收尾。消息从顶部往下
- * 排列，空余区域留在底部；内容超出可视区域时保留最新的部分，并在右侧显示滚动条。
+ * 排列，空余区域留在底部；内容超出可视区域时在右侧显示滚动条。scrollFromBottom 是从最新
+ * 内容往上滚过的行数，0 表示停在底部。
  */
-export function renderMessages(width: number, height: number, messages: readonly string[]): readonly string[] {
+export function renderMessages(
+	width: number,
+	height: number,
+	messages: readonly string[],
+	scrollFromBottom = 0,
+): readonly string[] {
 	const columns = Math.max(0, width);
 	const rows = Math.max(0, height);
 	if (messages.length === 0) return Array.from({ length: rows }, () => "");
 
-	const totalLines = messages.length * MESSAGE_LINES + (messages.length - 1);
+	const totalLines = messageLineCount(messages);
 	const overflow = totalLines > rows;
 	// 有滚动条时把最右一列让给滚动条，再留一列空隙，消息背景不会贴着滚动条
 	const contentWidth = Math.max(0, columns - (overflow ? 2 : 0));
@@ -61,12 +67,16 @@ export function renderMessages(width: number, height: number, messages: readonly
 		// 第一块从顶部开始，后面的块前面留一行，避免相邻灰底粘成一整片
 		return index === 0 ? block : ["", ...block];
 	});
-	const visible = blockLines.slice(Math.max(0, blockLines.length - rows));
+
+	const maxScroll = Math.max(0, totalLines - rows);
+	const offset = Math.min(Math.max(0, scrollFromBottom), maxScroll);
+	const start = Math.max(0, totalLines - rows - offset);
+	const visible = blockLines.slice(start, start + rows);
 	const padding = Math.max(0, rows - visible.length);
 
 	if (!overflow) return [...visible, ...Array.from({ length: padding }, () => "")];
 
-	const scrollbar = renderScrollbar(rows, blockLines.length);
+	const scrollbar = renderScrollbar(rows, totalLines, start);
 	const gap = " ".repeat(Math.max(0, columns - contentWidth - 1));
 	return Array.from({ length: rows }, (_, index) => {
 		const line = visible[index] ?? "";
@@ -75,13 +85,20 @@ export function renderMessages(width: number, height: number, messages: readonly
 	});
 }
 
-/** 滚动条始终停在最新内容处，滑块占可视高度的比例。 */
-function renderScrollbar(height: number, totalLines: number): readonly string[] {
+/** 消息区的总行数：每条消息三行，块与块之间各一行间距。 */
+export function messageLineCount(messages: readonly string[]): number {
+	return messages.length === 0 ? 0 : messages.length * MESSAGE_LINES + (messages.length - 1);
+}
+
+/** 滑块高度按可视区比例计算，位置跟着可视窗口在内容里的起点移动。 */
+function renderScrollbar(height: number, totalLines: number, start: number): readonly string[] {
 	const thumbHeight = Math.max(1, Math.floor((height * height) / totalLines));
-	const thumbTop = height - thumbHeight;
+	const maxThumbTop = height - thumbHeight;
+	const maxStart = Math.max(1, totalLines - height);
+	const thumbTop = Math.round((start / maxStart) * maxThumbTop);
 
 	return Array.from({ length: height }, (_, index) => {
-		const char = index >= thumbTop ? SCROLLBAR_THUMB : SCROLLBAR_TRACK;
+		const char = index >= thumbTop && index < thumbTop + thumbHeight ? SCROLLBAR_THUMB : SCROLLBAR_TRACK;
 		return `${SCROLLBAR_COLOR}${char}${RESET}`;
 	});
 }

@@ -17,6 +17,9 @@ export interface InputView {
 	readonly column: number;
 }
 
+/** 页脚固定三行：上边框、输入行、下边框。 */
+export const FOOTER_HEIGHT = 3;
+
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";
 /** 获得焦点时边框与提示符的颜色 #cccccc。 */

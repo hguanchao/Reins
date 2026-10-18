@@ -37,9 +37,9 @@ class FakeOutput extends EventEmitter {
 	}
 }
 
-const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1000h\x1b[?1006h";
+const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1006h";
 const CLEAR = "\x1b[H\x1b[2J";
-const LEAVE = "\x1b[?1006l\x1b[?1000l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
+const LEAVE = "\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
 const FOCUS = "\x1b[38;2;204;204;204m";
 const BLUR = "\x1b[38;2;46;46;46m";
 const BORDER = "─";
@@ -333,6 +333,66 @@ describe("全屏布局", () => {
 			assert.equal(main.join("\n").includes("› one"), false);
 			assert.ok(main.join("\n").includes("› two"));
 			assert.ok(main.join("\n").includes("› three"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("滚轮可以滚动消息区", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			input.emit("data", Buffer.from("two\r"));
+			input.emit("data", Buffer.from("three\r"));
+			input.emit("data", Buffer.from("four\r"));
+
+			const bottom = frameLines(output).slice(0, 9).map(plain);
+			assert.equal(bottom[8]?.endsWith("█"), true);
+			assert.equal(bottom.join("\n").includes("› two"), false);
+
+			input.emit("data", Buffer.from("\x1b[<64;20;5M"));
+			const scrolled = frameLines(output).slice(0, 9).map(plain);
+			assert.equal(scrolled[8]?.endsWith("│"), true);
+			assert.ok(scrolled.join("\n").includes("› two"));
+
+			input.emit("data", Buffer.from("\x1b[<65;20;5M"));
+			const back = frameLines(output).slice(0, 9).map(plain);
+			assert.equal(back[8]?.endsWith("█"), true);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("可以拖动滚动条", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			input.emit("data", Buffer.from("two\r"));
+			input.emit("data", Buffer.from("three\r"));
+			input.emit("data", Buffer.from("four\r"));
+
+			// 按住滚动条中上部，视图移到中间
+			input.emit("data", Buffer.from("\x1b[<0;40;5M"));
+			const middle = frameLines(output).slice(0, 9).map(plain);
+			assert.equal(middle[8]?.endsWith("│"), true);
+			assert.ok(middle.join("\n").includes("› two"));
+
+			// 拖到底部，滑块回到最下端
+			input.emit("data", Buffer.from("\x1b[<32;40;9M"));
+			const bottom = frameLines(output).slice(0, 9).map(plain);
+			assert.equal(bottom[8]?.endsWith("█"), true);
+
+			// 松开后移动鼠标不再滚动
+			input.emit("data", Buffer.from("\x1b[<0;40;9m"));
+			input.emit("data", Buffer.from("\x1b[<32;40;1M"));
+			const afterRelease = frameLines(output).slice(0, 9).map(plain);
+			assert.equal(afterRelease[8]?.endsWith("█"), true);
 		} finally {
 			exitTui(input);
 		}
