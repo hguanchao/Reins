@@ -41,8 +41,10 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 const SPINNER_INTERVAL_MS = 100;
 /** 每帧把扫光往前推多少；整个状态行约 1.25 秒扫一遍。 */
 const SWEEP_STEP = 0.08;
-/** 滚轮每格滚动多少行。 */
-const WHEEL_STEP = 3;
+/** 滚轮速度映射：间隔越短，单格滚得越多。 */
+const WHEEL_BASE_STEP = 2;
+const WHEEL_MAX_STEP = 12;
+const WHEEL_SLOW_INTERVAL_MS = 250;
 
 const WAITING_FOR_RESPONSE = "Waiting for response...";
 const THINKING = "Thinking...";
@@ -114,6 +116,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let scrollTop = 0;
 	/** 是否跟随新内容滚到底部。 */
 	let follow = true;
+	/** 上一次滚轮事件的时间，用来算滚轮速度。 */
+	let lastWheelAt: number | undefined;
 	/** 是否正按住滚动条拖动。 */
 	let draggingScrollbar = false;
 	/** 当前运行时状态；为空表示空闲。 */
@@ -305,7 +309,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const beforeScroll = scrollTop;
 		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;
-		let wheelSteps = 0;
+		let wheelDelta = 0;
 		let dragRow: number | undefined;
 
 		const lastIn = withoutMouse.lastIndexOf(FOCUS_IN);
@@ -324,9 +328,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const motion = event.button >= 32 && event.button < 64;
 
 			if (event.press && event.button === 64) {
-				wheelSteps -= 1;
+				const now = Date.now();
+				const interval = lastWheelAt === undefined ? Number.POSITIVE_INFINITY : now - lastWheelAt;
+				lastWheelAt = now;
+				wheelDelta -= wheelStepForInterval(interval);
 			} else if (event.press && event.button === 65) {
-				wheelSteps += 1;
+				const now = Date.now();
+				const interval = lastWheelAt === undefined ? Number.POSITIVE_INFINITY : now - lastWheelAt;
+				lastWheelAt = now;
+				wheelDelta += wheelStepForInterval(interval);
 			} else if (event.press && left && !motion) {
 				const insideInput = event.row >= Math.max(1, height - 2);
 				if (insideInput !== focused) {
@@ -346,8 +356,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			}
 		}
 
-		if (wheelSteps !== 0) {
-			scrollTop = Math.min(limit, Math.max(0, scrollTop + wheelSteps * WHEEL_STEP));
+		if (wheelDelta !== 0) {
+			scrollTop = Math.min(limit, Math.max(0, scrollTop + wheelDelta));
 			follow = scrollTop >= limit;
 		}
 		if (dragRow !== undefined) {
@@ -442,6 +452,14 @@ function scrollTopFromRow(row: number, height: number, maxScroll: number): numbe
 
 	const clamped = Math.min(Math.max(1, row), height);
 	return Math.round(((clamped - 1) / (height - 1)) * maxScroll);
+}
+
+/** 两次滚轮之间的间隔越短，这一格滚得越多；停下后再滚回到基础步长。 */
+export function wheelStepForInterval(intervalMs: number): number {
+	if (!Number.isFinite(intervalMs) || intervalMs >= WHEEL_SLOW_INTERVAL_MS) return WHEEL_BASE_STEP;
+
+	const factor = WHEEL_SLOW_INTERVAL_MS / Math.max(1, intervalMs);
+	return Math.min(WHEEL_MAX_STEP, Math.max(WHEEL_BASE_STEP, Math.round(WHEEL_BASE_STEP * factor)));
 }
 
 /**

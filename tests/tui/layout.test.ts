@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { describe, it } from "node:test";
 
-import { runTui } from "../../src/tui/layout.ts";
+import { runTui, wheelStepForInterval } from "../../src/tui/layout.ts";
 
 class FakeInput extends EventEmitter {
 	readonly isTTY = true;
@@ -522,5 +522,16 @@ describe("全屏布局", () => {
 		} finally {
 			exitTui(input);
 		}
+	});
+});
+
+describe("滚轮加速", () => {
+	it("滚轮间隔越短，单格滚动越大", () => {
+		assert.equal(wheelStepForInterval(Number.POSITIVE_INFINITY), 2);
+		assert.equal(wheelStepForInterval(250), 2);
+		assert.equal(wheelStepForInterval(125), 4);
+		assert.equal(wheelStepForInterval(50), 10);
+		assert.equal(wheelStepForInterval(0), 12);
+		assert.equal(wheelStepForInterval(1), 12);
 	});
 });
