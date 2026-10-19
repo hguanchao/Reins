@@ -34,6 +34,8 @@ export type AgentEvent =
 	  }
 	/** 一轮结束；stopReason 说明为什么停 */
 	| { readonly type: "turn_end"; readonly stopReason: LlmStopReason }
+	/** 一笔用量已经落进会话；界面据此更新统计，不必等整轮结束 */
+	| { readonly type: "usage_recorded" }
 	/** 上下文太长，开始把前面一段换成摘要 */
 	| {
 			readonly type: "compaction_start";

@@ -31,7 +31,11 @@ import { ExternalPlugins } from "../plugins/external.ts";
 import { bundledPlugins } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
-import { cacheHitRate as usageCacheHitRate, sumUsage } from "../session/usage.ts";
+import {
+	cacheHitRate as usageCacheHitRate,
+	lastContextTokens,
+	sumUsage,
+} from "../session/usage.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -423,10 +427,20 @@ function createFooterInfo(
 				selection.model.reasoning,
 				selection.model.thinkingLevelMap,
 			) ?? "off",
-		contextUsed: estimateTokens(session.state().messages),
+		contextUsed: contextUsedTokens(session),
 		contextWindow: selection.model.contextWindow ?? config.contextWindow,
 		cacheHitRate: usageCacheHitRate(sumUsage(session.entries())),
 	};
+}
+
+/**
+ * 上下文已用规模。
+ *
+ * 优先取最近一次请求回报的真实规模：字数估算在工具结果多、中文多的时候会偏。压缩之后与还
+ * 没发过请求的会话没有可用的回报，只能按消息估算——这正是压缩判断自己的兜底口径。
+ */
+function contextUsedTokens(session: Session): number {
+	return lastContextTokens(session.entries()) ?? estimateTokens(session.state().messages);
 }
 
 /**
@@ -441,7 +455,7 @@ function createUnavailableFooterInfo(workRoot: string, session: Session): Footer
 		branch: currentBranch(workRoot),
 		model: "-",
 		effort: "-",
-		contextUsed: estimateTokens(session.state().messages),
+		contextUsed: contextUsedTokens(session),
 		contextWindow: undefined,
 		cacheHitRate: usageCacheHitRate(sumUsage(session.entries())),
 	};

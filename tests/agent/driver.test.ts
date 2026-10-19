@@ -174,6 +174,11 @@ describe("回合驱动", () => {
 		const types = hooks.session.entries.map((entry) => entry.type);
 		assert.ok(types.includes("message") && types.includes("usage"));
 		assert.ok(hooks.events.some((event) => event.type === "run_end"));
+		// 用量落盘后要立刻告诉外面，界面据此更新统计而不必等整轮结束
+		assert.deepEqual(
+			hooks.events.filter((event) => event.type === "usage_recorded").length,
+			1,
+		);
 	});
 
 	it("带图片的输入原样写进会话并进入下一次请求", async () => {
@@ -212,6 +217,11 @@ describe("回合驱动", () => {
 		).run("go", SIGNAL);
 
 		assert.deepEqual(calls, ['echo:{"x":1}']);
+		// 工具循环里的每一次请求都记一笔，界面因此能在轮次中途更新统计
+		assert.deepEqual(
+			hooks.events.filter((event) => event.type === "usage_recorded").length,
+			2,
+		);
 		const toolResult = hooks.session.entries.find(
 			(entry): entry is SessionEntry & { type: "message"; message: { role: "toolResult"; content: string; isError: boolean } } =>
 				entry.type === "message" && entry.message.role === "toolResult",

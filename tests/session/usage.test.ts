@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { cacheHitRate, describeUsage, sumUsage } from "../../src/session/usage.ts";
+import { cacheHitRate, contextTokens, describeUsage, lastContextTokens, sumUsage } from "../../src/session/usage.ts";
 import type { SessionEntry } from "../../src/session/port.ts";
 
 const T = "2026-01-01T00:00:00Z";
@@ -61,6 +61,44 @@ describe("用量统计", () => {
 		]);
 		assert.equal(totals.cost, 0.02);
 		assert.equal(totals.unpriced, 1);
+	});
+});
+
+describe("上下文规模", () => {
+	it("一次请求的规模取提供方回报的合计，缓存部分也算在内", () => {
+		// 提示词 100 + 缓存读 900 + 输出 50：窗口里装的是这 1050，不是净输入的那 100
+		assert.equal(contextTokens({ input: 100, output: 50, cacheRead: 900, cacheWrite: 0, total: 1050 }), 1050);
+	});
+
+	it("取最近一笔主对话的用量", () => {
+		const entries = [
+			usage("turn", { input: 1, output: 1, total: 2 }, undefined),
+			usage("turn", { input: 10, output: 5, total: 15 }, undefined),
+		];
+
+		assert.equal(lastContextTokens(entries), 15);
+	});
+
+	it("子代理的用量不算主对话的上下文", () => {
+		const entries = [
+			usage("turn", { input: 10, output: 5, total: 15 }, undefined),
+			usage("subagent", { input: 999, output: 999, total: 1998 }, undefined),
+		];
+
+		assert.equal(lastContextTokens(entries), 15);
+	});
+
+	it("压缩之后真实规模要等下一次请求，交给调用方估算", () => {
+		const entries = [
+			usage("turn", { input: 10, output: 5, total: 15 }, undefined),
+			usage("compact", { input: 999, output: 999, total: 1998 }, undefined),
+		];
+
+		assert.equal(lastContextTokens(entries), undefined);
+	});
+
+	it("没有可用记录时返回空", () => {
+		assert.equal(lastContextTokens([]), undefined);
 	});
 });
 

@@ -149,7 +149,7 @@ export interface AgentRuntime {
 		onEvent: AgentEventListener,
 		signal: AbortSignal,
 	) => Promise<void>;
-	/** 一轮结束或压缩后刷新页脚统计。 */
+	/** 会话记下新的用量或压缩后刷新页脚统计。 */
 	readonly refreshInfo: () => void;
 }
 
@@ -546,6 +546,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "compaction_failed":
 				appendLine(active, `  compaction failed: ${event.message}`);
+				break;
+			case "usage_recorded":
+				// 每次请求的用量都反映到页脚上，不必等整轮跑完
+				options.agent?.refreshInfo();
 				break;
 			case "error":
 				appendLine(active, `error: ${event.message}`);

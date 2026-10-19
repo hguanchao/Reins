@@ -10,6 +10,7 @@ import {
 } from "../llm/messages.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionPort } from "../session/port.ts";
+import { contextTokens } from "../session/usage.ts";
 import type { ToolRegistry } from "../tools/registry.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { estimateTokens, type Compactor } from "./compactor.ts";
@@ -93,7 +94,7 @@ export class TurnDriver {
 
 		// 规模与用量都以提供方回报为准：这是唯一能反映真实上下文大小的数字
 		if (result.usage !== undefined) {
-			this.#contextTokens = result.usage.input + result.usage.cacheRead + result.usage.output;
+			this.#contextTokens = contextTokens(result.usage);
 			await this.#deps.session.append({
 				type: "usage",
 				provider: this.#deps.provider.id,
@@ -102,6 +103,7 @@ export class TurnDriver {
 				usage: result.usage,
 				cost: computeCost(this.#deps.model.cost, result.usage),
 			});
+			await this.emit({ type: "usage_recorded" });
 		}
 
 		if (result.stopReason === "aborted") {
@@ -231,6 +233,7 @@ export class TurnDriver {
 				usage: result.usage,
 				cost: result.cost,
 			});
+			await this.emit({ type: "usage_recorded" });
 		}
 
 		// 压缩后的规模只能靠估算：下一次请求发出去之前没有人回报它

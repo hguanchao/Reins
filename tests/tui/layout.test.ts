@@ -46,7 +46,7 @@ interface FakeAgent {
 }
 
 /** 测试用的真实对话替身：submit 后由测试手动发事件、手动结束。 */
-function createFakeAgent(): FakeAgent {
+function createFakeAgent(onRefresh: () => void = () => {}): FakeAgent {
 	let current:
 		| {
 				readonly listener: AgentEventListener;
@@ -60,7 +60,7 @@ function createFakeAgent(): FakeAgent {
 				new Promise<void>((resolve) => {
 					current = { listener: onEvent, resolve };
 				}),
-			refreshInfo: () => {},
+			refreshInfo: onRefresh,
 		},
 		emit: (event) => {
 			void current?.listener(event);
@@ -838,6 +838,38 @@ describe("全屏布局", () => {
 			assert.ok(status.includes("Writing response..."));
 			assert.ok(status.includes("0.1s"));
 			assert.ok(status.includes("0.5s  ⇣"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("每记一笔用量页脚就更新，不必等整轮结束", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		// 页脚数字由装配处提供；刷新时换成新的一批，模拟会话里多了一笔用量
+		let info = { ...FOOTER_INFO, contextUsed: 100_000, cacheHitRate: 0.5 };
+		const agent = createFakeAgent(() => {
+			info = { ...info, contextUsed: 440_000, cacheHitRate: 0.75 };
+		});
+		void runTui({ version: "1.2.3", info: () => info, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			const before = frameLines(output).map(plain).join("\n");
+			assert.ok(before.includes("100K / 1M"));
+			assert.ok(before.includes("⚡ 50%"));
+
+			agent.emit({ type: "usage_recorded" });
+			t.mock.timers.tick(1);
+
+			// 轮次还没结束，页脚已经是最新的一笔
+			const after = frameLines(output).map(plain).join("\n");
+			assert.ok(after.includes("440K / 1M"));
+			assert.ok(after.includes("⚡ 75%"));
+			assert.ok(after.includes("Waiting for response..."));
 		} finally {
 			exitTui(input);
 		}

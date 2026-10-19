@@ -1,3 +1,4 @@
+import type { LlmUsage } from "../llm/messages.ts";
 import type { SessionEntry } from "./port.ts";
 
 /**
@@ -6,6 +7,8 @@ import type { SessionEntry } from "./port.ts";
  * 只认用量条目，不看上下文：被压缩掉的历史同样计入——那些 token 是真的花掉的，压缩改变的
  * 只是「接下来发什么」，不改变已经发生的事。金额不在这里算：配置面里没有价格，硬凑一个
  * 数字只会比 token 更容易骗人。
+ *
+ * 「一次请求占了多少窗口」也归在这里：压缩判断与界面显示问的是同一个问题，口径必须一致。
  */
 
 export interface UsageTotals {
@@ -81,6 +84,33 @@ export function sumUsage(entries: readonly SessionEntry[]): UsageTotals {
 export function cacheHitRate(totals: UsageTotals): number {
 	const inputSide = totals.input + totals.cacheRead + totals.cacheWrite;
 	return inputSide === 0 ? 0 : totals.cacheRead / inputSide;
+}
+
+/**
+ * 一次请求结束时上下文有多大。
+ *
+ * 取提供方回报的合计：它就是「这次请求的提示词 + 这次生成的输出」，缓存命中的部分同样占着
+ * 窗口，只是便宜。不按分项自己拼——各提供方对 input 的定义并不一致，有的把缓存算在里面，
+ * 有的不算，拼一次就可能少算或重复算一大截。
+ */
+export function contextTokens(usage: LlmUsage): number {
+	return usage.total;
+}
+
+/**
+ * 会话记录里能反映当前上下文规模的那笔用量。
+ *
+ * 从最近往前找，跳过两类条目：子代理的请求算的是另一处上下文，与主对话无关；压缩之后窗口
+ * 已被摘要取代，真实规模要等下一次请求，所以遇到压缩条目就停下，交给调用方按消息估算。
+ */
+export function lastContextTokens(entries: readonly SessionEntry[]): number | undefined {
+	for (let index = entries.length - 1; index >= 0; index -= 1) {
+		const entry = entries[index];
+		if (entry?.type !== "usage") continue;
+		if (entry.kind === "compact") return undefined;
+		if (entry.kind === "turn") return contextTokens(entry.usage);
+	}
+	return undefined;
 }
 
 /** 把用量写成人看的一行，界面上与导出里都用它。 */
