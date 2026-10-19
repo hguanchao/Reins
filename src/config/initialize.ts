@@ -53,6 +53,8 @@ const PROVIDERS_TEMPLATE = `{
       "api": "openai-completions",
       // 支持字面值、$ENV_VAR / \${ENV_VAR}、或 "!命令" 取密钥
       "apiKey": "$EXAMPLE_API_KEY",
+      // 端点按会话标识复用提示词缓存时才打开；多数端点自动缓存，用不上这个字段
+      // "promptCacheKey": true
       "models": [
         {
           // 必须与 config.toml 里的 model 一致
@@ -62,6 +64,8 @@ const PROVIDERS_TEMPLATE = `{
           "input": ["text"],
           "contextWindow": 128000,
           "maxTokens": 8192
+          // 输出上限写在哪个字段上；新的 OpenAI 端点只认 max_completion_tokens
+          // "maxTokensField": "max_completion_tokens"
           // 单价可选；写的话 input/output/cacheRead/cacheWrite 四项都要写
         }
       ]

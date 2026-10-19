@@ -366,6 +366,8 @@ export class TurnDriver {
 				this.#deps.model.reasoning,
 				this.#deps.model.thinkingLevelMap,
 			),
+			// 同一段会话用同一个标识：端点据此把请求路由到同一片提示词缓存
+			cacheKey: this.#deps.session.id,
 			signal,
 		};
 	}

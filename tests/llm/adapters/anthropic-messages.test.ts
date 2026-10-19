@@ -20,7 +20,7 @@ const DONE_EVENTS = [
 ];
 
 function provider(): ProviderEntry {
-	return { id: "p", name: "p", baseUrl: undefined, api: "anthropic-messages", apiKey: "k", headers: {}, models: [] };
+	return { id: "p", name: "p", baseUrl: undefined, api: "anthropic-messages", apiKey: "k", headers: {}, promptCacheKey: false, models: [] };
 }
 
 function model(input: readonly ModelEntry["input"][number][] = ["text"]): ModelEntry {
@@ -35,6 +35,7 @@ function model(input: readonly ModelEntry["input"][number][] = ["text"]): ModelE
 		cost: undefined,
 		contextWindow: undefined,
 		maxTokens: 100,
+		maxTokensField: "max_tokens",
 		headers: {},
 	};
 }
@@ -109,6 +110,7 @@ describe("Anthropic Messages 的图片映射", () => {
 				{
 					type: "image",
 					source: { type: "base64", media_type: "image/png", data: "AAAA" },
+					cache_control: { type: "ephemeral" },
 				},
 			],
 		});
@@ -134,11 +136,15 @@ describe("Anthropic Messages 的图片映射", () => {
 		const messages = calls[0]?.body?.["messages"] as readonly { role: string; content: unknown }[];
 		assert.deepEqual(messages[0]?.content, [
 			{ type: "text", text: "what is this" },
-			{ type: "text", text: "(image omitted: model does not support images)" },
+			{
+				type: "text",
+				text: "(image omitted: model does not support images)",
+				cache_control: { type: "ephemeral" },
+			},
 		]);
 	});
 
-	it("只有图片时补一句文字说明，纯文本仍按字符串发送", async () => {
+	it("只有图片时补一句文字说明，纯文本改块形式以挂上缓存断点", async () => {
 		const imageOnly = respondWith(DONE_EVENTS);
 		await run(
 			new AnthropicMessagesClient(provider(), model(["text", "image"]), POLICY),
@@ -157,6 +163,7 @@ describe("Anthropic Messages 的图片映射", () => {
 			{
 				type: "image",
 				source: { type: "base64", media_type: "image/png", data: "AAAA" },
+				cache_control: { type: "ephemeral" },
 			},
 		]);
 
@@ -166,7 +173,41 @@ describe("Anthropic Messages 的图片映射", () => {
 			request({ messages: [{ role: "user", content: "hello" }] }),
 		);
 		const plainMessages = plain[0]?.body?.["messages"] as readonly { content: unknown }[];
-		assert.equal(plainMessages[0]?.content, "hello");
+		assert.deepEqual(plainMessages[0]?.content, [
+			{ type: "text", text: "hello", cache_control: { type: "ephemeral" } },
+		]);
+	});
+
+	it("system 与最后一条消息各带一个缓存断点", async () => {
+		const calls = respondWith(DONE_EVENTS);
+		await run(
+			new AnthropicMessagesClient(provider(), model(), POLICY),
+			request({
+				system: "be brief",
+				tools: [{ name: "read", description: "read a file", parameters: { type: "object" } }],
+				messages: [
+					{ role: "user", content: "hi" },
+					{ role: "assistant", content: [{ type: "toolCall", id: "c1", name: "read", arguments: {} }] },
+					{ role: "toolResult", toolCallId: "c1", toolName: "read", content: "ok", isError: false },
+				],
+			}),
+		);
+
+		const body = calls[0]?.body;
+		// 断点之前的整段前缀（工具 + system）进缓存，命中后不再按全额输入计费
+		assert.deepEqual(body?.["system"], [
+			{ type: "text", text: "be brief", cache_control: { type: "ephemeral" } },
+		]);
+		const messages = body?.["messages"] as readonly { content: readonly unknown[] }[];
+		assert.deepEqual(messages.at(-1)?.content, [
+			{
+				type: "tool_result",
+				tool_use_id: "c1",
+				content: "ok",
+				is_error: false,
+				cache_control: { type: "ephemeral" },
+			},
+		]);
 	});
 });
 

@@ -83,6 +83,13 @@ export interface ModelEntry {
 	/** 未声明时为 undefined，不代填默认值 */
 	readonly contextWindow: number | undefined;
 	readonly maxTokens: number | undefined;
+	/**
+	 * 输出上限写在请求体的哪个字段上。
+	 *
+	 * 各家并不统一：多数端点认 `max_tokens`，新的 OpenAI 端点只认 `max_completion_tokens`。
+	 * 按模型名字猜太脆，由配置说了算。
+	 */
+	readonly maxTokensField: "max_tokens" | "max_completion_tokens";
 	readonly headers: Readonly<Record<string, string>>;
 }
 
@@ -95,6 +102,13 @@ export interface ProviderEntry {
 	/** 字面值、$NAME 环境插值、或以 ! 开头的命令；解析在发出请求前进行 */
 	readonly apiKey: string | undefined;
 	readonly headers: Readonly<Record<string, string>>;
+	/**
+	 * 是否按会话标识发提示词缓存路由字段。
+	 *
+	 * 多数端点自动做缓存，用不上它；少数端点（以及一些网关）只为带这个字段的请求复用缓存。
+	 * 严格校验未知字段的网关会因此报错，所以默认关闭，由配置显式开启。
+	 */
+	readonly promptCacheKey: boolean;
 	readonly models: readonly ModelEntry[];
 }
 
@@ -103,7 +117,15 @@ export interface ProvidersConfig {
 }
 
 const TOP_LEVEL_KEYS: readonly string[] = ["providers"];
-const PROVIDER_KEYS: readonly string[] = ["name", "baseUrl", "api", "apiKey", "headers", "models"];
+const PROVIDER_KEYS: readonly string[] = [
+	"name",
+	"baseUrl",
+	"api",
+	"apiKey",
+	"headers",
+	"promptCacheKey",
+	"models",
+];
 const MODEL_KEYS: readonly string[] = [
 	"id",
 	"name",
@@ -115,6 +137,7 @@ const MODEL_KEYS: readonly string[] = [
 	"cost",
 	"contextWindow",
 	"maxTokens",
+	"maxTokensField",
 	"headers",
 ];
 
@@ -154,6 +177,7 @@ function readProvider(source: ConfigSource, id: string): ProviderEntry {
 		api,
 		apiKey: readString(source, [...path, "apiKey"]),
 		headers: readStringMap(source, [...path, "headers"]) ?? {},
+		promptCacheKey: readBoolean(source, [...path, "promptCacheKey"]) ?? false,
 		models,
 	};
 }
@@ -225,10 +249,25 @@ function readModelList(
 			cost: readCost(source, [...path, "cost"]),
 			contextWindow: readInteger(source, [...path, "contextWindow"], 1),
 			maxTokens: readInteger(source, [...path, "maxTokens"], 1),
+			maxTokensField: readMaxTokensField(source, [...path, "maxTokensField"]),
 			headers: readStringMap(source, [...path, "headers"]) ?? {},
 		});
 	}
 	return models;
+}
+
+/** 输出上限的字段名。没声明时用多数端点都认的那个。 */
+function readMaxTokensField(
+	source: ConfigSource,
+	path: ConfigPath,
+): ModelEntry["maxTokensField"] {
+	const value = readString(source, path);
+	if (value === undefined) return "max_tokens";
+	if (value === "max_tokens" || value === "max_completion_tokens") return value;
+	throw new ConfigError(
+		`${describePath(path)} must be max_tokens or max_completion_tokens`,
+		source.locationOf(path) ?? {},
+	);
 }
 
 function readThinkingLevelMap(source: ConfigSource, path: ConfigPath): ThinkingLevelMap {

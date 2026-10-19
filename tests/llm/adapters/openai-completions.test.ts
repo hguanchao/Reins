@@ -16,8 +16,18 @@ interface FetchCall {
 	readonly body: Record<string, unknown> | undefined;
 }
 
-function provider(): ProviderEntry {
-	return { id: "p", name: "p", baseUrl: undefined, api: "openai-completions", apiKey: "k", headers: {}, models: [] };
+function provider(overrides: Partial<ProviderEntry> = {}): ProviderEntry {
+	return {
+		id: "p",
+		name: "p",
+		baseUrl: undefined,
+		api: "openai-completions",
+		apiKey: "k",
+		headers: {},
+		promptCacheKey: false,
+		models: [],
+		...overrides,
+	};
 }
 
 function model(input: readonly ModelEntry["input"][number][] = ["text"]): ModelEntry {
@@ -32,6 +42,7 @@ function model(input: readonly ModelEntry["input"][number][] = ["text"]): ModelE
 		cost: undefined,
 		contextWindow: undefined,
 		maxTokens: undefined,
+		maxTokensField: "max_tokens",
 		headers: {},
 	};
 }
@@ -135,7 +146,7 @@ describe("OpenAI 对话补全的图片映射", () => {
 
 	it("纯文本仍按字符串发送", async () => {
 		const calls = respondWith([
-			{ choices: [{ delta: {}, finish_reason: "stop" }] },
+			{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
 			"[DONE]",
 		]);
 		await run(
@@ -145,6 +156,48 @@ describe("OpenAI 对话补全的图片映射", () => {
 
 		const messages = calls[0]?.body?.["messages"] as readonly { role: string; content: unknown }[];
 		assert.equal(messages[1]?.content, "hello");
+	});
+
+	it("输出上限写在模型声明的字段上", async () => {
+		const calls = respondWith([
+			{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+			"[DONE]",
+		]);
+		await run(
+			new OpenAiCompletionsClient(provider(), { ...model(), maxTokensField: "max_completion_tokens" }, POLICY),
+			request({ maxTokens: 512 }),
+		);
+
+		assert.equal(calls[0]?.body?.["max_completion_tokens"], 512);
+		assert.equal("max_tokens" in (calls[0]?.body ?? {}), false);
+
+		// 没声明时仍是多数端点认的那个
+		const plain = respondWith([
+			{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+			"[DONE]",
+		]);
+		await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request({ maxTokens: 512 }));
+		assert.equal(plain[0]?.body?.["max_tokens"], 512);
+	});
+
+	it("提示词缓存路由字段只发给声明支持的 provider", async () => {
+		const events = [
+			{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
+			"[DONE]",
+		];
+		const declined = respondWith(events);
+		await run(
+			new OpenAiCompletionsClient(provider(), model(), POLICY),
+			request({ cacheKey: "sess-1" }),
+		);
+		assert.equal("prompt_cache_key" in (declined[0]?.body ?? {}), false);
+
+		const accepted = respondWith(events);
+		await run(
+			new OpenAiCompletionsClient(provider({ promptCacheKey: true }), model(), POLICY),
+			request({ cacheKey: "sess-1" }),
+		);
+		assert.equal(accepted[0]?.body?.["prompt_cache_key"], "sess-1");
 	});
 });
 
@@ -257,6 +310,88 @@ describe("终止原因与产出判定", () => {
 		} finally {
 			await endpoint.close();
 		}
+	});
+});
+
+describe("用量的字段变体", () => {
+	function usageOf(result: LlmResult): unknown {
+		return result.usage;
+	}
+
+	it("缓存命中从 details 里读，输入按净值算", async () => {
+		respondWith([
+			{ choices: [{ delta: { content: "ok" } }] },
+			{
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 1000,
+					completion_tokens: 20,
+					total_tokens: 1020,
+					prompt_tokens_details: { cached_tokens: 800 },
+				},
+			},
+			"[DONE]",
+		]);
+
+		const result = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+
+		// prompt_tokens 里含着缓存命中的 800：拆出来金额与命中率才不会被算两遍
+		assert.deepEqual(usageOf(result), {
+			input: 200,
+			output: 20,
+			cacheRead: 800,
+			cacheWrite: 0,
+			total: 1020,
+		});
+	});
+
+	it("平铺的缓存字段也认", async () => {
+		respondWith([
+			{ choices: [{ delta: { content: "ok" } }] },
+			{
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: { prompt_tokens: 100, completion_tokens: 5, total_tokens: 105, prompt_cache_hit_tokens: 60 },
+			},
+			"[DONE]",
+		]);
+		const deepseek = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+		assert.deepEqual(usageOf(deepseek), { input: 40, output: 5, cacheRead: 60, cacheWrite: 0, total: 105 });
+
+		respondWith([
+			{ choices: [{ delta: { content: "ok" } }] },
+			{
+				choices: [{ delta: {}, finish_reason: "stop" }],
+				usage: {
+					prompt_tokens: 100,
+					completion_tokens: 5,
+					total_tokens: 105,
+					cached_tokens: 25,
+					cache_write_tokens: 10,
+				},
+			},
+			"[DONE]",
+		]);
+		const kimi = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+		assert.deepEqual(usageOf(kimi), { input: 65, output: 5, cacheRead: 25, cacheWrite: 10, total: 105 });
+	});
+
+	it("用量挂在 choice 里时也认", async () => {
+		respondWith([
+			{
+				choices: [
+					{
+						delta: { content: "ok" },
+						finish_reason: "stop",
+						usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+					},
+				],
+			},
+			"[DONE]",
+		]);
+
+		const result = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+
+		assert.deepEqual(usageOf(result), { input: 10, output: 2, cacheRead: 0, cacheWrite: 0, total: 12 });
 	});
 });
 

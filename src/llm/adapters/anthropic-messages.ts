@@ -19,6 +19,9 @@ import { createLlmStream, joinUrl } from "./stream-runner.ts";
 /** 这套协议的版本头是必填的，端点若不接受默认值可在 providers.json 的 headers 里覆盖。 */
 const DEFAULT_API_VERSION = "2023-06-01";
 
+/** 提示词缓存的断点标记。缓存写入比普通输入贵，但命中后便宜得多，长会话里净赚。 */
+const CACHE_BREAKPOINT = { type: "ephemeral" } as const;
+
 interface WireBlock {
 	readonly type: string;
 	readonly text?: string;
@@ -35,6 +38,8 @@ interface WireBlock {
 		readonly media_type: string;
 		readonly data: string;
 	};
+	/** 提示词缓存的断点标记 */
+	readonly cache_control?: { readonly type: "ephemeral" };
 }
 
 interface WireMessage {
@@ -178,11 +183,15 @@ export class AnthropicMessagesClient implements LlmClient {
 
 		const body: Record<string, unknown> = {
 			model: request.model,
-			system: request.system,
-			messages: toWireMessages(request, this.#model.input.includes("image")),
+			messages: withCacheBreakpoint(toWireMessages(request, this.#model.input.includes("image"))),
 			max_tokens: request.maxTokens,
 			stream: true,
 		};
+		// 工具声明与 system 是整段对话里最稳的前缀，给它一个断点：不打标记时缓存读取恒为 0，
+		// 长会话每一轮都要为同一段前缀重新付全额
+		if (request.system.length > 0) {
+			body["system"] = [{ type: "text", text: request.system, cache_control: CACHE_BREAKPOINT }];
+		}
 		if (request.tools.length > 0) {
 			body["tools"] = request.tools.map((tool) => ({
 				name: tool.name,
@@ -291,6 +300,31 @@ function toStopReason(stopReason: string): LlmStopReason {
 		default:
 			return "stop";
 	}
+}
+
+/**
+ * 给最后一条消息打上缓存断点。
+ *
+ * 断点之前的整段前缀（工具、system、迄今的对话）都会进入缓存，下一轮请求直接读缓存命中。
+ * 断点跟着对话往后走，所以每轮的增量只付一次新输入的钱。最后一条是纯文本时改用块形式：
+ * 断点只能挂在块上。
+ */
+function withCacheBreakpoint(messages: WireMessage[]): WireMessage[] {
+	const last = messages.at(-1);
+	if (last === undefined) return messages;
+
+	const blocks: WireBlock[] =
+		typeof last.content === "string"
+			? last.content.length > 0
+				? [{ type: "text", text: last.content }]
+				: []
+			: [...last.content];
+	const tail = blocks.at(-1);
+	if (tail === undefined) return messages;
+
+	blocks[blocks.length - 1] = { ...tail, cache_control: CACHE_BREAKPOINT };
+	messages[messages.length - 1] = { role: last.role, content: blocks };
+	return messages;
 }
 
 function toWireMessages(request: LlmRequest, supportsImages: boolean): WireMessage[] {

@@ -44,8 +44,9 @@ interface StreamDelta {
 	readonly content?: string | null;
 	/** DeepSeek 与 Qwen 系的推理内容字段 */
 	readonly reasoning_content?: string | null;
-	/** 部分端点使用的另一种字段名 */
+	/** 另外两种常见的推理内容字段名 */
 	readonly reasoning?: string | null;
+	readonly reasoning_text?: string | null;
 	readonly tool_calls?: readonly {
 		readonly index?: number;
 		readonly id?: string;
@@ -53,15 +54,29 @@ interface StreamDelta {
 	}[];
 }
 
+/** 用量。字段在各个兼容端点之间并不统一，能读到的都列在这里。 */
+interface WireUsage {
+	readonly prompt_tokens?: number;
+	readonly completion_tokens?: number;
+	readonly total_tokens?: number;
+	readonly prompt_tokens_details?: { readonly cached_tokens?: number };
+	/** DeepSeek 系把缓存命中平铺在这里 */
+	readonly prompt_cache_hit_tokens?: number;
+	/** Kimi 系放在顶层 */
+	readonly cached_tokens?: number;
+	/** OpenRouter 系给出的缓存写入 */
+	readonly cache_write_tokens?: number;
+}
+
 interface StreamChunk {
 	readonly model?: string;
-	readonly choices?: readonly { readonly delta?: StreamDelta; readonly finish_reason?: string | null }[];
-	readonly usage?: {
-		readonly prompt_tokens?: number;
-		readonly completion_tokens?: number;
-		readonly total_tokens?: number;
-		readonly prompt_tokens_details?: { readonly cached_tokens?: number };
-	};
+	readonly choices?: readonly {
+		readonly delta?: StreamDelta;
+		readonly finish_reason?: string | null;
+		/** Moonshot 系把用量放在 choice 里而不是 chunk 上 */
+		readonly usage?: WireUsage;
+	}[];
+	readonly usage?: WireUsage;
 	/** 出错时服务端会回一个 error 对象 */
 	readonly error?: { readonly message?: string; readonly type?: string };
 }
@@ -137,6 +152,8 @@ export class OpenAiCompletionsClient implements LlmClient {
 
 				const choice = chunk.choices?.[0];
 				if (choice === undefined) return;
+				// 用量通常挂在 chunk 上；Moonshot 系把它挂在 choice 里
+				if (usage === undefined && choice.usage !== undefined) usage = toUsage(choice.usage);
 				if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
 					finishReason = choice.finish_reason;
 				}
@@ -180,7 +197,12 @@ export class OpenAiCompletionsClient implements LlmClient {
 				function: { name: tool.name, description: tool.description, parameters: tool.parameters },
 			}));
 		}
-		if (request.maxTokens !== undefined) body["max_tokens"] = request.maxTokens;
+		// 字段名由模型声明：新的 OpenAI 端点只认 max_completion_tokens
+		if (request.maxTokens !== undefined) body[this.#model.maxTokensField] = request.maxTokens;
+		// 只有声明支持的端点才发这个字段：严格校验未知字段的网关会因此直接报错
+		if (this.#provider.promptCacheKey && request.cacheKey !== undefined) {
+			body["prompt_cache_key"] = request.cacheKey;
+		}
 		if (request.effort !== undefined) {
 			body["reasoning_effort"] = providerEffortValue(request.effort, this.#model.thinkingLevelMap);
 		}
@@ -193,7 +215,7 @@ function applyDelta(
 	accumulator: ContentAccumulator,
 	emit: (event: LlmEvent) => void,
 ): void {
-	const reasoning = delta.reasoning_content ?? delta.reasoning;
+	const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.reasoning_text;
 	if (typeof reasoning === "string" && reasoning.length > 0) {
 		accumulator.appendThinking(THINKING_INDEX, reasoning);
 		emit({ type: "reasoning_delta", text: reasoning });
@@ -306,15 +328,28 @@ function toWireAssistant(content: readonly LlmContentBlock[]): WireMessage {
 	};
 }
 
-function toUsage(usage: NonNullable<StreamChunk["usage"]>): LlmUsage {
-	const input = usage.prompt_tokens ?? 0;
+/**
+ * 用量映射。
+ *
+ * 缓存命中的字段各家叫法不同，能认的都认一遍；`prompt_tokens` 里本来就含着缓存那部分，
+ * 拆出来才算得对金额与命中率——这与 responses 适配器是同一个口径。
+ */
+function toUsage(usage: WireUsage): LlmUsage {
+	const cacheRead =
+		usage.prompt_tokens_details?.cached_tokens ??
+		usage.prompt_cache_hit_tokens ??
+		usage.cached_tokens ??
+		0;
+	const cacheWrite = usage.cache_write_tokens ?? 0;
+	const prompt = usage.prompt_tokens ?? 0;
+	const input = Math.max(0, prompt - cacheRead - cacheWrite);
 	const output = usage.completion_tokens ?? 0;
 	return {
 		input,
 		output,
-		cacheRead: usage.prompt_tokens_details?.cached_tokens ?? 0,
-		cacheWrite: 0,
-		total: usage.total_tokens ?? input + output,
+		cacheRead,
+		cacheWrite,
+		total: usage.total_tokens ?? prompt + output,
 	};
 }
 

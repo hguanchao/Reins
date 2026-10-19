@@ -62,8 +62,8 @@ function makeDeps(options: DepsOptions): { deps: SubagentDeps; usageEntries: unk
 		},
 	};
 	const deps: SubagentDeps = {
-		provider: { id: "p", name: "p", baseUrl: "b", api: undefined, apiKey: undefined, headers: {}, models: [] },
-		model: { id: "m1", name: "m1", api: "a", baseUrl: "b", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: undefined, headers: {} },
+		provider: { id: "p", name: "p", baseUrl: "b", api: undefined, apiKey: undefined, headers: {}, promptCacheKey: false, models: [] },
+		model: { id: "m1", name: "m1", api: "a", baseUrl: "b", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: undefined, maxTokensField: "max_tokens", headers: {} },
 		config: { provider: "p", model: "m1", reasoningEffort: "off", maxTurns: undefined } as never,
 		client: clientOf(options.turns),
 		tools,

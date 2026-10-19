@@ -25,6 +25,12 @@ export interface LlmRequest {
 	readonly maxTokens: number | undefined;
 	/** 已收敛到模型支持的等级；undefined 表示不发送任何思考参数 */
 	readonly effort: ReasoningEffort | undefined;
+	/**
+	 * 这段对话的稳定标识。
+	 *
+	 * 端点支持提示词缓存时用它把同一段对话路由到同一片缓存：标识不变，前缀的缓存才可能命中。
+	 */
+	readonly cacheKey?: string;
 	readonly signal: AbortSignal;
 }
 

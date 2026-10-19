@@ -26,7 +26,7 @@ function compactor(overrides: Partial<{ contextWindow: number; client: LlmClient
 	return new Compactor({
 		client: overrides.client ?? { api: "fake", stream: () => emptyStream() },
 		provider: "p",
-		model: { id: "m1", name: "m1", api: "a", baseUrl: "b", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: overrides.maxTokens, headers: {} },
+		model: { id: "m1", name: "m1", api: "a", baseUrl: "b", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: overrides.maxTokens, maxTokensField: "max_tokens", headers: {} },
 		contextWindow: overrides.contextWindow ?? 1000,
 		maxTokens: overrides.maxTokens,
 	});

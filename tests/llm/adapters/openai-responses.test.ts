@@ -23,6 +23,7 @@ function provider(overrides: Partial<ProviderEntry> = {}): ProviderEntry {
 		api: "openai-responses",
 		apiKey: "secret",
 		headers: {},
+		promptCacheKey: false,
 		models: [],
 		...overrides,
 	};
@@ -40,6 +41,7 @@ function model(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		cost: undefined,
 		contextWindow: undefined,
 		maxTokens: undefined,
+		maxTokensField: "max_tokens",
 		headers: {},
 		...overrides,
 	};

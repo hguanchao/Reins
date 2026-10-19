@@ -78,14 +78,14 @@ describe("配置合并", () => {
 	it("providers 合并:同名整体替换，其余补上", () => {
 		const user: ProvidersConfig = {
 			providers: [
-				{ id: "a", name: "a", baseUrl: "ua", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
-				{ id: "b", name: "b", baseUrl: "ub", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
+				{ id: "a", name: "a", baseUrl: "ua", api: "openai-completions", apiKey: undefined, headers: {}, promptCacheKey: false, models: [] },
+				{ id: "b", name: "b", baseUrl: "ub", api: "openai-completions", apiKey: undefined, headers: {}, promptCacheKey: false, models: [] },
 			],
 		};
 		const project: ProvidersConfig = {
 			providers: [
-				{ id: "a", name: "a", baseUrl: "pa", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
-				{ id: "c", name: "c", baseUrl: "pc", api: "openai-completions", apiKey: undefined, headers: {}, models: [] },
+				{ id: "a", name: "a", baseUrl: "pa", api: "openai-completions", apiKey: undefined, headers: {}, promptCacheKey: false, models: [] },
+				{ id: "c", name: "c", baseUrl: "pc", api: "openai-completions", apiKey: undefined, headers: {}, promptCacheKey: false, models: [] },
 			],
 		};
 		const merged = mergeProviders(user, project);

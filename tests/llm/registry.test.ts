@@ -10,11 +10,11 @@ import { EventStream } from "../../src/llm/event-stream.ts";
 const POLICY: RetryPolicy = { maxRetries: 1, baseDelayMs: 1 };
 
 function provider(): ProviderEntry {
-	return { id: "p", name: "p", baseUrl: "https://x", api: undefined, apiKey: "k", headers: {}, models: [] };
+	return { id: "p", name: "p", baseUrl: "https://x", api: undefined, apiKey: "k", headers: {}, promptCacheKey: false, models: [] };
 }
 
 function model(api: string): ModelEntry {
-	return { id: "m", name: "m", api, baseUrl: "https://x", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: undefined, headers: {} };
+	return { id: "m", name: "m", api, baseUrl: "https://x", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: undefined, maxTokensField: "max_tokens", headers: {} };
 }
 
 function idleClient(api: string): LlmClient {
