@@ -1,10 +1,12 @@
 import type { Config } from "../config/config-file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
-import type { LlmClient } from "../llm/client.ts";
+import type { LlmClient, LlmResult } from "../llm/client.ts";
 import { clampEffort } from "../llm/effort.ts";
 import {
 	assistantToolCalls,
 	type LlmAssistantMessage,
+	type LlmTextBlock,
+	type LlmThinkingBlock,
 	type LlmToolCallBlock,
 	type LlmUserContentBlock,
 } from "../llm/messages.ts";
@@ -107,10 +109,12 @@ export class TurnDriver {
 		}
 
 		if (result.stopReason === "aborted") {
+			await this.#recordCutOff(result, "the user interrupted the response");
 			await this.emit({ type: "aborted" });
 			return "end";
 		}
 		if (result.stopReason === "error") {
+			await this.#recordCutOff(result, result.errorMessage ?? "unknown error");
 			await this.emit({ type: "error", message: result.errorMessage ?? "unknown error" });
 			return "end";
 		}
@@ -243,6 +247,34 @@ export class TurnDriver {
 			covered: cut,
 			tokensBefore,
 			tokensAfter: estimateTokens(this.#deps.session.state().messages),
+		});
+	}
+
+	/**
+	 * 把中断前已经收到的回答写进会话。
+	 *
+	 * 连接断了不等于那段回答没发生过——界面上早就显示过了，丢掉只会让下一轮模型以为它从没
+	 * 说过。工具调用不写回去：没有对应结果的工具调用会让下一次请求直接不合法；改由末尾的
+	 * 提示说明它没执行。提示同时让模型知道自己说的话被截断了，而不是就这么结束了。
+	 */
+	async #recordCutOff(result: LlmResult, reason: string): Promise<void> {
+		const content = result.content.filter(
+			(block): block is LlmTextBlock | LlmThinkingBlock =>
+				block.type === "text" || block.type === "thinking",
+		);
+		const dropped = result.content.length - content.length;
+		if (content.length === 0 && dropped === 0) return;
+
+		const note =
+			dropped === 0
+				? `[the response was cut off: ${reason}]`
+				: `[the response was cut off: ${reason}; ${dropped} tool request(s) in it were not executed]`;
+		await this.#deps.session.append({
+			type: "message",
+			message: {
+				role: "assistant",
+				content: [...content, { type: "text", text: note }],
+			},
 		});
 	}
 

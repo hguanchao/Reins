@@ -80,13 +80,24 @@ export class AnthropicMessagesClient implements LlmClient {
 	}
 
 	stream(request: LlmRequest): LlmStream {
-		return createLlmStream(request, (emit) => this.#run(request, emit));
+		const accumulator = new ContentAccumulator();
+		return createLlmStream(
+			request,
+			(emit) => this.#run(request, emit, accumulator),
+			() => {
+				accumulator.finishAll();
+				return accumulator.blocks();
+			},
+		);
 	}
 
-	async #run(request: LlmRequest, emit: (event: LlmEvent) => void): Promise<LlmResult> {
+	async #run(
+		request: LlmRequest,
+		emit: (event: LlmEvent) => void,
+		accumulator: ContentAccumulator,
+	): Promise<LlmResult> {
 		// 密钥每次请求现取：command 形式的密钥可能是短期有效的，启动时取一次会在长会话里过期
 		const apiKey = await resolveApiKey(this.#provider.apiKey, request.signal);
-		const accumulator = new ContentAccumulator();
 		let stopReason: string | undefined;
 		let usage: Partial<TokenCounts> = {};
 		let responseModel = this.#model.id;
@@ -140,11 +151,17 @@ export class AnthropicMessagesClient implements LlmClient {
 			// 没有结束原因的响应可能被截断过；当成完成会让残缺的工具调用被执行
 			throw new Error("the response has no finish reason; the connection may have been cut off early");
 		}
+		accumulator.finishAll();
 
+		const stop = toStopReason(stopReason);
+		// 空白回答当成功交出去，使用者只会以为模型不想说话；长度截断与内容过滤另有更具体的原因
+		if (stop === "stop" && !accumulator.hasOutput()) {
+			throw new Error("the endpoint returned an empty response");
+		}
 		return {
 			content: accumulator.blocks(),
 			usage: toUsage(usage),
-			stopReason: toStopReason(stopReason),
+			stopReason: stop,
 			errorMessage: undefined,
 			model: responseModel,
 		};
@@ -226,8 +243,10 @@ function applyEvent(
 			return;
 		}
 		case "content_block_stop": {
+			// 文本与思考块也会走到这里，但它们不是工具调用，不该发结束事件
+			const toolCall = accumulator.isToolCall(index);
 			accumulator.finish(index);
-			emit({ type: "tool_call_end", index });
+			if (toolCall) emit({ type: "tool_call_end", index });
 			return;
 		}
 		default:

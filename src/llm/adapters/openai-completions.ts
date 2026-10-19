@@ -79,13 +79,24 @@ export class OpenAiCompletionsClient implements LlmClient {
 	}
 
 	stream(request: LlmRequest): LlmStream {
-		return createLlmStream(request, (emit) => this.#run(request, emit));
+		const accumulator = new ContentAccumulator();
+		return createLlmStream(
+			request,
+			(emit) => this.#run(request, emit, accumulator),
+			() => {
+				accumulator.finishAll();
+				return accumulator.blocks();
+			},
+		);
 	}
 
-	async #run(request: LlmRequest, emit: (event: LlmEvent) => void): Promise<LlmResult> {
+	async #run(
+		request: LlmRequest,
+		emit: (event: LlmEvent) => void,
+		accumulator: ContentAccumulator,
+	): Promise<LlmResult> {
 		// 密钥每次请求现取：command 形式的密钥可能是短期有效的，启动时取一次会在长会话里过期
 		const apiKey = await resolveApiKey(this.#provider.apiKey, request.signal);
-		const accumulator = new ContentAccumulator();
 		let finishReason: string | undefined;
 		let usage: LlmUsage | undefined;
 		let responseModel = this.#model.id;
@@ -134,17 +145,23 @@ export class OpenAiCompletionsClient implements LlmClient {
 			this.#policy,
 		);
 
-		if (finishReason === undefined) {
-			// 没有结束原因的响应可能被截断过；当成完成会让残缺的工具调用被执行
+		if (finishReason === undefined && !done) {
+			// 两个结束标记一个都没有：响应可能被截断过，当成完成会让残缺的工具调用被执行
 			throw new Error("the response has no finish reason; the connection may have been cut off early");
 		}
 		accumulator.finishAll();
 
+		const content = accumulator.blocks();
+		const outcome = outcomeOf(finishReason, content);
+		// 空白回答当成功交出去，使用者只会以为模型不想说话；长度截断与内容过滤另有更具体的原因
+		if (outcome.stopReason === "stop" && !accumulator.hasOutput()) {
+			throw new Error("the endpoint returned an empty response");
+		}
 		return {
-			content: accumulator.blocks(),
+			content,
 			usage,
-			stopReason: toStopReason(finishReason),
-			errorMessage: undefined,
+			stopReason: outcome.stopReason,
+			errorMessage: outcome.errorMessage,
 			model: responseModel,
 		};
 	}
@@ -301,14 +318,33 @@ function toUsage(usage: NonNullable<StreamChunk["usage"]>): LlmUsage {
 	};
 }
 
-function toStopReason(finishReason: string): LlmStopReason {
+/**
+ * 终止原因的判定。
+ *
+ * 内容过滤不算正常收尾：回答被拦下了，接着往下走只会让人以为模型已经把话说完了。只发
+ * `[DONE]` 不发结束原因的端点（网关里不罕见）按已产出的内容推断：有工具调用就是在等调用。
+ */
+function outcomeOf(
+	finishReason: string | undefined,
+	content: readonly LlmContentBlock[],
+): { readonly stopReason: LlmStopReason; readonly errorMessage: string | undefined } {
+	if (finishReason === undefined) {
+		const toolCall = content.some((block) => block.type === "toolCall");
+		return { stopReason: toolCall ? "toolUse" : "stop", errorMessage: undefined };
+	}
+
 	switch (finishReason) {
 		case "tool_calls":
 		case "function_call":
-			return "toolUse";
+			return { stopReason: "toolUse", errorMessage: undefined };
 		case "length":
-			return "length";
+			return { stopReason: "length", errorMessage: undefined };
+		case "content_filter":
+			return {
+				stopReason: "error",
+				errorMessage: "the response was stopped by the endpoint's content filter",
+			};
 		default:
-			return "stop";
+			return { stopReason: "stop", errorMessage: undefined };
 	}
 }

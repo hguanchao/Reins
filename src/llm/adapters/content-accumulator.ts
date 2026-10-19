@@ -13,6 +13,8 @@ export class ContentAccumulator {
 	readonly #blocks: (LlmContentBlock | undefined)[] = [];
 	/** 工具参数的原始 JSON 文本，按内容下标累积 */
 	readonly #argumentJson = new Map<number, string>();
+	/** 已经收尾过的工具调用块：收尾会消费掉参数文本，重复收尾会把参数覆盖成空对象 */
+	readonly #settled = new Set<number>();
 
 	appendText(index: number, text: string): void {
 		const block = this.#blocks[index];
@@ -92,11 +94,17 @@ export class ContentAccumulator {
 	 */
 	finish(index: number, json?: string): void {
 		const block = this.#blocks[index];
-		if (block?.type !== "toolCall") return;
+		if (block?.type !== "toolCall" || this.#settled.has(index)) return;
+		this.#settled.add(index);
 
 		const parsed = parseToolArguments(json ?? this.#argumentJson.get(index) ?? "");
 		this.#argumentJson.delete(index);
 		this.#blocks[index] = settleToolCall(block, parsed);
+	}
+
+	/** 某个下标上是不是工具调用块。块收尾时据此决定要不要发结束事件。 */
+	isToolCall(index: number): boolean {
+		return this.#blocks[index]?.type === "toolCall";
 	}
 
 	/** 收尾所有工具调用块。用于协议不单独给出块结束信号的端点。 */
@@ -115,9 +123,19 @@ export class ContentAccumulator {
 		return result;
 	}
 
-	/** 是否出现过任何块。用于判断这一轮有没有实际产出。 */
-	isEmpty(): boolean {
-		return this.#blocks.length === 0;
+	/**
+	 * 这一轮有没有实际产出。
+	 *
+	 * 只有思考块不算产出：模型想了却没说出任何东西，交出去就是一轮空白回答。空响应在网关
+	 * 上并不罕见，静默当成功会让人以为模型就是不想说话。
+	 */
+	hasOutput(): boolean {
+		return this.#blocks.some(
+			(block) =>
+				block !== undefined &&
+				(block.type === "toolCall" ||
+					(block.type === "text" && block.text.trim().length > 0)),
+		);
 	}
 }
 

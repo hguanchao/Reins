@@ -264,6 +264,63 @@ describe("回合驱动", () => {
 		assert.ok(abortHooks.events.some((event) => event.type === "aborted"));
 	});
 
+	it("中断前已经收到的回答写进会话,并说明它是断的", async () => {
+		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools() };
+		await depsOf(
+			[
+				{
+					content: [{ type: "text", text: "我打算先读" }],
+					stopReason: "error",
+					errorMessage: "the connection was closed before the response finished",
+				},
+			],
+			hooks,
+		).run("x", SIGNAL);
+
+		const assistant = hooks.session.entries.find(
+			(entry) => entry.type === "message" && entry.message.role === "assistant",
+		);
+		assert.ok(assistant?.type === "message" && assistant.message.role === "assistant");
+		assert.deepEqual(assistant.message.content, [
+			{ type: "text", text: "我打算先读" },
+			{
+				type: "text",
+				text: "[the response was cut off: the connection was closed before the response finished]",
+			},
+		]);
+	});
+
+	it("中断时未执行的工具调用不写进会话,只在提示里说明", async () => {
+		const calls: string[] = [];
+		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools({ calls }) };
+		await depsOf(
+			[
+				{
+					content: [
+						{ type: "text", text: "让我读一下" },
+						{ type: "toolCall", id: "c1", name: "echo", arguments: {} },
+					],
+					stopReason: "aborted",
+				},
+			],
+			hooks,
+		).run("x", SIGNAL);
+
+		assert.equal(calls.length, 0);
+		const assistant = hooks.session.entries.find(
+			(entry) => entry.type === "message" && entry.message.role === "assistant",
+		);
+		assert.ok(assistant?.type === "message" && assistant.message.role === "assistant");
+		// 没有对应结果的工具调用会让下一次请求不合法，所以只留文本与提示
+		assert.deepEqual(assistant.message.content, [
+			{ type: "text", text: "让我读一下" },
+			{
+				type: "text",
+				text: "[the response was cut off: the user interrupted the response; 1 tool request(s) in it were not executed]",
+			},
+		]);
+	});
+
 	it("参数不是合法 JSON 时直接回错,不执行", async () => {
 		const calls: string[] = [];
 		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools({ calls }) };

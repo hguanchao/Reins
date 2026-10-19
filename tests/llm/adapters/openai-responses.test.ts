@@ -119,6 +119,7 @@ describe("OpenAI Responses 请求映射", () => {
 	it("消息、工具、思考等级与输出上限按协议拼装", async () => {
 		const calls = respondWith([
 			{ type: "response.created", response: { id: "resp_1" } },
+			{ type: "response.output_text.delta", output_index: 0, delta: "ok" },
 			{ type: "response.completed", response: { status: "completed" } },
 		]);
 

@@ -111,13 +111,22 @@ describe("内容累积器", () => {
 		);
 	});
 
-	it("isEmpty 与无参数默认空对象", () => {
+	it("hasOutput 只认实际产出，纯思考不算，无参数默认空对象", () => {
 		const blocks = new ContentAccumulator();
-		assert.equal(blocks.isEmpty(), true);
-		blocks.startToolCall(0, "id", "t");
-		assert.equal(blocks.isEmpty(), false);
-		blocks.finish(0); // 没有累积任何参数
-		assert.deepEqual(blocks.blocks(), [{ type: "toolCall", id: "id", name: "t", arguments: {} }]);
+		assert.equal(blocks.hasOutput(), false);
+		// 想了但没说，交出去就是一轮空白回答
+		blocks.appendThinking(0, "let me think");
+		assert.equal(blocks.hasOutput(), false);
+		blocks.appendText(1, "   ");
+		assert.equal(blocks.hasOutput(), false);
+		blocks.appendText(1, "answer");
+		assert.equal(blocks.hasOutput(), true);
+
+		const toolOnly = new ContentAccumulator();
+		toolOnly.startToolCall(0, "id", "t");
+		assert.equal(toolOnly.hasOutput(), true);
+		toolOnly.finish(0); // 没有累积任何参数
+		assert.deepEqual(toolOnly.blocks(), [{ type: "toolCall", id: "id", name: "t", arguments: {} }]);
 	});
 });
 

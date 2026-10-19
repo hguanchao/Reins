@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
 import { AnthropicMessagesClient } from "../../../src/llm/adapters/anthropic-messages.ts";
-import type { LlmRequest } from "../../../src/llm/client.ts";
+import type { LlmEvent, LlmRequest, LlmResult } from "../../../src/llm/client.ts";
 import type { ModelEntry, ProviderEntry } from "../../../src/config/providers-file.ts";
 import type { RetryPolicy } from "../../../src/llm/retry.ts";
 
@@ -70,10 +70,14 @@ function respondWith(events: readonly unknown[]): FetchCall[] {
 	return calls;
 }
 
-async function run(client: AnthropicMessagesClient, input: LlmRequest): Promise<void> {
+async function run(
+	client: AnthropicMessagesClient,
+	input: LlmRequest,
+): Promise<{ result: LlmResult; events: readonly LlmEvent[] }> {
 	const stream = client.stream(input);
-	for await (const event of stream) void event;
-	await stream.result();
+	const events: LlmEvent[] = [];
+	for await (const event of stream) events.push(event);
+	return { result: await stream.result(), events };
 }
 
 afterEach(() => {
@@ -163,5 +167,42 @@ describe("Anthropic Messages 的图片映射", () => {
 		);
 		const plainMessages = plain[0]?.body?.["messages"] as readonly { content: unknown }[];
 		assert.equal(plainMessages[0]?.content, "hello");
+	});
+});
+
+describe("Anthropic Messages 的收尾判定", () => {
+	const START = { type: "message_start", message: { model: "m", usage: { input_tokens: 5 } } };
+	const STOP = [
+		{ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 2 } },
+		{ type: "message_stop" },
+	];
+
+	it("块结束时只有工具调用发结束事件", async () => {
+		respondWith([
+			START,
+			{ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+			{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } },
+			{ type: "content_block_stop", index: 0 },
+			...STOP,
+		]);
+
+		const { result, events } = await run(
+			new AnthropicMessagesClient(provider(), model(), POLICY),
+			request(),
+		);
+
+		assert.equal(result.stopReason, "stop");
+		assert.deepEqual(result.content, [{ type: "text", text: "hi" }]);
+		// 文本块收尾不是工具调用收尾，界面不该看到一次假的工具结束
+		assert.equal(events.some((event) => event.type === "tool_call_end"), false);
+	});
+
+	it("空回答算失败，不当成一轮空白对话", async () => {
+		respondWith([START, ...STOP]);
+
+		const { result } = await run(new AnthropicMessagesClient(provider(), model(), POLICY), request());
+
+		assert.equal(result.stopReason, "error");
+		assert.match(result.errorMessage ?? "", /empty response/);
 	});
 });

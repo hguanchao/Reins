@@ -88,13 +88,24 @@ export class OpenAiResponsesClient implements LlmClient {
 	}
 
 	stream(request: LlmRequest): LlmStream {
-		return createLlmStream(request, (emit) => this.#run(request, emit));
+		const accumulator = new ContentAccumulator();
+		return createLlmStream(
+			request,
+			(emit) => this.#run(request, emit, accumulator),
+			() => {
+				accumulator.finishAll();
+				return accumulator.blocks();
+			},
+		);
 	}
 
-	async #run(request: LlmRequest, emit: (event: LlmEvent) => void): Promise<LlmResult> {
+	async #run(
+		request: LlmRequest,
+		emit: (event: LlmEvent) => void,
+		accumulator: ContentAccumulator,
+	): Promise<LlmResult> {
 		// 密钥每次请求现取：command 形式的密钥可能是短期有效的，启动时取一次会在长会话里过期
 		const apiKey = await resolveApiKey(this.#provider.apiKey, request.signal);
-		const accumulator = new ContentAccumulator();
 		/** 已经出现但还没收到 output_item.done 的工具调用 */
 		const pendingTools = new Set<number>();
 		/** 流里先到的完整参数；output_item.done 可能省略 arguments */
@@ -206,9 +217,14 @@ export class OpenAiResponsesClient implements LlmClient {
 			// 参数可能只到一半；把它当完整调用执行，工具会收到一个错误的参数对象
 			throw new Error("the response completed with an unfinished tool call");
 		}
+		accumulator.finishAll();
 
 		const content = accumulator.blocks();
 		const mapped = stopReasonOf(terminal.status, terminal.reason, content);
+		// 空白回答当成功交出去，使用者只会以为模型不想说话；长度截断与内容过滤另有更具体的原因
+		if (mapped.stopReason === "stop" && !accumulator.hasOutput()) {
+			throw new Error("the endpoint returned an empty response");
+		}
 		return {
 			content,
 			usage,

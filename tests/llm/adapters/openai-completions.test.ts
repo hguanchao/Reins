@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { afterEach, describe, it } from "node:test";
 
 import { OpenAiCompletionsClient } from "../../../src/llm/adapters/openai-completions.ts";
-import type { LlmRequest } from "../../../src/llm/client.ts";
+import type { LlmRequest, LlmResult } from "../../../src/llm/client.ts";
 import { assistantText } from "../../../src/llm/messages.ts";
 import type { ModelEntry, ProviderEntry } from "../../../src/config/providers-file.ts";
 import type { RetryPolicy } from "../../../src/llm/retry.ts";
@@ -69,10 +69,10 @@ function respondWith(events: readonly unknown[]): FetchCall[] {
 	return calls;
 }
 
-async function run(client: OpenAiCompletionsClient, input: LlmRequest): Promise<void> {
+async function run(client: OpenAiCompletionsClient, input: LlmRequest): Promise<LlmResult> {
 	const stream = client.stream(input);
 	for await (const event of stream) void event;
-	await stream.result();
+	return await stream.result();
 }
 
 afterEach(() => {
@@ -148,34 +148,119 @@ describe("OpenAI 对话补全的图片映射", () => {
 	});
 });
 
+/**
+ * 起一个「把给定分片写完就掐断连接」的端点。
+ *
+ * 不补 chunked 的结束标记，网关常这么干；底层只会报「对方关闭了连接」。这样既能测「发完
+ * 之后的断开」，也能测「中途断开」。
+ */
+async function cutServer(
+	chunks: readonly unknown[],
+): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+	const server = createServer((_request, response) => {
+		response.writeHead(200, { "content-type": "text/event-stream" });
+		for (const chunk of chunks) {
+			response.write(`data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`);
+		}
+		setTimeout(() => response.socket?.destroy(), 20);
+	});
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", resolve);
+	});
+	const address = server.address();
+	assert.ok(address !== null && typeof address === "object");
+
+	return {
+		baseUrl: `http://127.0.0.1:${address.port}/v1`,
+		close: async () => {
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		},
+	};
+}
+
+describe("终止原因与产出判定", () => {
+	it("结束原因只发 [DONE] 时按已产出的内容推断", async () => {
+		respondWith([
+			{ choices: [{ delta: { content: "你好" } }] },
+			"[DONE]",
+		]);
+		const plain = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+		assert.equal(plain.stopReason, "stop");
+		assert.deepEqual(plain.content, [{ type: "text", text: "你好" }]);
+
+		respondWith([
+			{ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "read", arguments: "{}" } }] } }] },
+			"[DONE]",
+		]);
+		const toolCall = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+		assert.equal(toolCall.stopReason, "toolUse");
+	});
+
+	it("两个结束标记都没有才算被截断", async () => {
+		// 流干净地结束，但没有 finish_reason 也没有 [DONE]
+		respondWith([{ choices: [{ delta: { content: "半截" } }] }]);
+
+		const result = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+
+		assert.equal(result.stopReason, "error");
+		assert.match(result.errorMessage ?? "", /no finish reason/);
+		// 已经收到的内容仍然交出去，界面早就显示过了
+		assert.deepEqual(result.content, [{ type: "text", text: "半截" }]);
+	});
+
+	it("内容过滤算错误，不算正常收尾", async () => {
+		respondWith([
+			{ choices: [{ delta: { content: "被拦下的一段" } }] },
+			{ choices: [{ delta: {}, finish_reason: "content_filter" }] },
+			"[DONE]",
+		]);
+
+		const result = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+
+		assert.equal(result.stopReason, "error");
+		assert.match(result.errorMessage ?? "", /content filter/);
+		assert.deepEqual(result.content, [{ type: "text", text: "被拦下的一段" }]);
+	});
+
+	it("空回答算失败，长度截断的空回答仍报截断", async () => {
+		respondWith([
+			{ choices: [{ delta: {}, finish_reason: "stop" }] },
+			"[DONE]",
+		]);
+		const empty = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+		assert.equal(empty.stopReason, "error");
+		assert.match(empty.errorMessage ?? "", /empty response/);
+
+		respondWith([
+			{ choices: [{ delta: {}, finish_reason: "length" }] },
+			"[DONE]",
+		]);
+		const truncated = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+		assert.equal(truncated.stopReason, "length");
+	});
+
+	it("中途断开连接时保留已经收到的内容", async () => {
+		// 收到一段正文之后连接就断了：没有 [DONE]，也没有结束原因
+		const endpoint = await cutServer([{ choices: [{ delta: { content: "说了一半" } }] }]);
+		globalThis.fetch = REAL_FETCH;
+
+		try {
+			const result = await run(
+				new OpenAiCompletionsClient(provider(), { ...model(), baseUrl: endpoint.baseUrl }, POLICY),
+				request(),
+			);
+
+			assert.equal(result.stopReason, "error");
+			assert.deepEqual(result.content, [{ type: "text", text: "说了一半" }]);
+		} finally {
+			await endpoint.close();
+		}
+	});
+});
+
 describe("上游发完就掐断连接", () => {
-	/** 把整个流发完再直接关掉 socket，不补 chunked 的结束标记——网关常这么干。 */
-	async function cutServer(
-		chunks: readonly unknown[],
-	): Promise<{ baseUrl: string; close: () => Promise<void> }> {
-		const server = createServer((_request, response) => {
-			response.writeHead(200, { "content-type": "text/event-stream" });
-			for (const chunk of chunks) {
-				response.write(`data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`);
-			}
-			setTimeout(() => response.socket?.destroy(), 20);
-		});
-		await new Promise<void>((resolve, reject) => {
-			server.once("error", reject);
-			server.listen(0, "127.0.0.1", resolve);
-		});
-		const address = server.address();
-		assert.ok(address !== null && typeof address === "object");
-
-		return {
-			baseUrl: `http://127.0.0.1:${address.port}/v1`,
-			close: async () => {
-				server.closeAllConnections();
-				await new Promise<void>((resolve) => server.close(() => resolve()));
-			},
-		};
-	}
-
 	it("结束标记到手后的断开不算失败，回答照常保留", async () => {
 		const endpoint = await cutServer([
 			{ choices: [{ delta: { content: "你好" } }] },
