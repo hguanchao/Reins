@@ -113,6 +113,8 @@ export class OpenAiResponsesClient implements LlmClient {
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
+				// 终止事件到手就说明这一轮发完了，之后连接怎么断都算正常结束
+				complete: () => terminal !== undefined,
 			},
 			(data) => {
 				let event: StreamEvent;

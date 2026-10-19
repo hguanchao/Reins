@@ -19,6 +19,13 @@ export interface SseRequest {
 	readonly headers: Readonly<Record<string, string>>;
 	readonly body: unknown;
 	readonly signal: AbortSignal;
+	/**
+	 * 内容是否已经发完。
+	 *
+	 * 有些网关把整个流发完就直接掐断连接，不写 chunked 的结束标记，底层只会报「对方关闭了连接」。
+	 * 读取中断时问一次这里：答「是」就按正常结束处理，不再把它当失败。
+	 */
+	readonly complete?: () => boolean;
 	/** 决定重试前告知调用方，便于提示「正在重试」 */
 	readonly onRetry?: (attempt: number, reason: string) => void;
 }
@@ -106,14 +113,32 @@ async function postSseOnce(request: SseRequest, onData: (data: string) => void):
 	const decoder = new TextDecoder("utf-8");
 	const reader = response.body.getReader();
 
-	for (;;) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		parser.feed(decoder.decode(value, { stream: true }));
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			parser.feed(decoder.decode(value, { stream: true }));
+		}
+	} catch (error) {
+		// 内容已经发完就不算失败：结束标记都收到了，连接收得干不干净不影响这一轮的结果
+		if (request.complete?.() !== true) throw describeClose(error);
 	}
 	// 收尾：把解码器里可能残留的半个字符与解析器里没有换行结尾的最后一条事件放出来
 	parser.feed(decoder.decode());
 	parser.reset({ consume: true });
+}
+
+/**
+ * 连接中途断掉时的说法。
+ *
+ * 底层只给一个「terminated」，看不出是上游断了、网关掐了还是本地网络的问题。补一句上下文，
+ * 类型保持不变，重试判定仍然认得出来。
+ */
+function describeClose(error: unknown): unknown {
+	if (!(error instanceof TypeError)) return error;
+	const cause = error.cause;
+	const detail = cause instanceof Error && cause.message.length > 0 ? cause.message : error.message;
+	return new TypeError(`the connection was closed before the response finished: ${detail}`);
 }
 
 async function readErrorBody(response: Response): Promise<string> {

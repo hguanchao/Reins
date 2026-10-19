@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { afterEach, describe, it } from "node:test";
 
 import { OpenAiCompletionsClient } from "../../../src/llm/adapters/openai-completions.ts";
 import type { LlmRequest } from "../../../src/llm/client.ts";
+import { assistantText } from "../../../src/llm/messages.ts";
 import type { ModelEntry, ProviderEntry } from "../../../src/config/providers-file.ts";
 import type { RetryPolicy } from "../../../src/llm/retry.ts";
 
@@ -143,5 +145,64 @@ describe("OpenAI 对话补全的图片映射", () => {
 
 		const messages = calls[0]?.body?.["messages"] as readonly { role: string; content: unknown }[];
 		assert.equal(messages[1]?.content, "hello");
+	});
+});
+
+describe("上游发完就掐断连接", () => {
+	/** 把整个流发完再直接关掉 socket，不补 chunked 的结束标记——网关常这么干。 */
+	async function cutServer(
+		chunks: readonly unknown[],
+	): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+		const server = createServer((_request, response) => {
+			response.writeHead(200, { "content-type": "text/event-stream" });
+			for (const chunk of chunks) {
+				response.write(`data: ${typeof chunk === "string" ? chunk : JSON.stringify(chunk)}\n\n`);
+			}
+			setTimeout(() => response.socket?.destroy(), 20);
+		});
+		await new Promise<void>((resolve, reject) => {
+			server.once("error", reject);
+			server.listen(0, "127.0.0.1", resolve);
+		});
+		const address = server.address();
+		assert.ok(address !== null && typeof address === "object");
+
+		return {
+			baseUrl: `http://127.0.0.1:${address.port}/v1`,
+			close: async () => {
+				server.closeAllConnections();
+				await new Promise<void>((resolve) => server.close(() => resolve()));
+			},
+		};
+	}
+
+	it("结束标记到手后的断开不算失败，回答照常保留", async () => {
+		const endpoint = await cutServer([
+			{ choices: [{ delta: { content: "你好" } }] },
+			{ choices: [{ delta: {}, finish_reason: "stop" }] },
+			"[DONE]",
+		]);
+		// 这条要真的走一遍网络：上面几条用的是替身 fetch
+		globalThis.fetch = REAL_FETCH;
+
+		try {
+			const stream = new OpenAiCompletionsClient(
+				provider(),
+				{ ...model(), baseUrl: endpoint.baseUrl },
+				POLICY,
+			).stream(request());
+			const text: string[] = [];
+			for await (const event of stream) {
+				if (event.type === "text_delta") text.push(event.text);
+			}
+			const result = await stream.result();
+
+			assert.equal(result.stopReason, "stop");
+			assert.equal(result.errorMessage, undefined);
+			assert.equal(assistantText({ role: "assistant", content: result.content }), "你好");
+			assert.equal(text.join(""), "你好");
+		} finally {
+			await endpoint.close();
+		}
 	});
 });

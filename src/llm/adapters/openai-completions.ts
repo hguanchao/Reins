@@ -89,6 +89,8 @@ export class OpenAiCompletionsClient implements LlmClient {
 		let finishReason: string | undefined;
 		let usage: LlmUsage | undefined;
 		let responseModel = this.#model.id;
+		/** 是否见到了 [DONE] */
+		let done = false;
 
 		await postSse(
 			{
@@ -100,9 +102,14 @@ export class OpenAiCompletionsClient implements LlmClient {
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
+				// 结束标记到手就说明这一轮的内容发完了，之后连接怎么断都算正常结束
+				complete: () => done || finishReason !== undefined,
 			},
 			(data) => {
-				if (data === "[DONE]") return;
+				if (data === "[DONE]") {
+					done = true;
+					return;
+				}
 
 				let chunk: StreamChunk;
 				try {

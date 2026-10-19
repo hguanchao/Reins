@@ -102,6 +102,8 @@ export class AnthropicMessagesClient implements LlmClient {
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
+				// 收尾事件里的结束原因到手就说明内容发完了，之后连接断开按正常结束处理
+				complete: () => stopReason !== undefined,
 			},
 			(data) => {
 				let event: StreamEvent;
