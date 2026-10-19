@@ -1,11 +1,16 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
+import { THEME } from "./theme.ts";
+
 /**
  * 对话流渲染。
  *
  * 用户提示按 grok-build 的方式作为吸顶区块：发送后落在视口顶部，回复在它下方增长；
  * 回复向上滚出视口时，提示块固定在顶部，提示下方保留一行空隙。旧提示仍留在滚动流里，
  * 往上滚就能看到，不折叠、不汇总。
+ *
+ * 启动警告不属于任何一轮对话，但同样走对话流：作为顶部的系统消息参与换行与滚动，不使用
+ * 主区域启动画面的居中排版。
  */
 
 export interface TranscriptTurn {
@@ -13,15 +18,17 @@ export interface TranscriptTurn {
 	readonly response: readonly string[];
 }
 
-/** 用户提示背景 #242424。 */
-const PROMPT_BG = "\x1b[48;2;36;36;36m";
-/** 用户提示与回复正文统一 #e1e1e1。 */
-const MESSAGE_TEXT_COLOR = "\x1b[38;2;225;225;225m";
-/** 滚动条 #242424。 */
-const SCROLLBAR_COLOR = "\x1b[38;2;36;36;36m";
+/** 用户提示背景，与菜单面板使用同一档浮起表面。 */
+const PROMPT_BG = THEME.surface;
+/** 用户提示与回复正文统一使用主文字色。 */
+const MESSAGE_TEXT_COLOR = THEME.textPrimary;
+/** 启动警告使用警告色，与普通正文区分开。 */
+const NOTICE_COLOR = THEME.warning;
+/** 滚动条颜色。 */
+const SCROLLBAR_COLOR = THEME.scrollbar;
 const SCROLLBAR_TRACK = " ";
 const SCROLLBAR_THUMB = "█";
-const RESET = "\x1b[0m";
+const RESET = THEME.reset;
 
 /** 用户提示首行符号前留一列，正文因此比模型回复多缩进一列。 */
 const PROMPT_PREFIX = " › ";
@@ -61,8 +68,9 @@ export function transcriptMetrics(
 	terminalWidth: number,
 	height: number,
 	turns: readonly TranscriptTurn[],
+	notice?: string,
 ): TranscriptMetrics {
-	const built = build(contentWidth(terminalWidth), turns);
+	const built = build(contentWidth(terminalWidth), turns, notice);
 	const lastPromptStart = built.prompts.at(-1)?.start ?? 0;
 	const rows = Math.max(0, height);
 	return {
@@ -83,13 +91,14 @@ export function renderTranscript(
 	height: number,
 	turns: readonly TranscriptTurn[],
 	scrollTop: number,
+	notice?: string,
 ): readonly string[] {
 	const rows = Math.max(0, height);
 	if (rows === 0) return [];
-	if (turns.length === 0) return Array.from({ length: rows }, () => "");
+	if (turns.length === 0 && notice === undefined) return Array.from({ length: rows }, () => "");
 
 	const width = contentWidth(terminalWidth);
-	const built = build(width, turns);
+	const built = build(width, turns, notice);
 	const total = built.lines.length;
 	const lastPromptStart = built.prompts.at(-1)?.start ?? 0;
 	// 底部补白让最后一条提示可以停在视口顶部，这正是发送后的 page flip
@@ -128,10 +137,16 @@ function contentWidth(terminalWidth: number): number {
 	return Math.max(0, Math.max(0, terminalWidth) - GUTTER_WIDTH);
 }
 
-function build(width: number, turns: readonly TranscriptTurn[]): BuiltTranscript {
+function build(width: number, turns: readonly TranscriptTurn[], notice: string | undefined): BuiltTranscript {
 	const lines: string[] = [];
 	const prompts: PromptRange[] = [];
 	let previousHadResponse = false;
+
+	if (notice !== undefined && notice.length > 0) {
+		lines.push(...noticeLines(notice, width));
+		// 警告和第一轮对话之间留一行间距，避免系统消息贴住提示块
+		if (turns.length > 0) lines.push(" ".repeat(width));
+	}
 
 	for (const turn of turns) {
 		// 上一条回复和下一条提示之间留一行默认背景，避免提示块直接贴住回复
@@ -166,6 +181,25 @@ function promptBlock(prompt: string, width: number): readonly string[] {
 	});
 	const empty = `${PROMPT_BG}${" ".repeat(width)}${RESET}`;
 	return [empty, ...content, empty];
+}
+
+/**
+ * 启动警告。
+ *
+ * 与模型回复共用正文缩进和颜色，第一行多一个 `!` 标记，续行与标记后的文字对齐；宽度不够时
+ * 按字符换行，交给对话流统一滚动。
+ */
+function noticeLines(text: string, width: number): readonly string[] {
+	const firstPrefix = `${RESPONSE_INDENT}! `;
+	const continuationPrefix = " ".repeat(displayWidth(firstPrefix));
+	const limit = Math.max(0, width - displayWidth(firstPrefix));
+
+	return wrapText(text, limit).map((line, index) => {
+		const prefix = index === 0 ? firstPrefix : continuationPrefix;
+		const visible = truncateToWidth(prefix + line, width);
+		const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
+		return `${NOTICE_COLOR}${visible}${padding}${RESET}`;
+	});
 }
 
 function responseLines(text: string, width: number): readonly string[] {
@@ -254,6 +288,9 @@ function pinnedPrompt(prompts: readonly PromptRange[], top: number): PromptRange
 }
 
 function renderGutter(height: number, total: number, top: number): readonly string[] {
+	// 内容没有超出视口时没有可滚动的东西，整列留空，不画轨道和滑块
+	if (total <= height) return Array.from({ length: height }, () => " ");
+
 	const thumbHeight = Math.min(height, Math.max(1, Math.floor((height * height) / Math.max(1, total))));
 	const maxThumbTop = Math.max(0, height - thumbHeight);
 	const maxScroll = Math.max(1, total - height);

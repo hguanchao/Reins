@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FOOTER_HEIGHT, inputView, renderFooter, type FooterInfo } from "../../src/tui/footer.ts";
+import {
+	COMPACT_FOOTER_HEIGHT,
+	FOOTER_HEIGHT,
+	inputView,
+	renderFooter,
+	type FooterInfo,
+} from "../../src/tui/footer.ts";
 
 const BORDER = "─";
-const FOCUS = "\x1b[38;2;225;225;225m";
-const BLUR = "\x1b[38;2;36;36;36m";
-const INFO = "\x1b[38;2;200;200;200m";
+const FOCUS = "\x1b[38;2;78;201;176m";
+const BLUR = "\x1b[38;2;42;49;56m";
+const INFO = "\x1b[38;2;167;176;186m";
 
 const SESSION_INFO: FooterInfo = {
 	project: "Reins",
@@ -23,7 +29,7 @@ function plain(line: string): string {
 }
 
 describe("页脚输入框", () => {
-	it("获得焦点时边框和提示符用 #e1e1e1", () => {
+	it("获得焦点时边框和提示符用强调色 #4ec9b0", () => {
 		const lines = renderFooter(10, "", true);
 
 		assert.equal(lines.length, FOOTER_HEIGHT);
@@ -38,7 +44,7 @@ describe("页脚输入框", () => {
 		assert.equal(lines[5], "");
 	});
 
-	it("失去焦点时边框和提示符用 #242424", () => {
+	it("失去焦点时边框和提示符用边框色 #2a3138", () => {
 		const lines = renderFooter(10, "", false);
 
 		assert.equal(lines[0], "");
@@ -95,9 +101,56 @@ describe("页脚输入框", () => {
 		assert.ok(plain(lines[5] ?? "").endsWith("⚡ 98%"));
 	});
 
+	it("100 到 999 也进入 K，上下文与运行时状态共用规则", () => {
+		const context = renderFooter(120, "", true, undefined, {
+			...SESSION_INFO,
+			contextUsed: 999,
+		});
+		assert.ok(plain(context[5] ?? "").includes("📊 0.9K / 1M"));
+
+		const status = renderFooter(80, "", true, {
+			symbol: "⠋",
+			text: "Thinking...",
+			tokens: 999,
+		});
+		assert.ok(plain(status[1] ?? "").includes("⇣0.9K"));
+	});
+
+	it("运行时 token 数超过一百万时晋升到 M", () => {
+		const lines = renderFooter(80, "", true, {
+			symbol: "⠋",
+			text: "Thinking...",
+			tokens: 1_500_000,
+		});
+
+		assert.ok(plain(lines[1] ?? "").includes("⇣1.5M"));
+	});
+
+	it("接近一百万的 K 值直接进位成 M，不显示 1000K", () => {
+		const lines = renderFooter(120, "", true, undefined, {
+			...SESSION_INFO,
+			contextUsed: 999_950,
+		});
+
+		assert.ok(plain(lines[5] ?? "").includes("📊 1M / 1M"));
+	});
+
 	it("输入超出宽度时保留尾部", () => {
 		const lines = renderFooter(5, "abcdef", true);
 		assert.equal(plain(lines[3]), " › f");
+	});
+
+	it("菜单打开时使用紧凑页脚，去掉空白与状态行", () => {
+		const lines = renderFooter(20, "/model", false, undefined, SESSION_INFO, {
+			leadingGap: false,
+			showStatus: false,
+		});
+
+		assert.equal(lines.length, COMPACT_FOOTER_HEIGHT);
+		assert.equal(plain(lines[0] ?? ""), BORDER.repeat(20));
+		assert.equal(plain(lines[1] ?? ""), " › /model");
+		assert.equal(plain(lines[2] ?? ""), BORDER.repeat(20));
+		assert.ok(plain(lines[3] ?? "").startsWith("📁 Reins"));
 	});
 
 	it("宽字符按两列计算，不留下半个字", () => {
@@ -109,8 +162,8 @@ describe("页脚输入框", () => {
 		const lines = renderFooter(40, "", true, { symbol: "⠋", text: "Waiting for response..." });
 
 		assert.equal(lines[0], "");
-		assert.equal(lines[1], " ⠋ Waiting for response...");
-		assert.equal(lines[1]?.length, 26);
+		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting for response...");
+		assert.equal(plain(lines[1] ?? "").length, 26);
 		assert.equal(plain(lines[3]), " › ");
 	});
 
@@ -122,11 +175,11 @@ describe("页脚输入框", () => {
 			tokens: 128,
 		});
 		const left = " ⠋ Thinking...";
-		const right = "1.2s  ⇣128";
+		const right = "1.2s  ⇣0.1K";
 		const raw = lines[1] ?? "";
 
 		assert.equal(plain(raw), left + " ".repeat(58 - left.length - right.length) + right);
-		assert.ok(raw.includes("\x1b[38;2;102;102;102m"));
+		assert.ok(raw.includes("\x1b[38;2;107;117;128m"));
 		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
@@ -143,7 +196,7 @@ describe("页脚输入框", () => {
 		const raw = lines[1] ?? "";
 
 		assert.equal(plain(raw), left + " ".repeat(68 - left.length - right.length) + right);
-		assert.ok(raw.includes("\x1b[38;2;102;102;102m  2.5s"));
+		assert.ok(raw.includes("\x1b[38;2;107;117;128m  2.5s"));
 		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
@@ -156,7 +209,7 @@ describe("页脚输入框", () => {
 			tokens: 21400,
 			sweep: 0.5,
 		});
-		const meta = "\x1b[38;2;102;102;102m";
+		const meta = "\x1b[38;2;107;117;128m";
 		const raw = lines[1] ?? "";
 		const tail = raw.slice(raw.lastIndexOf(meta));
 
@@ -168,7 +221,7 @@ describe("页脚输入框", () => {
 
 	it("状态行超出宽度时截断", () => {
 		const lines = renderFooter(12, "", true, { symbol: "⠋", text: "Waiting for response..." });
-		assert.equal(lines[1], " ⠋ Waiting");
+		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting");
 	});
 
 	it("运行时状态可以带扫光", () => {

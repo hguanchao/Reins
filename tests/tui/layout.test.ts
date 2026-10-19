@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { describe, it } from "node:test";
 
-import { runTui } from "../../src/tui/layout.ts";
+import type { AgentEvent, AgentEventListener } from "../../src/agent/events.ts";
+import { ApprovalBroker } from "../../src/permission/approval.ts";
+import { runTui, type AgentRuntime } from "../../src/tui/layout.ts";
 
 class FakeInput extends EventEmitter {
 	readonly isTTY = true;
@@ -37,12 +39,48 @@ class FakeOutput extends EventEmitter {
 	}
 }
 
+interface FakeAgent {
+	readonly runtime: AgentRuntime;
+	emit(event: AgentEvent): void;
+	finish(): Promise<void>;
+}
+
+/** 测试用的真实对话替身：submit 后由测试手动发事件、手动结束。 */
+function createFakeAgent(): FakeAgent {
+	let current:
+		| {
+				readonly listener: AgentEventListener;
+				readonly resolve: () => void;
+		  }
+		| undefined;
+
+	return {
+		runtime: {
+			runTurn: (_prompt, onEvent) =>
+				new Promise<void>((resolve) => {
+					current = { listener: onEvent, resolve };
+				}),
+			refreshInfo: () => {},
+		},
+		emit: (event) => {
+			void current?.listener(event);
+		},
+		finish: async () => {
+			const run = current;
+			current = undefined;
+			run?.resolve();
+			// 让 TUI 的 finally 微任务先跑完
+			await new Promise<void>((resolve) => setImmediate(resolve));
+		},
+	};
+}
+
 const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1006h";
 const CLEAR = "\x1b[H\x1b[2J";
 const LEAVE = "\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
-const FOCUS = "\x1b[38;2;225;225;225m";
-const BLUR = "\x1b[38;2;36;36;36m";
-const INFO = "\x1b[38;2;200;200;200m";
+const FOCUS = "\x1b[38;2;78;201;176m";
+const BLUR = "\x1b[38;2;42;49;56m";
+const INFO = "\x1b[38;2;167;176;186m";
 const BORDER = "─";
 const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h$/;
 const FOOTER_INFO = {
@@ -54,6 +92,17 @@ const FOOTER_INFO = {
 	contextWindow: 1_000_000,
 	cacheHitRate: 0.98,
 };
+const WARNING = "Config error: No provider openai; available: fengshao";
+const MODEL_ITEMS = [
+	{
+		provider: "fengshao",
+		model: "deepseek-v4.1-flash",
+		name: "DeepSeek V4.1 Flash",
+		current: true,
+	},
+	{ provider: "openai", model: "gpt-5.2", name: "GPT-5.2", current: false },
+	{ provider: "openai", model: "gpt-5.2-mini", name: "GPT-5.2 Mini", current: false },
+];
 
 function pressCtrlC(input: FakeInput): void {
 	input.emit("data", Buffer.from([3]));
@@ -183,6 +232,441 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("配置错误时仍进入界面，警告走对话流", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			warning: WARNING,
+			ready: false,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			const lines = frameLines(output);
+			const text = lines.join("\n");
+			assert.ok(text.includes("! Config error:"));
+			assert.ok(text.includes("No provider"));
+			assert.ok(plain(lines[0] ?? "").startsWith("  ! Config error:"));
+			assert.equal(lines.filter((line) => line.includes("Config error")).length, 1);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("配置错误时输入不切走警告，提交只提示配置不可用", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			warning: WARNING,
+			ready: false,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello"));
+
+			let text = frameLines(output).join("\n");
+			assert.ok(text.includes("! Config error:"));
+			assert.ok(text.includes("hello"));
+
+			input.emit("data", Buffer.from("\r"));
+
+			text = plain(frameLines(output).join("\n"));
+			assert.ok(text.includes("Configuration required"));
+			assert.equal(text.includes("Waiting for response..."), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("输入 /model 在输入框上方打开模型面板", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line.endsWith(" 3 ────")));
+			assert.ok(lines.some((line) => line.includes("fengshao/")));
+			assert.ok(lines.some((line) => line.includes("› /model")));
+			assert.equal(CURSOR_SUFFIX.test(rawFrame(output)), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("方向键移动并回车切换模型，页脚随之更新", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let selected: string | undefined;
+		let info = FOOTER_INFO;
+		const running = runTui({
+			version: "1.2.3",
+			info: () => info,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: (item) => {
+					selected = `${item.provider}/${item.model}`;
+					info = { ...FOOTER_INFO, model: item.model };
+					return { warnings: ["note"], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			input.emit("data", Buffer.from("\x1b[B"));
+			input.emit("data", Buffer.from("\r"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(selected, "openai/gpt-5.2");
+			assert.ok(text.includes("Model switched to openai/gpt-5.2."));
+			assert.ok(text.includes("note"));
+			assert.ok(text.includes("openai/gpt-5.2"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Esc 关闭模型面板且不切换", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let calls = 0;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: () => {
+					calls += 1;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			input.emit("data", Buffer.from("\x1b"));
+
+			const lines = frameLines(output).map(plain);
+			assert.equal(calls, 0);
+			assert.equal(lines.some((line) => line.includes("Model switched")), false);
+			assert.ok(lines.some((line) => line.includes("Reins")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("输入斜杠立即显示命令补全，配置不可用时也显示", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			warning: WARNING,
+			ready: false,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/"));
+
+			const lines = frameLines(output).map(plain);
+			const text = lines.join("\n");
+			assert.ok(text.includes("! Config error:"));
+			assert.ok(text.includes("/model"));
+			assert.ok(text.includes("/effort"));
+			assert.ok(text.includes("Requires a valid configuration"));
+			assert.ok(lines.some((line) => line.includes("› /")));
+			assert.ok(lines.some((line) => line.endsWith(" 2 ────")));
+			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令补全随输入过滤，回车打开模型面板", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/m"));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("/model"));
+			assert.ok(text.includes("Choose the model for this session"));
+
+			input.emit("data", Buffer.from("\r"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" 3 ────"));
+			assert.ok(text.includes("fengshao/"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Esc 关闭命令补全并保留输入", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			input.emit("data", Buffer.from("\x1b"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Choose the model for this session"), false);
+			assert.ok(text.includes("› /"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("配置对不上时仍可 /model，选中后解除受限", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		let selected: string | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			warning: WARNING,
+			ready: false,
+			agent: agent.runtime,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: (item) => {
+					selected = `${item.provider}/${item.model}`;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			input.emit("data", Buffer.from("\r"));
+
+			assert.equal(selected, "fengshao/deepseek-v4.1-flash");
+
+			input.emit("data", Buffer.from("hello\r"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Waiting for response..."));
+			assert.equal(text.includes("Configuration required"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("输入 /effort 打开等级面板，回车写回并更新页脚", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		let selected: string | undefined;
+		let info = FOOTER_INFO;
+		const running = runTui({
+			version: "1.2.3",
+			info: () => info,
+			effortMenu: {
+				current: () => "medium",
+				select: (level) => {
+					selected = level;
+					info = { ...FOOTER_INFO, effort: level };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/effort\r"));
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" 6 ────"));
+			assert.ok(text.includes("off"));
+			assert.ok(text.includes("xhigh"));
+			assert.ok(text.includes("›  medium"));
+			assert.ok(text.includes("Everyday work with a clear scope"));
+			assert.ok(text.includes("current"));
+
+			input.emit("data", Buffer.from("\x1b[B"));
+			input.emit("data", Buffer.from("\r"));
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(selected, "high");
+			assert.ok(text.includes("Effort set to high."));
+			assert.ok(text.includes("🧠 high"));
+			// 确认后面板关闭、输入框重新获得焦点
+			assert.equal(text.includes("xhigh"), false);
+			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Esc 关闭等级面板且不写回", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		let calls = 0;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			effortMenu: {
+				current: () => "medium",
+				select: () => {
+					calls += 1;
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/effort\r"));
+			input.emit("data", Buffer.from("\x1b"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(calls, 0);
+			assert.equal(text.includes("Effort set to"), false);
+			assert.equal(text.includes("xhigh"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("工具审批在输入框上方弹出，y 放行 Enter 拒绝", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+
+			let decision: boolean | undefined;
+			void broker
+				.request("Allow bash to run?", '{"command":"npm test"}')
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Allow bash to run?"));
+			assert.ok(text.includes("[y/N]"));
+			assert.ok(text.includes('{"command":"npm test"}'));
+
+			input.emit("data", Buffer.from("y"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, true);
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Allow bash to run?"), false);
+
+			decision = undefined;
+			void broker.request("Allow write?", "{}").then((value) => {
+				decision = value;
+			});
+			t.mock.timers.tick(100);
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("启动时回填历史并隐藏启动画面", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			history: [{ prompt: "old question", response: ["old answer"] }],
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			const main = frameLines(output).slice(0, 6).map(plain).join("\n");
+			assert.ok(main.includes(" › old question"));
+			assert.ok(main.includes("old answer"));
+			assert.equal(main.includes("Reins"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("尺寸变化时按新尺寸重画", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -283,7 +767,14 @@ describe("全屏布局", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 60;
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
@@ -293,11 +784,11 @@ describe("全屏布局", () => {
 			const prompt = plain(lines[1] ?? "");
 			assert.ok(prompt.startsWith(" › hello"));
 			assert.equal(prompt.length, 60);
-			assert.ok((lines[0] ?? "").includes("\x1b[48;2;36;36;36m"));
-			assert.ok((lines[1] ?? "").includes("\x1b[48;2;36;36;36m"));
-			assert.ok((lines[2] ?? "").includes("\x1b[48;2;36;36;36m"));
-			assert.ok((lines[1] ?? "").includes("\x1b[38;2;225;225;225m"));
-			assert.equal((lines[3] ?? "").includes("\x1b[48;2;36;36;36m"), false);
+			assert.ok((lines[0] ?? "").includes("\x1b[48;2;22;25;29m"));
+			assert.ok((lines[1] ?? "").includes("\x1b[48;2;22;25;29m"));
+			assert.ok((lines[2] ?? "").includes("\x1b[48;2;22;25;29m"));
+			assert.ok((lines[1] ?? "").includes("\x1b[38;2;230;233;237m"));
+			assert.equal((lines[3] ?? "").includes("\x1b[48;2;22;25;29m"), false);
 			const status = plain(lines[7] ?? "");
 			assert.ok(status.startsWith(" ⠋ Waiting for response...  0.0s"));
 			assert.ok(status.endsWith("0.0s  ⇣0"));
@@ -311,45 +802,68 @@ describe("全屏布局", () => {
 	});
 
 	it("运行时状态按 Waiting、Thinking、Writing 推进", (t) => {
-		t.mock.timers.enable({ apis: ["setInterval"] });
+		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 60;
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
 
 			t.mock.timers.tick(300);
 			let status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.startsWith(" ⠸ Waiting for response...  0.3s"));
+			assert.ok(status.includes("Waiting for response..."));
+			assert.ok(status.includes("0.3s"));
 			assert.ok(status.endsWith("0.3s  ⇣0"));
 
-			t.mock.timers.tick(400);
+			agent.emit({ type: "reasoning_delta", text: "thinking" });
+			t.mock.timers.tick(100);
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.startsWith(" ⠧ Thinking...  0.2s"));
-			assert.ok(status.endsWith("0.7s  ⇣0"));
+			assert.ok(status.includes("Thinking..."));
+			assert.ok(status.includes("0.1s"));
+			assert.ok(status.endsWith("0.4s  ⇣0"));
 
-			t.mock.timers.tick(500);
+			agent.emit({ type: "text_delta", text: "hello from the model" });
+			t.mock.timers.tick(100);
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.startsWith(" ⠹ Writing response...  0.2s"));
-			assert.ok(status.includes("1.2s  ⇣"));
+			assert.ok(status.includes("Writing response..."));
+			assert.ok(status.includes("0.1s"));
+			assert.ok(status.includes("0.5s  ⇣"));
 		} finally {
 			exitTui(input);
 		}
 	});
 
-	it("模拟回复在提示下方增长并保持提示吸顶", (t) => {
+	it("回复在提示下方增长并保持提示吸顶", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
-			t.mock.timers.tick(2500);
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"),
+			});
+			t.mock.timers.tick(100);
 
 			const lines = frameLines(output);
 			const main = lines.slice(0, 6).map(plain);
@@ -357,11 +871,10 @@ describe("全屏布局", () => {
 			assert.equal(main[0]?.includes("›"), false);
 			assert.equal(main[2]?.includes("›"), false);
 			assert.equal(main[3]?.includes("›"), false);
-			assert.ok(main.slice(4).join("\n").includes("模拟回复"));
+			assert.ok(main.slice(4).join("\n").includes("line"));
 
 			const status = plain(lines[7] ?? "");
 			assert.ok(status.includes("Writing response..."));
-			assert.ok(status.includes("2.5s"));
 			assert.ok(status.includes("⇣"));
 			assert.equal(plain(lines[9] ?? ""), " › ");
 		} finally {
@@ -374,25 +887,36 @@ describe("全屏布局", () => {
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
-			t.mock.timers.tick(2500);
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"),
+			});
+			t.mock.timers.tick(100);
 
 			const bottom = frameLines(output).slice(0, 6).map(plain);
-			assert.ok(bottom.slice(2).join("\n").includes("模拟回复第 16 行"));
+			assert.ok(bottom.slice(2).join("\n").includes("line 16"));
 
 			// 拖到顶部，看到最早的回复
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
 			const top = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(top[1]?.startsWith(" › hello"));
-			assert.ok(top.slice(2).join("\n").includes("模拟回复第 1 行"));
+			assert.ok(top.slice(2).join("\n").includes("line 1"));
 
 			// 拖回底部
 			input.emit("data", Buffer.from("\x1b[<32;40;7M"));
 			const back = frameLines(output).slice(0, 6).map(plain);
-			assert.ok(back.slice(2).join("\n").includes("模拟回复第 16 行"));
+			assert.ok(back.slice(2).join("\n").includes("line 16"));
 
 			// 松开后滚轮向上，再向下回到跟随
 			input.emit("data", Buffer.from("\x1b[<0;40;7m"));
@@ -403,22 +927,32 @@ describe("全屏布局", () => {
 
 			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
 			const followed = frameLines(output).slice(0, 6).map(plain);
-			assert.ok(followed.slice(2).join("\n").includes("模拟回复第 16 行"));
+			assert.ok(followed.slice(2).join("\n").includes("line 16"));
 		} finally {
 			exitTui(input);
 		}
 	});
 
-	it("发送第二条后新提示落在顶部，旧内容留在上方", (t) => {
+	it("发送第二条后新提示落在顶部，旧内容留在上方", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+		const agent = createFakeAgent();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
 
 		try {
 			input.emit("data", Buffer.from("one\r"));
-			t.mock.timers.tick(2500);
+			agent.emit({ type: "text_delta", text: "first response" });
+			t.mock.timers.tick(100);
+			await agent.finish();
+
 			input.emit("data", Buffer.from("two\r"));
 
 			const latest = frameLines(output).slice(0, 6).map(plain);
@@ -431,6 +965,8 @@ describe("全屏布局", () => {
 		} finally {
 			exitTui(input);
 		}
+
+		assert.equal(await running, 0);
 	});
 
 	it("空输入回车不发送", () => {

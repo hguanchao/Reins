@@ -3,15 +3,16 @@ import { describe, it } from "node:test";
 
 import { renderTranscript, transcriptMetrics } from "../../src/tui/transcript.ts";
 
-const PROMPT_BG = "\x1b[48;2;36;36;36m";
-const MESSAGE_TEXT = "\x1b[38;2;225;225;225m";
+const PROMPT_BG = "\x1b[48;2;22;25;29m";
+const MESSAGE_TEXT = "\x1b[38;2;230;233;237m";
+const NOTICE_TEXT = "\x1b[38;2;224;175;104m";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
 describe("对话流", () => {
-	it("用户提示使用 #242424 背景和指定前缀/正文颜色，上下留一行背景", () => {
+	it("用户提示使用 #16191d 背景和指定前缀/正文颜色，上下留一行背景", () => {
 		const lines = renderTranscript(40, 8, [{ prompt: "hello", response: [] }], 0);
 
 		assert.equal(lines.length, 8);
@@ -95,5 +96,32 @@ describe("对话流", () => {
 		assert.equal(metrics.totalLines, 10);
 		assert.equal(metrics.scrollLines, 12);
 		assert.equal(metrics.lastPromptStart, 6);
+	});
+
+	it("启动警告作为对话流顶部的系统消息显示", () => {
+		const lines = renderTranscript(40, 6, [], 0, "Config error: No provider openai");
+		const text = lines.map(plain).join("\n");
+
+		assert.ok(text.includes("! Config error:"));
+		assert.ok(text.includes("No provider"));
+		assert.ok(plain(lines[0] ?? "").startsWith("  ! Config error:"));
+		assert.ok((lines[0] ?? "").includes(NOTICE_TEXT));
+		assert.equal((lines[0] ?? "").includes(PROMPT_BG), false);
+	});
+
+	it("警告参与行数与滚动计算", () => {
+		const metrics = transcriptMetrics(40, 6, [], `Config error: ${"x".repeat(200)}`);
+
+		assert.ok(metrics.totalLines > 6);
+	});
+
+	it("没有轮次也没有警告时保持空白", () => {
+		assert.deepEqual(renderTranscript(40, 3, [], 0), ["", "", ""]);
+	});
+
+	it("内容没有超出视口时不显示滚动条", () => {
+		const lines = renderTranscript(40, 10, [], 0, "Config error: No provider openai");
+
+		assert.ok(lines.every((line) => !plain(line).includes("█")));
 	});
 });

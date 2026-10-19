@@ -1,16 +1,39 @@
 import { eastAsianWidth } from "get-east-asian-width";
 import { StringDecoder } from "node:string_decoder";
 
-import { FOOTER_HEIGHT, inputView, renderFooter, type FooterInfo } from "./footer.ts";
+import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
+import { COMPACT_FOOTER_HEIGHT, FOOTER_HEIGHT, inputView, renderFooter, type FooterInfo } from "./footer.ts";
+import { THINKING_LEVELS, type ThinkingLevel } from "../config/config-file.ts";
+import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
 import { renderMain } from "./main.ts";
+import { APPROVAL_PANEL_HEIGHT, renderApprovalPanel } from "./approval-panel.ts";
+import {
+	modelMenuHeight,
+	renderModelMenu,
+	type ModelMenuItem,
+	type ModelMenuState,
+} from "./model-menu.ts";
+import {
+	effortMenuHeight,
+	renderEffortMenu,
+	type EffortMenuState,
+} from "./effort-menu.ts";
+import {
+	commandMenuHeight,
+	renderCommandMenu,
+	type CommandMenuItem,
+	type CommandMenuState,
+} from "./command-menu.ts";
+import { keepVisible } from "./menu-panel.ts";
 import { renderTranscript, transcriptMetrics, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 全屏启动。
  *
  * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是带运行时状态、输入框与
- * 常驻信息行的区域。回车把输入作为用户提示送进对话流，提示落在视口顶部；模拟回复在它下方流式增长，
- * 回复滚出视口后提示块吸顶。Ctrl+C 要连按两次才退出。
+ * 常驻信息行的区域。回车把输入交给 TurnDriver，模型文本、工具调用与压缩进度作为事件实时
+ * 进入对话流。输入 / 时展开命令补全面板，/model 与 /effort 再展开选择面板。工具需要确认时
+ * 在输入框上方弹出审批面板。一轮进行中 Ctrl+C 只中止当前轮，空闲时连按两次才退出。
  */
 
 const ENTER_ALTERNATE_SCREEN = "\x1b[?1049h";
@@ -48,27 +71,30 @@ const WAITING_FOR_RESPONSE = "Waiting for response...";
 const THINKING = "Thinking...";
 const WRITING_RESPONSE = "Writing response...";
 const DONE = "Done";
+/** 配置不可用时按下回车给出的提示；不启动对话，避免看起来已经正常工作。 */
+const CONFIGURATION_REQUIRED = "Configuration required";
+const AGENT_UNAVAILABLE = "Agent unavailable";
+const ABORTING = "Aborting...";
+const ABORTED = "Aborted";
+const ERROR_STATUS = "Error";
+/** 一轮结束后状态行停留的时间。 */
+const STATUS_CLEAR_MS = 1500;
 
-/** 模拟回复的节奏：前 0.5 秒等待，再 0.5 秒思考，然后每帧写一行。 */
-const MOCK_WAITING_TICKS = 5;
-const MOCK_THINKING_TICKS = 5;
-const MOCK_DONE_TICKS = 10;
-const MOCK_REPLY_LINES = Array.from(
-	{ length: 48 },
-	(_, index) => `模拟回复第 ${index + 1} 行：用户提示固定在顶部，回复内容在下面滚动。`,
-);
-
-interface MockTurn extends TranscriptTurn {
+/** 对话流里的一条真实回合；response 可变，流式文本和工具行持续追加。 */
+interface LiveTurn extends TranscriptTurn {
 	response: string[];
 }
 
-interface MockState {
-	readonly turn: MockTurn;
-	tick: number;
-	phase: "waiting" | "thinking" | "writing" | "done";
-	/** 当前阶段从哪一帧开始，用来显示阶段计时。 */
-	phaseStartTick: number;
-	doneTick: number | undefined;
+/** 一轮正在进行的对话。 */
+interface ActiveTurn {
+	readonly turn: LiveTurn;
+	readonly controller: AbortController;
+	readonly startedAt: number;
+	/** 已经完成的文本与工具行 */
+	readonly lines: string[];
+	/** 当前还没等到换行的文本 */
+	partial: string;
+	outcome: "done" | "error" | "aborted";
 }
 
 /** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
@@ -90,10 +116,59 @@ export interface TuiOutput {
 	off(event: "resize", listener: () => void): unknown;
 }
 
+export interface ModelSwitchResult {
+	/** 需要显示在对话流里的说明 */
+	readonly warnings: readonly string[];
+	/** 选择并写回配置后，界面是否可以正常提交 */
+	readonly ready: boolean;
+	/** 新的启动警告；undefined 表示清除 */
+	readonly warning: string | undefined;
+}
+
+export interface ModelMenuSource {
+	/** 当前可选的模型；每次打开菜单时重新取，current 标记才会跟着切换更新 */
+	readonly list: () => readonly ModelMenuItem[];
+	/** 确认选择；返回需要显示在对话流里的说明与新的受限状态 */
+	readonly select: (item: ModelMenuItem) => ModelSwitchResult;
+}
+
+export interface EffortMenuSource {
+	/** 当前配置里的思考等级；切换后重新读取 */
+	readonly current: () => ThinkingLevel;
+	/** 确认选择；失败时抛错，由界面显示原因 */
+	readonly select: (level: ThinkingLevel) => void;
+}
+
+/** 真实对话入口；由启动装配提供。 */
+export interface AgentRuntime {
+	/** 跑一轮对话，事件驱动界面；signal 用于 Ctrl+C 中止。 */
+	readonly runTurn: (
+		prompt: string,
+		onEvent: AgentEventListener,
+		signal: AbortSignal,
+	) => Promise<void>;
+	/** 一轮结束或压缩后刷新页脚统计。 */
+	readonly refreshInfo: () => void;
+}
+
 export interface TuiOptions {
 	readonly version: string;
 	/** 输入框下方常驻信息：项目、分支、模型、思考强度、上下文与缓存命中率 */
-	readonly info: FooterInfo;
+	readonly info: FooterInfo | (() => FooterInfo);
+	/** 配置有问题时在主区域显示的一行警告；配置正常时不传 */
+	readonly warning?: string;
+	/** 配置不可用时为 false：界面照常显示，但不接受提交 */
+	readonly ready?: boolean;
+	/** 真实对话入口；不提供时无法提交普通提示 */
+	readonly agent?: AgentRuntime;
+	/** 工具审批桥接；不提供时不会弹出审批面板 */
+	readonly approval?: ApprovalBroker;
+	/** /model 菜单的数据来源；不提供时 /model 按普通输入处理 */
+	readonly modelMenu?: ModelMenuSource;
+	/** /effort 菜单的数据来源；不提供时 /effort 不可用 */
+	readonly effortMenu?: EffortMenuSource;
+	/** 启动时回填的历史对话；续聊时使用 */
+	readonly history?: readonly TranscriptTurn[];
 	readonly stdin?: TuiInput;
 	readonly stdout?: TuiOutput;
 }
@@ -107,11 +182,37 @@ export interface TuiOptions {
 export async function runTui(options: TuiOptions): Promise<number> {
 	const stdin: TuiInput = options.stdin ?? process.stdin;
 	const stdout: TuiOutput = options.stdout ?? process.stdout;
+	let ready = options.ready ?? true;
+	let activeWarning = options.warning;
+	// 命令补全列表：配置不可用时仍然显示，但标成不可执行
+	const commands: readonly CommandMenuItem[] = [
+		{
+			name: "model",
+			description:
+				options.modelMenu === undefined
+					? "Requires a valid configuration"
+					: "Choose the model for this session",
+			enabled: options.modelMenu !== undefined,
+		},
+		{
+			name: "effort",
+			description:
+				options.effortMenu === undefined
+					? "Requires a valid configuration"
+					: "Choose the reasoning effort for this session",
+			enabled: options.effortMenu !== undefined,
+		},
+	];
 
 	let input = "";
-	const turns: MockTurn[] = [];
-	/** 只要输入过内容就置位，之后清空输入也不再显示品牌名与版本号。 */
-	let hasInput = false;
+	const turns: LiveTurn[] = (options.history ?? []).map((turn) => ({
+		prompt: turn.prompt,
+		response: [...turn.response],
+	}));
+	/** 有历史或输入过内容就显示对话流。 */
+	let hasInput = turns.length > 0;
+	/** 首次绘制时把已有历史滚到底部。 */
+	let initialScroll = turns.length > 0;
 	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
 	let focused = true;
 	/** 对话流从顶部滚过的行数。 */
@@ -125,23 +226,54 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let statusPhaseMs = 0;
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
+	let statusPhaseStartedAt = 0;
 	let spinnerFrame = 0;
 	let sweepPhase = 0;
-	let mock: MockState | undefined;
+	let activeTurn: ActiveTurn | undefined;
+	let approvalPrompt: ApprovalPrompt | undefined;
+	let modelMenu: ModelMenuState | undefined;
+	let effortMenu: EffortMenuState | undefined;
+	let commandMenu: CommandMenuState | undefined;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
+	let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
 	let finished = false;
 	let finish = (): void => {};
 	const decoder = new StringDecoder("utf8");
 
+	const currentInfo = (): FooterInfo =>
+		typeof options.info === "function" ? options.info() : options.info;
+	const menuHeight = (): number =>
+		approvalPrompt !== undefined
+			? APPROVAL_PANEL_HEIGHT
+			: modelMenu !== undefined
+				? modelMenuHeight(modelMenu.items.length)
+				: effortMenu !== undefined
+					? effortMenuHeight()
+					: commandMenu !== undefined
+						? commandMenuHeight(commandMenu.items.length)
+						: 0;
+	const menuOpen = (): boolean =>
+		approvalPrompt !== undefined ||
+		modelMenu !== undefined ||
+		effortMenu !== undefined ||
+		commandMenu !== undefined;
+	const footerHeight = (): number =>
+		menuOpen() ? COMPACT_FOOTER_HEIGHT + menuHeight() : FOOTER_HEIGHT;
+
 	const render = (): void => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
-		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
-		const metrics = transcriptMetrics(width, mainHeight, turns);
+		const mainHeight = Math.max(0, height - footerHeight());
+		const metrics = transcriptMetrics(width, mainHeight, turns, activeWarning);
 		const maxScroll = Math.max(0, metrics.scrollLines - mainHeight);
-		scrollTop = Math.min(scrollTop, maxScroll);
+		if (initialScroll) {
+			scrollTop = maxScroll;
+			initialScroll = false;
+		} else {
+			scrollTop = Math.min(scrollTop, maxScroll);
+		}
 
 		const status =
 			statusText === undefined
@@ -154,24 +286,52 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						elapsedMs: statusElapsedMs,
 						tokens: statusTokens,
 					};
-		const footer = renderFooter(width, input, focused, status, options.info);
-		const main = hasInput
-			? renderTranscript(width, mainHeight, turns, scrollTop)
+		const menuLines =
+			approvalPrompt !== undefined
+				? renderApprovalPanel(width, approvalPrompt)
+				: modelMenu !== undefined
+					? renderModelMenu(width, modelMenu)
+					: effortMenu !== undefined
+						? renderEffortMenu(width, effortMenu)
+						: commandMenu !== undefined
+							? renderCommandMenu(width, commandMenu)
+							: [];
+		const footer = menuOpen()
+			? renderFooter(
+					width,
+					input,
+					focused &&
+						modelMenu === undefined &&
+						effortMenu === undefined &&
+						approvalPrompt === undefined,
+					undefined,
+					currentInfo(),
+					{ leadingGap: false, showStatus: false },
+				)
+			: renderFooter(width, input, focused, status, currentInfo());
+		const main = hasInput || activeWarning !== undefined
+			? renderTranscript(width, mainHeight, turns, scrollTop, activeWarning)
 			: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
-		const lines = [...main, ...footer].slice(0, height);
-		const cursorRow = mainHeight + 4;
+		const lines = [...main, ...menuLines, ...footer].slice(0, height);
+		const inputRow = menuOpen()
+			? mainHeight + menuHeight() + (COMPACT_FOOTER_HEIGHT - 2)
+			: mainHeight + (FOOTER_HEIGHT - 2);
 		const cursor =
-			focused && cursorRow <= height
-				? moveCursor(cursorRow, inputView(input, width).column) + SHOW_CURSOR
+			focused &&
+			modelMenu === undefined &&
+			effortMenu === undefined &&
+			approvalPrompt === undefined &&
+			inputRow <= height
+				? moveCursor(inputRow, inputView(input, width).column) + SHOW_CURSOR
 				: "";
 		stdout.write(HIDE_CURSOR + CURSOR_HOME + CLEAR_SCREEN + lines.join("\r\n") + cursor);
 	};
 
 	const maxScroll = (): number => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
-		const mainHeight = Math.max(0, terminalHeight(stdout) - FOOTER_HEIGHT);
-		return Math.max(0, transcriptMetrics(width, mainHeight, turns).scrollLines - mainHeight);
+		const mainHeight = Math.max(0, terminalHeight(stdout) - footerHeight());
+		return Math.max(0, transcriptMetrics(width, mainHeight, turns, activeWarning).scrollLines - mainHeight);
 	};
 
 	const disarm = (): void => {
@@ -186,6 +346,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (finished) return;
 		finished = true;
 
+		if (activeTurn !== undefined) {
+			options.approval?.denyAll();
+			activeTurn.controller.abort();
+		}
 		if (exitTimer !== undefined) {
 			clearTimeout(exitTimer);
 			exitTimer = undefined;
@@ -193,6 +357,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (spinnerTimer !== undefined) {
 			clearInterval(spinnerTimer);
 			spinnerTimer = undefined;
+		}
+		if (statusClearTimer !== undefined) {
+			clearTimeout(statusClearTimer);
+			statusClearTimer = undefined;
 		}
 		stdout.off("resize", render);
 		stdin.off("data", onData);
@@ -204,6 +372,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	const onCtrlC = (): void => {
+		if (activeTurn !== undefined) {
+			// 第一次只中止当前轮；2 秒内再按一次强制退出
+			if (exitArmed) {
+				cleanup();
+				return;
+			}
+			exitArmed = true;
+			exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
+			options.approval?.denyAll();
+			activeTurn.controller.abort();
+			setStatus(ABORTING);
+			render();
+			return;
+		}
 		if (exitArmed) {
 			cleanup();
 			return;
@@ -212,54 +394,41 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
-	const advanceMock = (): boolean => {
-		if (mock === undefined) return false;
+	const setStatus = (text: string): void => {
+		statusText = text;
+		statusPhaseMs = 0;
+		statusPhaseStartedAt = Date.now();
+	};
 
-		mock.tick += 1;
-		statusElapsedMs = mock.tick * SPINNER_INTERVAL_MS;
-
-		if (mock.phase === "waiting" && mock.tick >= MOCK_WAITING_TICKS) {
-			mock.phase = "thinking";
-			mock.phaseStartTick = mock.tick;
-		}
-		if (mock.phase === "thinking" && mock.tick >= MOCK_WAITING_TICKS + MOCK_THINKING_TICKS) {
-			mock.phase = "writing";
-			mock.phaseStartTick = mock.tick;
-		}
-
-		if (mock.phase === "writing") {
-			const next = MOCK_REPLY_LINES[mock.turn.response.length];
-			if (next !== undefined) {
-				mock.turn.response.push(next);
-				statusTokens = estimateTokens(mock.turn.response.join(" "));
-			}
-			if (mock.turn.response.length >= MOCK_REPLY_LINES.length) {
-				mock.phase = "done";
-				mock.phaseStartTick = mock.tick;
-				mock.doneTick = mock.tick;
-				statusText = DONE;
-			} else {
-				statusText = WRITING_RESPONSE;
-			}
-			if (follow) scrollTop = maxScroll();
-		} else if (mock.phase === "thinking") {
-			statusText = THINKING;
-		} else if (mock.phase === "waiting") {
-			statusText = WAITING_FOR_RESPONSE;
-		}
-
-		statusPhaseMs = (mock.tick - mock.phaseStartTick) * SPINNER_INTERVAL_MS;
-
-		if (mock.phase === "done" && mock.doneTick !== undefined && mock.tick - mock.doneTick >= MOCK_DONE_TICKS) {
-			mock = undefined;
+	const scheduleStatusClear = (): void => {
+		if (statusClearTimer !== undefined) clearTimeout(statusClearTimer);
+		statusClearTimer = setTimeout(() => {
+			statusClearTimer = undefined;
 			statusText = undefined;
 			statusPhaseMs = 0;
 			statusElapsedMs = 0;
 			statusTokens = 0;
-			return false;
-		}
+			render();
+		}, STATUS_CLEAR_MS);
+	};
 
-		return true;
+	const stopSpinner = (): void => {
+		if (spinnerTimer === undefined) return;
+		clearInterval(spinnerTimer);
+		spinnerTimer = undefined;
+	};
+
+	/** 审批请求可能在工具线程里异步出现，刷新帧顺带把它同步到界面上。 */
+	const syncApprovalPrompt = (): boolean => {
+		const next = options.approval?.pending();
+		const changed =
+			next === undefined
+				? approvalPrompt !== undefined
+				: approvalPrompt === undefined ||
+					approvalPrompt.question !== next.question ||
+					approvalPrompt.detail !== next.detail;
+		approvalPrompt = next;
+		return changed;
 	};
 
 	const startSpinner = (): void => {
@@ -268,39 +437,432 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		spinnerTimer = setInterval(() => {
 			spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
 			sweepPhase = (sweepPhase + SWEEP_STEP) % 1;
-			const active = advanceMock();
-			render();
-			if (!active) {
-				if (spinnerTimer !== undefined) {
-					clearInterval(spinnerTimer);
-					spinnerTimer = undefined;
-				}
+			if (activeTurn !== undefined) {
+				const now = Date.now();
+				statusElapsedMs = now - activeTurn.startedAt;
+				statusPhaseMs = Math.max(0, now - statusPhaseStartedAt);
+				statusTokens = estimateTokens(
+					[...activeTurn.lines, activeTurn.partial].join(" "),
+				);
+				syncApprovalPrompt();
 			}
+			render();
 		}, SPINNER_INTERVAL_MS);
 	};
 
-	/** 回车发送：把当前输入交给对话流，并启动一次模拟回复。 */
-	const submit = (): boolean => {
-		if (input.length === 0) return false;
+	const syncTurn = (active: ActiveTurn): void => {
+		const response =
+			active.partial.length > 0 ? [...active.lines, active.partial] : active.lines;
+		active.turn.response.splice(0, active.turn.response.length, ...response);
+	};
 
-		const message = input.trim();
+	const syncScroll = (): void => {
+		if (follow) scrollTop = maxScroll();
+	};
+
+	const flushPartial = (active: ActiveTurn): void => {
+		if (active.partial.length === 0) return;
+		active.lines.push(active.partial);
+		active.partial = "";
+	};
+
+	const appendAssistantText = (active: ActiveTurn, delta: string): void => {
+		active.partial += delta;
+		const parts = active.partial.split("\n");
+		active.partial = parts.pop() ?? "";
+		active.lines.push(...parts);
+		syncTurn(active);
+		syncScroll();
+	};
+
+	const appendLine = (active: ActiveTurn, line: string): void => {
+		flushPartial(active);
+		active.lines.push(line);
+		syncTurn(active);
+		syncScroll();
+	};
+
+	const onEvent: AgentEventListener = (event: AgentEvent): void => {
+		const active = activeTurn;
+		if (active === undefined) return;
+
+		switch (event.type) {
+			case "turn_start":
+				setStatus(WAITING_FOR_RESPONSE);
+				break;
+			case "text_delta":
+				appendAssistantText(active, event.text);
+				setStatus(WRITING_RESPONSE);
+				break;
+			case "reasoning_delta":
+				setStatus(THINKING);
+				break;
+			case "tool_start":
+				appendLine(active, `· ${event.name} ${summarizeArgs(event.args)}`);
+				setStatus(`Running ${event.name}...`);
+				break;
+			case "tool_update":
+				setStatus("Running tool...");
+				break;
+			case "tool_end":
+				appendLine(
+					active,
+					event.isError
+						? `  failed ${event.durationMs}ms: ${event.summary}`
+						: `  done ${event.durationMs}ms`,
+				);
+				setStatus(THINKING);
+				break;
+			case "compaction_start":
+				appendLine(
+					active,
+					`· compacting context (${event.messages} messages, ~${event.tokensBefore} tokens)`,
+				);
+				setStatus("Compacting context...");
+				break;
+			case "compaction_end":
+				appendLine(
+					active,
+					`  compacted: ~${event.tokensBefore} → ~${event.tokensAfter} tokens`,
+				);
+				options.agent?.refreshInfo();
+				break;
+			case "compaction_failed":
+				appendLine(active, `  compaction failed: ${event.message}`);
+				break;
+			case "error":
+				appendLine(active, `error: ${event.message}`);
+				active.outcome = "error";
+				setStatus(ERROR_STATUS);
+				break;
+			case "aborted":
+				appendLine(active, "aborted");
+				active.outcome = "aborted";
+				setStatus(ABORTED);
+				break;
+			case "turn_end":
+			case "run_end":
+				break;
+		}
+
+		// 文本增量由 100ms 刷新帧统一绘制；工具、错误等阶段变化立即重画
+		if (
+			event.type !== "text_delta" &&
+			event.type !== "reasoning_delta" &&
+			event.type !== "tool_update" &&
+			event.type !== "turn_end" &&
+			event.type !== "run_end"
+		) {
+			render();
+		}
+	};
+
+	/** 让光标始终落在可见窗口内；窗口最多 8 行。 */
+	const keepMenuCursor = (): void => {
+		if (modelMenu === undefined) return;
+		modelMenu.scrollTop = keepVisible(modelMenu.scrollTop, modelMenu.cursor, modelMenu.items.length);
+	};
+
+	const openModelMenu = (): void => {
+		const source = options.modelMenu;
+		if (source === undefined) return;
+
+		commandMenu = undefined;
+		effortMenu = undefined;
+		const items = source.list();
+		if (items.length === 0) {
+			input = "";
+			turns.push({ prompt: "/model", response: ["No models are available."] });
+			hasInput = true;
+			render();
+			return;
+		}
+
+		const current = items.findIndex((item) => item.current);
+		modelMenu = { items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
+		keepMenuCursor();
+		render();
+	};
+
+	const moveMenu = (delta: number): void => {
+		if (modelMenu === undefined) return;
+		modelMenu.cursor = Math.min(
+			modelMenu.items.length - 1,
+			Math.max(0, modelMenu.cursor + delta),
+		);
+		keepMenuCursor();
+		render();
+	};
+
+	const confirmMenu = (): void => {
+		if (modelMenu === undefined) return;
+
+		const item = modelMenu.items[modelMenu.cursor];
+		const source = options.modelMenu;
+		modelMenu = undefined;
+		effortMenu = undefined;
+		commandMenu = undefined;
 		input = "";
-		if (message.length > 0) {
-			const turn: MockTurn = { prompt: message, response: [] };
-			turns.push(turn);
-			mock = { turn, tick: 0, phase: "waiting", phaseStartTick: 0, doneTick: undefined };
-			statusText = WAITING_FOR_RESPONSE;
-			statusPhaseMs = 0;
-			statusElapsedMs = 0;
-			statusTokens = 0;
-			follow = true;
 
-			const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
-			const mainHeight = Math.max(0, terminalHeight(stdout) - FOOTER_HEIGHT);
-			scrollTop = transcriptMetrics(width, mainHeight, turns).lastPromptStart;
-			startSpinner();
+		if (item !== undefined && source !== undefined) {
+			let response: string[];
+			try {
+				const result = source.select(item);
+				ready = result.ready;
+				activeWarning = result.warning;
+				response = [`Model switched to ${item.provider}/${item.model}.`, ...result.warnings];
+			} catch (error) {
+				response = [
+					`Failed to switch model: ${error instanceof Error ? error.message : String(error)}`,
+				];
+			}
+			turns.push({ prompt: "/model", response });
+			hasInput = true;
 		}
 		render();
+	};
+
+	const cancelMenu = (): void => {
+		modelMenu = undefined;
+		effortMenu = undefined;
+		commandMenu = undefined;
+		input = "";
+		render();
+	};
+
+	const openEffortMenu = (): void => {
+		const source = options.effortMenu;
+		if (source === undefined) return;
+
+		const current = source.current();
+		const cursor = Math.max(0, THINKING_LEVELS.indexOf(current));
+		commandMenu = undefined;
+		modelMenu = undefined;
+		effortMenu = {
+			current,
+			cursor,
+			scrollTop: keepVisible(0, cursor, THINKING_LEVELS.length),
+		};
+		render();
+	};
+
+	const moveEffortMenu = (delta: number): void => {
+		if (effortMenu === undefined) return;
+		effortMenu.cursor = Math.min(
+			THINKING_LEVELS.length - 1,
+			Math.max(0, effortMenu.cursor + delta),
+		);
+		effortMenu.scrollTop = keepVisible(
+			effortMenu.scrollTop,
+			effortMenu.cursor,
+			THINKING_LEVELS.length,
+		);
+		render();
+	};
+
+	const confirmEffortMenu = (): void => {
+		if (effortMenu === undefined) return;
+
+		const level = THINKING_LEVELS[effortMenu.cursor];
+		const source = options.effortMenu;
+		effortMenu = undefined;
+		input = "";
+
+		if (level !== undefined && source !== undefined) {
+			let response: string[];
+			try {
+				source.select(level);
+				response = [`Effort set to ${level}.`];
+			} catch (error) {
+				response = [
+					`Failed to set effort: ${error instanceof Error ? error.message : String(error)}`,
+				];
+			}
+			turns.push({ prompt: "/effort", response });
+			hasInput = true;
+		}
+		render();
+	};
+
+	const cancelEffortMenu = (): void => {
+		effortMenu = undefined;
+		modelMenu = undefined;
+		input = "";
+		render();
+	};
+
+	/** 输入变化后重算命令补全列表；只匹配斜杠后不含空格的命令名。 */
+	const updateCommandMenu = (): void => {
+		if (modelMenu !== undefined) return;
+
+		if (input.startsWith("/") && !input.slice(1).includes(" ")) {
+			const query = input.slice(1).toLowerCase();
+			const items = commands.filter((command) => command.name.startsWith(query));
+			if (items.length > 0) {
+				const previous = commandMenu?.items[commandMenu.cursor]?.name;
+				const cursor =
+					previous === undefined
+						? 0
+						: Math.max(0, items.findIndex((item) => item.name === previous));
+				commandMenu = {
+					items,
+					cursor,
+					scrollTop: keepVisible(0, cursor, items.length),
+				};
+				return;
+			}
+		}
+
+		commandMenu = undefined;
+	};
+
+	const moveCommandMenu = (delta: number): void => {
+		if (commandMenu === undefined) return;
+		commandMenu.cursor = Math.min(
+			commandMenu.items.length - 1,
+			Math.max(0, commandMenu.cursor + delta),
+		);
+		commandMenu.scrollTop = keepVisible(
+			commandMenu.scrollTop,
+			commandMenu.cursor,
+			commandMenu.items.length,
+		);
+		render();
+	};
+
+	const executeCommand = (command: CommandMenuItem): void => {
+		commandMenu = undefined;
+		// 从补全面板执行时把输入补全成完整命令，面板打开期间看得清当前在做什么
+		input = `/${command.name}`;
+
+		if (command.name === "model") {
+			if (options.modelMenu === undefined) {
+				input = "";
+				statusElapsedMs = 0;
+				statusTokens = 0;
+				setStatus(CONFIGURATION_REQUIRED);
+				render();
+				return;
+			}
+			openModelMenu();
+			return;
+		}
+
+		if (command.name === "effort") {
+			if (options.effortMenu === undefined) {
+				input = "";
+				statusElapsedMs = 0;
+				statusTokens = 0;
+				setStatus(CONFIGURATION_REQUIRED);
+				render();
+				return;
+			}
+			openEffortMenu();
+			return;
+		}
+
+		// 当前只有 /model 与 /effort；未知命令不留在输入框里，避免看起来执行过了
+		input = "";
+		render();
+	};
+
+	/** 回车发送：把输入交给真实 TurnDriver，事件驱动对话流与状态行。 */
+	const submit = (): boolean => {
+		if (input.length === 0) return false;
+		// 一轮进行中不接受新提交；状态行继续显示当前进度
+		if (activeTurn !== undefined) return false;
+
+		const message = input.trim();
+		const selected = commandMenu?.items[commandMenu.cursor];
+		const command = selected ?? commands.find((item) => `/${item.name}` === message);
+		if (message.startsWith("/") && command !== undefined) {
+			// 命令先于受限检查执行：/model 正是用来修复配置对不上的入口
+			executeCommand(command);
+			return true;
+		}
+
+		if (!ready) {
+			// 配置没读成功时不进入对话：保留输入内容，只把原因放到运行时状态行
+			commandMenu = undefined;
+			statusElapsedMs = 0;
+			statusTokens = 0;
+			setStatus(CONFIGURATION_REQUIRED);
+			render();
+			return false;
+		}
+
+		const agent = options.agent;
+		if (agent === undefined) {
+			commandMenu = undefined;
+			statusElapsedMs = 0;
+			statusTokens = 0;
+			setStatus(AGENT_UNAVAILABLE);
+			render();
+			return false;
+		}
+
+		input = "";
+		if (message.length === 0) return false;
+
+		const turn: LiveTurn = { prompt: message, response: [] };
+		turns.push(turn);
+		const active: ActiveTurn = {
+			turn,
+			controller: new AbortController(),
+			startedAt: Date.now(),
+			lines: [],
+			partial: "",
+			outcome: "done",
+		};
+		activeTurn = active;
+		hasInput = true;
+		follow = true;
+		disarm();
+		statusElapsedMs = 0;
+		statusTokens = 0;
+		if (statusClearTimer !== undefined) {
+			clearTimeout(statusClearTimer);
+			statusClearTimer = undefined;
+		}
+		setStatus(WAITING_FOR_RESPONSE);
+
+		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+		const mainHeight = Math.max(0, terminalHeight(stdout) - footerHeight());
+		scrollTop = transcriptMetrics(width, mainHeight, turns, activeWarning).lastPromptStart;
+		startSpinner();
+		render();
+
+		void agent
+			.runTurn(message, onEvent, active.controller.signal)
+			.catch((error) => {
+				if (finished || activeTurn !== active) return;
+				appendLine(active, `error: ${error instanceof Error ? error.message : String(error)}`);
+				active.outcome = "error";
+				setStatus(ERROR_STATUS);
+			})
+			.finally(() => {
+				if (activeTurn !== active) return;
+				flushPartial(active);
+				syncTurn(active);
+				activeTurn = undefined;
+				stopSpinner();
+				options.approval?.denyAll();
+				syncApprovalPrompt();
+				if (finished) return;
+				disarm();
+				agent.refreshInfo();
+				statusElapsedMs = Date.now() - active.startedAt;
+				statusTokens = estimateTokens(active.lines.join(" "));
+				setStatus(
+					active.outcome === "done"
+						? DONE
+						: active.outcome === "aborted"
+							? ABORTED
+							: ERROR_STATUS,
+				);
+				scheduleStatusClear();
+				render();
+			});
 		return true;
 	};
 
@@ -311,9 +873,38 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
+		if (approvalPrompt !== undefined) {
+			// 审批是模态的：y 放行，n / Enter / Esc 拒绝，其它按键忽略
+			const decision = approvalKey(text);
+			if (decision !== undefined) {
+				options.approval?.resolve(decision);
+				approvalPrompt = undefined;
+				syncApprovalPrompt();
+				render();
+			}
+			return;
+		}
+
+		if (modelMenu !== undefined || effortMenu !== undefined) {
+			// 选择面板是模态的：只处理上下键、回车与 Esc，普通字符和其它转义序列都忽略
+			const key = menuKey(text);
+			if (modelMenu !== undefined) {
+				if (key === "up") moveMenu(-1);
+				else if (key === "down") moveMenu(1);
+				else if (key === "enter") confirmMenu();
+				else if (key === "escape") cancelMenu();
+			} else {
+				if (key === "up") moveEffortMenu(-1);
+				else if (key === "down") moveEffortMenu(1);
+				else if (key === "enter") confirmEffortMenu();
+				else if (key === "escape") cancelEffortMenu();
+			}
+			return;
+		}
+
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
-		const mainHeight = Math.max(0, height - FOOTER_HEIGHT);
+		const mainHeight = Math.max(0, height - footerHeight());
 		const limit = maxScroll();
 		const beforeScroll = scrollTop;
 		const withoutMouse = stripMouseEvents(text);
@@ -369,10 +960,26 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 		const scrollChanged = scrollTop !== beforeScroll;
 
+		if (commandMenu !== undefined) {
+			// 命令补全面板不拦截文字输入，只接管上下键与 Esc
+			const key = menuKey(text);
+			if (key === "up" || key === "down") {
+				moveCommandMenu(key === "up" ? -1 : 1);
+				return;
+			}
+			if (key === "escape") {
+				commandMenu = undefined;
+				render();
+				return;
+			}
+		}
+
 		const previous = input;
 		const result = appendInput(input, withoutMouse);
 		input = result.text;
-		if (input.length > 0) hasInput = true;
+		updateCommandMenu();
+		// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流
+		if (input.length > 0 && ready) hasInput = true;
 
 		if (result.submit) {
 			const submitted = submit();
@@ -410,6 +1017,31 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 function terminalHeight(output: TuiOutput): number {
 	return Math.max(1, output.rows ?? DEFAULT_ROWS);
+}
+
+/** 审批按键：y 放行，n / Enter / Esc 拒绝。 */
+function approvalKey(text: string): boolean | undefined {
+	const lower = text.toLowerCase();
+	if (lower.includes("y")) return true;
+	if (lower.includes("n") || text.includes("\r") || text.includes("\n") || text === "\x1b") {
+		return false;
+	}
+	return undefined;
+}
+
+/** 工具参数只显示个大概；完整内容由权限门自己截断后展示。 */
+function summarizeArgs(args: Record<string, unknown>): string {
+	const text = JSON.stringify(args);
+	return text.length > 120 ? `${text.slice(0, 120)}…` : text;
+}
+
+/** 菜单打开时只认这四个键；普通字符与鼠标事件一律忽略。 */
+function menuKey(text: string): "up" | "down" | "enter" | "escape" | undefined {
+	if (text.includes("\x1b[A") || text.includes("\x1bOA")) return "up";
+	if (text.includes("\x1b[B") || text.includes("\x1bOB")) return "down";
+	if (text.includes("\r") || text.includes("\n")) return "enter";
+	if (text === "\x1b") return "escape";
+	return undefined;
 }
 
 function moveCursor(row: number, column: number): string {

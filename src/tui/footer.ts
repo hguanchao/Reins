@@ -1,13 +1,16 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
+import { THEME } from "./theme.ts";
+
 /**
  * 页脚输入框。
  *
- * 六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行；边框铺满整个终端宽度。
- * 空白间隔把对话流和运行时状态行分开，正文滚到底时不会贴在一起。运行时状态在有任务时显示
- * 加载符号与状态文字，空闲时留空；常驻信息行显示项目、分支、模型、思考强度、上下文与缓存
- * 命中率。光标交给终端自己画，下方输入区只算出实际显示哪一段以及光标应落在第几列。边框与
- * 提示符随焦点切换颜色，正文保持默认颜色。
+ * 默认六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行；边框铺满整个终端宽度。
+ * 模型面板打开时改用紧凑四行，去掉空白与状态行，让面板直接接在输入框上方。空白间隔把对话流
+ * 和运行时状态行分开，正文滚到底时不会贴在一起。运行时状态在有任务时显示加载符号与状态文字，
+ * 空闲时留空；常驻信息行显示项目、分支、模型、思考强度、上下文与缓存命中率。光标交给终端自己
+ * 画，下方输入区只算出实际显示哪一段以及光标应落在第几列。边框与提示符随焦点切换颜色，正文
+ * 保持默认颜色。
  */
 
 export interface InputView {
@@ -45,25 +48,38 @@ export interface RuntimeStatus {
 	readonly sweep?: number;
 }
 
-/** 扫光的底色、高光和半径（字符数）。 */
-const SWEEP_BASE = 0x66;
+/** 扫光从强调色暗部过渡到白色。 */
+const SWEEP_BASE = THEME.accentDim;
 const SWEEP_HIGHLIGHT = 0xff;
 const SWEEP_RADIUS = 6;
-/** 阶段计时、总计时与 token 数的静态颜色 #666666。 */
-const STATUS_META_COLOR = "\x1b[38;2;102;102;102m";
-/** 输入框下方常驻信息行的颜色 #c8c8c8。 */
-const INFO_COLOR = "\x1b[38;2;200;200;200m";
+/** 阶段计时、总计时与 token 数的静态颜色。 */
+const STATUS_META_COLOR = THEME.textSubtle;
+/** 输入框下方常驻信息行的颜色。 */
+const INFO_COLOR = THEME.textSecondary;
+/** 运行时状态文字与焦点边框的强调色。 */
+const ACCENT_COLOR = THEME.accent;
 
 /** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
 export const FOOTER_HEIGHT = 6;
 
+/** 菜单打开时的紧凑页脚：上边框、输入行、下边框、常驻信息行。 */
+export const COMPACT_FOOTER_HEIGHT = 4;
+
+/** 页脚布局开关；默认是完整的六行。 */
+export interface FooterLayout {
+	/** 状态行上方是否留一行与对话流分隔；菜单面板已经承担分隔时可以关掉 */
+	readonly leadingGap?: boolean;
+	/** 是否显示运行时状态行 */
+	readonly showStatus?: boolean;
+}
+
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";
-/** 获得焦点时边框与提示符的颜色 #e1e1e1。 */
-const FOCUS_COLOR = "\x1b[38;2;225;225;225m";
-/** 失去焦点时边框与提示符的颜色 #242424。 */
-const BLUR_COLOR = "\x1b[38;2;36;36;36m";
-const RESET = "\x1b[0m";
+/** 获得焦点时边框与提示符使用强调色。 */
+const FOCUS_COLOR = THEME.accent;
+/** 失去焦点时边框与提示符使用边框色。 */
+const BLUR_COLOR = THEME.border;
+const RESET = THEME.reset;
 
 /** 常驻信息行每一项前的图标。 */
 const PROJECT_ICON = "📁";
@@ -97,17 +113,20 @@ export function renderFooter(
 	focused: boolean,
 	status?: RuntimeStatus,
 	info?: FooterInfo,
+	layout?: FooterLayout,
 ): readonly string[] {
 	const columns = Math.max(0, width);
 	const view = inputView(input, columns);
-	return [
-		"",
-		statusLine(columns, status),
+	const lines: string[] = [];
+	if (layout?.leadingGap !== false) lines.push("");
+	if (layout?.showStatus !== false) lines.push(statusLine(columns, status));
+	lines.push(
 		colored(horizontal(columns), focused),
 		colored(view.prefix, focused) + view.text,
 		colored(horizontal(columns), focused),
 		infoLine(columns, info),
-	];
+	);
+	return lines;
 }
 
 /**
@@ -143,7 +162,7 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 
 	const rightParts: string[] = [];
 	if (status.elapsedMs !== undefined) rightParts.push(formatDuration(status.elapsedMs));
-	if (status.tokens !== undefined) rightParts.push(`⇣${formatTokens(status.tokens)}`);
+	if (status.tokens !== undefined) rightParts.push(`⇣${formatCompactTokens(status.tokens)}`);
 	const right = rightParts.join("  ");
 
 	let line: string;
@@ -155,10 +174,13 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 		line = `${left}  ${right}`.slice(0, statusWidth);
 	}
 
-	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态的 #666666
+	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态的 #6b7580
 	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
 	const rest = line.slice(visibleActivity.length);
-	const head = status.sweep === undefined ? visibleActivity : swept(visibleActivity, status.sweep);
+	const head =
+		status.sweep === undefined
+			? `${ACCENT_COLOR}${visibleActivity}${RESET}`
+			: swept(visibleActivity, status.sweep);
 	return head + (rest.length > 0 ? `${STATUS_META_COLOR}${rest}${RESET}` : "");
 }
 
@@ -168,8 +190,10 @@ function swept(text: string, sweep: number): string {
 	for (let index = 0; index < text.length; index += 1) {
 		const distance = Math.abs(index - center);
 		const intensity = Math.max(0, 1 - distance / SWEEP_RADIUS);
-		const value = Math.round(SWEEP_BASE + (SWEEP_HIGHLIGHT - SWEEP_BASE) * intensity);
-		output += `\x1b[38;2;${value};${value};${value}m${text[index]}`;
+		const r = Math.round(SWEEP_BASE.r + (SWEEP_HIGHLIGHT - SWEEP_BASE.r) * intensity);
+		const g = Math.round(SWEEP_BASE.g + (SWEEP_HIGHLIGHT - SWEEP_BASE.g) * intensity);
+		const b = Math.round(SWEEP_BASE.b + (SWEEP_HIGHLIGHT - SWEEP_BASE.b) * intensity);
+		output += `\x1b[38;2;${r};${g};${b}m${text[index]}`;
 	}
 	return output + RESET;
 }
@@ -178,20 +202,26 @@ function formatDuration(ms: number): string {
 	return `${(ms / 1000).toFixed(1)}s`;
 }
 
-function formatTokens(tokens: number): string {
-	return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}K` : `${tokens}`;
-}
-
 function formatContext(used: number, total: number | undefined): string {
 	const current = formatCompactTokens(used);
 	return total === undefined ? current : `${current} / ${formatCompactTokens(total)}`;
 }
 
-/** 常驻信息行按 K/M 缩写，整数不带小数点：100K、1M。 */
+/**
+ * 常驻信息行与运行时状态共用同一套缩写。
+ *
+ * 100 以下保留整数；100 到 999 也进入 K，向下取整到一位小数，例如 999 → 0.9K；
+ * 1000 以上四舍五入到一位小数；接近一百万的 K 值会进位成 M，不出现 1000K。
+ */
 function formatCompactTokens(tokens: number): string {
 	const value = Math.max(0, tokens);
 	if (value >= 1_000_000) return `${trimDecimal(value / 1_000_000)}M`;
-	if (value >= 1_000) return `${trimDecimal(value / 1_000)}K`;
+	if (value >= 1_000) {
+		const thousands = Math.round((value / 1_000) * 10) / 10;
+		if (thousands >= 1_000) return `${trimDecimal(thousands / 1_000)}M`;
+		return `${trimDecimal(thousands)}K`;
+	}
+	if (value >= 100) return `${Math.floor(value / 100) / 10}K`;
 	return `${Math.round(value)}`;
 }
 
