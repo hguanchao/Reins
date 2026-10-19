@@ -80,24 +80,23 @@ export async function main(argv: readonly string[]): Promise<number> {
 			initializeConfig(options);
 			return runPrint(options);
 		case "tui":
-			initializeConfig(options);
 			return runTuiMode(options);
 	}
 }
 
 /**
- * 启动前补齐缺失的配置模板。
+ * 补齐缺失的配置模板。
  *
  * 显式指定了 --config / --providers 时不碰默认位置：使用者已经指明要看哪一份，再创建一份
- * 不会被读取的文件只会让人困惑。创建失败只报告，不阻止启动——接下来读配置时会给出具体错误。
+ * 不会被读取的文件只会让人困惑。模板是启动的默认准备动作，补上了也不出声——报一声反而像
+ * 出了问题；创建失败才报告，且不阻止启动，接下来读配置时会给出具体错误。
  */
 function initializeConfig(options: CliOptions): void {
 	try {
-		const created = initializeConfigFiles({
+		initializeConfigFiles({
 			config: options.configPath === undefined,
 			providers: options.providersPath === undefined,
 		});
-		for (const file of created) writeStderr(`Created configuration template: ${file}\n`);
 	} catch (error) {
 		writeStderr(
 			`reins: could not create configuration templates: ${error instanceof Error ? error.message : String(error)}\n`,
@@ -109,7 +108,7 @@ function initializeConfig(options: CliOptions): void {
  * 启动全屏界面。
  *
  * 备用屏只有在真实终端上才有意义；输入输出被重定向时直接报错，避免程序在管道里挂起等待
- * 一个永远不会到来的按键。
+ * 一个永远不会到来的按键。确认界面起得来之后先静默补齐缺失的配置模板，再读配置。
  *
  * 配置读不出来也照常进入界面：主区域用一行提示说明原因，输入不产生对话。只有
  * provider/model 对不上时仍建立模型目录，/model 选中后写回配置并恢复；完整的文件与行列
@@ -122,6 +121,9 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		writeStderr("reins: the full-screen interface needs an interactive terminal; pass a prompt to run non-interactively\n");
 		return 1;
 	}
+
+	// 确认界面起得来才补配置模板：起不来时不在磁盘上留下半套准备
+	initializeConfig(options);
 
 	const workRoot = process.cwd();
 	const loaded = await loadSelection(options);
