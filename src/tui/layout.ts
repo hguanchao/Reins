@@ -25,6 +25,7 @@ import {
 	type CommandMenuState,
 } from "./command-menu.ts";
 import { keepVisible } from "./menu-panel.ts";
+import { helpPageLines, renderHelpPage } from "./help-page.ts";
 import { renderTranscript, transcriptMetrics, type TranscriptTurn } from "./transcript.ts";
 
 /**
@@ -32,8 +33,9 @@ import { renderTranscript, transcriptMetrics, type TranscriptTurn } from "./tran
  *
  * 进入终端的备用屏，按当前尺寸铺满整个窗口；尺寸变化时重画。页脚是带运行时状态、输入框与
  * 常驻信息行的区域。回车把输入交给 TurnDriver，模型文本、工具调用与压缩进度作为事件实时
- * 进入对话流。输入 / 时展开命令补全面板，/model 与 /effort 再展开选择面板。工具需要确认时
- * 在输入框上方弹出审批面板。一轮进行中 Ctrl+C 只中止当前轮，空闲时连按两次才退出。
+ * 进入对话流。输入 / 时展开命令补全面板，/model 与 /effort 再展开选择面板，/help 把主区域
+ * 换成整屏帮助页。工具需要确认时在输入框上方弹出审批面板。一轮进行中 Ctrl+C 只中止当前轮，
+ * 空闲时连按两次才退出。
  */
 
 const ENTER_ALTERNATE_SCREEN = "\x1b[?1049h";
@@ -202,6 +204,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					: "Choose the reasoning effort for this session",
 			enabled: options.effortMenu !== undefined,
 		},
+		{
+			name: "help",
+			description: "Show the commands and keys",
+			enabled: true,
+		},
 	];
 
 	let input = "";
@@ -234,6 +241,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let modelMenu: ModelMenuState | undefined;
 	let effortMenu: EffortMenuState | undefined;
 	let commandMenu: CommandMenuState | undefined;
+	/** 帮助页是否占据主区域；打开期间视口只跟着它自己的滚动。 */
+	let helpOpen = false;
+	/** 帮助页从顶部滚过的行数。 */
+	let helpScrollTop = 0;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 	let exitArmed = false;
@@ -259,8 +270,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		modelMenu !== undefined ||
 		effortMenu !== undefined ||
 		commandMenu !== undefined;
+	/** 帮助页与菜单一样把输入框让给内容：紧凑页脚、不画光标。 */
+	const compactFooter = (): boolean => menuOpen() || helpOpen;
 	const footerHeight = (): number =>
-		menuOpen() ? COMPACT_FOOTER_HEIGHT + menuHeight() : FOOTER_HEIGHT;
+		compactFooter() ? COMPACT_FOOTER_HEIGHT + menuHeight() : FOOTER_HEIGHT;
 
 	const render = (): void => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
@@ -296,29 +309,33 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						: commandMenu !== undefined
 							? renderCommandMenu(width, commandMenu)
 							: [];
-		const footer = menuOpen()
+		const footer = compactFooter()
 			? renderFooter(
 					width,
 					input,
 					focused &&
 						modelMenu === undefined &&
 						effortMenu === undefined &&
-						approvalPrompt === undefined,
+						approvalPrompt === undefined &&
+						!helpOpen,
 					undefined,
 					currentInfo(),
 					{ leadingGap: false, showStatus: false },
 				)
 			: renderFooter(width, input, focused, status, currentInfo());
-		const main = hasInput || activeWarning !== undefined
-			? renderTranscript(width, mainHeight, turns, scrollTop, activeWarning)
-			: renderMain(width, mainHeight, options.version);
+		const main = helpOpen
+			? renderHelpPage(helpPageLines(width, commands), mainHeight, helpScrollTop)
+			: hasInput || activeWarning !== undefined
+				? renderTranscript(width, mainHeight, turns, scrollTop, activeWarning)
+				: renderMain(width, mainHeight, options.version);
 		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
 		const lines = [...main, ...menuLines, ...footer].slice(0, height);
-		const inputRow = menuOpen()
+		const inputRow = compactFooter()
 			? mainHeight + menuHeight() + (COMPACT_FOOTER_HEIGHT - 2)
 			: mainHeight + (FOOTER_HEIGHT - 2);
 		const cursor =
 			focused &&
+			!helpOpen &&
 			modelMenu === undefined &&
 			effortMenu === undefined &&
 			approvalPrompt === undefined &&
@@ -761,7 +778,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
-		// 当前只有 /model 与 /effort；未知命令不留在输入框里，避免看起来执行过了
+		if (command.name === "help") {
+			// 命令名不留在输入框里：帮助页期间输入框不接受按键
+			input = "";
+			helpOpen = true;
+			helpScrollTop = 0;
+			render();
+			return;
+		}
+
+		// 未覆盖的命令不留在输入框里，避免看起来执行过了
 		input = "";
 		render();
 	};
@@ -902,6 +928,32 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
+		if (helpOpen) {
+			// 帮助页也是模态的：上下键与滚轮翻页，Esc 返回，其它按键忽略
+			const rows = Math.max(0, terminalHeight(stdout) - footerHeight());
+			const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+			const total = helpPageLines(width, commands).length;
+			let steps = 0;
+			for (const event of mouseEvents(text)) {
+				if (event.press && event.button === 64) steps -= 1;
+				else if (event.press && event.button === 65) steps += 1;
+			}
+			const key = menuKey(text);
+			if (key === "up") steps -= 1;
+			if (key === "down") steps += 1;
+
+			if (key === "escape") {
+				helpOpen = false;
+				render();
+				return;
+			}
+			if (steps !== 0) {
+				helpScrollTop = Math.min(Math.max(0, helpScrollTop + steps), Math.max(0, total - rows));
+				render();
+			}
+			return;
+		}
+
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		const height = terminalHeight(stdout);
 		const mainHeight = Math.max(0, height - footerHeight());
@@ -978,8 +1030,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const result = appendInput(input, withoutMouse);
 		input = result.text;
 		updateCommandMenu();
-		// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流
-		if (input.length > 0 && ready) hasInput = true;
+		// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流；
+		// 斜杠命令同样不是对话内容，补全面板与帮助页都盖在启动画面上
+		if (input.length > 0 && !input.startsWith("/") && ready) hasInput = true;
 
 		if (result.submit) {
 			const submitted = submit();

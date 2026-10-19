@@ -408,7 +408,7 @@ describe("全屏布局", () => {
 			assert.ok(text.includes("/effort"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 2 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 3 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);
@@ -1074,5 +1074,90 @@ describe("全屏布局", () => {
 		} finally {
 			exitTui(input);
 		}
+	});
+
+	it("命令补全面板列出 /help", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+
+			const panel = frameLines(output).map(plain).join("\n");
+			assert.ok(panel.includes("/help"));
+			assert.ok(panel.includes("Show the commands and keys"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("输入 /help 打开整屏帮助页，Esc 返回，期间按键不进输入框", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/help\r"));
+
+			const help = frameLines(output).map(plain);
+			const text = help.join("\n");
+			assert.equal(help[0], "Reins — help");
+			assert.ok(text.includes("Commands"));
+			assert.ok(text.includes("/model"));
+			// 帮助页顶掉启动画面，并且不再画光标
+			assert.equal(text.includes("v1.2.3"), false);
+			assert.equal(CURSOR_SUFFIX.test(rawFrame(output)), false);
+
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\x1b"));
+
+			const back = frameLines(output).map(plain);
+			assert.ok(back.join("\n").includes("v1.2.3"));
+			assert.equal(back.join("\n").includes("Reins — help"), false);
+			assert.equal(back[9], " › ");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("帮助页用方向键与滚轮滚动，两端收敛", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/help\r"));
+			const top = frameLines(output).map(plain);
+			assert.equal(top[0], "Reins — help");
+
+			// 一次下移一行
+			input.emit("data", Buffer.from("\x1b[B"));
+			const stepped = frameLines(output).map(plain);
+			assert.equal(stepped[0], top[1]);
+
+			// 滚轮向下同样生效
+			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
+			const wheeled = frameLines(output).map(plain);
+			assert.equal(wheeled[0], top[2]);
+
+			// 一直滚到底，按键分区与脚注都可见
+			for (let index = 0; index < 40; index += 1) input.emit("data", Buffer.from("\x1b[B"));
+			const bottom = frameLines(output).map(plain).join("\n");
+			assert.ok(bottom.includes("Ctrl+C twice"));
+			assert.ok(bottom.includes("Run reins --help"));
+
+			// 一直滚回顶部后不再上移
+			for (let index = 0; index < 60; index += 1) input.emit("data", Buffer.from("\x1b[A"));
+			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
 	});
 });
