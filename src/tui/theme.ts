@@ -29,6 +29,8 @@ export const THEME = {
 	scrollbar: "\x1b[38;2;58;67;76m",
 	/** 警告 #e0af68 */
 	warning: "\x1b[38;2;224;175;104m",
+	/** 失败 #e06c75：出错的行要能从正文里一眼分出来 */
+	error: "\x1b[38;2;224;108;117m",
 	/** 重置颜色与属性 */
 	reset: "\x1b[0m",
 } as const;

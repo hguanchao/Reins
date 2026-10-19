@@ -21,10 +21,10 @@ export interface TranscriptTurn {
 /** 对话流里的一行：字符串就是正文，对象形式用于需要区别样式的行。 */
 export type TranscriptLine = string | TranscriptNote;
 
-/** 需要与正文区分开的一行。目前只有思考摘要，将来工具行也可以有自己的样子。 */
+/** 需要与正文区分开的一行：思考摘要是过程的痕迹，失败是要看见的事。 */
 export interface TranscriptNote {
 	readonly text: string;
-	readonly kind: "thinking";
+	readonly kind: "thinking" | "error";
 }
 
 /** 用户提示背景，与菜单面板使用同一档浮起表面。 */
@@ -33,6 +33,8 @@ const PROMPT_BG = THEME.surface;
 const MESSAGE_TEXT_COLOR = THEME.textPrimary;
 /** 思考摘要比正文弱一档：它是过程的痕迹，不是要读的内容。 */
 const THINKING_COLOR = THEME.textSubtle;
+/** 失败的行用错误色：出事时那行得能从正文里一眼看见。 */
+const ERROR_COLOR = THEME.error;
 /** 启动警告使用警告色，与普通正文区分开。 */
 const NOTICE_COLOR = THEME.warning;
 /** 滚动条颜色。 */
@@ -170,11 +172,12 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		lines.push(" ".repeat(width));
 		const responseStart = lines.length;
 		for (const line of turn.response) {
-			lines.push(
-				...(typeof line === "string"
-					? responseLines(line, width, MESSAGE_TEXT_COLOR)
-					: responseLines(line.text, width, THINKING_COLOR)),
-			);
+			if (typeof line === "string") {
+				lines.push(...responseLines(line, width, MESSAGE_TEXT_COLOR));
+				continue;
+			}
+			const color = line.kind === "error" ? ERROR_COLOR : THINKING_COLOR;
+			lines.push(...responseLines(line.text, width, color));
 		}
 		prompts.push({ start, height: promptLines.length, responseStart });
 		previousHadResponse = turn.response.length > 0;

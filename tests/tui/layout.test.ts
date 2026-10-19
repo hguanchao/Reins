@@ -970,6 +970,45 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("失败的行与状态里的 Error 用错误色", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("跑个命令\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "false" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: true,
+				durationMs: 3,
+				summary: "exit 1",
+			});
+			agent.emit({ type: "error", message: "boom" });
+			t.mock.timers.tick(100);
+
+			const lines = frameLines(output);
+			const failed = lines.find((line) => plain(line).includes("failed 3ms"));
+			const error = lines.find((line) => plain(line).includes("error: boom"));
+			const status = lines.find((line) => plain(line).includes("Error"));
+
+			assert.ok(failed?.includes(THEME.error));
+			assert.ok(error?.includes(THEME.error));
+			assert.ok(status?.includes(THEME.error));
+			// 已经不是「正在进行」了：状态行不该还用强调色，也不必扫光
+			assert.equal(status?.includes(THEME.accent), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("回复在提示下方增长并保持提示吸顶", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

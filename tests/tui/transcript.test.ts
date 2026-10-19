@@ -138,6 +138,20 @@ describe("对话流", () => {
 		assert.equal(notice?.includes(THEME.textPrimary), false);
 		assert.ok(body?.includes(THEME.textPrimary));
 	});
+
+	it("失败的行用错误色，出事时一眼能看见", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: ["answer", { text: "error: boom", kind: "error" }],
+		};
+		const lines = renderTranscript(40, 8, [turn], 0);
+
+		const failed = lines.find((line) => plain(line).includes("error: boom"));
+		const body = lines.find((line) => plain(line).includes("answer"));
+		assert.ok(failed?.includes(THEME.error));
+		assert.equal(failed?.includes(THEME.textPrimary), false);
+		assert.equal(body?.includes(THEME.error), false);
+	});
 });
 
 describe("滚动条列", () => {

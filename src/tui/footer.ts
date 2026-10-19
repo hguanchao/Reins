@@ -46,6 +46,8 @@ export interface RuntimeStatus {
 	readonly tokens?: number;
 	/** 扫光位置，0 到 1；省略时静态显示。 */
 	readonly sweep?: number;
+	/** 结局是失败时用错误色，而不是「正在进行」的强调色 */
+	readonly tone?: "error";
 }
 
 /** 扫光从强调色暗部过渡到白色。 */
@@ -58,6 +60,8 @@ const STATUS_META_COLOR = THEME.textSubtle;
 const INFO_COLOR = THEME.textSecondary;
 /** 运行时状态文字与焦点边框的强调色。 */
 const ACCENT_COLOR = THEME.accent;
+/** 结局是失败时状态文字用它。 */
+const ERROR_COLOR = THEME.error;
 
 /** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
 export const FOOTER_HEIGHT = 6;
@@ -178,8 +182,8 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
 	const rest = line.slice(visibleActivity.length);
 	const head =
-		status.sweep === undefined
-			? `${ACCENT_COLOR}${visibleActivity}${RESET}`
+		status.sweep === undefined || status.tone === "error"
+			? `${status.tone === "error" ? ERROR_COLOR : ACCENT_COLOR}${visibleActivity}${RESET}`
 			: swept(visibleActivity, status.sweep);
 	return head + (rest.length > 0 ? `${STATUS_META_COLOR}${rest}${RESET}` : "");
 }

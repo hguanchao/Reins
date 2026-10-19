@@ -232,6 +232,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let draggingScrollbar = false;
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
+	/** 状态是不是失败结局；失败用错误色，别跟「正在进行」混成一样。 */
+	let statusTone: "error" | undefined;
 	let statusPhaseMs = 0;
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
@@ -294,9 +296,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			statusText === undefined
 				? undefined
 				: {
-						symbol: SPINNER_FRAMES[spinnerFrame] ?? "",
+						// 失败结局不带转圈符号也不扫光：那两样都表示还在动，出错时它已经停了
+						symbol: statusTone === "error" ? "" : (SPINNER_FRAMES[spinnerFrame] ?? ""),
 						text: statusText,
-						sweep: sweepPhase,
+						sweep: statusTone === "error" ? undefined : sweepPhase,
+						tone: statusTone,
 						phaseMs: statusPhaseMs,
 						elapsedMs: statusElapsedMs,
 						tokens: statusTokens,
@@ -429,8 +433,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
-	const setStatus = (text: string): void => {
+	const setStatus = (text: string, tone?: "error"): void => {
 		statusText = text;
+		statusTone = tone;
 		statusPhaseMs = 0;
 		statusPhaseStartedAt = Date.now();
 	};
@@ -477,7 +482,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				statusElapsedMs = now - activeTurn.startedAt;
 				statusPhaseMs = Math.max(0, now - statusPhaseStartedAt);
 				statusTokens = estimateTokens(
-					[...activeTurn.lines, activeTurn.partial].join(" "),
+					[...activeTurn.lines, activeTurn.partial].map(textOfLine).join(" "),
 				);
 				syncApprovalPrompt();
 			}
@@ -560,10 +565,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				setStatus("Running tool...");
 				break;
 			case "tool_end":
+				// 工具失败是使用者要看见的事，用错误色跟成功的 done 行分开
 				appendLine(
 					active,
 					event.isError
-						? `  failed ${event.durationMs}ms: ${event.summary}`
+						? { text: `  failed ${event.durationMs}ms: ${event.summary}`, kind: "error" }
 						: `  done ${event.durationMs}ms`,
 				);
 				setStatus(THINKING);
@@ -583,7 +589,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				options.agent?.refreshInfo();
 				break;
 			case "compaction_failed":
-				appendLine(active, `  compaction failed: ${event.message}`);
+				appendLine(active, { text: `  compaction failed: ${event.message}`, kind: "error" });
 				break;
 			case "usage_recorded":
 				// 每次请求的用量都反映到页脚上，不必等整轮跑完
@@ -591,13 +597,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "error":
 				closeThinking(active);
-				appendLine(active, `error: ${event.message}`);
+				appendLine(active, { text: `error: ${event.message}`, kind: "error" });
 				active.outcome = "error";
-				setStatus(ERROR_STATUS);
+				setStatus(ERROR_STATUS, "error");
 				break;
 			case "aborted":
 				closeThinking(active);
-				appendLine(active, "aborted");
+				appendLine(active, { text: "aborted", kind: "error" });
 				active.outcome = "aborted";
 				setStatus(ABORTED);
 				break;
@@ -911,9 +917,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			.catch((error) => {
 				if (finished || activeTurn !== active) return;
 				closeThinking(active);
-				appendLine(active, `error: ${error instanceof Error ? error.message : String(error)}`);
+				appendLine(active, {
+					text: `error: ${error instanceof Error ? error.message : String(error)}`,
+					kind: "error",
+				});
 				active.outcome = "error";
-				setStatus(ERROR_STATUS);
+				setStatus(ERROR_STATUS, "error");
 			})
 			.finally(() => {
 				if (activeTurn !== active) return;
@@ -928,13 +937,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				disarm();
 				agent.refreshInfo();
 				statusElapsedMs = Date.now() - active.startedAt;
-				statusTokens = estimateTokens(active.lines.join(" "));
+				statusTokens = estimateTokens(active.lines.map(textOfLine).join(" "));
 				setStatus(
 					active.outcome === "done"
 						? DONE
 						: active.outcome === "aborted"
 							? ABORTED
 							: ERROR_STATUS,
+					active.outcome === "error" ? "error" : undefined,
 				);
 				scheduleStatusClear();
 				render();
@@ -1149,6 +1159,11 @@ function menuKey(text: string): "up" | "down" | "enter" | "escape" | undefined {
 
 function moveCursor(row: number, column: number): string {
 	return `\x1b[${row};${column}H`;
+}
+
+/** 取一行的文字：token 估算只关心文字，不关心这一行带不带样式。 */
+function textOfLine(line: TranscriptLine): string {
+	return typeof line === "string" ? line : line.text;
 }
 
 function estimateTokens(text: string): number {
