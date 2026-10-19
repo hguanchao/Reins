@@ -1,16 +1,19 @@
 import { createParser } from "eventsource-parser";
 
 import { readVersion } from "../version.ts";
-import { backoffDelay, delay, isRetryableStatus, type RetryPolicy } from "./retry.ts";
+import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "./retry.ts";
 
 /** 服务端返回非成功状态。带上响应体片段，否则只能看到一行状态码。 */
 export class LlmHttpError extends Error {
 	readonly status: number;
+	/** 服务端要求等多久再来（Retry-After）；没给就是 undefined */
+	readonly retryAfterMs: number | undefined;
 
-	constructor(status: number, message: string) {
+	constructor(status: number, message: string, retryAfterMs?: number) {
 		super(message);
 		this.name = "LlmHttpError";
 		this.status = status;
+		this.retryAfterMs = retryAfterMs;
 	}
 }
 
@@ -34,16 +37,27 @@ export interface SseRequest {
 const ERROR_BODY_LIMIT = 2000;
 
 /**
+ * 读流期间允许的最长静默。
+ *
+ * 上游接过连接之后再不出数据是很糟的失败：没有超时的话这一轮会永远挂着，使用者只能按
+ * Ctrl+C。300 秒也是参考实现们取的值——足够慢的模型思考完，又不至于让人干等。
+ */
+export const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
+
+/**
  * 发一次 POST，把响应体按 SSE 逐条交给 onData。
  *
  * SSE 的切分交给专门的解析器：一条事件可能被拆在多个网络分片里，也可能一个分片里有好几条，
  * 还有多行 data 的写法，自己拆迟早会在某个分片边界上出错。字节到文本的解码也必须是流式的，
  * 否则一个多字节字符被切开就会变成乱码。
+ *
+ * 等多久再试交给 retryDelay：服务端用 Retry-After 说了算，没说才用退避。
  */
 export async function postSse(
 	request: SseRequest,
 	onData: (data: string) => void,
 	policy: RetryPolicy,
+	idleTimeoutMs: number = DEFAULT_IDLE_TIMEOUT_MS,
 ): Promise<void> {
 	let delivered = false;
 
@@ -53,7 +67,7 @@ export async function postSse(
 			await postSseOnce(request, (data) => {
 				delivered = true;
 				onData(data);
-			});
+			}, idleTimeoutMs);
 			return;
 		} catch (error) {
 			if (
@@ -65,7 +79,10 @@ export async function postSse(
 				throw error;
 			}
 			request.onRetry?.(attempt + 1, describeError(error));
-			await delay(backoffDelay(attempt, policy.baseDelayMs), request.signal);
+			await delay(
+				retryDelay(attempt, policy, error instanceof LlmHttpError ? error.retryAfterMs : undefined),
+				request.signal,
+			);
 		}
 	}
 }
@@ -80,7 +97,11 @@ function describeError(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-async function postSseOnce(request: SseRequest, onData: (data: string) => void): Promise<void> {
+async function postSseOnce(
+	request: SseRequest,
+	onData: (data: string) => void,
+	idleTimeoutMs: number,
+): Promise<void> {
 	// 用 Headers 而不是对象：自定义头可能写 User-Agent / user-agent 等不同大小写，
 	// Headers 会按 HTTP 的规则归一化，后设置的值覆盖默认值。
 	const headers = new Headers({
@@ -99,7 +120,11 @@ async function postSseOnce(request: SseRequest, onData: (data: string) => void):
 	});
 
 	if (!response.ok) {
-		throw new LlmHttpError(response.status, await readErrorBody(response));
+		throw new LlmHttpError(
+			response.status,
+			await readErrorBody(response),
+			retryAfterMsOf(response.headers.get("retry-after")),
+		);
 	}
 	if (response.body === null) {
 		throw new LlmHttpError(response.status, "response has no body");
@@ -113,19 +138,68 @@ async function postSseOnce(request: SseRequest, onData: (data: string) => void):
 	const decoder = new TextDecoder("utf-8");
 	const reader = response.body.getReader();
 
+	// 静默超时不靠信号：取消读取让挂着的 read 立刻有结果，再按超时报错。
+	// 这样既不用把两个信号合成一个，也不影响调用方自己的中止。
+	let stalled = false;
+	let idleTimer: ReturnType<typeof setTimeout> | undefined;
+	const armIdle = (): void => {
+		if (idleTimer !== undefined) clearTimeout(idleTimer);
+		idleTimer = setTimeout(() => {
+			stalled = true;
+			void reader.cancel();
+		}, idleTimeoutMs);
+	};
+
 	try {
+		armIdle();
 		for (;;) {
 			const { done, value } = await reader.read();
 			if (done) break;
 			parser.feed(decoder.decode(value, { stream: true }));
+			armIdle();
+		}
+		if (stalled) {
+			// 按连接层失败报：一个数据都没收到时可重试，收到了就不再重试（由 postSse 判定）
+			throw new TypeError(
+				`the upstream sent no data for ${formatElapsed(idleTimeoutMs)}; the connection looks stalled`,
+			);
 		}
 	} catch (error) {
 		// 内容已经发完就不算失败：结束标记都收到了，连接收得干不干净不影响这一轮的结果
 		if (request.complete?.() !== true) throw describeClose(error);
+	} finally {
+		if (idleTimer !== undefined) clearTimeout(idleTimer);
 	}
 	// 收尾：把解码器里可能残留的半个字符与解析器里没有换行结尾的最后一条事件放出来
 	parser.feed(decoder.decode());
 	parser.reset({ consume: true });
+}
+
+/**
+ * 静默了多久。
+ *
+ * 默认值是几百秒，但测试里会传很小的值，短于一秒时按毫秒写出来，免得显示成「0s」。
+ */
+function formatElapsed(ms: number): string {
+	return ms >= 1000 ? `${Math.round(ms / 1000)}s` : `${Math.round(ms)}ms`;
+}
+
+/**
+ * 服务端要求的重试间隔。
+ *
+ * 两种写法都允许：秒数（含小数）与 HTTP 日期。看不懂就当作没给，退回自己的退避。
+ */
+function retryAfterMsOf(header: string | null): number | undefined {
+	if (header === null) return undefined;
+	const text = header.trim();
+	if (text.length === 0) return undefined;
+
+	const seconds = Number(text);
+	if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+
+	const date = Date.parse(text);
+	if (Number.isNaN(date)) return undefined;
+	return Math.max(0, date - Date.now());
 }
 
 /**
