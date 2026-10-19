@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import type { AgentEvent, AgentEventListener } from "../../src/agent/events.ts";
 import { ApprovalBroker } from "../../src/permission/approval.ts";
 import { runTui, type AgentRuntime } from "../../src/tui/layout.ts";
+import { THEME } from "../../src/tui/theme.ts";
 
 class FakeInput extends EventEmitter {
 	readonly isTTY = true;
@@ -919,6 +920,51 @@ describe("全屏布局", () => {
 			assert.ok(first > 0);
 			assert.equal(column.slice(first).join("").includes(" "), false);
 			assert.equal(column.slice(0, first).includes("█"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("思考只留一行时长摘要，正文不进对话流", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("你好\r"));
+			agent.emit({ type: "reasoning_delta", text: "先看工作区里有哪些文件" });
+			agent.emit({ type: "reasoning_delta", text: "，再决定读哪几个" });
+			t.mock.timers.tick(500);
+			agent.emit({ type: "text_delta", text: "你好，我能读写文件和跑命令。" });
+			t.mock.timers.tick(100);
+
+			const lines = frameLines(output);
+			const text = lines.map(plain).join("\n");
+			// 只留摘要：想过多久、想过几次，正文不进对话流
+			assert.ok(text.includes("thought 0.5s"));
+			assert.equal(text.includes("先看工作区里有哪些文件"), false);
+			// 摘要排在它之后的回答前面
+			assert.ok(text.indexOf("thought 0.5s") < text.indexOf("你好，我能读写文件和跑命令。"));
+			// 摘要比正文弱一档
+			assert.ok(
+				lines.some((line) => line.includes(THEME.textSubtle) && plain(line).includes("thought 0.5s")),
+			);
+
+			// 工具循环里第二次思考另计一段
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "README.md" } });
+			agent.emit({ type: "reasoning_delta", text: "再看一眼服务端结构" });
+			t.mock.timers.tick(300);
+			agent.emit({ type: "text_delta", text: "看完了。" });
+			t.mock.timers.tick(100);
+
+			const after = frameLines(output).map(plain).join("\n");
+			assert.ok(after.includes("thought 0.3s"));
+			assert.equal(after.match(/thought /g)?.length, 2);
 		} finally {
 			exitTui(input);
 		}

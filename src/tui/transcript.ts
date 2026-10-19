@@ -15,13 +15,24 @@ import { THEME } from "./theme.ts";
 
 export interface TranscriptTurn {
 	readonly prompt: string;
-	readonly response: readonly string[];
+	readonly response: readonly TranscriptLine[];
+}
+
+/** 对话流里的一行：字符串就是正文，对象形式用于需要区别样式的行。 */
+export type TranscriptLine = string | TranscriptNote;
+
+/** 需要与正文区分开的一行。目前只有思考摘要，将来工具行也可以有自己的样子。 */
+export interface TranscriptNote {
+	readonly text: string;
+	readonly kind: "thinking";
 }
 
 /** 用户提示背景，与菜单面板使用同一档浮起表面。 */
 const PROMPT_BG = THEME.surface;
 /** 用户提示与回复正文统一使用主文字色。 */
 const MESSAGE_TEXT_COLOR = THEME.textPrimary;
+/** 思考摘要比正文弱一档：它是过程的痕迹，不是要读的内容。 */
+const THINKING_COLOR = THEME.textSubtle;
 /** 启动警告使用警告色，与普通正文区分开。 */
 const NOTICE_COLOR = THEME.warning;
 /** 滚动条颜色。 */
@@ -159,7 +170,11 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		lines.push(" ".repeat(width));
 		const responseStart = lines.length;
 		for (const line of turn.response) {
-			lines.push(...responseLines(line, width));
+			lines.push(
+				...(typeof line === "string"
+					? responseLines(line, width, MESSAGE_TEXT_COLOR)
+					: responseLines(line.text, width, THINKING_COLOR)),
+			);
 		}
 		prompts.push({ start, height: promptLines.length, responseStart });
 		previousHadResponse = turn.response.length > 0;
@@ -202,14 +217,14 @@ function noticeLines(text: string, width: number): readonly string[] {
 	});
 }
 
-function responseLines(text: string, width: number): readonly string[] {
+function responseLines(text: string, width: number, color: string): readonly string[] {
 	const prefixWidth = Math.min(RESPONSE_INDENT.length, width);
 	const lines = wrapText(text, Math.max(0, width - prefixWidth));
 
 	return lines.map((line) => {
 		const content = truncateToWidth(RESPONSE_INDENT + line, width);
 		const padding = " ".repeat(Math.max(0, width - displayWidth(content)));
-		return `${MESSAGE_TEXT_COLOR}${content}${padding}${RESET}`;
+		return `${color}${content}${padding}${RESET}`;
 	});
 }
 

@@ -26,7 +26,7 @@ import {
 } from "./command-menu.ts";
 import { keepVisible } from "./menu-panel.ts";
 import { helpPageLines, renderHelpPage } from "./help-page.ts";
-import { renderTranscript, scrollbarColumn, transcriptMetrics, type TranscriptTurn } from "./transcript.ts";
+import { renderTranscript, scrollbarColumn, transcriptMetrics, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 全屏启动。
@@ -84,7 +84,7 @@ const STATUS_CLEAR_MS = 1500;
 
 /** 对话流里的一条真实回合；response 可变，流式文本和工具行持续追加。 */
 interface LiveTurn extends TranscriptTurn {
-	response: string[];
+	response: TranscriptLine[];
 }
 
 /** 一轮正在进行的对话。 */
@@ -93,9 +93,11 @@ interface ActiveTurn {
 	readonly controller: AbortController;
 	readonly startedAt: number;
 	/** 已经完成的文本与工具行 */
-	readonly lines: string[];
+	readonly lines: TranscriptLine[];
 	/** 当前还没等到换行的文本 */
 	partial: string;
+	/** 当前这段思考是什么时候开始的；没有思考在进行时为空 */
+	thinkingStartedAt: number | undefined;
 	outcome: "done" | "error" | "aborted";
 }
 
@@ -508,11 +510,27 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		syncScroll();
 	};
 
-	const appendLine = (active: ActiveTurn, line: string): void => {
+	const appendLine = (active: ActiveTurn, line: TranscriptLine): void => {
 		flushPartial(active);
 		active.lines.push(line);
 		syncTurn(active);
 		syncScroll();
+	};
+
+	/**
+	 * 一段思考结束。
+	 *
+	 * 思考正文不进对话流——一次思考可能几千个字，写进去只会把答案顶出视口；这里只留一行摘要，
+	 * 让人知道它想过、想了多久。一段可能在回答开始、工具调用、请求结束或中止时收尾。
+	 */
+	const closeThinking = (active: ActiveTurn): void => {
+		const startedAt = active.thinkingStartedAt;
+		if (startedAt === undefined) return;
+		active.thinkingStartedAt = undefined;
+		appendLine(active, {
+			text: `thought ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+			kind: "thinking",
+		});
 	};
 
 	const onEvent: AgentEventListener = (event: AgentEvent): void => {
@@ -524,13 +542,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				setStatus(WAITING_FOR_RESPONSE);
 				break;
 			case "text_delta":
+				closeThinking(active);
 				appendAssistantText(active, event.text);
 				setStatus(WRITING_RESPONSE);
 				break;
 			case "reasoning_delta":
+				// 只记开始时间：正文不进对话流，用状态行表示正在思考
+				if (active.thinkingStartedAt === undefined) active.thinkingStartedAt = Date.now();
 				setStatus(THINKING);
 				break;
 			case "tool_start":
+				closeThinking(active);
 				appendLine(active, `· ${event.name} ${summarizeArgs(event.args)}`);
 				setStatus(`Running ${event.name}...`);
 				break;
@@ -568,16 +590,21 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				options.agent?.refreshInfo();
 				break;
 			case "error":
+				closeThinking(active);
 				appendLine(active, `error: ${event.message}`);
 				active.outcome = "error";
 				setStatus(ERROR_STATUS);
 				break;
 			case "aborted":
+				closeThinking(active);
 				appendLine(active, "aborted");
 				active.outcome = "aborted";
 				setStatus(ABORTED);
 				break;
 			case "turn_end":
+				// 只思考、没产出正文也没调工具的一次请求，摘要行也要落下
+				closeThinking(active);
+				break;
 			case "run_end":
 				break;
 		}
@@ -858,6 +885,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			startedAt: Date.now(),
 			lines: [],
 			partial: "",
+			thinkingStartedAt: undefined,
 			outcome: "done",
 		};
 		activeTurn = active;
@@ -882,12 +910,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			.runTurn(message, onEvent, active.controller.signal)
 			.catch((error) => {
 				if (finished || activeTurn !== active) return;
+				closeThinking(active);
 				appendLine(active, `error: ${error instanceof Error ? error.message : String(error)}`);
 				active.outcome = "error";
 				setStatus(ERROR_STATUS);
 			})
 			.finally(() => {
 				if (activeTurn !== active) return;
+				closeThinking(active);
 				flushPartial(active);
 				syncTurn(active);
 				activeTurn = undefined;

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderTranscript, scrollbarColumn, transcriptMetrics } from "../../src/tui/transcript.ts";
+import { renderTranscript, scrollbarColumn, transcriptMetrics, type TranscriptTurn } from "../../src/tui/transcript.ts";
+import { THEME } from "../../src/tui/theme.ts";
 
 const PROMPT_BG = "\x1b[48;2;22;25;29m";
 const MESSAGE_TEXT = "\x1b[38;2;230;233;237m";
@@ -123,6 +124,19 @@ describe("对话流", () => {
 		const lines = renderTranscript(40, 10, [], 0, "Config error: No provider openai");
 
 		assert.ok(lines.every((line) => !plain(line).includes("█")));
+	});
+	it("思考摘要用弱一档的颜色，跟正文区分", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: ["answer", { text: "thought 1.2s", kind: "thinking" }],
+		};
+		const lines = renderTranscript(40, 8, [turn], 0);
+
+		const notice = lines.find((line) => plain(line).includes("thought"));
+		const body = lines.find((line) => plain(line).includes("answer"));
+		assert.ok(notice?.includes(THEME.textSubtle));
+		assert.equal(notice?.includes(THEME.textPrimary), false);
+		assert.ok(body?.includes(THEME.textPrimary));
 	});
 });
 
