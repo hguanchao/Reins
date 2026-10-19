@@ -9,9 +9,9 @@ import type { ConfigValue } from "./value.ts";
 /**
  * 用户级配置的定点回写。
  *
- * 有两处配置由程序自己写：工作区的信任清单与通知方式。它们都得写在**用户级**配置里，因为
- * 这两项决定的正是「一个目录能不能影响程序行为」——放在项目配置里，等于让不受信任的目录
- * 自己把门打开。
+ * 有三处配置由程序自己写：工作区的信任清单、通知方式与模型选择。它们都得写在**用户级**
+ * 配置里，因为前两项决定的正是「一个目录能不能影响程序行为」——放在项目配置里，等于让
+ * 不受信任的目录自己把门打开；模型选择则是使用者在 /model 里做出的显式决定。
  *
  * 回写走保留原文的 TOML 文档：使用者写下的注释与排版是他自己的东西，程序改一个键没有理由
  * 把它们冲掉。
@@ -28,17 +28,41 @@ export function updateUserConfigValue(
 	update: (current: ConfigValue | undefined) => ConfigValue,
 	file: string = configFilePath(),
 ): void {
+	mutateUserConfig(file, (document) => {
+		const next = update(document.get(path));
+		document.set([...path], next);
+	});
+}
+
+/**
+ * 把模型选择写回配置。
+ *
+ * provider 与 model 在一次写入里改完：分两次写会在中间留下一个指向不存在模型的组合，
+ * 恰好被另一个进程读到时就成了一份坏配置。
+ */
+export function updateModelSelection(
+	provider: string,
+	model: string,
+	file: string = configFilePath(),
+): void {
+	mutateUserConfig(file, (document) => {
+		document.set(["provider"], provider);
+		document.set(["model"], model);
+	});
+}
+
+/** 读出原文、执行修改、再一次性写回；任何一步失败都不落盘。 */
+function mutateUserConfig(file: string, mutate: (document: TomlDocument) => void): void {
 	let document: TomlDocument;
 	try {
 		document = new TomlDocument(existsSync(file) ? readFileSync(file, "utf8") : "");
 	} catch (error) {
 		throw new ConfigError(`Cannot read config: ${describeError(error)}`, { file });
 	}
-	const next = update(document.get(path));
 
 	try {
 		mkdirSync(dirname(file), { recursive: true });
-		document.set([...path], next);
+		mutate(document);
 		writeFileSync(file, document.source, "utf8");
 	} catch (error) {
 		throw new ConfigError(`Cannot write config: ${describeError(error)}`, { file });
