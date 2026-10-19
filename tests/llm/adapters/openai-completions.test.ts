@@ -180,6 +180,23 @@ describe("OpenAI 对话补全的图片映射", () => {
 		assert.equal(plain[0]?.body?.["max_tokens"], 512);
 	});
 
+	it("兼容端点把没有的字段写成 null 时不崩", async () => {
+		// 真实端点的常见形状：每帧都带 "usage": null、"delta": null、finish_reason: null
+		respondWith([
+			{ choices: [{ delta: { content: "ok" }, finish_reason: null, usage: null }], usage: null, error: null },
+			{ choices: [], usage: null },
+			{ choices: [{ delta: null }], usage: null },
+			{ choices: [{ delta: {}, finish_reason: "stop" }], usage: null },
+			"[DONE]",
+		]);
+
+		const result = await run(new OpenAiCompletionsClient(provider(), model(), POLICY), request());
+
+		assert.equal(result.stopReason, "stop");
+		assert.deepEqual(result.content, [{ type: "text", text: "ok" }]);
+		assert.equal(result.usage, undefined);
+	});
+
 	it("提示词缓存路由字段只发给声明支持的 provider", async () => {
 		const events = [
 			{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },

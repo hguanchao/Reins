@@ -50,8 +50,9 @@ interface WireMessage {
 interface StreamEvent {
 	readonly type: string;
 	readonly index?: number;
-	readonly message?: { readonly model?: string; readonly usage?: WireUsage };
-	readonly content_block?: WireBlock;
+	/** 可选字段允许 null：「没有」既可能缺字段也可能写成 null，只判一种会撞进去 */
+	readonly message?: { readonly model?: string | null; readonly usage?: WireUsage | null } | null;
+	readonly content_block?: WireBlock | null;
 	readonly delta?: {
 		readonly type?: string;
 		readonly text?: string;
@@ -59,9 +60,9 @@ interface StreamEvent {
 		readonly signature?: string;
 		readonly partial_json?: string;
 		readonly stop_reason?: string | null;
-	};
-	readonly usage?: WireUsage;
-	readonly error?: { readonly type?: string; readonly message?: string };
+	} | null;
+	readonly usage?: WireUsage | null;
+	readonly error?: { readonly type?: string; readonly message?: string } | null;
 }
 
 /** 这套协议的用量字段名与内部形状不同，且分散在开始与收尾两个事件里。 */
@@ -132,7 +133,7 @@ export class AnthropicMessagesClient implements LlmClient {
 					throw new Error(`endpoint returned an error: ${event.error?.message ?? event.error?.type ?? "no details"}`);
 				}
 				if (event.type === "message_start") {
-					if (event.message?.model !== undefined) responseModel = event.message.model;
+					if (typeof event.message?.model === "string") responseModel = event.message.model;
 					usage = { ...usage, ...countsOf(event.message?.usage) };
 					return;
 				}
@@ -270,8 +271,9 @@ interface TokenCounts {
 	readonly cacheWrite: number;
 }
 
-function countsOf(usage: WireUsage | undefined): Partial<TokenCounts> {
-	if (usage === undefined) return {};
+function countsOf(usage: WireUsage | null | undefined): Partial<TokenCounts> {
+	// 端点习惯把「没有」写成 null，只判 undefined 会一头撞进去
+	if (usage == null) return {};
 	return {
 		...(usage.input_tokens === undefined ? {} : { input: usage.input_tokens }),
 		...(usage.output_tokens === undefined ? {} : { output: usage.output_tokens }),

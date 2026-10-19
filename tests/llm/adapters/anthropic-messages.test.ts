@@ -246,4 +246,20 @@ describe("Anthropic Messages 的收尾判定", () => {
 		assert.equal(result.stopReason, "error");
 		assert.match(result.errorMessage ?? "", /empty response/);
 	});
+
+	it("端点把没有的字段写成 null 时不崩", async () => {
+		respondWith([
+			{ type: "message_start", message: { model: "m", usage: null } },
+			{ type: "content_block_start", index: 0, content_block: null },
+			{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } },
+			{ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: null },
+			{ type: "message_stop" },
+		]);
+
+		const { result } = await run(new AnthropicMessagesClient(provider(), model(), POLICY), request());
+
+		assert.equal(result.stopReason, "stop");
+		assert.deepEqual(result.content, [{ type: "text", text: "hi" }]);
+		assert.equal(result.usage, undefined);
+	});
 });

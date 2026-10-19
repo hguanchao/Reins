@@ -52,11 +52,12 @@ interface WireUsage {
 
 interface WireResponse {
 	readonly id?: string;
-	readonly model?: string;
+	readonly model?: string | null;
 	readonly status?: string;
-	readonly error?: { readonly code?: string; readonly message?: string };
+	readonly error?: { readonly code?: string; readonly message?: string } | null;
 	readonly incomplete_details?: { readonly reason?: string } | null;
-	readonly usage?: WireUsage;
+	/** 端点习惯把「没有」写成 null，所以要收下 null 而不是只判 undefined */
+	readonly usage?: WireUsage | null;
 }
 
 interface StreamEvent {
@@ -139,10 +140,11 @@ export class OpenAiResponsesClient implements LlmClient {
 				const index = event.output_index;
 				switch (event.type) {
 					case "response.created":
-						if (event.response?.model !== undefined) responseModel = event.response.model;
+						if (typeof event.response?.model === "string") responseModel = event.response.model;
 						return;
 					case "response.output_item.added":
-						if (index !== undefined && event.item !== undefined) {
+						// 可选字段允许 null：端点习惯把「没有」写成 null，只判 undefined 会一头撞进去
+						if (index !== undefined && event.item != null) {
 							startItem(index, event.item, accumulator, pendingTools, emit);
 						}
 						return;
@@ -178,14 +180,14 @@ export class OpenAiResponsesClient implements LlmClient {
 						}
 						return;
 					case "response.output_item.done":
-						if (index !== undefined && event.item !== undefined) {
+						if (index !== undefined && event.item != null) {
 							finishItem(index, event.item, finalArguments, accumulator, pendingTools, emit);
 						}
 						return;
 					case "response.completed":
 					case "response.incomplete": {
-						if (event.response?.model !== undefined) responseModel = event.response.model;
-						if (event.response?.usage !== undefined) usage = toUsage(event.response.usage);
+						if (typeof event.response?.model === "string") responseModel = event.response.model;
+						if (event.response?.usage != null) usage = toUsage(event.response.usage);
 						terminal = {
 							status: event.type === "response.incomplete" ? "incomplete" : (event.response?.status ?? "completed"),
 							reason: event.response?.incomplete_details?.reason,

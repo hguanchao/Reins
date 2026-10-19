@@ -270,4 +270,31 @@ describe("静默超时与重试间隔", () => {
 
 		assert.deepEqual(seen, ['{"first":1}', '{"second":2}']);
 	});
+
+	it("消费数据时抛错不会被说成连接问题", async () => {
+		const endpoint = await serve((response) => {
+			response.writeHead(200, { "content-type": "text/event-stream" });
+			response.end('data: {"usage":null}\n\n');
+		});
+		let error: unknown;
+
+		try {
+			await postSse(
+				{ url: endpoint.url, headers: {}, body: {}, signal: new AbortController().signal },
+				() => {
+					throw new TypeError("Cannot read properties of null (reading 'prompt_tokens_details')");
+				},
+				{ maxRetries: 0, baseDelayMs: 1 },
+			);
+		} catch (caught) {
+			error = caught;
+		} finally {
+			await endpoint.close();
+		}
+
+		// 这句报错是内容的问题，说成「连接被关闭」只会把人带偏
+		assert.ok(error instanceof TypeError);
+		assert.match(error.message, /Cannot read properties of null/);
+		assert.doesNotMatch(error.message, /connection was closed/);
+	});
 });

@@ -423,6 +423,21 @@ describe("OpenAI Responses 流式处理", () => {
 		assert.match(filtered.result.errorMessage ?? "", /content_filter/);
 	});
 
+	it("端点把没有的字段写成 null 时不崩", async () => {
+		respondWith([
+			{ type: "response.created", response: { id: "resp_1", model: null, usage: null } },
+			{ type: "response.output_text.delta", output_index: 0, delta: "ok" },
+			{ type: "response.output_item.done", output_index: 0, item: null },
+			{ type: "response.completed", response: { status: "completed", model: null, usage: null } },
+		]);
+
+		const { result } = await run(clientFor(), request());
+
+		assert.equal(result.stopReason, "stop");
+		assert.deepEqual(result.content, [{ type: "text", text: "ok" }]);
+		assert.equal(result.usage, undefined);
+	});
+
 	it("没有终止事件或工具调用未收尾时报错", async () => {
 		respondWith([
 			{

@@ -59,7 +59,7 @@ interface WireUsage {
 	readonly prompt_tokens?: number;
 	readonly completion_tokens?: number;
 	readonly total_tokens?: number;
-	readonly prompt_tokens_details?: { readonly cached_tokens?: number };
+	readonly prompt_tokens_details?: { readonly cached_tokens?: number } | null;
 	/** DeepSeek 系把缓存命中平铺在这里 */
 	readonly prompt_cache_hit_tokens?: number;
 	/** Kimi 系放在顶层 */
@@ -68,17 +68,23 @@ interface WireUsage {
 	readonly cache_write_tokens?: number;
 }
 
+/**
+ * 流里的一个分片。
+ *
+ * 可选字段一律允许 null：兼容端点习惯把「没有」写成 null（`"usage": null` 每帧都带），
+ * 只判 undefined 会一头撞进去。
+ */
 interface StreamChunk {
-	readonly model?: string;
+	readonly model?: string | null;
 	readonly choices?: readonly {
-		readonly delta?: StreamDelta;
+		readonly delta?: StreamDelta | null;
 		readonly finish_reason?: string | null;
 		/** Moonshot 系把用量放在 choice 里而不是 chunk 上 */
-		readonly usage?: WireUsage;
+		readonly usage?: WireUsage | null;
 	}[];
-	readonly usage?: WireUsage;
+	readonly usage?: WireUsage | null;
 	/** 出错时服务端会回一个 error 对象 */
-	readonly error?: { readonly message?: string; readonly type?: string };
+	readonly error?: { readonly message?: string; readonly type?: string } | null;
 }
 
 export class OpenAiCompletionsClient implements LlmClient {
@@ -144,20 +150,21 @@ export class OpenAiCompletionsClient implements LlmClient {
 					// 单个分片拼不成 JSON 就跳过：后续分片补齐后整轮对话仍然是完整的
 					return;
 				}
-				if (chunk.error !== undefined) {
+				// 兼容端点常把没有的字段写成 null：这里一律按「没给」处理，别去读它的属性
+				if (chunk.error != null) {
 					throw new Error(`endpoint returned an error: ${chunk.error.message ?? chunk.error.type ?? "no details"}`);
 				}
-				if (chunk.model !== undefined) responseModel = chunk.model;
-				if (chunk.usage !== undefined) usage = toUsage(chunk.usage);
+				if (typeof chunk.model === "string") responseModel = chunk.model;
+				if (chunk.usage != null) usage = toUsage(chunk.usage);
 
 				const choice = chunk.choices?.[0];
 				if (choice === undefined) return;
 				// 用量通常挂在 chunk 上；Moonshot 系把它挂在 choice 里
-				if (usage === undefined && choice.usage !== undefined) usage = toUsage(choice.usage);
+				if (usage === undefined && choice.usage != null) usage = toUsage(choice.usage);
 				if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
 					finishReason = choice.finish_reason;
 				}
-				if (choice.delta !== undefined) applyDelta(choice.delta, accumulator, emit);
+				if (choice.delta != null) applyDelta(choice.delta, accumulator, emit);
 			},
 			this.#policy,
 		);

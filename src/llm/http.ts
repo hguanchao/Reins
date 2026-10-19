@@ -153,9 +153,11 @@ async function postSseOnce(
 	try {
 		armIdle();
 		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			parser.feed(decoder.decode(value, { stream: true }));
+			const chunk = await readChunk(reader, request);
+			if (chunk === undefined) break;
+			// 解析与消费放在读之外：那里的报错（例如端点回了形状不对的字段）是内容的问题，
+			// 说成「连接被关闭」只会把人带偏
+			parser.feed(decoder.decode(chunk, { stream: true }));
 			armIdle();
 		}
 		if (stalled) {
@@ -164,15 +166,32 @@ async function postSseOnce(
 				`the upstream sent no data for ${formatElapsed(idleTimeoutMs)}; the connection looks stalled`,
 			);
 		}
-	} catch (error) {
-		// 内容已经发完就不算失败：结束标记都收到了，连接收得干不干净不影响这一轮的结果
-		if (request.complete?.() !== true) throw describeClose(error);
 	} finally {
 		if (idleTimer !== undefined) clearTimeout(idleTimer);
 	}
 	// 收尾：把解码器里可能残留的半个字符与解析器里没有换行结尾的最后一条事件放出来
 	parser.feed(decoder.decode());
 	parser.reset({ consume: true });
+}
+
+/**
+ * 读一块数据。
+ *
+ * 连接断掉但内容已经发完时返回 undefined，按正常结束处理；其余断连错误换成能看懂的说法。
+ * 只包住读本身：消费数据的代码抛错不是连接的问题。
+ */
+async function readChunk(
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	request: SseRequest,
+): Promise<Uint8Array | undefined> {
+	try {
+		const { done, value } = await reader.read();
+		return done ? undefined : value;
+	} catch (error) {
+		// 内容已经发完就不算失败：结束标记都收到了，连接收得干不干净不影响这一轮的结果
+		if (request.complete?.() === true) return undefined;
+		throw describeClose(error);
+	}
 }
 
 /**
