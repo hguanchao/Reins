@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
@@ -7,6 +6,9 @@ import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
 import { ConfigFile, type Config } from "../config/config-file.ts";
+import { initializeConfigFiles } from "../config/initialize.ts";
+import { ModelCatalog } from "../config/model-catalog.ts";
+import { updateModelSelection, updateUserConfigValue } from "../config/write-back.ts";
 import { mergeConfigs, mergeProviders } from "../config/merge.ts";
 import { loadProviders, type ProvidersConfig } from "../config/providers-file.ts";
 import {
@@ -21,11 +23,12 @@ import { resolveSelection, type ModelSelection } from "../config/selection.ts";
 import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
 import { clampEffort } from "../llm/effort.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
-import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
+import { PermissionGate, PermissionPolicy, type ApprovalReviewer } from "../permission/policy.ts";
+import { ApprovalBroker } from "../permission/approval.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PluginHost, type PluginFailure } from "../plugins/host.ts";
 import { ExternalPlugins } from "../plugins/external.ts";
-import { bundledPlugins, createBundledSessionStore } from "../plugins/registry.ts";
+import { bundledPlugins } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
 import { cacheHitRate as usageCacheHitRate, sumUsage } from "../session/usage.ts";
@@ -38,11 +41,13 @@ import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { currentBranch } from "../workspace/git.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
-import { runTui } from "../tui/layout.ts";
+import { runTui, type EffortMenuSource, type ModelMenuSource } from "../tui/layout.ts";
+import { buildTranscriptHistory } from "../tui/history.ts";
 import type { FooterInfo } from "../tui/footer.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { runPrintMode } from "./print-mode.ts";
 import { createSession, resumeCommand, resumeSession } from "./session-target.ts";
+import { readVersion } from "../version.ts";
 
 /**
  * 运行时装配。
@@ -72,9 +77,31 @@ export async function main(argv: readonly string[]): Promise<number> {
 			writeStdout(`${readVersion()}\n`);
 			return 0;
 		case "print":
+			initializeConfig(options);
 			return runPrint(options);
 		case "tui":
+			initializeConfig(options);
 			return runTuiMode(options);
+	}
+}
+
+/**
+ * 启动前补齐缺失的配置模板。
+ *
+ * 显式指定了 --config / --providers 时不碰默认位置：使用者已经指明要看哪一份，再创建一份
+ * 不会被读取的文件只会让人困惑。创建失败只报告，不阻止启动——接下来读配置时会给出具体错误。
+ */
+function initializeConfig(options: CliOptions): void {
+	try {
+		const created = initializeConfigFiles({
+			config: options.configPath === undefined,
+			providers: options.providersPath === undefined,
+		});
+		for (const file of created) writeStderr(`Created configuration template: ${file}\n`);
+	} catch (error) {
+		writeStderr(
+			`reins: could not create configuration templates: ${error instanceof Error ? error.message : String(error)}\n`,
+		);
 	}
 }
 
@@ -84,8 +111,11 @@ export async function main(argv: readonly string[]): Promise<number> {
  * 备用屏只有在真实终端上才有意义；输入输出被重定向时直接报错，避免程序在管道里挂起等待
  * 一个永远不会到来的按键。
  *
- * 进入界面之前就把会话落成文件：界面退出后要在主屏给出接续命令，没有文件的会话接到命令
- * 也找不回来。
+ * 配置读不出来也照常进入界面：主区域用一行提示说明原因，输入不产生对话。只有
+ * provider/model 对不上时仍建立模型目录，/model 选中后写回配置并恢复；完整的文件与行列
+ * 信息由非交互模式输出，界面里只保留最短的必要信息。
+ *
+ * 会话文件在配置正常时启动即建立；受限模式下等到选型成功后再建立，避免留下一个空会话。
  */
 async function runTuiMode(options: CliOptions): Promise<number> {
 	if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -94,18 +124,87 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	}
 
 	const workRoot = process.cwd();
-	// 配置先读：模型名写错时不该留下一个空会话文件
 	const loaded = await loadSelection(options);
-	if (loaded === undefined) return 1;
+	const configFile = options.configPath ?? configFilePath();
+	const providersFile = options.providersPath ?? providersFilePath();
 
-	const store = createBundledSessionStore();
+	// 配置完全读不出来：只显示警告，不装配 agent，/model 与 /effort 都不可用
+	if (!loaded.ok && !loaded.recoverable) {
+		const session = createSession(workRoot, undefined);
+		try {
+			return await runTui({
+				version: readVersion(),
+				info: createUnavailableFooterInfo(workRoot, session),
+				warning: `Config error: ${loaded.error.message}`,
+				ready: false,
+			});
+		} catch (error) {
+			writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
+			return 1;
+		} finally {
+			await session.close();
+		}
+	}
+
+	const config = loaded.ok ? loaded.value.config : loaded.config;
+	const providersConfig = loaded.ok ? loaded.value.providersConfig : loaded.providersConfig;
+	const initialSelection = loaded.ok ? loaded.value.selection : undefined;
+
+	// 权限、工具、插件与沙箱：与非交互模式使用同一条装配路径
+	const approvals = new ApprovalBroker();
+	const policy = new PermissionPolicy(config.approval);
+	const catalog = new ModelCatalog(providersConfig, config, initialSelection);
+	let activeConfig = config;
+	const reviewer =
+		config.approval === "auto"
+			? createDynamicReviewer(catalog, () => activeConfig, workRoot)
+			: undefined;
+	const gate = new PermissionGate({
+		policy,
+		reviewer,
+		// --yes 只解决「没有人可以问」；拒绝规则与审查模型仍然生效
+		confirmer: options.assumeYes ? async () => true : approvals.request,
+	});
+	const registry = new ToolRegistry(
+		new ResultSpiller(config.spillThreshold, spillDir()),
+		gate,
+	);
+	for (const tool of createCoreTools()) registry.register(tool, "core");
+
+	const host = new PluginHost(registry, policy);
+	const external = prepareExternalPlugins(host);
+	const failures = await host.load(
+		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
+			(plugin) => !disabledPlugins(config).has(plugin.name),
+		),
+	);
+	for (const failure of failures) {
+		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
+	}
+	reportExternalFailures(await external.load());
+
+	let sandbox: SandboxView;
+	try {
+		sandbox = createSandboxFor(config, workRoot, host);
+	} catch (error) {
+		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
+		return 1;
+	}
+	warnUnsandboxedMcpServers(config);
+
+	const workspace = new WorkspaceBoundary(workRoot);
+	const store = host.sessionStore();
 	let session: Session | undefined;
 	try {
 		session =
 			options.resume === undefined
-				? createSession(workRoot, store)
-				: resumeSession(workRoot, options.resume, store);
-		if (options.resume === undefined) session.begin();
+				? createSessionFor(workRoot, store)
+				: store === undefined
+					? (() => {
+							throw new Error("No session store; cannot resume this session");
+						})()
+					: resumeSession(workRoot, options.resume, store);
+		if (options.resume === undefined && loaded.ok) session.begin();
 	} catch (error) {
 		await session?.close();
 		writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -113,12 +212,87 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	}
 	if (session === undefined) return 1;
 
+	let sessionPersisted =
+		options.resume !== undefined || (loaded.ok && session.path !== null);
+	/** 从受限模式恢复后补建会话文件；失败只报告，不阻止本次使用。 */
+	const markSessionReady = (): void => {
+		if (sessionPersisted || session.path === null) return;
+		try {
+			session.begin();
+			sessionPersisted = true;
+		} catch (error) {
+			writeStderr(
+				`reins: could not create session file: ${error instanceof Error ? error.message : String(error)}\n`,
+			);
+		}
+	};
+
+	let footerInfo =
+		initialSelection !== undefined
+			? createFooterInfo(workRoot, activeConfig, initialSelection, session)
+			: createUnavailableFooterInfo(workRoot, session);
+	const history = buildTranscriptHistory(session.state().messages);
+	const refreshInfo = (): void => {
+		const current = catalog.selection;
+		if (current !== undefined) {
+			footerInfo = createFooterInfo(workRoot, activeConfig, current, session);
+		}
+	};
+
+	/** 一轮真实对话。模型/思考等级都从当前目录读取，切换后下一轮立即生效。 */
+	const runTurn = async (
+		prompt: string,
+		onEvent: AgentEventListener,
+		signal: AbortSignal,
+	): Promise<void> => {
+		const current = catalog.selection;
+		if (current === undefined) throw new Error("No model selected; run /model first");
+		const compactor = createCompactor(activeConfig, current);
+		const driver = createDriverFor(
+			{ config: activeConfig, selection: current, compactor },
+			{ registry, session, workspace, sandbox },
+			onEvent,
+		);
+		await driver.run(prompt, signal);
+	};
+
+	const modelMenu = createModelMenuSource({
+		catalog,
+		config: activeConfig,
+		providersConfig,
+		configFile,
+		providersFile,
+		writePath: configFile,
+		onSelection: (next) => {
+			footerInfo = createFooterInfo(workRoot, activeConfig, next, session);
+		},
+		onReady: markSessionReady,
+	});
+	const effortMenu = createEffortMenuSource({
+		getConfig: () => activeConfig,
+		writePath: configFile,
+		onConfigChange: (next) => {
+			activeConfig = next;
+			refreshInfo();
+		},
+	});
+
+	const warning = loaded.ok ? undefined : `Config error: ${loaded.error.message}`;
+	const ready = loaded.ok;
+
 	try {
 		const code = await runTui({
 			version: readVersion(),
-			info: createFooterInfo(workRoot, loaded.config, loaded.selection, session),
+			info: () => footerInfo,
+			warning,
+			ready,
+			agent: { runTurn, refreshInfo },
+			approval: approvals,
+			modelMenu,
+			effortMenu,
+			history,
 		});
-		writeStdout(`${resumeCommand(session.id)}\n`);
+		if (sessionPersisted) writeStdout(`${resumeCommand(session.id)}\n`);
 		return code;
 	} catch (error) {
 		writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -126,6 +300,104 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	} finally {
 		await session.close();
 	}
+}
+
+/**
+ * 审查模型跟随当前选型。
+ *
+ * 审批为 auto 时，插件的加严规则仍可能把某次调用交回审查模型；/model 切换后应当用新模型
+ * 审查，而不是继续用启动时那一个。
+ */
+function createDynamicReviewer(
+	catalog: ModelCatalog,
+	getConfig: () => Config,
+	workRoot: string,
+): ApprovalReviewer {
+	return {
+		async review(tool, args, signal) {
+			const selection = catalog.selection;
+			if (selection === undefined) {
+				return { allowed: false, reason: "No model is selected; denied" };
+			}
+			return createReviewer(getConfig(), selection, workRoot).review(tool, args, signal);
+		},
+	};
+}
+
+/**
+ * 模型菜单的宿主实现。
+ *
+ * 切换本身只改会话内的目录；确认后把 provider/model 写进配置，再用写好的配置重新校验一次。
+ * 写盘或校验失败时保持受限状态，并把原因一并交给界面显示。
+ */
+function createModelMenuSource(options: {
+	readonly catalog: ModelCatalog;
+	readonly config: Config;
+	readonly providersConfig: ProvidersConfig;
+	readonly configFile: string;
+	readonly providersFile: string;
+	readonly writePath: string;
+	readonly onSelection: (selection: ModelSelection) => void;
+	readonly onReady: () => void;
+}): ModelMenuSource {
+	return {
+		list: () => options.catalog.options(),
+		select: (item) => {
+			const outcome = options.catalog.switchTo(item.provider, item.model);
+			options.onSelection(outcome.selection);
+			const warnings = [...outcome.warnings];
+
+			try {
+				updateModelSelection(item.provider, item.model, options.writePath);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					warnings: [...warnings, message],
+					ready: false,
+					warning: `Config error: ${message}`,
+				};
+			}
+
+			try {
+				// 写回后按完整配置再校验一次：compact_model / review_model 可能仍指向旧 provider
+				resolveSelection(
+					{ ...options.config, provider: item.provider, model: item.model },
+					options.providersConfig,
+					options.configFile,
+					options.providersFile,
+				);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return {
+					warnings: [...warnings, message],
+					ready: false,
+					warning: `Config error: ${message}`,
+				};
+			}
+
+			options.onReady();
+			return { warnings, ready: true, warning: undefined };
+		},
+	};
+}
+
+/**
+ * 思考等级菜单的宿主实现。
+ *
+ * 写入失败直接抛错，由界面显示原因；成功后再更新内存里的配置，页脚随之刷新。
+ */
+function createEffortMenuSource(options: {
+	readonly getConfig: () => Config;
+	readonly writePath: string;
+	readonly onConfigChange: (config: Config) => void;
+}): EffortMenuSource {
+	return {
+		current: () => options.getConfig().reasoningEffort,
+		select: (level) => {
+			updateUserConfigValue(["reasoning_effort"], () => level, options.writePath);
+			options.onConfigChange({ ...options.getConfig(), reasoningEffort: level });
+		},
+	};
 }
 
 /**
@@ -156,10 +428,31 @@ function createFooterInfo(
 	};
 }
 
+/**
+ * 配置不可用时的常驻信息。
+ *
+ * 模型与思考强度留空而不是猜一个值：这时没有可用的选型，显示任何具体模型都会让人以为
+ * 请求会发到那里。会话本身的计数仍然准确，照常显示。
+ */
+function createUnavailableFooterInfo(workRoot: string, session: Session): FooterInfo {
+	return {
+		project: basename(workRoot),
+		branch: currentBranch(workRoot),
+		model: "-",
+		effort: "-",
+		contextUsed: estimateTokens(session.state().messages),
+		contextWindow: undefined,
+		cacheHitRate: usageCacheHitRate(sumUsage(session.entries())),
+	};
+}
+
 async function runPrint(options: CliOptions): Promise<number> {
 	const loaded = await loadSelection(options);
-	if (loaded === undefined) return 1;
-	const { config, selection } = loaded;
+	if (!loaded.ok) {
+		writeStderr(`${loaded.error.display}\n`);
+		return 1;
+	}
+	const { config, selection } = loaded.value;
 
 	const workRoot = process.cwd();
 	const workspace = new WorkspaceBoundary(workRoot);
@@ -222,29 +515,63 @@ async function runPrint(options: CliOptions): Promise<number> {
 /**
  * 读出生效配置并解析出所使用的模型。
  *
- * 交互与非交互两种启动方式共用同一条校验：模型名写错时两边都该在进入界面前停下，而不是
- * 一边正常启动、另一边报错。
+ * 交互与非交互两种启动方式共用同一条校验。返回错误而不是直接退出，让两种模式各自决定
+ * 怎么处理：全屏界面把错误留在主区域继续显示，非交互模式没有可展示错误的地方，直接退出。
  */
-async function loadSelection(
-	options: CliOptions,
-): Promise<{ readonly config: Config; readonly selection: ModelSelection } | undefined> {
+export type SelectionResult =
+	| {
+			readonly ok: true;
+			readonly value: {
+				readonly config: Config;
+				readonly providersConfig: ProvidersConfig;
+				readonly selection: ModelSelection;
+			};
+	  }
+	| {
+			/** 配置本身读得动，只是 provider/model 对不上；/model 可以修复 */
+			readonly ok: false;
+			readonly recoverable: true;
+			readonly config: Config;
+			readonly providersConfig: ProvidersConfig;
+			readonly error: ConfigError;
+	  }
+	| { readonly ok: false; readonly recoverable: false; readonly error: ConfigError };
+
+export async function loadSelection(options: CliOptions): Promise<SelectionResult> {
 	const configFile = options.configPath ?? configFilePath();
 	const providersFile = options.providersPath ?? providersFilePath();
+
+	let effective: Awaited<ReturnType<typeof loadEffectiveConfig>>;
 	try {
-		const effective = await loadEffectiveConfig(options);
+		effective = await loadEffectiveConfig(options);
+	} catch (error) {
+		if (error instanceof ConfigError) return { ok: false, recoverable: false, error };
+		throw error;
+	}
+
+	try {
 		return {
-			config: effective.config,
-			selection: resolveSelection(
-				effective.config,
-				effective.providersConfig,
-				configFile,
-				providersFile,
-			),
+			ok: true,
+			value: {
+				config: effective.config,
+				providersConfig: effective.providersConfig,
+				selection: resolveSelection(
+					effective.config,
+					effective.providersConfig,
+					configFile,
+					providersFile,
+				),
+			},
 		};
 	} catch (error) {
 		if (error instanceof ConfigError) {
-			writeStderr(`${error.display}\n`);
-			return undefined;
+			return {
+				ok: false,
+				recoverable: true,
+				config: effective.config,
+				providersConfig: effective.providersConfig,
+				error,
+			};
 		}
 		throw error;
 	}
@@ -510,17 +837,6 @@ function createSessionFor(workRoot: string, store: SessionStore | undefined): Se
 		writeStderr("No session store (session-plugin is disabled or failed to load), this session will not be saved to a file\n");
 	}
 	return createSession(workRoot, store);
-}
-
-/** 版本号取自 package.json；源码即运行产物，因此相对路径在任何安装形态下都成立。 */
-function readVersion(): string {
-	const url = new URL("../../package.json", import.meta.url);
-	const parsed: unknown = JSON.parse(readFileSync(url, "utf8"));
-	if (typeof parsed === "object" && parsed !== null && "version" in parsed) {
-		const version = (parsed as { version: unknown }).version;
-		if (typeof version === "string") return version;
-	}
-	return "unknown";
 }
 
 function writeStdout(text: string): void {
