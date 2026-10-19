@@ -66,11 +66,11 @@ function bodyOf(init: RequestInit | undefined): Record<string, unknown> | undefi
 }
 
 function headersOf(value: RequestInit["headers"]): Record<string, string> {
-	if (value === undefined || value instanceof Headers || Array.isArray(value)) return {};
+	if (value === undefined) return {};
 	const result: Record<string, string> = {};
-	for (const [name, entry] of Object.entries(value)) {
-		if (typeof entry === "string") result[name] = entry;
-	}
+	new Headers(value).forEach((entry, name) => {
+		result[name] = entry;
+	});
 	return result;
 }
 

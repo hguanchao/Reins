@@ -1,5 +1,6 @@
 import { createParser } from "eventsource-parser";
 
+import { readVersion } from "../version.ts";
 import { backoffDelay, delay, isRetryableStatus, type RetryPolicy } from "./retry.ts";
 
 /** 服务端返回非成功状态。带上响应体片段，否则只能看到一行状态码。 */
@@ -73,12 +74,15 @@ function describeError(error: unknown): string {
 }
 
 async function postSseOnce(request: SseRequest, onData: (data: string) => void): Promise<void> {
-	const headers = {
+	// 用 Headers 而不是对象：自定义头可能写 User-Agent / user-agent 等不同大小写，
+	// Headers 会按 HTTP 的规则归一化，后设置的值覆盖默认值。
+	const headers = new Headers({
 		"content-type": "application/json",
 		accept: "text/event-stream",
-		...request.headers,
-	};
-	assertHeaderEncodable(headers);
+		"user-agent": `reins/${readVersion()}`,
+	});
+	assertHeaderEncodable(request.headers);
+	for (const [name, value] of Object.entries(request.headers)) headers.set(name, value);
 
 	const response = await fetch(request.url, {
 		method: "POST",
