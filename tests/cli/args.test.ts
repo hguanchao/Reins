@@ -42,7 +42,6 @@ describe("parseArgs 的配置选项", () => {
 	});
 
 	it("布尔开关", () => {
-		assert.equal(parseArgs(["-y"]).assumeYes, true);
 		assert.equal(parseArgs(["--trust"]).trust, true);
 		assert.equal(parseArgs(["--no-trust"]).trust, false);
 	});
@@ -63,6 +62,8 @@ describe("parseArgs 的配置选项", () => {
 describe("parseArgs 拒绝非法输入", () => {
 	it("未知选项直接报错", () => {
 		assert.throws(() => parseArgs(["--bogus"]), /unknown option --bogus/);
+		assert.throws(() => parseArgs(["--yes"]), /unknown option --yes/);
+		assert.throws(() => parseArgs(["-y"]), /unknown option -y/);
 	});
 
 	it("-- 之后的一切进 prompt", () => {

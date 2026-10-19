@@ -27,7 +27,6 @@ function options(configPath: string, providersPath: string): CliOptions {
 		prompt: "",
 		configPath,
 		providersPath,
-		assumeYes: false,
 		trust: undefined,
 		resume: undefined,
 	};

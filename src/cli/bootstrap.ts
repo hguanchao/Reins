@@ -162,8 +162,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	const gate = new PermissionGate({
 		policy,
 		reviewer,
-		// --yes 只解决「没有人可以问」；拒绝规则与审查模型仍然生效
-		confirmer: options.assumeYes ? async () => true : approvals.request,
+		confirmer: approvals.request,
 	});
 	const registry = new ToolRegistry(
 		new ResultSpiller(config.spillThreshold, spillDir()),
@@ -459,12 +458,11 @@ async function runPrint(options: CliOptions): Promise<number> {
 
 	// 审批链路：策略先立起来，插件装载时往里加规则
 	const policy = new PermissionPolicy(config.approval);
+	// 一次性提问没有人可问，因此不接 confirmer：需要询问的调用按拒绝处理
 	const gate = new PermissionGate({
 		policy,
 		reviewer:
 			config.approval === "auto" ? createReviewer(config, selection, workRoot) : undefined,
-		// --yes 只把「没人可问」变成「算同意」；它不越过拒绝规则，也不越过审查模型
-		confirmer: options.assumeYes ? async () => true : undefined,
 	});
 
 	const registry = new ToolRegistry(

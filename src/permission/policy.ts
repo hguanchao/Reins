@@ -141,7 +141,7 @@ export class PermissionGate {
 			// 没有人看着的时候就按拒绝处理：默认放行等于把「无人值守」变成「随意改动」
 			return {
 				allowed: false,
-				reason: `${reason}, but there is no one to ask; use --yes to allow, or set approval to auto or yolo in config.toml`,
+				reason: `${reason}, but there is no one to ask; set approval to auto or yolo in config.toml`,
 			};
 		}
 

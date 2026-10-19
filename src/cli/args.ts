@@ -15,12 +15,6 @@ export interface CliOptions {
 	readonly prompt: string;
 	readonly configPath: string | undefined;
 	readonly providersPath: string | undefined;
-	/**
-	 * 把「需要征求同意」的调用一律视为同意。
-	 *
-	 * 它只解决「没有人可以问」这一种情形：拒绝规则与审查模型都照旧生效。
-	 */
-	readonly assumeYes: boolean;
 	/** 对当前工作区信任与否给出的明确结论；没给就是 undefined */
 	readonly trust: boolean | undefined;
 	/** 全屏界面要接续的会话标识；没给就是新建会话 */
@@ -38,7 +32,6 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	let configPath: string | undefined;
 	let providersPath: string | undefined;
 	let explicitPrint = false;
-	let assumeYes = false;
 	let trust: boolean | undefined;
 	let resume: string | undefined;
 
@@ -50,10 +43,6 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 
 		if (argument === "--print" || argument === "-p") {
 			explicitPrint = true;
-			continue;
-		}
-		if (argument === "--yes" || argument === "-y") {
-			assumeYes = true;
 			continue;
 		}
 		if (argument === "--trust") {
@@ -111,7 +100,6 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		prompt: command === "print" ? positionals.join(" ") : "",
 		configPath,
 		providersPath,
-		assumeYes,
 		trust,
 		resume,
 	};
@@ -123,7 +111,6 @@ function optionsOf(command: CliCommand): CliOptions {
 		prompt: "",
 		configPath: undefined,
 		providersPath: undefined,
-		assumeYes: false,
 		trust: undefined,
 		resume: undefined,
 	};
@@ -146,7 +133,6 @@ Usage:
   reins --version             Show the version
 
 Options:
-  --yes                       Every approval request counts as granted; deny rules and the review model still apply
   --trust                     Read the config shipped in this workspace and record the decision
   --no-trust                  Do not read the workspace config, and record the decision
   --config <path>             Use the given config.toml instead of the one in the config directory
