@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderTranscript, transcriptMetrics } from "../../src/tui/transcript.ts";
+import { renderTranscript, scrollbarColumn, transcriptMetrics } from "../../src/tui/transcript.ts";
 
 const PROMPT_BG = "\x1b[48;2;22;25;29m";
 const MESSAGE_TEXT = "\x1b[38;2;230;233;237m";
@@ -123,5 +123,31 @@ describe("对话流", () => {
 		const lines = renderTranscript(40, 10, [], 0, "Config error: No provider openai");
 
 		assert.ok(lines.every((line) => !plain(line).includes("█")));
+	});
+});
+
+describe("滚动条列", () => {
+	function marks(height: number, total: number, top: number): string {
+		return scrollbarColumn(height, total, top).map(plain).join("");
+	}
+
+	it("滑块只有一段，两端是轨道", () => {
+		const column = marks(10, 100, 45);
+		const first = column.indexOf("█");
+		const last = column.lastIndexOf("█");
+
+		assert.ok(first > 0);
+		assert.ok(last < column.length - 1);
+		// 首尾之间不能有轨道，否则滑块就是断的
+		assert.equal(column.slice(first, last + 1).includes(" "), false);
+	});
+
+	it("滚到顶部时滑块贴顶，到底部时贴底", () => {
+		assert.ok(marks(10, 100, 0).startsWith("█"));
+		assert.ok(marks(10, 100, 90).endsWith("█"));
+	});
+
+	it("内容没超出视口时整列为空", () => {
+		assert.equal(marks(10, 10, 0).trim(), "");
 	});
 });

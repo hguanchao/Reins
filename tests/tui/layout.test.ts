@@ -123,9 +123,16 @@ function lastFrame(output: FakeOutput): string {
 	return rawFrame(output).replace(CURSOR_SUFFIX, "");
 }
 
+/** 内容行都定位到第 1 列；滚动条列的重画跟在所有内容行之后，不属于某一行。 */
+const ROW_START = /\x1b\[\d+;1H/;
+const COLUMN_HOME = /\x1b\[\d+;\d+H/;
+
 function frameLines(output: FakeOutput): string[] {
 	const frame = lastFrame(output);
-	return frame.slice(frame.indexOf(CLEAR) + CLEAR.length).split("\r\n");
+	const body = frame.slice(frame.indexOf(CLEAR) + CLEAR.length);
+	const rows = body.split(ROW_START).slice(1);
+	const last = rows.pop() ?? "";
+	return [...rows, last.split(COLUMN_HOME)[0] ?? ""];
 }
 
 function cursorAt(output: FakeOutput, row: number, column: number): boolean {
@@ -870,6 +877,48 @@ describe("全屏布局", () => {
 			assert.ok(after.includes("440K / 1M"));
 			assert.ok(after.includes("⚡ 75%"));
 			assert.ok(after.includes("Waiting for response..."));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("每行按自己的坐标写，滚动条列在内容之后单独重画", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 40;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"),
+			});
+			t.mock.timers.tick(100);
+
+			const frame = lastFrame(output);
+			// 不再靠换行符顺推：一行的实际列宽由终端决定，顺推会让后面的行整体错位
+			assert.equal(frame.includes("\r\n"), false);
+
+			const rows = [...frame.matchAll(/\x1b\[(\d+);1H/g)].map((match) => Number(match[1]));
+			assert.deepEqual(rows, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+
+			// 内容行写完之后，主区域的每一行都按自己的行号重画了一次最右列
+			const gutter = [...frame.matchAll(/\x1b\[(\d+);40H/g)].map((match) => Number(match[1]));
+			assert.deepEqual(gutter, [1, 2, 3, 4, 5, 6]);
+
+			// 这一列里滑块是一整段，没有被内容带偏而断开
+			const column = gutter.map((row) => {
+				const at = frame.indexOf(`\x1b[${row};40H`);
+				return plain(frame.slice(at)).charAt(`\x1b[${row};40H`.length);
+			});
+			const first = column.indexOf("█");
+			assert.ok(first > 0);
+			assert.equal(column.slice(first).join("").includes(" "), false);
+			assert.equal(column.slice(0, first).includes("█"), false);
 		} finally {
 			exitTui(input);
 		}

@@ -129,7 +129,7 @@ export function renderTranscript(
 		visible = Array.from({ length: rows }, (_, index) => lineAt(top + index));
 	}
 
-	const gutter = renderGutter(rows, scrollLines, top);
+	const gutter = scrollbarColumn(rows, scrollLines, top);
 	return visible.map((line, index) => `${line} ${gutter[index]}`);
 }
 
@@ -287,7 +287,14 @@ function pinnedPrompt(prompts: readonly PromptRange[], top: number): PromptRange
 	return found;
 }
 
-function renderGutter(height: number, total: number, top: number): readonly string[] {
+/**
+ * 滚动条那一列。
+ *
+ * 调用方除了把它拼在每行末尾，还要在画完内容之后按自己的行列位置重画一遍：一行是否被终端
+ * 换行取决于终端把每个字符算几列（不同终端对歧义宽度字符的处理并不一致），跟着内容一起画的
+ * 那一列会被带到别处。单独重画时它只依赖自己的行列，内容怎么换行都不影响。
+ */
+export function scrollbarColumn(height: number, total: number, top: number): readonly string[] {
 	// 内容没有超出视口时没有可滚动的东西，整列留空，不画轨道和滑块
 	if (total <= height) return Array.from({ length: height }, () => " ");
 

@@ -26,7 +26,7 @@ import {
 } from "./command-menu.ts";
 import { keepVisible } from "./menu-panel.ts";
 import { helpPageLines, renderHelpPage } from "./help-page.ts";
-import { renderTranscript, transcriptMetrics, type TranscriptTurn } from "./transcript.ts";
+import { renderTranscript, scrollbarColumn, transcriptMetrics, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 全屏启动。
@@ -323,12 +323,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					{ leadingGap: false, showStatus: false },
 				)
 			: renderFooter(width, input, focused, status, currentInfo());
+		const transcriptShown = !helpOpen && (hasInput || activeWarning !== undefined);
 		const main = helpOpen
 			? renderHelpPage(helpPageLines(width, commands), mainHeight, helpScrollTop)
-			: hasInput || activeWarning !== undefined
+			: transcriptShown
 				? renderTranscript(width, mainHeight, turns, scrollTop, activeWarning)
 				: renderMain(width, mainHeight, options.version);
-		// 原始模式下换行不再由终端补回车，必须显式写全，否则每一行会错位
+		// 整屏自上而下：主区域、面板、页脚；终端比内容矮时只保留前几行
 		const lines = [...main, ...menuLines, ...footer].slice(0, height);
 		const inputRow = compactFooter()
 			? mainHeight + menuHeight() + (COMPACT_FOOTER_HEIGHT - 2)
@@ -342,7 +343,22 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			inputRow <= height
 				? moveCursor(inputRow, inputView(input, width).column) + SHOW_CURSOR
 				: "";
-		stdout.write(HIDE_CURSOR + CURSOR_HOME + CLEAR_SCREEN + lines.join("\r\n") + cursor);
+
+		// 每一行按自己的坐标写，而不是靠换行符顺推。一行的实际列宽取决于终端怎么算其中的字符
+		// （歧义宽度字符各终端算 1 列或 2 列），算得比我们宽时终端会替它换行，顺推下去后面的
+		// 行就整体错位。按坐标写时溢出的尾巴会被下一行覆盖，只损失这一行末尾一两个字符。
+		let frame = HIDE_CURSOR + CURSOR_HOME + CLEAR_SCREEN;
+		for (let row = 0; row < lines.length; row += 1) {
+			frame += `${moveCursor(row + 1, 1)}${lines[row]}`;
+		}
+		// 滚动条列最后单独画：它只依赖自己的行列位置，内容怎么换行都不会把它带断
+		if (transcriptShown) {
+			const gutter = scrollbarColumn(mainHeight, metrics.scrollLines, scrollTop);
+			for (let row = 0; row < gutter.length; row += 1) {
+				frame += `${moveCursor(row + 1, width)}${gutter[row]}`;
+			}
+		}
+		stdout.write(frame + cursor);
 	};
 
 	const maxScroll = (): number => {
