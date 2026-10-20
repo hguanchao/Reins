@@ -45,10 +45,10 @@ describe("模型选择面板", () => {
 		const raw = renderModelMenu(72, { items: ITEMS, cursor: 0, scrollTop: 0 });
 		const lines = raw.map(plain);
 
-		assert.ok(lines[1]?.startsWith("  ›  fengshao/deepseek-v4.1-flash"));
-		assert.ok(lines[2]?.startsWith("     openai/gpt-5.2"));
-		assert.equal(lines[1]?.indexOf("DeepSeek V4.1 Flash"), 35);
-		assert.equal(lines[2]?.indexOf("GPT-5.2"), 35);
+		assert.ok(lines[1]?.startsWith(" › fengshao/deepseek-v4.1-flash"));
+		assert.ok(lines[2]?.startsWith("   openai/gpt-5.2"));
+		assert.equal(lines[1]?.indexOf("DeepSeek V4.1 Flash"), 33);
+		assert.equal(lines[2]?.indexOf("GPT-5.2"), 33);
 		assert.equal(lines[1]?.indexOf("current"), 65);
 		assert.equal(lines[2]?.includes("current"), false);
 		assert.equal(lines[4], BORDER.repeat(72));
@@ -61,14 +61,14 @@ describe("模型选择面板", () => {
 
 		assert.ok((lines[1] ?? "").startsWith(PANEL_BG + TEXT_COLOR));
 		assert.ok((lines[2] ?? "").startsWith(PANEL_BG + SELECTED_TEXT_COLOR));
-		assert.ok(plain(lines[2] ?? "").startsWith("  ›  openai/gpt-5.2"));
+		assert.ok(plain(lines[2] ?? "").startsWith(" › openai/gpt-5.2"));
 		assert.equal(plain(lines[1] ?? "").includes("›"), false);
 	});
 
 	it("窄终端先隐藏展示名，再截断模型标识", () => {
-		const lines = renderModelMenu(40, { items: ITEMS, cursor: 0, scrollTop: 0 }).map(plain);
+		const lines = renderModelMenu(38, { items: ITEMS, cursor: 0, scrollTop: 0 }).map(plain);
 
-		assert.equal(lines[1]?.length, 40);
+		assert.equal(lines[1]?.length, 38);
 		assert.equal(lines[1]?.includes("DeepSeek V4.1 Flash"), false);
 		assert.ok(lines[1]?.includes("…"));
 		assert.ok(lines[1]?.includes("current"));
@@ -87,6 +87,6 @@ describe("模型选择面板", () => {
 
 		assert.equal(lines.length, MODEL_MENU_MAX_VISIBLE + 2);
 		assert.ok(rows[1]?.includes("p/m2"));
-		assert.ok(rows[8]?.startsWith("  ›  p/m9"));
+		assert.ok(rows[8]?.startsWith(" › p/m9"));
 	});
 });

@@ -38,6 +38,8 @@ export interface CommandMenuState {
 }
 
 export const COMMAND_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
+/** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
+const PREFIX_WIDTH = 3;
 export function commandMenuHeight(itemCount: number): number {
 	return menuHeight(itemCount);
 }
@@ -70,8 +72,8 @@ function layoutColumns(width: number, items: readonly CommandMenuItem[]): Column
 		1,
 		...items.map((item) => displayWidth(`/${item.name}`)),
 	);
-	const nameWidth = Math.min(longestName, Math.max(1, width - 5 - 2 - 4));
-	const remaining = width - 5 - nameWidth - 2;
+	const nameWidth = Math.min(longestName, Math.max(1, width - PREFIX_WIDTH - 2 - 4));
+	const remaining = width - PREFIX_WIDTH - nameWidth - 2;
 	const descriptionWidth = remaining >= 4 ? remaining : 0;
 	return { nameWidth, descriptionWidth };
 }
@@ -82,7 +84,7 @@ function row(
 	selected: boolean,
 	columns: Columns,
 ): string {
-	const prefix = selected ? "  ›  " : "     ";
+	const prefix = selected ? " › " : "   ";
 	const name = padEnd(`/${item.name}`, columns.nameWidth);
 	const description =
 		columns.descriptionWidth > 0 ? padEnd(item.description, columns.descriptionWidth) : "";
@@ -97,7 +99,7 @@ function row(
 		: DISABLED_COLOR;
 	const boldOff = selected && item.enabled ? BOLD_OFF : "";
 	const prefixOutput = selected
-		? `  ${ACCENT_COLOR}›${nameColor}  `
+		? ` ${ACCENT_COLOR}›${nameColor} `
 		: prefix;
 	const descriptionOutput =
 		columns.descriptionWidth > 0 ? `${" ".repeat(2)}${MUTED_COLOR}${description}` : "";

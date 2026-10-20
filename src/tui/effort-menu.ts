@@ -30,7 +30,7 @@ export interface EffortMenuState {
 	scrollTop: number;
 }
 
-const PREFIX_WIDTH = 5;
+const PREFIX_WIDTH = 3;
 const GAP = 2;
 const CURRENT_WIDTH = 7;
 
@@ -89,11 +89,11 @@ function row(
 	descriptionWidth: number,
 	currentWidth: number,
 ): string {
-	const prefix = selected ? "  ›  " : "     ";
+	const prefix = selected ? " › " : "   ";
 	const primaryColor = selected ? SELECTED_TEXT_COLOR : TEXT_COLOR;
 	const boldOff = selected ? BOLD_OFF : "";
 	const prefixOutput = selected
-		? `  ${ACCENT_COLOR}›${primaryColor}  `
+		? ` ${ACCENT_COLOR}›${primaryColor} `
 		: prefix;
 	const levelText = padEnd(level, levelWidth);
 	const description =

@@ -619,7 +619,7 @@ describe("全屏布局", () => {
 			assert.ok(text.includes(" 6 ────"));
 			assert.ok(text.includes("off"));
 			assert.ok(text.includes("xhigh"));
-			assert.ok(text.includes("›  medium"));
+			assert.ok(text.includes("› medium"));
 			assert.ok(text.includes("Everyday work with a clear scope"));
 			assert.ok(text.includes("current"));
 

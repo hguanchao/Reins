@@ -35,10 +35,14 @@ describe("命令补全面板", () => {
 
 		assert.equal(lines.length, 4);
 		assert.ok(rows[0]?.endsWith(" 2 ────"));
-		assert.ok(rows[1]?.startsWith("  ›  /model"));
-		assert.ok(rows[2]?.startsWith("     /reload"));
-		assert.equal(rows[1]?.indexOf("Switch the current model"), 14);
-		assert.equal(rows[2]?.indexOf("Reload external plugins"), 14);
+		assert.ok(rows[1]?.startsWith(" › /model"));
+		assert.ok(rows[2]?.startsWith("   /reload"));
+		// 和输入框的 " › /" 前缀对齐：选择符在第 1 列，斜杠在第 3 列
+		assert.equal(rows[1]?.indexOf("›"), 1);
+		assert.equal(rows[1]?.indexOf("/"), 3);
+		assert.equal(rows[2]?.indexOf("/"), 3);
+		assert.equal(rows[1]?.indexOf("Switch the current model"), 12);
+		assert.equal(rows[2]?.indexOf("Reload external plugins"), 12);
 		assert.equal(rows[3], "─".repeat(72));
 	});
 

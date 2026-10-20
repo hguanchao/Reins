@@ -39,8 +39,8 @@ export interface ModelMenuState {
 /** 面板最多显示的模型行数；超出时用上下方向键滚动。 */
 export const MODEL_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 
-/** "  ›  " 的显示宽度；未选中行用等宽空格占位。 */
-const PREFIX_WIDTH = 5;
+/** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
+const PREFIX_WIDTH = 3;
 const GAP = 2;
 const CURRENT_WIDTH = 7;
 
@@ -91,11 +91,11 @@ function layoutColumns(width: number, items: readonly ModelMenuItem[]): Columns 
 }
 
 function row(width: number, item: ModelMenuItem, selected: boolean, columns: Columns): string {
-	const prefix = selected ? "  ›  " : "     ";
+	const prefix = selected ? " › " : "   ";
 	const primaryColor = selected ? SELECTED_TEXT_COLOR : TEXT_COLOR;
 	const boldOff = selected ? BOLD_OFF : "";
 	const prefixOutput = selected
-		? `  ${ACCENT_COLOR}›${primaryColor}  `
+		? ` ${ACCENT_COLOR}›${primaryColor} `
 		: prefix;
 	const key = padEnd(`${item.provider}/${item.model}`, columns.keyWidth);
 	const name = columns.nameWidth > 0 ? padEnd(displayName(item), columns.nameWidth) : "";
