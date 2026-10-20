@@ -34,20 +34,31 @@ describe("工具结果呈现", () => {
 		assert.equal(detail?.text.includes("line 100"), false);
 	});
 
-	it("长 diff 省略中间，只保留前二十行与后十行", () => {
-		const diff = [
+	it("diff 在 hunk 之间省略未改动行", () => {
+		const spaced = [
 			"@@ line 1 @@",
-			...Array.from({ length: 40 }, (_, index) => `- old ${index}`),
+			"  one",
+			"- old",
+			"+ new",
+			"@@ line 10 @@",
+			"  later",
 		].join("\n");
-		const detail = resultDetail("edit", "Updated a.ts", { diff });
-		const lines = detail?.text.split("\n") ?? [];
+		const spacedText = resultDetail("edit", "Updated a.ts", { diff: spaced })?.text ?? "";
+		assert.ok(spacedText.includes("… 7 unchanged lines"));
+		assert.ok(spacedText.includes("one"));
+		assert.ok(spacedText.includes("old"));
+		assert.ok(spacedText.includes("new"));
+		assert.ok(spacedText.includes("later"));
 
-		assert.equal(lines.length, 31);
-		assert.equal(lines[20]?.trim(), "…");
-		assert.ok(lines[0]?.includes("@@ line 1 @@"));
-		assert.ok(lines.slice(1, 20).some((line) => line.includes("old 0")));
-		assert.ok(lines.slice(-10).some((line) => line.includes("old 39")));
-		assert.equal(detail?.text.includes("old 20"), false);
+		const single = ["@@ line 1 @@", "  one", "@@ line 3 @@", "  three"].join("\n");
+		assert.ok(
+			resultDetail("edit", "Updated a.ts", { diff: single })?.text.includes("… 1 unchanged line"),
+		);
+
+		const adjacent = ["@@ line 1 @@", "  one", "@@ line 2 @@", "  two"].join("\n");
+		const adjacentText = resultDetail("edit", "Updated a.ts", { diff: adjacent })?.text ?? "";
+		assert.ok(adjacentText.split("\n").some((line) => line.trim() === "…"));
+		assert.equal(adjacentText.includes("unchanged"), false);
 	});
 
 	it("list/find/grep 展开为文本结果", () => {
@@ -69,7 +80,7 @@ describe("工具结果呈现", () => {
 			kind: "diff",
 		});
 		assert.deepEqual(resultDetail("edit", "Updated a.ts\n\n- old\n+ new"), {
-			text: "Updated a.ts\n\n1 - old\n1 + new",
+			text: "Updated a.ts\n1 - old\n1 + new",
 			kind: "diff",
 		});
 		assert.deepEqual(resultDetail("write", "Created a.ts", { diff: editDiff }), {

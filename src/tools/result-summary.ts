@@ -13,9 +13,6 @@ const RESULT_DETAIL_TOOLS = new Set(["read", "write", "ls", "find", "grep", "edi
 /** 文件预览：超过这个行数时只显示开头与结尾，中间用省略号。 */
 const FILE_PREVIEW_FIRST = 5;
 const FILE_PREVIEW_LAST = 3;
-/** diff 预览：保留更多上下文，但同样省略中间。 */
-const DIFF_PREVIEW_FIRST = 20;
-const DIFF_PREVIEW_LAST = 10;
 
 /**
  * 工具结束后展开行里显示的内容。
@@ -103,51 +100,105 @@ function writeDetail(content: string, details: unknown): ResultDetail {
 	return { text: numberDiff(sanitizeDetail(diff)), kind: "diff" };
 }
 
-/** 给 diff 行加一列行号：删除与上下文用旧行号，新增用新行号。 */
+interface DiffHunkView {
+	readonly lines: { number?: number; text: string }[];
+	firstNewLine: number | undefined;
+	lastNewLine: number | undefined;
+}
+
+/**
+ * 给 diff 行加行号，并在相邻 hunk 之间插入省略行。
+ *
+ * 和整段截断不同，这里保留每个 hunk 的完整内容，只省略两个 hunk 之间没有展示的
+ * 未改动行；grok 的 Edit 也是这个语义。
+ */
 function numberDiff(diff: string): string {
-	const entries: { number?: number; text: string }[] = [];
+	const hunks: DiffHunkView[] = [];
+	const leading: string[] = [];
+	let current: DiffHunkView | undefined;
 	let oldLine = 1;
 	let newLine = 1;
 	let max = 0;
 
 	for (const line of diff.split("\n")) {
-		const hunk = /^@@ line (\d+) @@/.exec(line);
-		if (hunk !== null) {
-			oldLine = Number(hunk[1]);
+		const header = /^@@ line (\d+) @@/.exec(line);
+		if (header !== null) {
+			current = { lines: [{ text: line }], firstNewLine: undefined, lastNewLine: undefined };
+			hunks.push(current);
+			oldLine = Number(header[1]);
 			newLine = oldLine;
 			max = Math.max(max, oldLine);
-			entries.push({ text: line });
 			continue;
 		}
+
+		if (current === undefined) {
+			// 历史结果可能只有 diff 行没有 @@ 头；按第 1 行起补一个隐式 hunk
+			if (line.startsWith("-") || line.startsWith("+") || line.startsWith("  ")) {
+				current = { lines: [], firstNewLine: undefined, lastNewLine: undefined };
+				hunks.push(current);
+				oldLine = 1;
+				newLine = 1;
+			} else {
+				leading.push(line);
+				continue;
+			}
+		}
+		if (line.length === 0) continue;
+
 		if (line.startsWith("-")) {
-			entries.push({ number: oldLine, text: line });
+			current.lines.push({ number: oldLine, text: line });
 			max = Math.max(max, oldLine);
 			oldLine += 1;
 			continue;
 		}
 		if (line.startsWith("+")) {
-			entries.push({ number: newLine, text: line });
+			current.lines.push({ number: newLine, text: line });
+			current.firstNewLine ??= newLine;
+			current.lastNewLine = newLine;
 			max = Math.max(max, newLine);
 			newLine += 1;
 			continue;
 		}
 		if (line.startsWith("  ")) {
-			entries.push({ number: oldLine, text: line });
+			current.lines.push({ number: oldLine, text: line });
+			current.firstNewLine ??= newLine;
+			current.lastNewLine = newLine;
 			max = Math.max(max, oldLine);
 			oldLine += 1;
 			newLine += 1;
 			continue;
 		}
-		entries.push({ text: line });
+
+		current.lines.push({ text: line });
 	}
 
 	const width = String(max).length;
-	const formatted = entries.map((entry) =>
-		entry.number === undefined
-			? entry.text
-			: `${String(entry.number).padStart(width)} ${entry.text}`,
-	);
-	return previewLines(formatted, DIFF_PREVIEW_FIRST, DIFF_PREVIEW_LAST, width + 1);
+	const output: string[] = leading.filter((line) => line.length > 0);
+
+	for (const [index, hunk] of hunks.entries()) {
+		if (index > 0) {
+			const previous = hunks[index - 1];
+			const gap =
+				hunk.firstNewLine !== undefined && previous?.lastNewLine !== undefined
+					? hunk.firstNewLine - previous.lastNewLine - 1
+					: undefined;
+			const label =
+				gap !== undefined && gap > 0
+					? `… ${gap} unchanged ${gap === 1 ? "line" : "lines"}`
+					: "…";
+			output.push(`${" ".repeat(width + 1)}${label}`);
+		}
+
+		for (const entry of hunk.lines) {
+			output.push(
+				entry.number === undefined
+					? entry.text
+					: `${String(entry.number).padStart(width)} ${entry.text}`,
+			);
+		}
+	}
+
+	return output.join("\n");
 }
 
 
