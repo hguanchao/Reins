@@ -15,6 +15,33 @@ const CD_PREFIX = /^\s*cd\s+(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))\s*(?:&&|;)\s*/;
 /** 段尾的重定向：`2>&1`、`> /dev/null`、`< in.txt`。 */
 const REDIRECTION_TAIL = /(?:\s+(?:\d?>>?|<<?|&>)\s*\S+)+$/;
 
+/** 折叠态最多留这么多个字符；再长的命令只显示开头，完整命令留给展开。 */
+const CORE_MAX_CHARS = 72;
+
+/**
+ * 解释器的内联脚本参数。
+ *
+ * 脚本正文通常几百个字符，挤在一行里既读不出意图，也会把同回合的其他调用顶出屏幕。
+ * 这里只留解释器和参数标记，完整命令仍在展开里。
+ */
+const INLINE_SCRIPT_FLAGS: Readonly<Record<string, readonly string[]>> = {
+	python: ["-c"],
+	node: ["-e", "--eval", "-p", "--print"],
+	nodejs: ["-e", "--eval", "-p", "--print"],
+	bun: ["-e", "--eval"],
+	deno: ["eval", "-e"],
+	ruby: ["-e"],
+	perl: ["-e"],
+	php: ["-r"],
+	bash: ["-c", "-lc", "-ic", "-ec"],
+	sh: ["-c", "-lc", "-ic", "-ec"],
+	zsh: ["-c", "-lc", "-ic", "-ec"],
+	dash: ["-c", "-lc", "-ic", "-ec"],
+	fish: ["-c"],
+	pwsh: ["-c", "-command", "-encodedcommand"],
+	powershell: ["-c", "-command", "-encodedcommand"],
+};
+
 /**
  * 折叠态显示的核心命令。
  *
@@ -23,20 +50,47 @@ const REDIRECTION_TAIL = /(?:\s+(?:\d?>>?|<<?|&>)\s*\S+)+$/;
  */
 export function commandCore(command: string, workspaceRoot?: string): string {
 	const rest = peelWorkspaceCd(command.trim(), workspaceRoot);
-	if (rest.length === 0) return command.trim();
-	if (COMPOUND_START.test(rest)) return rest;
+	if (rest.length === 0) return shortenCore(command.trim());
+	if (COMPOUND_START.test(rest)) return shortenCore(rest);
 
 	const segments = splitSegments(rest);
 	const scope = segments.length > 1 ? scopeOf(segments[0] ?? "", workspaceRoot) : undefined;
 	// 首段是 cd 却给不出作用域标签（指向别处）时，整条命令原样保留：只留 cd 会丢掉真正要跑的命令
-	if (segments.length > 1 && isCdSegment(segments[0] ?? "") && scope === undefined) return rest;
+	if (segments.length > 1 && isCdSegment(segments[0] ?? "") && scope === undefined) return shortenCore(rest);
 	const candidates = scope === undefined ? segments : segments.slice(1);
 
 	let index = 0;
 	while (index < candidates.length - 1 && isBanner(candidates[index] ?? "")) index += 1;
 	const core = stripRedirection(candidates[index] ?? "");
-	if (core.length === 0) return rest;
-	return scope === undefined ? core : `[${scope}] ${core}`;
+	if (core.length === 0) return shortenCore(rest);
+
+	const summary = inlineScriptCore(core) ?? core;
+	return shortenCore(scope === undefined ? summary : `[${scope}] ${summary}`);
+}
+
+/** 内联脚本只留解释器与参数标记；不是这种写法时返回 undefined。 */
+function inlineScriptCore(core: string): string | undefined {
+	const match = /^([A-Za-z0-9._/-]+)\s+(\S+)\s+(.+)$/.exec(core);
+	if (match === null) return undefined;
+
+	const executable = match[1] ?? "";
+	const flag = match[2] ?? "";
+	const base = (executable.split(/[\\/]/).pop() ?? "").replace(/\.exe$/i, "").toLowerCase();
+	const interpreter = /^python[0-9.]*$/.test(base) ? "python" : base;
+	const flags = INLINE_SCRIPT_FLAGS[interpreter];
+	if (flags === undefined || !flags.includes(flag.toLowerCase())) return undefined;
+	return `${executable} ${flag} [inline script]`;
+}
+
+/** 超长摘要在词边界截断，避免留下半个参数；完整内容靠展开查看。 */
+function shortenCore(text: string): string {
+	const chars = Array.from(text);
+	if (chars.length <= CORE_MAX_CHARS) return text;
+
+	const head = chars.slice(0, CORE_MAX_CHARS - 1).join("").trimEnd();
+	const boundary = head.lastIndexOf(" ");
+	const visible = boundary > 0 ? head.slice(0, boundary) : head;
+	return `${visible.trimEnd()}…`;
 }
 
 /** 反复剥掉指向工作根本身的 `cd`；`cd` 后面没有别的命令时保留原样。 */

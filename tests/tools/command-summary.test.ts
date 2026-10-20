@@ -76,4 +76,30 @@ describe("命令折叠摘要", () => {
 	it("剥完没有内容时退回原命令", () => {
 		assert.equal(commandCore(`cd ${root}`, root), `cd ${root}`);
 	});
+
+	it("内联脚本只显示解释器与参数标记", () => {
+		const script = `import re,xml.etree.ElementTree as ET s=open("pelican-bike.html",encoding="utf-8").read()`;
+
+		assert.equal(commandCore(`python -c "${script}"`), "python -c [inline script]");
+		assert.equal(commandCore(`python3.12 -c "${script}"`), "python3.12 -c [inline script]");
+		assert.equal(commandCore(`node -e "${script}"`), "node -e [inline script]");
+		assert.equal(commandCore(`bash -lc "${script}"`), "bash -lc [inline script]");
+		assert.equal(
+			commandCore(`cd ${root}/server && python -c "${script}"`, root),
+			"[server] python -c [inline script]",
+		);
+	});
+
+	it("同形的 git -c 不当作内联脚本", () => {
+		assert.equal(commandCore("git -c user.name=reins status"), "git -c user.name=reins status");
+	});
+
+	it("普通长命令在词边界截断，完整命令留给展开", () => {
+		const command = `some-tool --flag ${"x".repeat(200)}`;
+		const core = commandCore(command);
+
+		assert.ok(Array.from(core).length <= 72);
+		assert.ok(core.startsWith("some-tool --flag"));
+		assert.ok(core.endsWith("…"));
+	});
 });

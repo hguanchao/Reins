@@ -54,6 +54,21 @@ describe("工具调用摘要", () => {
 		assert.equal(call.detail, 'cd "E:\\Projects" && npm test');
 	});
 
+	it("bash 内联脚本只显示核心，完整命令留给展开", () => {
+		const command = `cd E:\\Projects\\demo && python -c " import re,xml.etree.ElementTree as ET s=open('pelican-bike.html',encoding='utf-8').read()"`;
+		const call = describeToolCall("bash", { command }, "E:\\Projects\\demo");
+
+		assert.equal(call.detail, "python -c [inline script]");
+		assert.equal(call.fullDetail, command);
+	});
+
+	it("bash 短命令没有可展开的完整参数", () => {
+		const call = describeToolCall("bash", { command: "git status --short" });
+
+		assert.equal(call.detail, "git status --short");
+		assert.equal(call.fullDetail, undefined);
+	});
+
 	it("摘要压成单行，控制字符与转义序列不会进终端", () => {
 		const call = describeToolCall("bash", {
 			command: "echo a\necho b\t\x1b[31mred\x1b[0m",
