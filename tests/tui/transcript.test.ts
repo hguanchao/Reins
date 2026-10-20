@@ -8,6 +8,7 @@ import {
 	scrollbarColumn,
 	thinkingHeaderAtRow,
 	toolGroupHeaderAtRow,
+	toolHeaderAtRow,
 	transcriptMetrics,
 	type TranscriptLine,
 	type TranscriptThinking,
@@ -197,6 +198,52 @@ describe("工具调用行", () => {
 
 		assert.ok(line);
 		assert.equal(plain(line).trimEnd().endsWith("  › Ls"), true);
+	});
+
+	it("展开时在名称下方显示完整命令", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "npm test",
+			fullDetail: "cd /work && npm test | tail -5",
+			detailExpanded: true,
+		};
+		const text = renderTranscript(60, 10, [{ prompt: "hi", response: [tool] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("› Bash"));
+		assert.ok(text.includes("cd /work && npm test | tail -5"));
+		assert.equal(text.includes("› Bash  npm test"), false);
+	});
+
+	it("没有完整命令时双击不给命中区", () => {
+		const tool: TranscriptTool = { kind: "tool", name: "Bash", detail: "npm test" };
+		const turn: TranscriptTurn = { prompt: "hi", response: [tool] };
+		const row = renderTranscript(60, 10, [turn], 0).map(plain).findIndex((line) => line.includes("› Bash")) + 1;
+
+		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, row), undefined);
+	});
+
+	it("有完整命令时标题行可命中，展开后的续行不可命中", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "npm test",
+			fullDetail: "cd /work && npm test | tail -5",
+		};
+		const turn: TranscriptTurn = { prompt: "hi", response: [tool] };
+		const row = renderTranscript(60, 10, [turn], 0).map(plain).findIndex((line) => line.includes("› Bash")) + 1;
+
+		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, row), tool);
+
+		tool.detailExpanded = true;
+		const rows = renderTranscript(60, 10, [turn], 0).map(plain);
+		const expandedRow = rows.findIndex((line) => line.includes("› Bash")) + 1;
+		const bodyRow = rows.findIndex((line) => line.includes("cd /work")) + 1;
+
+		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, expandedRow), tool);
+		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, bodyRow), undefined);
 	});
 });
 

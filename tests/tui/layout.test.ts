@@ -1650,6 +1650,60 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("bash 行只显示核心命令，双击展开完整命令", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+			workspaceRoot: "/work",
+		});
+
+		const text = (): string => frameLines(output).map(plain).join("\n");
+		const rowOf = (needle: string): number =>
+			frameLines(output).findIndex((line) => plain(line).includes(needle)) + 1;
+		const doubleClick = (row: number): void => {
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+		};
+
+		try {
+			input.emit("data", Buffer.from("跑测试\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "bash",
+				args: { command: "cd /work && npm test 2>&1 | tail -5" },
+			});
+			agent.emit({ type: "tool_end", callId: "c1", name: "bash", isError: false, durationMs: 10, summary: "" });
+			t.mock.timers.tick(100);
+
+			// 折叠态：多余的工作根 cd 已剥掉，只剩核心命令
+			let frame = text();
+			assert.ok(frame.includes("› Bash  npm test"));
+			assert.equal(frame.includes("cd /work"), false);
+
+			doubleClick(rowOf("› Bash"));
+			frame = text();
+			assert.ok(frame.includes("cd /work && npm test 2>&1 | tail -5"));
+
+			doubleClick(rowOf("› Bash"));
+			frame = text();
+			assert.equal(frame.includes("cd /work"), false);
+			assert.ok(frame.includes("› Bash  npm test"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("工具成功不在对话流里留 done 行，失败仍显示", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

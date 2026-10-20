@@ -23,6 +23,7 @@ interface MutableTurn extends TranscriptTurn {
 
 export function buildTranscriptHistory(
 	messages: readonly LlmMessage[],
+	workspaceRoot?: string,
 ): readonly TranscriptTurn[] {
 	const turns: MutableTurn[] = [];
 	let current: MutableTurn | undefined;
@@ -49,13 +50,16 @@ export function buildTranscriptHistory(
 				const text = assistantText(message);
 				if (text.length > 0) turn.response.push(...text.split("\n"));
 				for (const call of assistantToolCalls(message)) {
-					const described = describeToolCall(call.name, call.arguments);
+					const described = describeToolCall(call.name, call.arguments, workspaceRoot);
 					appendToolLine(
 						turn.response,
 						{
 							kind: "tool",
 							name: described.name,
 							detail: described.detail,
+							...(described.fullDetail === undefined
+								? {}
+								: { fullDetail: described.fullDetail }),
 							group: described.group,
 							callId: call.id,
 						},

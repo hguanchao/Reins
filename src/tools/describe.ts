@@ -2,6 +2,8 @@ import { Buffer } from "node:buffer";
 
 import stripAnsi from "strip-ansi";
 
+import { commandCore } from "./command-summary.ts";
+
 /**
  * 工具调用的可读摘要。
  *
@@ -14,15 +16,33 @@ export interface ToolDescription {
 	readonly name: string;
 	/** 单行参数摘要；没有参数时为空串 */
 	readonly detail: string;
+	/** 展开后显示的完整参数；与 detail 相同或没有更多信息时省略 */
+	readonly fullDetail?: string;
 	/** 只读探索工具的分组类型；其他工具不参与工具组 */
 	readonly group?: ToolGroupKind;
 }
 
 export type ToolGroupKind = "read" | "list" | "search";
 
-export function describeToolCall(tool: string, args: Record<string, unknown>): ToolDescription {
+/**
+ * 把一次调用转成给人看的文字。
+ *
+ * workspaceRoot 用来判断命令开头的工作根 `cd` 是否多余：命令本来就在工作根下执行，那条
+ * `cd` 是空操作，留着只会把真正要看的部分挤出屏幕。完整命令放在 fullDetail 里，供展开查看。
+ */
+export function describeToolCall(
+	tool: string,
+	args: Record<string, unknown>,
+	workspaceRoot?: string,
+): ToolDescription {
 	const group = toolGroupKind(tool);
-	const description = { name: displayToolName(tool), detail: singleLine(describeArguments(tool, args)) };
+	const full = singleLine(describeArguments(tool, args));
+	const detail = tool === "bash" ? commandCore(full, workspaceRoot) : full;
+	const description = {
+		name: displayToolName(tool),
+		detail,
+		...(detail === full ? {} : { fullDetail: full }),
+	};
 	return group === undefined ? description : { ...description, group };
 }
 

@@ -15,6 +15,8 @@ export interface PrintModeDeps {
 	readonly prompt: string;
 	/** 装配处交进来的构造方式：事件监听由本模式提供，驱动本身由装配处组装 */
 	readonly createDriver: (onEvent: AgentEventListener) => Pick<TurnDriver, "run">;
+	/** 工作根：用来剥掉命令开头多余的工作根 cd，省略时原样显示 */
+	readonly workspaceRoot?: string;
 	readonly stdout: (text: string) => void;
 	readonly stderr: (text: string) => void;
 }
@@ -29,7 +31,7 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				state.wroteText = true;
 				return;
 			case "tool_start": {
-				const described = describeToolCall(event.name, event.args);
+				const described = describeToolCall(event.name, event.args, deps.workspaceRoot);
 				const detail = described.detail.length === 0 ? "" : `  ${described.detail}`;
 				deps.stderr(`\n› ${described.name}${detail}\n`);
 				return;

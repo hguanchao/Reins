@@ -236,7 +236,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		initialSelection !== undefined
 			? createFooterInfo(workRoot, activeConfig, initialSelection, session)
 			: createUnavailableFooterInfo(workRoot, session);
-	const history = buildTranscriptHistory(session.state().messages);
+	const history = buildTranscriptHistory(session.state().messages, workRoot);
 	const refreshInfo = (): void => {
 		const current = catalog.selection;
 		if (current !== undefined) {
@@ -352,6 +352,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			pluginCommands,
 			notify: activeConfig.ui.notify,
 			history,
+			workspaceRoot: workRoot,
 		});
 		if (sessionPersisted) writeStdout(`${resumeCommand(session.id)}\n`);
 		return code;
@@ -574,6 +575,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 			prompt: options.prompt,
 			createDriver: (onEvent) =>
 				createDriverFor({ config, selection, compactor }, { registry, session, workspace, sandbox }, onEvent),
+			workspaceRoot: workRoot,
 			stdout: writeStdout,
 			stderr: writeStderr,
 		});

@@ -29,7 +29,7 @@ import {
 } from "./command-menu.ts";
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, renderHelpPage } from "./help-page.ts";
-import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, type TranscriptLine, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 
 /**
  * 全屏启动。
@@ -199,6 +199,8 @@ export interface TuiOptions {
 	readonly notify?: NotifyMode;
 	/** 启动时回填的历史对话；续聊时使用 */
 	readonly history?: readonly TranscriptTurn[];
+	/** 工作根：用来判断命令开头的工作根 cd 是否多余，省略时原样显示 */
+	readonly workspaceRoot?: string;
 	readonly stdin?: TuiInput;
 	readonly stdout?: TuiOutput;
 }
@@ -759,11 +761,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "tool_start": {
 				closeThinking(active);
-				const described = describeToolCall(event.name, event.args);
+				const described = describeToolCall(event.name, event.args, options.workspaceRoot);
 				const tool: TranscriptTool = {
 					kind: "tool",
 					name: described.name,
 					detail: described.detail,
+					...(described.fullDetail === undefined ? {} : { fullDetail: described.fullDetail }),
 					group: described.group,
 					callId: event.callId,
 				};
@@ -1555,6 +1558,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					const group = toolGroupHeaderInView(view, mainHeight, scrollTop, event.row);
 					if (group !== undefined) {
 						group.expanded = !group.expanded;
+						markTranscriptDirty();
+						lastClick = undefined;
+						follow = false;
+						render();
+						return;
+					}
+
+					const tool = toolHeaderInView(view, mainHeight, scrollTop, event.row);
+					if (tool !== undefined) {
+						tool.detailExpanded = !(tool.detailExpanded ?? false);
 						markTranscriptDirty();
 						lastClick = undefined;
 						follow = false;

@@ -36,13 +36,18 @@ export interface TranscriptNote {
 /**
  * 工具调用行。
  *
- * name 与 detail 已经由工具描述模块转成给人看的文字；渲染只负责排版。失败时 detail 是
- * 失败原因，整行用错误色并带上耗时。
+ * name 与 detail 已经由工具描述模块转成给人看的文字；渲染只负责排版。detail 是折叠态看到
+ * 的核心命令，fullDetail 是完整命令，双击展开时替换它。失败时 detail 是失败原因，整行用
+ * 错误色并带上耗时。
  */
 export interface TranscriptTool {
 	readonly kind: "tool";
 	readonly name: string;
 	readonly detail: string;
+	/** 完整参数；与 detail 不同时才可展开 */
+	readonly fullDetail?: string;
+	/** 是否在对话流里展开完整参数 */
+	detailExpanded?: boolean;
 	readonly isError?: boolean;
 	readonly durationMs?: number;
 	/** 工具调用 id，用于把成功结果挂回对应行 */
@@ -152,6 +157,8 @@ export interface TranscriptView {
 	readonly thinkingHeaders: readonly { readonly start: number; readonly block: TranscriptThinking }[];
 	/** 每个工具组头在 lines 里的起点，双击命中使用 */
 	readonly groupHeaders: readonly { readonly start: number; readonly group: TranscriptToolGroup }[];
+	/** 每条可展开的工具行在 lines 里的起点，双击命中使用 */
+	readonly toolHeaders: readonly { readonly start: number; readonly tool: TranscriptTool }[];
 }
 
 export interface TranscriptMetrics {
@@ -388,6 +395,29 @@ export function toolGroupHeaderInView(
 	return view.groupHeaders.find((header) => header.start === lineIndex)?.group;
 }
 
+/** 命中可展开的工具行；展开后的续行不参与，避免点正文时又收回去。 */
+export function toolHeaderAtRow(
+	terminalWidth: number,
+	height: number,
+	turns: readonly TranscriptTurn[],
+	scrollTop: number,
+	row: number,
+	notice?: string,
+): TranscriptTool | undefined {
+	return toolHeaderInView(buildTranscriptView(terminalWidth, turns, notice), height, scrollTop, row);
+}
+
+export function toolHeaderInView(
+	view: TranscriptView,
+	height: number,
+	scrollTop: number,
+	row: number,
+): TranscriptTool | undefined {
+	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
+	if (lineIndex === undefined) return undefined;
+	return view.toolHeaders.find((header) => header.start === lineIndex)?.tool;
+}
+
 function lineIndexAtRow(
 	view: TranscriptView,
 	height: number,
@@ -443,6 +473,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 	const prompts: PromptRange[] = [];
 	const thinkingHeaders: { start: number; block: TranscriptThinking }[] = [];
 	const groupHeaders: { start: number; group: TranscriptToolGroup }[] = [];
+	const toolHeaders: { start: number; tool: TranscriptTool }[] = [];
 	let previousHadResponse = false;
 
 	if (notice !== undefined && notice.length > 0) {
@@ -473,7 +504,10 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 				continue;
 			}
 			if (line.kind === "tool") {
+				const toolStart = lines.length;
 				lines.push(...toolLines(line, width));
+				// 只有完整命令与折叠态不同时才值得展开，没有可展开的内容就不登记命中区
+				if (line.fullDetail !== undefined) toolHeaders.push({ start: toolStart, tool: line });
 				if (line.resultExpanded && line.result !== undefined) {
 					lines.push(...toolResultLines(line, width));
 				}
@@ -500,7 +534,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		previousHadResponse = turn.response.length > 0;
 	}
 
-	return { width, lines, prompts, thinkingHeaders, groupHeaders };
+	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders };
 }
 
 /**
@@ -635,8 +669,8 @@ function groupHeaderLabel(members: readonly TranscriptTool[]): string {
 /**
  * 工具调用行。
  *
- * 名称与参数固定占一行：参数放不下时末尾省略，不折到第二行——连续多条调用时，一行一条才
- * 扫得动。失败原因要完整看见，过长按普通正文换行，每行都用错误色。
+ * 折叠时只显示核心命令：开头多余的工作根 `cd` 已经由描述模块剥掉。展开时换成完整命令，
+ * 按正文换行，双击这一行切换。失败原因要完整看见，因此失败行始终按正文换行。
  */
 function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_INDENT): readonly string[] {
 	const marker = tool.isError ? ERROR_MARKER : TOOL_MARKER;
@@ -647,6 +681,13 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const duration = tool.durationMs === undefined ? "" : ` (${tool.durationMs}ms)`;
 		const body = tool.detail.length === 0 ? tool.name : `${tool.name}  ${tool.detail}`;
 		return wrappedLines(body + duration, prefix, width, ERROR_COLOR);
+	}
+
+	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
+		// 展开：名称一行，完整命令换行缩进在它下面，与思考正文的排版一致
+		const head = coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR);
+		const body = wrappedLines(tool.fullDetail, `${baseIndent}  `, width, MESSAGE_TEXT_COLOR);
+		return [head, ...body];
 	}
 
 	if (tool.detail.length === 0) {
