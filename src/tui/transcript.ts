@@ -147,6 +147,8 @@ const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
 /** 右侧固定预留一列空隙和一列滚动条。 */
 const GUTTER_WIDTH = 2;
+/** 展开详情的面板在右侧留出的内边距；左侧沿用现有的两列内容缩进。 */
+const DETAIL_RIGHT_PADDING = 2;
 
 export interface PromptRange {
 	/** 提示块第一行在 transcript 里的下标 */
@@ -746,11 +748,15 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const bandStart = displayWidth(baseIndent);
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
-		const body = tool.fullDetail
-			.split("\n")
-			.flatMap((line) =>
-				detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
-			);
+		const body = [
+			bandBlankLine(baseIndent, width, bandStart),
+			...tool.fullDetail
+				.split("\n")
+				.flatMap((line) =>
+					detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
+				),
+			bandBlankLine(baseIndent, width, bandStart),
+		];
 		return [head, ...body];
 	}
 
@@ -861,7 +867,16 @@ function detailBodyLines(
 	if (kind === "file") {
 		const match = /^(\s*\d+  )(.*)$/.exec(line);
 		if (match !== null) {
-			return hangingLines(match[1] ?? "", "", match[2] ?? "", baseIndent, width, bandStart, color);
+			return hangingLines(
+				match[1] ?? "",
+				"",
+				match[2] ?? "",
+				baseIndent,
+				width,
+				bandStart,
+				color,
+				DETAIL_RIGHT_PADDING,
+			);
 		}
 	}
 	if (kind === "diff") {
@@ -875,10 +890,18 @@ function detailBodyLines(
 				width,
 				bandStart,
 				color,
+				DETAIL_RIGHT_PADDING,
 			);
 		}
 	}
-	return bandedWrappedLines(line, `${baseIndent}  `, width, color, bandStart);
+	return bandedWrappedLines(
+		line,
+		`${baseIndent}  `,
+		width,
+		color,
+		bandStart,
+		DETAIL_RIGHT_PADDING,
+	);
 }
 
 /** 带行号的行换行时，续行缩进到行号之后的内容列。 */
@@ -890,12 +913,14 @@ function hangingLines(
 	width: number,
 	bandStart: number,
 	color: string,
+	rightPadding: number,
 ): readonly string[] {
 	const start = Math.max(0, Math.min(bandStart, width));
+	const contentEnd = Math.max(start, width - rightPadding);
 	const lead = baseIndent.slice(0, start);
 	const inside = "  ";
 	const hangingWidth = displayWidth(gutter) + displayWidth(marker);
-	const available = Math.max(1, width - start - displayWidth(inside) - hangingWidth);
+	const available = Math.max(1, contentEnd - start - displayWidth(inside) - hangingWidth);
 	const segments = wrapText(text, available);
 	const continuation = " ".repeat(displayWidth(inside) + hangingWidth);
 
@@ -904,10 +929,17 @@ function hangingLines(
 			index === 0
 				? `${inside}${gutter}${marker}${segment}`
 				: `${continuation}${segment}`;
-		const visible = truncateToWidth(content, width - start);
+		const visible = truncateToWidth(content, contentEnd - start);
 		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
 		return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
 	});
+}
+
+/** 面板上下内边距：整条色带，不写内容。 */
+function bandBlankLine(baseIndent: string, width: number, bandStart: number): string {
+	const start = Math.max(0, Math.min(bandStart, width));
+	const lead = baseIndent.slice(0, start);
+	return `${lead}${THEME.surface}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /** 详情行换行后同样从 bandStart 列开始铺色带，续行缩进留在带内。 */
@@ -917,18 +949,20 @@ function bandedWrappedLines(
 	width: number,
 	color: string,
 	bandStart: number,
+	rightPadding: number,
 ): readonly string[] {
 	const prefixWidth = displayWidth(prefix);
 	const start = Math.max(0, Math.min(bandStart, width));
+	const contentEnd = Math.max(start, width - rightPadding);
 	const lead = prefix.slice(0, start);
 	const inside = prefix.slice(start);
 	const insideWidth = Math.max(0, prefixWidth - start);
-	const lines = wrapText(text, Math.max(0, width - prefixWidth));
+	const lines = wrapText(text, Math.max(0, contentEnd - prefixWidth));
 	const continuation = " ".repeat(insideWidth);
 
 	return lines.map((line, index) => {
 		const content = `${index === 0 ? inside : continuation}${line}`;
-		const visible = truncateToWidth(content, width - start);
+		const visible = truncateToWidth(content, contentEnd - start);
 		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
 		return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
 	});
