@@ -80,7 +80,7 @@ describe("思考区块", () => {
 		assert.ok(plain(header).startsWith("  ✻ Thinking…"));
 		assert.ok(plain(body).startsWith("   three"));
 		assert.equal(header.includes(THEME.surface), false);
-		assert.equal(body.indexOf(THEME.surface), 2);
+		assert.equal(body.indexOf(THEME.surface), 0);
 	});
 
 	it("展开时只提亮标题标签，耗时保持弱化", () => {
@@ -113,7 +113,7 @@ describe("思考区块", () => {
 		assert.equal(plain(top).trim(), "");
 
 		const body = lines.find((line) => plain(line).includes("three")) ?? "";
-		assert.ok(body.startsWith(`  ${THEME.surface}`));
+		assert.ok(body.startsWith(THEME.surface));
 		assert.ok(plain(body).startsWith("   three"));
 
 		const lastRow = lines.findIndex((line) => plain(line).includes("seven"));
@@ -341,7 +341,7 @@ describe("工具调用行", () => {
 		const body = lines.find((line) => plain(line).includes("1  line 1"));
 		assert.ok(plain(head ?? "").startsWith("  "));
 		assert.equal(head?.includes(THEME.surface), false);
-		assert.ok(body?.startsWith(`  ${THEME.surface}`));
+		assert.ok(body?.startsWith(THEME.surface));
 	});
 
 	it("展开详情四周各留一行/一列", () => {
