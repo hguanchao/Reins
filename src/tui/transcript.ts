@@ -642,22 +642,24 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 	});
 }
 
-/** 思考正文的一行：色带从标题行最左列开始，左右各留一列内边距。 */
+/** 思考正文的一行：色带从标题符号列开始，左右各留一列内边距。 */
 function thinkingBodyLines(text: string, width: number): readonly string[] {
-	const inside = " ".repeat(displayWidth(RESPONSE_INDENT) + THINKING_PADDING);
-	const contentWidth = Math.max(1, width - displayWidth(inside) - THINKING_PADDING);
+	const start = displayWidth(RESPONSE_INDENT);
+	const inside = " ".repeat(THINKING_PADDING);
+	const contentWidth = Math.max(1, width - start - displayWidth(inside) - THINKING_PADDING);
 
 	return wrapText(text, contentWidth).map((line) => {
 		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
-		const visible = truncateToWidth(content, width);
-		const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
-		return `${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
+		const visible = truncateToWidth(content, width - start);
+		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
+		return `${RESPONSE_INDENT}${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
 	});
 }
 
 /** 思考正文的上下内边距：整条色带，不写内容。 */
 function thinkingBlankLine(width: number): string {
-	return `${THINKING_BG}${" ".repeat(Math.max(0, width))}${RESET}`;
+	const start = displayWidth(RESPONSE_INDENT);
+	return `${RESPONSE_INDENT}${THINKING_BG}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /**
@@ -764,8 +766,8 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：标题行不着色，详情从工具标题行的最左列开始铺色带
-		const bandStart = 0;
+		// 展开：标题行不着色，详情从标题符号列开始铺色带
+		const bandStart = displayWidth(baseIndent);
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
 		const body = [
@@ -947,7 +949,7 @@ function hangingLines(
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
 	const lead = baseIndent.slice(0, start);
-	const inside = " ".repeat(displayWidth(baseIndent) + 1);
+	const inside = " ";
 	const hangingWidth = displayWidth(gutter) + displayWidth(marker);
 	const available = Math.max(1, contentEnd - start - displayWidth(inside) - hangingWidth);
 	const segments = wrapText(text, available);
