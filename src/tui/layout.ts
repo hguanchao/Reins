@@ -1486,8 +1486,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const rows = Math.max(0, terminalHeight(stdout) - footerHeight());
 			const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 			const total = helpPageLines(width, commands()).length;
-			let steps = 0;
-			for (const event of mouseEvents(text)) {
+			let steps = 0;			for (const event of mouseEvents(text)) {
 				if (event.press && event.button === 64) steps -= 1;
 				else if (event.press && event.button === 65) steps += 1;
 			}
@@ -1498,14 +1497,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			if (page === "pageUp") steps -= rows;
 			if (page === "pageDown") steps += rows;
 			if (page === "top") helpScrollTop = 0;
-			if (page === "bottom") helpScrollTop = Math.max(0, total - rows);
 
 			if (key === "escape") {
 				helpOpen = false;
 				render();
 				return;
 			}
-			if (page === "top" || page === "bottom") {
+			if (page === "top") {
 				render();
 				return;
 			}
@@ -1707,12 +1705,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			} else if (scroll === "pageDown") {
 				scrollTop = Math.min(limit, scrollTop + mainHeight);
 				follow = scrollTop >= limit;
-			} else if (scroll === "top") {
+			} else {
 				scrollTop = 0;
 				follow = false;
-			} else {
-				scrollTop = limit;
-				follow = true;
 			}
 			render();
 			return;
@@ -1837,12 +1832,10 @@ function historyKey(text: string): -1 | 1 | undefined {
 }
 
 /** 对话流滚动键；不与输入行的 Home/End 抢按键。 */
-function scrollKey(text: string): "pageUp" | "pageDown" | "top" | "bottom" | undefined {
+function scrollKey(text: string): "pageUp" | "pageDown" | "top" | undefined {
 	if (text === "\x1b[5~") return "pageUp";
 	if (text === "\x1b[6~") return "pageDown";
-	if (text === "\x1b[1;5H" || text === "\x1b[1;5F") {
-		return text.endsWith("H") ? "top" : "bottom";
-	}
+	if (text === "\x1b[1;5H") return "top";
 	return undefined;
 }
 

@@ -2090,7 +2090,7 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("键盘滚动对话流，滚上去后不自动跟随，可回底", (t) => {
+	it("键盘滚动对话流，滚上去后不自动跟随，可用 PageDown 回底", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -2119,7 +2119,9 @@ describe("全屏布局", () => {
 			text = frameLines(output).map(plain).join("\n");
 			assert.equal(text.includes("tail-line"), false);
 
-			input.emit("data", Buffer.from("\x1b[1;5F"));
+			for (let index = 0; index < 10; index += 1) {
+				input.emit("data", Buffer.from("\x1b[6~"));
+			}
 			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("tail-line"));
 		} finally {
