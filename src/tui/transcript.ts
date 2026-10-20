@@ -130,15 +130,19 @@ const THINKING_TAIL_LINES = 5;
 const TOOL_RESULT_PREVIEW_LINES = 20;
 /** 思考标题的标记：单列火花，与工具行的 ›、失败行的 × 区分。 */
 const THINKING_MARKER = "✻";
+/** 展开后的菱形标记：工具组头和思考块共用。 */
+const EXPANDED_DIAMOND = "◈";
 /** 思考标题的缩进；正文缩进到与 Think…/Thought… 的首字对齐。 */
 const THINKING_PREFIX = `${RESPONSE_INDENT}${THINKING_MARKER} `;
-const THINKING_BODY_INDENT = " ".repeat(displayWidth(THINKING_PREFIX));
+const THINKING_EXPANDED_PREFIX = `${RESPONSE_INDENT}${EXPANDED_DIAMOND} `;
+/** 思考正文的左右内边距。 */
+const THINKING_PADDING = 1;
 /** 工具调用沿用用户提示的标记，两类条目在同一列起头。 */
 const TOOL_MARKER = "›";
 /** 展开后的工具用实心菱形，和折叠态区分。 */
 const TOOL_EXPANDED_MARKER = "◆";
 /** 展开的工具组用带心菱形；收起时沿用工具行的 ›。 */
-const TOOL_GROUP_EXPANDED_MARKER = "◈";
+const TOOL_GROUP_EXPANDED_MARKER = EXPANDED_DIAMOND;
 /** 工具组成员比组头多缩进两格。 */
 const TOOL_GROUP_MEMBER_INDENT = `${RESPONSE_INDENT}  `;
 /** 错误行的标记：与工具失败行共用，错误消息因此有一致的起头。 */
@@ -587,7 +591,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 /**
  * 思考区块的屏幕行。
  *
- * 标题带 ✻、不铺底色；正文缩进到标题首字，只有正文本身铺一层弱底色，从左到右填满内容区。
+ * 标题带符号、不铺底色；正文四周留一单位内边距，只有正文本身铺一层弱底色。
  * 运行时收起只留最后五行屏幕行，结束后收起只留标题，双击展开时给全文。
  */
 function thinkingBlockLines(block: TranscriptThinking, width: number): readonly string[] {
@@ -598,26 +602,34 @@ function thinkingBlockLines(block: TranscriptThinking, width: number): readonly 
 		: block.running
 			? wrapped.slice(-THINKING_TAIL_LINES)
 			: [];
-	return [...thinkingHeaderLines(block, width), ...visible];
+	const header = thinkingHeaderLines(block, width);
+	if (visible.length === 0) return header;
+	return [
+		...header,
+		thinkingBlankLine(width),
+		...visible,
+		thinkingBlankLine(width),
+	];
 }
 
 /**
  * 思考区块的标题行。
  *
- * 展开时只提亮 `✻ Thought for` 这段可点击的标签，耗时继续用弱化色；收起时整行弱化。
+ * 收起时用 ✻；展开后用工具组头同款的 ◈，并提亮可点击的标签。耗时继续用弱化色。
  */
 function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly string[] {
 	if (!block.expanded) {
 		return wrappedLines(block.header, THINKING_PREFIX, width, THINKING_COLOR);
 	}
 
+	const prefix = THINKING_EXPANDED_PREFIX;
 	const label = block.header.startsWith("Thought for ") ? "Thought for " : block.header;
-	const prefixWidth = displayWidth(THINKING_PREFIX);
+	const prefixWidth = displayWidth(prefix);
 	const lines = wrapText(block.header, Math.max(0, width - prefixWidth));
 	let offset = 0;
 
 	return lines.map((line, index) => {
-		const lead = index === 0 ? THINKING_PREFIX : " ".repeat(prefixWidth);
+		const lead = index === 0 ? prefix : " ".repeat(prefixWidth);
 		const activeWidth = Math.max(0, Math.min(line.length, label.length - offset));
 		const active = line.slice(0, activeWidth);
 		const rest = line.slice(activeWidth);
@@ -628,16 +640,24 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 	});
 }
 
-/** 思考正文的一行：缩进不铺底色，从内容首字开始一直铺到右边界。 */
+/** 思考正文的一行：色带从标题符号列开始，左右各留一列内边距。 */
 function thinkingBodyLines(text: string, width: number): readonly string[] {
-	const indentWidth = displayWidth(THINKING_BODY_INDENT);
-	const contentWidth = Math.max(0, width - indentWidth);
+	const start = displayWidth(RESPONSE_INDENT);
+	const inside = " ".repeat(THINKING_PADDING);
+	const contentWidth = Math.max(1, width - start - displayWidth(inside) - THINKING_PADDING);
 
 	return wrapText(text, contentWidth).map((line) => {
-		const visible = truncateToWidth(line, contentWidth);
-		const padding = " ".repeat(Math.max(0, contentWidth - displayWidth(visible)));
-		return `${THINKING_BODY_INDENT}${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
+		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
+		const visible = truncateToWidth(content, width - start);
+		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
+		return `${RESPONSE_INDENT}${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
 	});
+}
+
+/** 思考正文的上下内边距：整条色带，不写内容。 */
+function thinkingBlankLine(width: number): string {
+	const start = displayWidth(RESPONSE_INDENT);
+	return `${RESPONSE_INDENT}${THINKING_BG}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /**

@@ -53,7 +53,7 @@ describe("思考区块", () => {
 		assert.equal(text.includes("two"), false);
 
 		block.expanded = true;
-		text = renderTranscript(40, 12, [turn], 0).map(plain).join("\n");
+		text = renderTranscript(40, 20, [turn], 0).map(plain).join("\n");
 		assert.ok(text.includes("one"));
 
 		block.running = false;
@@ -64,7 +64,7 @@ describe("思考区块", () => {
 		assert.equal(text.includes("seven"), false);
 
 		block.expanded = true;
-		text = renderTranscript(40, 12, [turn], 0).map(plain).join("\n");
+		text = renderTranscript(40, 20, [turn], 0).map(plain).join("\n");
 		assert.ok(text.includes("one") && text.includes("seven"));
 	});
 
@@ -78,9 +78,9 @@ describe("思考区块", () => {
 		assert.ok(header);
 		assert.ok(body);
 		assert.ok(plain(header).startsWith("  ✻ Thinking…"));
-		assert.ok(plain(body).startsWith("    three"));
+		assert.ok(plain(body).startsWith("   three"));
 		assert.equal(header.includes(THEME.surface), false);
-		assert.equal(body.indexOf(THEME.surface), 4);
+		assert.equal(body.indexOf(THEME.surface), 2);
 	});
 
 	it("展开时只提亮标题标签，耗时保持弱化", () => {
@@ -97,8 +97,30 @@ describe("思考区块", () => {
 		header = renderTranscript(40, 12, [turn], 0).find((line) =>
 			plain(line).includes("Thought for 1.0s"),
 		);
-		assert.ok(header?.includes(`${THEME.textPrimary}  ✻ Thought for ${THEME.textSubtle}1.0s`));
+		assert.ok(header?.includes(`${THEME.textPrimary}  ◈ Thought for ${THEME.textSubtle}1.0s`));
 		assert.equal(header?.includes(THEME.accent), false);
+	});
+
+	it("思考正文四周留一单位内边距，展开标记换成菱形", () => {
+		const block = blockOf("Thought for 1.0s", false);
+		block.expanded = true;
+		const lines = renderTranscript(40, 20, [{ prompt: "hi", response: [block] }], 0);
+		const headerRow = lines.findIndex((line) => plain(line).includes("◈ Thought for"));
+		assert.ok(headerRow >= 0);
+
+		const top = lines[headerRow + 1] ?? "";
+		assert.ok(top.includes(THEME.surface));
+		assert.equal(plain(top).trim(), "");
+
+		const body = lines.find((line) => plain(line).includes("three")) ?? "";
+		assert.ok(body.startsWith(`  ${THEME.surface}`));
+		assert.ok(plain(body).startsWith("   three"));
+
+		const lastRow = lines.findIndex((line) => plain(line).includes("seven"));
+		assert.ok(lastRow >= 0);
+		const bottom = lines[lastRow + 1] ?? "";
+		assert.ok(bottom.includes(THEME.surface));
+		assert.equal(plain(bottom).trim(), "");
 	});
 
 	it("标题行可以命中，正文行不能", () => {
@@ -581,9 +603,11 @@ describe("块级间距", () => {
 		const lastBodyRow = rows.findIndex((line) => line.includes("再决定"));
 		const textRow = rows.findIndex((line) => line.includes("开始吧"));
 
-		assert.equal(lastBodyRow, headerRow + 2);
-		assert.equal(textRow, lastBodyRow + 2);
+		// 标题、上内边距、两行正文、下内边距、块间距、正文
+		assert.equal(lastBodyRow, headerRow + 3);
+		assert.equal(textRow, lastBodyRow + 3);
 		assert.equal(rows[lastBodyRow + 1], "");
+		assert.equal(rows[lastBodyRow + 2], "");
 	});
 });
 
