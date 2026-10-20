@@ -2068,7 +2068,7 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("键盘滚动对话流，滚上去后提示新输出并可回底", (t) => {
+	it("键盘滚动对话流，滚上去后不自动跟随，可回底", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -2095,12 +2095,11 @@ describe("全屏布局", () => {
 			agent.emit({ type: "text_delta", text: "\ntail-line\n" });
 			t.mock.timers.tick(100);
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("new output"));
+			assert.equal(text.includes("tail-line"), false);
 
 			input.emit("data", Buffer.from("\x1b[1;5F"));
 			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("tail-line"));
-			assert.equal(text.includes("new output"), false);
 		} finally {
 			exitTui(input);
 		}

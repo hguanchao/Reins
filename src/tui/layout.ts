@@ -10,7 +10,6 @@ import { describeToolCall, displayToolName } from "../tools/describe.ts";
 import { formatDuration } from "../tools/format.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
 import { renderMain } from "./main.ts";
-import { THEME } from "./theme.ts";
 import { APPROVAL_PANEL_HEIGHT, approvalActionAt, renderApprovalPanel } from "./approval-panel.ts";
 import {
 	modelMenuHeight,
@@ -286,8 +285,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let lastClick: { at: number; row: number; column: number } | undefined;
 	/** 是否跟随新内容滚到底部。 */
 	let follow = true;
-	/** 滚上去之后又有新输出，底部显示回底提示。 */
-	let newOutput = false;
 	/** 对话流构建缓存：同一内容只换行一次，测量、绘制与命中共用。 */
 	let transcriptView: TranscriptView | undefined;
 	let transcriptViewWidth = -1;
@@ -372,10 +369,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		transcriptDirty = true;
 	};
 
-	/** 新内容进对话流；用户已经滚上去时顺便点亮回底提示。 */
+	/** 新内容进对话流；只标脏缓存，是否跟随底部由 follow 决定。 */
 	const markNewContent = (): void => {
 		transcriptDirty = true;
-		if (!follow) newOutput = true;
 	};
 
 	/** 宽度、警告或内容变化时重建；其余帧直接复用。 */
@@ -457,11 +453,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				? renderTranscriptView(view, mainHeight, scrollTop)
 				: renderMain(width, mainHeight, options.version);
 		const mainLines = [...main];
-		if (transcriptShown && newOutput && mainHeight > 0) {
-			const hint = "↓ new output · Ctrl+End to jump".slice(0, width);
-			mainLines[mainHeight - 1] =
-				`${THEME.warning}${hint}${THEME.reset}${" ".repeat(Math.max(0, width - hint.length))}`;
-		}
 		// 整屏自上而下：主区域、面板、页脚；终端比内容矮时只保留前几行
 		const lines = [...mainLines, ...menuLines, ...footer].slice(0, height);
 		const inputRow = compactFooter()
@@ -1089,7 +1080,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		activeTurn = active;
 		hasInput = true;
 		follow = true;
-		newOutput = false;
 		disarm();
 		statusElapsedMs = 0;
 		statusTokens = 0;
@@ -1161,7 +1151,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		markTranscriptDirty();
 		hasInput = true;
 		follow = true;
-		newOutput = false;
 		statusElapsedMs = 0;
 		statusTokens = 0;
 		if (statusClearTimer !== undefined) {
@@ -1620,13 +1609,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const limit = maxScroll();
 			scrollTop = Math.min(limit, Math.max(0, scrollTop + wheelSteps * WHEEL_STEP));
 			follow = scrollTop >= limit;
-			if (follow) newOutput = false;
 		}
 		if (dragRow !== undefined) {
 			const limit = maxScroll();
 			scrollTop = scrollTopFromRow(dragRow, mainHeight, limit);
 			follow = scrollTop >= limit;
-			if (follow) newOutput = false;
 		}
 		const scrollChanged = scrollTop !== beforeScroll;
 
@@ -1716,7 +1703,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				scrollTop = limit;
 				follow = true;
 			}
-			if (follow) newOutput = false;
 			render();
 			return;
 		}
