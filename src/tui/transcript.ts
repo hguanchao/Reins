@@ -117,6 +117,8 @@ const SCROLLBAR_COLOR = THEME.scrollbar;
 const SCROLLBAR_TRACK = " ";
 const SCROLLBAR_THUMB = "█";
 const RESET = THEME.reset;
+/** 实线下划线：展开后的文件路径不用终端给 OSC 8 链接画出的虚线。 */
+const UNDERLINE = "\x1b[4m";
 
 /** 用户提示首行符号前留一列，正文因此比模型回复多缩进一列。 */
 const PROMPT_PREFIX = " › ";
@@ -842,13 +844,15 @@ function expandedToolHead(tool: TranscriptTool, baseIndent: string, width: numbe
 
 	const detail = truncateToWidth(tool.detail, Math.max(0, width - used));
 	const detailColor = tool.linkTarget === undefined ? THEME.textPrimary : THEME.path;
-	const linked =
-		tool.linkTarget !== undefined && detail.length > 0
-			? osc8Link(tool.linkTarget, detail)
-			: detail;
+	const detailPart =
+		detail.length === 0
+			? ""
+			: tool.linkTarget === undefined
+				? detail
+				: `${UNDERLINE}${detail}`;
 	const padding = " ".repeat(Math.max(0, width - used - displayWidth(detail)));
 
-	return `${THEME.accent}${prefix}${name}${RESET}${gap}${detailColor}${linked}${RESET}${padding}`;
+	return `${THEME.textPrimary}${prefix}${name}${RESET}${gap}${detailColor}${detailPart}${RESET}${padding}`;
 }
 
 function wrappedLines(

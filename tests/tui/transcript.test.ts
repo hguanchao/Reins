@@ -344,6 +344,28 @@ describe("工具调用行", () => {
 		assert.ok(body?.startsWith(THEME.surface));
 	});
 
+	it("展开标题与 Thought 同色，文件路径用实线下划线", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a.ts",
+			linkTarget: "file:///work/a.ts",
+			fullDetail: "1  line 1",
+			detailKind: "file",
+			detailExpanded: true,
+		};
+		const head =
+			renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0).find((line) =>
+				plain(line).includes("◆ Read"),
+			) ?? "";
+
+		assert.ok(head.includes(THEME.textPrimary));
+		assert.equal(head.includes(THEME.accent), false);
+		assert.ok(head.includes(THEME.path));
+		assert.ok(head.includes("\x1b[4m"));
+		assert.equal(head.includes("\x1b]8;;"), false);
+	});
+
 	it("展开详情四周各留一行/一列", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
