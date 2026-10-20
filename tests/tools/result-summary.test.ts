@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { resultMetric } from "../../src/tools/result-summary.ts";
+import { resultDetail, resultMetric } from "../../src/tools/result-summary.ts";
+
+describe("工具结果呈现", () => {
+	it("read/list/find/grep/edit 的展开内容是结果本身", () => {
+		assert.equal(resultDetail("read", "line 1\nline 2"), "line 1\nline 2");
+		assert.equal(resultDetail("ls", "- a.ts\n- b.ts"), "- a.ts\n- b.ts");
+		assert.equal(resultDetail("find", "src/a.ts\nsrc/b.ts"), "src/a.ts\nsrc/b.ts");
+		assert.equal(resultDetail("grep", "src/a.ts:1: TODO"), "src/a.ts:1: TODO");
+		assert.equal(resultDetail("edit", "Updated a.ts: 1 edits applied\n\n- x\n+ y"), "Updated a.ts: 1 edits applied\n\n- x\n+ y");
+	});
+
+	it("展开结果同样清掉终端控制字符，其他工具不接管展开", () => {
+		assert.equal(resultDetail("read", "\x1b[31mred\x1b[0m\ttext"), "red text");
+		assert.equal(resultDetail("write", "created"), undefined);
+		assert.equal(resultDetail("bash", "output"), undefined);
+		assert.equal(resultDetail("read", ""), undefined);
+	});
+});
 
 describe("工具结果指标", () => {
 	it("read 显示行数或已读范围", () => {

@@ -142,7 +142,9 @@ function cursorAt(output: FakeOutput, row: number, column: number): boolean {
 }
 
 function plain(line: string): string {
-	return line.replace(/\x1b\[[0-9;]*m/g, "");
+	return line
+		.replace(/\x1b\[[0-9;]*m/g, "")
+		.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "");
 }
 
 describe("全屏布局", () => {
@@ -1172,6 +1174,16 @@ describe("全屏布局", () => {
 		try {
 			input.emit("data", Buffer.from("看看两个文件\r"));
 			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "src/a.ts" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "A-BODY",
+				content: "A-BODY",
+				details: { startLine: 1, endLine: 1, totalLines: 1 },
+			});
 			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "src/b.ts" } });
 			t.mock.timers.tick(100);
 
@@ -1185,7 +1197,8 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("path: src/a.ts"));
+			assert.ok(text.includes("A-BODY"));
+			assert.equal(text.includes("path:"), false);
 		} finally {
 			exitTui(input);
 		}

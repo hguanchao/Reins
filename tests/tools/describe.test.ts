@@ -13,7 +13,7 @@ describe("工具调用摘要", () => {
 		assert.equal(displayToolName("plugin:search"), "plugin:search");
 	});
 
-	it("read 折叠只留文件名，完整路径与范围放在展开里", () => {
+	it("read 折叠只留文件名，展开内容由结果决定", () => {
 		assert.deepEqual(describeToolCall("read", { path: "README.md" }), {
 			name: "Read",
 			detail: "README.md",
@@ -23,11 +23,11 @@ describe("工具调用摘要", () => {
 
 		const ranged = describeToolCall("read", { path: "README.md", offset: 100, limit: 130 });
 		assert.equal(ranged.detail, "README.md");
-		assert.equal(ranged.fullDetail, "path: README.md\noffset: 100\nlimit: 130");
+		assert.equal(ranged.fullDetail, undefined);
 
 		const nested = describeToolCall("read", { path: "src/a.ts" });
 		assert.equal(nested.detail, "a.ts");
-		assert.equal(nested.fullDetail, "path: src/a.ts");
+		assert.equal(nested.fullDetail, undefined);
 	});
 
 	it("write 折叠只留文件名，完整路径、大小与内容预览放在展开里", () => {
@@ -42,25 +42,11 @@ describe("工具调用摘要", () => {
 		assert.equal(short.fullDetail?.split("\n").slice(0, 3).join("\n"), "path: a.ts\nsize: 5 B\nlines: 1");
 	});
 
-	it("edit 折叠只留文件名，每条改动放在展开里", () => {
+	it("edit 折叠只留文件名，展开内容由结果决定", () => {
 		const call = describeToolCall("edit", { path: "src/auth.ts", edits: [{}, {}] });
 
 		assert.equal(call.detail, "auth.ts");
-		assert.equal(
-			call.fullDetail,
-			"path: src/auth.ts\nedit 1: (empty) -> (empty)\nedit 2: (empty) -> (empty)",
-		);
-
-		const fragments = describeToolCall("edit", {
-			path: "a.ts",
-			edits: [{ oldText: "const a = 1;\nsecond", newText: "const a = 2;" }],
-		});
-		assert.equal(fragments.detail, "a.ts");
-		assert.equal(fragments.fullDetail, "path: a.ts\nedit 1: const a = 1;… -> const a = 2;");
-
-		// 参数可能还是 JSON 字符串，条数照样要拆对
-		const json = describeToolCall("edit", { path: "a.ts", edits: JSON.stringify([{}, {}, {}]) });
-		assert.equal(json.fullDetail?.split("\n").length, 4);
+		assert.equal(call.fullDetail, undefined);
 	});
 
 	it("bash 直接显示命令，不经过 JSON 转义", () => {
@@ -103,12 +89,11 @@ describe("工具调用摘要", () => {
 		assert.ok(call.fullDetail?.includes("red text"));
 	});
 
-	it("find、grep 与 ls 折叠只留目标，默认值与过滤器放在展开里", () => {
+	it("find、grep 与 ls 折叠只留目标，展开内容由结果决定", () => {
 		const find = describeToolCall("find", { pattern: "*.md", path: ".", limit: 50 });
 		assert.equal(find.detail, "*.md");
-		assert.equal(find.fullDetail, "pattern: *.md\npath: .\nlimit: 50");
+		assert.equal(find.fullDetail, undefined);
 		assert.equal(describeToolCall("find", { pattern: "*.md" }).detail, "*.md");
-		assert.equal(describeToolCall("find", { pattern: "*.md" }).fullDetail, "pattern: *.md\npath: .");
 
 		const grep = describeToolCall("grep", {
 			pattern: "TODO",
@@ -119,35 +104,32 @@ describe("工具调用摘要", () => {
 			limit: 20,
 		});
 		assert.equal(grep.detail, "TODO  [in src, *.ts]");
-		assert.equal(
-			grep.fullDetail,
-			"pattern: TODO\npath: src\nglob: *.ts\nliteral: true\nignore case: true\nlimit: 20",
-		);
+		assert.equal(grep.fullDetail, undefined);
 		assert.equal(describeToolCall("grep", { pattern: "TODO" }).detail, "TODO");
 
 		assert.equal(describeToolCall("ls", { path: "." }).detail, "");
-		assert.equal(describeToolCall("ls", { path: "." }).fullDetail, "path: .");
+		assert.equal(describeToolCall("ls", { path: "." }).fullDetail, undefined);
 		assert.equal(describeToolCall("ls", { limit: 10 }).detail, "");
-		assert.equal(describeToolCall("ls", { limit: 10 }).fullDetail, "path: .\nlimit: 10");
-		assert.deepEqual(describeToolCall("ls", { path: "server/core", limit: 10 }), {
-			name: "List",
-			detail: "server/core",
-			fullDetail: "path: server/core\nlimit: 10",
-			group: "list",
-		});
+		assert.equal(describeToolCall("ls", { limit: 10 }).fullDetail, undefined);
+
+		const listed = describeToolCall("ls", { path: "server/core", limit: 10 });
+		assert.equal(listed.name, "List");
+		assert.equal(listed.detail, "server/core");
+		assert.equal(listed.group, "list");
+		assert.equal(listed.fullDetail, undefined);
 	});
 
-	it("长路径折叠保留文件名，完整路径放在展开里", () => {
+	it("长路径折叠保留文件名", () => {
 		const path = "E:/Projects/Reins/src/plugins/tools-plugin/very/deep/file.ts";
 
 		const read = describeToolCall("read", { path });
 		assert.equal(read.detail, "file.ts");
-		assert.ok(read.fullDetail?.includes(path));
+		assert.equal(read.fullDetail, undefined);
 
 		const list = describeToolCall("ls", { path });
 		assert.ok(list.detail.startsWith("…/"));
 		assert.ok(list.detail.endsWith("file.ts"));
-		assert.ok(list.fullDetail?.includes(path));
+		assert.equal(list.fullDetail, undefined);
 	});
 
 	it("文件类工具的路径带 file:// 链接，相对路径按工作根解析", () => {

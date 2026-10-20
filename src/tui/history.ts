@@ -5,7 +5,7 @@ import {
 	type LlmMessage,
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName } from "../tools/describe.ts";
-import { resultMetric } from "../tools/result-summary.ts";
+import { resultDetail, resultMetric } from "../tools/result-summary.ts";
 import { appendToolLine, findToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
 
 /**
@@ -80,6 +80,8 @@ export function buildTranscriptHistory(
 						tool.result = message.content;
 						const metric = resultMetric(message.toolName, undefined, message.content);
 						if (metric !== undefined) tool.metric = metric;
+						const detail = resultDetail(message.toolName, message.content);
+						if (detail !== undefined) tool.fullDetail = detail;
 					}
 					break;
 				}

@@ -44,8 +44,8 @@ export interface TranscriptTool {
 	readonly kind: "tool";
 	readonly name: string;
 	readonly detail: string;
-	/** 完整参数；可含换行，与 detail 不同时才可展开 */
-	readonly fullDetail?: string;
+	/** 展开后的详情；可含换行。工具结束后才生成时也允许写入 */
+	fullDetail?: string;
 	/** 折叠路径的 file:// 链接；终端支持 OSC 8 时会显示为可点击的链接 */
 	readonly linkTarget?: string;
 	/** 是否在对话流里展开完整参数 */
@@ -736,8 +736,10 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：名称一行，完整参数按行展开；行内再按宽度换行
-		const head = coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR);
+		// 展开：名称、目标与结果指标一行，详情按行展开；行内再按宽度换行
+		const target = tool.detail.length === 0 ? tool.name : `${tool.name}  ${tool.detail}`;
+		const label = tool.metric === undefined ? target : `${target} (${tool.metric})`;
+		const head = coloredLine(`${prefix}${fitToWidth(label, limit)}`, width, TOOL_NAME_COLOR);
 		const body = tool.fullDetail
 			.split("\n")
 			.flatMap((line) => wrappedLines(line, `${baseIndent}  `, width, MESSAGE_TEXT_COLOR));

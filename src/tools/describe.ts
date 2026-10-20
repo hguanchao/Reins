@@ -35,8 +35,6 @@ const DETAIL_MAX_LINES = 40;
 const DETAIL_MAX_CHARS = 8 * 1024;
 /** write 的内容预览行数。 */
 const CONTENT_PREVIEW_LINES = 20;
-/** 单条 edit 片段显示的首行长度。 */
-const FRAGMENT_MAX_CHARS = 80;
 
 /**
  * 把一次调用转成给人看的文字。
@@ -127,20 +125,16 @@ function describeDetail(tool: string, args: Record<string, unknown>, workspaceRo
 	}
 }
 
-/** 展开后的完整参数；返回 undefined 表示这次调用没有更多可看的信息。 */
+/** 展开后的完整参数；返回 undefined 表示这次调用自己不带更多信息。 */
 function describeFullDetail(tool: string, args: Record<string, unknown>, detail: string): string | undefined {
 	switch (tool) {
-		case "read": {
-			const path = text(args["path"]) ?? "(missing path)";
-			const lines = [`path: ${path}`];
-			const offset = integer(args["offset"]);
-			const showOffset = offset !== undefined && offset > 1;
-			if (showOffset) lines.push(`offset: ${offset}`);
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) lines.push(`limit: ${limit}`);
-			if (path === detail && !showOffset && limit === undefined) return undefined;
-			return capDetail(lines.join("\n"));
-		}
+		// 这些工具的展开内容来自结果，调用参数不再重复展示
+		case "read":
+		case "edit":
+		case "ls":
+		case "find":
+		case "grep":
+			return undefined;
 		case "write": {
 			const path = text(args["path"]) ?? "(missing path)";
 			const content = typeof args["content"] === "string" ? args["content"] : "";
@@ -151,48 +145,9 @@ function describeFullDetail(tool: string, args: Record<string, unknown>, detail:
 			}
 			return capDetail(lines.join("\n"));
 		}
-		case "edit": {
-			const path = text(args["path"]) ?? "(missing path)";
-			const entries = editEntries(args["edits"]);
-			const lines = [`path: ${path}`];
-			for (const [index, entry] of entries.entries()) {
-				lines.push(
-					`edit ${index + 1}: ${fragment(entry["oldText"])} -> ${fragment(entry["newText"])}`,
-				);
-			}
-			return capDetail(lines.join("\n"));
-		}
 		case "bash": {
 			const full = singleLine(text(args["command"]) ?? "(no command)");
 			return full === detail ? undefined : full;
-		}
-		case "find": {
-			const lines = [
-				`pattern: ${text(args["pattern"]) ?? "(no pattern)"}`,
-				`path: ${text(args["path"]) ?? "."}`,
-			];
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) lines.push(`limit: ${limit}`);
-			return capDetail(lines.join("\n"));
-		}
-		case "grep": {
-			const lines = [
-				`pattern: ${text(args["pattern"]) ?? "(no pattern)"}`,
-				`path: ${text(args["path"]) ?? "."}`,
-			];
-			const glob = text(args["glob"]);
-			if (glob !== undefined) lines.push(`glob: ${glob}`);
-			if (args["literal"] === true) lines.push("literal: true");
-			if (args["ignoreCase"] === true) lines.push("ignore case: true");
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) lines.push(`limit: ${limit}`);
-			return capDetail(lines.join("\n"));
-		}
-		case "ls": {
-			const lines = [`path: ${text(args["path"]) ?? "."}`];
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) lines.push(`limit: ${limit}`);
-			return capDetail(lines.join("\n"));
 		}
 		case "subagent": {
 			const task = text(args["task"]) ?? "(no task)";
@@ -270,34 +225,6 @@ function withModifiers(base: string, modifiers: readonly string[]): string {
 	return modifiers.length === 0 ? base : `${base}  [${modifiers.join(", ")}]`;
 }
 
-/** edit 的参数可能已经是数组，也可能还是 JSON 字符串；两种都拆成条目。 */
-function editEntries(value: unknown): readonly Record<string, unknown>[] {
-	let parsed: unknown = value;
-	if (typeof value === "string") {
-		try {
-			parsed = JSON.parse(value);
-		} catch {
-			return [];
-		}
-	}
-	if (Array.isArray(parsed)) return parsed.filter(isRecord);
-	return isRecord(parsed) ? [parsed] : [];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/** 一条 edit 片段：只显示首行，超长或还有后续行时补省略号。 */
-function fragment(value: unknown): string {
-	if (typeof value !== "string" || value.length === 0) return "(empty)";
-	const line = singleLine(value.split("\n", 1)[0] ?? "");
-	const chars = Array.from(line);
-	const text = chars.length > FRAGMENT_MAX_CHARS ? `${chars.slice(0, FRAGMENT_MAX_CHARS - 1).join("")}…` : line;
-	const more = chars.length > FRAGMENT_MAX_CHARS || value.includes("\n");
-	return more ? `${text}${text.endsWith("…") ? "" : "…"}` : text;
-}
-
 function previewLines(text: string, limit: number): readonly string[] {
 	const lines = text.split("\n");
 	if (lines.length <= limit) return lines;
@@ -306,7 +233,7 @@ function previewLines(text: string, limit: number): readonly string[] {
 
 /** 展开详情的总上限：先清掉终端控制字符，再收敛行数，最后按字符数兜底。 */
 function capDetail(text: string): string {
-	const lines = text.split("\n").map(singleLine);
+	const lines = sanitizeDetail(text).split("\n");
 	let result =
 		lines.length > DETAIL_MAX_LINES
 			? [...lines.slice(0, DETAIL_MAX_LINES - 1), `… (${lines.length - DETAIL_MAX_LINES + 1} more lines)`].join(
@@ -319,6 +246,11 @@ function capDetail(text: string): string {
 	return result;
 }
 
+/** 多行内容逐行清理：ANSI 与终端控制字符都不能带进界面。 */
+export function sanitizeDetail(text: string): string {
+	return text.split("\n").map(singleLine).join("\n");
+}
+
 /** 摘要只占一行：换行与制表折成空格，转义序列不能带进终端。 */
 function singleLine(value: string): string {
 	return stripAnsi(value)
@@ -328,10 +260,6 @@ function singleLine(value: string): string {
 
 function text(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function integer(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function firstLine(text: string, limit: number): string {

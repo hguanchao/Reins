@@ -1,10 +1,27 @@
+import { sanitizeDetail } from "./describe.ts";
 import { formatBytes } from "./format.ts";
 
+/** 展开态直接用结果的工具：参数不是用户想看的内容，结果才是。 */
+const RESULT_DETAIL_TOOLS = new Set(["read", "ls", "find", "grep", "edit"]);
+
 /**
- * 工具结束后的折叠行指标。
+ * 工具结束后展开行里显示的内容。
  *
- * 优先使用工具返回的结构化 details；历史回放只有结果文本，因此再提供一层保守的文本回退。
- * 解析不出来时返回 undefined，界面就不显示指标，不做猜测。
+ * 只读查询与编辑的展开态应该回答「实际读到了什么 / 列出了什么 / 改成了什么」，而不是
+ * 再把 path、limit 这些调用参数列一遍。其余工具仍由调用摘要负责展开。
+ */
+export function resultDetail(tool: string, content: string | undefined): string | undefined {
+	if (!RESULT_DETAIL_TOOLS.has(tool)) return undefined;
+	if (content === undefined || content.length === 0) return undefined;
+	return sanitizeDetail(content);
+}
+
+/**
+ * 工具结果在对话流里的呈现。
+ *
+ * 折叠行指标优先使用工具返回的结构化 details；历史回放只有结果文本，因此再提供一层保守的
+ * 文本回退。展开态对 read/ls/find/grep/edit 直接显示结果内容，避免把 path、limit 这类
+ * 调用参数误当成“详情”。
  */
 export function resultMetric(tool: string, details: unknown, content: string): string | undefined {
 	switch (tool) {

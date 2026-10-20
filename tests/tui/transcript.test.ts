@@ -202,7 +202,7 @@ describe("工具调用行", () => {
 		assert.equal(plain(line).trimEnd().endsWith("  › Ls"), true);
 	});
 
-	it("展开时在名称下方显示完整命令", () => {
+	it("展开时保留目标并在名称下方显示完整命令", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
 			name: "Bash",
@@ -214,9 +214,8 @@ describe("工具调用行", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("› Bash"));
+		assert.ok(text.includes("› Bash  npm test"));
 		assert.ok(text.includes("cd /work && npm test | tail -5"));
-		assert.equal(text.includes("› Bash  npm test"), false);
 	});
 
 	it("没有完整命令时双击不给命中区", () => {
@@ -290,9 +289,28 @@ describe("工具调用行", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("  › Edit"));
+		assert.ok(text.includes("  › Edit  auth.ts"));
 		assert.ok(text.includes("    path: src/auth.ts"));
 		assert.ok(text.includes("    edit 1: old -> new"));
+	});
+
+	it("只读工具展开后显示结果内容，而不是参数清单", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a.ts",
+			metric: "2 lines",
+			fullDetail: "line 1\nline 2",
+			detailExpanded: true,
+		};
+		const text = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  › Read  a.ts (2 lines)"));
+		assert.ok(text.includes("    line 1"));
+		assert.ok(text.includes("    line 2"));
+		assert.equal(text.includes("path:"), false);
 	});
 
 	it("折叠路径带 OSC 8 链接，宽度仍按纯文本计算", () => {
