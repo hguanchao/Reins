@@ -17,6 +17,8 @@ export const THEME = {
 	textDisabled: "\x1b[38;2;74;83;93m",
 	/** 强调色：焦点边框、选中标记、current #4ec9b0 */
 	accent: "\x1b[38;2;78;201;176m",
+	/** 文件路径 #61afef：展开的工具标题里与普通正文区分 */
+	path: "\x1b[38;2;97;175;239m",
 	/** 扫光暗部 #2f7d6d */
 	accentDim: { r: 47, g: 125, b: 109 },
 	/** 选中行主文字：加粗白 #ffffff */

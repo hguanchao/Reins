@@ -42,6 +42,11 @@ export function resultDetail(
 
 /** 文件内容带行号展开；范围来自结构化详情，历史回放则从结果尾注里取。 */
 function readDetail(content: string, details: unknown): ResultDetail | undefined {
+	// 结果被落盘时，content 是预览加落盘说明，不是文件正文；不能再按行号排版
+	if (/\[the full result is \d+ characters;/.test(content)) {
+		return { text: sanitizeDetail(content), kind: "text" };
+	}
+
 	const info = record(details);
 	if (numberField(info, "lines") === 0 || / is empty$/.test(content)) {
 		return { text: "(empty)", kind: "text" };

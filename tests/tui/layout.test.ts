@@ -1742,7 +1742,7 @@ describe("全屏布局", () => {
 			frame = text();
 			assert.ok(frame.includes("cd /work && npm test 2>&1 | tail -5"));
 
-			doubleClick(rowOf("› Bash"));
+			doubleClick(rowOf("◆ Bash"));
 			frame = text();
 			assert.equal(frame.includes("cd /work"), false);
 			assert.ok(frame.includes("› Bash  npm test (10ms)"));

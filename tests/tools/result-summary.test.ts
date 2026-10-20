@@ -34,6 +34,16 @@ describe("工具结果呈现", () => {
 		assert.equal(detail?.text.includes("line 100"), false);
 	});
 
+	it("落盘结果不按文件行号排版", () => {
+		const spill =
+			"a\nb\n\n… (100 characters omitted in the middle) …\n\ny\n\n[the full result is 500 characters; written to /tmp/x, read it back line by line]";
+
+		assert.deepEqual(resultDetail("read", spill, { startLine: 1, endLine: 2, totalLines: 2 }), {
+			text: spill,
+			kind: "text",
+		});
+	});
+
 	it("diff 在 hunk 之间省略未改动行", () => {
 		const spaced = [
 			"@@ line 1 @@",

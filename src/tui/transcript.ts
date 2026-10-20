@@ -135,6 +135,8 @@ const THINKING_PREFIX = `${RESPONSE_INDENT}${THINKING_MARKER} `;
 const THINKING_BODY_INDENT = " ".repeat(displayWidth(THINKING_PREFIX));
 /** 工具调用沿用用户提示的标记，两类条目在同一列起头。 */
 const TOOL_MARKER = "›";
+/** 展开后的工具用实心菱形，和折叠态区分。 */
+const TOOL_EXPANDED_MARKER = "◆";
 /** 展开的工具组用带心菱形；收起时沿用工具行的 ›。 */
 const TOOL_GROUP_EXPANDED_MARKER = "◈";
 /** 工具组成员比组头多缩进两格。 */
@@ -740,16 +742,14 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：标题与详情共用一条色带，色带左边缘和工具标题标记对齐
+		// 展开：标题行不着色，详情从标题标记列开始铺色带
 		const bandStart = displayWidth(baseIndent);
-		const target = tool.detail.length === 0 ? tool.name : `${tool.name}  ${tool.detail}`;
-		const label = tool.metric === undefined ? target : `${target} (${tool.metric})`;
-		const head = bandedLine(`${prefix}${fitToWidth(label, limit)}`, width, TOOL_NAME_COLOR, bandStart);
+		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
 		const body = tool.fullDetail
 			.split("\n")
 			.flatMap((line) =>
-				bandedWrappedLines(line, `${baseIndent}  `, width, detailColor(kind, line), bandStart),
+				detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
 			);
 		return [head, ...body];
 	}
@@ -792,7 +792,39 @@ function toolSummaryLine(
 /** 给参数文本挂上 OSC 8 链接；前导缩进留在链接外，终端只给路径画下划线。 */
 function linkTail(tail: string, target: string): string {
 	if (tail.length <= 2) return tail;
-	return `${tail.slice(0, 2)}\x1b]8;;${target}\x1b\\${tail.slice(2)}\x1b]8;;\x1b\\`;
+	return `${tail.slice(0, 2)}${osc8Link(target, tail.slice(2))}`;
+}
+
+function osc8Link(target: string, text: string): string {
+	return `\x1b]8;;${target}\x1b\\${text}\x1b]8;;\x1b\\`;
+}
+
+/**
+ * 展开后的工具标题。
+ *
+ * 标记换成实心菱形，工具名用强调色，文件路径用路径色并保留 OSC 8 链接；展开态不再显示
+ * 结果指标，指标只在折叠行出现。
+ */
+function expandedToolHead(tool: TranscriptTool, baseIndent: string, width: number): string {
+	const prefix = truncateToWidth(`${baseIndent}${TOOL_EXPANDED_MARKER} `, width);
+	let used = displayWidth(prefix);
+
+	const name = truncateToWidth(tool.name, Math.max(0, width - used));
+	used += displayWidth(name);
+
+	const separator = tool.detail.length === 0 ? "" : "  ";
+	const gap = truncateToWidth(separator, Math.max(0, width - used));
+	used += displayWidth(gap);
+
+	const detail = truncateToWidth(tool.detail, Math.max(0, width - used));
+	const detailColor = tool.linkTarget === undefined ? THEME.textPrimary : THEME.path;
+	const linked =
+		tool.linkTarget !== undefined && detail.length > 0
+			? osc8Link(tool.linkTarget, detail)
+			: detail;
+	const padding = " ".repeat(Math.max(0, width - used - displayWidth(detail)));
+
+	return `${THEME.accent}${prefix}${name}${RESET}${gap}${detailColor}${linked}${RESET}${padding}`;
 }
 
 function wrappedLines(
@@ -817,12 +849,65 @@ function coloredLine(text: string, width: number, color: string): string {
 }
 
 /** 从 bandStart 列开始铺背景色带；左侧缩进留在色带外。 */
-function bandedLine(text: string, width: number, color: string, bandStart: number): string {
+/** 详情行：文件与 diff 带行号，续行按行号后的内容列悬挂缩进。 */
+function detailBodyLines(
+	line: string,
+	kind: ResultDetailKind,
+	baseIndent: string,
+	width: number,
+	bandStart: number,
+	color: string,
+): readonly string[] {
+	if (kind === "file") {
+		const match = /^(\s*\d+  )(.*)$/.exec(line);
+		if (match !== null) {
+			return hangingLines(match[1] ?? "", "", match[2] ?? "", baseIndent, width, bandStart, color);
+		}
+	}
+	if (kind === "diff") {
+		const match = /^(\s*\d+ )([-+] |  )(.*)$/.exec(line);
+		if (match !== null) {
+			return hangingLines(
+				match[1] ?? "",
+				match[2] ?? "",
+				match[3] ?? "",
+				baseIndent,
+				width,
+				bandStart,
+				color,
+			);
+		}
+	}
+	return bandedWrappedLines(line, `${baseIndent}  `, width, color, bandStart);
+}
+
+/** 带行号的行换行时，续行缩进到行号之后的内容列。 */
+function hangingLines(
+	gutter: string,
+	marker: string,
+	text: string,
+	baseIndent: string,
+	width: number,
+	bandStart: number,
+	color: string,
+): readonly string[] {
 	const start = Math.max(0, Math.min(bandStart, width));
-	const lead = text.slice(0, start);
-	const visible = truncateToWidth(text.slice(start), width - start);
-	const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
-	return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
+	const lead = baseIndent.slice(0, start);
+	const inside = "  ";
+	const hangingWidth = displayWidth(gutter) + displayWidth(marker);
+	const available = Math.max(1, width - start - displayWidth(inside) - hangingWidth);
+	const segments = wrapText(text, available);
+	const continuation = " ".repeat(displayWidth(inside) + hangingWidth);
+
+	return segments.map((segment, index) => {
+		const content =
+			index === 0
+				? `${inside}${gutter}${marker}${segment}`
+				: `${continuation}${segment}`;
+		const visible = truncateToWidth(content, width - start);
+		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
+		return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
+	});
 }
 
 /** 详情行换行后同样从 bandStart 列开始铺色带，续行缩进留在带内。 */

@@ -214,7 +214,7 @@ describe("工具调用行", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("› Bash  npm test"));
+		assert.ok(text.includes("◆ Bash  npm test"));
 		assert.ok(text.includes("cd /work && npm test | tail -5"));
 	});
 
@@ -240,7 +240,7 @@ describe("工具调用行", () => {
 
 		tool.detailExpanded = true;
 		const rows = renderTranscript(60, 10, [turn], 0).map(plain);
-		const expandedRow = rows.findIndex((line) => line.includes("› Bash")) + 1;
+		const expandedRow = rows.findIndex((line) => line.includes("◆ Bash")) + 1;
 		const bodyRow = rows.findIndex((line) => line.includes("cd /work")) + 1;
 
 		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, expandedRow), tool);
@@ -289,7 +289,7 @@ describe("工具调用行", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("  › Edit  auth.ts"));
+		assert.ok(text.includes("  ◆ Edit  auth.ts"));
 		assert.ok(text.includes("    path: src/auth.ts"));
 		assert.ok(text.includes("    edit 1: old -> new"));
 	});
@@ -307,17 +307,38 @@ describe("工具调用行", () => {
 		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0);
 		const text = lines.map(plain).join("\n");
 
-		assert.ok(text.includes("  › Read  a.ts (2 lines)"));
+		assert.ok(text.includes("  ◆ Read  a.ts"));
+		assert.equal(text.includes("(2 lines)"), false);
 		assert.ok(text.includes("    1  line 1"));
 		assert.ok(text.includes("    2  line 2"));
 		assert.equal(text.includes("path:"), false);
 		assert.ok(lines.some((line) => line.includes(THEME.surface)));
 
-		// 色带从工具标题标记那一列开始，标题行与详情行共用同一条带
-		const head = lines.find((line) => plain(line).includes("› Read"));
+		// 标题行不铺色带；详情从标题标记列开始铺
+		const head = lines.find((line) => plain(line).includes("◆ Read"));
 		const body = lines.find((line) => plain(line).includes("1  line 1"));
-		assert.ok(head?.startsWith(`  ${THEME.surface}`));
+		assert.ok(plain(head ?? "").startsWith("  "));
+		assert.equal(head?.includes(THEME.surface), false);
 		assert.ok(body?.startsWith(`  ${THEME.surface}`));
+	});
+
+	it("文件详情换行时悬挂缩进到内容列", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a.ts",
+			fullDetail: `1  ${"x".repeat(100)}`,
+			detailKind: "file",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(40, 20, [{ prompt: "hi", response: [tool] }], 0)
+			.map(plain)
+			.filter((line) => line.includes("x"));
+
+		assert.ok(lines.length > 1);
+		// 4 列标题缩进 + 2 列带内缩进 + 行号与分隔（3 列）
+		assert.ok(lines[1]?.startsWith("       "));
+		assert.equal(lines[1]?.startsWith("    1"), false);
 	});
 
 	it("diff 详情按增删与 hunk 着色", () => {
