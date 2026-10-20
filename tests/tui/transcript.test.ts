@@ -300,17 +300,37 @@ describe("工具调用行", () => {
 			name: "Read",
 			detail: "a.ts",
 			metric: "2 lines",
-			fullDetail: "line 1\nline 2",
+			fullDetail: "1  line 1\n2  line 2",
+			detailKind: "file",
 			detailExpanded: true,
 		};
-		const text = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0)
-			.map(plain)
-			.join("\n");
+		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const text = lines.map(plain).join("\n");
 
 		assert.ok(text.includes("  › Read  a.ts (2 lines)"));
-		assert.ok(text.includes("    line 1"));
-		assert.ok(text.includes("    line 2"));
+		assert.ok(text.includes("    1  line 1"));
+		assert.ok(text.includes("    2  line 2"));
 		assert.equal(text.includes("path:"), false);
+		assert.ok(lines.some((line) => line.includes(THEME.surface)));
+	});
+
+	it("diff 详情按增删与 hunk 着色", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Edit",
+			detail: "a.ts",
+			fullDetail: "@@ line 1 @@\n1 - old\n1 + new\n2   keep",
+			detailKind: "diff",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const hunk = lines.find((line) => plain(line).includes("@@ line 1 @@"));
+		const removed = lines.find((line) => plain(line).includes("1 - old"));
+		const added = lines.find((line) => plain(line).includes("1 + new"));
+
+		assert.ok(hunk?.includes(THEME.accent));
+		assert.ok(removed?.includes(THEME.error));
+		assert.ok(added?.includes(THEME.success));
 	});
 
 	it("折叠路径带 OSC 8 链接，宽度仍按纯文本计算", () => {

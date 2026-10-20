@@ -30,16 +30,15 @@ describe("工具调用摘要", () => {
 		assert.equal(nested.fullDetail, undefined);
 	});
 
-	it("write 折叠只留文件名，完整路径、大小与内容预览放在展开里", () => {
+	it("write 折叠只留文件名，展开内容由结果决定", () => {
 		const call = describeToolCall("write", { path: "src/new.ts", content: "x".repeat(1234) });
 
 		assert.equal(call.detail, "new.ts");
-		assert.ok(call.fullDetail?.startsWith("path: src/new.ts\nsize: 1.2 KB\nlines: 1\n\ncontent:\n"));
-		assert.ok(call.fullDetail?.includes("x".repeat(100)));
+		assert.equal(call.fullDetail, undefined);
 
 		const short = describeToolCall("write", { path: "a.ts", content: "hello" });
 		assert.equal(short.detail, "a.ts");
-		assert.equal(short.fullDetail?.split("\n").slice(0, 3).join("\n"), "path: a.ts\nsize: 5 B\nlines: 1");
+		assert.equal(short.fullDetail, undefined);
 	});
 
 	it("edit 折叠只留文件名，展开内容由结果决定", () => {
@@ -80,9 +79,8 @@ describe("工具调用摘要", () => {
 	});
 
 	it("展开详情同样清掉终端控制字符", () => {
-		const call = describeToolCall("write", {
-			path: "a.ts",
-			content: "\x1b[31mred\x1b[0m\ttext\nsecond",
+		const call = describeToolCall("subagent", {
+			task: "\x1b[31mred\x1b[0m\ttext\nsecond",
 		});
 
 		assert.equal(call.fullDetail?.includes("\x1b"), false);

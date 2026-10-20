@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -6,7 +5,6 @@ import stripAnsi from "strip-ansi";
 
 import { expandHome, toAbsolutePath } from "../workspace/root.ts";
 import { commandCore } from "./command-summary.ts";
-import { formatBytes } from "./format.ts";
 
 /**
  * 工具调用的可读摘要。
@@ -33,8 +31,6 @@ export type ToolGroupKind = "read" | "list" | "search";
 /** 展开详情的上限，避免一次双击把整段文件内容或超长 JSON 灌进终端。 */
 const DETAIL_MAX_LINES = 40;
 const DETAIL_MAX_CHARS = 8 * 1024;
-/** write 的内容预览行数。 */
-const CONTENT_PREVIEW_LINES = 20;
 
 /**
  * 把一次调用转成给人看的文字。
@@ -130,21 +126,12 @@ function describeFullDetail(tool: string, args: Record<string, unknown>, detail:
 	switch (tool) {
 		// 这些工具的展开内容来自结果，调用参数不再重复展示
 		case "read":
+		case "write":
 		case "edit":
 		case "ls":
 		case "find":
 		case "grep":
 			return undefined;
-		case "write": {
-			const path = text(args["path"]) ?? "(missing path)";
-			const content = typeof args["content"] === "string" ? args["content"] : "";
-			const lines = [`path: ${path}`, `size: ${formatBytes(Buffer.byteLength(content, "utf8"))}`];
-			if (content.length > 0) {
-				lines.push(`lines: ${content.split("\n").length}`, "", "content:");
-				lines.push(...previewLines(content, CONTENT_PREVIEW_LINES));
-			}
-			return capDetail(lines.join("\n"));
-		}
 		case "bash": {
 			const full = singleLine(text(args["command"]) ?? "(no command)");
 			return full === detail ? undefined : full;
@@ -223,12 +210,6 @@ function scopeModifiers(path: unknown): string[] {
 
 function withModifiers(base: string, modifiers: readonly string[]): string {
 	return modifiers.length === 0 ? base : `${base}  [${modifiers.join(", ")}]`;
-}
-
-function previewLines(text: string, limit: number): readonly string[] {
-	const lines = text.split("\n");
-	if (lines.length <= limit) return lines;
-	return [...lines.slice(0, limit), `… (${lines.length - limit} more lines)`];
 }
 
 /** 展开详情的总上限：先清掉终端控制字符，再收敛行数，最后按字符数兜底。 */

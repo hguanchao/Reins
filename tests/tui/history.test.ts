@@ -32,7 +32,7 @@ describe("会话历史回填", () => {
 		assert.equal(turns[0]?.prompt, "hello");
 		assert.deepEqual(turns[0]?.response, [
 			"hi",
-			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents\nmore", metric: "2 lines", fullDetail: "file contents\nmore" },
+			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents\nmore", metric: "2 lines", fullDetail: "1  file contents\n2  more", detailKind: "file" },
 		]);
 		assert.equal(turns[1]?.prompt, "next");
 		assert.deepEqual(turns[1]?.response, ["done"]);
@@ -63,7 +63,7 @@ describe("会话历史回填", () => {
 		const turns = buildTranscriptHistory(messages);
 
 		assert.deepEqual(turns[0]?.response, [
-			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents", metric: "1 line", fullDetail: "file contents" },
+			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents", metric: "1 line", fullDetail: "1  file contents", detailKind: "file" },
 			{ kind: "tool", name: "Bash", detail: "boom", isError: true },
 		]);
 	});

@@ -1,6 +1,7 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
 import type { ToolGroupKind } from "../tools/describe.ts";
+import type { ResultDetailKind } from "../tools/result-summary.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -46,6 +47,8 @@ export interface TranscriptTool {
 	readonly detail: string;
 	/** 展开后的详情；可含换行。工具结束后才生成时也允许写入 */
 	fullDetail?: string;
+	/** 详情类型：文件内容用行号样式，diff 按增删着色 */
+	detailKind?: ResultDetailKind;
 	/** 折叠路径的 file:// 链接；终端支持 OSC 8 时会显示为可点击的链接 */
 	readonly linkTarget?: string;
 	/** 是否在对话流里展开完整参数 */
@@ -740,9 +743,13 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const target = tool.detail.length === 0 ? tool.name : `${tool.name}  ${tool.detail}`;
 		const label = tool.metric === undefined ? target : `${target} (${tool.metric})`;
 		const head = coloredLine(`${prefix}${fitToWidth(label, limit)}`, width, TOOL_NAME_COLOR);
+		const kind = tool.detailKind ?? "text";
+		const background = kind === "file" || kind === "diff" ? THEME.surface : "";
 		const body = tool.fullDetail
 			.split("\n")
-			.flatMap((line) => wrappedLines(line, `${baseIndent}  `, width, MESSAGE_TEXT_COLOR));
+			.flatMap((line) =>
+				wrappedLines(line, `${baseIndent}  `, width, detailColor(kind, line), background),
+			);
 		return [head, ...body];
 	}
 
@@ -792,20 +799,36 @@ function wrappedLines(
 	prefix: string,
 	width: number,
 	color: string,
+	background = "",
 ): readonly string[] {
 	const prefixWidth = displayWidth(prefix);
 	const lines = wrapText(text, Math.max(0, width - prefixWidth));
 	const continuation = " ".repeat(prefixWidth);
 
 	return lines.map((line, index) =>
-		coloredLine(`${index === 0 ? prefix : continuation}${line}`, width, color),
+		coloredLine(`${index === 0 ? prefix : continuation}${line}`, width, color, background),
 	);
 }
 
-function coloredLine(text: string, width: number, color: string): string {
+function coloredLine(text: string, width: number, color: string, background = ""): string {
 	const visible = truncateToWidth(text, width);
 	const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
-	return `${color}${visible}${RESET}${padding}`;
+	return `${background}${color}${visible}${padding}${RESET}`;
+}
+
+/** 详情行的颜色：diff 的增、删、hunk 分别着色，文件内容用次要文字色。 */
+function detailColor(kind: ResultDetailKind, line: string): string {
+	if (kind === "diff") {
+		if (line.startsWith("@@")) return THEME.accent;
+		// 带行号的 diff 形如 `12 + added` / `12 - removed`
+		const marker = /^\s*\d+ ([-+]) /.exec(line);
+		if (marker !== null) return marker[1] === "+" ? THEME.success : THEME.error;
+		if (line.startsWith("+")) return THEME.success;
+		if (line.startsWith("-")) return THEME.error;
+		return THEME.textSecondary;
+	}
+	if (kind === "file") return THEME.textSecondary;
+	return MESSAGE_TEXT_COLOR;
 }
 
 /** 截到指定宽度；放不下时末尾补省略号，保证结果不超过宽度。 */

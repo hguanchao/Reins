@@ -797,8 +797,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						tool.result = event.content ?? event.summary;
 						const metric = resultMetric(event.name, event.details, tool.result);
 						if (metric !== undefined) tool.metric = metric;
-						const detail = resultDetail(event.name, tool.result);
-						if (detail !== undefined) tool.fullDetail = detail;
+						const detail = resultDetail(event.name, tool.result, event.details);
+						if (detail !== undefined) {
+							tool.fullDetail = detail.text;
+							tool.detailKind = detail.kind;
+						}
 						markTranscriptDirty();
 					}
 				}

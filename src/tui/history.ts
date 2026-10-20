@@ -81,7 +81,10 @@ export function buildTranscriptHistory(
 						const metric = resultMetric(message.toolName, undefined, message.content);
 						if (metric !== undefined) tool.metric = metric;
 						const detail = resultDetail(message.toolName, message.content);
-						if (detail !== undefined) tool.fullDetail = detail;
+						if (detail !== undefined) {
+							tool.fullDetail = detail.text;
+							tool.detailKind = detail.kind;
+						}
 					}
 					break;
 				}

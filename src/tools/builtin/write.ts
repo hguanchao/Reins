@@ -1,10 +1,12 @@
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { dirname } from "node:path";
 
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
+import { formatEditDiff } from "./edit-diff.ts";
 import { withFileMutation } from "./file-mutation-queue.ts";
+import { decodeTextFile, looksBinary } from "./text-file.ts";
 
 /** 创建或覆盖文件。父目录不存在时一并建出来，省掉一次单独的建目录往返。 */
 
@@ -21,6 +23,10 @@ type WriteArgs = {
 	readonly path: string;
 	readonly content: string;
 };
+
+/** 只给大小可控的文本生成 diff；整文件覆盖的 diff 不值得为超大文件付出代价。 */
+const MAX_DIFF_BYTES = 256 * 1024;
+const BINARY_PROBE_BYTES = 8192;
 
 export const writeTool: ToolDefinition<WriteArgs> = {
 	name: "write",
@@ -51,6 +57,18 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 
 			const existed = existsSync(resolved.absolute);
 			const previousBytes = existed ? statSync(resolved.absolute).size : 0;
+			let previous: string | undefined;
+			if (!existed && bytes <= MAX_DIFF_BYTES) {
+				previous = "";
+			} else if (existed && previousBytes <= MAX_DIFF_BYTES) {
+				try {
+					const buffer = readFileSync(resolved.absolute);
+					if (!looksBinary(buffer, BINARY_PROBE_BYTES)) previous = decodeTextFile(buffer).text;
+				} catch {
+					// 读不到旧内容不影响写入，只是这次没有 diff 可展示
+					previous = undefined;
+				}
+			}
 
 			try {
 				mkdirSync(dirname(resolved.absolute), { recursive: true });
@@ -62,7 +80,21 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 			const summary = existed
 				? `Overwrote ${displayPath} with ${bytes} bytes (was ${previousBytes} bytes)`
 				: `Created ${displayPath} with ${bytes} bytes`;
-			return { content: summary, details: { path: displayPath, bytes, created: !existed } };
+			const diff =
+				previous === undefined
+					? undefined
+					: formatEditDiff(previous, args.content, [
+							{ start: 0, end: previous.length, newText: args.content },
+						]);
+			return {
+				content: summary,
+				details: {
+					path: displayPath,
+					bytes,
+					created: !existed,
+					...(diff === undefined ? {} : { diff }),
+				},
+			};
 		});
 	},
 };

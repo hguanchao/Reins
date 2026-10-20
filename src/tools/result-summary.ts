@@ -1,8 +1,17 @@
 import { sanitizeDetail } from "./describe.ts";
 import { formatBytes } from "./format.ts";
 
+export type ResultDetailKind = "text" | "file" | "diff";
+
+export interface ResultDetail {
+	readonly text: string;
+	readonly kind: ResultDetailKind;
+}
+
 /** 展开态直接用结果的工具：参数不是用户想看的内容，结果才是。 */
-const RESULT_DETAIL_TOOLS = new Set(["read", "ls", "find", "grep", "edit"]);
+const RESULT_DETAIL_TOOLS = new Set(["read", "write", "ls", "find", "grep", "edit"]);
+/** 整文件覆盖的 diff 可能很长，展开时保留前若干行即可。 */
+const MAX_DIFF_LINES = 200;
 
 /**
  * 工具结束后展开行里显示的内容。
@@ -10,10 +19,118 @@ const RESULT_DETAIL_TOOLS = new Set(["read", "ls", "find", "grep", "edit"]);
  * 只读查询与编辑的展开态应该回答「实际读到了什么 / 列出了什么 / 改成了什么」，而不是
  * 再把 path、limit 这些调用参数列一遍。其余工具仍由调用摘要负责展开。
  */
-export function resultDetail(tool: string, content: string | undefined): string | undefined {
+export function resultDetail(
+	tool: string,
+	content: string | undefined,
+	details?: unknown,
+): ResultDetail | undefined {
 	if (!RESULT_DETAIL_TOOLS.has(tool)) return undefined;
 	if (content === undefined || content.length === 0) return undefined;
-	return sanitizeDetail(content);
+
+	switch (tool) {
+		case "read":
+			return readDetail(content, details);
+		case "edit":
+			return diffDetail(content, details);
+		case "write":
+			return writeDetail(content, details);
+		default:
+			return { text: sanitizeDetail(content), kind: "text" };
+	}
+}
+
+/** 文件内容带行号展开；范围来自结构化详情，历史回放则从结果尾注里取。 */
+function readDetail(content: string, details: unknown): ResultDetail | undefined {
+	const info = record(details);
+	if (numberField(info, "lines") === 0 || / is empty$/.test(content)) {
+		return { text: "(empty)", kind: "text" };
+	}
+
+	const footer = /\[showing lines (\d+)-(\d+) of (\d+);/.exec(content);
+	const startLine = numberField(info, "startLine") ?? (footer === null ? 1 : Number(footer[1]));
+	const endLine = numberField(info, "endLine") ?? (footer === null ? undefined : Number(footer[2]));
+	const lines = readLines(content, startLine, endLine);
+	if (lines.length === 0) return undefined;
+
+	const width = String(startLine + lines.length - 1).length;
+	const text = lines
+		.map((line, index) => `${String(startLine + index).padStart(width)}  ${line}`)
+		.join("\n");
+	return { text, kind: "file" };
+}
+
+function readLines(content: string, startLine: number, endLine: number | undefined): readonly string[] {
+	if (endLine !== undefined) {
+		const count = endLine - startLine + 1;
+		if (count > 0) return content.split("\n").slice(0, count);
+	}
+	const body = (content.split("\n\n[")[0] ?? content).replace(/\n$/, "");
+	return body.length === 0 ? [] : body.split("\n");
+}
+
+function diffDetail(content: string, details: unknown): ResultDetail {
+	const diff = stringField(record(details), "diff");
+	return { text: capLines(numberDiff(sanitizeDetail(diff ?? content))), kind: "diff" };
+}
+
+function writeDetail(content: string, details: unknown): ResultDetail {
+	const diff = stringField(record(details), "diff");
+	if (diff === undefined) return { text: sanitizeDetail(content), kind: "text" };
+	return { text: capLines(numberDiff(sanitizeDetail(diff))), kind: "diff" };
+}
+
+/** 给 diff 行加一列行号：删除与上下文用旧行号，新增用新行号。 */
+function numberDiff(diff: string): string {
+	const entries: { number?: number; text: string }[] = [];
+	let oldLine = 1;
+	let newLine = 1;
+	let max = 0;
+
+	for (const line of diff.split("\n")) {
+		const hunk = /^@@ line (\d+) @@/.exec(line);
+		if (hunk !== null) {
+			oldLine = Number(hunk[1]);
+			newLine = oldLine;
+			max = Math.max(max, oldLine);
+			entries.push({ text: line });
+			continue;
+		}
+		if (line.startsWith("-")) {
+			entries.push({ number: oldLine, text: line });
+			max = Math.max(max, oldLine);
+			oldLine += 1;
+			continue;
+		}
+		if (line.startsWith("+")) {
+			entries.push({ number: newLine, text: line });
+			max = Math.max(max, newLine);
+			newLine += 1;
+			continue;
+		}
+		if (line.startsWith("  ")) {
+			entries.push({ number: oldLine, text: line });
+			max = Math.max(max, oldLine);
+			oldLine += 1;
+			newLine += 1;
+			continue;
+		}
+		entries.push({ text: line });
+	}
+
+	const width = String(max).length;
+	return entries
+		.map((entry) =>
+			entry.number === undefined
+				? entry.text
+				: `${String(entry.number).padStart(width)} ${entry.text}`,
+		)
+		.join("\n");
+}
+
+function capLines(text: string): string {
+	const lines = text.split("\n");
+	if (lines.length <= MAX_DIFF_LINES) return text;
+	return [...lines.slice(0, MAX_DIFF_LINES), `… (${lines.length - MAX_DIFF_LINES} more lines)`].join("\n");
 }
 
 /**

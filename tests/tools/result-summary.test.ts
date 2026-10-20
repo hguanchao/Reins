@@ -4,17 +4,59 @@ import { describe, it } from "node:test";
 import { resultDetail, resultMetric } from "../../src/tools/result-summary.ts";
 
 describe("工具结果呈现", () => {
-	it("read/list/find/grep/edit 的展开内容是结果本身", () => {
-		assert.equal(resultDetail("read", "line 1\nline 2"), "line 1\nline 2");
-		assert.equal(resultDetail("ls", "- a.ts\n- b.ts"), "- a.ts\n- b.ts");
-		assert.equal(resultDetail("find", "src/a.ts\nsrc/b.ts"), "src/a.ts\nsrc/b.ts");
-		assert.equal(resultDetail("grep", "src/a.ts:1: TODO"), "src/a.ts:1: TODO");
-		assert.equal(resultDetail("edit", "Updated a.ts: 1 edits applied\n\n- x\n+ y"), "Updated a.ts: 1 edits applied\n\n- x\n+ y");
+	it("read 展开为带行号的文件内容", () => {
+		assert.deepEqual(resultDetail("read", "a\nb", { startLine: 10, endLine: 11, totalLines: 100 }), {
+			text: "10  a\n11  b",
+			kind: "file",
+		});
+		assert.deepEqual(resultDetail("read", "a\nb"), { text: "1  a\n2  b", kind: "file" });
+		assert.deepEqual(
+			resultDetail("read", "a\nb\n\n[showing lines 5-6 of 10; continue]"),
+			{ text: "5  a\n6  b", kind: "file" },
+		);
+		assert.deepEqual(resultDetail("read", "a.txt is empty", { lines: 0 }), {
+			text: "(empty)",
+			kind: "text",
+		});
 	});
 
-	it("展开结果同样清掉终端控制字符，其他工具不接管展开", () => {
-		assert.equal(resultDetail("read", "\x1b[31mred\x1b[0m\ttext"), "red text");
-		assert.equal(resultDetail("write", "created"), undefined);
+	it("list/find/grep 展开为文本结果", () => {
+		assert.deepEqual(resultDetail("ls", "- a.ts\n- b.ts"), {
+			text: "- a.ts\n- b.ts",
+			kind: "text",
+		});
+		assert.deepEqual(resultDetail("find", "src/a.ts"), { text: "src/a.ts", kind: "text" });
+		assert.deepEqual(resultDetail("grep", "src/a.ts:1: TODO"), {
+			text: "src/a.ts:1: TODO",
+			kind: "text",
+		});
+	});
+
+	it("edit 与 write 展开为带行号的 diff", () => {
+		const editDiff = "@@ line 1 @@\n- old\n+ new";
+		assert.deepEqual(resultDetail("edit", "Updated a.ts", { diff: editDiff }), {
+			text: "@@ line 1 @@\n1 - old\n1 + new",
+			kind: "diff",
+		});
+		assert.deepEqual(resultDetail("edit", "Updated a.ts\n\n- old\n+ new"), {
+			text: "Updated a.ts\n\n1 - old\n1 + new",
+			kind: "diff",
+		});
+		assert.deepEqual(resultDetail("write", "Created a.ts", { diff: editDiff }), {
+			text: "@@ line 1 @@\n1 - old\n1 + new",
+			kind: "diff",
+		});
+		assert.deepEqual(resultDetail("write", "Created a.ts"), {
+			text: "Created a.ts",
+			kind: "text",
+		});
+	});
+
+	it("展开结果清掉终端控制字符，其他工具不接管展开", () => {
+		assert.deepEqual(resultDetail("ls", "\x1b[31mred\x1b[0m\ttext"), {
+			text: "red text",
+			kind: "text",
+		});
 		assert.equal(resultDetail("bash", "output"), undefined);
 		assert.equal(resultDetail("read", ""), undefined);
 	});
