@@ -147,8 +147,8 @@ const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
 /** 右侧固定预留一列空隙和一列滚动条。 */
 const GUTTER_WIDTH = 2;
-/** 展开详情的面板在右侧留出的内边距；左侧沿用现有的两列内容缩进。 */
-const DETAIL_RIGHT_PADDING = 2;
+/** 展开详情的面板在右侧留出的内边距；左侧同样留一列。 */
+const DETAIL_RIGHT_PADDING = 1;
 
 export interface PromptRange {
 	/** 提示块第一行在 transcript 里的下标 */
@@ -748,11 +748,15 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const bandStart = displayWidth(baseIndent);
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
-		const body = tool.fullDetail
-			.split("\n")
-			.flatMap((line) =>
-				detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
-			);
+		const body = [
+			bandBlankLine(baseIndent, width, bandStart),
+			...tool.fullDetail
+				.split("\n")
+				.flatMap((line) =>
+					detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
+				),
+			bandBlankLine(baseIndent, width, bandStart),
+		];
 		return [head, ...body];
 	}
 
@@ -892,12 +896,19 @@ function detailBodyLines(
 	}
 	return bandedWrappedLines(
 		line,
-		`${baseIndent}  `,
+		`${baseIndent} `,
 		width,
 		color,
 		bandStart,
 		DETAIL_RIGHT_PADDING,
 	);
+}
+
+/** 面板上下内边距：整条色带，不写内容。 */
+function bandBlankLine(baseIndent: string, width: number, bandStart: number): string {
+	const start = Math.max(0, Math.min(bandStart, width));
+	const lead = baseIndent.slice(0, start);
+	return `${lead}${THEME.surface}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /** 带行号的行换行时，续行缩进到行号之后的内容列。 */
@@ -914,7 +925,7 @@ function hangingLines(
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
 	const lead = baseIndent.slice(0, start);
-	const inside = "  ";
+	const inside = " ";
 	const hangingWidth = displayWidth(gutter) + displayWidth(marker);
 	const available = Math.max(1, contentEnd - start - displayWidth(inside) - hangingWidth);
 	const segments = wrapText(text, available);

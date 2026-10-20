@@ -290,8 +290,8 @@ describe("工具调用行", () => {
 			.join("\n");
 
 		assert.ok(text.includes("  ◆ Edit  auth.ts"));
-		assert.ok(text.includes("    path: src/auth.ts"));
-		assert.ok(text.includes("    edit 1: old -> new"));
+		assert.ok(text.includes("   path: src/auth.ts"));
+		assert.ok(text.includes("   edit 1: old -> new"));
 	});
 
 	it("只读工具展开后显示结果内容，而不是参数清单", () => {
@@ -309,8 +309,8 @@ describe("工具调用行", () => {
 
 		assert.ok(text.includes("  ◆ Read  a.ts"));
 		assert.equal(text.includes("(2 lines)"), false);
-		assert.ok(text.includes("    1  line 1"));
-		assert.ok(text.includes("    2  line 2"));
+		assert.ok(text.includes("   1  line 1"));
+		assert.ok(text.includes("   2  line 2"));
 		assert.equal(text.includes("path:"), false);
 		assert.ok(lines.some((line) => line.includes(THEME.surface)));
 
@@ -322,7 +322,7 @@ describe("工具调用行", () => {
 		assert.ok(body?.startsWith(`  ${THEME.surface}`));
 	});
 
-	it("展开详情紧贴标题行，不再上下留空行", () => {
+	it("展开详情四周各留一行/一列", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
 			name: "Read",
@@ -335,9 +335,15 @@ describe("工具调用行", () => {
 		const headRow = lines.findIndex((line) => plain(line).includes("◆ Read"));
 		assert.ok(headRow >= 0);
 
-		const content = lines[headRow + 1] ?? "";
-		assert.ok(content.includes(THEME.surface));
+		const top = lines[headRow + 1] ?? "";
+		const content = lines[headRow + 2] ?? "";
+		const bottom = lines[headRow + 3] ?? "";
+
+		assert.ok(top.includes(THEME.surface));
+		assert.equal(plain(top).trim(), "");
 		assert.ok(plain(content).includes("1  line 1"));
+		assert.ok(bottom.includes(THEME.surface));
+		assert.equal(plain(bottom).trim(), "");
 	});
 
 	it("文件详情换行时悬挂缩进到内容列", () => {
@@ -354,9 +360,9 @@ describe("工具调用行", () => {
 			.filter((line) => line.includes("x"));
 
 		assert.ok(lines.length > 1);
-		// 4 列标题缩进 + 2 列带内缩进 + 行号与分隔（3 列）
-		assert.ok(lines[1]?.startsWith("       "));
-		assert.equal(lines[1]?.startsWith("    1"), false);
+		// 2 列标题缩进 + 1 列带内缩进 + 行号与分隔（3 列）
+		assert.ok(lines[1]?.startsWith("      "));
+		assert.equal(lines[1]?.startsWith("   1"), false);
 	});
 
 	it("diff 详情按增删与 hunk 着色", () => {
