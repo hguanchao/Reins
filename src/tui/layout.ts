@@ -7,6 +7,7 @@ import { THINKING_LEVELS, type NotifyMode, type ThinkingLevel } from "../config/
 import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
 import { describeToolCall, displayToolName } from "../tools/describe.ts";
+import { formatDuration } from "../tools/format.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
 import { renderMain } from "./main.ts";
 import { THEME } from "./theme.ts";
@@ -795,7 +796,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					const tool = findToolByCallId(active.lines, event.callId);
 					if (tool !== undefined) {
 						tool.result = event.content ?? event.summary;
-						const metric = resultMetric(event.name, event.details, tool.result);
+						const metric =
+							event.name === "bash"
+								? formatDuration(event.durationMs)
+								: resultMetric(event.name, event.details, tool.result);
 						if (metric !== undefined) tool.metric = metric;
 						const detail = resultDetail(event.name, tool.result, event.details);
 						if (detail !== undefined) {

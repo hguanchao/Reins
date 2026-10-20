@@ -1733,9 +1733,9 @@ describe("全屏布局", () => {
 			agent.emit({ type: "tool_end", callId: "c1", name: "bash", isError: false, durationMs: 10, summary: "" });
 			t.mock.timers.tick(100);
 
-			// 折叠态：多余的工作根 cd 已剥掉，只剩核心命令
+			// 折叠态：多余的工作根 cd 已剥掉，只剩核心命令与耗时
 			let frame = text();
-			assert.ok(frame.includes("› Bash  npm test"));
+			assert.ok(frame.includes("› Bash  npm test (10ms)"));
 			assert.equal(frame.includes("cd /work"), false);
 
 			doubleClick(rowOf("› Bash"));
@@ -1745,7 +1745,7 @@ describe("全屏布局", () => {
 			doubleClick(rowOf("› Bash"));
 			frame = text();
 			assert.equal(frame.includes("cd /work"), false);
-			assert.ok(frame.includes("› Bash  npm test"));
+			assert.ok(frame.includes("› Bash  npm test (10ms)"));
 		} finally {
 			exitTui(input);
 		}

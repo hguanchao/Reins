@@ -1,6 +1,7 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
 import type { ToolGroupKind } from "../tools/describe.ts";
+import { formatDuration } from "../tools/format.ts";
 import type { ResultDetailKind } from "../tools/result-summary.ts";
 import { THEME } from "./theme.ts";
 
@@ -733,7 +734,7 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	const limit = Math.max(0, width - displayWidth(prefix));
 
 	if (tool.isError) {
-		const duration = tool.durationMs === undefined ? "" : ` (${tool.durationMs}ms)`;
+		const duration = tool.durationMs === undefined ? "" : ` (${formatDuration(tool.durationMs)})`;
 		const body = tool.detail.length === 0 ? tool.name : `${tool.name}  ${tool.detail}`;
 		return wrappedLines(body + duration, prefix, width, ERROR_COLOR);
 	}
