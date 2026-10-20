@@ -606,12 +606,7 @@ function thinkingBlockLines(block: TranscriptThinking, width: number): readonly 
 			: [];
 	const header = thinkingHeaderLines(block, width);
 	if (visible.length === 0) return header;
-	return [
-		...header,
-		thinkingBlankLine(width),
-		...visible,
-		thinkingBlankLine(width),
-	];
+	return [...header, ...visible, thinkingBlankLine(width)];
 }
 
 /**
@@ -772,7 +767,6 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
 		const body = [
-			bandBlankLine(width, bandStart),
 			...tool.fullDetail
 				.split("\n")
 				.flatMap((line) =>
