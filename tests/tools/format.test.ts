@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatDuration } from "../../src/tools/format.ts";
+import { formatDuration, formatElapsed } from "../../src/tools/format.ts";
 
 describe("耗时格式", () => {
 	it("按毫秒、秒、分、时、天逐级显示", () => {
@@ -15,5 +15,16 @@ describe("耗时格式", () => {
 		assert.equal(formatDuration(3_665_000), "1h 1m");
 		assert.equal(formatDuration(86_400_000), "1d");
 		assert.equal(formatDuration(90_000_000), "1d 1h");
+	});
+
+	it("思考耗时不足一分钟保留一位小数秒，更长的用分时", () => {
+		assert.equal(formatElapsed(0), "0.0s");
+		assert.equal(formatElapsed(500), "0.5s");
+		assert.equal(formatElapsed(1234), "1.2s");
+		assert.equal(formatElapsed(60_000), "1m");
+		assert.equal(formatElapsed(65_000), "1m 5s");
+		assert.equal(formatElapsed(3_600_000), "1h");
+		assert.equal(formatElapsed(3_665_000), "1h 1m");
+		assert.equal(formatElapsed(90_000_000), "1d 1h");
 	});
 });

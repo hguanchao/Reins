@@ -1204,6 +1204,28 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("运行中的 Thinking 标题显示耗时", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("你好\r"));
+			agent.emit({ type: "reasoning_delta", text: "thinking" });
+			t.mock.timers.tick(1500);
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Thinking… 1.0s"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("双击展开长思考时保持标题位置，不跳到底部", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

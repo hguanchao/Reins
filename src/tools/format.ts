@@ -39,3 +39,10 @@ function trimDecimal(value: number): string {
 	const text = value.toFixed(1);
 	return text.endsWith(".0") ? text.slice(0, -2) : text;
 }
+
+/** 思考耗时：不足一分钟保留一位小数秒，更长的复用分/时/天格式。 */
+export function formatElapsed(ms: number): string {
+	if (!Number.isFinite(ms) || ms < 0) return "0.0s";
+	if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+	return formatDuration(Math.floor(ms / 1000) * 1000);
+}
