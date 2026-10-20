@@ -739,16 +739,16 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：名称、目标与结果指标一行，详情按行展开；行内再按宽度换行
+		// 展开：标题与详情共用一条色带，色带左边缘和工具标题标记对齐
+		const bandStart = displayWidth(baseIndent);
 		const target = tool.detail.length === 0 ? tool.name : `${tool.name}  ${tool.detail}`;
 		const label = tool.metric === undefined ? target : `${target} (${tool.metric})`;
-		const head = coloredLine(`${prefix}${fitToWidth(label, limit)}`, width, TOOL_NAME_COLOR);
+		const head = bandedLine(`${prefix}${fitToWidth(label, limit)}`, width, TOOL_NAME_COLOR, bandStart);
 		const kind = tool.detailKind ?? "text";
-		const background = kind === "file" || kind === "diff" ? THEME.surface : "";
 		const body = tool.fullDetail
 			.split("\n")
 			.flatMap((line) =>
-				wrappedLines(line, `${baseIndent}  `, width, detailColor(kind, line), background),
+				bandedWrappedLines(line, `${baseIndent}  `, width, detailColor(kind, line), bandStart),
 			);
 		return [head, ...body];
 	}
@@ -799,21 +799,53 @@ function wrappedLines(
 	prefix: string,
 	width: number,
 	color: string,
-	background = "",
 ): readonly string[] {
 	const prefixWidth = displayWidth(prefix);
 	const lines = wrapText(text, Math.max(0, width - prefixWidth));
 	const continuation = " ".repeat(prefixWidth);
 
 	return lines.map((line, index) =>
-		coloredLine(`${index === 0 ? prefix : continuation}${line}`, width, color, background),
+		coloredLine(`${index === 0 ? prefix : continuation}${line}`, width, color),
 	);
 }
 
-function coloredLine(text: string, width: number, color: string, background = ""): string {
+function coloredLine(text: string, width: number, color: string): string {
 	const visible = truncateToWidth(text, width);
 	const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
-	return `${background}${color}${visible}${padding}${RESET}`;
+	return `${color}${visible}${RESET}${padding}`;
+}
+
+/** 从 bandStart 列开始铺背景色带；左侧缩进留在色带外。 */
+function bandedLine(text: string, width: number, color: string, bandStart: number): string {
+	const start = Math.max(0, Math.min(bandStart, width));
+	const lead = text.slice(0, start);
+	const visible = truncateToWidth(text.slice(start), width - start);
+	const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
+	return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
+}
+
+/** 详情行换行后同样从 bandStart 列开始铺色带，续行缩进留在带内。 */
+function bandedWrappedLines(
+	text: string,
+	prefix: string,
+	width: number,
+	color: string,
+	bandStart: number,
+): readonly string[] {
+	const prefixWidth = displayWidth(prefix);
+	const start = Math.max(0, Math.min(bandStart, width));
+	const lead = prefix.slice(0, start);
+	const inside = prefix.slice(start);
+	const insideWidth = Math.max(0, prefixWidth - start);
+	const lines = wrapText(text, Math.max(0, width - prefixWidth));
+	const continuation = " ".repeat(insideWidth);
+
+	return lines.map((line, index) => {
+		const content = `${index === 0 ? inside : continuation}${line}`;
+		const visible = truncateToWidth(content, width - start);
+		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
+		return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
+	});
 }
 
 /** 详情行的颜色：diff 的增、删、hunk 分别着色，文件内容用次要文字色。 */

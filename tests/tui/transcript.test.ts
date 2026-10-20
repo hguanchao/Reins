@@ -312,6 +312,12 @@ describe("工具调用行", () => {
 		assert.ok(text.includes("    2  line 2"));
 		assert.equal(text.includes("path:"), false);
 		assert.ok(lines.some((line) => line.includes(THEME.surface)));
+
+		// 色带从工具标题标记那一列开始，标题行与详情行共用同一条带
+		const head = lines.find((line) => plain(line).includes("› Read"));
+		const body = lines.find((line) => plain(line).includes("1  line 1"));
+		assert.ok(head?.startsWith(`  ${THEME.surface}`));
+		assert.ok(body?.startsWith(`  ${THEME.surface}`));
 	});
 
 	it("diff 详情按增删与 hunk 着色", () => {
