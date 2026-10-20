@@ -8,8 +8,8 @@ import type { JsonSchema } from "../../tools/schema.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		path: { type: "string", description: "Directory to list; defaults to the workspace root" },
-		limit: { type: "integer", minimum: 1, description: "Maximum entries to list; defaults to 500" },
+		path: { type: "string", description: "Directory to list; defaults to the workspace root." },
+		limit: { type: "integer", minimum: 1, description: "Maximum entries to return; defaults to 500." },
 	},
 	required: [],
 } as const satisfies JsonSchema;
@@ -23,7 +23,10 @@ const DEFAULT_LIMIT = 500;
 
 export const lsTool: ToolDefinition<LsArgs> = {
 	name: "ls",
-	description: "List a directory. Directory names end with a slash; not recursive.",
+	summary: "List one directory level",
+	description:
+		"List the entries of one directory without descending. Directory names end with a slash. Defaults to the " +
+		"workspace root and stops at the limit.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 

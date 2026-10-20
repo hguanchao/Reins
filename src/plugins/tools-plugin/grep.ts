@@ -17,12 +17,12 @@ import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "./walk.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		pattern: { type: "string", description: "What to match; a regular expression unless literal is set" },
-		path: { type: "string", description: "Directory to search; defaults to the workspace root" },
-		glob: { type: "string", description: "Only search files matching this glob, e.g. **/*.ts" },
-		literal: { type: "boolean", description: "Treat pattern as plain text instead of a regular expression" },
-		ignoreCase: { type: "boolean", description: "Match case-insensitively" },
-		limit: { type: "integer", minimum: 1, description: "Maximum matches to return; defaults to 100" },
+		pattern: { type: "string", description: "Regular expression to match, or plain text when literal is true." },
+		path: { type: "string", description: "Directory to search; defaults to the workspace root." },
+		glob: { type: "string", description: "Only search files matching this glob, e.g. **/*.ts." },
+		literal: { type: "boolean", description: "Treat pattern as plain text instead of a regular expression." },
+		ignoreCase: { type: "boolean", description: "Match case-insensitively." },
+		limit: { type: "integer", minimum: 1, description: "Maximum matches to return; defaults to 100." },
 	},
 	required: ["pattern"],
 } as const satisfies JsonSchema;
@@ -44,9 +44,11 @@ const BINARY_PROBE_BYTES = 8192;
 
 export const grepTool: ToolDefinition<GrepArgs> = {
 	name: "grep",
+	summary: "Search file contents for a pattern",
 	description:
-		"Search file contents and return matches as \"relative/path:line: text\". pattern is a regular expression"
-		+ " unless literal is set. Skips .git and node_modules.",
+		"Search file contents recursively and return matches as \"path:line: text\". The pattern is a regular " +
+		"expression unless literal is true. Starts from path (default: workspace root), honors an optional glob, " +
+		"skips .git and node_modules, and stops at the limit.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 

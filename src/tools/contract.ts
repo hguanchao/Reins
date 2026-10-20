@@ -13,7 +13,10 @@ import type { JsonSchema } from "./schema.ts";
 /** 工具对模型的声明。模型只看得到这些，执行细节不在这里。 */
 export interface ToolDeclaration {
 	readonly name: string;
+	/** 完整说明，随工具 schema 一起发送，参数细节写在这里 */
 	readonly description: string;
+	/** 系统提示词工具清单里的短句；省略时用 description */
+	readonly summary?: string;
 	readonly parameters: JsonSchema;
 }
 

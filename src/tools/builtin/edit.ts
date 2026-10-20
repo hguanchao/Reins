@@ -16,8 +16,11 @@ import { decodeTextFile, encodeTextFile } from "./text-file.ts";
 const EDIT_ENTRY = {
 	type: "object",
 	properties: {
-		oldText: { type: "string", description: "The text to replace. It must match the file exactly and appear only once." },
-		newText: { type: "string", description: "The replacement text. Leave empty to delete." },
+		oldText: {
+			type: "string",
+			description: "Exact text to replace. It must appear exactly once in the original file and must not overlap another edit.",
+		},
+		newText: { type: "string", description: "Replacement text. Leave empty to delete." },
 	},
 	required: ["oldText", "newText"],
 } as const satisfies JsonSchema;
@@ -25,10 +28,10 @@ const EDIT_ENTRY = {
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		path: { type: "string", description: "The path to edit, relative to the workspace root or absolute." },
+		path: { type: "string", description: "File path, relative to the workspace root or absolute." },
 		edits: {
 			type: "array",
-			description: "The edits to apply. Their ranges must not overlap.",
+			description: "Replacements applied to the original file. Fragments must not overlap.",
 			items: EDIT_ENTRY,
 		},
 	},
@@ -47,10 +50,11 @@ type EditArgs = {
 
 export const editTool: ToolDefinition<EditArgs> = {
 	name: "edit",
+	summary: "Replace exact text fragments in an existing file",
 	description:
-		"Replace file content by fragment. Each oldText must match one fragment of the file exactly and appear only " +
-		"once, otherwise no edit is applied. To change several places, pass multiple edits in one call; they all apply " +
-		"to the same original content.",
+		"Change an existing text file by exact fragment replacement. Every oldText is matched against the original " +
+		"file, not against the result of earlier edits in the same call. Each fragment must be unique and must not " +
+		"overlap another; merge nearby changes into one edit. Pass all changes for one file in a single call.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: false },
 

@@ -15,9 +15,9 @@ import { decodeTextFile, looksBinary, type TextFile } from "./text-file.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		path: { type: "string", description: "The path to read, relative to the workspace root or absolute." },
-		offset: { type: "integer", minimum: 1, description: "The 1-based line number to start reading from." },
-		limit: { type: "integer", minimum: 1, description: "The maximum number of lines to return." },
+		path: { type: "string", description: "File path, relative to the workspace root or absolute." },
+		offset: { type: "integer", minimum: 1, description: "1-based line number to start reading from." },
+		limit: { type: "integer", minimum: 1, description: "Maximum number of lines to return." },
 	},
 	required: ["path"],
 } as const satisfies JsonSchema;
@@ -33,9 +33,12 @@ const BINARY_PROBE_BYTES = 8192;
 
 export const readTool: ToolDefinition<ReadArgs> = {
 	name: "read",
+	summary: "Read a text file; use offset and limit for large files",
 	description:
-		"Read a text file. The returned content carries line number ranges; a single call returns at most 2000 lines " +
-		"or 50 KB. If there is more, continue with offset. Line numbers start at 1.",
+		`Read a text file from the workspace and return its content. A call returns at most ` +
+		`${DEFAULT_LIMITS.maxLines} lines or ${DEFAULT_LIMITS.maxBytes / 1024} KB; when there is more, the result ` +
+		"reports the line range shown and the offset to continue from. Use this instead of cat, head, tail, or sed. " +
+		"Binary files are rejected.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 

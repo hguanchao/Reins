@@ -257,6 +257,7 @@ export function createSubagentTool(deps: SubagentDeps): AnyToolDefinition {
 	const subagent = new Subagent(deps);
 	const tool: ToolDefinition<SubagentArgs> = {
 		name: "subagent",
+		summary: "Delegate one self-contained task to a subagent with its own context",
 		description:
 			`Hand one self-contained piece of work to a subagent with its own context and a budget of ${deps.maxSteps} steps; it reports back when done.` +
 			" Good for work that reads many files and runs many commands but ends in a few lines of conclusions." +

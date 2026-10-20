@@ -11,8 +11,8 @@ import { withFileMutation } from "./file-mutation-queue.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		path: { type: "string", description: "The path to write, relative to the workspace root or absolute." },
-		content: { type: "string", description: "The complete file content. To modify an existing file, use edit instead." },
+		path: { type: "string", description: "File path, relative to the workspace root or absolute." },
+		content: { type: "string", description: "Complete file content. To modify an existing file, use edit instead." },
 	},
 	required: ["path", "content"],
 } as const satisfies JsonSchema;
@@ -24,9 +24,10 @@ type WriteArgs = {
 
 export const writeTool: ToolDefinition<WriteArgs> = {
 	name: "write",
+	summary: "Create or fully overwrite a file; parent directories are created",
 	description:
-		"Write a file; missing parent directories are created. Overwriting a whole file discards the existing content, " +
-		"so use edit to modify an existing file.",
+		"Create a file or replace its entire content; missing parent directories are created. Use edit instead to " +
+		"change an existing file, because a full overwrite discards content you have not read.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: false },
 

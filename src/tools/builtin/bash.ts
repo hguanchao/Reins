@@ -18,11 +18,11 @@ import { DEFAULT_LIMITS, truncateTail } from "../truncate.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		command: { type: "string", description: "The command to run, parsed by the system shell." },
+		command: { type: "string", description: "Shell command to run. It starts in the workspace root." },
 		timeout: {
 			type: "integer",
 			minimum: 1,
-			description: "Timeout in seconds. Defaults to 600; a longer run is killed together with its child processes.",
+			description: "Timeout in seconds. Defaults to 600; the command and its child processes are killed when it expires.",
 		},
 	},
 	required: ["command"],
@@ -47,13 +47,18 @@ const MAX_CAPTURED_BYTES = 5 * 1024 * 1024;
 export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
 	return {
 		name: "bash",
+		summary: "Run a shell command in the workspace root (Git Bash on Windows)",
 		description:
-			"Run a command in the system shell and return the combined output plus the exit code. " +
+			"Run a shell command in the workspace root and return its combined output and exit status. Use paths " +
+			"relative to the root and do not prefix commands with cd. Prefer one simple command per call, and use the " +
+			`dedicated file and search tools when they fit. Output is truncated from the end beyond ` +
+			`${DEFAULT_LIMITS.maxLines} lines or ${DEFAULT_LIMITS.maxBytes / 1024} KB; a non-zero exit code marks the ` +
+			"call as failed. " +
 			(process.platform === "win32"
 				? "On Windows the shell is Git Bash: use POSIX syntax and /c/... paths, not cmd.exe syntax. "
 				: "") +
-			"Use it for builds, tests, version control and similar tasks. Prefer edit or write for file changes: they keep " +
-			"the original text and report a diff.",
+			"Use it for builds, tests, version control and similar tasks. Prefer edit or write for file changes: they " +
+			"keep the original text and report a diff.",
 		parameters: PARAMETERS,
 		annotations: { readOnly: false, destructive: true, openWorld: true },
 

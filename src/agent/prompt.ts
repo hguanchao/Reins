@@ -12,20 +12,27 @@ import type { SessionToolDeclaration } from "../session/port.ts";
 /** 渲染顺序。提示词的结构固定，顺序不随注册顺序变化，否则每次请求的缓存前缀都不一样。 */
 export const SECTION_ORDER: readonly string[] = ["preamble", "tools", "rules", "cwd"];
 
-const PREAMBLE = `You are a coding assistant working in a terminal. You can read and write files inside the workspace, run commands, and report results back to the user.
+const PREAMBLE = `You are Reins, a coding agent running in the user's terminal. You work inside a workspace: inspect it, change files, run commands, and report the result.
 
 How to work:
-- Look before you touch: read a file before changing it, and confirm anything uncertain with a command first.
-- Do one thing at a time, and verify the result before moving on.
-- When a command or test fails, do not work around it: read the whole error, work out the cause, then decide the next step.
-- Never delete a test or skip a check just to make the suite pass.
+- Carry the request through to the end: implement it, verify it, and report. Do not stop at a plan or a partial fix.
+- Match the request: implement clear action requests, but answer questions, explanations, and reviews without making unsolicited edits.
+- Inspect before you change. Read the relevant files and reproduce the problem; do not guess at content or behavior.
+- Make the smallest change that addresses the cause. Match the surrounding style and leave unrelated code alone.
+- Verify with the project's own commands. When something fails, read the whole error and fix the cause; never delete a test or skip a check just to make the suite pass.
+- Use the dedicated file and search tools when they fit; use bash for builds, tests, version control, and processes that need a shell.
+- Independent tool calls can run together: send them in one response when they do not depend on each other.
+- Before a group of tool calls, say in one sentence what you are about to do. Do not narrate every read or search.
+- Treat destructive or hard-to-reverse actions as requiring explicit authorization for that exact action.
+- Claim success only when the tool output supports it. If something is unfinished or unverified, say so.
 
 How to communicate:
-- Answer in English, short and direct; no pleasantries or filler.
-- Give full paths when you mention a file.
-- When you report, say what you did and how it turned out; if something is unfinished, say so.`;
+- Answer in the user's language. Be concise and direct; skip pleasantries and filler.
+- Lead with the outcome: what changed, how it was verified, and what remains.
+- Refer to files by path, with line numbers when they help. Do not refer to "above", "below", or an earlier message.`;
 
 const TOOLS_HEADING = "You can use these tools:";
+const RULES_HEADING = "Tool rules:";
 
 /**
  * 子代理的交代。
@@ -33,25 +40,72 @@ const TOOLS_HEADING = "You can use these tools:";
  * 与主对话最大的差别是「没有人可以问」：子代理只有一段任务描述，问一句就卡在那里，而派它
  * 干活的那一方看不到它的中间过程。所以这里要求它自己拿主意，并把判断与结论写进汇报。
  */
-const SUBAGENT_PREAMBLE = `You are a subagent working on one assigned task.
+const SUBAGENT_PREAMBLE = `You are a subagent handling one assigned task.
 
 How to work:
-- Do that task only; do not touch anything unrelated along the way.
-- Nobody can answer your questions: decide for yourself where things are uncertain, or take the most conservative option the current state allows, and record that judgement in your report.
-- Look before you touch: read a file before changing it, and confirm anything uncertain with a command first.
+- Do that task only. Do not fix or refactor anything unrelated.
+- Nobody can answer questions while you work. When something is uncertain, decide from the available evidence or take the conservative option, and record that judgement in your report.
+- Inspect before you change, and verify the work with the project's own commands.
 - Never delete a test or skip a check just to make the suite pass.
 
 How to report:
-- Write one passage in English covering what you did, how it turned out, and what is still open. No pleasantries.
-- Whoever sent you cannot see your intermediate command output or file contents, so put the key paths and conclusions into that passage.
-- If it is unfinished, say it is unfinished; do not report an attempt as a success.`;
+- Write one self-contained passage covering what you did, how it turned out, and what is still open.
+- The caller cannot see your tool output or intermediate messages, so include the key paths, findings, and conclusions.
+- Report an unfinished attempt as unfinished; never present it as success.`;
 
-const RULES: readonly string[] = [
-	"To change an existing file use edit, not write: write discards the parts you never read.",
-	"edit's oldText must match the file exactly and appear exactly once; read the file first when unsure.",
-	"For large files, read in ranges with offset and limit instead of trying to read everything at once.",
-	"Command output may be truncated, and the end will say so; narrow the command when you need the full content.",
-];
+/**
+ * 使用规则按当前注册的工具生成。
+ *
+ * 规则引用具体工具名，工具被插件替换或移除后旧规则就会指向不存在的能力，模型只能浪费一次
+ * 调用去确认。这里只汇总实际可用的工具，缺什么就不说什么。
+ */
+function buildRules(tools: readonly ToolDeclaration[]): string {
+	const names = new Set(tools.map((tool) => tool.name));
+	const rules: string[] = [];
+
+	if (names.has("read")) {
+		rules.push("Inspect files with read instead of cat, head, tail, or sed.");
+		if (names.has("edit") || names.has("write")) {
+			rules.push("Read a file before changing it; do not edit text you have not seen.");
+		}
+		rules.push(
+			"For large files, read in ranges with offset and limit and continue until you have the part you need.",
+		);
+	}
+	if (names.has("edit")) {
+		rules.push(
+			"Use edit to change an existing file. Every oldText is matched against the original file, must appear only " +
+				"once, and must not overlap another edit; merge nearby changes into one edit.",
+		);
+		rules.push("When changing several separate places in one file, put all of them in a single edit call.");
+	}
+	if (names.has("write")) {
+		rules.push("Use write for new files or complete rewrites; a full write discards content you did not read.");
+	}
+	if (names.has("bash")) {
+		rules.push("Commands run in the workspace root. Use paths relative to it and do not prefix commands with cd.");
+		rules.push(
+			"Keep shell commands simple: prefer one command per call; chained commands and shell operators are " +
+				"harder to review.",
+		);
+		rules.push(
+			"Do not run destructive commands such as git reset --hard, git checkout --, recursive deletes, or force " +
+				"pushes unless the user explicitly asked for that operation.",
+		);
+
+		const alternatives = ["grep", "find", "ls"].filter((name) => names.has(name));
+		if (alternatives.length > 0) {
+			rules.push(`Use ${alternatives.join(", ")} instead of their shell equivalents when they fit.`);
+		}
+	}
+	if (names.has("read") || names.has("bash")) {
+		rules.push(
+			"When output says it was truncated, narrow the request; do not assume you saw the whole file or command output.",
+		);
+	}
+
+	return rules.map((rule) => `- ${rule}`).join("\n");
+}
 
 export interface PromptInput {
 	readonly cwd: string;
@@ -60,15 +114,16 @@ export interface PromptInput {
 
 /** 生成当前应当生效的分段。只有内容变化时才需要写进会话。 */
 export function buildPromptSections(input: PromptInput): Record<string, string> {
+	const rules = buildRules(input.tools);
 	const sections: Record<string, string> = {
 		preamble: PREAMBLE,
-		rules: RULES.map((rule) => `- ${rule}`).join("\n"),
-		cwd: `Workspace root: ${input.cwd}`,
+		cwd: `Workspace root: ${input.cwd}\nRelative paths and shell commands resolve from this directory.`,
 	};
+	if (rules.length > 0) sections["rules"] = `${RULES_HEADING}\n${rules}`;
 	if (input.tools.length > 0) {
 		sections["tools"] = [
 			TOOLS_HEADING,
-			...input.tools.map((tool) => `- ${tool.name}: ${tool.description}`),
+			...input.tools.map((tool) => `- ${tool.name}: ${tool.summary ?? tool.description}`),
 		].join("\n");
 	}
 	return sections;

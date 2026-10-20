@@ -7,9 +7,12 @@ import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "./walk.ts";
 const PARAMETERS = {
 	type: "object",
 	properties: {
-		pattern: { type: "string", description: "Path glob, e.g. src/**/*.ts; ** crosses directories, * does not" },
-		path: { type: "string", description: "Directory to search; defaults to the workspace root" },
-		limit: { type: "integer", minimum: 1, description: "Maximum paths to return; defaults to 1000" },
+		pattern: {
+			type: "string",
+			description: "Path glob, e.g. src/**/*.ts. ** crosses directories; * and ? stay within one segment.",
+		},
+		path: { type: "string", description: "Directory to search; defaults to the workspace root." },
+		limit: { type: "integer", minimum: 1, description: "Maximum paths to return; defaults to 1000." },
 	},
 	required: ["pattern"],
 } as const satisfies JsonSchema;
@@ -24,9 +27,11 @@ const DEFAULT_LIMIT = 1000;
 
 export const findTool: ToolDefinition<FindArgs> = {
 	name: "find",
+	summary: "Find files by glob pattern",
 	description:
-		"Find files by path name and return paths relative to the workspace root. `**` crosses directories;"
-		+ " `*` and `?` match within a single level. Skips .git and node_modules.",
+		"Find files whose path matches a glob and return paths relative to the workspace root. ** crosses " +
+		"directories; * and ? match within one path segment. Starts from path (default: workspace root), skips " +
+		".git and node_modules, and stops at the limit.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
