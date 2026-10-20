@@ -124,7 +124,7 @@ describe("工具调用行", () => {
 		assert.ok(line.includes(THEME.textPrimary));
 	});
 
-	it("参数放不下时换到第二行，过长省略，保持最多两行", () => {
+	it("参数放不下时保持一行，末尾省略", () => {
 		const command =
 			'cd /e/Projects/Reins2API && find . -not -path "*/node_modules/*" -type f | head -100';
 		const turn: TranscriptTurn = {
@@ -133,15 +133,13 @@ describe("工具调用行", () => {
 		};
 		const lines = renderTranscript(40, 10, [turn], 0).map(plain);
 
-		const first = lines.find((line) => line.includes("› Bash"));
-		assert.equal(first?.trimEnd(), "  › Bash");
-
-		const secondIndex = lines.indexOf(first ?? "") + 1;
-		const second = lines[secondIndex] ?? "";
-		assert.ok(second.startsWith("    cd /e/Projects"));
-		assert.ok(second.includes("…"));
-		assert.equal(second.length, 40);
-		assert.equal(lines[secondIndex + 1]?.includes("node_modules"), false);
+		const index = lines.findIndex((line) => line.includes("› Bash"));
+		const line = lines[index] ?? "";
+		assert.ok(line.startsWith("  › Bash  cd /e/Projects"));
+		assert.ok(line.includes("…"));
+		assert.equal(line.length, 40);
+		// 折行会让下一条调用被推开，这里确认没有第二行
+		assert.equal(lines[index + 1]?.includes("node_modules"), false);
 	});
 
 	it("失败行用 ×、错误色并带耗时", () => {

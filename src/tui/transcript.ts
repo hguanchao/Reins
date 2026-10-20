@@ -635,8 +635,8 @@ function groupHeaderLabel(members: readonly TranscriptTool[]): string {
 /**
  * 工具调用行。
  *
- * 名称加参数放得下就是一行；放不下时名称独占一行，参数缩进到下一行，再长就省略，保持最多
- * 两行。失败原因要完整看见，过长按普通正文换行，每行都用错误色。
+ * 名称与参数固定占一行：参数放不下时末尾省略，不折到第二行——连续多条调用时，一行一条才
+ * 扫得动。失败原因要完整看见，过长按普通正文换行，每行都用错误色。
  */
 function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_INDENT): readonly string[] {
 	const marker = tool.isError ? ERROR_MARKER : TOOL_MARKER;
@@ -653,26 +653,14 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		return [coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR)];
 	}
 
-	if (displayWidth(`${tool.name}  ${tool.detail}`) <= limit) {
-		return [toolSummaryLine(prefix, tool.name, tool.detail, width)];
-	}
-
-	const continuation = " ".repeat(displayWidth(prefix));
-	return [
-		coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR),
-		coloredLine(
-			`${continuation}${fitToWidth(tool.detail, Math.max(0, width - displayWidth(continuation)))}`,
-			width,
-			MESSAGE_TEXT_COLOR,
-		),
-	];
+	return [toolSummaryLine(prefix, tool.name, tool.detail, width)];
 }
 
-/** 一行同时有两种颜色：标记与名称弱化，参数用正文色。 */
+/** 一行同时有两种颜色：标记与名称弱化，参数用正文色；参数放不下时末尾省略。 */
 function toolSummaryLine(prefix: string, name: string, detail: string, width: number): string {
-	const head = truncateToWidth(`${prefix}${name}`, width);
+	const head = fitToWidth(`${prefix}${name}`, width);
 	const headWidth = displayWidth(head);
-	const tail = truncateToWidth(`  ${detail}`, Math.max(0, width - headWidth));
+	const tail = fitToWidth(`  ${detail}`, Math.max(0, width - headWidth));
 	const padding = " ".repeat(Math.max(0, width - headWidth - displayWidth(tail)));
 	return `${TOOL_NAME_COLOR}${head}${RESET}${MESSAGE_TEXT_COLOR}${tail}${RESET}${padding}`;
 }
