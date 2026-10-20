@@ -212,4 +212,17 @@ describe("工具注册表", () => {
 		await registry.call({ callId: "c", name: "echo-tool", args: { text: "hi", extra: 1 } }, context());
 		assert.equal(passed, undefined); // 多余键校验就该拦下
 	});
+
+	it("把工具的结构化结果原样交给调用方", async () => {
+		const details = { matched: 3 };
+		const registry = new ToolRegistry(noSpill(), ALLOW);
+		registry.register(
+			toolWith(ECHO_SCHEMA, async () => ({ content: "ok", details })),
+			"core",
+		);
+
+		const outcome = await registry.call({ callId: "c", name: "echo-tool", args: { text: "hi" } }, context());
+
+		assert.deepEqual(outcome.details, details);
+	});
 });

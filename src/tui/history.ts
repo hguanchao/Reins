@@ -5,6 +5,7 @@ import {
 	type LlmMessage,
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName } from "../tools/describe.ts";
+import { resultMetric } from "../tools/result-summary.ts";
 import { appendToolLine, findToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
 
 /**
@@ -72,7 +73,11 @@ export function buildTranscriptHistory(
 				if (!message.isError) {
 					const turn = ensureTurn("(earlier conversation)");
 					const tool = findToolByCallId(turn.response, message.toolCallId);
-					if (tool !== undefined) tool.result = message.content;
+					if (tool !== undefined) {
+						tool.result = message.content;
+						const metric = resultMetric(message.toolName, undefined, message.content);
+						if (metric !== undefined) tool.metric = metric;
+					}
 					break;
 				}
 				const turn = ensureTurn("(earlier conversation)");

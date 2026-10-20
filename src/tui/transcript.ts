@@ -44,10 +44,12 @@ export interface TranscriptTool {
 	readonly kind: "tool";
 	readonly name: string;
 	readonly detail: string;
-	/** 完整参数；与 detail 不同时才可展开 */
+	/** 完整参数；可含换行，与 detail 不同时才可展开 */
 	readonly fullDetail?: string;
 	/** 是否在对话流里展开完整参数 */
 	detailExpanded?: boolean;
+	/** 工具结束后的结果指标，显示在折叠行末尾 */
+	metric?: string;
 	readonly isError?: boolean;
 	readonly durationMs?: number;
 	/** 工具调用 id，用于把成功结果挂回对应行 */
@@ -713,26 +715,45 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：名称一行，完整命令换行缩进在它下面，与思考正文的排版一致
+		// 展开：名称一行，完整参数按行展开；行内再按宽度换行
 		const head = coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR);
-		const body = wrappedLines(tool.fullDetail, `${baseIndent}  `, width, MESSAGE_TEXT_COLOR);
+		const body = tool.fullDetail
+			.split("\n")
+			.flatMap((line) => wrappedLines(line, `${baseIndent}  `, width, MESSAGE_TEXT_COLOR));
 		return [head, ...body];
 	}
 
-	if (tool.detail.length === 0) {
+	if (tool.detail.length === 0 && tool.metric === undefined) {
 		return [coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR)];
 	}
 
-	return [toolSummaryLine(prefix, tool.name, tool.detail, width)];
+	return [toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, width)];
 }
 
-/** 一行同时有两种颜色：标记与名称弱化，参数用正文色；参数放不下时末尾省略。 */
-function toolSummaryLine(prefix: string, name: string, detail: string, width: number): string {
+/** 一行同时有两种颜色：标记与名称弱化，参数用正文色，结果指标再弱一档；指标放不下时省略。 */
+function toolSummaryLine(
+	prefix: string,
+	name: string,
+	detail: string,
+	metric: string | undefined,
+	width: number,
+): string {
 	const head = fitToWidth(`${prefix}${name}`, width);
 	const headWidth = displayWidth(head);
-	const tail = fitToWidth(`  ${detail}`, Math.max(0, width - headWidth));
-	const padding = " ".repeat(Math.max(0, width - headWidth - displayWidth(tail)));
-	return `${TOOL_NAME_COLOR}${head}${RESET}${MESSAGE_TEXT_COLOR}${tail}${RESET}${padding}`;
+	const available = Math.max(0, width - headWidth);
+	const metricText = metric === undefined || metric.length === 0 ? "" : ` (${metric})`;
+	const metricWidth = displayWidth(metricText);
+	// 指标不能把参数挤到只剩几个字符；要么留出可读的参数，要么不显示指标
+	const metricFits =
+		metricWidth <= available && (detail.length === 0 || available - metricWidth >= 8);
+	const shownMetric = metricFits ? metricText : "";
+	const detailBudget = Math.max(0, available - displayWidth(shownMetric));
+	const tail = detail.length === 0 ? "" : fitToWidth(`  ${detail}`, detailBudget);
+	const padding = " ".repeat(
+		Math.max(0, available - displayWidth(tail) - displayWidth(shownMetric)),
+	);
+	const metricPart = shownMetric.length === 0 ? "" : `${TOOL_NAME_COLOR}${shownMetric}${RESET}`;
+	return `${TOOL_NAME_COLOR}${head}${RESET}${MESSAGE_TEXT_COLOR}${tail}${RESET}${metricPart}${padding}`;
 }
 
 function wrappedLines(

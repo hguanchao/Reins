@@ -1744,6 +1744,38 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("工具结束后把结构化结果指标挂到折叠行", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("读一下\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "read",
+				isError: false,
+				durationMs: 12,
+				summary: "content",
+				content: "content",
+				details: { startLine: 1, endLine: 120, totalLines: 400 },
+			});
+			t.mock.timers.tick(100);
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Read  a.ts (1-120 of 400)"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("失败的行与状态里的 Error 用错误色", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

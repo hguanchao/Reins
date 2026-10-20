@@ -210,6 +210,7 @@ export class TurnDriver {
 			durationMs: outcome.durationMs,
 			summary: firstLine(outcome.content),
 			content: outcome.content,
+			...(outcome.details === undefined ? {} : { details: outcome.details }),
 		});
 		return {
 			callId: call.id,

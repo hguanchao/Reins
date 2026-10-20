@@ -35,7 +35,7 @@ describe("非交互模式", () => {
 
 		assert.equal(code, 0);
 		assert.equal(stdout.join(""), "hello\n");
-		assert.ok(stderr.join("").includes("› Read  README.md  [offset 10]"));
+		assert.ok(stderr.join("").includes("› Read  README.md"));
 		assert.equal(stderr.join("").includes('{"path"'), false);
 		assert.equal(stderr.join("").includes("done"), false);
 	});

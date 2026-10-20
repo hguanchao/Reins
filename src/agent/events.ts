@@ -31,6 +31,8 @@ export type AgentEvent =
 			readonly summary: string;
 			/** 结果全文；界面展开细节用它，不带时界面只能看到 summary。 */
 			readonly content?: string;
+			/** 工具返回的结构化结果；界面据此生成折叠行指标，不发给模型 */
+			readonly details?: unknown;
 	  }
 	/** 一轮结束；stopReason 说明为什么停 */
 	| { readonly type: "turn_end"; readonly stopReason: LlmStopReason }

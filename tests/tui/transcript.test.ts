@@ -245,6 +245,53 @@ describe("工具调用行", () => {
 		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, expandedRow), tool);
 		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, bodyRow), undefined);
 	});
+
+	it("结果指标显示在折叠行末尾，没有参数时跟在名称后面", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [
+				{ kind: "tool", name: "Read", detail: "a.ts", metric: "100 lines" },
+				{ kind: "tool", name: "List", detail: "", metric: "2 entries" },
+			],
+		};
+		const text = renderTranscript(60, 10, [turn], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  › Read  a.ts (100 lines)"));
+		assert.ok(text.includes("  › List (2 entries)"));
+	});
+
+	it("指标放不下时省略，不挤掉参数", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Read", detail: "a.ts", metric: "100 lines" }],
+		};
+		const line = renderTranscript(24, 10, [turn], 0)
+			.map(plain)
+			.find((item) => item.includes("› Read"));
+
+		assert.ok(line);
+		assert.equal(line.includes("100 lines"), false);
+		assert.ok(line.includes("a.ts"));
+	});
+
+	it("多行完整参数逐行展开", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Edit",
+			detail: "auth.ts",
+			fullDetail: "path: src/auth.ts\nedit 1: old -> new",
+			detailExpanded: true,
+		};
+		const text = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  › Edit"));
+		assert.ok(text.includes("    path: src/auth.ts"));
+		assert.ok(text.includes("    edit 1: old -> new"));
+	});
 });
 
 describe("工具组", () => {

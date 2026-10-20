@@ -3,12 +3,13 @@ import { Buffer } from "node:buffer";
 import stripAnsi from "strip-ansi";
 
 import { commandCore } from "./command-summary.ts";
+import { formatBytes } from "./format.ts";
 
 /**
  * 工具调用的可读摘要。
  *
- * 只把参数变成文字：颜色、缩进和换行由界面决定。未知工具（插件、MCP）回退到紧凑 JSON，
- * 内置工具各自给出不提 JSON 语法的摘要。
+ * 折叠行只留目标与少量关键信息；完整参数放在 fullDetail 里，双击展开。未知工具（插件、
+ * MCP）回退到紧凑 JSON，内置工具各自给出不提 JSON 语法的摘要。
  */
 
 export interface ToolDescription {
@@ -16,13 +17,21 @@ export interface ToolDescription {
 	readonly name: string;
 	/** 单行参数摘要；没有参数时为空串 */
 	readonly detail: string;
-	/** 展开后显示的完整参数；与 detail 相同或没有更多信息时省略 */
+	/** 展开后显示的完整参数，可含换行；没有更多信息时省略 */
 	readonly fullDetail?: string;
 	/** 只读探索工具的分组类型；其他工具不参与工具组 */
 	readonly group?: ToolGroupKind;
 }
 
 export type ToolGroupKind = "read" | "list" | "search";
+
+/** 展开详情的上限，避免一次双击把整段文件内容或超长 JSON 灌进终端。 */
+const DETAIL_MAX_LINES = 40;
+const DETAIL_MAX_CHARS = 8 * 1024;
+/** write 的内容预览行数。 */
+const CONTENT_PREVIEW_LINES = 20;
+/** 单条 edit 片段显示的首行长度。 */
+const FRAGMENT_MAX_CHARS = 80;
 
 /**
  * 把一次调用转成给人看的文字。
@@ -36,12 +45,12 @@ export function describeToolCall(
 	workspaceRoot?: string,
 ): ToolDescription {
 	const group = toolGroupKind(tool);
-	const full = singleLine(describeArguments(tool, args));
-	const detail = tool === "bash" ? commandCore(full, workspaceRoot) : full;
+	const detail = singleLine(describeDetail(tool, args, workspaceRoot));
+	const fullDetail = describeFullDetail(tool, args, detail);
 	const description = {
 		name: displayToolName(tool),
 		detail,
-		...(detail === full ? {} : { fullDetail: full }),
+		...(fullDetail === undefined ? {} : { fullDetail }),
 	};
 	return group === undefined ? description : { ...description, group };
 }
@@ -76,61 +85,29 @@ export function displayToolName(tool: string): string {
 	return `${(chars[0] ?? "").toUpperCase()}${chars.slice(1).join("")}`;
 }
 
-function describeArguments(tool: string, args: Record<string, unknown>): string {
+/** 折叠行的目标：文件工具用 basename，搜索工具用短路径，命令用核心命令。 */
+function describeDetail(tool: string, args: Record<string, unknown>, workspaceRoot: string | undefined): string {
 	switch (tool) {
-		case "read": {
-			const path = text(args["path"]) ?? "(missing path)";
-			const modifiers: string[] = [];
-			const offset = integer(args["offset"]);
-			if (offset !== undefined && offset > 1) modifiers.push(`offset ${offset}`);
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) modifiers.push(`limit ${limit}`);
-			return withModifiers(path, modifiers);
-		}
-		case "write": {
-			const path = text(args["path"]) ?? "(missing path)";
-			const content = typeof args["content"] === "string" ? args["content"] : undefined;
-			return withModifiers(path, content === undefined ? [] : [formatBytes(Buffer.byteLength(content, "utf8"))]);
-		}
-		case "edit": {
-			const path = text(args["path"]) ?? "(missing path)";
-			const count = editCount(args["edits"]);
-			return withModifiers(
-				path,
-				count === undefined ? [] : [`${count} edit${count === 1 ? "" : "s"}`],
-			);
-		}
+		case "read":
+		case "write":
+		case "edit":
+			return basenamePath(text(args["path"]) ?? "(missing path)");
 		case "bash":
-			return text(args["command"]) ?? "(no command)";
+			return commandCore(singleLine(text(args["command"]) ?? "(no command)"), workspaceRoot);
 		case "find": {
 			const pattern = text(args["pattern"]) ?? "(no pattern)";
-			const modifiers: string[] = [];
-			const path = text(args["path"]);
-			if (path !== undefined && path !== ".") modifiers.push(`in ${path}`);
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) modifiers.push(`limit ${limit}`);
-			return withModifiers(pattern, modifiers);
+			return withModifiers(shortenText(pattern, 48), scopeModifiers(args["path"]));
 		}
 		case "grep": {
 			const pattern = text(args["pattern"]) ?? "(no pattern)";
-			const modifiers: string[] = [];
-			const path = text(args["path"]);
-			if (path !== undefined && path !== ".") modifiers.push(`in ${path}`);
+			const modifiers = scopeModifiers(args["path"]);
 			const glob = text(args["glob"]);
 			if (glob !== undefined) modifiers.push(glob);
-			if (args["literal"] === true) modifiers.push("literal");
-			if (args["ignoreCase"] === true) modifiers.push("ignore case");
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) modifiers.push(`limit ${limit}`);
-			return withModifiers(pattern, modifiers);
+			return withModifiers(shortenText(pattern, 48), modifiers);
 		}
 		case "ls": {
 			const path = text(args["path"]);
-			const modifiers: string[] = [];
-			const limit = integer(args["limit"]);
-			if (limit !== undefined) modifiers.push(`limit ${limit}`);
-			if (path !== undefined && path !== ".") return withModifiers(path, modifiers);
-			return modifiers.map((modifier) => `[${modifier}]`).join("  ");
+			return path === undefined || path === "." ? "" : shortenPath(path, 48);
 		}
 		case "subagent":
 			return firstLine(text(args["task"]) ?? "(no task)", 120);
@@ -143,15 +120,181 @@ function describeArguments(tool: string, args: Record<string, unknown>): string 
 	}
 }
 
+/** 展开后的完整参数；返回 undefined 表示这次调用没有更多可看的信息。 */
+function describeFullDetail(tool: string, args: Record<string, unknown>, detail: string): string | undefined {
+	switch (tool) {
+		case "read": {
+			const path = text(args["path"]) ?? "(missing path)";
+			const lines = [`path: ${path}`];
+			const offset = integer(args["offset"]);
+			const showOffset = offset !== undefined && offset > 1;
+			if (showOffset) lines.push(`offset: ${offset}`);
+			const limit = integer(args["limit"]);
+			if (limit !== undefined) lines.push(`limit: ${limit}`);
+			if (path === detail && !showOffset && limit === undefined) return undefined;
+			return capDetail(lines.join("\n"));
+		}
+		case "write": {
+			const path = text(args["path"]) ?? "(missing path)";
+			const content = typeof args["content"] === "string" ? args["content"] : "";
+			const lines = [`path: ${path}`, `size: ${formatBytes(Buffer.byteLength(content, "utf8"))}`];
+			if (content.length > 0) {
+				lines.push(`lines: ${content.split("\n").length}`, "", "content:");
+				lines.push(...previewLines(content, CONTENT_PREVIEW_LINES));
+			}
+			return capDetail(lines.join("\n"));
+		}
+		case "edit": {
+			const path = text(args["path"]) ?? "(missing path)";
+			const entries = editEntries(args["edits"]);
+			const lines = [`path: ${path}`];
+			for (const [index, entry] of entries.entries()) {
+				lines.push(
+					`edit ${index + 1}: ${fragment(entry["oldText"])} -> ${fragment(entry["newText"])}`,
+				);
+			}
+			return capDetail(lines.join("\n"));
+		}
+		case "bash": {
+			const full = singleLine(text(args["command"]) ?? "(no command)");
+			return full === detail ? undefined : full;
+		}
+		case "find": {
+			const lines = [
+				`pattern: ${text(args["pattern"]) ?? "(no pattern)"}`,
+				`path: ${text(args["path"]) ?? "."}`,
+			];
+			const limit = integer(args["limit"]);
+			if (limit !== undefined) lines.push(`limit: ${limit}`);
+			return capDetail(lines.join("\n"));
+		}
+		case "grep": {
+			const lines = [
+				`pattern: ${text(args["pattern"]) ?? "(no pattern)"}`,
+				`path: ${text(args["path"]) ?? "."}`,
+			];
+			const glob = text(args["glob"]);
+			if (glob !== undefined) lines.push(`glob: ${glob}`);
+			if (args["literal"] === true) lines.push("literal: true");
+			if (args["ignoreCase"] === true) lines.push("ignore case: true");
+			const limit = integer(args["limit"]);
+			if (limit !== undefined) lines.push(`limit: ${limit}`);
+			return capDetail(lines.join("\n"));
+		}
+		case "ls": {
+			const lines = [`path: ${text(args["path"]) ?? "."}`];
+			const limit = integer(args["limit"]);
+			if (limit !== undefined) lines.push(`limit: ${limit}`);
+			return capDetail(lines.join("\n"));
+		}
+		case "subagent": {
+			const task = text(args["task"]) ?? "(no task)";
+			return task === detail ? undefined : capDetail(task);
+		}
+		default: {
+			const json = JSON.stringify(args, null, 2);
+			if (json === "{}") return undefined;
+			return capDetail(json);
+		}
+	}
+}
+
+/** 路径只留最后一段；完整路径在展开里。 */
+function basenamePath(path: string): string {
+	const trimmed = path.replace(/[\\/]+$/, "");
+	const parts = trimmed.split(/[\\/]/);
+	return parts.at(-1) ?? path;
+}
+
+/** 受宽度约束的短路径：保留尾部，前面用 `…/` 代替。 */
+function shortenPath(path: string, limit: number): string {
+	if (Array.from(path).length <= limit) return path;
+
+	const parts = path.replaceAll("\\", "/").split("/").filter((part) => part.length > 0);
+	if (parts.length <= 1) return shortenText(path, limit);
+
+	let tail = parts.at(-1) ?? "";
+	if (Array.from(tail).length + 2 > limit) return `…/${shortenText(tail, Math.max(1, limit - 2))}`;
+
+	for (let index = parts.length - 2; index >= 0; index -= 1) {
+		const candidate = `${parts[index]}/${tail}`;
+		if (Array.from(candidate).length + 2 > limit) break;
+		tail = candidate;
+	}
+	return `…/${tail}`;
+}
+
+/** 从开头截断，保留最有区分度的前缀。 */
+function shortenText(value: string, limit: number): string {
+	const chars = Array.from(value);
+	if (chars.length <= limit) return value;
+	return `${chars.slice(0, Math.max(1, limit - 1)).join("")}…`;
+}
+
+/** 路径参数进入折叠行时附加的搜索范围。 */
+function scopeModifiers(path: unknown): string[] {
+	const value = text(path);
+	return value === undefined || value === "." ? [] : [`in ${shortenPath(value, 36)}`];
+}
+
+function withModifiers(base: string, modifiers: readonly string[]): string {
+	return modifiers.length === 0 ? base : `${base}  [${modifiers.join(", ")}]`;
+}
+
+/** edit 的参数可能已经是数组，也可能还是 JSON 字符串；两种都拆成条目。 */
+function editEntries(value: unknown): readonly Record<string, unknown>[] {
+	let parsed: unknown = value;
+	if (typeof value === "string") {
+		try {
+			parsed = JSON.parse(value);
+		} catch {
+			return [];
+		}
+	}
+	if (Array.isArray(parsed)) return parsed.filter(isRecord);
+	return isRecord(parsed) ? [parsed] : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 一条 edit 片段：只显示首行，超长或还有后续行时补省略号。 */
+function fragment(value: unknown): string {
+	if (typeof value !== "string" || value.length === 0) return "(empty)";
+	const line = singleLine(value.split("\n", 1)[0] ?? "");
+	const chars = Array.from(line);
+	const text = chars.length > FRAGMENT_MAX_CHARS ? `${chars.slice(0, FRAGMENT_MAX_CHARS - 1).join("")}…` : line;
+	const more = chars.length > FRAGMENT_MAX_CHARS || value.includes("\n");
+	return more ? `${text}${text.endsWith("…") ? "" : "…"}` : text;
+}
+
+function previewLines(text: string, limit: number): readonly string[] {
+	const lines = text.split("\n");
+	if (lines.length <= limit) return lines;
+	return [...lines.slice(0, limit), `… (${lines.length - limit} more lines)`];
+}
+
+/** 展开详情的总上限：先清掉终端控制字符，再收敛行数，最后按字符数兜底。 */
+function capDetail(text: string): string {
+	const lines = text.split("\n").map(singleLine);
+	let result =
+		lines.length > DETAIL_MAX_LINES
+			? [...lines.slice(0, DETAIL_MAX_LINES - 1), `… (${lines.length - DETAIL_MAX_LINES + 1} more lines)`].join(
+					"\n",
+				)
+			: lines.join("\n");
+
+	const chars = Array.from(result);
+	if (chars.length > DETAIL_MAX_CHARS) result = `${chars.slice(0, DETAIL_MAX_CHARS - 1).join("")}…`;
+	return result;
+}
+
 /** 摘要只占一行：换行与制表折成空格，转义序列不能带进终端。 */
 function singleLine(value: string): string {
 	return stripAnsi(value)
 		.replace(/[\r\n\t]+/g, " ")
 		.replace(/[\u0000-\u001f\u007f]/g, "");
-}
-
-function withModifiers(base: string, modifiers: readonly string[]): string {
-	return modifiers.length === 0 ? base : `${base}  [${modifiers.join(", ")}]`;
 }
 
 function text(value: unknown): string | undefined {
@@ -160,32 +303,6 @@ function text(value: unknown): string | undefined {
 
 function integer(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-/** edit 的参数可能已经是数组，也可能还是 JSON 字符串；两种都数一下。 */
-function editCount(value: unknown): number | undefined {
-	if (Array.isArray(value)) return value.length;
-	if (value !== null && typeof value === "object") return 1;
-	if (typeof value !== "string") return undefined;
-	try {
-		const parsed: unknown = JSON.parse(value);
-		return Array.isArray(parsed) ? parsed.length : 1;
-	} catch {
-		return 1;
-	}
-}
-
-function formatBytes(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	const units = ["KB", "MB", "GB"];
-	let value = bytes / 1024;
-	let unit = 0;
-	while (value >= 1024 && unit < units.length - 1) {
-		value /= 1024;
-		unit += 1;
-	}
-	const text = value.toFixed(1);
-	return `${text.endsWith(".0") ? text.slice(0, -2) : text} ${units[unit]}`;
 }
 
 function firstLine(text: string, limit: number): string {
