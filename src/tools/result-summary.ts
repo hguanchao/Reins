@@ -10,11 +10,12 @@ export interface ResultDetail {
 
 /** 展开态直接用结果的工具：参数不是用户想看的内容，结果才是。 */
 const RESULT_DETAIL_TOOLS = new Set(["read", "write", "ls", "find", "grep", "edit"]);
-/** 整文件覆盖的 diff 可能很长，展开时保留前若干行即可。 */
-const MAX_DIFF_LINES = 200;
 /** 文件预览：超过这个行数时只显示开头与结尾，中间用省略号。 */
 const FILE_PREVIEW_FIRST = 5;
 const FILE_PREVIEW_LAST = 3;
+/** diff 预览：保留更多上下文，但同样省略中间。 */
+const DIFF_PREVIEW_FIRST = 20;
+const DIFF_PREVIEW_LAST = 10;
 
 /**
  * 工具结束后展开行里显示的内容。
@@ -56,25 +57,30 @@ function readDetail(content: string, details: unknown): ResultDetail | undefined
 	if (lines.length === 0) return undefined;
 
 	const width = String(startLine + lines.length - 1).length;
-	const text =
-		lines.length > FILE_PREVIEW_FIRST + FILE_PREVIEW_LAST
-			? [
-					...lines
-						.slice(0, FILE_PREVIEW_FIRST)
-						.map((line, index) => numberedLine(startLine + index, line, width)),
-					"…",
-					...lines
-						.slice(-FILE_PREVIEW_LAST)
-						.map((line, index) =>
-							numberedLine(startLine + lines.length - FILE_PREVIEW_LAST + index, line, width),
-						),
-				].join("\n")
-			: lines.map((line, index) => numberedLine(startLine + index, line, width)).join("\n");
-	return { text, kind: "file" };
+	const formatted = lines.map((line, index) => numberedLine(startLine + index, line, width));
+	return {
+		text: previewLines(formatted, FILE_PREVIEW_FIRST, FILE_PREVIEW_LAST, width + 2),
+		kind: "file",
+	};
 }
 
 function numberedLine(number: number, line: string, width: number): string {
 	return `${String(number).padStart(width)}  ${line}`;
+}
+
+/** 首尾保留；省略号缩进到内容列，而不是贴在行首。 */
+function previewLines(
+	lines: readonly string[],
+	first: number,
+	last: number,
+	ellipsisIndent: number,
+): string {
+	if (lines.length <= first + last) return lines.join("\n");
+	return [
+		...lines.slice(0, first),
+		`${" ".repeat(Math.max(0, ellipsisIndent))}…`,
+		...lines.slice(-last),
+	].join("\n");
 }
 
 function readLines(content: string, startLine: number, endLine: number | undefined): readonly string[] {
@@ -88,13 +94,13 @@ function readLines(content: string, startLine: number, endLine: number | undefin
 
 function diffDetail(content: string, details: unknown): ResultDetail {
 	const diff = stringField(record(details), "diff");
-	return { text: capLines(numberDiff(sanitizeDetail(diff ?? content))), kind: "diff" };
+	return { text: numberDiff(sanitizeDetail(diff ?? content)), kind: "diff" };
 }
 
 function writeDetail(content: string, details: unknown): ResultDetail {
 	const diff = stringField(record(details), "diff");
 	if (diff === undefined) return { text: sanitizeDetail(content), kind: "text" };
-	return { text: capLines(numberDiff(sanitizeDetail(diff))), kind: "diff" };
+	return { text: numberDiff(sanitizeDetail(diff)), kind: "diff" };
 }
 
 /** 给 diff 行加一列行号：删除与上下文用旧行号，新增用新行号。 */
@@ -136,20 +142,14 @@ function numberDiff(diff: string): string {
 	}
 
 	const width = String(max).length;
-	return entries
-		.map((entry) =>
-			entry.number === undefined
-				? entry.text
-				: `${String(entry.number).padStart(width)} ${entry.text}`,
-		)
-		.join("\n");
+	const formatted = entries.map((entry) =>
+		entry.number === undefined
+			? entry.text
+			: `${String(entry.number).padStart(width)} ${entry.text}`,
+	);
+	return previewLines(formatted, DIFF_PREVIEW_FIRST, DIFF_PREVIEW_LAST, width + 1);
 }
 
-function capLines(text: string): string {
-	const lines = text.split("\n");
-	if (lines.length <= MAX_DIFF_LINES) return text;
-	return [...lines.slice(0, MAX_DIFF_LINES), `… (${lines.length - MAX_DIFF_LINES} more lines)`].join("\n");
-}
 
 /**
  * 工具结果在对话流里的呈现。
