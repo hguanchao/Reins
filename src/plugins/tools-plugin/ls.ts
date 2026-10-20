@@ -36,6 +36,10 @@ const MAX_LIMIT = 10_000;
 /** 一次列出的字符上限；超出后优先保留根层条目，子树收敛成汇总行。 */
 const MAX_OUTPUT_CHARS = 10_000;
 const TOP_EXTENSIONS = 3;
+const TREE_BRANCH = "├── ";
+const TREE_LAST = "└── ";
+const TREE_PIPE = "│   ";
+const TREE_SPACE = "    ";
 
 interface TreeNode {
 	readonly name: string;
@@ -162,10 +166,6 @@ function sortedChildren(node: TreeNode): readonly TreeNode[] {
 	});
 }
 
-function indent(depth: number): string {
-	return "  ".repeat(depth);
-}
-
 /** 折叠子树的摘要：`[977 files in subtree: 976 *.txt, 1 *.csv]`。 */
 function summary(node: TreeNode): string {
 	if (node.fileCount === 0 || node.byExt.size === 0) return "";
@@ -181,68 +181,86 @@ function summary(node: TreeNode): string {
 	return `[${node.fileCount} ${word} in subtree: ${parts.join(", ")}${more}]`;
 }
 
-function summaryCost(node: TreeNode): number {
+/** 折叠时摘要行占用的字符数；prefix 是子项内容所在的缩进。 */
+function summaryCost(node: TreeNode, prefix: string): number {
 	const line = summary(node);
-	if (line.length === 0) return 0;
-	return indent(node.depth + 1).length + line.length + 1;
+	return line.length === 0 ? 0 : prefix.length + line.length + 1;
 }
 
 /** 按当前 expanded 标记渲染子树；未展开的目录用摘要行代替子项。 */
-function renderChildren(node: TreeNode): string {
+function renderChildren(node: TreeNode, prefix: string): string {
+	const children = sortedChildren(node);
 	let output = "";
-	for (const child of sortedChildren(node)) {
-		output += `${indent(child.depth)}- ${child.name}${child.directory ? "/" : ""}\n`;
+	for (const [index, child] of children.entries()) {
+		const last = index === children.length - 1;
+		output += `${prefix}${last ? TREE_LAST : TREE_BRANCH}${child.name}${child.directory ? "/" : ""}\n`;
 		if (!child.directory) continue;
+		const childPrefix = `${prefix}${last ? TREE_SPACE : TREE_PIPE}`;
 		if (child.expanded) {
-			output += renderChildren(child);
+			output += renderChildren(child, childPrefix);
 			continue;
 		}
 		const line = summary(child);
-		if (line.length > 0) output += `${indent(child.depth + 1)}${line}\n`;
+		if (line.length > 0) output += `${childPrefix}${line}\n`;
 	}
 	return output;
 }
 
+/** 把目录子项按它们在父节点里的位置换算成内容缩进，供预算展开使用。 */
+function enqueueChildren(
+	node: TreeNode,
+	prefix: string,
+	queue: { node: TreeNode; prefix: string }[],
+): void {
+	const children = sortedChildren(node);
+	for (const [index, child] of children.entries()) {
+		if (!child.directory) continue;
+		const last = index === children.length - 1;
+		queue.push({ node: child, prefix: `${prefix}${last ? TREE_SPACE : TREE_PIPE}` });
+	}
+}
+
 function renderTree(root: TreeNode, displayPath: string, truncated: boolean): string {
 	const rootLabel = displayPath.endsWith("/") ? displayPath : `${displayPath}/`;
-	const rootLine = `- ${rootLabel}`;
 	const cutoff = truncated ? "\n[listing stopped after the entry limit; narrow the path or raise limit]" : "";
 
-	if (root.children.size === 0) return `${rootLine}\n  (empty)${cutoff}`;
+	if (root.children.size === 0) return `${rootLabel}\n(empty)${cutoff}`;
 
 	root.expanded = true;
-	const rootChildren = renderChildren(root);
-	if (rootLine.length + 1 + rootChildren.length > MAX_OUTPUT_CHARS) {
-		return `${renderTruncatedRoot(rootLine, root)}${cutoff}`;
+	const rootChildren = renderChildren(root, "");
+	if (rootLabel.length + 1 + rootChildren.length > MAX_OUTPUT_CHARS) {
+		return `${renderTruncatedRoot(rootLabel, root)}${cutoff}`;
 	}
 
-	let remaining = MAX_OUTPUT_CHARS - rootLine.length - 1 - rootChildren.length;
-	const queue: TreeNode[] = sortedChildren(root).filter((child) => child.directory);
+	let remaining = MAX_OUTPUT_CHARS - rootLabel.length - 1 - rootChildren.length;
+	const queue: { node: TreeNode; prefix: string }[] = [];
+	enqueueChildren(root, "", queue);
+
 	while (queue.length > 0) {
-		const node = queue.shift() as TreeNode;
-		const expanded = renderChildren(node);
-		const cost = summaryCost(node);
+		const entry = queue.shift() as { node: TreeNode; prefix: string };
+		const expanded = renderChildren(entry.node, entry.prefix);
+		const cost = summaryCost(entry.node, entry.prefix);
 		if (expanded.length > remaining + cost) continue;
 
-		node.expanded = true;
+		entry.node.expanded = true;
 		remaining += cost;
 		remaining -= expanded.length;
-		for (const child of sortedChildren(node)) {
-			if (child.directory) queue.push(child);
-		}
+		enqueueChildren(entry.node, entry.prefix, queue);
 	}
 
-	return `${rootLine}\n${renderChildren(root)}${cutoff}`;
+	return `${rootLabel}\n${renderChildren(root, "")}${cutoff}`;
 }
 
 /** 根层本身就放不下时，能列多少列多少，再给一条收窄路径的提示。 */
 function renderTruncatedRoot(rootLine: string, root: TreeNode): string {
 	let output = `${rootLine}\n`;
-	for (const child of sortedChildren(root)) {
-		let chunk = `${indent(child.depth)}- ${child.name}${child.directory ? "/" : ""}\n`;
+	const children = sortedChildren(root);
+	for (const [index, child] of children.entries()) {
+		const last = index === children.length - 1;
+		let chunk = `${last ? TREE_LAST : TREE_BRANCH}${child.name}${child.directory ? "/" : ""}\n`;
 		if (child.directory) {
 			const line = summary(child);
-			if (line.length > 0) chunk += `${indent(child.depth + 1)}${line}\n`;
+			if (line.length > 0) chunk += `${last ? TREE_SPACE : TREE_PIPE}${line}\n`;
 		}
 		if (output.length + chunk.length > MAX_OUTPUT_CHARS) break;
 		output += chunk;

@@ -39,14 +39,15 @@ describe("列出目录树", () => {
 			const result = await lsTool.execute({ ...context(root), args: { path: "." } });
 			const content = result.content;
 
-			assert.ok(content.startsWith("- ./\n"));
-			assert.ok(content.includes("  - docker-compose.yml"));
-			assert.ok(content.includes("  - output/"));
-			assert.ok(content.includes("    - a.txt"));
-			assert.ok(content.includes("  - server/"));
-			assert.ok(content.includes("    - __init__.py"));
-			assert.ok(content.includes("    - __pycache__/"));
-			assert.ok(content.includes("      - x.pyc"));
+			assert.ok(content.startsWith("./\n"));
+			assert.ok(content.includes("├── docker-compose.yml"));
+			assert.ok(content.includes("├── output/"));
+			assert.ok(content.includes("│   ├── a.txt"));
+			assert.ok(content.includes("│   └── b.csv"));
+			assert.ok(content.includes("└── server/"));
+			assert.ok(content.includes("    ├── __init__.py"));
+			assert.ok(content.includes("    └── __pycache__/"));
+			assert.ok(content.includes("        └── x.pyc"));
 			assert.equal(content.includes(".git"), false);
 			assert.equal(content.includes("node_modules"), false);
 			assert.equal((result.details as { total: number }).total, 5);
@@ -66,7 +67,7 @@ describe("列出目录树", () => {
 
 			const result = await lsTool.execute({ ...context(root), args: { path: "." } });
 
-			assert.ok(result.content.includes("  - big/"));
+			assert.ok(result.content.includes("└── big/"));
 			assert.ok(result.content.includes("    [200 files in subtree: 200 *.txt]"));
 			assert.equal(result.content.includes("file-000"), false);
 		} finally {
@@ -81,7 +82,7 @@ describe("列出目录树", () => {
 
 			const result = await lsTool.execute({ ...context(root), args: { path: "empty" } });
 
-			assert.equal(result.content, "- empty/\n  (empty)");
+			assert.equal(result.content, "empty/\n(empty)");
 			assert.deepEqual(result.details, { path: "empty", total: 0, shown: 0, truncated: false });
 		} finally {
 			rmSync(root, { recursive: true, force: true });
