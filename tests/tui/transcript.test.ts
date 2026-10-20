@@ -23,7 +23,9 @@ const MESSAGE_TEXT = "\x1b[38;2;230;233;237m";
 const NOTICE_TEXT = "\x1b[38;2;224;175;104m";
 
 function plain(line: string): string {
-	return line.replace(/\x1b\[[0-9;]*m/g, "");
+	return line
+		.replace(/\x1b\[[0-9;]*m/g, "")
+		.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "");
 }
 
 describe("思考区块", () => {
@@ -291,6 +293,22 @@ describe("工具调用行", () => {
 		assert.ok(text.includes("  › Edit"));
 		assert.ok(text.includes("    path: src/auth.ts"));
 		assert.ok(text.includes("    edit 1: old -> new"));
+	});
+
+	it("折叠路径带 OSC 8 链接，宽度仍按纯文本计算", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a.ts",
+			linkTarget: "file:///work/src/a.ts",
+		};
+		const line = renderTranscript(40, 8, [{ prompt: "hi", response: [tool] }], 0).find((item) =>
+			item.includes("Read"),
+		);
+
+		assert.ok(line?.includes("\x1b]8;;file:///work/src/a.ts\x1b\\a.ts\x1b]8;;\x1b\\"));
+		assert.ok(plain(line ?? "").startsWith("  › Read  a.ts"));
+		assert.equal(plain(line ?? "").length, 40);
 	});
 });
 

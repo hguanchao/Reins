@@ -61,6 +61,9 @@ export function buildTranscriptHistory(
 							...(described.fullDetail === undefined
 								? {}
 								: { fullDetail: described.fullDetail }),
+							...(described.linkTarget === undefined
+								? {}
+								: { linkTarget: described.linkTarget }),
 							group: described.group,
 							callId: call.id,
 						},

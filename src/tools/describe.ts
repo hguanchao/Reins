@@ -1,7 +1,10 @@
 import { Buffer } from "node:buffer";
+import { isAbsolute } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import stripAnsi from "strip-ansi";
 
+import { expandHome, toAbsolutePath } from "../workspace/root.ts";
 import { commandCore } from "./command-summary.ts";
 import { formatBytes } from "./format.ts";
 
@@ -19,6 +22,8 @@ export interface ToolDescription {
 	readonly detail: string;
 	/** 展开后显示的完整参数，可含换行；没有更多信息时省略 */
 	readonly fullDetail?: string;
+	/** 折叠路径的 file:// 链接；终端支持 OSC 8 时会显示为可点击的链接 */
+	readonly linkTarget?: string;
 	/** 只读探索工具的分组类型；其他工具不参与工具组 */
 	readonly group?: ToolGroupKind;
 }
@@ -47,10 +52,12 @@ export function describeToolCall(
 	const group = toolGroupKind(tool);
 	const detail = singleLine(describeDetail(tool, args, workspaceRoot));
 	const fullDetail = describeFullDetail(tool, args, detail);
+	const linkTarget = fileLinkTarget(tool, args, workspaceRoot);
 	const description = {
 		name: displayToolName(tool),
 		detail,
 		...(fullDetail === undefined ? {} : { fullDetail }),
+		...(linkTarget === undefined ? {} : { linkTarget }),
 	};
 	return group === undefined ? description : { ...description, group };
 }
@@ -199,9 +206,31 @@ function describeFullDetail(tool: string, args: Record<string, unknown>, detail:
 	}
 }
 
+/** 文件类工具的目标路径转成 OSC 8 可用的 file:// 链接。 */
+function fileLinkTarget(
+	tool: string,
+	args: Record<string, unknown>,
+	workspaceRoot: string | undefined,
+): string | undefined {
+	if (tool !== "read" && tool !== "write" && tool !== "edit" && tool !== "ls") return undefined;
+	const path = text(args["path"]);
+	if (path === undefined) return undefined;
+	// 折叠行里没有可见的目标文本，不挂链接
+	if (tool === "ls" && path === ".") return undefined;
+
+	const expanded = expandHome(path);
+	// 没有工作根时无法可靠解析相对路径；绝对路径不受影响
+	if (!isAbsolute(expanded) && workspaceRoot === undefined) return undefined;
+	try {
+		return pathToFileURL(toAbsolutePath(expanded, workspaceRoot ?? process.cwd())).href;
+	} catch {
+		// 无法编码成 URL 时宁可不挂链接，也不能让显示层拿到半截转义序列
+		return undefined;
+	}
+}
+
 /** 路径只留最后一段；完整路径在展开里。 */
-function basenamePath(path: string): string {
-	const trimmed = path.replace(/[\\/]+$/, "");
+function basenamePath(path: string): string {	const trimmed = path.replace(/[\\/]+$/, "");
 	const parts = trimmed.split(/[\\/]/);
 	return parts.at(-1) ?? path;
 }

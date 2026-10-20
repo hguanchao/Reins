@@ -46,6 +46,8 @@ export interface TranscriptTool {
 	readonly detail: string;
 	/** 完整参数；可含换行，与 detail 不同时才可展开 */
 	readonly fullDetail?: string;
+	/** 折叠路径的 file:// 链接；终端支持 OSC 8 时会显示为可点击的链接 */
+	readonly linkTarget?: string;
 	/** 是否在对话流里展开完整参数 */
 	detailExpanded?: boolean;
 	/** 工具结束后的结果指标，显示在折叠行末尾 */
@@ -746,7 +748,7 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		return [coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR)];
 	}
 
-	return [toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, width)];
+	return [toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, tool.linkTarget, width)];
 }
 
 /** 一行同时有两种颜色：标记与名称弱化，参数用正文色，结果指标再弱一档；指标放不下时省略。 */
@@ -755,6 +757,7 @@ function toolSummaryLine(
 	name: string,
 	detail: string,
 	metric: string | undefined,
+	linkTarget: string | undefined,
 	width: number,
 ): string {
 	const head = fitToWidth(`${prefix}${name}`, width);
@@ -768,11 +771,18 @@ function toolSummaryLine(
 	const shownMetric = metricFits ? metricText : "";
 	const detailBudget = Math.max(0, available - displayWidth(shownMetric));
 	const tail = detail.length === 0 ? "" : fitToWidth(`  ${detail}`, detailBudget);
+	const shownTail = linkTarget === undefined ? tail : linkTail(tail, linkTarget);
 	const padding = " ".repeat(
 		Math.max(0, available - displayWidth(tail) - displayWidth(shownMetric)),
 	);
 	const metricPart = shownMetric.length === 0 ? "" : `${TOOL_NAME_COLOR}${shownMetric}${RESET}`;
-	return `${TOOL_NAME_COLOR}${head}${RESET}${MESSAGE_TEXT_COLOR}${tail}${RESET}${metricPart}${padding}`;
+	return `${TOOL_NAME_COLOR}${head}${RESET}${MESSAGE_TEXT_COLOR}${shownTail}${RESET}${metricPart}${padding}`;
+}
+
+/** 给参数文本挂上 OSC 8 链接；前导缩进留在链接外，终端只给路径画下划线。 */
+function linkTail(tail: string, target: string): string {
+	if (tail.length <= 2) return tail;
+	return `${tail.slice(0, 2)}\x1b]8;;${target}\x1b\\${tail.slice(2)}\x1b]8;;\x1b\\`;
 }
 
 function wrappedLines(

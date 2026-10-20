@@ -768,6 +768,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					name: described.name,
 					detail: described.detail,
 					...(described.fullDetail === undefined ? {} : { fullDetail: described.fullDetail }),
+					...(described.linkTarget === undefined ? {} : { linkTarget: described.linkTarget }),
 					group: described.group,
 					callId: event.callId,
 				};

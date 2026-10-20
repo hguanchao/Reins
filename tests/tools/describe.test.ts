@@ -150,6 +150,23 @@ describe("工具调用摘要", () => {
 		assert.ok(list.fullDetail?.includes(path));
 	});
 
+	it("文件类工具的路径带 file:// 链接，相对路径按工作根解析", () => {
+		const root = process.cwd();
+
+		const read = describeToolCall("read", { path: "src/a.ts" }, root);
+		assert.ok(read.linkTarget?.startsWith("file://"));
+		assert.ok(read.linkTarget?.endsWith("/src/a.ts"));
+
+		assert.ok(describeToolCall("write", { path: "a.ts", content: "" }, root).linkTarget);
+		assert.ok(describeToolCall("edit", { path: "a.ts", edits: [] }, root).linkTarget);
+		assert.ok(describeToolCall("ls", { path: "src" }, root).linkTarget?.endsWith("/src"));
+
+		// 没有工作根时无法可靠解析相对路径；没有目标文本时也不挂链接
+		assert.equal(describeToolCall("read", { path: "src/a.ts" }).linkTarget, undefined);
+		assert.equal(describeToolCall("ls", { path: "." }, root).linkTarget, undefined);
+		assert.equal(describeToolCall("bash", { command: "ls" }, root).linkTarget, undefined);
+	});
+
 	it("subagent 折叠只取任务首行，展开显示完整任务", () => {
 		const call = describeToolCall("subagent", { task: "do it\nmore" });
 		assert.equal(call.detail, "do it");
