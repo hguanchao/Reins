@@ -1159,6 +1159,38 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("双击展开的工具组成员，显示该成员的完整参数", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("看看两个文件\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "src/a.ts" } });
+			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "src/b.ts" } });
+			t.mock.timers.tick(100);
+
+			const row =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("› Read  a.ts")) + 1;
+			assert.ok(row > 0);
+
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("path: src/a.ts"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("双击展开长思考时保持标题位置，不跳到底部", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

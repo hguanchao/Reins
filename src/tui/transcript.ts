@@ -546,9 +546,15 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 			}
 			if (line.kind === "toolGroup") {
 				const groupStart = lines.length;
-				lines.push(...toolGroupLines(line, width));
+				const rendered = toolGroupLines(line, width);
+				lines.push(...rendered.lines);
 				// 单个成员直接按普通工具行渲染，没有组头可点
 				if (line.members.length >= 2) groupHeaders.push({ start: groupStart, group: line });
+				for (const member of rendered.memberStarts) {
+					if (member.tool.fullDetail !== undefined) {
+						toolHeaders.push({ start: groupStart + member.start, tool: member.tool });
+					}
+				}
 				continue;
 			}
 			const warning = line.kind === "warning";
@@ -628,31 +634,44 @@ function thinkingBodyLines(text: string, width: number): readonly string[] {
  * 工具组的屏幕行。
  *
  * 两个以上成员才有组头：运行时展开，回合结束收起；单个成员直接按普通工具行渲染。
+ * 同时给出成员标题行在返回行数组里的偏移，供双击命中注册。
  */
-function toolGroupLines(group: TranscriptToolGroup, width: number): readonly string[] {
+function toolGroupLines(
+	group: TranscriptToolGroup,
+	width: number,
+): {
+	readonly lines: readonly string[];
+	readonly memberStarts: readonly { readonly start: number; readonly tool: TranscriptTool }[];
+} {
+	const lines: string[] = [];
+	const memberStarts: { start: number; tool: TranscriptTool }[] = [];
+
 	if (group.members.length < 2) {
 		const [tool] = group.members;
-		if (tool === undefined) return [];
-		return [
-			...toolLines(tool, width),
-			...(tool.resultExpanded && tool.result !== undefined ? toolResultLines(tool, width) : []),
-		];
+		if (tool === undefined) return { lines, memberStarts };
+		memberStarts.push({ start: lines.length, tool });
+		lines.push(...toolLines(tool, width));
+		if (tool.resultExpanded && tool.result !== undefined) {
+			lines.push(...toolResultLines(tool, width));
+		}
+		return { lines, memberStarts };
 	}
 
 	const marker = group.expanded ? TOOL_GROUP_EXPANDED_MARKER : TOOL_MARKER;
 	const prefix = `${RESPONSE_INDENT}${marker} `;
 	const limit = Math.max(0, width - displayWidth(prefix));
-	const lines = [coloredLine(`${prefix}${fitToWidth(groupHeaderLabel(group.members), limit)}`, width, TOOL_GROUP_COLOR)];
+	lines.push(coloredLine(`${prefix}${fitToWidth(groupHeaderLabel(group.members), limit)}`, width, TOOL_GROUP_COLOR));
 
 	if (group.expanded) {
 		for (const member of group.members) {
+			memberStarts.push({ start: lines.length, tool: member });
 			lines.push(...toolLines(member, width, TOOL_GROUP_MEMBER_INDENT));
 			if (member.resultExpanded && member.result !== undefined) {
 				lines.push(...toolResultLines(member, width, TOOL_GROUP_MEMBER_INDENT));
 			}
 		}
 	}
-	return lines;
+	return { lines, memberStarts };
 }
 
 /** 成功工具结果：缩进在工具行下方，超过预览行数时收敛。 */

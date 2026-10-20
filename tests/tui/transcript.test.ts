@@ -395,6 +395,28 @@ describe("工具组", () => {
 		assert.equal(toolGroupHeaderAtRow(40, 10, [turn], 0, row), group);
 		assert.equal(toolGroupHeaderAtRow(40, 10, [turn], 0, row + 1), undefined);
 	});
+
+	it("展开的组成员行可以各自命中并展开详情", () => {
+		const first: TranscriptTool = { ...read("a.ts"), fullDetail: "path: src/a.ts" };
+		const second: TranscriptTool = { ...read("b.ts"), fullDetail: "path: src/b.ts" };
+		const group = groupOf([first, second], true);
+		const turn: TranscriptTurn = { prompt: "hi", response: [group] };
+		const rows = renderTranscript(60, 12, [turn], 0).map(plain);
+		const headerRow = rows.findIndex((line) => line.includes("Read 2 files")) + 1;
+		const firstRow = rows.findIndex((line) => line.includes("› Read  a.ts")) + 1;
+		const secondRow = rows.findIndex((line) => line.includes("› Read  b.ts")) + 1;
+
+		assert.equal(toolGroupHeaderAtRow(60, 12, [turn], 0, headerRow), group);
+		assert.equal(toolHeaderAtRow(60, 12, [turn], 0, firstRow), first);
+		assert.equal(toolHeaderAtRow(60, 12, [turn], 0, secondRow), second);
+		assert.equal(toolGroupHeaderAtRow(60, 12, [turn], 0, firstRow), undefined);
+
+		first.detailExpanded = true;
+		const text = renderTranscript(60, 12, [turn], 0)
+			.map(plain)
+			.join("\n");
+		assert.ok(text.includes("path: src/a.ts"));
+	});
 });
 
 describe("块级间距", () => {
