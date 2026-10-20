@@ -350,6 +350,67 @@ describe("工具组", () => {
 	});
 });
 
+describe("块级间距", () => {
+	function rowsOf(response: readonly TranscriptLine[]): readonly string[] {
+		return renderTranscript(40, 12, [{ prompt: "hi", response }], 0)
+			.map(plain)
+			.map((line) => line.trimEnd());
+	}
+
+	it("正文与工具批次之间空一行，连续工具之间保持紧凑", () => {
+		const rows = rowsOf([
+			"先看看项目结构。",
+			{ kind: "tool", name: "Bash", detail: "ls" },
+			{ kind: "tool", name: "List", detail: "." },
+		]);
+
+		const textRow = rows.findIndex((line) => line.includes("先看看项目结构"));
+		const bashRow = rows.findIndex((line) => line.includes("› Bash"));
+		const listRow = rows.findIndex((line) => line.includes("› List"));
+
+		assert.equal(bashRow, textRow + 2);
+		assert.equal(rows[textRow + 1], "");
+		assert.equal(listRow, bashRow + 1);
+	});
+
+	it("失败行独立成块，前后各空一行", () => {
+		const rows = rowsOf([
+			{ kind: "tool", name: "Bash", detail: "ls" },
+			{ kind: "tool", name: "Bash", detail: "exit 1", isError: true, durationMs: 5 },
+			"换个方式继续。",
+		]);
+
+		const okRow = rows.findIndex((line) => line.includes("› Bash"));
+		const failedRow = rows.findIndex((line) => line.includes("× Bash"));
+		const textRow = rows.findIndex((line) => line.includes("换个方式继续"));
+
+		assert.equal(failedRow, okRow + 2);
+		assert.equal(rows[okRow + 1], "");
+		assert.equal(textRow, failedRow + 2);
+		assert.equal(rows[failedRow + 1], "");
+	});
+
+	it("思考块与正文之间空一行，标题与思考正文保持相邻", () => {
+		const block: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thinking…",
+			body: ["先读文件", "再决定"],
+			partial: "",
+			running: true,
+			expanded: true,
+		};
+		const rows = rowsOf([block, "开始吧。"]);
+
+		const headerRow = rows.findIndex((line) => line.includes("Thinking…"));
+		const lastBodyRow = rows.findIndex((line) => line.includes("再决定"));
+		const textRow = rows.findIndex((line) => line.includes("开始吧"));
+
+		assert.equal(lastBodyRow, headerRow + 2);
+		assert.equal(textRow, lastBodyRow + 2);
+		assert.equal(rows[lastBodyRow + 1], "");
+	});
+});
+
 describe("对话流", () => {
 	it("用户提示使用 #16191d 背景和指定前缀/正文颜色，上下留一行背景", () => {
 		const lines = renderTranscript(40, 8, [{ prompt: "hello", response: [] }], 0);

@@ -468,6 +468,30 @@ function contentWidth(terminalWidth: number): number {
 	return Math.max(0, Math.max(0, terminalWidth) - GUTTER_WIDTH);
 }
 
+/** 对话流里可以连成一块的内容类型：同类连续行紧凑排列，块与块之间留空行。 */
+type ResponseBlockKind = "text" | "thinking" | "tools" | "notice";
+
+function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
+	if (typeof line === "string") return "text";
+	if (line.kind === "tool") return line.isError === true ? "notice" : "tools";
+	if (line.kind === "toolGroup") return "tools";
+	if (line.kind === "thinkingBlock") return "thinking";
+	return "notice";
+}
+
+/**
+ * 相邻两条内容之间是否需要空行。
+ *
+ * 连续正文和连续工具调用各自属于同一块，保持紧凑；思考区块与失败、警告各自独立成块，
+ * 即使前后同类也要分开，否则流式输出读起来会糊成一片。
+ */
+function needsBlockGap(previous: TranscriptLine, current: TranscriptLine): boolean {
+	const previousKind = responseBlockKind(previous);
+	const currentKind = responseBlockKind(current);
+	if (previousKind !== currentKind) return true;
+	return currentKind === "thinking" || currentKind === "notice";
+}
+
 function build(width: number, turns: readonly TranscriptTurn[], notice: string | undefined): TranscriptView {
 	const lines: string[] = [];
 	const prompts: PromptRange[] = [];
@@ -492,7 +516,12 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		// 吸顶 header 下方固定一行空隙
 		lines.push(" ".repeat(width));
 		const responseStart = lines.length;
+		let previousLine: TranscriptLine | undefined;
 		for (const line of turn.response) {
+			if (previousLine !== undefined && needsBlockGap(previousLine, line)) {
+				lines.push(" ".repeat(width));
+			}
+			previousLine = line;
 			if (typeof line === "string") {
 				lines.push(...responseLines(line, width, MESSAGE_TEXT_COLOR));
 				continue;

@@ -378,6 +378,8 @@ describe("全屏布局", () => {
 	it("方向键移动并回车切换模型，页脚随之更新", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		// 块级空行让这段对话需要更多高度，默认 12 行会把首行正文顶到吸顶提示后面
+		output.rows = 20;
 		let selected: string | undefined;
 		let info = FOOTER_INFO;
 		const running = runTui({
