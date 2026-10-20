@@ -20,6 +20,20 @@ describe("工具结果呈现", () => {
 		});
 	});
 
+	it("read 长文件只显示前五行与后三行", () => {
+		const content = Array.from({ length: 185 }, (_, index) => `line ${index + 1}`).join("\n");
+		const detail = resultDetail("read", content, { startLine: 1, endLine: 185, totalLines: 185 });
+		const lines = detail?.text.split("\n") ?? [];
+
+		assert.equal(lines.length, 9);
+		assert.equal(lines[0], "  1  line 1");
+		assert.equal(lines[4], "  5  line 5");
+		assert.equal(lines[5], "…");
+		assert.equal(lines[6], "183  line 183");
+		assert.equal(lines[8], "185  line 185");
+		assert.equal(detail?.text.includes("line 100"), false);
+	});
+
 	it("list/find/grep 展开为文本结果", () => {
 		assert.deepEqual(resultDetail("ls", "- a.ts\n- b.ts"), {
 			text: "- a.ts\n- b.ts",

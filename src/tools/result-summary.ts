@@ -12,6 +12,9 @@ export interface ResultDetail {
 const RESULT_DETAIL_TOOLS = new Set(["read", "write", "ls", "find", "grep", "edit"]);
 /** 整文件覆盖的 diff 可能很长，展开时保留前若干行即可。 */
 const MAX_DIFF_LINES = 200;
+/** 文件预览：超过这个行数时只显示开头与结尾，中间用省略号。 */
+const FILE_PREVIEW_FIRST = 5;
+const FILE_PREVIEW_LAST = 3;
 
 /**
  * 工具结束后展开行里显示的内容。
@@ -53,10 +56,25 @@ function readDetail(content: string, details: unknown): ResultDetail | undefined
 	if (lines.length === 0) return undefined;
 
 	const width = String(startLine + lines.length - 1).length;
-	const text = lines
-		.map((line, index) => `${String(startLine + index).padStart(width)}  ${line}`)
-		.join("\n");
+	const text =
+		lines.length > FILE_PREVIEW_FIRST + FILE_PREVIEW_LAST
+			? [
+					...lines
+						.slice(0, FILE_PREVIEW_FIRST)
+						.map((line, index) => numberedLine(startLine + index, line, width)),
+					"…",
+					...lines
+						.slice(-FILE_PREVIEW_LAST)
+						.map((line, index) =>
+							numberedLine(startLine + lines.length - FILE_PREVIEW_LAST + index, line, width),
+						),
+				].join("\n")
+			: lines.map((line, index) => numberedLine(startLine + index, line, width)).join("\n");
 	return { text, kind: "file" };
+}
+
+function numberedLine(number: number, line: string, width: number): string {
+	return `${String(number).padStart(width)}  ${line}`;
 }
 
 function readLines(content: string, startLine: number, endLine: number | undefined): readonly string[] {
