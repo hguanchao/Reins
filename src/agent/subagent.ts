@@ -16,6 +16,7 @@ import type { AnyToolDefinition, ToolDefinition, ToolResult } from "../tools/con
 import type { ToolRegistry } from "../tools/registry.ts";
 import type { JsonSchema } from "../tools/schema.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
+import { estimateTokens } from "./compactor.ts";
 import { buildSubagentPrompt } from "./prompt.ts";
 
 /**
@@ -35,6 +36,13 @@ import { buildSubagentPrompt } from "./prompt.ts";
 /** 配置里没写 max_turns 时子代理的步数上限。 */
 export const DEFAULT_SUBAGENT_STEPS = 20;
 
+/**
+ * 子代理的上下文预算比例。
+ *
+ * 估算不含系统提示词与工具声明，且还要给这一次的输出留空间，所以低于主对话的压缩阈值。
+ */
+const CONTEXT_BUDGET_RATIO = 0.7;
+
 export interface SubagentDeps {
 	readonly provider: ProviderEntry;
 	readonly model: ModelEntry;
@@ -46,6 +54,8 @@ export interface SubagentDeps {
 	readonly session: SessionPort;
 	/** 一次运行最多向模型发几次请求 */
 	readonly maxSteps: number;
+	/** 子代理所用模型的上下文上限；声明后超过预算就提前收尾，不让端点拒绝 */
+	readonly contextWindow?: number;
 }
 
 export interface SubagentContext {
@@ -56,8 +66,8 @@ export interface SubagentContext {
 	readonly onProgress: (text: string) => void;
 }
 
-/** done 是它自己说完了；其余三种都意味着这件事没有做完，汇报里必须说清楚。 */
-export type SubagentStopReason = "done" | "steps" | "error" | "aborted";
+/** done 是它自己说完了；其余几种都意味着这件事没有做完，汇报里必须说清楚。 */
+export type SubagentStopReason = "done" | "steps" | "context" | "error" | "aborted";
 
 export interface SubagentOutcome {
 	readonly report: string;
@@ -83,6 +93,20 @@ export class Subagent {
 			if (context.signal.aborted) {
 				return { report: abortedReport(step - 1), steps: step - 1, stopReason: "aborted" };
 			}
+			const contextWindow = this.#deps.contextWindow;
+			if (
+				contextWindow !== undefined &&
+				estimateTokens(messages) >= contextWindow * CONTEXT_BUDGET_RATIO
+			) {
+				return {
+					report:
+						`The subagent stopped before finishing: its context reached the ` +
+						`${Math.round(CONTEXT_BUDGET_RATIO * 100)}% budget of ${contextWindow} tokens. ` +
+						"Split the task into smaller pieces or ask for a narrower scope.",
+					steps: step - 1,
+					stopReason: "context",
+				};
+			}
 			context.onProgress(`step ${step}/${this.#deps.maxSteps}`);
 
 			const result = await this.#deps.client
@@ -101,6 +125,7 @@ export class Subagent {
 						this.#deps.model.reasoning,
 						this.#deps.model.thinkingLevelMap,
 					),
+					onRetry: (attempt, reason) => context.onProgress(`retrying (${attempt}): ${reason}`),
 					signal: context.signal,
 				})
 				.result();

@@ -1,4 +1,5 @@
 import { createParser } from "eventsource-parser";
+import { ProxyAgent } from "undici";
 
 import { readVersion } from "../version.ts";
 import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "./retry.ts";
@@ -31,6 +32,21 @@ export interface SseRequest {
 	readonly complete?: () => boolean;
 	/** 决定重试前告知调用方，便于提示「正在重试」 */
 	readonly onRetry?: (attempt: number, reason: string) => void;
+	/** 代理地址；空串表示强制直连，省略则使用默认连接 */
+	readonly proxy?: string;
+}
+
+/** 代理客户端按地址缓存：一次运行只建一次，同一地址复用连接池。 */
+const proxyAgents = new Map<string, ProxyAgent>();
+
+function dispatcherFor(proxy: string | undefined): ProxyAgent | undefined {
+	if (proxy === undefined || proxy.length === 0) return undefined;
+	let agent = proxyAgents.get(proxy);
+	if (agent === undefined) {
+		agent = new ProxyAgent(proxy);
+		proxyAgents.set(proxy, agent);
+	}
+	return agent;
 }
 
 /** 错误响应体只取一段：有些网关会回一整页 HTML。 */
@@ -112,12 +128,18 @@ async function postSseOnce(
 	assertHeaderEncodable(request.headers);
 	for (const [name, value] of Object.entries(request.headers)) headers.set(name, value);
 
-	const response = await fetch(request.url, {
+	const dispatcher = dispatcherFor(request.proxy);
+	const init: RequestInit = {
 		method: "POST",
 		headers,
 		body: JSON.stringify(request.body),
 		signal: request.signal,
-	});
+		// Node 内置 fetch 与 npm undici 的 dispatcher 类型来自不同版本，运行时是同一套协议
+		...(dispatcher === undefined
+			? {}
+			: { dispatcher: dispatcher as unknown as NonNullable<RequestInit["dispatcher"]> }),
+	};
+	const response = await fetch(request.url, init);
 
 	if (!response.ok) {
 		throw new LlmHttpError(

@@ -1,5 +1,6 @@
 import type { TurnDriver } from "../agent/driver.ts";
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
+import { describeToolCall, displayToolName } from "../tools/describe.ts";
 
 /**
  * 非交互模式。
@@ -13,7 +14,7 @@ import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
 export interface PrintModeDeps {
 	readonly prompt: string;
 	/** 装配处交进来的构造方式：事件监听由本模式提供，驱动本身由装配处组装 */
-	readonly createDriver: (onEvent: AgentEventListener) => TurnDriver;
+	readonly createDriver: (onEvent: AgentEventListener) => Pick<TurnDriver, "run">;
 	readonly stdout: (text: string) => void;
 	readonly stderr: (text: string) => void;
 }
@@ -27,16 +28,19 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				deps.stdout(event.text);
 				state.wroteText = true;
 				return;
-			case "tool_start":
-				deps.stderr(`\n· ${event.name} ${summarizeArgs(event.args)}\n`);
+			case "tool_start": {
+				const described = describeToolCall(event.name, event.args);
+				const detail = described.detail.length === 0 ? "" : `  ${described.detail}`;
+				deps.stderr(`\n› ${described.name}${detail}\n`);
 				return;
+			}
 			case "tool_end":
-				// 成功只报耗时；失败要把原因说出来，否则使用者只知道「没做成」，不知道该改什么
-				deps.stderr(
-					event.isError
-						? `  failed ${event.durationMs}ms: ${event.summary}\n`
-						: `  done ${event.durationMs}ms\n`,
-				);
+				// 成功不落行；失败要把原因说出来，否则使用者只知道「没做成」，不知道该改什么
+				if (event.isError) {
+					deps.stderr(
+						`  × ${displayToolName(event.name)}  ${event.summary} (${event.durationMs}ms)\n`,
+					);
+				}
 				return;
 			case "turn_end":
 				state.finished = true;
@@ -48,14 +52,17 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				deps.stderr(`  done: ~${event.tokensBefore} → ${event.tokensAfter} tokens\n`);
 				return;
 			case "compaction_failed":
-				deps.stderr(`  compaction failed, continuing with the context as is: ${event.message}\n`);
+				deps.stderr(`\n× Error: compaction failed, continuing with the context as is: ${event.message}\n`);
+				return;
+			case "retrying":
+				deps.stderr(`\n· retrying (${event.attempt}): ${event.reason}\n`);
 				return;
 			case "error":
-				deps.stderr(`\nerror: ${event.message}\n`);
+				deps.stderr(`\n× Error: ${event.message}\n`);
 				state.failed = true;
 				return;
 			case "aborted":
-				deps.stderr("\naborted\n");
+				deps.stderr("\n× Error: aborted\n");
 				state.failed = true;
 				return;
 			default:
@@ -72,7 +79,7 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 	try {
 		await deps.createDriver(listener).run(deps.prompt, controller.signal);
 	} catch (error) {
-		deps.stderr(`\nerror: ${error instanceof Error ? error.message : String(error)}\n`);
+		deps.stderr(`\n× Error: ${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
 	} finally {
 		process.removeListener("SIGINT", onInterrupt);
@@ -80,10 +87,4 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 	}
 
 	return state.failed || !state.finished ? 1 : 0;
-}
-
-/** 工具调用参数只显示个大概：完整内容界面上另有办法看到，这里挤满屏幕没有意义。 */
-function summarizeArgs(args: Record<string, unknown>): string {
-	const text = JSON.stringify(args);
-	return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }

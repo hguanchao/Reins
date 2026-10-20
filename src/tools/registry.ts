@@ -1,7 +1,7 @@
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionReadView } from "../session/port.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
-import type { AnyToolDefinition, ToolAnnotations, ToolResult } from "./contract.ts";
+import type { AnyToolDefinition, PermissionScope, ToolAnnotations, ToolResult } from "./contract.ts";
 import { validateToolArguments } from "./schema.ts";
 import type { ResultSpiller } from "./spill.ts";
 
@@ -15,7 +15,7 @@ import type { ResultSpiller } from "./spill.ts";
  * 工具的可用集合就是注册进来的集合，没有单独的启用清单：注册了就能被调用，判定留给权限层。
  */
 
-export type ToolSource = "core" | "plugin";
+export type ToolSource = "core" | "bundled" | "plugin";
 
 export interface ToolCallRequest {
 	readonly callId: string;
@@ -44,6 +44,10 @@ export interface GateRequest {
 	readonly tool: string;
 	readonly annotations: ToolAnnotations;
 	readonly args: Record<string, unknown>;
+	/** 工具来源：审批层据此决定只读标注是否可信 */
+	readonly source: ToolSource;
+	/** 本会话可记住的放行范围；undefined 表示这次调用只能逐次批准 */
+	readonly scope: PermissionScope | undefined;
 	readonly signal: AbortSignal;
 }
 
@@ -89,7 +93,7 @@ export class ToolRegistry {
 			this.#tools.set(definition.name, { definition, source });
 			return;
 		}
-		if (existing.source === "core" && source === "plugin") {
+		if (existing.source === "core" && source !== "core") {
 			throw new Error(`Core tool ${definition.name} cannot be replaced by a plugin`);
 		}
 		throw new Error(`Tool ${definition.name} is already registered`);
@@ -141,11 +145,12 @@ export class ToolRegistry {
 	}
 
 	async call(request: ToolCallRequest, context: ToolRunContext): Promise<ToolCallOutcome> {
-		const tool = this.get(request.name);
-		if (tool === undefined) {
+		const registration = this.#tools.get(request.name);
+		if (registration === undefined) {
 			const known = [...this.#tools.keys()].join(", ");
 			return error(`Unknown tool: ${request.name}. Available tools: ${known}`);
 		}
+		const tool = registration.definition;
 
 		const prepared =
 			tool.prepareArguments === undefined ? request.args : tool.prepareArguments(request.args);
@@ -157,12 +162,19 @@ export class ToolRegistry {
 
 		// 审批判定：校验之后、执行之前。放在校验之后的理由是模型把参数写错时应当直接告诉它，
 		// 而不是先弹一次确认再报参数错
+		const scope =
+			tool.permissionScope === undefined
+				? { key: tool.name, label: tool.name, short: tool.name }
+				: tool.permissionScope(validated.value, context.workspace);
+
 		let gateOutcome: GateOutcome;
 		try {
 			gateOutcome = await this.#gate.check({
 				tool: tool.name,
 				annotations: tool.annotations,
 				args: validated.value,
+				source: registration.source,
+				scope,
 				signal: context.signal,
 			});
 		} catch (cause) {

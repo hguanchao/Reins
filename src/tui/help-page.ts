@@ -21,11 +21,19 @@ interface HelpEntry {
 
 /** 命令之外的固定内容。 */
 const KEY_ENTRIES: readonly HelpEntry[] = [
-	{ name: "Enter", description: "Send the prompt" },
-	{ name: "Esc", description: "Close a menu or this page" },
+	{ name: "Enter", description: "Send the prompt or confirm the selected action" },
+	{ name: "Esc", description: "Close a menu or this page; deny an approval" },
 	{ name: "Ctrl+C twice", description: "Exit the interface" },
-	{ name: "Up / Down", description: "Move in a menu, scroll here" },
-	{ name: "Wheel", description: "Scroll the conversation" },
+	{ name: "Up / Down", description: "Prompt history, menu navigation, or help scrolling" },
+	{ name: "Left / Right", description: "Move the prompt cursor or approval selection" },
+	{ name: "Home / End", description: "Move to the start or end of the input line" },
+	{ name: "PgUp / PgDn", description: "Scroll the conversation or this page" },
+	{ name: "Ctrl+Home/End", description: "Jump to the oldest or latest output" },
+	{ name: "Ctrl+E", description: "Expand or collapse the latest thinking or tool group" },
+	{ name: "Ctrl+O", description: "Show or hide the latest successful tool result" },
+	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar" },
+	{ name: "Double-click", description: "Expand or collapse thinking and tool groups" },
+	{ name: "y / a / n", description: "Allow once, always allow, or deny an approval" },
 ];
 
 const TITLE = "Reins — help";

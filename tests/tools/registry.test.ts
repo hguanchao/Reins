@@ -75,6 +75,12 @@ describe("工具注册表", () => {
 		assert.throws(() => registry.register(ECHO, "core"), /already registered/);
 	});
 
+	it("随包插件工具的来源单独标记", () => {
+		const registry = new ToolRegistry(noSpill(), ALLOW);
+		registry.register(ECHO, "bundled");
+		assert.deepEqual(registry.describe(), [{ name: "echo-tool", source: "bundled" }]);
+	});
+
 	it("卸载插件工具，核心工具不许卸载", () => {
 		const registry = registryWith(ALLOW);
 		registry.removePluginTool("not-there"); // 不存在:无事发生
@@ -98,6 +104,25 @@ describe("工具注册表", () => {
 		const outcome = await registryWith(ALLOW).call({ callId: "c", name: "nope", args: {} }, context());
 		assert.equal(outcome.isError, true);
 		assert.match(outcome.content, /Unknown tool: nope\. Available tools: echo-tool/);
+	});
+
+	it("审批请求带上工具来源与可记住范围", async () => {
+		let source: string | undefined;
+		let scope: unknown;
+		const gate: ToolGate = {
+			check: async (request: GateRequest) => {
+				source = request.source;
+				scope = request.scope;
+				return { allowed: true, reason: "" };
+			},
+		};
+		const registry = new ToolRegistry(noSpill(), gate);
+		registry.register(ECHO, "plugin");
+
+		await registry.call({ callId: "c", name: "echo-tool", args: { text: "x" } }, context());
+
+		assert.equal(source, "plugin");
+		assert.deepEqual(scope, { key: "echo-tool", label: "echo-tool", short: "echo-tool" });
 	});
 
 	it("参数错误回显收到的参数", async () => {

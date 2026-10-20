@@ -1,5 +1,5 @@
 import type { ApprovalMode } from "../config/config-file.ts";
-import type { ToolAnnotations } from "../tools/contract.ts";
+import type { PermissionScope, ToolAnnotations } from "../tools/contract.ts";
 
 /**
  * 审批判定。
@@ -35,6 +35,8 @@ export type PermissionDecision =
 export class PermissionPolicy {
 	readonly #mode: ApprovalMode;
 	readonly #rules: PermissionRule[] = [];
+	/** 本会话内使用者明确放行的范围；只存在于当前进程，退出即失效 */
+	readonly #sessionAllowed = new Set<string>();
 
 	constructor(mode: ApprovalMode) {
 		this.#mode = mode;
@@ -43,6 +45,11 @@ export class PermissionPolicy {
 	/** 追加一条加严规则。装载插件期间由宿主调用。 */
 	addRule(rule: PermissionRule): void {
 		this.#rules.push(rule);
+	}
+
+	/** 记住一次「本会话总是允许」。范围由工具在调用时给出。 */
+	allowForSession(tool: string, scope: PermissionScope): void {
+		this.#sessionAllowed.add(sessionKey(tool, scope.key));
 	}
 
 	ruleCount(): number {
@@ -55,14 +62,30 @@ export class PermissionPolicy {
 	 * 顺序：规则 → 只读工具 → 审批方式。规则排在最前，因为它们表达的是「明令禁止」，
 	 * 不该被审批方式绕过；只读工具直接放行，是因为每读一个文件都问一次只会让人养成
 	 * 无脑同意的习惯，等到真正危险的那次也一样会同意。
+	 *
+	 * 只读标注只对核心工具生效：插件可以自己声明这个字段，若据此直接放行，插件就等于
+	 * 给自己开了免审批通道。
 	 */
-	decide(tool: string, annotations: ToolAnnotations, args: Record<string, unknown>): PermissionDecision {
+	decide(
+		tool: string,
+		annotations: ToolAnnotations,
+		args: Record<string, unknown>,
+		source: "core" | "bundled" | "plugin" = "core",
+		scopeKey?: string,
+	): PermissionDecision {
 		for (const rule of this.#rules) {
 			if (!rule.matches(tool, args)) continue;
 			return { kind: rule.decision, reason: rule.reason };
 		}
 
-		if (annotations.readOnly) return { kind: "allow" };
+		// 使用者的会话放行排在插件规则之后：明令加严的规则仍然优先
+		if (scopeKey !== undefined && this.#sessionAllowed.has(sessionKey(tool, scopeKey))) {
+			return { kind: "allow" };
+		}
+
+		// 只读标注只对核心与随包插件生效：外部插件可以自己声明这个字段，若据此直接放行，
+		// 插件就等于给自己开了免审批通道。
+		if (annotations.readOnly && source !== "plugin") return { kind: "allow" };
 
 		const reason = `${tool} modifies state`;
 		switch (this.#mode) {
@@ -76,9 +99,23 @@ export class PermissionPolicy {
 	}
 }
 
-/** 征求使用者同意。返回是否允许。 */
+/** 征求使用者同意时展示的内容。 */
+export interface ApprovalRequest {
+	/** 原始工具标识，用于权限匹配；界面展示前必须经 displayToolName 转成展示名 */
+	readonly tool: string;
+	/** 风险标签：destructive / external；没有风险时为空串 */
+	readonly risk: string;
+	readonly detail: string;
+	/** 「总是允许」的完整说明；undefined 表示这次不能记住 */
+	readonly saveLabel?: string;
+	/** 动作行里的短标签 */
+	readonly saveShort?: string;
+}
+
+export type ApprovalAnswer = "once" | "always" | "deny";
+
 export interface Confirmer {
-	(question: string, detail: string): Promise<boolean>;
+	(request: ApprovalRequest): Promise<ApprovalAnswer>;
 }
 
 export interface ReviewOutcome {
@@ -95,6 +132,10 @@ export interface GateRequest {
 	readonly tool: string;
 	readonly annotations: ToolAnnotations;
 	readonly args: Record<string, unknown>;
+	/** 工具来源：只读标注只在核心与随包插件上可信 */
+	readonly source: "core" | "bundled" | "plugin";
+	/** 本会话可记住的放行范围；undefined 表示这次调用只能逐次批准 */
+	readonly scope: PermissionScope | undefined;
 	readonly signal: AbortSignal;
 }
 
@@ -121,7 +162,13 @@ export class PermissionGate {
 	}
 
 	async check(request: GateRequest): Promise<GateOutcome> {
-		const decision = this.#options.policy.decide(request.tool, request.annotations, request.args);
+		const decision = this.#options.policy.decide(
+			request.tool,
+			request.annotations,
+			request.args,
+			request.source,
+			request.scope?.key,
+		);
 
 		switch (decision.kind) {
 			case "allow":
@@ -145,8 +192,22 @@ export class PermissionGate {
 			};
 		}
 
-		const allowed = await confirmer(`Allow ${request.tool} to run?`, describeCall(request.args));
-		return allowed ? { allowed: true, reason: "" } : { allowed: false, reason: `${reason}, but the user did not approve` };
+		const answer = await confirmer({
+			tool: request.tool,
+			risk: riskLabel(request.annotations),
+			detail: describeCall(request.tool, request.args),
+			saveLabel: request.scope?.label,
+			saveShort: request.scope?.short ?? request.scope?.label,
+		});
+		if (answer === "always") {
+			if (request.scope === undefined) {
+				return { allowed: false, reason: `${reason}, but this call cannot be remembered; approve it once or deny it` };
+			}
+			this.#options.policy.allowForSession(request.tool, request.scope);
+			return { allowed: true, reason: "" };
+		}
+		if (answer === "once") return { allowed: true, reason: "" };
+		return { allowed: false, reason: `${reason}, but the user did not approve` };
 	}
 
 	async #review(request: GateRequest, reason: string): Promise<GateOutcome> {
@@ -160,8 +221,22 @@ export class PermissionGate {
 	}
 }
 
-/** 给确认框看的调用摘要。太长的话截断，确认框本身不该需要滚动。 */
-function describeCall(args: Record<string, unknown>): string {
-	const text = JSON.stringify(args, null, 2);
-	return text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
+/** 给确认面板看的调用摘要。bash 与文件工具直接给命令/路径，其余压成一行 JSON。 */
+function describeCall(tool: string, args: Record<string, unknown>): string {
+	if (tool === "bash" && typeof args["command"] === "string") return args["command"];
+	if ((tool === "edit" || tool === "write") && typeof args["path"] === "string") return args["path"];
+
+	const text = JSON.stringify(args);
+	return text.length > 400 ? `${text.slice(0, 400)}…` : text;
+}
+
+function riskLabel(annotations: ToolAnnotations): string {
+	if (annotations.destructive) return "destructive";
+	if (annotations.openWorld) return "external";
+	return "";
+}
+
+function sessionKey(tool: string, scope: string): string {
+	// 分隔符不可能出现在工具名或范围里，避免 tool=a/scope=b 与 tool=a\0b 之类拼出同一个键
+	return `${tool}\u0000${scope}`;
 }

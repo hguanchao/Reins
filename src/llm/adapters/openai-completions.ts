@@ -92,11 +92,13 @@ export class OpenAiCompletionsClient implements LlmClient {
 	readonly #provider: ProviderEntry;
 	readonly #model: ModelEntry;
 	readonly #policy: RetryPolicy;
+	readonly #proxy: string | undefined;
 
-	constructor(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy) {
+	constructor(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy, proxy?: string) {
 		this.#provider = provider;
 		this.#model = model;
 		this.#policy = policy;
+		this.#proxy = proxy;
 	}
 
 	stream(request: LlmRequest): LlmStream {
@@ -134,6 +136,8 @@ export class OpenAiCompletionsClient implements LlmClient {
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
+				onRetry: request.onRetry,
+				proxy: this.#proxy,
 				// 结束标记到手就说明这一轮的内容发完了，之后连接怎么断都算正常结束
 				complete: () => done || finishReason !== undefined,
 			},

@@ -7,30 +7,47 @@ describe("审批桥接", () => {
 	it("请求排队，一次只暴露一个", async () => {
 		const broker = new ApprovalBroker();
 
-		const first = broker.request("Allow read?", "{}");
-		assert.deepEqual(broker.pending(), { question: "Allow read?", detail: "{}" });
+		const first = broker.request({ tool: "read", risk: "", detail: "{}" });
+		assert.deepEqual(broker.pending(), { tool: "read", risk: "", detail: "{}" });
 
-		const second = broker.request("Allow write?", "{}");
-		assert.deepEqual(broker.pending(), { question: "Allow read?", detail: "{}" });
+		const second = broker.request({ tool: "write", risk: "destructive", detail: "a.ts" });
+		assert.deepEqual(broker.pending(), { tool: "read", risk: "", detail: "{}" });
 
-		broker.resolve(true);
-		assert.deepEqual(broker.pending(), { question: "Allow write?", detail: "{}" });
-		assert.equal(await first, true);
+		broker.resolve("once");
+		assert.deepEqual(broker.pending(), { tool: "write", risk: "destructive", detail: "a.ts" });
+		assert.equal(await first, "once");
 
-		broker.resolve(false);
+		broker.resolve("deny");
 		assert.equal(broker.pending(), undefined);
-		assert.equal(await second, false);
+		assert.equal(await second, "deny");
 	});
 
 	it("denyAll 拒绝所有等待中的请求", async () => {
 		const broker = new ApprovalBroker();
 
-		const first = broker.request("a", "");
-		const second = broker.request("b", "");
+		const first = broker.request({ tool: "a", risk: "", detail: "" });
+		const second = broker.request({ tool: "b", risk: "", detail: "" });
 		broker.denyAll();
 
-		assert.equal(await first, false);
-		assert.equal(await second, false);
+		assert.equal(await first, "deny");
+		assert.equal(await second, "deny");
 		assert.equal(broker.pending(), undefined);
+	});
+
+	it("可记住的范围随请求一起展示", async () => {
+		const broker = new ApprovalBroker();
+		const request = {
+			tool: "bash",
+			risk: "destructive",
+			detail: "git status",
+			saveLabel: 'commands starting with "git status"',
+			saveShort: "git status",
+		};
+		const answer = broker.request(request);
+
+		assert.deepEqual(broker.pending(), request);
+
+		broker.resolve("always");
+		assert.equal(await answer, "always");
 	});
 });

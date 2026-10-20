@@ -35,7 +35,15 @@ export type AgentEvent =
 	/** 一轮结束；stopReason 说明为什么停 */
 	| { readonly type: "turn_end"; readonly stopReason: LlmStopReason }
 	/** 一笔用量已经落进会话；界面据此更新统计，不必等整轮结束 */
-	| { readonly type: "usage_recorded" }
+	| {
+			readonly type: "usage_recorded";
+			/** 这笔用量来自主对话回合还是上下文压缩 */
+			readonly kind: "turn" | "compact";
+			/** 本次请求的合计 token 数（输入 + 输出，含缓存） */
+			readonly tokens: number;
+	  }
+	/** 请求失败后正在重试：此时还没有新的内容，界面据此说明为什么还在等 */
+	| { readonly type: "retrying"; readonly attempt: number; readonly reason: string }
 	/** 上下文太长，开始把前面一段换成摘要 */
 	| {
 			readonly type: "compaction_start";
@@ -52,6 +60,8 @@ export type AgentEvent =
 	  }
 	/** 压缩没有成功：接下来的请求仍带着完整上下文 */
 	| { readonly type: "compaction_failed"; readonly message: string }
+	/** 手动压缩时没有可压缩的部分：上下文本来就短，保持不变 */
+	| { readonly type: "compaction_skipped"; readonly message: string }
 	/** 模型返回出错或连接中断。整个回合到此为止。 */
 	| { readonly type: "error"; readonly message: string }
 	/** 用户中止 */

@@ -90,9 +90,22 @@ describe("页脚输入框", () => {
 		assert.ok(plain(lines[5] ?? "").includes("📊 100K |"));
 	});
 
-	it("常驻信息行按显示宽度截断，不切半个 emoji", () => {
-		assert.equal(plain(renderFooter(10, "", true, undefined, SESSION_INFO)[5] ?? ""), "📁 Reins");
-		assert.equal(plain(renderFooter(9, "", true, undefined, SESSION_INFO)[5] ?? ""), "📁 Rein");
+	it("窄终端按优先级舍弃：先丢缓存，再丢位置，再丢模型，最后只留上下文", () => {
+		const lineAt = (width: number): string =>
+			plain(renderFooter(width, "", true, undefined, SESSION_INFO)[5] ?? "");
+
+		assert.ok(lineAt(80).endsWith("| ⚡ 98%"));
+		assert.equal(
+			lineAt(70),
+			"📁 Reins · 🌿 main | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M",
+		);
+		assert.equal(lineAt(50), "🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M");
+		assert.equal(lineAt(20), "📊 100K / 1M");
+	});
+
+	it("上下文本身放不下时按显示宽度截断，不切半个 emoji", () => {
+		assert.equal(plain(renderFooter(10, "", true, undefined, SESSION_INFO)[5] ?? ""), "📊 100K");
+		assert.equal(plain(renderFooter(9, "", true, undefined, SESSION_INFO)[5] ?? ""), "📊 100K");
 	});
 
 	it("缓存命中率按整数百分比显示", () => {
@@ -150,7 +163,7 @@ describe("页脚输入框", () => {
 		assert.equal(plain(lines[0] ?? ""), BORDER.repeat(20));
 		assert.equal(plain(lines[1] ?? ""), " › /model");
 		assert.equal(plain(lines[2] ?? ""), BORDER.repeat(20));
-		assert.ok(plain(lines[3] ?? "").startsWith("📁 Reins"));
+		assert.equal(plain(lines[3] ?? ""), "📊 100K / 1M");
 	});
 
 	it("宽字符按两列计算，不留下半个字", () => {
@@ -200,6 +213,30 @@ describe("页脚输入框", () => {
 		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
+	it("耗时满一分钟后改为分钟与秒", () => {
+		const lines = renderFooter(70, "", true, {
+			symbol: "⠋",
+			text: "Thinking...",
+			phaseMs: 65_400,
+			elapsedMs: 957_300,
+		});
+		const text = plain(lines[1] ?? "");
+
+		assert.ok(text.includes("1m5s"));
+		assert.ok(text.includes("15m57s"));
+	});
+
+	it("整分钟不显示零秒，有零头才带秒", () => {
+		const at = (elapsedMs: number): string =>
+			plain(
+				renderFooter(70, "", true, { symbol: "⠋", text: "Thinking...", elapsedMs })[1] ?? "",
+			);
+
+		assert.ok(at(60_000).endsWith("1m"));
+		assert.ok(at(61_000).endsWith("1m1s"));
+		assert.ok(at(120_000).endsWith("2m"));
+	});
+
 	it("扫光只作用于活动描述，计时和 token 保持静态", () => {
 		const lines = renderFooter(70, "", true, {
 			symbol: "⠧",
@@ -234,6 +271,21 @@ describe("页脚输入框", () => {
 		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting for response...");
 		assert.ok(lines[1]?.includes("\x1b[38;2;255;255;255m"));
 		assert.ok(lines[1]?.endsWith("\x1b[0m"));
+	});
+
+	it("多行输入按行显示，光标落在对应行", () => {
+		const view = inputView("abc\ndef", 20, 5);
+		assert.deepEqual(
+			view.lines.map((line) => `${line.prefix}${line.text}`),
+			[" › abc", "   def"],
+		);
+		assert.equal(view.row, 1);
+		assert.equal(view.column, 5);
+
+		const lines = renderFooter(20, "abc\ndef", true, undefined, undefined, { cursor: 5 });
+		assert.equal(lines.length, FOOTER_HEIGHT + 1);
+		assert.equal(plain(lines[3] ?? ""), " › abc");
+		assert.equal(plain(lines[4] ?? ""), "   def");
 	});
 
 	it("光标列跟着提示符和可见文字走", () => {

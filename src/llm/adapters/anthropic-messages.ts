@@ -78,11 +78,13 @@ export class AnthropicMessagesClient implements LlmClient {
 	readonly #provider: ProviderEntry;
 	readonly #model: ModelEntry;
 	readonly #policy: RetryPolicy;
+	readonly #proxy: string | undefined;
 
-	constructor(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy) {
+	constructor(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy, proxy?: string) {
 		this.#provider = provider;
 		this.#model = model;
 		this.#policy = policy;
+		this.#proxy = proxy;
 	}
 
 	stream(request: LlmRequest): LlmStream {
@@ -119,6 +121,8 @@ export class AnthropicMessagesClient implements LlmClient {
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
+				onRetry: request.onRetry,
+				proxy: this.#proxy,
 				// 收尾事件里的结束原因到手就说明内容发完了，之后连接断开按正常结束处理
 				complete: () => stopReason !== undefined,
 			},

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { Sandbox, type SandboxBackend, type SandboxPolicy } from "../../src/sandbox/policy.ts";
@@ -40,6 +43,29 @@ describe("沙箱判定", () => {
 		const confined = sandbox("workspace");
 		confined.assertPathAllowed("write", `${ROOT}\\a.ts`);
 		assert.throws(() => confined.assertPathAllowed("write", "E:\\outside\\a.ts"), /confined to the workspace/);
+	});
+
+	it("workspace 模式拦住指向根外的目录链接", (t) => {
+		const directory = mkdtempSync(join(tmpdir(), "reins-sandbox-"));
+		try {
+			const root = join(directory, "root");
+			const outside = join(directory, "outside");
+			mkdirSync(root);
+			mkdirSync(outside);
+			const link = join(root, "link");
+			try {
+				symlinkSync(outside, link, process.platform === "win32" ? "junction" : "dir");
+			} catch {
+				t.skip("symlinks are not available in this environment");
+				return;
+			}
+
+			const confined = new Sandbox({ mode: "workspace", root }, undefined);
+			confined.assertPathAllowed("write", join(root, "a.ts"));
+			assert.throws(() => confined.assertPathAllowed("write", join(link, "a.ts")), /confined to the workspace/);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
 	});
 
 	it("confinesCommands 反映模式与后端", () => {

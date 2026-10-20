@@ -41,6 +41,8 @@ export interface DriverDeps {
 	readonly onEvent: AgentEventListener;
 	/** 上下文压缩。没有它（上限未知或未配置）就不压缩，请求照原样发出去 */
 	readonly compactor?: Compactor;
+	/** 本次运行开始时已知的上下文规模；续聊或每轮新建驱动时由装配处从会话记录里带来 */
+	readonly contextTokens?: number;
 }
 
 export class TurnDriver {
@@ -55,6 +57,7 @@ export class TurnDriver {
 
 	constructor(deps: DriverDeps) {
 		this.#deps = deps;
+		this.#contextTokens = deps.contextTokens;
 	}
 
 	/** 把一句话（可带图片）交给模型，一直跑到它不再要求调用工具为止。 */
@@ -78,6 +81,23 @@ export class TurnDriver {
 
 	async emit(event: AgentEvent): Promise<void> {
 		await this.#deps.onEvent(event);
+	}
+
+	/**
+	 * 立即压缩上下文，不看自动阈值。
+	 *
+	 * 使用者主动要求压缩时，不必等到接近上限；压缩多少仍按同一份保留额度来算，上下文本来就
+	 * 在额度之内就没有可压的部分。压缩器缺席时也要说出来——静默不动会让人以为已经压过了。
+	 */
+	async compact(signal: AbortSignal): Promise<void> {
+		if (this.#deps.compactor === undefined) {
+			await this.emit({
+				type: "compaction_failed",
+				message: "No context window is declared, so the context cannot be compacted",
+			});
+			return;
+		}
+		await this.#compactIfNeeded(signal, true);
 	}
 
 	async #runTurn(signal: AbortSignal): Promise<"continue" | "end"> {
@@ -105,7 +125,11 @@ export class TurnDriver {
 				usage: result.usage,
 				cost: computeCost(this.#deps.model.cost, result.usage),
 			});
-			await this.emit({ type: "usage_recorded" });
+			await this.emit({
+				type: "usage_recorded",
+				kind: "turn",
+				tokens: result.usage.total,
+			});
 		}
 
 		if (result.stopReason === "aborted") {
@@ -200,17 +224,28 @@ export class TurnDriver {
 	 *
 	 * 判断与压缩都在请求之前：等到端点拒绝就已经晚了。压缩失败不改变本轮的处理——上下文照原
 	 * 样发出去，但失败原因要说出来，否则使用者只会看到「莫名其妙被拒绝」。
+	 *
+	 * 手动触发时跳过阈值判断；压缩量仍由保留额度决定，所以上下文很短时可能没有可压的部分。
 	 */
-	async #compactIfNeeded(signal: AbortSignal): Promise<void> {
+	async #compactIfNeeded(signal: AbortSignal, forced = false): Promise<void> {
 		const compactor = this.#deps.compactor;
 		if (compactor === undefined) return;
 
 		const state = this.#deps.session.state();
 		const tokensBefore = this.#contextTokens ?? estimateTokens(state.messages);
-		if (!compactor.shouldCompact(tokensBefore)) return;
+		if (!forced && !compactor.shouldCompact(tokensBefore)) return;
 
 		const cut = compactor.plan(state.messages);
-		if (cut === 0) return;
+		if (cut === 0) {
+			// 自动压缩在额度之下本来就该安静；手动压缩是使用者的明确要求，必须给个交代
+			if (forced) {
+				await this.emit({
+					type: "compaction_skipped",
+					message: "There is nothing to compact yet",
+				});
+			}
+			return;
+		}
 
 		await this.emit({ type: "compaction_start", messages: cut, tokensBefore });
 		const result = await compactor.summarize(state.messages.slice(0, cut), signal);
@@ -237,7 +272,11 @@ export class TurnDriver {
 				usage: result.usage,
 				cost: result.cost,
 			});
-			await this.emit({ type: "usage_recorded" });
+			await this.emit({
+				type: "usage_recorded",
+				kind: "compact",
+				tokens: result.usage.total,
+			});
 		}
 
 		// 压缩后的规模只能靠估算：下一次请求发出去之前没有人回报它
@@ -368,6 +407,10 @@ export class TurnDriver {
 			),
 			// 同一段会话用同一个标识：端点据此把请求路由到同一片提示词缓存
 			cacheKey: this.#deps.session.id,
+			onRetry: (attempt, reason) => {
+				// HTTP 层不等待监听者：重试提示只是给界面看的，不能拖慢退避
+				void this.emit({ type: "retrying", attempt, reason });
+			},
 			signal,
 		};
 	}

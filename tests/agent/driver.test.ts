@@ -117,12 +117,13 @@ function makeTools(executed: { calls: string[] } = { calls: [] }) {
 	};
 }
 
-function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor; requests?: LlmRequest[] }): TurnDriver {
+function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor; contextTokens?: number; requests?: LlmRequest[]; onRequest?: (request: LlmRequest) => void }): TurnDriver {
 	const queue = [...turns];
 	const client: LlmClient = {
 		api: "fake",
 		stream: (request: LlmRequest) => {
 			hooks.requests?.push(request);
+			hooks.onRequest?.(request);
 			const turn = queue.shift() ?? { content: [] };
 			return scriptedStream(turn);
 		},
@@ -161,6 +162,7 @@ function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; s
 		workspace: { root: "E:\\w" } as never,
 		sandbox: {} as never,
 		compactor: hooks.compactor,
+		...(hooks.contextTokens === undefined ? {} : { contextTokens: hooks.contextTokens }),
 		onEvent: async (event) => {
 			hooks.events.push(event);
 		},
@@ -179,6 +181,25 @@ describe("回合驱动", () => {
 		assert.deepEqual(
 			hooks.events.filter((event) => event.type === "usage_recorded").length,
 			1,
+		);
+		const recorded = hooks.events.find((event) => event.type === "usage_recorded");
+		assert.ok(recorded?.type === "usage_recorded" && recorded.kind === "turn");
+		assert.equal(recorded?.type === "usage_recorded" ? recorded.tokens : 0, STOP.total);
+	});
+
+	it("请求重试时发出 retrying 事件", async () => {
+		const hooks = {
+			events: [] as AgentEvent[],
+			session: new MemorySession(),
+			tools: makeTools(),
+			onRequest: (request: LlmRequest) => request.onRetry?.(2, "temporary failure"),
+		};
+		await depsOf([{ content: [{ type: "text", text: "ok" }], usage: STOP }], hooks).run("x", SIGNAL);
+
+		assert.ok(
+			hooks.events.some(
+				(event) => event.type === "retrying" && event.attempt === 2 && event.reason === "temporary failure",
+			),
 		);
 	});
 
@@ -340,13 +361,16 @@ describe("回合驱动", () => {
 });
 
 describe("上下文压缩接合", () => {
-	function compactorFake(outcome: Promise<CompactionResult> | CompactionResult): Compactor {
+	function compactorFake(
+		outcome: Promise<CompactionResult> | CompactionResult,
+		options: { shouldCompact?: boolean; plan?: number } = {},
+	): Compactor {
 		const set = { ok: false } as CompactionResult;
 		return {
 			provider: "p",
 			model: "m1",
-			shouldCompact: () => true,
-			plan: (messages: readonly LlmMessage[]) => Math.min(messages.length, 1),
+			shouldCompact: () => options.shouldCompact ?? true,
+			plan: (messages: readonly LlmMessage[]) => Math.min(messages.length, options.plan ?? 1),
 			summarize: async () => await Promise.resolve(outcome ?? set),
 		} as unknown as Compactor;
 	}
@@ -368,6 +392,13 @@ describe("上下文压缩接合", () => {
 		assert.ok(types.filter((type) => type === "usage").length >= 2); // 压缩那次 + 本轮
 		assert.ok(hooks.events.some((event) => event.type === "compaction_start"));
 		assert.ok(hooks.events.some((event) => event.type === "compaction_end" && event.tokensAfter > 0));
+		// 压缩用量与回合用量分开上报：界面只把 turn 计入本轮 token
+		assert.ok(
+			hooks.events.some(
+				(event) => event.type === "usage_recorded" && event.kind === "compact" && event.tokens === 2,
+			),
+		);
+		assert.ok(hooks.events.some((event) => event.type === "usage_recorded" && event.kind === "turn"));
 	});
 
 	it("压缩失败:不阻塞本轮,不写压缩条目", async () => {
@@ -378,5 +409,73 @@ describe("上下文压缩接合", () => {
 		assert.ok(!hooks.session.entries.some((entry) => entry.type === "compaction"));
 		// 本轮照常完成
 		assert.ok(hooks.events.some((event) => event.type === "run_end"));
+	});
+
+	it("手动压缩不看阈值,直接写摘要", async () => {
+		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools() };
+		const compactor = compactorFake(
+			{ ok: true, summary: "forced summary", usage: undefined, cost: undefined },
+			// 阈值判断若生效就会什么都不做,以此证明手动压缩绕过了它
+			{ shouldCompact: false },
+		);
+		await hooks.session.append({
+			type: "message",
+			message: { role: "user", content: "old content" },
+		} as never);
+
+		await depsOf([], { ...hooks, compactor }).compact(SIGNAL);
+
+		const entry = hooks.session.entries.find((item) => item.type === "compaction");
+		assert.ok(entry?.type === "compaction" && entry.summary === "forced summary");
+		assert.ok(hooks.events.some((event) => event.type === "compaction_start"));
+		assert.ok(hooks.events.some((event) => event.type === "compaction_end"));
+	});
+
+	it("手动压缩没有可压的部分时说明并保持上下文", async () => {
+		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools() };
+		const compactor = compactorFake(
+			{ ok: true, summary: "unused", usage: undefined, cost: undefined },
+			{ plan: 0 },
+		);
+
+		await depsOf([], { ...hooks, compactor }).compact(SIGNAL);
+
+		assert.ok(hooks.events.some((event) => event.type === "compaction_skipped"));
+		assert.equal(hooks.session.entries.some((entry) => entry.type === "compaction"), false);
+	});
+
+	it("没有压缩器时手动压缩报告失败", async () => {
+		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools() };
+
+		await depsOf([], hooks).compact(SIGNAL);
+
+		assert.ok(
+			hooks.events.some(
+				(event) => event.type === "compaction_failed" && /context window/.test(event.message),
+			),
+		);
+	});
+
+	it("构造时带上已知上下文规模,首请求不退回估算", async () => {
+		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools() };
+		let seen: number | undefined;
+		const compactor = {
+			provider: "p",
+			model: "m1",
+			shouldCompact: (tokens: number) => {
+				seen = tokens;
+				return false;
+			},
+			plan: () => 0,
+			summarize: async () => ({ ok: false, message: "unused" }),
+		} as unknown as Compactor;
+
+		await depsOf([{ content: [{ type: "text", text: "ok" }], usage: STOP }], {
+			...hooks,
+			compactor,
+			contextTokens: 12_345,
+		}).run("x", SIGNAL);
+
+		assert.equal(seen, 12_345);
 	});
 });

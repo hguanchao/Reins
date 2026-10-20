@@ -1,4 +1,5 @@
-import { isAbsolute, relative, sep } from "node:path";
+import { realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { toAbsolutePath } from "./root.ts";
 
@@ -22,6 +23,33 @@ export interface ResolvedPath {
 	readonly absolute: string;
 	/** 是否落在工作根内 */
 	readonly insideRoot: boolean;
+}
+
+/**
+ * 解析到真实路径；目标不存在时以最近存在的祖先为准。
+ *
+ * 写文件时目标往往还不存在，直接 realpath 会失败。此时必须解析父目录：一个指向根外的目录
+ * 链接就能让「字面路径在根内」的判定失效。解析失败（权限、链接环等）一律向上抛，按拒绝处理。
+ */
+export function resolveRealPath(path: string): string {
+	const missing: string[] = [];
+	let current = path;
+	for (;;) {
+		try {
+			const real = realpathSync(current);
+			return missing.length === 0 ? real : join(real, ...missing.reverse());
+		} catch (error) {
+			if (!isNotFound(error)) throw error;
+			const parent = dirname(current);
+			if (parent === current) return path;
+			missing.push(basename(current));
+			current = parent;
+		}
+	}
+}
+
+function isNotFound(error: unknown): boolean {
+	return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
 /**

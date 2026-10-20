@@ -32,11 +32,97 @@ describe("会话历史回填", () => {
 		assert.equal(turns[0]?.prompt, "hello");
 		assert.deepEqual(turns[0]?.response, [
 			"hi",
-			'· read {"path":"a.ts"}',
-			"  done: file contents",
+			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents\nmore" },
 		]);
 		assert.equal(turns[1]?.prompt, "next");
 		assert.deepEqual(turns[1]?.response, ["done"]);
+	});
+
+	it("工具成功不落行，失败保留一行", () => {
+		const messages: LlmMessage[] = [
+			{
+				role: "assistant",
+				content: [{ type: "toolCall", id: "1", name: "read", arguments: { path: "a.ts" } }],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "1",
+				toolName: "read",
+				content: "file contents",
+				isError: false,
+			},
+			{
+				role: "toolResult",
+				toolCallId: "2",
+				toolName: "bash",
+				content: "boom",
+				isError: true,
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages);
+
+		assert.deepEqual(turns[0]?.response, [
+			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents" },
+			{ kind: "tool", name: "Bash", detail: "boom", isError: true },
+		]);
+	});
+
+	it("连续只读调用回填成收起的工具组", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "hi" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "1", name: "read", arguments: { path: "a.ts" } },
+					{ type: "toolCall", id: "2", name: "read", arguments: { path: "b.ts" } },
+				],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "1",
+				toolName: "read",
+				content: "a",
+				isError: false,
+			},
+			{
+				role: "toolResult",
+				toolCallId: "2",
+				toolName: "read",
+				content: "b",
+				isError: false,
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages);
+		const group = turns[0]?.response[0];
+
+		if (typeof group !== "object" || group === null || group.kind !== "toolGroup") {
+			throw new Error("expected a tool group");
+		}
+		assert.equal(group.members.length, 2);
+		assert.equal(group.expanded, false);
+	});
+
+	it("命令和写操作会断开工具组", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "hi" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "1", name: "read", arguments: { path: "a.ts" } },
+					{ type: "toolCall", id: "2", name: "bash", arguments: { command: "npm test" } },
+					{ type: "toolCall", id: "3", name: "read", arguments: { path: "b.ts" } },
+				],
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages);
+
+		assert.deepEqual(
+			turns[0]?.response.map((line) => (line as { kind?: string }).kind),
+			["tool", "tool", "tool"],
+		);
 	});
 
 	it("跳过压缩摘要，前导助手消息归入 earlier conversation", () => {

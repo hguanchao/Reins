@@ -7,14 +7,13 @@
  * 工具调用可能并行发起，所以请求必须排队，一次只向使用者展示一个，避免多个确认框互相覆盖。
  */
 
-export interface ApprovalPrompt {
-	readonly question: string;
-	readonly detail: string;
-}
+import type { ApprovalAnswer, ApprovalRequest } from "./policy.ts";
+
+export type ApprovalPrompt = ApprovalRequest;
 
 interface Pending {
 	readonly prompt: ApprovalPrompt;
-	readonly resolve: (allowed: boolean) => void;
+	readonly resolve: (answer: ApprovalAnswer) => void;
 }
 
 export class ApprovalBroker {
@@ -22,9 +21,9 @@ export class ApprovalBroker {
 	readonly #queue: Pending[] = [];
 
 	/** 交给 PermissionGate 的 confirmer；箭头函数保证可以脱离实例传递。 */
-	request = (question: string, detail: string): Promise<boolean> => {
-		return new Promise<boolean>((resolve) => {
-			const entry: Pending = { prompt: { question, detail }, resolve };
+	request = (request: ApprovalPrompt): Promise<ApprovalAnswer> => {
+		return new Promise<ApprovalAnswer>((resolve) => {
+			const entry: Pending = { prompt: request, resolve };
 			if (this.#active === undefined) this.#active = entry;
 			else this.#queue.push(entry);
 		});
@@ -36,10 +35,10 @@ export class ApprovalBroker {
 	}
 
 	/** 交回一个结论，并把下一个等待中的请求提升为当前请求。 */
-	resolve(allowed: boolean): void {
+	resolve(answer: ApprovalAnswer): void {
 		const active = this.#active;
 		if (active === undefined) return;
-		active.resolve(allowed);
+		active.resolve(answer);
 		this.#active = this.#queue.shift();
 	}
 
@@ -47,8 +46,8 @@ export class ApprovalBroker {
 	denyAll(): void {
 		const active = this.#active;
 		this.#active = undefined;
-		active?.resolve(false);
-		for (const entry of this.#queue) entry.resolve(false);
+		active?.resolve("deny");
+		for (const entry of this.#queue) entry.resolve("deny");
 		this.#queue.length = 0;
 	}
 }

@@ -52,8 +52,8 @@ export interface McpServerConfig {
 	/** 仅 http 与 sse 使用 */
 	readonly url: string | undefined;
 	readonly headers: Readonly<Record<string, string>>;
-	/** 只作用于工具调用；连接与控制请求用的是固定的短超时 */
-	readonly callTimeoutMs: number | undefined;
+	/** 只作用于 tools/call，单位秒；连接与控制请求用的是固定的短超时 */
+	readonly timeoutSeconds: number | undefined;
 	readonly disabled: boolean;
 }
 
@@ -77,6 +77,8 @@ export interface Config {
 	readonly maxRetries: number;
 	/** 显式空串表示强制直连 */
 	readonly httpProxy: string | undefined;
+	/** 自定义 shell 路径；省略时按平台自动查找 Git Bash */
+	readonly shellPath: string | undefined;
 	/** 压缩摘要专用模型，取值是所选 provider 内的模型 id */
 	readonly compactModel: string | undefined;
 	/** auto 审批的审查模型，取值是所选 provider 内的模型 id */
@@ -114,6 +116,7 @@ const TOP_LEVEL_KEYS: readonly string[] = [
 	"max_tokens",
 	"max_retries",
 	"httpProxy",
+	"shellPath",
 	"compact_model",
 	"review_model",
 	"approval",
@@ -133,9 +136,59 @@ const MCP_SERVER_KEYS: readonly string[] = [
 	"type",
 	"url",
 	"headers",
-	"call_timeout_ms",
+	"timeout",
 	"disabled",
 ];
+
+/**
+ * 同一配置项的两种写法：camelCase 与 snake_case。
+ *
+ * 配置读取一律先找主名称、再找别名；两个都写且值不同就报错。表名（mcp_servers）与
+ * MCP 条目里的字段也按同一张表处理。
+ */
+const KEY_ALIASES: Readonly<Record<string, string>> = {
+	reasoning_effort: "reasoningEffort",
+	context_window: "contextWindow",
+	max_tokens: "maxTokens",
+	max_retries: "maxRetries",
+	http_proxy: "httpProxy",
+	shell_path: "shellPath",
+	compact_model: "compactModel",
+	review_model: "reviewModel",
+	max_turns: "maxTurns",
+	spill_threshold: "spillThreshold",
+	mcp_servers: "mcpServers",
+};
+
+const ALIAS_LOOKUP = new Map<string, string>(
+	Object.entries(KEY_ALIASES).flatMap(([snake, camel]) => [
+		[snake, camel],
+		[camel, snake],
+	]),
+);
+
+function aliasOf(key: string): string | undefined {
+	return ALIAS_LOOKUP.get(key);
+}
+
+function aliasPath(path: readonly string[]): readonly string[] | undefined {
+	const key = path[path.length - 1];
+	const alias = key === undefined ? undefined : aliasOf(key);
+	return alias === undefined ? undefined : [...path.slice(0, -1), alias];
+}
+
+/** 允许键列表同时包含主名称与别名，未知键的报错也会把两种写法列出来。 */
+function withAliases(keys: readonly string[]): readonly string[] {
+	const all = new Set(keys);
+	for (const key of keys) {
+		const alias = aliasOf(key);
+		if (alias !== undefined) all.add(alias);
+	}
+	return [...all];
+}
+
+const TOP_LEVEL_ALLOWED = withAliases(TOP_LEVEL_KEYS);
+const MCP_SERVER_ALLOWED = withAliases(MCP_SERVER_KEYS);
 
 /**
  * 一份配置文件的解析结果。
@@ -164,14 +217,16 @@ export class ConfigFile {
 		return parseConfigFile(readTextFile(file), file);
 	}
 
-	/** 该键在原文里是否被显式写过。 */
+	/** 该键在原文里是否被显式写过；别名也算。 */
 	has(path: readonly string[]): boolean {
-		return this.document.get(path) !== undefined;
+		if (this.document.get(path) !== undefined) return true;
+		const alternate = aliasPath(path);
+		return alternate !== undefined && this.document.get(alternate) !== undefined;
 	}
 
 	/** 键在原文中的位置，用于把「项目配置不许放宽某项」这类错误指到具体行列。 */
 	locationOf(path: readonly string[]): { line?: number; column?: number } {
-		return this.document.locationOf(path) ?? {};
+		return this.document.locationOf(path) ?? this.document.locationOf(aliasPath(path) ?? path) ?? {};
 	}
 }
 
@@ -185,7 +240,7 @@ function parseConfigFile(source: string, file: string): ConfigFile {
 	return wrapParseErrors(file, () => {
 		const document = new TomlDocument(source);
 
-		assertNoUnknownKeys(document, [], TOP_LEVEL_KEYS);
+		assertNoUnknownKeys(document, [], TOP_LEVEL_ALLOWED);
 
 		const provider = readString(document, ["provider"]);
 		const model = readString(document, ["model"]);
@@ -195,17 +250,20 @@ function parseConfigFile(source: string, file: string): ConfigFile {
 		const config: Config = {
 			provider,
 			model,
-			reasoningEffort: readEnum(document, ["reasoning_effort"], THINKING_LEVELS) ?? DEFAULT_REASONING_EFFORT,
-			contextWindow: readInteger(document, ["context_window"], 1),
-			maxTokens: readInteger(document, ["max_tokens"], 1),
-			maxRetries: readInteger(document, ["max_retries"], 0) ?? DEFAULT_MAX_RETRIES,
-			httpProxy: readString(document, ["httpProxy"]),
-			compactModel: readString(document, ["compact_model"]),
-			reviewModel: readString(document, ["review_model"]),
+			reasoningEffort:
+				readEnumField(document, ["reasoning_effort"], THINKING_LEVELS) ?? DEFAULT_REASONING_EFFORT,
+			contextWindow: readIntegerField(document, ["context_window"], 1),
+			maxTokens: readIntegerField(document, ["max_tokens"], 1),
+			maxRetries: readIntegerField(document, ["max_retries"], 0) ?? DEFAULT_MAX_RETRIES,
+			httpProxy: readStringField(document, ["httpProxy"]),
+			shellPath: readStringField(document, ["shellPath"]) || undefined,
+			compactModel: readStringField(document, ["compact_model"]),
+			reviewModel: readStringField(document, ["review_model"]),
 			approval: readEnum(document, ["approval"], APPROVAL_MODES) ?? DEFAULT_APPROVAL,
 			sandbox: readEnum(document, ["sandbox"], SANDBOX_MODES) ?? DEFAULT_SANDBOX,
-			maxTurns: readInteger(document, ["max_turns"], 1),
-			spillThreshold: readInteger(document, ["spill_threshold"], 0) ?? DEFAULT_SPILL_THRESHOLD,
+			maxTurns: readIntegerField(document, ["max_turns"], 1),
+			spillThreshold:
+				readIntegerField(document, ["spill_threshold"], 0) ?? DEFAULT_SPILL_THRESHOLD,
 			ui: readUi(document),
 			mcpServers: readMcpServers(document),
 			plugins: readPlugins(document),
@@ -260,6 +318,53 @@ function readUi(document: TomlDocument): UiConfig {
 	return { notify: readEnum(document, ["ui", "notify"], NOTIFY_MODES) ?? DEFAULT_NOTIFY };
 }
 
+/**
+ * 读取一个可能有两种写法的字段。
+ *
+ * 主名称优先；别名存在时也读，两边都写且值不同就报错。只支持标量，表与数组由调用方
+ * 单独处理。
+ */
+function readAliased<T>(
+	document: TomlDocument,
+	path: readonly string[],
+	read: (source: TomlDocument, path: readonly string[]) => T | undefined,
+): T | undefined {
+	const value = read(document, path);
+	const key = path[path.length - 1];
+	const alias = key === undefined ? undefined : aliasOf(key);
+	if (alias === undefined) return value;
+
+	const aliasPath = [...path.slice(0, -1), alias];
+	const alternate = read(document, aliasPath);
+	if (value !== undefined && alternate !== undefined && !Object.is(value, alternate)) {
+		throw new ConfigError(
+			`${describePath(path)} and ${describePath(aliasPath)} must match when both are set`,
+			locate(document, path),
+		);
+	}
+	return value ?? alternate;
+}
+
+function readStringField(document: TomlDocument, path: readonly string[]): string | undefined {
+	return readAliased(document, path, readString);
+}
+
+function readIntegerField(
+	document: TomlDocument,
+	path: readonly string[],
+	minimum: number,
+): number | undefined {
+	return readAliased(document, path, (source, sourcePath) => readInteger(source, sourcePath, minimum));
+}
+
+function readEnumField<T extends string>(
+	document: TomlDocument,
+	path: readonly string[],
+	allowed: readonly T[],
+): T | undefined {
+	return readAliased(document, path, (source, sourcePath) => readEnum(source, sourcePath, allowed));
+}
+
 function readPlugins(document: TomlDocument): PluginsConfig {
 	assertNoUnknownKeys(document, ["plugins"], PLUGINS_KEYS);
 	return {
@@ -269,13 +374,24 @@ function readPlugins(document: TomlDocument): PluginsConfig {
 }
 
 function readMcpServers(document: TomlDocument): readonly McpServerConfig[] {
-	const table = readTable(document, ["mcp_servers"]);
+	const tableNames = (["mcp_servers", "mcpServers"] as const).filter(
+		(name) => document.get([name]) !== undefined,
+	);
+	if (tableNames.length > 1) {
+		throw new ConfigError(
+			"Use only one of mcp_servers and mcpServers",
+			locate(document, ["mcp_servers"]),
+		);
+	}
+	const tableName = tableNames[0];
+	if (tableName === undefined) return [];
+	const table = readTable(document, [tableName]);
 	if (table === undefined) return [];
 
 	const servers: McpServerConfig[] = [];
 	for (const name of Object.keys(table)) {
-		const path = ["mcp_servers", name];
-		assertNoUnknownKeys(document, path, MCP_SERVER_KEYS);
+		const path = [tableName, name];
+		assertNoUnknownKeys(document, path, MCP_SERVER_ALLOWED);
 		servers.push(readMcpServer(document, name, path));
 	}
 	return servers;
@@ -319,7 +435,7 @@ function readMcpServer(document: TomlDocument, name: string, path: readonly stri
 		args: readStringArray(document, [...path, "args"]) ?? [],
 		url,
 		headers: readStringMap(document, [...path, "headers"]) ?? {},
-		callTimeoutMs: readInteger(document, [...path, "call_timeout_ms"], 1),
+		timeoutSeconds: readInteger(document, [...path, "timeout"], 1),
 		disabled: readBoolean(document, [...path, "disabled"]) ?? false,
 	};
 }

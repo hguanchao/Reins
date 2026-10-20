@@ -63,7 +63,10 @@ class McpConnection {
 				clientName: "reins",
 				version: this.#version,
 				controlTimeoutMs: CONTROL_TIMEOUT_MS,
-				callTimeoutMs: this.#config.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS,
+				callTimeoutMs:
+					this.#config.timeoutSeconds === undefined
+						? DEFAULT_CALL_TIMEOUT_MS
+						: this.#config.timeoutSeconds * 1000,
 			});
 			this.#client = client;
 

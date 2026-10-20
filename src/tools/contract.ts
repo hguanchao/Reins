@@ -27,6 +27,20 @@ export interface ToolAnnotations {
 	readonly openWorld: boolean;
 }
 
+/**
+ * 一次调用可以按什么范围记住「本会话总是允许」。
+ *
+ * key 用于匹配，label 给使用者看。工具返回 undefined 表示这次调用不能记住，必须逐次确认；
+ * 没有实现这个方法的工具按工具名记住。
+ */
+export interface PermissionScope {
+	readonly key: string;
+	/** 给确认面板看的完整说明 */
+	readonly label: string;
+	/** 动作行里的短标签；省略时用 label */
+	readonly short?: string;
+}
+
 export interface ToolResult {
 	/** 给模型看的内容 */
 	readonly content: string;
@@ -61,6 +75,12 @@ export interface ToolDefinition<P = Record<string, unknown>> extends ToolDeclara
 	 * 这类容忍只对确实见过的写法开放，不做通用推导。
 	 */
 	prepareArguments?(args: Record<string, unknown>): Record<string, unknown>;
+	/**
+	 * 本会话内可以记住的放行范围；返回 undefined 表示这次调用不能记住。
+	 *
+	 * 与 execute 分开：它在审批之前计算，因此不能依赖副作用，也不应该执行工具本身。
+	 */
+	permissionScope?(args: P, workspace: WorkspaceBoundary): PermissionScope | undefined;
 	execute(context: ToolContext<P>): Promise<ToolResult>;
 }
 

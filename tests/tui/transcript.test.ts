@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderTranscript, scrollbarColumn, transcriptMetrics, type TranscriptTurn } from "../../src/tui/transcript.ts";
+import {
+	appendToolLine,
+	collapseToolGroups,
+	renderTranscript,
+	scrollbarColumn,
+	thinkingHeaderAtRow,
+	toolGroupHeaderAtRow,
+	transcriptMetrics,
+	type TranscriptLine,
+	type TranscriptThinking,
+	type TranscriptTool,
+	type TranscriptToolGroup,
+	type TranscriptTurn,
+} from "../../src/tui/transcript.ts";
 import { THEME } from "../../src/tui/theme.ts";
 
 const PROMPT_BG = "\x1b[48;2;22;25;29m";
@@ -11,6 +24,286 @@ const NOTICE_TEXT = "\x1b[38;2;224;175;104m";
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");
 }
+
+describe("思考区块", () => {
+	function blockOf(header: string, running: boolean): TranscriptThinking {
+		return {
+			kind: "thinkingBlock",
+			header,
+			body: ["one", "two", "three", "four", "five", "six", "seven"],
+			partial: "",
+			running,
+			expanded: false,
+		};
+	}
+
+	it("运行中只显示最后五行，结束后收起，展开显示全文", () => {
+		const block = blockOf("Thinking…", true);
+		const turn: TranscriptTurn = { prompt: "hi", response: [block] };
+
+		let text = renderTranscript(40, 12, [turn], 0).map(plain).join("\n");
+		assert.ok(text.includes("  ✻ Thinking…"));
+		assert.ok(
+			["three", "four", "five", "six", "seven"].every((line) => text.includes(line)),
+		);
+		assert.equal(text.includes("one"), false);
+		assert.equal(text.includes("two"), false);
+
+		block.expanded = true;
+		text = renderTranscript(40, 12, [turn], 0).map(plain).join("\n");
+		assert.ok(text.includes("one"));
+
+		block.running = false;
+		block.expanded = false;
+		block.header = "Thought for 1.0s";
+		text = renderTranscript(40, 12, [turn], 0).map(plain).join("\n");
+		assert.ok(text.includes("  ✻ Thought for 1.0s"));
+		assert.equal(text.includes("seven"), false);
+
+		block.expanded = true;
+		text = renderTranscript(40, 12, [turn], 0).map(plain).join("\n");
+		assert.ok(text.includes("one") && text.includes("seven"));
+	});
+
+	it("正文缩进到标题首字，只有正文铺底色", () => {
+		const block = blockOf("Thinking…", true);
+		const turn: TranscriptTurn = { prompt: "hi", response: [block] };
+		const lines = renderTranscript(40, 12, [turn], 0);
+
+		const header = lines.find((line) => plain(line).includes("Thinking…"));
+		const body = lines.find((line) => plain(line).includes("three"));
+		assert.ok(header);
+		assert.ok(body);
+		assert.ok(plain(header).startsWith("  ✻ Thinking…"));
+		assert.ok(plain(body).startsWith("    three"));
+		assert.equal(header.includes(THEME.surface), false);
+		assert.equal(body.indexOf(THEME.surface), 4);
+	});
+
+	it("展开时只提亮标题标签，耗时保持弱化", () => {
+		const block = blockOf("Thought for 1.0s", false);
+		const turn: TranscriptTurn = { prompt: "hi", response: [block] };
+
+		let header = renderTranscript(40, 12, [turn], 0).find((line) =>
+			plain(line).includes("Thought for 1.0s"),
+		);
+		assert.ok(header?.includes(THEME.textSubtle));
+		assert.equal(header?.includes(THEME.textPrimary), false);
+
+		block.expanded = true;
+		header = renderTranscript(40, 12, [turn], 0).find((line) =>
+			plain(line).includes("Thought for 1.0s"),
+		);
+		assert.ok(header?.includes(`${THEME.textPrimary}  ✻ Thought for ${THEME.textSubtle}1.0s`));
+		assert.equal(header?.includes(THEME.accent), false);
+	});
+
+	it("标题行可以命中，正文行不能", () => {
+		const block = blockOf("Thought for 1.0s", false);
+		const turn: TranscriptTurn = { prompt: "hi", response: [block] };
+		const row =
+			renderTranscript(40, 12, [turn], 0).map(plain).findIndex((line) => line.includes("Thought for 1.0s")) + 1;
+
+		assert.equal(thinkingHeaderAtRow(40, 12, [turn], 0, row), block);
+		assert.equal(thinkingHeaderAtRow(40, 12, [turn], 0, row + 1), undefined);
+	});
+});
+
+describe("工具调用行", () => {
+	it("一行放得下时显示名称与参数，名称弱化、参数用正文色", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Read", detail: "README.md" }],
+		};
+		const lines = renderTranscript(40, 8, [turn], 0);
+
+		const line = lines.find((item) => plain(item).includes("› Read"));
+		assert.ok(line);
+		assert.ok(plain(line).startsWith("  › Read  README.md"));
+		assert.ok(line.includes(THEME.textSubtle));
+		assert.ok(line.includes(THEME.textPrimary));
+	});
+
+	it("参数放不下时换到第二行，过长省略，保持最多两行", () => {
+		const command =
+			'cd /e/Projects/Reins2API && find . -not -path "*/node_modules/*" -type f | head -100';
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Bash", detail: command }],
+		};
+		const lines = renderTranscript(40, 10, [turn], 0).map(plain);
+
+		const first = lines.find((line) => line.includes("› Bash"));
+		assert.equal(first?.trimEnd(), "  › Bash");
+
+		const secondIndex = lines.indexOf(first ?? "") + 1;
+		const second = lines[secondIndex] ?? "";
+		assert.ok(second.startsWith("    cd /e/Projects"));
+		assert.ok(second.includes("…"));
+		assert.equal(second.length, 40);
+		assert.equal(lines[secondIndex + 1]?.includes("node_modules"), false);
+	});
+
+	it("失败行用 ×、错误色并带耗时", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [
+				{ kind: "tool", name: "Bash", detail: "exit 1", isError: true, durationMs: 98 },
+			],
+		};
+		const lines = renderTranscript(40, 8, [turn], 0);
+
+		const failed = lines.find((line) => plain(line).includes("× Bash"));
+		assert.ok(failed);
+		assert.ok(plain(failed).startsWith("  × Bash  exit 1 (98ms)"));
+		assert.ok(failed.includes(THEME.error));
+		assert.equal(failed.includes(THEME.textPrimary), false);
+		assert.equal(failed.includes(THEME.textSubtle), false);
+	});
+
+	it("失败原因过长时续行，每一行都保持错误色", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Bash", detail: "x".repeat(100), isError: true, durationMs: 5 }],
+		};
+		const lines = renderTranscript(30, 10, [turn], 0);
+
+		const failed = lines.filter((line) => plain(line).includes("x"));
+		assert.ok(failed.length > 1);
+		assert.ok(failed.every((line) => line.includes(THEME.error)));
+	});
+
+	it("展开成功工具时在调用行下方显示结果", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "npm test",
+			group: undefined,
+			result: "all tests passed\nsecond line",
+			resultExpanded: true,
+		};
+		const text = renderTranscript(60, 10, [{ prompt: "hi", response: [tool] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("all tests passed"));
+		assert.ok(text.includes("second line"));
+	});
+
+	it("没有参数时只显示工具名", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Ls", detail: "" }],
+		};
+		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("› Ls"));
+
+		assert.ok(line);
+		assert.equal(plain(line).trimEnd().endsWith("  › Ls"), true);
+	});
+});
+
+describe("工具组", () => {
+	const read = (path: string): TranscriptTool => ({ kind: "tool", name: "Read", detail: path, group: "read" });
+	const list = (path: string): TranscriptTool => ({ kind: "tool", name: "List", detail: path, group: "list" });
+	const search = (pattern: string): TranscriptTool => ({ kind: "tool", name: "Grep", detail: pattern, group: "search" });
+
+	function groupOf(members: readonly TranscriptTool[], expanded: boolean): TranscriptToolGroup {
+		return { kind: "toolGroup", members: [...members], expanded };
+	}
+
+	function kindAt(lines: readonly TranscriptLine[], index: number): string | undefined {
+		const line = lines[index];
+		return typeof line === "string" || line === undefined ? undefined : line.kind;
+	}
+
+	function groupAt(lines: readonly TranscriptLine[], index: number): TranscriptToolGroup {
+		const line = lines[index];
+		if (typeof line !== "object" || line === null || line.kind !== "toolGroup") {
+			throw new Error("expected a tool group");
+		}
+		return line;
+	}
+
+	it("两个以上连续只读调用折叠成组头", () => {
+		const group = groupOf([read("a.ts"), read("b.ts"), list("src")], false);
+		const text = renderTranscript(60, 10, [{ prompt: "hi", response: [group] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  › Read 2 files, Listed 1 dir"));
+		assert.equal(text.includes("a.ts"), false);
+	});
+
+	it("展开后按成员缩进显示完整工具行", () => {
+		const group = groupOf([read("a.ts"), read("b.ts"), list("src")], true);
+		const text = renderTranscript(60, 10, [{ prompt: "hi", response: [group] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  ◈ Read 2 files, Listed 1 dir"));
+		assert.ok(text.includes("    › Read  a.ts"));
+		assert.ok(text.includes("    › Read  b.ts"));
+		assert.ok(text.includes("    › List  src"));
+	});
+
+	it("组头按 Read、Listed、Searched 汇总并处理单复数", () => {
+		const group = groupOf([read("a"), list("src"), search("TODO"), search("FIXME")], false);
+		const text = renderTranscript(60, 10, [{ prompt: "hi", response: [group] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("Read 1 file, Listed 1 dir, Searched 2 patterns"));
+	});
+
+	it("只有一个成员时仍按普通工具行显示", () => {
+		const group = groupOf([read("a.ts")], false);
+		const text = renderTranscript(60, 10, [{ prompt: "hi", response: [group] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  › Read  a.ts"));
+		assert.equal(text.includes("Read 1 file"), false);
+	});
+
+	it("追加工具时只在连续只读调用之间成组", () => {
+		const lines: TranscriptLine[] = [];
+		appendToolLine(lines, read("a"), true);
+		assert.equal(kindAt(lines, 0), "tool");
+
+		appendToolLine(lines, read("b"), true);
+		const group = groupAt(lines, 0);
+		assert.equal(group.members.length, 2);
+		assert.equal(group.expanded, true);
+
+		appendToolLine(lines, { kind: "tool", name: "Bash", detail: "npm test" }, true);
+		assert.equal(kindAt(lines, 1), "tool");
+
+		appendToolLine(lines, read("c"), true);
+		appendToolLine(lines, read("d"), true);
+		const next = groupAt(lines, 2);
+		assert.equal(next.members.length, 2);
+
+		lines.push("text");
+		appendToolLine(lines, read("e"), true);
+		assert.equal(kindAt(lines, lines.length - 1), "tool");
+
+		collapseToolGroups(lines);
+		assert.equal(group.expanded, false);
+		assert.equal(next.expanded, false);
+	});
+
+	it("组头可以命中，成员行不能", () => {
+		const group = groupOf([read("a.ts"), read("b.ts")], false);
+		const turn: TranscriptTurn = { prompt: "hi", response: [group] };
+		const row =
+			renderTranscript(40, 10, [turn], 0)
+				.map(plain)
+				.findIndex((line) => line.includes("Read 2 files")) + 1;
+
+		assert.equal(toolGroupHeaderAtRow(40, 10, [turn], 0, row), group);
+		assert.equal(toolGroupHeaderAtRow(40, 10, [turn], 0, row + 1), undefined);
+	});
+});
 
 describe("对话流", () => {
 	it("用户提示使用 #16191d 背景和指定前缀/正文颜色，上下留一行背景", () => {
@@ -54,21 +347,25 @@ describe("对话流", () => {
 		assert.ok(plain(lines[3] ?? "").endsWith("█"));
 	});
 
-	it("吸顶时不会把下一条提示切掉顶部留白", () => {
-		const lines = renderTranscript(
-			40,
-			8,
-			[
-				{ prompt: "one", response: ["x"] },
-				{ prompt: "two", response: ["a", "b", "c"] },
-			],
-			4,
-		).map(plain);
+	it("跨过下一条提示时滚动连续，不会被吸顶吞掉位移", () => {
+		const turns: TranscriptTurn[] = [
+			{ prompt: "one", response: ["x"] },
+			{ prompt: "two", response: ["a", "b", "c"] },
+		];
+		const render = (top: number): string =>
+			renderTranscript(40, 8, turns, top)
+				.map((line) => plain(line).slice(0, -2))
+				.join("\n");
 
-		assert.ok(lines[1]?.startsWith(" › one"));
-		assert.equal(lines[4]?.includes("›"), false);
-		assert.ok(lines[5]?.startsWith(" › two"));
-		assert.equal(lines[6]?.includes("›"), false);
+		const at3 = render(3);
+		const at4 = render(4);
+		const at5 = render(5);
+		const bottom = render(6);
+		assert.notEqual(at3, at4);
+		assert.notEqual(at4, at5);
+		assert.ok(at5.includes(" › one"));
+		assert.ok(bottom.includes(" › two"));
+		assert.ok(bottom.includes("c"));
 	});
 
 	it("上一条回复和下一条提示之间留一行间距", () => {
@@ -88,6 +385,41 @@ describe("对话流", () => {
 		assert.ok(plain(lines[7] ?? "").startsWith(" › two"));
 	});
 
+	it("内容只超出少量行时，滚动仍然逐行移动内容", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hello",
+			response: ["r1", "r2", "r3", "r4", "r5", "r6"],
+		};
+		const at1 = renderTranscript(40, 8, [turn], 1)
+			.map((line) => plain(line).slice(0, -2))
+			.join("\n");
+		const at2 = renderTranscript(40, 8, [turn], 2)
+			.map((line) => plain(line).slice(0, -2))
+			.join("\n");
+
+		assert.notEqual(at1, at2);
+		// 提示吸顶后，第一行内容被盖住，视口里从第二行开始
+		assert.equal(at1.includes("r1"), false);
+		assert.ok(at1.includes("r2"));
+		assert.ok(at2.includes("r3"));
+	});
+
+	it("只有翻页留白、内容未超出视口时不显示滚动条", () => {
+		const lines = renderTranscript(
+			40,
+			12,
+			[
+				{ prompt: "one", response: ["x"] },
+				{ prompt: "two", response: [] },
+			],
+			6,
+		);
+
+		assert.ok(lines.every((line) => !plain(line).includes("█")));
+		// 翻页仍然生效：第二条提示停在视口顶部
+		assert.ok(plain(lines[1] ?? "").startsWith(" › two"));
+	});
+
 	it("给出最后一条提示的起始行，供发送后翻页", () => {
 		const metrics = transcriptMetrics(40, 6, [
 			{ prompt: "a", response: ["x"] },
@@ -100,18 +432,18 @@ describe("对话流", () => {
 	});
 
 	it("启动警告作为对话流顶部的系统消息显示", () => {
-		const lines = renderTranscript(40, 6, [], 0, "Config error: No provider openai");
+		const lines = renderTranscript(40, 6, [], 0, "Warning: No provider openai");
 		const text = lines.map(plain).join("\n");
 
-		assert.ok(text.includes("! Config error:"));
+		assert.ok(text.includes("! Warning:"));
 		assert.ok(text.includes("No provider"));
-		assert.ok(plain(lines[0] ?? "").startsWith("  ! Config error:"));
+		assert.ok(plain(lines[0] ?? "").startsWith("  ! Warning:"));
 		assert.ok((lines[0] ?? "").includes(NOTICE_TEXT));
 		assert.equal((lines[0] ?? "").includes(PROMPT_BG), false);
 	});
 
 	it("警告参与行数与滚动计算", () => {
-		const metrics = transcriptMetrics(40, 6, [], `Config error: ${"x".repeat(200)}`);
+		const metrics = transcriptMetrics(40, 6, [], `Warning: ${"x".repeat(200)}`);
 
 		assert.ok(metrics.totalLines > 6);
 	});
@@ -121,35 +453,59 @@ describe("对话流", () => {
 	});
 
 	it("内容没有超出视口时不显示滚动条", () => {
-		const lines = renderTranscript(40, 10, [], 0, "Config error: No provider openai");
+		const lines = renderTranscript(40, 10, [], 0, "Warning: No provider openai");
 
 		assert.ok(lines.every((line) => !plain(line).includes("█")));
 	});
-	it("思考摘要用弱一档的颜色，跟正文区分", () => {
+	it("思考标题用弱一档的颜色，跟正文区分", () => {
+		const block: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thought for 1.2s",
+			body: ["reasoning"],
+			partial: "",
+			running: false,
+			expanded: false,
+		};
 		const turn: TranscriptTurn = {
 			prompt: "hi",
-			response: ["answer", { text: "thought 1.2s", kind: "thinking" }],
+			response: ["answer", block],
 		};
 		const lines = renderTranscript(40, 8, [turn], 0);
 
-		const notice = lines.find((line) => plain(line).includes("thought"));
+		const notice = lines.find((line) => plain(line).includes("Thought for"));
 		const body = lines.find((line) => plain(line).includes("answer"));
 		assert.ok(notice?.includes(THEME.textSubtle));
 		assert.equal(notice?.includes(THEME.textPrimary), false);
 		assert.ok(body?.includes(THEME.textPrimary));
 	});
 
-	it("失败的行用错误色，出事时一眼能看见", () => {
+	it("警告备注用 ! Warning: 和警告色", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hi",
-			response: ["answer", { text: "error: boom", kind: "error" }],
+			response: [{ kind: "warning", text: "fallback model used" }],
 		};
 		const lines = renderTranscript(40, 8, [turn], 0);
 
-		const failed = lines.find((line) => plain(line).includes("error: boom"));
+		const warning = lines.find((line) => plain(line).includes("! Warning: fallback model used"));
+		assert.ok(warning);
+		assert.ok(plain(warning).startsWith("  ! Warning:"));
+		assert.ok(warning.includes(THEME.warning));
+		assert.equal(warning.includes(THEME.error), false);
+	});
+
+	it("错误消息用 × 开头和错误色，出事时一眼能看见", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: ["answer", { text: "Error: boom", kind: "error" }],
+		};
+		const lines = renderTranscript(40, 8, [turn], 0);
+
+		const failed = lines.find((line) => plain(line).includes("× Error: boom"));
 		const body = lines.find((line) => plain(line).includes("answer"));
-		assert.ok(failed?.includes(THEME.error));
-		assert.equal(failed?.includes(THEME.textPrimary), false);
+		assert.ok(failed);
+		assert.ok(plain(failed).startsWith("  × Error: boom"));
+		assert.ok(failed.includes(THEME.error));
+		assert.equal(failed.includes(THEME.textPrimary), false);
 		assert.equal(body?.includes(THEME.error), false);
 	});
 });
@@ -173,6 +529,10 @@ describe("滚动条列", () => {
 	it("滚到顶部时滑块贴顶，到底部时贴底", () => {
 		assert.ok(marks(10, 100, 0).startsWith("█"));
 		assert.ok(marks(10, 100, 90).endsWith("█"));
+	});
+
+	it("滚过内容末尾时滑块仍停在底部", () => {
+		assert.ok(marks(10, 20, 999).endsWith("█"));
 	});
 
 	it("内容没超出视口时整列为空", () => {

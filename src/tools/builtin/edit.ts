@@ -54,6 +54,13 @@ export const editTool: ToolDefinition<EditArgs> = {
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: false },
 
+	/** 本会话内按具体文件路径记住 */
+	permissionScope(args, workspace) {
+		const resolved = workspace.resolve(args.path);
+		const label = workspace.display(resolved.absolute);
+		return { key: resolved.absolute, label, short: label };
+	},
+
 	/**
 	 * 容忍两种见过的写法：把 edits 写成 JSON 字符串，以及只给一条却写成了对象而不是数组。
 	 * 这两种在实际交互里反复出现，让模型重发一次不如直接接受。

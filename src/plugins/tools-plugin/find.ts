@@ -1,6 +1,6 @@
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
-import { globToRegExp, walk } from "./walk.ts";
+import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "./walk.ts";
 
 /** 按通配模式查找文件路径。 */
 
@@ -39,12 +39,13 @@ export const findTool: ToolDefinition<FindArgs> = {
 
 		const matched: string[] = [];
 		let scanned = 0;
-		for (const entry of walk(resolved.absolute, { maxEntries: Number.MAX_SAFE_INTEGER })) {
-			if (entry.kind !== "file") continue;
+		for (const entry of fileEntries(resolved.absolute, MAX_WALK_ENTRIES)) {
 			scanned += 1;
 			// 同时用相对工作根与相对起点两种路径去匹配，写 src/**/*.ts 与 **/*.ts 都能用
-			if (matcher.test(entry.relative) || matcher.test(workspace.display(entry.absolute))) {
-				matched.push(entry.relative);
+			const displayPath = workspace.display(entry.absolute);
+			if (matcher.test(entry.relative) || matcher.test(displayPath)) {
+				// 输出统一相对工作根：模型拿到的路径要能直接交给 read/edit
+				matched.push(displayPath);
 				if (matched.length >= limit) break;
 			}
 		}

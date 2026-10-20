@@ -2,7 +2,7 @@ import type { PermissionPolicy, PermissionRule } from "../permission/policy.ts";
 import type { SandboxBackend } from "../sandbox/policy.ts";
 import type { SessionStore } from "../session/store.ts";
 import type { AnyToolDefinition } from "../tools/contract.ts";
-import type { ToolRegistry } from "../tools/registry.ts";
+import type { ToolRegistry, ToolSource } from "../tools/registry.ts";
 
 /**
  * 插件宿主。
@@ -155,13 +155,15 @@ export class PluginHost {
 
 	async #load(plugins: readonly Plugin[], external: boolean): Promise<readonly PluginFailure[]> {
 		const failures: PluginFailure[] = [];
+		// 随包插件与外部插件的信任级别不同：前者的只读声明可以直接放行，后者不能
+		const source: ToolSource = external ? "plugin" : "bundled";
 
 		for (const plugin of plugins) {
 			const pending = newPending();
 			try {
-				await plugin.setup(this.#api(pending));
+				await plugin.setup(this.#api(pending, source));
 				pending.open = false;
-				this.#commit(pending);
+				this.#commit(pending, source);
 				if (external) this.#external.push(pending);
 			} catch (error) {
 				// 装载失败的那一代同样作废：它不该还能往注册表里补东西
@@ -177,7 +179,7 @@ export class PluginHost {
 		return failures;
 	}
 
-	#api(pending: Pending): PluginApi {
+	#api(pending: Pending, source: ToolSource): PluginApi {
 		const assertLive = (): void => {
 			if (pending.stale) {
 				throw new Error("This plugin context is stale: a reload replaced it; wait for the next load to register");
@@ -189,7 +191,7 @@ export class PluginHost {
 				assertLive();
 				if (!pending.open) {
 					// 装载已经结束：这是插件在后台拿到能力之后才注册的，直接生效
-					this.#tools.register(tool, "plugin");
+					this.#tools.register(tool, source);
 					pending.registeredTools.push(tool.name);
 					return;
 				}
@@ -220,10 +222,10 @@ export class PluginHost {
 		};
 	}
 
-	#commit(pending: Pending): void {
+	#commit(pending: Pending, source: ToolSource): void {
 		// 工具先提交：它的重名检查会抛错，抛在这里仍算在该插件名下
 		for (const tool of pending.tools) {
-			this.#tools.register(tool, "plugin");
+			this.#tools.register(tool, source);
 			pending.registeredTools.push(tool.name);
 		}
 		for (const backend of pending.backends) this.#backends.push(backend);

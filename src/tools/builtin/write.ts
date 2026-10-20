@@ -30,6 +30,13 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: false },
 
+	/** 本会话内按具体文件路径记住 */
+	permissionScope(args, workspace) {
+		const resolved = workspace.resolve(args.path);
+		const label = workspace.display(resolved.absolute);
+		return { key: resolved.absolute, label, short: label };
+	},
+
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
 		const resolved = workspace.resolve(args.path);
 		sandbox.assertPathAllowed("write", resolved.absolute);

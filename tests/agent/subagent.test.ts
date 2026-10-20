@@ -41,6 +41,7 @@ interface DepsOptions {
 	readonly turns: readonly { content: readonly LlmContentBlock[]; stopReason?: "stop" | "length" | "toolUse" | "error" | "aborted"; usage?: LlmUsage; errorMessage?: string }[];
 	readonly execute?: (call: { name: string; callId: string; args: Record<string, unknown> }) => { content: string; isError: boolean };
 	readonly maxSteps?: number;
+	readonly contextWindow?: number;
 }
 
 function makeDeps(options: DepsOptions): { deps: SubagentDeps; usageEntries: unknown[]; toolCalls: string[] } {
@@ -69,6 +70,7 @@ function makeDeps(options: DepsOptions): { deps: SubagentDeps; usageEntries: unk
 		tools,
 		session: session as never,
 		maxSteps: options.maxSteps ?? 3,
+		contextWindow: options.contextWindow,
 	};
 	return { deps, usageEntries, toolCalls };
 }
@@ -131,6 +133,14 @@ describe("子代理", () => {
 		const aborted = makeDeps({ turns: [{ content: [], stopReason: "aborted" }] });
 		const abortOutcome = await new Subagent(aborted.deps).run("t", contextOf().context);
 		assert.deepEqual(abortOutcome.stopReason, "aborted");
+	});
+
+	it("上下文超过预算时提前收尾,不发下一请求", async () => {
+		const { deps } = makeDeps({ turns: [], contextWindow: 1 });
+		const outcome = await new Subagent(deps).run("a task long enough to exceed one token", contextOf().context);
+		assert.equal(outcome.stopReason, "context");
+		assert.equal(outcome.steps, 0);
+		assert.match(outcome.report, /context reached/);
 	});
 
 	it("每步都上报进度", async () => {

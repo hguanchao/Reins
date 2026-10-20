@@ -13,13 +13,22 @@ import { THEME } from "./theme.ts";
  * 保持默认颜色。
  */
 
+export interface InputLine {
+	readonly prefix: string;
+	readonly text: string;
+}
+
 export interface InputView {
 	/** 可见的提示符；窗口太窄时会被截断 */
 	readonly prefix: string;
-	/** 输入行实际显示的文字；超出宽度时只保留尾部 */
+	/** 光标所在输入行的可见文字 */
 	readonly text: string;
 	/** 光标所在列，从 1 起算 */
 	readonly column: number;
+	/** 可见的输入行（多行粘贴时可能多于一行） */
+	readonly lines: readonly InputLine[];
+	/** 光标在 lines 里的下标 */
+	readonly row: number;
 }
 
 /** 输入框下方那一行常驻信息。 */
@@ -37,12 +46,13 @@ export interface FooterInfo {
 	readonly cacheHitRate: number;
 }
 
-/** 运行时状态：加载符号、状态文字、阶段计时、总计时与 token 数。 */
+/** 运行时状态：加载符号、状态文字、阶段计时、总计时与本轮 token 已用。 */
 export interface RuntimeStatus {
 	readonly symbol: string;
 	readonly text: string;
 	readonly phaseMs?: number;
 	readonly elapsedMs?: number;
+	/** 本轮请求累计消耗的 token 数；压缩请求不计入 */
 	readonly tokens?: number;
 	/** 扫光位置，0 到 1；省略时静态显示。 */
 	readonly sweep?: number;
@@ -75,10 +85,17 @@ export interface FooterLayout {
 	readonly leadingGap?: boolean;
 	/** 是否显示运行时状态行 */
 	readonly showStatus?: boolean;
+	/** 输入光标位置；省略时停在末尾 */
+	readonly cursor?: number;
 }
+
+/** 多行输入最多同时显示几行，再多就围绕光标滚动。 */
+export const MAX_VISIBLE_INPUT_LINES = 6;
 
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";
+/** 多行输入的续行缩进，与首行正文对齐。 */
+const INPUT_CONTINUATION = "   ";
 /** 获得焦点时边框与提示符使用强调色。 */
 const FOCUS_COLOR = THEME.accent;
 /** 失去焦点时边框与提示符使用边框色。 */
@@ -96,19 +113,97 @@ const CACHE_ICON = "⚡";
 /**
  * 输入行的可见部分与光标列。
  *
- * 最后一列留给终端光标，所以提示符加正文最多用 width-1 列；这样光标始终有地方停，输入
- * 再长也不会把整行挤出去。
+ * 支持显式换行：多行粘贴后每行单独显示，最多同时显示 MAX_VISIBLE_INPUT_LINES 行，围绕
+ * 光标滚动。光标所在行会横向滚动，保证光标始终可见。
  */
-export function inputView(input: string, width: number): InputView {
-	const available = Math.max(0, width - 1);
-	const prefix = INPUT_PREFIX.slice(0, available);
-	const prefixWidth = displayWidth(prefix);
-	const tail = tailWithin(input, Math.max(0, available - prefixWidth));
+export function inputView(input: string, width: number, cursor = input.length): InputView {
+	const columns = Math.max(0, width);
+	const logical = input.split("\n");
+	const cursorAt = Math.min(Math.max(0, cursor), input.length);
+
+	let lineIndex = 0;
+	let offset = cursorAt;
+	while (lineIndex < logical.length - 1 && offset > (logical[lineIndex]?.length ?? 0)) {
+		offset -= (logical[lineIndex]?.length ?? 0) + 1;
+		lineIndex += 1;
+	}
+	offset = Math.min(offset, logical[lineIndex]?.length ?? 0);
+
+	const start = Math.max(0, Math.min(lineIndex, logical.length - 1) - (MAX_VISIBLE_INPUT_LINES - 1));
+	const visible = logical.slice(start, start + MAX_VISIBLE_INPUT_LINES);
+
+	let cursorLine: InputLine = { prefix: "", text: "" };
+	let cursorWidth = 0;
+	let cursorPrefixWidth = 0;
+
+	const lines = visible.map((text, index) => {
+		const logicalIndex = start + index;
+		const prefix = truncateToWidth(
+			logicalIndex === 0 ? INPUT_PREFIX : INPUT_CONTINUATION,
+			Math.max(0, columns - 1),
+		);
+		const prefixWidth = displayWidth(prefix);
+		const textWidth = Math.max(0, columns - prefixWidth - 1);
+
+		if (logicalIndex !== lineIndex) {
+			return { prefix, text: truncateToWidth(text, textWidth) };
+		}
+
+		const window = lineWindow(text, offset, textWidth);
+		cursorLine = { prefix, text: window.text };
+		cursorWidth = window.cursorWidth;
+		cursorPrefixWidth = prefixWidth;
+		return cursorLine;
+	});
+
 	return {
-		prefix,
-		text: tail.text,
-		column: Math.min(Math.max(1, width), prefixWidth + tail.width + 1),
+		prefix: cursorLine.prefix,
+		text: cursorLine.text,
+		column: Math.min(Math.max(1, columns), cursorPrefixWidth + cursorWidth + 1),
+		lines,
+		row: lineIndex - start,
 	};
+}
+
+/** 光标所在行的横向窗口：先保证光标之前的文字尽量完整，再向右填满。 */
+function lineWindow(
+	text: string,
+	cursorOffset: number,
+	width: number,
+): { readonly text: string; readonly cursorWidth: number } {
+	const chars = Array.from(text);
+	const cursorChars = Array.from(text.slice(0, cursorOffset)).length;
+	const widths = chars.map((char) => characterWidth(char));
+	const total = widths.reduce((sum, item) => sum + item, 0);
+	const cursorTotal = widths.slice(0, cursorChars).reduce((sum, item) => sum + item, 0);
+
+	if (total <= width) return { text, cursorWidth: cursorTotal };
+
+	let start = 0;
+	if (cursorTotal > width) {
+		let used = 0;
+		start = cursorChars;
+		while (start > 0) {
+			const charWidth = widths[start - 1] ?? 0;
+			if (used + charWidth > width) break;
+			used += charWidth;
+			start -= 1;
+		}
+	}
+
+	let used = 0;
+	let end = start;
+	while (end < chars.length) {
+		const charWidth = widths[end] ?? 0;
+		if (used + charWidth > width) break;
+		used += charWidth;
+		end += 1;
+	}
+
+	const visibleCursor = widths
+		.slice(start, cursorChars)
+		.reduce((sum, item) => sum + item, 0);
+	return { text: chars.slice(start, end).join(""), cursorWidth: visibleCursor };
 }
 
 export function renderFooter(
@@ -120,16 +215,15 @@ export function renderFooter(
 	layout?: FooterLayout,
 ): readonly string[] {
 	const columns = Math.max(0, width);
-	const view = inputView(input, columns);
+	const view = inputView(input, columns, layout?.cursor);
 	const lines: string[] = [];
 	if (layout?.leadingGap !== false) lines.push("");
 	if (layout?.showStatus !== false) lines.push(statusLine(columns, status));
-	lines.push(
-		colored(horizontal(columns), focused),
-		colored(view.prefix, focused) + view.text,
-		colored(horizontal(columns), focused),
-		infoLine(columns, info),
-	);
+	lines.push(colored(horizontal(columns), focused));
+	for (const line of view.lines) {
+		lines.push(colored(line.prefix, focused) + line.text);
+	}
+	lines.push(colored(horizontal(columns), focused), infoLine(columns, info));
 	return lines;
 }
 
@@ -138,6 +232,9 @@ export function renderFooter(
  *
  * 按「项目·分支 | 模型·思考强度 | 上下文 | 缓存命中率」分组；分支不存在时整段省略，
  * 上下文上限未声明时只写已用量。整行统一用暗色，避免和正文抢注意力。
+ *
+ * 终端变窄时按优先级整项舍弃，而不是从右侧硬截：先丢缓存，再丢项目位置，再丢模型，
+ * 最后只保留上下文并截断。上下文是判断何时该压缩的依据，让它最先消失最不划算。
  */
 function infoLine(width: number, info: FooterInfo | undefined): string {
 	if (info === undefined) return "";
@@ -150,7 +247,19 @@ function infoLine(width: number, info: FooterInfo | undefined): string {
 	const context = `${CONTEXT_ICON} ${formatContext(info.contextUsed, info.contextWindow)}`;
 	const cache = `${CACHE_ICON} ${Math.round(info.cacheHitRate * 100)}%`;
 	// 与运行时状态行一样避开最右侧两列，两行文字在同一条竖线上收尾
-	const text = truncateToWidth([location, model, context, cache].join(" | "), Math.max(0, width - 2));
+	const available = Math.max(0, width - 2);
+
+	for (const parts of [
+		[location, model, context, cache],
+		[location, model, context],
+		[model, context],
+		[context],
+	]) {
+		const text = parts.join(" | ");
+		if (displayWidth(text) <= available) return `${INFO_COLOR}${text}${RESET}`;
+	}
+
+	const text = truncateToWidth(context, available).trimEnd();
 	if (text.length === 0) return "";
 	return `${INFO_COLOR}${text}${RESET}`;
 }
@@ -202,8 +311,14 @@ function swept(text: string, sweep: number): string {
 	return output + RESET;
 }
 
+/** 耗时不足一分钟保留一位小数秒；满一分钟后写成「1m」，有零头才带秒，如「1m1s」。 */
 function formatDuration(ms: number): string {
-	return `${(ms / 1000).toFixed(1)}s`;
+	const tenths = Math.round(Math.max(0, ms) / 100);
+	if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
+	const seconds = Math.round(tenths / 10);
+	const minutes = Math.floor(seconds / 60);
+	const rest = seconds % 60;
+	return rest === 0 ? `${minutes}m` : `${minutes}m${rest}s`;
 }
 
 function formatContext(used: number, total: number | undefined): string {
@@ -254,27 +369,14 @@ function colored(text: string, focused: boolean): string {
 	return `${focused ? FOCUS_COLOR : BLUR_COLOR}${text}${RESET}`;
 }
 
-/** 从尾部往前留出不超过 limit 列，避免宽字符被切成半个。 */
-function tailWithin(text: string, limit: number): { text: string; width: number } {
-	const chars = Array.from(text);
-	let used = 0;
-	let start = chars.length;
-
-	while (start > 0) {
-		const char = chars[start - 1];
-		const charWidth = eastAsianWidth(char.codePointAt(0) ?? 0);
-		if (used + charWidth > limit) break;
-		used += charWidth;
-		start -= 1;
-	}
-
-	return { text: chars.slice(start).join(""), width: used };
-}
-
 function displayWidth(text: string): number {
 	let width = 0;
-	for (const char of text) width += eastAsianWidth(char.codePointAt(0) ?? 0);
+	for (const char of text) width += characterWidth(char);
 	return width;
+}
+
+function characterWidth(char: string): number {
+	return eastAsianWidth(char.codePointAt(0) ?? 0);
 }
 
 function horizontal(width: number): string {

@@ -1,6 +1,10 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { accessSync } from "node:fs";
+import { join } from "node:path";
 
-import type { ToolDefinition, ToolResult } from "../contract.ts";
+import stripAnsi from "strip-ansi";
+
+import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { DEFAULT_LIMITS, truncateTail } from "../truncate.ts";
 
@@ -40,87 +44,252 @@ const DEFAULT_TIMEOUT_SECONDS = 600;
 /** 累积输出的上限。超出部分拿不回来，但必须告诉模型，否则它会以为这就是全部。 */
 const MAX_CAPTURED_BYTES = 5 * 1024 * 1024;
 
-export const bashTool: ToolDefinition<BashArgs> = {
-	name: "bash",
-	description:
-		"Run a command in the system shell and return the combined output plus the exit code. Use it for builds, tests, " +
-		"version control and similar tasks. Prefer edit or write for file changes: they keep the original text and " +
-		"report a diff.",
-	parameters: PARAMETERS,
-	annotations: { readOnly: false, destructive: true, openWorld: true },
+export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
+	return {
+		name: "bash",
+		description:
+			"Run a command in the system shell and return the combined output plus the exit code. " +
+			(process.platform === "win32"
+				? "On Windows the shell is Git Bash: use POSIX syntax and /c/... paths, not cmd.exe syntax. "
+				: "") +
+			"Use it for builds, tests, version control and similar tasks. Prefer edit or write for file changes: they keep " +
+			"the original text and report a diff.",
+		parameters: PARAMETERS,
+		annotations: { readOnly: false, destructive: true, openWorld: true },
 
-	async execute({ args, workspace, sandbox, session, signal }): Promise<ToolResult> {
-		const shell = resolveShell();
-		const wrapped = sandbox.wrapCommand(args.command);
-		const timeoutMs = (args.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
+		/** 只记住简单命令的前缀；含管道、重定向、链式命令时不给“总是允许” */
+		permissionScope(args): PermissionScope | undefined {
+			return commandScope(args.command);
+		},
 
-		const child = spawn(shell.command, shell.args(wrapped), {
-			cwd: workspace.root,
-			env: {
-				...process.env,
-				REINS_SESSION_ID: session.id,
-				...(session.path === null ? {} : { REINS_SESSION_FILE: session.path }),
-			},
-			// 自成进程组，超时或中止时才能把命令带出来的子进程一起结束
-			detached: process.platform !== "win32",
-			stdio: ["ignore", "pipe", "pipe"],
-			windowsHide: true,
-		});
+		async execute({ args, workspace, sandbox, session, signal }): Promise<ToolResult> {
+			const shell = resolveShell(undefined, shellPath);
+			const wrapped = sandbox.wrapCommand(args.command);
+			const timeoutMs = (args.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 
-		const collected = new OutputCollector(child);
-		const stop = { timedOut: false, aborted: false };
+			const child = spawn(shell.command, shell.args(wrapped), {
+				cwd: workspace.root,
+				env: {
+					// shell 的默认值先铺，使用者自己的环境优先
+					...shell.env,
+					...process.env,
+					REINS_SESSION_ID: session.id,
+					...(session.path === null ? {} : { REINS_SESSION_FILE: session.path }),
+				},
+				// 自成进程组，超时或中止时才能把命令带出来的子进程一起结束
+				detached: process.platform !== "win32",
+				stdio: ["ignore", "pipe", "pipe"],
+				windowsHide: true,
+			});
 
-		const timer = setTimeout(() => {
-			stop.timedOut = true;
-			killTree(child);
-		}, timeoutMs);
-		const onAbort = (): void => {
-			stop.aborted = true;
-			killTree(child);
-		};
-		signal.addEventListener("abort", onAbort, { once: true });
+			const collected = new OutputCollector(child);
+			const stop = { timedOut: false, aborted: false };
 
-		const exited = await waitForExit(child);
-		clearTimeout(timer);
-		signal.removeEventListener("abort", onAbort);
+			const timer = setTimeout(() => {
+				stop.timedOut = true;
+				killTree(child);
+			}, timeoutMs);
+			const onAbort = (): void => {
+				stop.aborted = true;
+				killTree(child);
+			};
+			signal.addEventListener("abort", onAbort, { once: true });
 
-		if (!exited.started) {
-			return { content: `Failed to start ${shell.command}: ${exited.reason}`, isError: true };
+			const exited = await waitForExit(child);
+			clearTimeout(timer);
+			signal.removeEventListener("abort", onAbort);
+
+			if (!exited.started) {
+				return { content: `Failed to start ${shell.command}: ${exited.reason}`, isError: true };
+			}
+
+			return buildResult({
+				output: collected.text(),
+				overflowed: collected.overflowed,
+				exitCode: exited.code,
+				timedOut: stop.timedOut,
+				aborted: stop.aborted,
+				timeoutMs,
+			});
+		},
+	};
+}
+
+/**
+ * bash 的会话放行范围：命令前缀（最多两个词）。
+ *
+ * 含 shell 操作符的命令不提供“总是允许”：一个前缀保存之后，链式命令会跟着被放行。前缀
+ * 取前两个词，让 `git status`、`npm test` 这类常见组合能覆盖同族参数，又不至于宽到整个
+ * 解释器。
+ */
+export function commandScope(command: string): PermissionScope | undefined {
+	const tokens = tokenizeCommand(command);
+	if (tokens === undefined || tokens.length === 0) return undefined;
+
+	const prefix = tokens.slice(0, 2).join(" ");
+	return { key: prefix, label: `commands starting with "${prefix}"`, short: prefix };
+}
+
+/**
+ * 保守的命令分词。
+ *
+ * 只接受没有操作符的简单命令；引号与反斜杠按 shell 的习惯处理。转义不完整或引号没闭合
+ * 时返回 undefined，宁可只允许一次，也不猜一个可能更宽的前缀。
+ */
+function tokenizeCommand(command: string): readonly string[] | undefined {
+	if (/[;&|<>`$\n\r]/.test(command) || command.includes("$(")) return undefined;
+
+	const tokens: string[] = [];
+	let current = "";
+	let quote: "'" | '"' | undefined;
+	let escaped = false;
+
+	for (const char of command) {
+		if (escaped) {
+			current += char;
+			escaped = false;
+			continue;
 		}
+		if (char === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (quote !== undefined) {
+			if (char === quote) quote = undefined;
+			else current += char;
+			continue;
+		}
+		if (char === "'" || char === '"') {
+			quote = char;
+			continue;
+		}
+		if (/\s/.test(char)) {
+			if (current.length > 0) {
+				tokens.push(current);
+				current = "";
+			}
+			continue;
+		}
+		current += char;
+	}
 
-		return buildResult({
-			output: collected.text(),
-			overflowed: collected.overflowed,
-			exitCode: exited.code,
-			timedOut: stop.timedOut,
-			aborted: stop.aborted,
-			timeoutMs,
-		});
-	},
-};
+	if (escaped || quote !== undefined) return undefined;
+	if (current.length > 0) tokens.push(current);
+	return tokens;
+}
 
 interface Shell {
 	readonly command: string;
 	readonly args: (command: string) => string[];
+	/** 额外注入的环境变量；使用者自己的环境优先 */
+	readonly env: Readonly<Record<string, string>>;
+}
+
+/** resolveShell 的输入来源；抽出来是为了在非 Windows 上也能测试 Windows 的分支。 */
+interface ShellLookup {
+	readonly platform: NodeJS.Platform;
+	readonly env: NodeJS.ProcessEnv;
+	readonly exists: (path: string) => boolean;
+	/** 返回 PATH 上所有同名可执行文件，按查找顺序排列 */
+	readonly which: (name: string) => readonly string[];
 }
 
 /**
  * 选 shell。
  *
- * 跟随进程自身所在的环境变量而不是写死一个：使用者在一个已经配好工具链的 shell 里启动本
- * 程序，命令理应跑在同一个环境里。
+ * Windows 上工具叫 bash，就必须真的跑 bash：cmd.exe 不理解 `pwd`、`/c/...` 这类写法，
+ * 也不保证 UTF-8 输出。优先常见的 Git Bash 安装位置，再查 PATH；WSL 的 bash 采用另一套
+ * 路径规则，不能和这里给模型的 POSIX 提示混用，因此跳过。找不到就明确报错，不静默退回 cmd。
  */
-function resolveShell(): Shell {
-	if (process.platform === "win32") {
+export function resolveShell(lookup: ShellLookup = systemLookup(), shellPath?: string): Shell {
+	if (shellPath !== undefined) {
+		if (!lookup.exists(shellPath)) {
+			throw new Error(
+				`Configured shellPath not found: ${shellPath}; set shellPath or shell_path in config.toml`,
+			);
+		}
+		return bashShell(shellPath);
+	}
+
+	if (lookup.platform !== "win32") {
 		return {
-			command: process.env["COMSPEC"] ?? "cmd.exe",
-			args: (command) => ["/d", "/s", "/c", command],
+			command: lookup.env["SHELL"] ?? "/bin/sh",
+			args: (command) => ["-c", command],
+			env: {},
 		};
 	}
+
+	for (const candidate of gitBashCandidates(lookup.env)) {
+		if (lookup.exists(candidate)) return bashShell(candidate);
+	}
+
+	for (const candidate of lookup.which("bash.exe")) {
+		if (!isWslBash(candidate)) return bashShell(candidate);
+	}
+
+	throw new Error(
+		"No bash found. On Windows Reins runs commands with Git Bash; install Git for Windows, make sure " +
+			"bash.exe is on PATH, or set shellPath or shell_path in config.toml. WSL bash is not used.",
+	);
+}
+
+function bashShell(command: string): Shell {
 	return {
-		command: process.env["SHELL"] ?? "/bin/sh",
-		args: (command) => ["-c", command],
+		command,
+		args: (input) => ["-c", input],
+		// 系统代码页输出（中文 Windows 上是 GBK）到 UTF-8 解码会变成乱码；先给解释器一个
+		// UTF-8 默认值，使用者自己设置的同名变量仍然优先
+		env: { PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8:surrogateescape" },
 	};
+}
+
+function gitBashCandidates(env: NodeJS.ProcessEnv): readonly string[] {
+	const roots = [
+		env["ProgramFiles"],
+		env["ProgramFiles(x86)"],
+		env["LOCALAPPDATA"] === undefined ? undefined : join(env["LOCALAPPDATA"], "Programs"),
+	];
+	return roots
+		.filter((root): root is string => root !== undefined && root.length > 0)
+		.map((root) => join(root, "Git", "bin", "bash.exe"));
+}
+
+function isWslBash(path: string): boolean {
+	const normalized = path.toLowerCase().replaceAll("/", "\\");
+	return (
+		/\\windows\\(?:system32|sysnative)\\bash\.exe$/.test(normalized) ||
+		/\\windowsapps\\bash\.exe$/.test(normalized)
+	);
+}
+
+function systemLookup(): ShellLookup {
+	return {
+		platform: process.platform,
+		env: process.env,
+		exists: (path) => {
+			try {
+				accessSync(path);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		which: findOnPath,
+	};
+}
+
+function findOnPath(name: string): readonly string[] {
+	const finder = process.platform === "win32" ? "where.exe" : "which";
+	try {
+		const result = spawnSync(finder, [name], { encoding: "utf8", timeout: 5000, windowsHide: true });
+		if (result.status !== 0 || typeof result.stdout !== "string") return [];
+		return result.stdout
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+	} catch {
+		return [];
+	}
 }
 
 /**
@@ -144,7 +313,7 @@ class OutputCollector {
 	}
 
 	text(): string {
-		return Buffer.concat(this.#chunks).toString("utf8");
+		return sanitizeOutput(Buffer.concat(this.#chunks).toString("utf8"));
 	}
 
 	#accept(chunk: Buffer): void {
@@ -158,6 +327,16 @@ class OutputCollector {
 		this.#chunks.push(slice);
 		this.#kept += slice.length;
 	}
+}
+
+/**
+ * 清掉终端转义序列与控制字符。
+ *
+ * 命令输出会进入模型上下文：颜色码与光标控制对模型没有意义，二进制控制字符还可能破坏
+ * 界面与统计。制表、换行、回车保留，它们是正文的一部分。
+ */
+function sanitizeOutput(text: string): string {
+	return stripAnsi(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "");
 }
 
 interface ExitOutcome {
@@ -181,10 +360,18 @@ function waitForExit(child: ChildProcess): Promise<ExitOutcome> {
 function killTree(child: ChildProcess): void {
 	if (child.pid === undefined) return;
 	if (process.platform === "win32") {
-		spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-			stdio: "ignore",
-			windowsHide: true,
-		});
+		// 用 System32 下的绝对路径，避免 PATH 上有同名程序时杀错东西
+		const taskkill = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "taskkill.exe");
+		try {
+			const killer = spawn(taskkill, ["/pid", String(child.pid), "/T", "/F"], {
+				stdio: "ignore",
+				windowsHide: true,
+			});
+			// spawn 失败只会发 error 事件；不消费就会变成未捕获异常
+			killer.on("error", () => child.kill());
+		} catch {
+			child.kill();
+		}
 		return;
 	}
 	try {

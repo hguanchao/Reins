@@ -21,6 +21,23 @@ const COMPACT_RATIO = 0.8;
 /** 压缩后保留最近这一比例的上下文原文，更早的部分交给摘要。 */
 const KEEP_RATIO = 0.25;
 
+/**
+ * 摘要请求的总时限。
+ *
+ * HTTP 层的静默超时只管「多久没有数据」；一个一直在慢慢吐字的摘要仍可能拖很久。压缩是
+ * 请求前的准备动作，超过这个预算就放弃，让主请求按原样发出去。
+ */
+const SUMMARY_TIMEOUT_MS = 300_000;
+
+/**
+ * 规划压缩时使用的窗口。
+ *
+ * 摘要模型可能比主模型小；按较小的窗口规划，被摘要的那段才不会超过摘要请求的上下文。
+ */
+export function compactionWindow(mainWindow: number, summaryWindow: number | undefined): number {
+	return summaryWindow === undefined ? mainWindow : Math.min(mainWindow, summaryWindow);
+}
+
 /** 每条消息的固定开销（角色标记与协议外壳），按条计一点，免得整体低估。 */
 const MESSAGE_OVERHEAD_TOKENS = 8;
 
@@ -49,6 +66,8 @@ export interface CompactorDeps {
 	/** 上下文上限：providers.json 的 contextWindow 或 config.toml 的 context_window */
 	readonly contextWindow: number;
 	readonly maxTokens: number | undefined;
+	/** 摘要请求的总时限；测试用它缩短等待 */
+	readonly summaryTimeoutMs?: number;
 }
 
 export type CompactionResult =
@@ -110,34 +129,58 @@ export class Compactor {
 	 * 得多——模型会以为那就是全部经过。
 	 */
 	async summarize(messages: readonly LlmMessage[], signal: AbortSignal): Promise<CompactionResult> {
-		const stream = this.#deps.client.stream({
-			model: this.#deps.model.id,
-			system: SUMMARY_SYSTEM,
-			messages: [...messages, { role: "user", content: SUMMARY_INSTRUCTION }],
-			tools: [],
-			maxTokens: this.#deps.model.maxTokens ?? this.#deps.maxTokens,
-			// 写摘要不是需要思考的活：等级一律不发，交给端点默认，省下的开销留给主对话
-			effort: undefined,
-			signal,
-		});
+		// 总时限与调用方的中止合并成一个信号：任何一方触发都让摘要请求停下来
+		const controller = new AbortController();
+		const abort = (): void => controller.abort();
+		if (signal.aborted) controller.abort();
+		else signal.addEventListener("abort", abort, { once: true });
 
-		const result = await stream.result();
-		if (result.stopReason === "error") {
-			return { ok: false, message: result.errorMessage ?? "Compaction request failed" };
-		}
-		if (result.stopReason === "aborted") return { ok: false, message: "Compaction was aborted" };
-		if (result.stopReason === "length") {
-			return { ok: false, message: "The summary hit the output limit and was discarded; raise max_tokens for this model and try again" };
-		}
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			controller.abort();
+		}, this.#deps.summaryTimeoutMs ?? SUMMARY_TIMEOUT_MS);
 
-		const summary = assistantText({ role: "assistant", content: result.content }).trim();
-		if (summary.length === 0) return { ok: false, message: "The compaction model returned nothing" };
-		return {
-			ok: true,
-			summary,
-			usage: result.usage,
-			cost: result.usage === undefined ? undefined : computeCost(this.#deps.model.cost, result.usage),
-		};
+		try {
+			const stream = this.#deps.client.stream({
+				model: this.#deps.model.id,
+				system: SUMMARY_SYSTEM,
+				messages: [...messages, { role: "user", content: SUMMARY_INSTRUCTION }],
+				tools: [],
+				maxTokens: this.#deps.model.maxTokens ?? this.#deps.maxTokens,
+				// 写摘要不是需要思考的活：等级一律不发，交给端点默认，省下的开销留给主对话
+				effort: undefined,
+				signal: controller.signal,
+			});
+
+			const result = await stream.result();
+			if (result.stopReason === "error") {
+				return { ok: false, message: result.errorMessage ?? "Compaction request failed" };
+			}
+			if (result.stopReason === "aborted") {
+				return {
+					ok: false,
+					message: timedOut
+						? "The summary exceeded its time budget and was discarded"
+						: "Compaction was aborted",
+				};
+			}
+			if (result.stopReason === "length") {
+				return { ok: false, message: "The summary hit the output limit and was discarded; raise max_tokens for this model and try again" };
+			}
+
+			const summary = assistantText({ role: "assistant", content: result.content }).trim();
+			if (summary.length === 0) return { ok: false, message: "The compaction model returned nothing" };
+			return {
+				ok: true,
+				summary,
+				usage: result.usage,
+				cost: result.usage === undefined ? undefined : computeCost(this.#deps.model.cost, result.usage),
+			};
+		} finally {
+			clearTimeout(timer);
+			signal.removeEventListener("abort", abort);
+		}
 	}
 }
 

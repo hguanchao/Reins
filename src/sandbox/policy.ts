@@ -1,5 +1,5 @@
 import type { SandboxMode } from "../config/config-file.ts";
-import { isPathInside } from "../workspace/boundary.ts";
+import { isPathInside, resolveRealPath } from "../workspace/boundary.ts";
 
 /**
  * 沙箱接缝与判定。
@@ -55,10 +55,13 @@ export interface SandboxBackend {
 export class Sandbox implements SandboxView {
 	readonly #policy: SandboxPolicy;
 	readonly #backend: SandboxBackend | undefined;
+	/** 工作根的真实路径：判定不能只看字面路径，否则一个目录链接就能拐出工作区 */
+	readonly #root: string;
 
 	constructor(policy: SandboxPolicy, backend: SandboxBackend | undefined) {
 		this.#policy = policy;
 		this.#backend = backend;
+		this.#root = resolveRealPath(policy.root);
 	}
 
 	/** 当前模式能否真正约束住任意命令。界面据此提示使用者。 */
@@ -77,9 +80,11 @@ export class Sandbox implements SandboxView {
 				`Sandbox is read-only and refusing to write ${absolutePath}; adjust sandbox in config.toml to allow writes`,
 			);
 		}
-		if (!isPathInside(root, absolutePath)) {
+		const target = resolveRealPath(absolutePath);
+		if (!isPathInside(this.#root, target)) {
+			const resolved = target === absolutePath ? "" : ` (it resolves to ${target})`;
 			throw new Error(
-				`Sandbox is confined to the workspace and ${absolutePath} is outside ${root}. ` +
+				`Sandbox is confined to the workspace and ${absolutePath} is outside ${root}${resolved}. ` +
 					"Adjust sandbox in config.toml if you really need to write outside",
 			);
 		}

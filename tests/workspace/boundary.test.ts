@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { isPathInside, WorkspaceBoundary } from "../../src/workspace/boundary.ts";
+import { isPathInside, resolveRealPath, WorkspaceBoundary } from "../../src/workspace/boundary.ts";
 
 describe("路径在根内", () => {
 	it("根自身算在根内", () => {
@@ -27,6 +30,31 @@ describe("路径在根内", () => {
 
 	it("路径前缀相同但目录名更长的不算", () => {
 		assert.equal(isPathInside("E:\\w", "E:\\work\\a.ts"), false);
+	});
+});
+
+describe("真实路径解析", () => {
+	it("解析目录链接，目标文件不存在时也取真实父路径", (t) => {
+		const directory = mkdtempSync(join(tmpdir(), "reins-boundary-"));
+		try {
+			const root = join(directory, "root");
+			const outside = join(directory, "outside");
+			mkdirSync(root);
+			mkdirSync(outside);
+			const link = join(root, "link");
+			try {
+				symlinkSync(outside, link, process.platform === "win32" ? "junction" : "dir");
+			} catch {
+				t.skip("symlinks are not available in this environment");
+				return;
+			}
+
+			const resolved = resolveRealPath(join(link, "a.ts"));
+			assert.equal(resolved, join(realpathSync(outside), "a.ts"));
+			assert.equal(isPathInside(realpathSync(root), resolved), false);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -46,6 +46,7 @@ export function mergeConfigs(user: ConfigFile, project: ConfigFile): Config {
 		maxTokens: pick(["max_tokens"], user.config.maxTokens, project.config.maxTokens),
 		maxRetries: pick(["max_retries"], user.config.maxRetries, project.config.maxRetries),
 		httpProxy: pick(["httpProxy"], user.config.httpProxy, project.config.httpProxy),
+		shellPath: pick(["shellPath"], user.config.shellPath, project.config.shellPath),
 		compactModel: pick(["compact_model"], user.config.compactModel, project.config.compactModel),
 		reviewModel: pick(["review_model"], user.config.reviewModel, project.config.reviewModel),
 		approval: pickStricterApproval(user, project),

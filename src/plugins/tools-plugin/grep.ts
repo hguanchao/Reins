@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
-import { looksBinary } from "../../tools/builtin/text-file.ts";
+import { decodeTextFile, looksBinary } from "../../tools/builtin/text-file.ts";
 import { MAX_LINE_LENGTH, truncateLine } from "../../tools/truncate.ts";
-import { globToRegExp, walk } from "./walk.ts";
+import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "./walk.ts";
 
 /**
  * 按内容检索。
@@ -67,8 +67,7 @@ export const grepTool: ToolDefinition<GrepArgs> = {
 		const matches: string[] = [];
 		let scannedFiles = 0;
 
-		for (const entry of walk(resolved.absolute, { maxEntries: Number.MAX_SAFE_INTEGER })) {
-			if (entry.kind !== "file") continue;
+		for (const entry of fileEntries(resolved.absolute, MAX_WALK_ENTRIES)) {
 			const relativePath = workspace.display(entry.absolute);
 			if (fileMatcher !== undefined && !fileMatcher.test(entry.relative) && !fileMatcher.test(relativePath)) {
 				continue;
@@ -86,6 +85,8 @@ export const grepTool: ToolDefinition<GrepArgs> = {
 				if (matches.length >= limit) break;
 			}
 			if (matches.length >= limit) break;
+			// 同步读文件会占住事件循环；每扫一批让界面有机会刷新与处理 Ctrl+C
+			if (scannedFiles % 50 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
 		}
 
 		if (matches.length === 0) {
@@ -104,7 +105,8 @@ function readTextOrSkip(path: string): string | undefined {
 		const buffer = readFileSync(path);
 		if (buffer.length > MAX_FILE_BYTES) return undefined;
 		if (looksBinary(buffer, BINARY_PROBE_BYTES)) return undefined;
-		return buffer.toString("utf8");
+		// 与 read 共用同一套解码：UTF-16 文件按 UTF-8 解出来会是一串乱码
+		return decodeTextFile(buffer).text;
 	} catch {
 		return undefined;
 	}

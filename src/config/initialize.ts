@@ -13,6 +13,8 @@ const CONFIG_TEMPLATE = `# Reins 配置模板。provider 与 model 必须对应 
 provider = "example"
 model = "example-model"
 
+# 多词配置项同时接受 snake_case 与 camelCase，例如 max_retries / maxRetries。
+
 # 思考等级：off | low | medium | high | xhigh | max
 reasoning_effort = "medium"
 
@@ -30,6 +32,9 @@ reasoning_effort = "medium"
 
 # 沙箱模式：off | workspace | read-only
 # sandbox = "off"
+
+# 自定义 shell 路径；也接受 shell_path。省略时自动查找 Git Bash
+# shellPath = "C:/path/to/Git/bin/bash.exe"
 
 # 工具结果超过这个字符数落盘；0 = 关闭
 # spill_threshold = 8192

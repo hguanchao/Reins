@@ -31,6 +31,8 @@ export interface LlmRequest {
 	 * 端点支持提示词缓存时用它把同一段对话路由到同一片缓存：标识不变，前缀的缓存才可能命中。
 	 */
 	readonly cacheKey?: string;
+	/** 决定重试前通知调用方，用于界面显示进度 */
+	readonly onRetry?: (attempt: number, reason: string) => void;
 	readonly signal: AbortSignal;
 }
 

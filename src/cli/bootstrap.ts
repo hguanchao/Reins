@@ -1,7 +1,7 @@
 import { basename } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
-import { Compactor, estimateTokens } from "../agent/compactor.ts";
+import { Compactor, compactionWindow, estimateTokens } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
@@ -141,7 +141,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			return await runTui({
 				version: readVersion(),
 				info: createUnavailableFooterInfo(workRoot, session),
-				warning: `Config error: ${loaded.error.message}`,
+				warning: `Warning: ${loaded.error.message}`,
 				ready: false,
 			});
 		} catch (error) {
@@ -174,7 +174,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		new ResultSpiller(config.spillThreshold, spillDir()),
 		gate,
 	);
-	for (const tool of createCoreTools()) registry.register(tool, "core");
+	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
 	const external = prepareExternalPlugins(host);
@@ -254,11 +254,47 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		if (current === undefined) throw new Error("No model selected; run /model first");
 		const compactor = createCompactor(activeConfig, current);
 		const driver = createDriverFor(
-			{ config: activeConfig, selection: current, compactor },
+			{
+				config: activeConfig,
+				selection: current,
+				compactor,
+				contextTokens: lastContextTokens(session.entries()),
+			},
 			{ registry, session, workspace, sandbox },
 			onEvent,
 		);
 		await driver.run(prompt, signal);
+	};
+
+	/**
+	 * 立即压缩上下文。
+	 *
+	 * 与普通对话走同一条装配路径：压缩模型跟随当前选型，/model 切换后下一次压缩立即用新模型。
+	 * 没有上下文上限就无法决定保留多少原文，此时明确拒绝，而不是压出一份不完整的摘要。
+	 */
+	const compact = async (
+		onEvent: AgentEventListener,
+		signal: AbortSignal,
+	): Promise<void> => {
+		const current = catalog.selection;
+		if (current === undefined) throw new Error("No model selected; run /model first");
+		const compactor = createCompactor(activeConfig, current);
+		if (compactor === undefined) {
+			throw new Error(
+				"No context window is declared for this model; set contextWindow in providers.json or context_window in the config",
+			);
+		}
+		const driver = createDriverFor(
+			{
+				config: activeConfig,
+				selection: current,
+				compactor,
+				contextTokens: lastContextTokens(session.entries()),
+			},
+			{ registry, session, workspace, sandbox },
+			onEvent,
+		);
+		await driver.compact(signal);
 	};
 
 	const modelMenu = createModelMenuSource({
@@ -282,8 +318,26 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		},
 	});
 
-	const warning = loaded.ok ? undefined : `Config error: ${loaded.error.message}`;
+	const warning = loaded.ok ? undefined : `Warning: ${loaded.error.message}`;
 	const ready = loaded.ok;
+
+	/** 插件与宿主命令共用一份清单；热重载后下一次补全会重新取。 */
+	const pluginCommands = {
+		list: () =>
+			host.commands().map((command) => ({
+				name: command.name,
+				description: command.description,
+				enabled: true,
+			})),
+		run: async (name: string, args: string): Promise<readonly string[]> => {
+			const lines: string[] = [];
+			await host.runCommand(name, args, {
+				cwd: workRoot,
+				print: (line: string) => lines.push(line),
+			});
+			return lines;
+		},
+	};
 
 	try {
 		const code = await runTui({
@@ -291,10 +345,12 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			info: () => footerInfo,
 			warning,
 			ready,
-			agent: { runTurn, refreshInfo },
+			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
 			modelMenu,
 			effortMenu,
+			pluginCommands,
+			notify: activeConfig.ui.notify,
 			history,
 		});
 		if (sessionPersisted) writeStdout(`${resumeCommand(session.id)}\n`);
@@ -359,7 +415,7 @@ function createModelMenuSource(options: {
 				return {
 					warnings: [...warnings, message],
 					ready: false,
-					warning: `Config error: ${message}`,
+					warning: `Warning: ${message}`,
 				};
 			}
 
@@ -376,7 +432,7 @@ function createModelMenuSource(options: {
 				return {
 					warnings: [...warnings, message],
 					ready: false,
-					warning: `Config error: ${message}`,
+					warning: `Warning: ${message}`,
 				};
 			}
 
@@ -485,7 +541,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 		new ResultSpiller(config.spillThreshold, spillDir()),
 		gate,
 	);
-	for (const tool of createCoreTools()) registry.register(tool, "core");
+	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
 	const external = prepareExternalPlugins(host);
@@ -698,10 +754,15 @@ function createSandboxFor(config: Config, workRoot: string, host: PluginHost): S
 }
 
 function createClient(config: Config, selection: ModelSelection): ReturnType<LlmRegistry["create"]> {
-	return createBuiltinLlmRegistry().create(selection.provider, selection.model, {
-		maxRetries: config.maxRetries,
-		baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
-	});
+	return createBuiltinLlmRegistry().create(
+		selection.provider,
+		selection.model,
+		{
+			maxRetries: config.maxRetries,
+			baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+		},
+		config.httpProxy,
+	);
 }
 
 /**
@@ -715,8 +776,8 @@ function createCompactor(
 	config: Config,
 	selection: ModelSelection,
 ): Compactor | undefined {
-	const contextWindow = selection.model.contextWindow ?? config.contextWindow;
-	if (contextWindow === undefined) {
+	const mainWindow = selection.model.contextWindow ?? config.contextWindow;
+	if (mainWindow === undefined) {
 		writeStderr(
 			"No context window declared (providers.json sets no contextWindow, config.toml sets no context_window). " +
 				"Context will not be compacted automatically this run.\n",
@@ -724,13 +785,23 @@ function createCompactor(
 		return undefined;
 	}
 
-	// 摘要用 compact_model；它省略时用主模型。两者都在同一个 provider 内，配置层已校验
+	// 摘要用 compact_model；它省略时用主模型。两者都在同一个 provider 内，配置层已校验。
+	// 摘要模型可能更小：规划按两者较小的窗口来，保证被摘要的那段不会超过摘要请求的上下文。
 	const model = selection.compactModel ?? selection.model;
+	const contextWindow = compactionWindow(
+		mainWindow,
+		model === selection.model ? undefined : model.contextWindow,
+	);
 	return new Compactor({
-		client: createBuiltinLlmRegistry().create(selection.provider, model, {
-			maxRetries: config.maxRetries,
-			baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
-		}),
+		client: createBuiltinLlmRegistry().create(
+			selection.provider,
+			model,
+			{
+				maxRetries: config.maxRetries,
+				baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+			},
+			config.httpProxy,
+		),
 		provider: selection.provider.id,
 		model,
 		contextWindow,
@@ -744,6 +815,7 @@ function createDriverFor(
 		readonly config: Config;
 		readonly selection: ModelSelection;
 		readonly compactor: Compactor | undefined;
+		readonly contextTokens?: number;
 	},
 	shared: {
 		readonly registry: ToolRegistry;
@@ -765,6 +837,7 @@ function createDriverFor(
 			tools: shared.registry,
 			session: shared.session,
 			maxSteps: context.config.maxTurns ?? DEFAULT_SUBAGENT_STEPS,
+			contextWindow: context.selection.model.contextWindow ?? context.config.contextWindow,
 		}),
 	);
 
@@ -779,6 +852,7 @@ function createDriverFor(
 		sandbox: shared.sandbox,
 		onEvent,
 		...(context.compactor === undefined ? {} : { compactor: context.compactor }),
+		...(context.contextTokens === undefined ? {} : { contextTokens: context.contextTokens }),
 	});
 }
 
@@ -791,10 +865,15 @@ function createReviewer(
 	const reviewModel = selection.reviewModel ?? selection.model;
 	const registry: LlmRegistry = createBuiltinLlmRegistry();
 	return new ModelReviewer({
-		client: registry.create(selection.provider, reviewModel, {
-			maxRetries: config.maxRetries,
-			baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
-		}),
+		client: registry.create(
+			selection.provider,
+			reviewModel,
+			{
+				maxRetries: config.maxRetries,
+				baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+			},
+			config.httpProxy,
+		),
 		model: reviewModel.id,
 		maxTokens: reviewModel.maxTokens ?? config.maxTokens,
 		workspaceRoot: workRoot,

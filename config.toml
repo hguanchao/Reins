@@ -1,5 +1,6 @@
 provider = "example-openai"
 model = "gpt-5.2"
+# 多词配置项同时接受 snake_case 与 camelCase，例如 max_retries / maxRetries。
 # reasoning_effort = "medium"    # off | low | medium | high | xhigh | max
 
 # ── 模型与请求 ────────────────────────────────────────────────────────────────
@@ -13,6 +14,9 @@ model = "gpt-5.2"
 # ── 权限与安全 ────────────────────────────────────────────────────────────────
 # approval = "ask"               # ask | auto | yolo
 # sandbox = "off"                # off | workspace | read-only
+
+# ── Shell ─────────────────────────────────────────────────────────────────────
+# shellPath = "C:/path/to/Git/bin/bash.exe"  # 自定义 bash;也接受 shell_path;省略时自动查找
 
 # ── 用量与预算 ────────────────────────────────────────────────────────────────
 # max_turns = 20                 # 子代理的模型调用上限;省略时子代理默认 20 步,根会话不封顶
@@ -33,7 +37,7 @@ model = "gpt-5.2"
 # type = "http"
 # url = "https://example.com/mcp"
 # headers = { Authorization = "Bearer $DOCS_KEY" }
-# call_timeout_ms = 120000       # 只作用于 tools/call;控制请求固定 15s
+# timeout = 120                   # tools/call 超时(秒);控制请求固定 15s
 # disabled = false               # true = 不连接(默认 false);写一条只有 disabled 的同名条目
 
 # ── 插件与运行时状态 ──────────────────────────────────────────────────────────

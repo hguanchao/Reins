@@ -24,6 +24,111 @@ describe("配置合并", () => {
 		assert.equal(merged.maxRetries, 3);
 	});
 
+	it("shellPath 与 shell_path 都支持，冲突时报错", () => {
+		const camel = parseConfig(`${BASE}shellPath = "C:/camel/bash.exe"\n`, "c");
+		assert.equal(camel.shellPath, "C:/camel/bash.exe");
+
+		const snake = parseConfig(`${BASE}shell_path = "C:/snake/bash.exe"\n`, "c");
+		assert.equal(snake.shellPath, "C:/snake/bash.exe");
+
+		const same = parseConfig(
+			`${BASE}shellPath = "C:/same/bash.exe"\nshell_path = "C:/same/bash.exe"\n`,
+			"c",
+		);
+		assert.equal(same.shellPath, "C:/same/bash.exe");
+
+		assert.throws(
+			() => parseConfig(`${BASE}shellPath = "C:/a"\nshell_path = "C:/b"\n`, "c"),
+			/must match/,
+		);
+		assert.equal(parseConfig(`${BASE}shellPath = ""\n`, "c").shellPath, undefined);
+	});
+
+	it("shellPath 由项目覆盖用户，两种写法都算", () => {
+		const merged = mergeConfigs(
+			get(`${BASE}shell_path = "C:/user/bash.exe"\n`),
+			get(`${BASE}shellPath = "C:/project/bash.exe"\n`),
+		);
+		assert.equal(merged.shellPath, "C:/project/bash.exe");
+
+		const inherited = mergeConfigs(get(`${BASE}shell_path = "C:/user/bash.exe"\n`), get(BASE));
+		assert.equal(inherited.shellPath, "C:/user/bash.exe");
+	});
+
+	it("所有多词配置项都支持 camelCase 与 snake_case", () => {
+		const config = parseConfig(
+			`provider = "p"
+model = "m"
+reasoningEffort = "high"
+contextWindow = 2000
+maxTokens = 100
+maxRetries = 3
+http_proxy = "http://proxy"
+shell_path = "C:/bash.exe"
+compactModel = "cm"
+reviewModel = "rm"
+maxTurns = 5
+spillThreshold = 10
+
+[mcpServers.fs]
+command = "x"
+timeout = 120
+`,
+			"c",
+		);
+
+		assert.equal(config.reasoningEffort, "high");
+		assert.equal(config.contextWindow, 2000);
+		assert.equal(config.maxTokens, 100);
+		assert.equal(config.maxRetries, 3);
+		assert.equal(config.httpProxy, "http://proxy");
+		assert.equal(config.shellPath, "C:/bash.exe");
+		assert.equal(config.compactModel, "cm");
+		assert.equal(config.reviewModel, "rm");
+		assert.equal(config.maxTurns, 5);
+		assert.equal(config.spillThreshold, 10);
+		assert.equal(config.mcpServers[0]?.name, "fs");
+		assert.equal(config.mcpServers[0]?.timeoutSeconds, 120);
+	});
+
+	it("shellPath 支持转义反斜杠与 TOML 字面量字符串", () => {
+		const expected = "D:\\Environment\\Git\\bin\\bash.exe";
+		const escaped = parseConfig(
+			`${BASE}shellPath = "D:\\\\Environment\\\\Git\\\\bin\\\\bash.exe"\n`,
+			"c",
+		);
+		const literal = parseConfig(
+			`${BASE}shellPath = 'D:\\Environment\\Git\\bin\\bash.exe'\n`,
+			"c",
+		);
+
+		assert.equal(escaped.shellPath, expected);
+		assert.equal(literal.shellPath, expected);
+	});
+
+	it("同一项两种写法冲突时报错", () => {
+		assert.throws(
+			() => parseConfig(`${BASE}context_window = 1\ncontextWindow = 2\n`, "c"),
+			/must match/,
+		);
+		assert.throws(
+			() =>
+				parseConfig(
+					`${BASE}[mcp_servers.a]\ncommand = "x"\n[mcpServers.b]\ncommand = "y"\n`,
+					"c",
+				),
+			/only one of mcp_servers and mcpServers/,
+		);
+	});
+
+	it("项目用 camelCase 写也能覆盖用户的 snake_case", () => {
+		const merged = mergeConfigs(
+			get(`${BASE}context_window = 100\n`),
+			get(`${BASE}contextWindow = 200\n`),
+		);
+		assert.equal(merged.contextWindow, 200);
+	});
+
 	it("审批只准加严:放宽报错", () => {
 		// 用户要求逐次询问（最严），项目想切成 yolo（最松），等于放宽：拒绝
 		const user = get(`${BASE}approval = "ask"\n`);

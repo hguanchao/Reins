@@ -46,6 +46,38 @@ async function captureUserAgent(headers?: Record<string, string>): Promise<strin
 	}
 }
 
+describe("代理", () => {
+	it("配置代理时给 fetch 传入 dispatcher", async () => {
+		const original = globalThis.fetch;
+		let dispatcher: unknown;
+		(globalThis as { fetch: typeof fetch }).fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+			dispatcher = (init as { dispatcher?: unknown } | undefined)?.dispatcher;
+			return new Response("data: [DONE]\n\n", {
+				status: 200,
+				headers: { "content-type": "text/event-stream" },
+			});
+		}) as typeof fetch;
+
+		try {
+			await postSse(
+				{
+					url: "http://example.test/v1/chat/completions",
+					headers: {},
+					body: {},
+					signal: new AbortController().signal,
+					proxy: "http://127.0.0.1:9",
+				},
+				() => {},
+				{ maxRetries: 0, baseDelayMs: 1 },
+			);
+		} finally {
+			(globalThis as { fetch: typeof fetch }).fetch = original;
+		}
+
+		assert.ok(dispatcher !== undefined);
+	});
+});
+
 describe("上游请求头", () => {
 	it("没有自定义 UA 时使用 reins/<version>", async () => {
 		assert.equal(await captureUserAgent(), `reins/${readVersion()}`);

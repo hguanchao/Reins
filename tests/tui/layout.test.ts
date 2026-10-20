@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 
 import type { AgentEvent, AgentEventListener } from "../../src/agent/events.ts";
 import { ApprovalBroker } from "../../src/permission/approval.ts";
+import type { ApprovalAnswer } from "../../src/permission/policy.ts";
 import { runTui, type AgentRuntime } from "../../src/tui/layout.ts";
 import { THEME } from "../../src/tui/theme.ts";
 
@@ -76,9 +77,9 @@ function createFakeAgent(onRefresh: () => void = () => {}): FakeAgent {
 	};
 }
 
-const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1006h";
+const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1006h\x1b[?2004h";
 const CLEAR = "\x1b[H\x1b[2J";
-const LEAVE = "\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
+const LEAVE = "\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
 const FOCUS = "\x1b[38;2;78;201;176m";
 const BLUR = "\x1b[38;2;42;49;56m";
 const INFO = "\x1b[38;2;167;176;186m";
@@ -93,7 +94,7 @@ const FOOTER_INFO = {
 	contextWindow: 1_000_000,
 	cacheHitRate: 0.98,
 };
-const WARNING = "Config error: No provider openai; available: fengshao";
+const WARNING = "Warning: No provider openai; available: fengshao";
 const MODEL_ITEMS = [
 	{
 		provider: "fengshao",
@@ -230,7 +231,7 @@ describe("全屏布局", () => {
 			assert.equal(plain(lines[8] ?? ""), BORDER.repeat(40));
 			assert.equal(plain(lines[9] ?? ""), " › ");
 			assert.equal(plain(lines[10] ?? ""), BORDER.repeat(40));
-			assert.equal(plain(lines[11] ?? "").startsWith("📁 Reins"), true);
+			assert.ok(plain(lines[11] ?? "").includes("📊 100K / 1M"));
 			assert.ok(lines[8]?.startsWith(FOCUS));
 			assert.ok(lines[9]?.startsWith(FOCUS));
 			assert.ok(lines[11]?.startsWith(INFO));
@@ -255,10 +256,10 @@ describe("全屏布局", () => {
 		try {
 			const lines = frameLines(output);
 			const text = lines.join("\n");
-			assert.ok(text.includes("! Config error:"));
+			assert.ok(text.includes("! Warning:"));
 			assert.ok(text.includes("No provider"));
-			assert.ok(plain(lines[0] ?? "").startsWith("  ! Config error:"));
-			assert.equal(lines.filter((line) => line.includes("Config error")).length, 1);
+			assert.ok(plain(lines[0] ?? "").startsWith("  ! Warning:"));
+			assert.equal(lines.filter((line) => line.includes("Warning:")).length, 1);
 		} finally {
 			exitTui(input);
 		}
@@ -282,7 +283,7 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("hello"));
 
 			let text = frameLines(output).join("\n");
-			assert.ok(text.includes("! Config error:"));
+			assert.ok(text.includes("! Warning:"));
 			assert.ok(text.includes("hello"));
 
 			input.emit("data", Buffer.from("\r"));
@@ -323,6 +324,57 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("模型面板支持鼠标点击选择", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		let selected: string | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: (item) => {
+					selected = `${item.provider}/${item.model}`;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			// 面板从主区域底部开始：第 13 行是第一项，第 14 行是第二项
+			input.emit("data", Buffer.from("\x1b[<0;10;14M"));
+			assert.equal(selected, "openai/gpt-5.2");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令补全面板支持鼠标点击执行", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			// 面板第一项是 /model，第四项是 /help
+			input.emit("data", Buffer.from("\x1b[<0;10;15M"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — help"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("方向键移动并回车切换模型，页脚随之更新", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -351,13 +403,30 @@ describe("全屏布局", () => {
 			const text = frameLines(output).map(plain).join("\n");
 			assert.equal(selected, "openai/gpt-5.2");
 			assert.ok(text.includes("Model switched to openai/gpt-5.2."));
-			assert.ok(text.includes("note"));
+			assert.ok(text.includes("! Warning: note"));
 			assert.ok(text.includes("openai/gpt-5.2"));
 		} finally {
 			exitTui(input);
 		}
 
 		assert.equal(await running, 0);
+	});
+
+	it("命令补全同时匹配命令说明", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/configuration"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("/model"));
+			assert.ok(text.includes("/effort"));
+		} finally {
+			exitTui(input);
+		}
 	});
 
 	it("Esc 关闭模型面板且不切换", async () => {
@@ -411,12 +480,13 @@ describe("全屏布局", () => {
 
 			const lines = frameLines(output).map(plain);
 			const text = lines.join("\n");
-			assert.ok(text.includes("! Config error:"));
+			assert.ok(text.includes("! Warning:"));
 			assert.ok(text.includes("/model"));
 			assert.ok(text.includes("/effort"));
+			assert.ok(text.includes("/compact"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 3 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 4 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);
@@ -599,7 +669,264 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("工具审批在输入框上方弹出，y 放行 Enter 拒绝", async (t) => {
+	it("/compact 立即压缩上下文，进度与结果进入对话流", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		let compactCalls = 0;
+		let refreshes = 0;
+		let listener: AgentEventListener | undefined;
+		let finishCompact: (() => void) | undefined;
+		const agent: AgentRuntime = {
+			runTurn: async () => {},
+			refreshInfo: () => {
+				refreshes += 1;
+			},
+			compact: (onEvent) => {
+				compactCalls += 1;
+				listener = onEvent;
+				return new Promise<void>((resolve) => {
+					finishCompact = resolve;
+				});
+			},
+		};
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/compact\r"));
+			assert.equal(compactCalls, 1);
+
+			void listener?.({ type: "compaction_start", messages: 6, tokensBefore: 5000 });
+			t.mock.timers.tick(100);
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› /compact"));
+			assert.ok(text.includes("· compacting context (6 messages, ~5000 tokens)"));
+			assert.ok(text.includes("Compacting context..."));
+
+			void listener?.({ type: "compaction_end", covered: 6, tokensBefore: 5000, tokensAfter: 1200 });
+			t.mock.timers.tick(100);
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("compacted: ~5000 → ~1200 tokens"));
+			assert.ok(refreshes >= 1);
+
+			finishCompact?.();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			t.mock.timers.tick(2000);
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("compacted: ~5000 → ~1200 tokens"));
+			assert.equal(text.includes("Done"), false);
+			assert.equal(text.includes("Compacting context..."), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("一轮完成后立即清空状态行，不显示 Done", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "text_delta", text: "hi" });
+			t.mock.timers.tick(100);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Writing response..."));
+
+			await agent.finish();
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("hi"));
+			assert.equal(text.includes("Done"), false);
+			assert.equal(text.includes("Writing response..."), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("没有压缩入口时 /compact 提示配置不可用", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			warning: WARNING,
+			ready: false,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/compact\r"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Configuration required"));
+			assert.equal(text.includes("Waiting for response..."), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("审批面板替换输入区与页脚，结束后恢复", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("📁 Reins"));
+
+			let decision: ApprovalAnswer | undefined;
+			void broker
+				.request({ tool: "bash", risk: "destructive", detail: "npm test" })
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			let lines = frameLines(output);
+			let text = lines.map(plain).join("\n");
+			assert.ok(text.includes("Permission required"));
+			assert.ok(text.includes("Bash: npm test"));
+			assert.equal(text.includes("destructive"), false);
+			assert.ok(text.includes("[y] allow once"));
+			assert.ok(text.includes("[n] deny"));
+			// 面板占据原本页脚的六行；输入行、状态行与信息行都不再显示
+			assert.ok(plain(lines[6] ?? "").includes("Permission required"));
+			assert.equal(text.includes("📁 Reins"), false);
+
+			input.emit("data", Buffer.from("y"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "once");
+			lines = frameLines(output);
+			text = lines.map(plain).join("\n");
+			assert.equal(text.includes("Permission required"), false);
+			// 审批结束后输入区与页脚原样恢复
+			assert.ok(text.includes("📁 Reins"));
+			assert.equal(plain(lines[9] ?? ""), " › ");
+
+			decision = undefined;
+			void broker.request({ tool: "write", risk: "destructive", detail: "a.ts" }).then((value) => {
+				decision = value;
+			});
+			t.mock.timers.tick(100);
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "once");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("审批动作支持鼠标点击", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+
+			let decision: string | undefined;
+			void broker
+				.request({ tool: "bash", risk: "destructive", detail: "npm test" })
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			// 面板占底部六行；动作行是主区域之后的第 5 行，点 [y]
+			input.emit("data", Buffer.from("\x1b[<0;5;19M"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "once");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("审批出现后直接回车确认", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+			let decision: string | undefined;
+			void broker
+				.request({ tool: "bash", risk: "destructive", detail: "npm test" })
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "once");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("审批面板按 a 记住本会话范围", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 
 		const input = new FakeInput();
@@ -620,38 +947,249 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(100);
 
-			let decision: boolean | undefined;
+			let answer: string | undefined;
 			void broker
-				.request("Allow bash to run?", '{"command":"npm test"}')
+				.request({
+					tool: "bash",
+					risk: "destructive",
+					detail: "git status",
+					saveLabel: 'commands starting with "git status"',
+					saveShort: "git status",
+				})
 				.then((value) => {
-					decision = value;
+					answer = value;
 				});
 			t.mock.timers.tick(100);
 
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Allow bash to run?"));
-			assert.ok(text.includes("[y/N]"));
-			assert.ok(text.includes('{"command":"npm test"}'));
+			assert.ok(text.includes("[a] always:"));
+			assert.ok(text.includes('"git status"'));
+			assert.ok(text.includes("[n] deny"));
 
-			input.emit("data", Buffer.from("y"));
+			input.emit("data", Buffer.from("a"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.equal(decision, true);
+
+			assert.equal(answer, "always");
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("Allow bash to run?"), false);
-
-			decision = undefined;
-			void broker.request("Allow write?", "{}").then((value) => {
-				decision = value;
-			});
-			t.mock.timers.tick(100);
-			input.emit("data", Buffer.from("\r"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.equal(decision, false);
+			assert.equal(text.includes("Permission required"), false);
 		} finally {
 			exitTui(input);
 		}
 
 		assert.equal(await running, 0);
+	});
+
+	it("方向键选择审批动作，回车确认", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+
+			let decision: string | undefined;
+			void broker
+				.request({
+					tool: "bash",
+					risk: "destructive",
+					detail: "git status",
+					saveLabel: 'commands starting with "git status"',
+					saveShort: "git status",
+				})
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			// 默认高亮 once；右键移到 always，回车确认
+			input.emit("data", Buffer.from("\x1b[C"));
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "always");
+
+			decision = undefined;
+			void broker
+				.request({
+					tool: "bash",
+					risk: "destructive",
+					detail: "git push",
+					saveLabel: 'commands starting with "git push"',
+					saveShort: "git push",
+				})
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			// 新请求回到默认的 once，直接回车确认
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "once");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Ctrl+E 展开最近思考区块", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "reasoning_delta", text: "line1\nline2\nline3\nline4\nline5\nline6" });
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("line1"), false);
+
+			input.emit("data", Buffer.from("\x05"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("line1"));
+
+			input.emit("data", Buffer.from("\x05"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("line1"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("Ctrl+O 展开最近成功工具结果", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "RESULT-BODY",
+				content: "RESULT-BODY",
+			});
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("RESULT-BODY"), false);
+
+			input.emit("data", Buffer.from("\x0f"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("RESULT-BODY"));
+
+			input.emit("data", Buffer.from("\x0f"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("RESULT-BODY"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("Ctrl+O 可展开收起工具组里的结果", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "A-BODY",
+				content: "A-BODY",
+			});
+			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "b.ts" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c2",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "B-BODY",
+				content: "B-BODY",
+			});
+			t.mock.timers.tick(100);
+			await agent.finish();
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("B-BODY"), false);
+
+			input.emit("data", Buffer.from("\x0f"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("B-BODY"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("双击展开长思考时保持标题位置，不跳到底部", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		const plainLines = (): string[] => frameLines(output).map(plain);
+		const rowOf = (needle: string): number =>
+			plainLines().findIndex((line) => line.includes(needle)) + 1;
+
+		try {
+			input.emit("data", Buffer.from("你好\r"));
+			const body = Array.from({ length: 20 }, (_, index) => `line${String(index + 1).padStart(2, "0")}`);
+			agent.emit({ type: "reasoning_delta", text: body.join("\n") });
+			t.mock.timers.tick(100);
+
+			const headerRow = rowOf("Thinking…");
+			assert.ok(headerRow > 0);
+
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+
+			const text = plainLines().join("\n");
+			// 展开后标题仍在视口里，并且从头显示正文，而不是跳到最后一行的位置
+			assert.ok(text.includes("Thinking…"));
+			assert.ok(text.includes("line01"));
+		} finally {
+			exitTui(input);
+		}
 	});
 
 	it("启动时回填历史并隐藏启动画面", () => {
@@ -692,7 +1230,7 @@ describe("全屏布局", () => {
 			assert.equal(plain(lines[3] ?? ""), BORDER.repeat(20));
 			assert.equal(plain(lines[4] ?? ""), " › ");
 			assert.equal(plain(lines[5] ?? ""), BORDER.repeat(20));
-			assert.equal(plain(lines[6] ?? ""), "📁 Reins · 🌿 main");
+			assert.equal(plain(lines[6] ?? ""), "📊 100K / 1M");
 			assert.ok(lines[3]?.startsWith(FOCUS));
 			assert.ok(lines[4]?.startsWith(FOCUS));
 			assert.ok(cursorAt(output, 5, 4));
@@ -739,6 +1277,12 @@ describe("全屏布局", () => {
 			assert.ok(frameLines(output)[9]?.startsWith(BLUR));
 			assert.equal(frame.includes("\x1b[?25h"), false);
 			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
+
+			// 点页脚信息行不算点输入框，焦点保持在外
+			input.emit("data", Buffer.from("\x1b[<0;5;12M"));
+			frame = rawFrame(output);
+			assert.ok(frame.includes(BLUR));
+			assert.equal(frame.includes("\x1b[?25h"), false);
 
 			// 点输入行（第 10 行）重新获得焦点
 			input.emit("data", Buffer.from("\x1b[<0;5;10M"));
@@ -851,6 +1395,79 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("重试时状态行说明第几次", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "retrying", attempt: 2, reason: "connection reset" });
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Retrying (2)..."));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("notify=bell 时一轮结束响铃", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			notify: "bell",
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			assert.equal(output.chunks.some((chunk) => chunk.includes("\x07")), false);
+
+			await agent.finish();
+			assert.ok(output.chunks.some((chunk) => chunk.includes("\x07")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("notify=auto 只在终端失焦时响铃", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			notify: "auto",
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			await agent.finish();
+			assert.equal(output.chunks.some((chunk) => chunk.includes("\x07")), false);
+
+			input.emit("data", Buffer.from("\x1b[O"));
+			input.emit("data", Buffer.from("two\r"));
+			await agent.finish();
+			assert.ok(output.chunks.some((chunk) => chunk.includes("\x07")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("每记一笔用量页脚就更新，不必等整轮结束", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 
@@ -870,7 +1487,7 @@ describe("全屏布局", () => {
 			assert.ok(before.includes("100K / 1M"));
 			assert.ok(before.includes("⚡ 50%"));
 
-			agent.emit({ type: "usage_recorded" });
+			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 440_000 });
 			t.mock.timers.tick(1);
 
 			// 轮次还没结束，页脚已经是最新的一笔
@@ -878,6 +1495,39 @@ describe("全屏布局", () => {
 			assert.ok(after.includes("440K / 1M"));
 			assert.ok(after.includes("⚡ 75%"));
 			assert.ok(after.includes("Waiting for response..."));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("状态行 token 是本轮累计用量，压缩用量不计入", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+
+			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 1200 });
+			t.mock.timers.tick(100);
+			let status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("⇣1.2K"));
+
+			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 800 });
+			t.mock.timers.tick(100);
+			status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("⇣2K"));
+
+			// 压缩请求是压缩成本，不属于这一轮对话的 token 用量
+			agent.emit({ type: "usage_recorded", kind: "compact", tokens: 5000 });
+			t.mock.timers.tick(100);
+			status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("⇣2K"));
+			assert.equal(status.includes("⇣7K"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -925,7 +1575,7 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("思考只留一行时长摘要，正文不进对话流", (t) => {
+	it("思考正文运行时显示最后五行，双击标题展开或收起", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
 
 		const input = new FakeInput();
@@ -935,36 +1585,104 @@ describe("全屏布局", () => {
 		const agent = createFakeAgent();
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
 
+		const rowOf = (needle: string): number =>
+			frameLines(output).findIndex((line) => plain(line).includes(needle)) + 1;
+		const doubleClick = (row: number): void => {
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+		};
+
 		try {
 			input.emit("data", Buffer.from("你好\r"));
-			agent.emit({ type: "reasoning_delta", text: "先看工作区里有哪些文件" });
-			agent.emit({ type: "reasoning_delta", text: "，再决定读哪几个" });
+			agent.emit({ type: "reasoning_delta", text: "line1\nline2\nline3\n" });
+			agent.emit({ type: "reasoning_delta", text: "line4\nline5\nline6\nline7" });
 			t.mock.timers.tick(500);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("✻ Thinking…"));
+			assert.ok(
+				["line3", "line4", "line5", "line6", "line7"].every((line) => text.includes(line)),
+			);
+			assert.equal(text.includes("line1"), false);
+			assert.equal(text.includes("line2"), false);
+
+			// 双击 Thinking… 展开全文
+			doubleClick(rowOf("Thinking…"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("line1"));
+			assert.ok(text.includes("line2"));
+
+			// 再次双击回到最后五行
+			doubleClick(rowOf("Thinking…"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("line1"), false);
+			assert.ok(text.includes("line3"));
+
+			// 结束：默认收起为标题
 			agent.emit({ type: "text_delta", text: "你好，我能读写文件和跑命令。" });
 			t.mock.timers.tick(100);
-
-			const lines = frameLines(output);
-			const text = lines.map(plain).join("\n");
-			// 只留摘要：想过多久、想过几次，正文不进对话流
-			assert.ok(text.includes("thought 0.5s"));
-			assert.equal(text.includes("先看工作区里有哪些文件"), false);
-			// 摘要排在它之后的回答前面
-			assert.ok(text.indexOf("thought 0.5s") < text.indexOf("你好，我能读写文件和跑命令。"));
-			// 摘要比正文弱一档
+			const finished = frameLines(output);
+			text = finished.map(plain).join("\n");
+			assert.ok(text.includes("✻ Thought for 0.5s"));
+			assert.equal(text.includes("line3"), false);
 			assert.ok(
-				lines.some((line) => line.includes(THEME.textSubtle) && plain(line).includes("thought 0.5s")),
+				finished.some(
+					(line) => line.includes(THEME.textSubtle) && plain(line).includes("Thought for 0.5s"),
+				),
 			);
 
-			// 工具循环里第二次思考另计一段
-			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "README.md" } });
-			agent.emit({ type: "reasoning_delta", text: "再看一眼服务端结构" });
-			t.mock.timers.tick(300);
-			agent.emit({ type: "text_delta", text: "看完了。" });
+			// 双击 Thought for Xs 展开全文
+			doubleClick(rowOf("Thought for 0.5s"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("line1"));
+			assert.ok(text.includes("line5"));
+
+			// 再次双击收起
+			doubleClick(rowOf("Thought for 0.5s"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("line1"), false);
+			assert.ok(text.includes("Thought for 0.5s"));
+
+			// 回答仍在摘要之后
+			assert.ok(text.indexOf("Thought for 0.5s") < text.indexOf("你好，我能读写文件和跑命令。"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("工具成功不在对话流里留 done 行，失败仍显示", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("跑一下\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
 			t.mock.timers.tick(100);
 
-			const after = frameLines(output).map(plain).join("\n");
-			assert.ok(after.includes("thought 0.3s"));
-			assert.equal(after.match(/thought /g)?.length, 2);
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Read  a.ts"));
+			assert.ok(text.includes("Running Read..."));
+
+			agent.emit({ type: "tool_end", callId: "c1", name: "read", isError: false, durationMs: 12, summary: "" });
+			t.mock.timers.tick(100);
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Read  a.ts"));
+			assert.equal(text.includes('{"path"'), false);
+			assert.equal(text.includes("done"), false);
+
+			agent.emit({ type: "tool_start", callId: "c2", name: "bash", args: { command: "false" } });
+			agent.emit({ type: "tool_end", callId: "c2", name: "bash", isError: true, durationMs: 3, summary: "exit 1" });
+			t.mock.timers.tick(100);
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("× Bash  exit 1 (3ms)"));
 		} finally {
 			exitTui(input);
 		}
@@ -995,8 +1713,8 @@ describe("全屏布局", () => {
 			t.mock.timers.tick(100);
 
 			const lines = frameLines(output);
-			const failed = lines.find((line) => plain(line).includes("failed 3ms"));
-			const error = lines.find((line) => plain(line).includes("error: boom"));
+			const failed = lines.find((line) => plain(line).includes("× Bash"));
+			const error = lines.find((line) => plain(line).includes("× Error: boom"));
 			const status = lines.find((line) => plain(line).includes("Error"));
 
 			assert.ok(failed?.includes(THEME.error));
@@ -1004,6 +1722,74 @@ describe("全屏布局", () => {
 			assert.ok(status?.includes(THEME.error));
 			// 已经不是「正在进行」了：状态行不该还用强调色，也不必扫光
 			assert.equal(status?.includes(THEME.accent), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("连续只读工具运行时展开，回合结束折叠", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hi\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
+			agent.emit({ type: "tool_end", callId: "c1", name: "read", isError: false, durationMs: 1, summary: "" });
+			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "b.ts" } });
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("◈ Read 2 files"));
+			assert.ok(text.includes("› Read  a.ts"));
+			assert.ok(text.includes("› Read  b.ts"));
+
+			await agent.finish();
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Read 2 files"));
+			assert.equal(text.includes("› Read  a.ts"), false);
+			assert.equal(text.includes("› Read  b.ts"), false);
+
+			// 双击组头展开，不必等下一轮
+			const headerRow = frameLines(output).map(plain).findIndex((line) => line.includes("› Read 2 files")) + 1;
+			assert.ok(headerRow > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("◈ Read 2 files"));
+			assert.ok(text.includes("› Read  a.ts"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("中止状态不带冻结的转圈符号", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "aborted" });
+			t.mock.timers.tick(100);
+
+			const status = frameLines(output).find((line) => plain(line).includes("Aborted"));
+			assert.ok(status);
+			assert.ok(status.includes(THEME.error));
+			assert.ok(plain(status).trimStart().startsWith("Aborted"));
+			assert.ok(
+				frameLines(output).some((line) => plain(line).includes("× Error: aborted")),
+			);
 		} finally {
 			exitTui(input);
 		}
@@ -1149,6 +1935,103 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("键盘滚动对话流，滚上去后提示新输出并可回底", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 50;
+		output.rows = 12;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n"),
+			});
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("line 30"));
+
+			input.emit("data", Buffer.from("\x1b[5~"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("line 30"), false);
+
+			agent.emit({ type: "text_delta", text: "\ntail-line\n" });
+			t.mock.timers.tick(100);
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("new output"));
+
+			input.emit("data", Buffer.from("\x1b[1;5F"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("tail-line"));
+			assert.equal(text.includes("new output"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("输入支持左右移动与中间插入", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\x1b[D"));
+			input.emit("data", Buffer.from("X"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" › abXc"));
+			assert.ok(cursorAt(output, 10, 7));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("输入历史用上下键回填，回到草稿", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			await agent.finish();
+
+			input.emit("data", Buffer.from("\x1b[A"));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" › first"));
+
+			input.emit("data", Buffer.from("\x1b[B"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" › "));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("多行粘贴按行显示且不提交", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("\x1b[200~line1\r\nline2\x1b[201~"));
+
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line.startsWith(" › line1")));
+			assert.ok(lines.some((line) => line.startsWith("   line2")));
+			assert.ok(cursorAt(output, 10, 9));
+			assert.equal(lines.join("\n").includes("Waiting for response..."), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("还没输入就按退格，品牌名与版本号仍然显示", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -1242,9 +2125,49 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("插件命令出现在补全里并能执行，参数原样传入", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		let call: { name: string; args: string } | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			pluginCommands: {
+				list: () => [{ name: "reload", description: "Reload external plugins", enabled: true }],
+				run: async (name, args) => {
+					call = { name, args };
+					return ["External plugins reloaded"];
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("/reload"));
+			assert.ok(text.includes("Reload external plugins"));
+
+			input.emit("data", Buffer.from("reload now\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.deepEqual(call, { name: "reload", args: "now" });
+			assert.ok(text.includes("› /reload"));
+			assert.ok(text.includes("External plugins reloaded"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("命令补全面板列出 /help", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		output.columns = 80;
 		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
@@ -1314,7 +2237,6 @@ describe("全屏布局", () => {
 			// 一直滚到底，按键分区与脚注都可见
 			for (let index = 0; index < 40; index += 1) input.emit("data", Buffer.from("\x1b[B"));
 			const bottom = frameLines(output).map(plain).join("\n");
-			assert.ok(bottom.includes("Ctrl+C twice"));
 			assert.ok(bottom.includes("Run reins --help"));
 
 			// 一直滚回顶部后不再上移

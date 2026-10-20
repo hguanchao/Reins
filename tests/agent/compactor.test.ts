@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { Compactor, estimateTokens } from "../../src/agent/compactor.ts";
+import { compactionWindow, Compactor, estimateTokens } from "../../src/agent/compactor.ts";
 import { EventStream } from "../../src/llm/event-stream.ts";
 import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../../src/llm/client.ts";
 import type { LlmMessage } from "../../src/llm/messages.ts";
@@ -22,13 +22,14 @@ function emptyStream(): LlmStream {
 	return stream;
 }
 
-function compactor(overrides: Partial<{ contextWindow: number; client: LlmClient; maxTokens: number | undefined }> = {}): Compactor {
+function compactor(overrides: Partial<{ contextWindow: number; client: LlmClient; maxTokens: number | undefined; summaryTimeoutMs: number }> = {}): Compactor {
 	return new Compactor({
 		client: overrides.client ?? { api: "fake", stream: () => emptyStream() },
 		provider: "p",
 		model: { id: "m1", name: "m1", api: "a", baseUrl: "b", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: overrides.maxTokens, maxTokensField: "max_tokens", headers: {} },
 		contextWindow: overrides.contextWindow ?? 1000,
 		maxTokens: overrides.maxTokens,
+		summaryTimeoutMs: overrides.summaryTimeoutMs,
 	});
 }
 
@@ -87,6 +88,44 @@ describe("压缩计划", () => {
 
 	it("什么都保不住时给 0", () => {
 		assert.equal(compactor({ contextWindow: 10 }).plan([userMessage("x")]), 0);
+	});
+});
+
+describe("压缩窗口与时限", () => {
+	it("摘要模型更小时按较小窗口规划", () => {
+		assert.equal(compactionWindow(1000, 500), 500);
+		assert.equal(compactionWindow(1000, 2000), 1000);
+		assert.equal(compactionWindow(1000, undefined), 1000);
+	});
+
+	it("摘要超过总时限按失败处理", async () => {
+		const client: LlmClient = {
+			api: "fake",
+			stream: (request: LlmRequest) => {
+				const es = EventStream.incremental<LlmEvent, LlmResult>();
+				request.signal.addEventListener(
+					"abort",
+					() => {
+						es.close({
+							stopReason: "aborted",
+							content: [],
+							usage: undefined,
+							errorMessage: undefined,
+							model: "m1",
+						});
+					},
+					{ once: true },
+				);
+				return es;
+			},
+		};
+
+		const result = await compactor({ client, summaryTimeoutMs: 10 }).summarize(
+			[userMessage("content")],
+			SIGNAL,
+		);
+		assert.equal(result.ok, false);
+		assert.match(result.ok === false ? result.message : "", /time budget/);
 	});
 });
 

@@ -14,7 +14,7 @@ import type { RetryPolicy } from "./retry.ts";
 
 export interface LlmClientFactory {
 	readonly api: string;
-	create(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy): LlmClient;
+	create(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy, proxy?: string): LlmClient;
 }
 
 export class LlmRegistry {
@@ -37,12 +37,12 @@ export class LlmRegistry {
 	 * 协议名不认识时直接报错并列出可用项：静默挑一个顶上会让使用者以为接通了，其实请求
 	 * 发去了别的地方。
 	 */
-	create(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy): LlmClient {
+	create(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy, proxy?: string): LlmClient {
 		const factory = this.#factories.find((item) => item.api === model.api);
 		if (factory === undefined) {
 			throw new Error(`no adapter for protocol ${model.api}; available protocols: ${this.apis().join(", ")}`);
 		}
-		return factory.create(provider, model, policy);
+		return factory.create(provider, model, policy, proxy);
 	}
 }
 
@@ -51,15 +51,15 @@ export function createBuiltinLlmRegistry(): LlmRegistry {
 	const registry = new LlmRegistry();
 	registry.register({
 		api: "anthropic-messages",
-		create: (provider, model, policy) => new AnthropicMessagesClient(provider, model, policy),
+		create: (provider, model, policy, proxy) => new AnthropicMessagesClient(provider, model, policy, proxy),
 	});
 	registry.register({
 		api: "openai-completions",
-		create: (provider, model, policy) => new OpenAiCompletionsClient(provider, model, policy),
+		create: (provider, model, policy, proxy) => new OpenAiCompletionsClient(provider, model, policy, proxy),
 	});
 	registry.register({
 		api: "openai-responses",
-		create: (provider, model, policy) => new OpenAiResponsesClient(provider, model, policy),
+		create: (provider, model, policy, proxy) => new OpenAiResponsesClient(provider, model, policy, proxy),
 	});
 	return registry;
 }

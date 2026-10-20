@@ -46,10 +46,23 @@ describe("插件宿主", () => {
 			}),
 		);
 		assert.equal(registry.get("first_tool")?.name, "first_tool");
+		assert.deepEqual(registry.describe(), [{ name: "first_tool", source: "bundled" }]);
 		assert.deepEqual(host.commands().map((command) => command.name), ["first-cmd"]);
 		assert.equal(policy.ruleCount(), 1);
 		assert.equal(host.backends().length, 1);
 		assert.ok(host.sessionStore() !== undefined);
+	});
+
+	it("随包插件与外部插件的来源分开标记", async () => {
+		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
+		const host = new PluginHost(registry, new PermissionPolicy("ask"));
+		await host.load([pluginOf("bundled", (api) => api.registerTool(toolNamed("bundled_tool")))]);
+		await host.loadExternal([pluginOf("external", (api) => api.registerTool(toolNamed("external_tool")))]);
+
+		assert.deepEqual(registry.describe(), [
+			{ name: "bundled_tool", source: "bundled" },
+			{ name: "external_tool", source: "plugin" },
+		]);
 	});
 
 	it("装载半途抛错的插件不留下任何注册项", async () => {

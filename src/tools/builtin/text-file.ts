@@ -87,9 +87,20 @@ function encodeBytes(text: string, encoding: TextEncoding, hasBom: boolean): Buf
 
 /** 文件开头是否像二进制内容。文本文件在开头不会出现零字节，不必读全文。 */
 export function looksBinary(buffer: Buffer, probeBytes: number): boolean {
+	// UTF-16 正文的每个 ASCII 字符都带一个零字节；带 BOM 时它就是文本，不能按二进制拒绝。
+	// 不带 BOM 的 UTF-16 无法与二进制可靠区分，仍按二进制处理。
+	if (hasUtf16Bom(buffer)) return false;
+
 	const limit = Math.min(buffer.length, probeBytes);
 	for (let index = 0; index < limit; index += 1) {
 		if (buffer[index] === 0) return true;
 	}
 	return false;
+}
+
+function hasUtf16Bom(buffer: Buffer): boolean {
+	return (
+		buffer.length >= 2 &&
+		((buffer[0] === 0xff && buffer[1] === 0xfe) || (buffer[0] === 0xfe && buffer[1] === 0xff))
+	);
 }

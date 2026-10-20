@@ -4,20 +4,21 @@ import {
 	userText,
 	type LlmMessage,
 } from "../llm/messages.ts";
-import type { TranscriptTurn } from "./transcript.ts";
+import { describeToolCall, displayToolName } from "../tools/describe.ts";
+import { appendToolLine, findToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 把会话消息折叠成对话流。
  *
  * 续聊时模型能看到的历史必须同样出现在界面上，否则页脚显示有上下文、对话区却是一片空白。
- * 压缩摘要不当作使用者提示展示；工具调用保留一行参数摘要，工具结果保留首行。
+ * 压缩摘要不当作使用者提示展示；工具调用保留一行可读摘要，工具结果只保留失败原因。
  */
 
 const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
 const MAX_LINE = 200;
 
 interface MutableTurn extends TranscriptTurn {
-	response: string[];
+	response: TranscriptLine[];
 }
 
 export function buildTranscriptHistory(
@@ -48,25 +49,41 @@ export function buildTranscriptHistory(
 				const text = assistantText(message);
 				if (text.length > 0) turn.response.push(...text.split("\n"));
 				for (const call of assistantToolCalls(message)) {
-					turn.response.push(`· ${call.name} ${summarizeArgs(call.arguments)}`);
+					const described = describeToolCall(call.name, call.arguments);
+					appendToolLine(
+						turn.response,
+						{
+							kind: "tool",
+							name: described.name,
+							detail: described.detail,
+							group: described.group,
+							callId: call.id,
+						},
+						false,
+					);
 				}
 				break;
 			}
 			case "toolResult": {
+				if (!message.isError) {
+					const turn = ensureTurn("(earlier conversation)");
+					const tool = findToolByCallId(turn.response, message.toolCallId);
+					if (tool !== undefined) tool.result = message.content;
+					break;
+				}
 				const turn = ensureTurn("(earlier conversation)");
-				const first = firstLine(message.content);
-				turn.response.push(message.isError ? `  failed: ${first}` : `  done: ${first}`);
+				turn.response.push({
+					kind: "tool",
+					name: displayToolName(message.toolName),
+					detail: firstLine(message.content),
+					isError: true,
+				});
 				break;
 			}
 		}
 	}
 
 	return turns;
-}
-
-function summarizeArgs(args: Record<string, unknown>): string {
-	const text = JSON.stringify(args);
-	return text.length > 120 ? `${text.slice(0, 120)}…` : text;
 }
 
 function firstLine(content: string): string {
