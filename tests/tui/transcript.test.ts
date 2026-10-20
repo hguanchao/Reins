@@ -322,7 +322,7 @@ describe("工具调用行", () => {
 		assert.ok(body?.startsWith(`  ${THEME.surface}`));
 	});
 
-	it("展开详情上下各留一行色带，右侧留两列", () => {
+	it("展开详情紧贴标题行，不再上下留空行", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
 			name: "Read",
@@ -335,15 +335,9 @@ describe("工具调用行", () => {
 		const headRow = lines.findIndex((line) => plain(line).includes("◆ Read"));
 		assert.ok(headRow >= 0);
 
-		const top = lines[headRow + 1] ?? "";
-		const content = lines[headRow + 2] ?? "";
-		const bottom = lines[headRow + 3] ?? "";
-
-		assert.ok(top.includes(THEME.surface));
-		assert.equal(plain(top).trim(), "");
+		const content = lines[headRow + 1] ?? "";
+		assert.ok(content.includes(THEME.surface));
 		assert.ok(plain(content).includes("1  line 1"));
-		assert.ok(bottom.includes(THEME.surface));
-		assert.equal(plain(bottom).trim(), "");
 	});
 
 	it("文件详情换行时悬挂缩进到内容列", () => {

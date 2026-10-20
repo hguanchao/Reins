@@ -748,15 +748,11 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const bandStart = displayWidth(baseIndent);
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
-		const body = [
-			bandBlankLine(baseIndent, width, bandStart),
-			...tool.fullDetail
-				.split("\n")
-				.flatMap((line) =>
-					detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
-				),
-			bandBlankLine(baseIndent, width, bandStart),
-		];
+		const body = tool.fullDetail
+			.split("\n")
+			.flatMap((line) =>
+				detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
+			);
 		return [head, ...body];
 	}
 
@@ -933,13 +929,6 @@ function hangingLines(
 		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
 		return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
 	});
-}
-
-/** 面板上下内边距：整条色带，不写内容。 */
-function bandBlankLine(baseIndent: string, width: number, bandStart: number): string {
-	const start = Math.max(0, Math.min(bandStart, width));
-	const lead = baseIndent.slice(0, start);
-	return `${lead}${THEME.surface}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /** 详情行换行后同样从 bandStart 列开始铺色带，续行缩进留在带内。 */
