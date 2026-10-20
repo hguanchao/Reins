@@ -78,9 +78,9 @@ describe("思考区块", () => {
 		assert.ok(header);
 		assert.ok(body);
 		assert.ok(plain(header).startsWith("  ✻ Thinking…"));
-		assert.ok(plain(body).startsWith("   three"));
+		assert.ok(plain(body).startsWith("    three"));
 		assert.equal(header.includes(THEME.surface), false);
-		assert.equal(body.indexOf(THEME.surface), 2);
+		assert.equal(body.indexOf(THEME.surface), 3);
 	});
 
 	it("展开时只提亮标题标签，耗时保持弱化", () => {
@@ -113,8 +113,8 @@ describe("思考区块", () => {
 		assert.equal(plain(top).trim(), "");
 
 		const body = lines.find((line) => plain(line).includes("three")) ?? "";
-		assert.ok(body.startsWith(`  ${THEME.surface}`));
-		assert.ok(plain(body).startsWith("   three"));
+		assert.ok(body.startsWith(`   ${THEME.surface}`));
+		assert.ok(plain(body).startsWith("    three"));
 
 		const lastRow = lines.findIndex((line) => plain(line).includes("seven"));
 		assert.ok(lastRow >= 0);
@@ -312,8 +312,8 @@ describe("工具调用行", () => {
 			.join("\n");
 
 		assert.ok(text.includes("  ◆ Edit  auth.ts"));
-		assert.ok(text.includes("   path: src/auth.ts"));
-		assert.ok(text.includes("   edit 1: old -> new"));
+		assert.ok(text.includes("    path: src/auth.ts"));
+		assert.ok(text.includes("    edit 1: old -> new"));
 	});
 
 	it("只读工具展开后显示结果内容，而不是参数清单", () => {
@@ -331,8 +331,8 @@ describe("工具调用行", () => {
 
 		assert.ok(text.includes("  ◆ Read  a.ts"));
 		assert.equal(text.includes("(2 lines)"), false);
-		assert.ok(text.includes("   1  line 1"));
-		assert.ok(text.includes("   2  line 2"));
+		assert.ok(text.includes("    1  line 1"));
+		assert.ok(text.includes("    2  line 2"));
 		assert.equal(text.includes("path:"), false);
 		assert.ok(lines.some((line) => line.includes(THEME.surface)));
 
@@ -341,7 +341,7 @@ describe("工具调用行", () => {
 		const body = lines.find((line) => plain(line).includes("1  line 1"));
 		assert.ok(plain(head ?? "").startsWith("  "));
 		assert.equal(head?.includes(THEME.surface), false);
-		assert.ok(body?.startsWith(`  ${THEME.surface}`));
+		assert.ok(body?.startsWith(`   ${THEME.surface}`));
 	});
 
 	it("展开标题与 Thought 同色，文件路径用实线下划线", () => {
@@ -405,7 +405,7 @@ describe("工具调用行", () => {
 
 		assert.ok(lines.length > 1);
 		// 2 列标题缩进 + 1 列带内缩进 + 行号与分隔（3 列）
-		assert.ok(lines[1]?.startsWith("      "));
+		assert.ok(lines[1]?.startsWith("       "));
 		assert.equal(lines[1]?.startsWith("   1"), false);
 	});
 

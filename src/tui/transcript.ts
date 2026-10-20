@@ -642,9 +642,10 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 	});
 }
 
-/** 思考正文的一行：色带从标题符号列开始，左右各留一列内边距。 */
+/** 思考正文的一行：色带从标题符号右侧一列开始，左右各留一列内边距。 */
 function thinkingBodyLines(text: string, width: number): readonly string[] {
-	const start = displayWidth(RESPONSE_INDENT);
+	const start = displayWidth(RESPONSE_INDENT) + 1;
+	const lead = " ".repeat(start);
 	const inside = " ".repeat(THINKING_PADDING);
 	const contentWidth = Math.max(1, width - start - displayWidth(inside) - THINKING_PADDING);
 
@@ -652,14 +653,14 @@ function thinkingBodyLines(text: string, width: number): readonly string[] {
 		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
 		const visible = truncateToWidth(content, width - start);
 		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
-		return `${RESPONSE_INDENT}${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
+		return `${lead}${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
 	});
 }
 
 /** 思考正文的上下内边距：整条色带，不写内容。 */
 function thinkingBlankLine(width: number): string {
-	const start = displayWidth(RESPONSE_INDENT);
-	return `${RESPONSE_INDENT}${THINKING_BG}${" ".repeat(Math.max(0, width - start))}${RESET}`;
+	const start = displayWidth(RESPONSE_INDENT) + 1;
+	return `${" ".repeat(start)}${THINKING_BG}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /**
@@ -766,18 +767,18 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：标题行不着色，详情从标题符号列开始铺色带
-		const bandStart = displayWidth(baseIndent);
+		// 展开：标题行不着色，详情从标题符号右侧一列开始铺色带
+		const bandStart = displayWidth(baseIndent) + 1;
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
 		const body = [
-			bandBlankLine(baseIndent, width, bandStart),
+			bandBlankLine(width, bandStart),
 			...tool.fullDetail
 				.split("\n")
 				.flatMap((line) =>
 					detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
 				),
-			bandBlankLine(baseIndent, width, bandStart),
+			bandBlankLine(width, bandStart),
 		];
 		return [head, ...body];
 	}
@@ -895,7 +896,6 @@ function detailBodyLines(
 				match[1] ?? "",
 				"",
 				match[2] ?? "",
-				baseIndent,
 				width,
 				bandStart,
 				color,
@@ -910,7 +910,6 @@ function detailBodyLines(
 				match[1] ?? "",
 				match[2] ?? "",
 				match[3] ?? "",
-				baseIndent,
 				width,
 				bandStart,
 				color,
@@ -920,7 +919,7 @@ function detailBodyLines(
 	}
 	return bandedWrappedLines(
 		line,
-		`${baseIndent} `,
+		`${baseIndent}  `,
 		width,
 		color,
 		bandStart,
@@ -929,9 +928,9 @@ function detailBodyLines(
 }
 
 /** 面板上下内边距：整条色带，不写内容。 */
-function bandBlankLine(baseIndent: string, width: number, bandStart: number): string {
+function bandBlankLine(width: number, bandStart: number): string {
 	const start = Math.max(0, Math.min(bandStart, width));
-	const lead = baseIndent.slice(0, start);
+	const lead = " ".repeat(start);
 	return `${lead}${THEME.surface}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
@@ -940,7 +939,6 @@ function hangingLines(
 	gutter: string,
 	marker: string,
 	text: string,
-	baseIndent: string,
 	width: number,
 	bandStart: number,
 	color: string,
@@ -948,7 +946,7 @@ function hangingLines(
 ): readonly string[] {
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
-	const lead = baseIndent.slice(0, start);
+	const lead = " ".repeat(start);
 	const inside = " ";
 	const hangingWidth = displayWidth(gutter) + displayWidth(marker);
 	const available = Math.max(1, contentEnd - start - displayWidth(inside) - hangingWidth);
