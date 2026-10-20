@@ -42,20 +42,21 @@ export function resultDetail(
 
 /** 文件内容带行号展开；范围来自结构化详情，历史回放则从结果尾注里取。 */
 function readDetail(content: string, details: unknown): ResultDetail | undefined {
-	// 结果被落盘时，content 是预览加落盘说明，不是文件正文；不能再按行号排版
-	if (/\[the full result is \d+ characters;/.test(content)) {
-		return { text: sanitizeDetail(content), kind: "text" };
-	}
-
 	const info = record(details);
 	if (numberField(info, "lines") === 0 || / is empty$/.test(content)) {
 		return { text: "(empty)", kind: "text" };
 	}
 
-	const footer = /\[showing lines (\d+)-(\d+) of (\d+);/.exec(content);
+	// 界面优先用 details 里的完整正文；result 被落盘时它只是预览加说明
+	const fullText = stringField(info, "text");
+	if (fullText === undefined && /\[the full result is \d+ characters;/.test(content)) {
+		return { text: sanitizeDetail(content), kind: "text" };
+	}
+
+	const footer = fullText === undefined ? /\[showing lines (\d+)-(\d+) of (\d+);/.exec(content) : null;
 	const startLine = numberField(info, "startLine") ?? (footer === null ? 1 : Number(footer[1]));
 	const endLine = numberField(info, "endLine") ?? (footer === null ? undefined : Number(footer[2]));
-	const lines = readLines(content, startLine, endLine);
+	const lines = readLines(fullText ?? content, startLine, endLine);
 	if (lines.length === 0) return undefined;
 
 	const width = String(startLine + lines.length - 1).length;

@@ -44,6 +44,24 @@ describe("工具结果呈现", () => {
 		});
 	});
 
+	it("有完整正文时忽略落盘预览", () => {
+		const body = Array.from({ length: 185 }, (_, index) => `line ${index + 1}`).join("\n");
+		const spill = `${body.slice(0, 100)}\n\n… (500 characters omitted in the middle) …\n\n[the full result is 8758 characters; written to /tmp/x, read it back line by line]`;
+
+		const detail = resultDetail("read", spill, {
+			startLine: 1,
+			endLine: 185,
+			totalLines: 185,
+			text: body,
+		});
+
+		assert.equal(detail?.kind, "file");
+		assert.ok(detail?.text.includes("  1  line 1"));
+		assert.ok(detail?.text.includes("     …"));
+		assert.ok(detail?.text.includes("185  line 185"));
+		assert.equal(detail?.text.includes("the full result"), false);
+	});
+
 	it("diff 在 hunk 之间省略未改动行", () => {
 		const spaced = [
 			"@@ line 1 @@",

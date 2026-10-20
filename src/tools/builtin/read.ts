@@ -87,16 +87,18 @@ export const readTool: ToolDefinition<ReadArgs> = {
 			parts.push(`[showing lines ${firstLine}-${lastLine} of ${lines.length}; continue with offset=${lastLine + 1}]`);
 		}
 
-		return {
-			content: parts.join("\n\n"),
-			details: {
-				path: displayPath,
-				startLine: firstLine,
-				endLine: lastLine,
-				totalLines: lines.length,
-				encoding: file.encoding,
-			},
-		};
+			return {
+				content: parts.join("\n\n"),
+				details: {
+					path: displayPath,
+					startLine: firstLine,
+					endLine: lastLine,
+					totalLines: lines.length,
+					encoding: file.encoding,
+					// 界面展开用完整正文；result 可能被落盘成预览，不能拿它排版
+					text: truncated.text,
+				},
+			};
 	},
 };
 
