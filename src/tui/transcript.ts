@@ -118,10 +118,8 @@ const SCROLLBAR_COLOR = THEME.scrollbar;
 const SCROLLBAR_TRACK = " ";
 const SCROLLBAR_THUMB = "█";
 const RESET = THEME.reset;
-/** 实线下划线：展开后的文件路径不用终端给 OSC 8 链接画出的虚线。 */
+/** 实线下划线：展开后的路径与命令用它，和折叠态的终端下划线区分开。 */
 const UNDERLINE = "\x1b[4m";
-/** 虚线下划线（SGR 4:5）：折叠态表示「这里有内容可以展开看」。 */
-const DASHED_UNDERLINE = "\x1b[4:5m";
 
 /** 一段带颜色的文本；着色只到这一段为止，渲染完要回到调用方给的颜色。 */
 interface ColoredSegment {
@@ -837,20 +835,28 @@ function toolSummaryLine(
 		Math.max(0, available - displayWidth(tail) - displayWidth(shownMetric)),
 	);
 	const metricPart = shownMetric.length === 0 ? "" : `${TOOL_NAME_COLOR}${shownMetric}${RESET}`;
-	// 命令用琥珀色加虚线下划线：它是可以展开查看全文的东西，和普通参数不是一回事
-	if (command && shownTail.length > 2) {
-		const body = shownTail.slice(2);
-		const tailPart = `${shownTail.slice(0, 2)}${THEME.warning}${DASHED_UNDERLINE}${body}`;
-		return `${TOOL_NAME_COLOR}${head}${RESET}${tailPart}${RESET}${metricPart}${padding}`;
-	}
-	// 参数与工具名同色：折叠行是一个整体，正文色会让参数比标题更抢眼
-	return `${TOOL_NAME_COLOR}${head}${RESET}${TOOL_NAME_COLOR}${shownTail}${RESET}${metricPart}${padding}`;
+	// 命令也挂一条虚线下划线，表示「可以展开看全文」；颜色与其它参数一致，展开后才换成琥珀色
+	const tailPart =
+		command && shownTail.length > 2
+			? `${shownTail.slice(0, 2)}${TOOL_NAME_COLOR}${osc8Underline(shownTail.slice(2))}`
+			: `${TOOL_NAME_COLOR}${shownTail}`;
+	return `${TOOL_NAME_COLOR}${head}${RESET}${tailPart}${RESET}${metricPart}${padding}`;
 }
 
 /** 给参数文本挂上 OSC 8 链接；前导缩进留在链接外，终端只给路径画下划线。 */
 function linkTail(tail: string, target: string): string {
 	if (tail.length <= 2) return tail;
 	return `${tail.slice(0, 2)}${osc8Link(target, tail.slice(2))}`;
+}
+
+/**
+ * 只画下划线、不挂链接。
+ *
+ * 文件路径的下划线由 OSC 8 链接给出，命令没有链接可挂；这里用同样外观的空链接，
+ * 让两者的下划线来自同一套终端绘制，不会一个点线一个虚线。
+ */
+function osc8Underline(text: string): string {
+	return osc8Link("", text);
 }
 
 function osc8Link(target: string, text: string): string {

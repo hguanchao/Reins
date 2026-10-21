@@ -141,14 +141,17 @@ describe("思考区块", () => {
 });
 
 describe("工具调用行", () => {
-	it("Bash 命令折叠态是琥珀色虚线，展开态是实线", () => {
+	it("Bash 命令折叠态与普通参数同色，展开态才是琥珀色实线", () => {
 		const collapsed: TranscriptTool = { kind: "tool", name: "Bash", detail: "npm test" };
 		const collapsedLine =
 			renderTranscript(60, 10, [{ prompt: "hi", response: [collapsed] }], 0).find((line) =>
 				plain(line).includes("› Bash"),
 			) ?? "";
-		assert.ok(collapsedLine.includes(THEME.warning));
-		assert.ok(collapsedLine.includes("\x1b[4:5m"));
+		// 折叠态与其它工具的参数一致：弱化色，只有一条终端下划线
+		assert.ok(collapsedLine.includes(THEME.textSubtle));
+		assert.equal(collapsedLine.includes(THEME.warning), false);
+		// 下划线来自 OSC 8 空链接，不用 SGR 下划线样式，外观才能和文件路径一致
+		assert.ok(collapsedLine.includes("\x1b]8;;\x1b\\npm test"));
 
 		const expanded: TranscriptTool = {
 			kind: "tool",
@@ -164,17 +167,18 @@ describe("工具调用行", () => {
 			) ?? "";
 		assert.ok(expandHead.includes(THEME.warning));
 		assert.ok(expandHead.includes("\x1b[4m"));
-		assert.equal(expandHead.includes("\x1b[4:5m"), false);
 	});
 
 	it("其他工具的参数不加下划线", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hi",
-			response: [{ kind: "tool", name: "Read", detail: "a.ts" }],
+			response: [{ kind: "tool", name: "Grep", detail: "TODO" }],
 		};
-		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("› Read")) ?? "";
+		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("› Grep")) ?? "";
 
 		assert.equal(line.includes("\x1b[4:5m"), false);
+		// 没有 linkTarget 也没有命令身份时不该挂任何 OSC 8 链接
+		assert.equal(line.includes("\x1b]8;;"), false);
 		assert.equal(line.includes(THEME.warning), false);
 	});
 
