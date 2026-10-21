@@ -70,7 +70,7 @@ describe("思考区块", () => {
 		assert.ok(text.includes("one") && text.includes("seven"));
 	});
 
-	it("正文缩进到标题首字，色带从行首铺满", () => {
+	it("正文缩进到标题首字，色带外留四列", () => {
 		const block = blockOf("Thinking…", true);
 		const turn: TranscriptTurn = { prompt: "hi", response: [block] };
 		const lines = renderTranscript(40, 12, [turn], 0);
@@ -82,7 +82,7 @@ describe("思考区块", () => {
 		assert.ok(plain(header).startsWith("  ✻ Thinking…"));
 		assert.ok(plain(body).startsWith("     three"));
 		assert.equal(header.includes(THEME.surface), false);
-		assert.equal(body.indexOf(THEME.surface), 0);
+		assert.equal(body.indexOf(THEME.surface), 4);
 	});
 
 	it("展开时只提亮标题标签，耗时保持弱化", () => {
@@ -119,7 +119,7 @@ describe("思考区块", () => {
 		assert.equal(plain(first).trim(), "one");
 
 		const body = lines.find((line) => plain(line).includes("three")) ?? "";
-		assert.ok(body.startsWith(THEME.surface));
+		assert.ok(body.startsWith(`    ${THEME.surface}`));
 		assert.ok(plain(body).startsWith("     three"));
 
 		const lastRow = lines.findIndex((line) => plain(line).includes("seven"));
@@ -381,12 +381,12 @@ describe("工具调用行", () => {
 		assert.equal(text.includes("path:"), false);
 		assert.ok(lines.some((line) => line.includes(THEME.surface)));
 
-		// 标题行不铺色带；色带从行首铺满，内容缩进在里侧
+		// 标题行不铺色带；色带外留四列，带内再留一列内边距
 		const head = lines.find((line) => plain(line).includes("◆ Read"));
 		const body = lines.find((line) => plain(line).includes("1  line 1"));
 		assert.ok(plain(head ?? "").startsWith("  "));
 		assert.equal(head?.includes(THEME.surface), false);
-		assert.ok(body?.startsWith(THEME.surface));
+		assert.ok(body?.startsWith(`    ${THEME.surface}`));
 	});
 
 	it("展开标题与 Thought 同色，文件路径用实线下划线", () => {
@@ -449,9 +449,9 @@ describe("工具调用行", () => {
 		const body = lines.find((line) => plain(line).includes("git log --oneline"));
 		assert.ok(body);
 
-		// 2 列标题缩进 + 2 列带外留白 + 1 列带内留白；底色从行首铺起
+		// 2 列标题缩进 + 2 列带外留白 + 1 列带内留白
 		assert.ok(plain(body).startsWith("     git log --oneline"));
-		assert.equal(body.indexOf(THEME.surface), 0);
+		assert.equal(body.indexOf(THEME.surface), 4);
 	});
 
 	it("结果末尾的换行不再多占一行，下边距只有一行", () => {
@@ -529,9 +529,10 @@ describe("工具调用行", () => {
 					assert.equal(displayWidth(plain(line)), width, `${label}@${width} 行宽不精确`);
 
 					const at = line.indexOf("\x1b[48;2;");
-					if (at < 0) continue;
-					// 详情色带从行首铺满整宽，与面板边缘之间不留黑缝
-					assert.equal(displayWidth(plain(line.slice(0, at))), 0, `${label}@${width} 色带未从行首铺起`);
+					// 用户提示块也从第 1 列铺底色，只统计它之后的详情色带
+					if (at <= 0) continue;
+					// 详情色带外留四列（2 列标题缩进 + 2 列留白），右缘铺到面板边缘
+					assert.equal(displayWidth(plain(line.slice(0, at))), 4, `${label}@${width} 色带起点不对`);
 					bands += 1;
 				}
 				assert.ok(bands > 0, `${label}@${width} 没有色带`);

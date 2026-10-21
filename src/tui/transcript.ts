@@ -650,11 +650,11 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 	});
 }
 
-/** 思考正文的一行：色带从行首铺满整块面板，内容缩进到标题下方，带内留一列内边距。 */
+/** 思考正文的一行：色带在标题符号右侧留出与工具详情相同的列数，带内留一列内边距。 */
 function thinkingBodyLines(text: string, width: number): readonly string[] {
-	const leadWidth = displayWidth(RESPONSE_INDENT) + DETAIL_BAND_LEFT;
-	const lead = " ".repeat(leadWidth);
-	const innerWidth = Math.max(0, width - leadWidth);
+	const start = displayWidth(RESPONSE_INDENT) + DETAIL_BAND_LEFT;
+	const lead = " ".repeat(start);
+	const innerWidth = Math.max(0, width - start);
 	// 窄终端上留白不能把正文挤没，宽度不够时让出来
 	const insideWidth = innerWidth > MIN_DETAIL_CONTENT ? THINKING_PADDING : 0;
 	const inside = " ".repeat(insideWidth);
@@ -664,13 +664,14 @@ function thinkingBodyLines(text: string, width: number): readonly string[] {
 		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
 		const visible = truncateToWidth(content, innerWidth);
 		const padding = " ".repeat(Math.max(0, innerWidth - displayWidth(visible)));
-		return `${THINKING_BG}${lead}${THINKING_COLOR}${visible}${padding}${RESET}`;
+		return `${lead}${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
 	});
 }
 
 /** 思考正文的上下内边距：整条色带，不写内容。 */
 function thinkingBlankLine(width: number): string {
-	return `${THINKING_BG}${" ".repeat(Math.max(0, width))}${RESET}`;
+	const start = displayWidth(RESPONSE_INDENT) + DETAIL_BAND_LEFT;
+	return `${" ".repeat(start)}${THINKING_BG}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /**
@@ -777,9 +778,8 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：色带从行首铺满整块面板，内容仍缩进到标题下方，两者分开更显层次
-		const bandStart = 0;
-		const contentStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
+		// 展开：色带从标题标记右侧留白后开始，上下各留一行；右侧铺到面板边缘
+		const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
 		// 工具结果普遍以换行结尾，直接切行会在详情末尾多出一个空行，与下边距叠成两行留白
@@ -793,7 +793,6 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 					kind,
 					width,
 					bandStart,
-					contentStart,
 					detailColor(kind, line),
 					syntax?.[index],
 				),
@@ -923,15 +922,13 @@ function stripTrailingBlank(rows: readonly string[]): readonly string[] {
 /**
  * 详情行：文件与 diff 带行号，续行按行号后的内容列悬挂缩进；其余按正文折行。
  *
- * bandStart 是底色起点，contentStart 是文字起点：底色铺满面板、内容缩进在里侧，
- * 两者分开后大块改动不会让缩进外的空白变成一块黑缝。
+ * bandStart 是色带起点，内容在带内留一列内边距后开始。
  */
 function detailBodyLines(
 	line: string,
 	kind: ResultDetailKind,
 	width: number,
 	bandStart: number,
-	contentStart: number,
 	color: string,
 	syntax: readonly SyntaxSegment[] | undefined,
 ): readonly string[] {
@@ -944,7 +941,6 @@ function detailBodyLines(
 				[{ text: match[2] ?? "", color }],
 				width,
 				bandStart,
-				contentStart,
 				THEME.surface,
 				THEME.textSubtle,
 				color,
@@ -971,7 +967,6 @@ function detailBodyLines(
 				segments,
 				width,
 				bandStart,
-				contentStart,
 				background,
 				markerColor,
 				markerColor,
@@ -984,7 +979,6 @@ function detailBodyLines(
 		width,
 		color,
 		bandStart,
-		contentStart,
 		DETAIL_RIGHT_PADDING,
 	);
 }
@@ -1071,7 +1065,6 @@ function hangingLines(
 	segments: readonly ColoredSegment[],
 	width: number,
 	bandStart: number,
-	contentStart: number,
 	background: string,
 	gutterColor: string,
 	markerColor: string,
@@ -1079,10 +1072,8 @@ function hangingLines(
 ): readonly string[] {
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
-	// 底色从 bandStart 起铺满到行尾，内容从 contentStart 起：缩进外的空白也是面板的一部分
-	const leadWidth = Math.max(0, Math.min(contentStart, width) - start);
-	const lead = " ".repeat(leadWidth);
-	const innerWidth = Math.max(0, contentEnd - start - leadWidth);
+	const lead = " ".repeat(start);
+	const innerWidth = Math.max(0, contentEnd - start);
 
 	// 行号与增删标记属于刻度而不是内容，压暗后正文才成为视觉主体。
 	// 终端过窄时前缀会宽过整条色带：此时按「留白 → 行号 → 标记」依次让步，
@@ -1111,26 +1102,23 @@ function hangingLines(
 	return wrapped.map((line, index) => {
 		const body = paintSegments(index === 0 ? head : continuation, headWidth, line, innerWidth);
 		// 底色要铺满整行：行尾补齐用背景色而不是文字色，否则尾部会拖一条彩色的空白
-		const padding = " ".repeat(Math.max(0, width - start - leadWidth - body.width));
-		return `${" ".repeat(start)}${background}${lead}${body.text}${padding}${RESET}`;
+		const padding = " ".repeat(Math.max(0, width - start - body.width));
+		return `${lead}${background}${body.text}${padding}${RESET}`;
 	});
 }
 
-/** 详情行换行后同样从 bandStart 列开始铺色带，内容从 contentStart 起，带内留一列内边距。 */
+/** 详情行换行后同样从 bandStart 列开始铺色带，带内留一列内边距。 */
 function bandedWrappedLines(
 	text: string,
 	width: number,
 	color: string,
 	bandStart: number,
-	contentStart: number,
 	rightPadding: number,
 ): readonly string[] {
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
-	// 底色从 bandStart 起铺满，内容从 contentStart 起
-	const leadWidth = Math.max(0, Math.min(contentStart, width) - start);
-	const lead = " ".repeat(leadWidth);
-	const innerWidth = Math.max(0, contentEnd - start - leadWidth);
+	const lead = " ".repeat(start);
+	const innerWidth = Math.max(0, contentEnd - start);
 	// 带内留白由这里固定给出一列，不能从前缀里推导：色带起点一变，前缀就会被切光。
 	// 但窄终端上留白不能把正文挤没，宽度不够时让出来。
 	const insideWidth = innerWidth > MIN_DETAIL_CONTENT ? 1 : 0;
@@ -1143,8 +1131,8 @@ function bandedWrappedLines(
 		const visible = truncateToWidth(content, innerWidth);
 		// 空行与 hunk 之间的省略行不写内容，只留底色；给它们上文字色会在整行铺出一片色块
 		const paint = visible.trim().length === 0 ? "" : color;
-		const padding = " ".repeat(Math.max(0, width - start - leadWidth - displayWidth(visible)));
-		return `${" ".repeat(start)}${THEME.surface}${lead}${paint}${visible}${padding}${RESET}`;
+		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
+		return `${lead}${THEME.surface}${paint}${visible}${padding}${RESET}`;
 	});
 }
 
