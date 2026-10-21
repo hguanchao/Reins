@@ -147,11 +147,11 @@ describe("工具调用行", () => {
 			renderTranscript(60, 10, [{ prompt: "hi", response: [collapsed] }], 0).find((line) =>
 				plain(line).includes("› Bash"),
 			) ?? "";
-		// 折叠态与其它工具的参数一致：弱化色，只有一条终端下划线
+		// 折叠态与其它工具的参数一致：弱化色，只有一条点状下划线
 		assert.ok(collapsedLine.includes(THEME.textSubtle));
 		assert.equal(collapsedLine.includes(THEME.warning), false);
-		// 下划线来自 OSC 8 空链接，不用 SGR 下划线样式，外观才能和文件路径一致
-		assert.ok(collapsedLine.includes("\x1b]8;;\x1b\\npm test"));
+		// 点状下划线用 SGR 4:4，与文件路径由 OSC 8 链接画出的点线外观一致
+		assert.ok(collapsedLine.includes("\x1b[4:4m"));
 
 		const expanded: TranscriptTool = {
 			kind: "tool",
@@ -176,6 +176,7 @@ describe("工具调用行", () => {
 		};
 		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("› Grep")) ?? "";
 
+		assert.equal(line.includes("\x1b[4:4m"), false);
 		assert.equal(line.includes("\x1b[4:5m"), false);
 		// 没有 linkTarget 也没有命令身份时不该挂任何 OSC 8 链接
 		assert.equal(line.includes("\x1b]8;;"), false);
