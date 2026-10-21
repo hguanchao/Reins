@@ -140,7 +140,7 @@ describe("思考区块", () => {
 });
 
 describe("工具调用行", () => {
-	it("一行放得下时显示名称与参数，名称弱化、参数用正文色", () => {
+	it("一行放得下时显示名称与参数，两者同色", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hi",
 			response: [{ kind: "tool", name: "Read", detail: "README.md" }],
@@ -150,8 +150,9 @@ describe("工具调用行", () => {
 		const line = lines.find((item) => plain(item).includes("› Read"));
 		assert.ok(line);
 		assert.ok(plain(line).startsWith("  › Read  README.md"));
+		// 参数不再是正文的白色，而是与工具名同一档
 		assert.ok(line.includes(THEME.textSubtle));
-		assert.ok(line.includes(THEME.textPrimary));
+		assert.equal(line.includes(THEME.textPrimary), false);
 	});
 
 	it("参数放不下时保持一行，末尾省略", () => {

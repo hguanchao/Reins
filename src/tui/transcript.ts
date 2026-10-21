@@ -831,7 +831,8 @@ function toolSummaryLine(
 		Math.max(0, available - displayWidth(tail) - displayWidth(shownMetric)),
 	);
 	const metricPart = shownMetric.length === 0 ? "" : `${TOOL_NAME_COLOR}${shownMetric}${RESET}`;
-	return `${TOOL_NAME_COLOR}${head}${RESET}${MESSAGE_TEXT_COLOR}${shownTail}${RESET}${metricPart}${padding}`;
+	// 参数与工具名同色：折叠行是一个整体，正文色会让参数比标题更抢眼
+	return `${TOOL_NAME_COLOR}${head}${RESET}${TOOL_NAME_COLOR}${shownTail}${RESET}${metricPart}${padding}`;
 }
 
 /** 给参数文本挂上 OSC 8 链接；前导缩进留在链接外，终端只给路径画下划线。 */
