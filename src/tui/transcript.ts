@@ -164,6 +164,8 @@ const GUTTER_WIDTH = 2;
 const DETAIL_RIGHT_PADDING = 1;
 /** 详情色带相对标题标记列的左侧留白：色带不贴菱形，行号也不与标题文字挤在同一侧。 */
 const DETAIL_BAND_LEFT = 2;
+/** 窄终端下正文至少保留的列数：行号与标记必须为它让位，否则这一行什么也读不到。 */
+const MIN_DETAIL_CONTENT = 4;
 
 export interface PromptRange {
 	/** 提示块第一行在 transcript 里的下标 */
@@ -646,17 +648,20 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 	});
 }
 
-/** 思考正文的一行：色带在标题符号右侧留出与工具详情相同的列数，带内左右各留一列内边距。 */
+/** 思考正文的一行：色带在标题符号右侧留出与工具详情相同的列数，带内留一列内边距。 */
 function thinkingBodyLines(text: string, width: number): readonly string[] {
 	const start = displayWidth(RESPONSE_INDENT) + DETAIL_BAND_LEFT;
 	const lead = " ".repeat(start);
-	const inside = " ".repeat(THINKING_PADDING);
-	const contentWidth = Math.max(1, width - start - displayWidth(inside) - DETAIL_RIGHT_PADDING);
+	const innerWidth = Math.max(0, width - start);
+	// 窄终端上留白不能把正文挤没，宽度不够时让出来
+	const insideWidth = innerWidth > MIN_DETAIL_CONTENT ? THINKING_PADDING : 0;
+	const inside = " ".repeat(insideWidth);
+	const contentWidth = Math.max(1, innerWidth - insideWidth - DETAIL_RIGHT_PADDING);
 
 	return wrapText(text, contentWidth).map((line) => {
 		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
-		const visible = truncateToWidth(content, width - start);
-		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
+		const visible = truncateToWidth(content, innerWidth);
+		const padding = " ".repeat(Math.max(0, innerWidth - displayWidth(visible)));
 		return `${lead}${THINKING_BG}${THINKING_COLOR}${visible}${padding}${RESET}`;
 	});
 }
@@ -1036,21 +1041,33 @@ function hangingLines(
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
 	const lead = " ".repeat(start);
-	const inside = " ";
-	const hangingWidth = displayWidth(gutter) + displayWidth(marker);
-	const available = Math.max(1, contentEnd - start - displayWidth(inside) - hangingWidth);
+	const innerWidth = Math.max(0, contentEnd - start);
+
+	// 行号与增删标记属于刻度而不是内容，压暗后正文才成为视觉主体。
+	// 终端过窄时前缀会宽过整条色带：此时按「留白 → 行号 → 标记」依次让步，
+	// 至少给正文留一列，否则整行会被推出终端宽度，或者正文整段消失。
+	const minContent = Math.min(MIN_DETAIL_CONTENT, innerWidth);
+	let head = "";
+	let headWidth = 0;
+	const append = (text: string, color: string | undefined): void => {
+		if (text.length === 0) return;
+		const room = innerWidth - minContent - headWidth;
+		if (room <= 0) return;
+		const visible = truncateToWidth(text, room);
+		if (visible.length === 0) return;
+		head += color === undefined ? visible : `${color}${visible}`;
+		headWidth += displayWidth(visible);
+	};
+	append(" ", undefined);
+	append(gutter, THEME.textSubtle);
+	append(marker, markerColor);
+
+	const available = Math.max(1, innerWidth - headWidth);
 	const wrapped = wrapSegments(segments, available);
-	const continuation = " ".repeat(displayWidth(inside) + hangingWidth);
-	// 前缀里夹着转义序列，宽度必须按可见字符算，否则正文会被提前截断
-	const headWidth = displayWidth(inside) + hangingWidth;
+	const continuation = " ".repeat(headWidth);
 
 	return wrapped.map((line, index) => {
-		// 行号与增删标记属于刻度而不是内容，压暗后正文才成为视觉主体
-		const prefix =
-			index === 0
-				? `${inside}${THEME.textSubtle}${gutter}${markerColor}${marker}`
-				: continuation;
-		const body = paintSegments(prefix, headWidth, line, contentEnd - start);
+		const body = paintSegments(index === 0 ? head : continuation, headWidth, line, innerWidth);
 		// 底色要铺满整行：行尾补齐用背景色而不是文字色，否则尾部会拖一条彩色的空白
 		const padding = " ".repeat(Math.max(0, width - start - body.width));
 		return `${lead}${background}${body.text}${padding}${RESET}`;
@@ -1068,15 +1085,17 @@ function bandedWrappedLines(
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
 	const lead = " ".repeat(start);
-	// 带内留白由这里固定给出一列，不能从前缀里推导：色带起点一变，前缀就会被切光
-	const insideWidth = 1;
+	const innerWidth = Math.max(0, contentEnd - start);
+	// 带内留白由这里固定给出一列，不能从前缀里推导：色带起点一变，前缀就会被切光。
+	// 但窄终端上留白不能把正文挤没，宽度不够时让出来。
+	const insideWidth = innerWidth > MIN_DETAIL_CONTENT ? 1 : 0;
 	const inside = " ".repeat(insideWidth);
-	const lines = wrapText(text, Math.max(0, contentEnd - start - insideWidth));
+	const lines = wrapText(text, Math.max(0, innerWidth - insideWidth));
 	const continuation = inside;
 
 	return lines.map((line, index) => {
 		const content = `${index === 0 ? inside : continuation}${line}`;
-		const visible = truncateToWidth(content, contentEnd - start);
+		const visible = truncateToWidth(content, innerWidth);
 		// 空行与 hunk 之间的省略行不写内容，只留底色；给它们上文字色会在整行铺出一片色块
 		const paint = visible.trim().length === 0 ? "" : color;
 		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));

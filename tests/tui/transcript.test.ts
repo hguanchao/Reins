@@ -429,9 +429,74 @@ describe("工具调用行", () => {
 			.filter((line) => line.includes("x"));
 
 		assert.ok(lines.length > 1);
-		// 2 列标题缩进 + 1 列带内缩进 + 行号与分隔（3 列）
-		assert.ok(lines[1]?.startsWith("       "));
+		// 2 列标题缩进 + 2 列带外留白 + 1 列带内缩进 + 行号与分隔（3 列）
+		assert.ok(lines[1]?.startsWith("        "));
 		assert.equal(lines[1]?.startsWith("   1"), false);
+	});
+
+	it("四种详情与思考块的色带都起于同一列，且每行宽度精确等于终端宽度", () => {
+		const cases: readonly (readonly [string, TranscriptLine])[] = [
+			[
+				"Bash",
+				{ kind: "tool", name: "Bash", detail: "x", fullDetail: "git log --oneline", detailKind: "text", detailExpanded: true },
+			],
+			[
+				"Read",
+				{ kind: "tool", name: "Read", detail: "a.ts", fullDetail: "12  const a = 1;", detailKind: "file", detailExpanded: true },
+			],
+			[
+				"Edit",
+				{ kind: "tool", name: "Edit", detail: "a.ts", fullDetail: "1 - old\n1 + new", detailKind: "diff", detailExpanded: true },
+			],
+			[
+				"Thought",
+				{
+					kind: "thinkingBlock",
+					header: "Thinking…",
+					body: ["先读文件"],
+					partial: "",
+					running: true,
+					expanded: true,
+				},
+			],
+		];
+
+		for (const [label, item] of cases) {
+			for (const width of [40, 60, 88]) {
+				const lines = renderTranscript(width, 12, [{ prompt: "hi", response: [item] }], 0);
+				const starts = new Set<number>();
+				for (const line of lines) {
+					assert.equal(displayWidth(plain(line)), width, `${label}@${width} 行宽不精确`);
+
+					// 用户提示块从第 1 列铺满整宽，只取它之后的详情色带
+					const at = line.indexOf("\x1b[48;2;");
+					if (at <= 0) continue;
+					starts.add(displayWidth(plain(line.slice(0, at))) + 1);
+				}
+				assert.deepEqual([...starts], [5], `${label}@${width} 色带起点不唯一`);
+			}
+		}
+	});
+
+	it("窄终端下正文至少留一列，不被行号与标记挤没", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Edit",
+			detail: "a.ts",
+			fullDetail: "1 + const a = 1;",
+			detailKind: "diff",
+			detailExpanded: true,
+		};
+
+		for (const width of [10, 12, 16, 20]) {
+			const lines = renderTranscript(width, 16, [{ prompt: "hi", response: [tool] }], 0);
+			for (const line of lines) {
+				assert.equal(displayWidth(plain(line)), width, `宽度 ${width} 下行宽不精确`);
+			}
+			// 正文必须有可见字符，不能被前缀整段吃掉
+			const body = lines.map(plain).filter((line) => /const|a = 1|1;/.test(line));
+			assert.ok(body.length > 0, `宽度 ${width} 下正文消失`);
+		}
 	});
 
 	it("diff 详情按增删与 hunk 着色", () => {
