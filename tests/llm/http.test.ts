@@ -224,6 +224,31 @@ describe("静默超时与重试间隔", () => {
 		assert.deepEqual(seen, ['{"a":1}']);
 	});
 
+	it("省略或传 0 都表示不设静默上限", async () => {
+		for (const idleTimeoutMs of [undefined, 0]) {
+			const endpoint = await serve((response) => {
+				response.writeHead(200, { "content-type": "text/event-stream" });
+				response.write('data: {"a":1}\n\n');
+				// 停一段比上面那个用例的超时长得多的时间再收尾：设了上限这里就会被判成断线
+				setTimeout(() => response.end('data: {"b":2}\n\n'), 150);
+			});
+			const seen: string[] = [];
+
+			try {
+				await postSse(
+					{ url: endpoint.url, headers: {}, body: {}, signal: new AbortController().signal },
+					(data) => seen.push(data),
+					{ maxRetries: 0, baseDelayMs: 1 },
+					idleTimeoutMs,
+				);
+			} finally {
+				await endpoint.close();
+			}
+
+			assert.deepEqual(seen, ['{"a":1}', '{"b":2}']);
+		}
+	});
+
 	it("服务端给的 Retry-After 决定等多久，等到之后照常继续", async () => {
 		const endpoint = await serve((response, count) => {
 			if (count === 1) {

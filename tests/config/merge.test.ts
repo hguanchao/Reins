@@ -69,6 +69,7 @@ compactModel = "cm"
 reviewModel = "rm"
 maxTurns = 5
 spillThreshold = 10
+streamIdleTimeout = 30
 
 [mcpServers.fs]
 command = "x"
@@ -87,6 +88,7 @@ timeout = 120
 		assert.equal(config.reviewModel, "rm");
 		assert.equal(config.maxTurns, 5);
 		assert.equal(config.spillThreshold, 10);
+		assert.equal(config.streamIdleTimeout, 30);
 		assert.equal(config.mcpServers[0]?.name, "fs");
 		assert.equal(config.mcpServers[0]?.timeoutSeconds, 120);
 	});
@@ -213,6 +215,41 @@ timeout = 120
 		});
 	});
 
+	it("[compaction] 的默认值、别名与范围校验", () => {
+		const defaults = parseConfig(`provider = "p"\nmodel = "m"\n`, "c");
+		assert.equal(defaults.compaction.compactAt, 0.8);
+		assert.equal(defaults.compaction.keepRecent, 0.25);
+		assert.equal(defaults.compaction.summaryTimeout, 0);
+
+		const custom = parseConfig(
+			`provider = "p"
+model = "m"
+
+[compaction]
+compactAt = 0.6
+keep_recent = 0.1
+summary_timeout = 30
+`,
+			"c",
+		);
+		assert.equal(custom.compaction.compactAt, 0.6);
+		assert.equal(custom.compaction.keepRecent, 0.1);
+		assert.equal(custom.compaction.summaryTimeout, 30);
+
+		assert.throws(
+			() => parseConfig(`provider = "p"\nmodel = "m"\n\n[compaction]\ncompact_at = 1.5\n`, "c"),
+			/compaction\.compact_at must be at most 1/,
+		);
+		assert.throws(
+			() => parseConfig(`provider = "p"\nmodel = "m"\n\n[compaction]\ncompact_at = 0\n`, "c"),
+			/compaction\.compact_at must be greater than 0/,
+		);
+		assert.throws(
+			() => parseConfig(`provider = "p"\nmodel = "m"\n\n[compaction]\nkeep_recent = 2\n`, "c"),
+			/compaction\.keep_recent must be at most 1/,
+		);
+	});
+
 	it("默认值各就各位", () => {
 		const config = parseConfig(`provider = "p"\nmodel = "m"\n`, "c");
 		assert.equal(config.reasoningEffort, "off");
@@ -220,6 +257,18 @@ timeout = 120
 		assert.equal(config.sandbox, "off");
 		assert.equal(config.maxRetries, 10);
 		assert.equal(config.spillThreshold, 8192);
+		// 静默超时默认不限：替使用者判定「这么久没动静就是断线」会把正常的长请求判死
+		assert.equal(config.streamIdleTimeout, 0);
 		assert.equal(config.ui.notify, "auto");
+	});
+
+	it("静默超时只接受非负整数", () => {
+		const config = parseConfig(`provider = "p"\nmodel = "m"\nstream_idle_timeout = 0\n`, "c");
+		assert.equal(config.streamIdleTimeout, 0);
+
+		assert.throws(
+			() => parseConfig(`provider = "p"\nmodel = "m"\nstream_idle_timeout = -1\n`, "c"),
+			/stream_idle_timeout must be at least 0/,
+		);
 	});
 });

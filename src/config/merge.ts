@@ -45,6 +45,11 @@ export function mergeConfigs(user: ConfigFile, project: ConfigFile): Config {
 		contextWindow: pick(["context_window"], user.config.contextWindow, project.config.contextWindow),
 		maxTokens: pick(["max_tokens"], user.config.maxTokens, project.config.maxTokens),
 		maxRetries: pick(["max_retries"], user.config.maxRetries, project.config.maxRetries),
+		streamIdleTimeout: pick(
+			["stream_idle_timeout"],
+			user.config.streamIdleTimeout,
+			project.config.streamIdleTimeout,
+		),
 		httpProxy: pick(["httpProxy"], user.config.httpProxy, project.config.httpProxy),
 		shellPath: pick(["shellPath"], user.config.shellPath, project.config.shellPath),
 		compactModel: pick(["compact_model"], user.config.compactModel, project.config.compactModel),
@@ -53,6 +58,23 @@ export function mergeConfigs(user: ConfigFile, project: ConfigFile): Config {
 		sandbox: pickStricterSandbox(user, project),
 		maxTurns: pick(["max_turns"], user.config.maxTurns, project.config.maxTurns),
 		spillThreshold: pick(["spill_threshold"], user.config.spillThreshold, project.config.spillThreshold),
+		compaction: {
+			compactAt: pick(
+				["compaction", "compact_at"],
+				user.config.compaction.compactAt,
+				project.config.compaction.compactAt,
+			),
+			keepRecent: pick(
+				["compaction", "keep_recent"],
+				user.config.compaction.keepRecent,
+				project.config.compaction.keepRecent,
+			),
+			summaryTimeout: pick(
+				["compaction", "summary_timeout"],
+				user.config.compaction.summaryTimeout,
+				project.config.compaction.summaryTimeout,
+			),
+		},
 		ui: {
 			notify: pick(["ui", "notify"], user.config.ui.notify, project.config.ui.notify),
 		},

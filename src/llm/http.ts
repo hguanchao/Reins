@@ -53,14 +53,6 @@ function dispatcherFor(proxy: string | undefined): ProxyAgent | undefined {
 const ERROR_BODY_LIMIT = 2000;
 
 /**
- * 读流期间允许的最长静默。
- *
- * 上游接过连接之后再不出数据是很糟的失败：没有超时的话这一轮会永远挂着，使用者只能按
- * Ctrl+C。300 秒也是参考实现们取的值——足够慢的模型思考完，又不至于让人干等。
- */
-export const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
-
-/**
  * 发一次 POST，把响应体按 SSE 逐条交给 onData。
  *
  * SSE 的切分交给专门的解析器：一条事件可能被拆在多个网络分片里，也可能一个分片里有好几条，
@@ -68,12 +60,15 @@ export const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
  * 否则一个多字节字符被切开就会变成乱码。
  *
  * 等多久再试交给 retryDelay：服务端用 Retry-After 说了算，没说才用退避。
+ *
+ * idleTimeoutMs 省略或为 0 时不设静默上限：思考很久的模型、排队很久的上游都可能长时间没有
+ * 数据，替使用者判定「这么久没动静一定是断线」会把正常的长请求判死。要这个兜底的人自己配。
  */
 export async function postSse(
 	request: SseRequest,
 	onData: (data: string) => void,
 	policy: RetryPolicy,
-	idleTimeoutMs: number = DEFAULT_IDLE_TIMEOUT_MS,
+	idleTimeoutMs?: number,
 ): Promise<void> {
 	let delivered = false;
 
@@ -116,7 +111,7 @@ function describeError(error: unknown): string {
 async function postSseOnce(
 	request: SseRequest,
 	onData: (data: string) => void,
-	idleTimeoutMs: number,
+	idleTimeoutMs: number | undefined,
 ): Promise<void> {
 	// 用 Headers 而不是对象：自定义头可能写 User-Agent / user-agent 等不同大小写，
 	// Headers 会按 HTTP 的规则归一化，后设置的值覆盖默认值。
@@ -162,14 +157,17 @@ async function postSseOnce(
 
 	// 静默超时不靠信号：取消读取让挂着的 read 立刻有结果，再按超时报错。
 	// 这样既不用把两个信号合成一个，也不影响调用方自己的中止。
+	// 没有上限时不建定时器：不设超时就不该有额外的计时开销。
+	const idleMs = idleTimeoutMs !== undefined && idleTimeoutMs > 0 ? idleTimeoutMs : undefined;
 	let stalled = false;
 	let idleTimer: ReturnType<typeof setTimeout> | undefined;
 	const armIdle = (): void => {
+		if (idleMs === undefined) return;
 		if (idleTimer !== undefined) clearTimeout(idleTimer);
 		idleTimer = setTimeout(() => {
 			stalled = true;
 			void reader.cancel();
-		}, idleTimeoutMs);
+		}, idleMs);
 	};
 
 	try {
@@ -182,10 +180,10 @@ async function postSseOnce(
 			parser.feed(decoder.decode(chunk, { stream: true }));
 			armIdle();
 		}
-		if (stalled) {
+		if (stalled && idleMs !== undefined) {
 			// 按连接层失败报：一个数据都没收到时可重试，收到了就不再重试（由 postSse 判定）
 			throw new TypeError(
-				`the upstream sent no data for ${formatElapsed(idleTimeoutMs)}; the connection looks stalled`,
+				`the upstream sent no data for ${formatElapsed(idleMs)}; the connection looks stalled`,
 			);
 		}
 	} finally {

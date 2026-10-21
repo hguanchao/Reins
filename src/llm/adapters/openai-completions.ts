@@ -93,12 +93,21 @@ export class OpenAiCompletionsClient implements LlmClient {
 	readonly #model: ModelEntry;
 	readonly #policy: RetryPolicy;
 	readonly #proxy: string | undefined;
+	/** 流式读取的静默上限（毫秒）；undefined 表示不限 */
+	readonly #idleTimeoutMs: number | undefined;
 
-	constructor(provider: ProviderEntry, model: ModelEntry, policy: RetryPolicy, proxy?: string) {
+	constructor(
+		provider: ProviderEntry,
+		model: ModelEntry,
+		policy: RetryPolicy,
+		proxy?: string,
+		idleTimeoutMs?: number,
+	) {
 		this.#provider = provider;
 		this.#model = model;
 		this.#policy = policy;
 		this.#proxy = proxy;
+		this.#idleTimeoutMs = idleTimeoutMs;
 	}
 
 	stream(request: LlmRequest): LlmStream {
@@ -171,6 +180,7 @@ export class OpenAiCompletionsClient implements LlmClient {
 				if (choice.delta != null) applyDelta(choice.delta, accumulator, emit);
 			},
 			this.#policy,
+			this.#idleTimeoutMs,
 		);
 
 		if (finishReason === undefined && !done) {

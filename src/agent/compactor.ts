@@ -22,14 +22,6 @@ const COMPACT_RATIO = 0.8;
 const KEEP_RATIO = 0.25;
 
 /**
- * 摘要请求的总时限。
- *
- * HTTP 层的静默超时只管「多久没有数据」；一个一直在慢慢吐字的摘要仍可能拖很久。压缩是
- * 请求前的准备动作，超过这个预算就放弃，让主请求按原样发出去。
- */
-const SUMMARY_TIMEOUT_MS = 300_000;
-
-/**
  * 规划压缩时使用的窗口。
  *
  * 摘要模型可能比主模型小；按较小的窗口规划，被摘要的那段才不会超过摘要请求的上下文。
@@ -66,7 +58,16 @@ export interface CompactorDeps {
 	/** 上下文上限：providers.json 的 contextWindow 或 config.toml 的 context_window */
 	readonly contextWindow: number;
 	readonly maxTokens: number | undefined;
-	/** 摘要请求的总时限；测试用它缩短等待 */
+	/** 用到窗口的这个比例就压缩；省略用默认值 */
+	readonly compactAt?: number;
+	/** 压缩后保留最近这一比例的原文；省略用默认值 */
+	readonly keepRecent?: number;
+	/**
+	 * 摘要请求的总时限；省略表示不限。
+	 *
+	 * HTTP 层的静默超时只管「多久没有数据」；一个一直在慢慢吐字的摘要仍可能拖很久。压缩是
+	 * 请求前的准备动作，需要兜底的人自己配。
+	 */
 	readonly summaryTimeoutMs?: number;
 }
 
@@ -98,7 +99,7 @@ export class Compactor {
 
 	/** 该不该压缩。tokens 是当前上下文的规模。 */
 	shouldCompact(tokens: number): boolean {
-		return tokens >= this.#deps.contextWindow * COMPACT_RATIO;
+		return tokens >= this.#deps.contextWindow * (this.#deps.compactAt ?? COMPACT_RATIO);
 	}
 
 	/**
@@ -108,7 +109,7 @@ export class Compactor {
 	 * 那次调用如果被摘要掉，端点会因为「没有对应调用的工具结果」拒绝整个请求。
 	 */
 	plan(messages: readonly LlmMessage[]): number {
-		const budget = this.#deps.contextWindow * KEEP_RATIO;
+		const budget = this.#deps.contextWindow * (this.#deps.keepRecent ?? KEEP_RATIO);
 		let keep = 0;
 		let total = 0;
 		for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -135,11 +136,16 @@ export class Compactor {
 		if (signal.aborted) controller.abort();
 		else signal.addEventListener("abort", abort, { once: true });
 
+		// 没配总时限时不建定时器：不设上限就不该有额外的计时开销
 		let timedOut = false;
-		const timer = setTimeout(() => {
-			timedOut = true;
-			controller.abort();
-		}, this.#deps.summaryTimeoutMs ?? SUMMARY_TIMEOUT_MS);
+		const timeoutMs = this.#deps.summaryTimeoutMs;
+		const timer =
+			timeoutMs === undefined
+				? undefined
+				: setTimeout(() => {
+						timedOut = true;
+						controller.abort();
+					}, timeoutMs);
 
 		try {
 			const stream = this.#deps.client.stream({
@@ -178,7 +184,7 @@ export class Compactor {
 				cost: result.usage === undefined ? undefined : computeCost(this.#deps.model.cost, result.usage),
 			};
 		} finally {
-			clearTimeout(timer);
+			if (timer !== undefined) clearTimeout(timer);
 			signal.removeEventListener("abort", abort);
 		}
 	}

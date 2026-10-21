@@ -7,6 +7,7 @@ import {
 	readBoolean,
 	readEnum,
 	readInteger,
+	readNumber,
 	readString,
 	readStringArray,
 	readStringMap,
@@ -67,6 +68,16 @@ export interface UiConfig {
 	readonly notify: NotifyMode;
 }
 
+/** 上下文压缩的触发与保留策略。 */
+export interface CompactionConfig {
+	/** 上下文用到窗口的这个比例就压缩，0 到 1 之间（不含 0） */
+	readonly compactAt: number;
+	/** 压缩后保留最近这一比例的原文，0 到 1 之间 */
+	readonly keepRecent: number;
+	/** 摘要请求的总时限（秒）；0 表示不限 */
+	readonly summaryTimeout: number;
+}
+
 export interface Config {
 	readonly provider: string;
 	readonly model: string;
@@ -75,6 +86,8 @@ export interface Config {
 	readonly contextWindow: number | undefined;
 	readonly maxTokens: number | undefined;
 	readonly maxRetries: number;
+	/** 流式响应允许的最长静默（秒）；0 表示不限，读到对端关闭为止 */
+	readonly streamIdleTimeout: number;
 	/** 显式空串表示强制直连 */
 	readonly httpProxy: string | undefined;
 	/** 自定义 shell 路径；省略时按平台自动查找 Git Bash */
@@ -89,6 +102,7 @@ export interface Config {
 	readonly maxTurns: number | undefined;
 	/** 工具结果超过这个字符数就落盘，上下文只留预览；0 表示关闭 */
 	readonly spillThreshold: number;
+	readonly compaction: CompactionConfig;
 	readonly ui: UiConfig;
 	readonly mcpServers: readonly McpServerConfig[];
 	readonly plugins: PluginsConfig;
@@ -107,6 +121,10 @@ const DEFAULT_APPROVAL: ApprovalMode = "ask";
 const DEFAULT_SANDBOX: SandboxMode = "off";
 const DEFAULT_SPILL_THRESHOLD = 8192;
 const DEFAULT_NOTIFY: NotifyMode = "auto";
+/** 压缩策略的默认值：用到八成压缩，压完留最近两成半原文，摘要不设总时限。 */
+const DEFAULT_COMPACT_AT = 0.8;
+const DEFAULT_KEEP_RECENT = 0.25;
+const DEFAULT_SUMMARY_TIMEOUT = 0;
 
 const TOP_LEVEL_KEYS: readonly string[] = [
 	"provider",
@@ -115,6 +133,7 @@ const TOP_LEVEL_KEYS: readonly string[] = [
 	"context_window",
 	"max_tokens",
 	"max_retries",
+	"stream_idle_timeout",
 	"httpProxy",
 	"shellPath",
 	"compact_model",
@@ -123,12 +142,14 @@ const TOP_LEVEL_KEYS: readonly string[] = [
 	"sandbox",
 	"max_turns",
 	"spill_threshold",
+	"compaction",
 	"ui",
 	"mcp_servers",
 	"plugins",
 ];
 
 const UI_KEYS: readonly string[] = ["notify"];
+const COMPACTION_KEYS: readonly string[] = ["compact_at", "keep_recent", "summary_timeout"];
 const PLUGINS_KEYS: readonly string[] = ["disabled", "trusted"];
 const MCP_SERVER_KEYS: readonly string[] = [
 	"command",
@@ -151,12 +172,16 @@ const KEY_ALIASES: Readonly<Record<string, string>> = {
 	context_window: "contextWindow",
 	max_tokens: "maxTokens",
 	max_retries: "maxRetries",
+	stream_idle_timeout: "streamIdleTimeout",
 	http_proxy: "httpProxy",
 	shell_path: "shellPath",
 	compact_model: "compactModel",
 	review_model: "reviewModel",
 	max_turns: "maxTurns",
 	spill_threshold: "spillThreshold",
+	compact_at: "compactAt",
+	keep_recent: "keepRecent",
+	summary_timeout: "summaryTimeout",
 	mcp_servers: "mcpServers",
 };
 
@@ -189,6 +214,7 @@ function withAliases(keys: readonly string[]): readonly string[] {
 
 const TOP_LEVEL_ALLOWED = withAliases(TOP_LEVEL_KEYS);
 const MCP_SERVER_ALLOWED = withAliases(MCP_SERVER_KEYS);
+const COMPACTION_ALLOWED = withAliases(COMPACTION_KEYS);
 
 /**
  * 一份配置文件的解析结果。
@@ -255,6 +281,7 @@ function parseConfigFile(source: string, file: string): ConfigFile {
 			contextWindow: readIntegerField(document, ["context_window"], 1),
 			maxTokens: readIntegerField(document, ["max_tokens"], 1),
 			maxRetries: readIntegerField(document, ["max_retries"], 0) ?? DEFAULT_MAX_RETRIES,
+			streamIdleTimeout: readIntegerField(document, ["stream_idle_timeout"], 0) ?? 0,
 			httpProxy: readStringField(document, ["httpProxy"]),
 			shellPath: readStringField(document, ["shellPath"]) || undefined,
 			compactModel: readStringField(document, ["compact_model"]),
@@ -264,6 +291,7 @@ function parseConfigFile(source: string, file: string): ConfigFile {
 			maxTurns: readIntegerField(document, ["max_turns"], 1),
 			spillThreshold:
 				readIntegerField(document, ["spill_threshold"], 0) ?? DEFAULT_SPILL_THRESHOLD,
+			compaction: readCompaction(document),
 			ui: readUi(document),
 			mcpServers: readMcpServers(document),
 			plugins: readPlugins(document),
@@ -316,6 +344,35 @@ function locate(
 function readUi(document: TomlDocument): UiConfig {
 	assertNoUnknownKeys(document, ["ui"], UI_KEYS);
 	return { notify: readEnum(document, ["ui", "notify"], NOTIFY_MODES) ?? DEFAULT_NOTIFY };
+}
+
+function readCompaction(document: TomlDocument): CompactionConfig {
+	assertNoUnknownKeys(document, ["compaction"], COMPACTION_ALLOWED);
+	return {
+		compactAt: readRatio(document, ["compaction", "compact_at"], true) ?? DEFAULT_COMPACT_AT,
+		keepRecent: readRatio(document, ["compaction", "keep_recent"], false) ?? DEFAULT_KEEP_RECENT,
+		summaryTimeout:
+			readIntegerField(document, ["compaction", "summary_timeout"], 0) ?? DEFAULT_SUMMARY_TIMEOUT,
+	};
+}
+
+/**
+ * 读一个 0 到 1 之间的比例。
+ *
+ * 上界必须校验：比例超过 1 时阈值会跑到窗口外面，表现为「永远不压缩」或「每轮都压缩」，
+ * 比直接报错难查得多。
+ */
+function readRatio(
+	document: TomlDocument,
+	path: readonly string[],
+	exclusiveMinimum: boolean,
+): number | undefined {
+	const value = readAliased(document, path, (source, sourcePath) => readNumber(source, sourcePath, 0));
+	if (value === undefined) return undefined;
+	const name = describePath(path);
+	if (value > 1) throw new ConfigError(`${name} must be at most 1`);
+	if (exclusiveMinimum && value === 0) throw new ConfigError(`${name} must be greater than 0`);
+	return value;
 }
 
 /**

@@ -755,6 +755,15 @@ function createSandboxFor(config: Config, workRoot: string, host: PluginHost): S
 	return setup.sandbox;
 }
 
+/**
+ * 流式读取的静默上限（毫秒）。
+ *
+ * 配置里写的是秒，0 表示不限；0 与省略都交给下游按「不设上限」处理，不在这里编一个默认值。
+ */
+function streamIdleTimeoutMs(config: Config): number | undefined {
+	return config.streamIdleTimeout > 0 ? config.streamIdleTimeout * 1000 : undefined;
+}
+
 function createClient(config: Config, selection: ModelSelection): ReturnType<LlmRegistry["create"]> {
 	return createBuiltinLlmRegistry().create(
 		selection.provider,
@@ -764,6 +773,7 @@ function createClient(config: Config, selection: ModelSelection): ReturnType<Llm
 			baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
 		},
 		config.httpProxy,
+		streamIdleTimeoutMs(config),
 	);
 }
 
@@ -803,11 +813,16 @@ function createCompactor(
 				baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
 			},
 			config.httpProxy,
+			streamIdleTimeoutMs(config),
 		),
 		provider: selection.provider.id,
 		model,
 		contextWindow,
 		maxTokens: config.maxTokens,
+		compactAt: config.compaction.compactAt,
+		keepRecent: config.compaction.keepRecent,
+		summaryTimeoutMs:
+			config.compaction.summaryTimeout > 0 ? config.compaction.summaryTimeout * 1000 : undefined,
 	});
 }
 
@@ -875,6 +890,7 @@ function createReviewer(
 				baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
 			},
 			config.httpProxy,
+			streamIdleTimeoutMs(config),
 		),
 		model: reviewModel.id,
 		maxTokens: reviewModel.maxTokens ?? config.maxTokens,

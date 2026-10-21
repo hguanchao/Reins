@@ -27,6 +27,9 @@ reasoning_effort = "medium"
 # 上游失败重试次数；0 = 失败即停
 # max_retries = 10
 
+# 流式响应允许的最长静默（秒）；0 = 不限。长思考的模型建议保持 0
+# stream_idle_timeout = 0
+
 # 审批方式：ask | auto | yolo
 # approval = "ask"
 
@@ -38,6 +41,11 @@ reasoning_effort = "medium"
 
 # 工具结果超过这个字符数落盘；0 = 关闭
 # spill_threshold = 8192
+
+# [compaction]
+# compact_at = 0.8                 # 上下文用到窗口的多少就压缩（0 到 1）
+# keep_recent = 0.25               # 压缩后保留最近多少原文（0 到 1）
+# summary_timeout = 0              # 摘要总时限（秒）；0 = 不限
 
 # 压缩摘要与审查专用模型，必须是同一 provider 下的模型 id
 # compact_model = "example-model"

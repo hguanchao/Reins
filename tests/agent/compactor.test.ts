@@ -22,7 +22,7 @@ function emptyStream(): LlmStream {
 	return stream;
 }
 
-function compactor(overrides: Partial<{ contextWindow: number; client: LlmClient; maxTokens: number | undefined; summaryTimeoutMs: number }> = {}): Compactor {
+function compactor(overrides: Partial<{ contextWindow: number; client: LlmClient; maxTokens: number | undefined; summaryTimeoutMs: number; compactAt: number; keepRecent: number }> = {}): Compactor {
 	return new Compactor({
 		client: overrides.client ?? { api: "fake", stream: () => emptyStream() },
 		provider: "p",
@@ -30,6 +30,8 @@ function compactor(overrides: Partial<{ contextWindow: number; client: LlmClient
 		contextWindow: overrides.contextWindow ?? 1000,
 		maxTokens: overrides.maxTokens,
 		summaryTimeoutMs: overrides.summaryTimeoutMs,
+		compactAt: overrides.compactAt,
+		keepRecent: overrides.keepRecent,
 	});
 }
 
@@ -88,6 +90,30 @@ describe("压缩计划", () => {
 
 	it("什么都保不住时给 0", () => {
 		assert.equal(compactor({ contextWindow: 10 }).plan([userMessage("x")]), 0);
+	});
+
+	it("保留比例越大，切掉的消息越少", () => {
+		const messages = Array.from({ length: 6 }, (_, index) =>
+			userMessage(`message ${index} ${"x".repeat(40)}`),
+		);
+
+		const small = compactor({ contextWindow: 1000, keepRecent: 0.01 }).plan(messages);
+		const large = compactor({ contextWindow: 1000, keepRecent: 0.5 }).plan(messages);
+
+		assert.ok(large < small, `keep 0.5 应保留更多：cut ${large} < ${small}`);
+	});
+});
+
+describe("压缩阈值", () => {
+	it("默认用到八成压缩", () => {
+		assert.equal(compactor({ contextWindow: 1000 }).shouldCompact(799), false);
+		assert.equal(compactor({ contextWindow: 1000 }).shouldCompact(800), true);
+	});
+
+	it("阈值可调", () => {
+		const early = compactor({ contextWindow: 1000, compactAt: 0.5 });
+		assert.equal(early.shouldCompact(499), false);
+		assert.equal(early.shouldCompact(500), true);
 	});
 });
 
