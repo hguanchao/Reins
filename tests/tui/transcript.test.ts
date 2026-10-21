@@ -416,6 +416,27 @@ describe("工具调用行", () => {
 		assert.equal(body.indexOf(THEME.surface), 4);
 	});
 
+	it("结果末尾的换行不再多占一行，下边距只有一行", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "List",
+			detail: ".",
+			fullDetail: "./\n└── a.md\n",
+			detailKind: "text",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(40, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const headRow = lines.findIndex((line) => plain(line).includes("◆ List"));
+		assert.ok(headRow >= 0);
+
+		// 上边距、两行内容、下边距
+		assert.equal(plain(lines[headRow + 1] ?? "").trim(), "");
+		assert.ok(plain(lines[headRow + 2] ?? "").includes("./"));
+		assert.ok(plain(lines[headRow + 3] ?? "").includes("a.md"));
+		assert.equal(plain(lines[headRow + 4] ?? "").trim(), "");
+		assert.equal(plain(lines[headRow + 5] ?? "").trim(), "");
+	});
+
 	it("文件详情换行时悬挂缩进到内容列", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",

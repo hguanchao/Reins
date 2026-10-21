@@ -780,7 +780,8 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
-		const rows = tool.fullDetail.split("\n");
+		// 工具结果普遍以换行结尾，直接切行会在详情末尾多出一个空行，与下边距叠成两行留白
+		const rows = stripTrailingBlank(tool.fullDetail.split("\n"));
 		const syntax = kind === "diff" ? diffSyntax(rows, tool.detail) : undefined;
 		const body = [
 			bandBlankLine(width, bandStart),
@@ -894,6 +895,18 @@ function coloredLine(text: string, width: number, color: string): string {
 	const visible = truncateToWidth(text, width);
 	const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
 	return `${color}${visible}${RESET}${padding}`;
+}
+
+/**
+ * 去掉末尾的空行。
+ *
+ * 工具结果常以换行结尾，切行后最后一项是空串；渲染时它会占掉一整行，与面板本来的下边距
+ * 叠在一起，看起来就像底部莫名多了两行留白。
+ */
+function stripTrailingBlank(rows: readonly string[]): readonly string[] {
+	let end = rows.length;
+	while (end > 0 && (rows[end - 1] ?? "").trim().length === 0) end -= 1;
+	return end === rows.length ? rows : rows.slice(0, end);
 }
 
 /** 详情行：文件与 diff 带行号，续行按行号后的内容列悬挂缩进；其余按正文折行。 */
