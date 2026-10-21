@@ -1117,13 +1117,14 @@ function bandedWrappedLines(
 	});
 }
 
-/** 详情行的颜色：diff 的增、删、hunk 分别着色，文件内容用次要文字色。 */
+/** 详情行的颜色：diff 的增、删分别着色，省略行弱化，文件内容用次要文字色。 */
 function detailColor(kind: ResultDetailKind, line: string): string {
 	if (kind === "diff") {
-		if (line.startsWith("@@")) return THEME.accent;
 		// 带行号的 diff 形如 `12 + added` / `12 - removed`
 		const marker = /^\s*\d+ ([-+]) /.exec(line);
 		if (marker !== null) return marker[1] === "+" ? THEME.success : THEME.error;
+		// 两个 hunk 之间的省略行不是正文，弱化到背景里
+		if (line.trimStart().startsWith("…")) return THEME.textSubtle;
 		if (line.startsWith("+")) return THEME.success;
 		if (line.startsWith("-")) return THEME.error;
 		return THEME.textSecondary;

@@ -101,10 +101,11 @@ describe("工具结果呈现", () => {
 		});
 	});
 
-	it("edit 与 write 展开为带行号的 diff", () => {
+	it("edit 与 write 展开为带行号的 diff，hunk 头不进入正文", () => {
 		const editDiff = "@@ line 1 @@\n- old\n+ new";
+		// 起点已由行号列说明，`@@ line N @@` 不再铺在正文里
 		assert.deepEqual(resultDetail("edit", "Updated a.ts", { diff: editDiff }), {
-			text: "@@ line 1 @@\n1 - old\n1 + new",
+			text: "1 - old\n1 + new",
 			kind: "diff",
 		});
 		assert.deepEqual(resultDetail("edit", "Updated a.ts\n\n- old\n+ new"), {
@@ -112,12 +113,20 @@ describe("工具结果呈现", () => {
 			kind: "diff",
 		});
 		assert.deepEqual(resultDetail("write", "Created a.ts", { diff: editDiff }), {
-			text: "@@ line 1 @@\n1 - old\n1 + new",
+			text: "1 - old\n1 + new",
 			kind: "diff",
 		});
 		assert.deepEqual(resultDetail("write", "Created a.ts"), {
 			text: "Created a.ts",
 			kind: "text",
+		});
+	});
+
+	it("多 hunk 之间用省略行连接，起始行号仍取自 hunk 头", () => {
+		const two = "@@ line 10 @@\n- old\n+ new\n@@ line 40 @@\n  later";
+		assert.deepEqual(resultDetail("edit", "Updated a.ts", { diff: two }), {
+			text: "10 - old\n10 + new\n   … 29 unchanged lines\n40   later",
+			kind: "diff",
 		});
 	});
 

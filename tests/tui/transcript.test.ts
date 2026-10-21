@@ -521,26 +521,27 @@ describe("工具调用行", () => {
 		}
 	});
 
-	it("diff 详情按增删与 hunk 着色", () => {
+	it("diff 详情按增删着色，省略行弱化", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
 			name: "Edit",
 			detail: "a.ts",
-			fullDetail: "@@ line 1 @@\n1 - old\n1 + new\n2   keep",
+			fullDetail: "1 - old\n1 + new\n2   keep\n   … 7 unchanged lines",
 			detailKind: "diff",
 			detailExpanded: true,
 		};
 		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0);
-		const hunk = lines.find((line) => plain(line).includes("@@ line 1 @@"));
 		const removed = lines.find((line) => plain(line).includes("1 - old"));
 		const added = lines.find((line) => plain(line).includes("1 + new"));
+		const gap = lines.find((line) => plain(line).includes("unchanged lines"));
 
-		assert.ok(hunk?.includes(THEME.accent));
 		// 增删改为整行底色，标记本身仍用成功/失败色
 		assert.ok(removed?.includes(THEME.diffDeleteBg));
 		assert.ok(removed?.includes(THEME.error));
 		assert.ok(added?.includes(THEME.diffInsertBg));
 		assert.ok(added?.includes(THEME.success));
+		// hunk 之间的省略行是刻度而非内容，压到最弱一档
+		assert.ok(gap?.includes(THEME.textSubtle));
 	});
 
 	it("diff 的代码按语法着色，行尾填充回到底色不拖彩色", () => {

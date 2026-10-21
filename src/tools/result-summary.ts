@@ -116,7 +116,8 @@ interface DiffHunkView {
  * 给 diff 行加行号，并在相邻 hunk 之间插入省略行。
  *
  * 和整段截断不同，这里保留每个 hunk 的完整内容，只省略两个 hunk 之间没有展示的
- * 未改动行；grok 的 Edit 也是这个语义。
+ * 未改动行。hunk 头只用来确定起始行号，不进入渲染文本：起点已经由行号列说明，
+ * 再把 `@@ line N @@` 铺在正文前方只会挤占阅读空间。
  */
 function numberDiff(diff: string): string {
 	const hunks: DiffHunkView[] = [];
@@ -129,7 +130,7 @@ function numberDiff(diff: string): string {
 	for (const line of diff.split("\n")) {
 		const header = /^@@ line (\d+) @@/.exec(line);
 		if (header !== null) {
-			current = { lines: [{ text: line }], firstNewLine: undefined, lastNewLine: undefined };
+			current = { lines: [], firstNewLine: undefined, lastNewLine: undefined };
 			hunks.push(current);
 			oldLine = Number(header[1]);
 			newLine = oldLine;
