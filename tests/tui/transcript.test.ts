@@ -397,6 +397,24 @@ describe("工具调用行", () => {
 		assert.equal(plain(bottom).trim(), "");
 	});
 
+	it("纯文本详情在带内留一列，不与色带左缘贴在一起", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "git log",
+			fullDetail: "git log --oneline -20; echo done",
+			detailKind: "text",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const body = lines.find((line) => plain(line).includes("git log --oneline"));
+		assert.ok(body);
+
+		// 2 列标题缩进 + 2 列带外留白 + 1 列带内留白
+		assert.ok(plain(body).startsWith("     git log --oneline"));
+		assert.equal(body.indexOf(THEME.surface), 4);
+	});
+
 	it("文件详情换行时悬挂缩进到内容列", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",

@@ -783,7 +783,6 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 				detailBodyLines(
 					line,
 					kind,
-					baseIndent,
 					width,
 					bandStart,
 					detailColor(kind, line),
@@ -891,12 +890,10 @@ function coloredLine(text: string, width: number, color: string): string {
 	return `${color}${visible}${RESET}${padding}`;
 }
 
-/** 从 bandStart 列开始铺背景色带；左侧缩进留在色带外。 */
-/** 详情行：文件与 diff 带行号，续行按行号后的内容列悬挂缩进。 */
+/** 详情行：文件与 diff 带行号，续行按行号后的内容列悬挂缩进；其余按正文折行。 */
 function detailBodyLines(
 	line: string,
 	kind: ResultDetailKind,
-	baseIndent: string,
 	width: number,
 	bandStart: number,
 	color: string,
@@ -943,7 +940,6 @@ function detailBodyLines(
 	}
 	return bandedWrappedLines(
 		line,
-		`${baseIndent}  `,
 		width,
 		color,
 		bandStart,
@@ -1061,23 +1057,22 @@ function hangingLines(
 	});
 }
 
-/** 详情行换行后同样从 bandStart 列开始铺色带，续行缩进留在带内。 */
+/** 详情行换行后同样从 bandStart 列开始铺色带，带内留一列内边距，续行缩进留在带内。 */
 function bandedWrappedLines(
 	text: string,
-	prefix: string,
 	width: number,
 	color: string,
 	bandStart: number,
 	rightPadding: number,
 ): readonly string[] {
-	const prefixWidth = displayWidth(prefix);
 	const start = Math.max(0, Math.min(bandStart, width));
 	const contentEnd = Math.max(start, width - rightPadding);
-	const lead = prefix.slice(0, start);
-	const inside = prefix.slice(start);
-	const insideWidth = Math.max(0, prefixWidth - start);
-	const lines = wrapText(text, Math.max(0, contentEnd - prefixWidth));
-	const continuation = " ".repeat(insideWidth);
+	const lead = " ".repeat(start);
+	// 带内留白由这里固定给出一列，不能从前缀里推导：色带起点一变，前缀就会被切光
+	const insideWidth = 1;
+	const inside = " ".repeat(insideWidth);
+	const lines = wrapText(text, Math.max(0, contentEnd - start - insideWidth));
+	const continuation = inside;
 
 	return lines.map((line, index) => {
 		const content = `${index === 0 ? inside : continuation}${line}`;
