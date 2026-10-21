@@ -79,9 +79,9 @@ describe("思考区块", () => {
 		assert.ok(header);
 		assert.ok(body);
 		assert.ok(plain(header).startsWith("  ✻ Thinking…"));
-		assert.ok(plain(body).startsWith("    three"));
+		assert.ok(plain(body).startsWith("     three"));
 		assert.equal(header.includes(THEME.surface), false);
-		assert.equal(body.indexOf(THEME.surface), 3);
+		assert.equal(body.indexOf(THEME.surface), 4);
 	});
 
 	it("展开时只提亮标题标签，耗时保持弱化", () => {
@@ -102,20 +102,24 @@ describe("思考区块", () => {
 		assert.equal(header?.includes(THEME.accent), false);
 	});
 
-	it("思考正文上方不留空行，下方留一行，展开标记换成菱形", () => {
+	it("思考正文上下各留一行色带，展开标记换成菱形", () => {
 		const block = blockOf("Thought for 1.0s", false);
 		block.expanded = true;
 		const lines = renderTranscript(40, 20, [{ prompt: "hi", response: [block] }], 0);
 		const headerRow = lines.findIndex((line) => plain(line).includes("◈ Thought for"));
 		assert.ok(headerRow >= 0);
 
-		const first = lines[headerRow + 1] ?? "";
+		const top = lines[headerRow + 1] ?? "";
+		assert.ok(top.includes(THEME.surface));
+		assert.equal(plain(top).trim(), "");
+
+		const first = lines[headerRow + 2] ?? "";
 		assert.ok(first.includes(THEME.surface));
 		assert.equal(plain(first).trim(), "one");
 
 		const body = lines.find((line) => plain(line).includes("three")) ?? "";
-		assert.ok(body.startsWith(`   ${THEME.surface}`));
-		assert.ok(plain(body).startsWith("    three"));
+		assert.ok(body.startsWith(`    ${THEME.surface}`));
+		assert.ok(plain(body).startsWith("     three"));
 
 		const lastRow = lines.findIndex((line) => plain(line).includes("seven"));
 		assert.ok(lastRow >= 0);
@@ -671,7 +675,7 @@ describe("块级间距", () => {
 		assert.equal(rows[failedRow + 1], "");
 	});
 
-	it("思考块与正文之间空一行，标题与思考正文保持相邻", () => {
+	it("思考块与正文之间空一行，标题与思考正文之间留一行色带", () => {
 		const block: TranscriptThinking = {
 			kind: "thinkingBlock",
 			header: "Thinking…",
@@ -686,8 +690,8 @@ describe("块级间距", () => {
 		const lastBodyRow = rows.findIndex((line) => line.includes("再决定"));
 		const textRow = rows.findIndex((line) => line.includes("开始吧"));
 
-		// 标题、两行正文、下内边距、块间距、正文
-		assert.equal(lastBodyRow, headerRow + 2);
+		// 标题、上内边距、两行正文、下内边距、块间距、正文
+		assert.equal(lastBodyRow, headerRow + 3);
 		assert.equal(textRow, lastBodyRow + 3);
 		assert.equal(rows[lastBodyRow + 1], "");
 		assert.equal(rows[lastBodyRow + 2], "");

@@ -602,7 +602,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 /**
  * 思考区块的屏幕行。
  *
- * 标题带符号、不铺底色；正文四周留一单位内边距，只有正文本身铺一层弱底色。
+ * 标题带符号、不铺底色；正文上下各留一行色带，左侧与工具详情保持同样的留白。
  * 运行时收起只留最后五行屏幕行，结束后收起只留标题，双击展开时给全文。
  */
 function thinkingBlockLines(block: TranscriptThinking, width: number): readonly string[] {
@@ -615,7 +615,7 @@ function thinkingBlockLines(block: TranscriptThinking, width: number): readonly 
 			: [];
 	const header = thinkingHeaderLines(block, width);
 	if (visible.length === 0) return header;
-	return [...header, ...visible, thinkingBlankLine(width)];
+	return [...header, thinkingBlankLine(width), ...visible, thinkingBlankLine(width)];
 }
 
 /**
@@ -646,12 +646,12 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 	});
 }
 
-/** 思考正文的一行：色带从标题符号右侧一列开始，左右各留一列内边距。 */
+/** 思考正文的一行：色带在标题符号右侧留出与工具详情相同的列数，带内左右各留一列内边距。 */
 function thinkingBodyLines(text: string, width: number): readonly string[] {
-	const start = displayWidth(RESPONSE_INDENT) + 1;
+	const start = displayWidth(RESPONSE_INDENT) + DETAIL_BAND_LEFT;
 	const lead = " ".repeat(start);
 	const inside = " ".repeat(THINKING_PADDING);
-	const contentWidth = Math.max(1, width - start - displayWidth(inside) - THINKING_PADDING);
+	const contentWidth = Math.max(1, width - start - displayWidth(inside) - DETAIL_RIGHT_PADDING);
 
 	return wrapText(text, contentWidth).map((line) => {
 		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
@@ -663,7 +663,7 @@ function thinkingBodyLines(text: string, width: number): readonly string[] {
 
 /** 思考正文的上下内边距：整条色带，不写内容。 */
 function thinkingBlankLine(width: number): string {
-	const start = displayWidth(RESPONSE_INDENT) + 1;
+	const start = displayWidth(RESPONSE_INDENT) + DETAIL_BAND_LEFT;
 	return `${" ".repeat(start)}${THINKING_BG}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
