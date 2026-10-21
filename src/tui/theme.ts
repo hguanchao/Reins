@@ -35,6 +35,24 @@ export const THEME = {
 	error: "\x1b[38;2;224;108;117m",
 	/** 成功与 diff 新增 #98c379 */
 	success: "\x1b[38;2;152;195;121m",
+	/** diff 新增行的底色 #0a1c0a：比正文底更深一档，改动范围靠背景块定位 */
+	diffInsertBg: "\x1b[48;2;10;28;10m",
+	/** diff 删除行的底色 #210a0d */
+	diffDeleteBg: "\x1b[48;2;33;10;13m",
+	/** 语法关键字 #c792ea */
+	syntaxKeyword: "\x1b[38;2;199;146;234m",
+	/** 语法字符串 #98c379 */
+	syntaxString: "\x1b[38;2;152;195;121m",
+	/** 语法数字与常量 #e0af68 */
+	syntaxNumber: "\x1b[38;2;224;175;104m",
+	/** 语法注释 #6b7580，斜体与终端默认字体区分 */
+	syntaxComment: "\x1b[3;38;2;107;117;128m",
+	/** 语法函数与成员 #61afef */
+	syntaxFunction: "\x1b[38;2;97;175;239m",
+	/** 语法类型与标签 #4ec9b0 */
+	syntaxType: "\x1b[38;2;78;201;176m",
+	/** 语法属性与变量 #a7b0ba */
+	syntaxOperator: "\x1b[38;2;167;176;186m",
 	/** 重置颜色与属性 */
 	reset: "\x1b[0m",
 } as const;

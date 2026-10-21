@@ -3,6 +3,7 @@ import { eastAsianWidth } from "get-east-asian-width";
 import type { ToolGroupKind } from "../tools/describe.ts";
 import { formatDuration } from "../tools/format.ts";
 import type { ResultDetailKind } from "../tools/result-summary.ts";
+import { highlightCode, type SyntaxSegment, type SyntaxToken } from "../tools/syntax.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -119,6 +120,12 @@ const SCROLLBAR_THUMB = "█";
 const RESET = THEME.reset;
 /** 实线下划线：展开后的文件路径不用终端给 OSC 8 链接画出的虚线。 */
 const UNDERLINE = "\x1b[4m";
+
+/** 一段带颜色的文本；着色只到这一段为止，渲染完要回到调用方给的颜色。 */
+interface ColoredSegment {
+	readonly text: string;
+	readonly color: string;
+}
 
 /** 用户提示首行符号前留一列，正文因此比模型回复多缩进一列。 */
 const PROMPT_PREFIX = " › ";
@@ -766,12 +773,20 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 		const bandStart = displayWidth(baseIndent) + 1;
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
+		const rows = tool.fullDetail.split("\n");
+		const syntax = kind === "diff" ? diffSyntax(rows, tool.detail) : undefined;
 		const body = [
-			...tool.fullDetail
-				.split("\n")
-				.flatMap((line) =>
-					detailBodyLines(line, kind, baseIndent, width, bandStart, detailColor(kind, line)),
+			...rows.flatMap((line, index) =>
+				detailBodyLines(
+					line,
+					kind,
+					baseIndent,
+					width,
+					bandStart,
+					detailColor(kind, line),
+					syntax?.[index],
 				),
+			),
 			bandBlankLine(width, bandStart),
 		];
 		return [head, ...body];
@@ -882,6 +897,7 @@ function detailBodyLines(
 	width: number,
 	bandStart: number,
 	color: string,
+	syntax: readonly SyntaxSegment[] | undefined,
 ): readonly string[] {
 	if (kind === "file") {
 		const match = /^(\s*\d+  )(.*)$/.exec(line);
@@ -889,9 +905,10 @@ function detailBodyLines(
 			return hangingLines(
 				match[1] ?? "",
 				"",
-				match[2] ?? "",
+				[{ text: match[2] ?? "", color }],
 				width,
 				bandStart,
+				THEME.surface,
 				color,
 				DETAIL_RIGHT_PADDING,
 			);
@@ -900,13 +917,23 @@ function detailBodyLines(
 	if (kind === "diff") {
 		const match = /^(\s*\d+ )([-+] |  )(.*)$/.exec(line);
 		if (match !== null) {
+			const marker = match[2] ?? "  ";
+			// 增删由整行底色表示，代码本身按语法着色；认不出语言时退回正文色
+			const background =
+				marker === "+ " ? THEME.diffInsertBg : marker === "- " ? THEME.diffDeleteBg : THEME.surface;
+			const markerColor = marker === "+ " ? THEME.success : marker === "- " ? THEME.error : color;
+			const segments =
+				syntax === undefined
+					? [{ text: match[3] ?? "", color }]
+					: syntax.map((segment) => ({ text: segment.text, color: syntaxColor(segment.token) }));
 			return hangingLines(
 				match[1] ?? "",
-				match[2] ?? "",
-				match[3] ?? "",
+				marker,
+				segments,
 				width,
 				bandStart,
-				color,
+				background,
+				markerColor,
 				DETAIL_RIGHT_PADDING,
 			);
 		}
@@ -921,6 +948,74 @@ function detailBodyLines(
 	);
 }
 
+/** 语法角色到颜色；无角色表示普通正文。 */
+function syntaxColor(token: SyntaxToken | undefined): string {
+	switch (token) {
+		case "keyword":
+			return THEME.syntaxKeyword;
+		case "string":
+			return THEME.syntaxString;
+		case "number":
+			return THEME.syntaxNumber;
+		case "comment":
+			return THEME.syntaxComment;
+		case "function":
+			return THEME.syntaxFunction;
+		case "type":
+			return THEME.syntaxType;
+		case "operator":
+			return THEME.syntaxOperator;
+		default:
+			return THEME.textPrimary;
+	}
+}
+
+/**
+ * diff 里的代码着色。
+ *
+ * 一份 diff 交错着两个版本：删行属于旧文件、增行属于新文件。块注释、模板字符串这类跨行结构
+ * 必须各自在自己的版本里解析，否则颜色会在增删交界处串味，因此新旧两侧各解析一次再按行映射
+ * 回来。认不出语言时返回 undefined，调用方按纯文本渲染。
+ *
+ * fileName 是折叠行里的文件名：语言只按扩展名判断，去掉目录不影响结论。
+ */
+function diffSyntax(
+	rows: readonly string[],
+	fileName: string,
+): readonly (readonly SyntaxSegment[] | undefined)[] | undefined {
+	const oldLines: string[] = [];
+	const newLines: string[] = [];
+	const slots: ({ readonly side: "old" | "new"; readonly index: number } | undefined)[] = [];
+
+	for (const row of rows) {
+		const match = /^(\s*\d+ )([-+] |  )(.*)$/.exec(row);
+		if (match === null) {
+			slots.push(undefined);
+			continue;
+		}
+		const marker = match[2] ?? "  ";
+		const text = match[3] ?? "";
+		if (marker === "- ") {
+			slots.push({ side: "old", index: oldLines.length });
+			oldLines.push(text);
+			continue;
+		}
+		// 新增行与上下文行都属于新版本；上下文行同时补进旧版本，两侧才能保持完整
+		slots.push({ side: "new", index: newLines.length });
+		newLines.push(text);
+		if (marker === "  ") oldLines.push(text);
+	}
+
+	const oldParsed = oldLines.length === 0 ? undefined : highlightCode(oldLines.join("\n"), fileName);
+	const newParsed = newLines.length === 0 ? undefined : highlightCode(newLines.join("\n"), fileName);
+	if (oldParsed === undefined && newParsed === undefined) return undefined;
+
+	return slots.map((slot) => {
+		if (slot === undefined) return undefined;
+		return (slot.side === "old" ? oldParsed : newParsed)?.[slot.index];
+	});
+}
+
 /** 面板上下内边距：整条色带，不写内容。 */
 function bandBlankLine(width: number, bandStart: number): string {
 	const start = Math.max(0, Math.min(bandStart, width));
@@ -932,10 +1027,11 @@ function bandBlankLine(width: number, bandStart: number): string {
 function hangingLines(
 	gutter: string,
 	marker: string,
-	text: string,
+	segments: readonly ColoredSegment[],
 	width: number,
 	bandStart: number,
-	color: string,
+	background: string,
+	markerColor: string,
 	rightPadding: number,
 ): readonly string[] {
 	const start = Math.max(0, Math.min(bandStart, width));
@@ -944,17 +1040,21 @@ function hangingLines(
 	const inside = " ";
 	const hangingWidth = displayWidth(gutter) + displayWidth(marker);
 	const available = Math.max(1, contentEnd - start - displayWidth(inside) - hangingWidth);
-	const segments = wrapText(text, available);
+	const wrapped = wrapSegments(segments, available);
 	const continuation = " ".repeat(displayWidth(inside) + hangingWidth);
+	// 前缀里夹着转义序列，宽度必须按可见字符算，否则正文会被提前截断
+	const headWidth = displayWidth(inside) + hangingWidth;
 
-	return segments.map((segment, index) => {
-		const content =
+	return wrapped.map((line, index) => {
+		// 行号与增删标记属于刻度而不是内容，压暗后正文才成为视觉主体
+		const prefix =
 			index === 0
-				? `${inside}${gutter}${marker}${segment}`
-				: `${continuation}${segment}`;
-		const visible = truncateToWidth(content, contentEnd - start);
-		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
-		return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
+				? `${inside}${THEME.textSubtle}${gutter}${markerColor}${marker}`
+				: continuation;
+		const body = paintSegments(prefix, headWidth, line, contentEnd - start);
+		// 底色要铺满整行：行尾补齐用背景色而不是文字色，否则尾部会拖一条彩色的空白
+		const padding = " ".repeat(Math.max(0, width - start - body.width));
+		return `${lead}${background}${body.text}${padding}${RESET}`;
 	});
 }
 
@@ -979,8 +1079,10 @@ function bandedWrappedLines(
 	return lines.map((line, index) => {
 		const content = `${index === 0 ? inside : continuation}${line}`;
 		const visible = truncateToWidth(content, contentEnd - start);
+		// 空行与 hunk 之间的省略行不写内容，只留底色；给它们上文字色会在整行铺出一片色块
+		const paint = visible.trim().length === 0 ? "" : color;
 		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
-		return `${lead}${THEME.surface}${color}${visible}${padding}${RESET}`;
+		return `${lead}${THEME.surface}${paint}${visible}${padding}${RESET}`;
 	});
 }
 
@@ -1099,6 +1201,69 @@ function wrapText(text: string, limit: number): string[] {
 
 	lines.push(line);
 	return lines;
+}
+
+/**
+ * 按显示宽度折行，保留每段的颜色。
+ *
+ * 着色后的代码由多段不同颜色拼成，先摊成字符再按宽度切断，切点落在段中间时要把这段拆开，
+ * 否则整段会因为放不下而被整体推到下一行，行宽就白算了。
+ */
+function wrapSegments(segments: readonly ColoredSegment[], limit: number): readonly (readonly ColoredSegment[])[] {
+	if (limit <= 0) return [[]];
+
+	const lines: ColoredSegment[][] = [[]];
+	let used = 0;
+
+	for (const segment of segments) {
+		for (const char of segment.text) {
+			const charWidth = characterWidth(char);
+			if (used + charWidth > limit && used > 0) {
+				lines.push([]);
+				used = 0;
+			}
+			appendColored(lines[lines.length - 1] ?? [], char, segment.color);
+			used += charWidth;
+		}
+	}
+	return lines;
+}
+
+/** 相邻同色字符合并，避免输出里出现大量只有一两个字符的转义序列。 */
+function appendColored(line: ColoredSegment[], text: string, color: string): void {
+	const last = line.at(-1);
+	if (last !== undefined && last.color === color) {
+		line[line.length - 1] = { text: last.text + text, color };
+		return;
+	}
+	line.push({ text, color });
+}
+
+/**
+ * 把前缀与彩色正文拼成一行，并按宽度截断。
+ *
+ * 截断必须按字符进行：着色后每段都带转义序列，按字符串长度一刀切会把转义序列截成半截，
+ * 终端上就会出现整屏乱码。正文结束后回到背景色，行尾填充才不会拖着文字色。
+ */
+function paintSegments(
+	prefix: string,
+	prefixWidth: number,
+	segments: readonly ColoredSegment[],
+	limit: number,
+): { readonly text: string; readonly width: number } {
+	let remaining = Math.max(0, limit - prefixWidth);
+	let output = prefix;
+	let width = prefixWidth;
+
+	for (const segment of segments) {
+		if (remaining <= 0) break;
+		const visible = truncateToWidth(segment.text, remaining);
+		if (visible.length === 0) continue;
+		output += `${segment.color}${visible}`;
+		width += displayWidth(visible);
+		remaining -= displayWidth(visible);
+	}
+	return { text: output, width };
 }
 
 function truncateToWidth(text: string, width: number): string {

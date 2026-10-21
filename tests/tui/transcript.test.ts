@@ -16,6 +16,7 @@ import {
 	type TranscriptToolGroup,
 	type TranscriptTurn,
 } from "../../src/tui/transcript.ts";
+import { displayWidth } from "../../src/tui/menu-panel.ts";
 import { THEME } from "../../src/tui/theme.ts";
 
 const PROMPT_BG = "\x1b[48;2;22;25;29m";
@@ -422,8 +423,66 @@ describe("工具调用行", () => {
 		const added = lines.find((line) => plain(line).includes("1 + new"));
 
 		assert.ok(hunk?.includes(THEME.accent));
+		// 增删改为整行底色，标记本身仍用成功/失败色
+		assert.ok(removed?.includes(THEME.diffDeleteBg));
 		assert.ok(removed?.includes(THEME.error));
+		assert.ok(added?.includes(THEME.diffInsertBg));
 		assert.ok(added?.includes(THEME.success));
+	});
+
+	it("diff 的代码按语法着色，行尾填充回到底色不拖彩色", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Edit",
+			detail: "retry.ts",
+			fullDetail: '1 + const backoff = Math.min(250, 5_000);\n2   // 注释',
+			detailKind: "diff",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const added = lines.find((line) => plain(line).includes("const backoff"));
+		const commented = lines.find((line) => plain(line).includes("// 注释"));
+
+		assert.ok(added?.includes(THEME.syntaxKeyword));
+		assert.ok(added?.includes(THEME.syntaxNumber));
+		assert.ok(commented?.includes(THEME.syntaxComment));
+		// 上下文行没有底色，仍用浮起表面铺满
+		assert.ok(commented?.includes(THEME.surface));
+	});
+
+	it("认不出语言时 diff 不着色，但增删底色仍在", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Edit",
+			detail: "notes",
+			fullDetail: "1 + const a = 1;",
+			detailKind: "diff",
+			detailExpanded: true,
+		};
+		const line = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0).find((item) =>
+			plain(item).includes("const a = 1;"),
+		);
+
+		assert.ok(line?.includes(THEME.diffInsertBg));
+		assert.equal(line?.includes(THEME.syntaxKeyword), false);
+	});
+
+	it("diff 每行宽度精确等于终端宽度，底色铺满整行", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Edit",
+			detail: "a.ts",
+			fullDetail: "1 - old = 1;\n1 + const n = 2;\n2   // 注释",
+			detailKind: "diff",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(50, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const body = lines.filter((line) => /^\s+\d+ /.test(plain(line)));
+
+		assert.equal(body.length, 3);
+		for (const line of body) {
+			assert.equal(displayWidth(plain(line)), 50);
+		}
 	});
 
 	it("折叠路径带 OSC 8 链接，宽度仍按纯文本计算", () => {
