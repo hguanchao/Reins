@@ -44,7 +44,7 @@ export function describeToolCall(
 	workspaceRoot?: string,
 ): ToolDescription {
 	const group = toolGroupKind(tool);
-	const detail = singleLine(describeDetail(tool, args, workspaceRoot));
+	const detail = sanitizeLine(describeDetail(tool, args, workspaceRoot));
 	const fullDetail = describeFullDetail(tool, args, detail);
 	const linkTarget = fileLinkTarget(tool, args, workspaceRoot);
 	const description = {
@@ -94,7 +94,7 @@ function describeDetail(tool: string, args: Record<string, unknown>, workspaceRo
 		case "edit":
 			return basenamePath(text(args["path"]) ?? "(missing path)");
 		case "bash":
-			return commandCore(singleLine(text(args["command"]) ?? "(no command)"), workspaceRoot);
+			return commandCore(sanitizeLine(text(args["command"]) ?? "(no command)"), workspaceRoot);
 		case "find": {
 			const pattern = text(args["pattern"]) ?? "(no pattern)";
 			return withModifiers(shortenText(pattern, 48), scopeModifiers(args["path"]));
@@ -133,7 +133,7 @@ function describeFullDetail(tool: string, args: Record<string, unknown>, detail:
 		case "grep":
 			return undefined;
 		case "bash": {
-			const full = singleLine(text(args["command"]) ?? "(no command)");
+			const full = sanitizeLine(text(args["command"]) ?? "(no command)");
 			return full === detail ? undefined : full;
 		}
 		case "subagent": {
@@ -228,11 +228,11 @@ function capDetail(text: string): string {
 
 /** 多行内容逐行清理：ANSI 与终端控制字符都不能带进界面。 */
 export function sanitizeDetail(text: string): string {
-	return text.split("\n").map(singleLine).join("\n");
+	return text.split("\n").map(sanitizeLine).join("\n");
 }
 
 /** 摘要只占一行：换行与制表折成空格，转义序列不能带进终端。 */
-function singleLine(value: string): string {
+export function sanitizeLine(value: string): string {
 	return stripAnsi(value)
 		.replace(/[\r\n\t]+/g, " ")
 		.replace(/[\u0000-\u001f\u007f]/g, "");

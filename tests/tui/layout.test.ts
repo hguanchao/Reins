@@ -77,14 +77,15 @@ function createFakeAgent(onRefresh: () => void = () => {}): FakeAgent {
 	};
 }
 
-const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1006h\x1b[?2004h";
-const CLEAR = "\x1b[H\x1b[2J";
-const LEAVE = "\x1b[?2004l\x1b[?1006l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
+const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?2004h";
+const SYNC_BEGIN = "\x1b[?2026h";
+const SYNC_END = "\x1b[?2026l";
+const LEAVE = "\x1b[?2004l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
 const FOCUS = "\x1b[38;2;78;201;176m";
 const BLUR = "\x1b[38;2;42;49;56m";
 const INFO = "\x1b[38;2;167;176;186m";
 const BORDER = "─";
-const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h$/;
+const CURSOR_SUFFIX = /\x1b\[\d+;\d+H\x1b\[\?25h(?:\x1b\[\?2026l)?$/;
 const FOOTER_INFO = {
 	project: "Reins",
 	branch: "main",
@@ -120,25 +121,29 @@ function rawFrame(output: FakeOutput): string {
 	return output.chunks.at(-1) ?? "";
 }
 
-/** 去掉末尾的光标定位序列，只看画面本身。 */
+/** 去掉末尾的光标定位序列与同步输出标记，只看画面本身。 */
 function lastFrame(output: FakeOutput): string {
-	return rawFrame(output).replace(CURSOR_SUFFIX, "");
+	return rawFrame(output)
+		.replace(SYNC_BEGIN, "")
+		.replace(SYNC_END, "")
+		.replace(CURSOR_SUFFIX, "");
 }
 
 /** 内容行都定位到第 1 列；滚动条列的重画跟在所有内容行之后，不属于某一行。 */
 const ROW_START = /\x1b\[\d+;1H/;
 const COLUMN_HOME = /\x1b\[\d+;\d+H/;
+/** 每行写入前先复位颜色并擦掉整行，解析画面时把它当作行前缀去掉。 */
+const ROW_ERASE = /\x1b\[0m\x1b\[K/g;
 
 function frameLines(output: FakeOutput): string[] {
-	const frame = lastFrame(output);
-	const body = frame.slice(frame.indexOf(CLEAR) + CLEAR.length);
-	const rows = body.split(ROW_START).slice(1);
+	const frame = lastFrame(output).replace(ROW_ERASE, "");
+	const rows = frame.split(ROW_START).slice(1);
 	const last = rows.pop() ?? "";
 	return [...rows, last.split(COLUMN_HOME)[0] ?? ""];
 }
 
 function cursorAt(output: FakeOutput, row: number, column: number): boolean {
-	return rawFrame(output).endsWith(`\x1b[${row};${column}H\x1b[?25h`);
+	return rawFrame(output).endsWith(`\x1b[${row};${column}H\x1b[?25h${SYNC_END}`);
 }
 
 function plain(line: string): string {
@@ -176,6 +181,25 @@ describe("全屏布局", () => {
 		assert.equal(input.rawMode, false);
 		assert.equal(input.resumed, false);
 		assert.equal(output.chunks.at(-1), LEAVE);
+	});
+
+	it("整帧写入时不清屏，逐行擦除并包在同步输出里", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			const frame = rawFrame(output);
+			assert.equal(frame.includes("\x1b[2J"), false);
+			assert.ok(frame.startsWith(`\x1b[?25l${SYNC_BEGIN}`));
+			assert.ok(frame.endsWith(SYNC_END));
+			// 每一行都先复位颜色、擦掉整行再覆盖
+			assert.equal(frame.match(/\x1b\[0m\x1b\[K/g)?.length, output.rows);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
 	});
 
 	it("第一次 Ctrl+C 不退出，第二次才退出", async () => {
@@ -294,6 +318,155 @@ describe("全屏布局", () => {
 			text = plain(frameLines(output).join("\n"));
 			assert.ok(text.includes("Configuration required"));
 			assert.equal(text.includes("Waiting for response..."), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("一轮进行中只放行 /help、/model、/effort", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			effortMenu: { current: () => "medium", select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(50);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for response..."));
+
+			// /model 只影响下一轮，运行中照开
+			input.emit("data", Buffer.from("/model\r"));
+			assert.ok(frameLines(output).map(plain).some((line) => line.includes("fengshao/")));
+			input.emit("data", Buffer.from("\x1b"));
+
+			// /effort 同理
+			input.emit("data", Buffer.from("/effort\r"));
+			assert.ok(frameLines(output).map(plain).some((line) => line.includes("› /effort")));
+			input.emit("data", Buffer.from("\x1b"));
+
+			// /help 打开整屏帮助页
+			input.emit("data", Buffer.from("/help\r"));
+			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
+			input.emit("data", Buffer.from("\x1b"));
+
+			// /compact 会另起一轮，运行中仍然挡掉：对话流里不该出现这条提示
+			input.emit("data", Buffer.from("/compact\r"));
+			const afterCompact = frameLines(output).slice(0, 6).map(plain).join("\n");
+			assert.equal(afterCompact.includes("/compact"), false);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for response..."));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("运行中切模型，确认块等这一轮结束再落进对话流", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		// 终端够高，确认块和当前轮能同时看见
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "text_delta", text: "working..." });
+			t.mock.timers.tick(100);
+
+			input.emit("data", Buffer.from("/model\r"));
+			input.emit("data", Buffer.from("\r"));
+			t.mock.timers.tick(10);
+
+			// 这一轮还没结束：确认块先排队，免得被持续输出顶走
+			let lines = frameLines(output).map(plain);
+			assert.equal(lines.some((line) => line.includes("Model switched")), false);
+
+			await agent.finish();
+			t.mock.timers.tick(10);
+
+			lines = frameLines(output).map(plain);
+			const switched = lines.findIndex((line) => line.includes("Model switched"));
+			const prompt = lines.findIndex((line) => line.includes("hello"));
+
+			assert.ok(switched >= 0, "一轮结束后应落下确认块");
+			// 运行中切换要说清生效时机，否则页脚已经变了、这一轮却还在用旧模型
+			assert.ok(lines.join("\n").includes("(from the next turn)"));
+			// 落在这一轮之后：位置在末尾，时间顺序也对
+			assert.ok(switched > prompt, `确认块应排在当前轮之后：switched=${switched} prompt=${prompt}`);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("重试时状态行说明原因", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "retrying", attempt: 1, reason: "HTTP 429: slow down" });
+			t.mock.timers.tick(100);
+
+			assert.ok(
+				frameLines(output).map(plain).join("\n").includes("Retrying (1)... HTTP 429: slow down"),
+			);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("输入命中命令时输入框里的命令着色，参数不着色", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		const inputLine = (): string => {
+			const lines = frameLines(output);
+			const index = lines.findIndex((line) => plain(line).startsWith(" › "));
+			return index < 0 ? "" : (lines[index] ?? "");
+		};
+
+		try {
+			// 没打全不算命中
+			input.emit("data", Buffer.from("/mod"));
+			assert.equal(inputLine().includes(`${FOCUS}/mod`), false);
+
+			// 打全之后命令着色，后面的参数保持正文色
+			input.emit("data", Buffer.from("el foo"));
+			const line = inputLine();
+			assert.equal(plain(line), " › /model foo");
+			assert.ok(line.includes(`${FOCUS}/model${THEME.reset}`));
+			assert.ok(line.endsWith(" foo"));
 		} finally {
 			exitTui(input);
 		}
@@ -757,6 +930,92 @@ describe("全屏布局", () => {
 			assert.ok(text.includes("hi"));
 			assert.equal(text.includes("Done"), false);
 			assert.equal(text.includes("Writing response..."), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("流式增量以换行结尾时，行末内容不会丢", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "text_delta", text: "第一行结尾" });
+			agent.emit({ type: "text_delta", text: "完整\n" });
+			agent.emit({ type: "text_delta", text: "第二行完全" });
+			agent.emit({ type: "text_delta", text: "保留\n" });
+			await agent.finish();
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("第一行结尾完整"));
+			assert.ok(text.includes("第二行完全保留"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("思考插在文本中间时，文本继续写回原来的块", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "text_delta", text: "我先" });
+			agent.emit({ type: "reasoning_delta", text: "." });
+			agent.emit({ type: "text_delta", text: "看一下项目结构。" });
+			t.mock.timers.tick(100);
+
+			const lines = frameLines(output).map(plain);
+			const textRow = lines.findIndex((line) => line.includes("我先看一下项目结构。"));
+			const thoughtRow = lines.findIndex((line) => line.includes("Thought for"));
+
+			// 文本仍是一个块；迟到的思考块保留，但排在完整文本之后
+			assert.ok(textRow >= 0);
+			assert.ok(thoughtRow > textRow);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("纯空白的思考不生成空思考块", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "reasoning_delta", text: " \n " });
+			agent.emit({ type: "text_delta", text: "答案" });
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Thought for"), false);
+			assert.ok(text.includes("答案"));
+
+			// 真正的思考仍然创建区块；后续文本继续写回原来的文本块
+			agent.emit({ type: "reasoning_delta", text: "真正的思考" });
+			agent.emit({ type: "text_delta", text: "继续" });
+			t.mock.timers.tick(100);
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Thought for"));
+			assert.ok(text.includes("答案继续"));
 		} finally {
 			exitTui(input);
 		}
@@ -1366,6 +1625,41 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("输入框失焦后按回车先抢回焦点，这一下不提交", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			// 先打一句话，再点到对话流上让输入框失焦
+			input.emit("data", Buffer.from("hello"));
+			input.emit("data", Buffer.from("\x1b[<0;5;5M"));
+			let frame = rawFrame(output);
+			assert.ok(frame.includes(BLUR));
+			assert.equal(frame.includes("\x1b[?25h"), false);
+
+			// 回车把焦点抢回来：边框转强调色、光标出现，但已经打好的内容没有被提交
+			input.emit("data", Buffer.from("\r"));
+			frame = rawFrame(output);
+			assert.ok(frame.includes(FOCUS));
+			assert.ok(cursorAt(output, 10, 9));
+			assert.equal(plain(frameLines(output)[7] ?? "").includes("Waiting for response"), false);
+
+			// 焦点回来之后再按一次才真正提交
+			input.emit("data", Buffer.from("\r"));
+			assert.ok(plain(frameLines(output)[7] ?? "").includes("Waiting for response"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("输入框一有输入，品牌名与版本号就隐藏", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -1805,8 +2099,23 @@ describe("全屏布局", () => {
 			agent.emit({ type: "tool_end", callId: "c2", name: "bash", isError: true, durationMs: 3, summary: "exit 1" });
 			t.mock.timers.tick(100);
 
+			let lines = frameLines(output);
+			text = lines.map(plain).join("\n");
+			// 失败直接落在调用行上：显示命令与耗时，不再另起一行错误摘要
+			assert.ok(text.includes("× Bash  false (3ms)"));
+			assert.equal(text.includes("× Bash  exit 1"), false);
+
+			// 双击这一行展开完整命令和详细报错
+			const failedRow = lines.findIndex((line) => plain(line).includes("× Bash"));
+			assert.ok(failedRow >= 0);
+			const row = failedRow + 1;
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			t.mock.timers.tick(100);
+
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("× Bash  exit 1 (3ms)"));
+			assert.ok(text.includes("false"));
+			assert.ok(text.includes("exit 1"));
 		} finally {
 			exitTui(input);
 		}
@@ -2036,6 +2345,55 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("\x1b[<65;20;4M"));
 			const followed = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(followed.slice(2).join("\n").includes("line 16"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("上滚后出现置底按钮，点击回到底部", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 16 }, (_, index) => `line ${index + 1}`).join("\n"),
+			});
+			t.mock.timers.tick(100);
+
+			// 贴在底部时没有可置底的东西，不画按钮
+			assert.equal(lastFrame(output).includes("\x1b[6;35H"), false);
+
+			// 拖到顶部后按钮出现在对话流最后一行右端，默认是弱色
+			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
+			input.emit("data", Buffer.from("\x1b[<0;40;1m"));
+			const idle = `\x1b[6;35H${THEME.surface}${THEME.textSubtle}  ▼  ${THEME.reset}`;
+			assert.ok(lastFrame(output).includes(idle));
+
+			// 指针移进按钮范围后高亮
+			input.emit("data", Buffer.from("\x1b[<35;36;6M"));
+			assert.ok(lastFrame(output).includes(`\x1b[6;35H${THEME.surface}${THEME.accent}  ▼  ${THEME.reset}`));
+
+			// 移出去恢复弱色
+			input.emit("data", Buffer.from("\x1b[<35;5;5M"));
+			assert.ok(lastFrame(output).includes(idle));
+
+			// 点按钮左侧的命中扩展区也算命中：小目标留出容错
+			input.emit("data", Buffer.from("\x1b[<0;34;6M"));
+			const back = frameLines(output).slice(0, 6).map(plain);
+			assert.ok(back.slice(2).join("\n").includes("line 16"));
+			assert.equal(lastFrame(output).includes("\x1b[6;35H"), false);
 		} finally {
 			exitTui(input);
 		}

@@ -1,9 +1,10 @@
-import { eastAsianWidth } from "get-east-asian-width";
-
-import type { ToolGroupKind } from "../tools/describe.ts";
+import { sanitizeLine, type ToolGroupKind } from "../tools/describe.ts";
 import { formatDuration } from "../tools/format.ts";
 import type { ResultDetailKind } from "../tools/result-summary.ts";
-import { highlightCode, type SyntaxSegment, type SyntaxToken } from "../tools/syntax.ts";
+import { highlightCode, type SyntaxSegment } from "../tools/syntax.ts";
+import { renderMarkdown } from "./markdown.ts";
+import { syntaxColor } from "./syntax-style.ts";
+import { characterWidth, displayWidth, fitToWidth, truncateToWidth, wrapText } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -28,7 +29,19 @@ export type TranscriptLine =
 	| TranscriptNote
 	| TranscriptThinking
 	| TranscriptTool
-	| TranscriptToolGroup;
+	| TranscriptToolGroup
+	| TranscriptMarkdown;
+
+/**
+ * 模型回复里的 Markdown 文本块。
+ *
+ * 流式增量直接追加到 text；渲染时才排版，因此代码围栏、列表这类跨行结构在流式过程中
+ * 也能按当前完整内容正确解析。普通字符串仍然按纯文本渲染，压缩提示、插件输出不受影响。
+ */
+export interface TranscriptMarkdown {
+	readonly kind: "markdown";
+	text: string;
+}
 
 /** 需要与正文区分开的一行：警告和失败是要看见的事。 */
 export interface TranscriptNote {
@@ -57,8 +70,8 @@ export interface TranscriptTool {
 	detailExpanded?: boolean;
 	/** 工具结束后的结果指标，显示在折叠行末尾 */
 	metric?: string;
-	readonly isError?: boolean;
-	readonly durationMs?: number;
+	isError?: boolean;
+	durationMs?: number;
 	/** 工具调用 id，用于把成功结果挂回对应行 */
 	readonly callId?: string;
 	/** 只读探索工具的分组类型；失败行和写操作没有 */
@@ -144,6 +157,13 @@ const RESPONSE_INDENT = "  ";
 const THINKING_TAIL_LINES = 5;
 /** 成功工具结果默认最多展开多少行。 */
 const TOOL_RESULT_PREVIEW_LINES = 20;
+/**
+ * 展开详情最多渲染的行数。
+ *
+ * 工具结果可能上千行（列一棵含缓存目录的树、读一个大文件），全铺进对话流会把这一轮的其他
+ * 内容挤出屏幕。只截显示不截数据：全文仍留在 tool.fullDetail 里。
+ */
+const DETAIL_BAND_MAX_LINES = 60;
 /** 思考标题的标记：单列火花，与工具行的 ›、失败行的 × 区分。 */
 const THINKING_MARKER = "✻";
 /** 展开后的菱形标记：工具组头和思考块共用。 */
@@ -265,6 +285,22 @@ export function findToolByCallId(
 			const member = line.members.find((item) => item.callId === callId);
 			if (member !== undefined) return member;
 		}
+	}
+	return undefined;
+}
+
+/**
+ * 找到顶层的工具调用行。
+ *
+ * 失败结果直接改这一行本身；组成员不参与，否则错误会被收起的组头盖住，仍按独立错误行显示。
+ */
+export function findTopLevelToolByCallId(
+	lines: readonly TranscriptLine[],
+	callId: string,
+): TranscriptTool | undefined {
+	for (const line of lines) {
+		if (typeof line !== "object" || line === null) continue;
+		if (line.kind === "tool" && line.callId === callId) return line;
 	}
 	return undefined;
 }
@@ -488,16 +524,37 @@ function visibleIndexes(
 ): readonly number[] {
 	const prompt = pinnedPrompt(view.prompts, top);
 	if (prompt !== undefined && top > prompt.start) {
-		const headerCount = Math.min(prompt.height + HEADER_GAP_LINES, rows);
-		const header = Array.from({ length: headerCount }, (_, index) => prompt.start + index);
-		// header 盖住视口顶部；正文接着被盖住的行继续，滚动才始终有位移
-		const contentTop = top + header.length;
+		const full = prompt.height + HEADER_GAP_LINES;
+		// 下一条提示逼近时，吸顶块从自己的顶部收起，把下一个提示块完整让出来；
+		// 提示前固定留的那行空行留在正文里，块与块之间才不会贴在一起
+		const next = view.prompts.find((item) => item.start > prompt.start);
+		const budget = next === undefined ? full : next.start - top - 1;
+		const headerCount = Math.min(rows, Math.min(full, Math.max(0, budget)));
+		if (headerCount > 0) {
+			const header = headerIndexes(prompt, headerCount);
+			// header 盖住视口顶部；正文接着被盖住的行继续，滚动才始终有位移
+			const contentTop = top + headerCount;
 
-		const contentHeight = Math.max(0, rows - header.length);
-		const content = Array.from({ length: contentHeight }, (_, index) => contentTop + index);
-		return [...header, ...content];
+			const contentHeight = Math.max(0, rows - headerCount);
+			const content = Array.from({ length: contentHeight }, (_, index) => contentTop + index);
+			return [...header, ...content];
+		}
 	}
 	return Array.from({ length: rows }, (_, index) => top + index);
+}
+
+/**
+ * 吸顶块显示提示的哪几行。
+ *
+ * 满高时连同提示后的空行一起显示；被下一条提示顶出去时只保留提示块末尾的几行，
+ * 空行留在正文里给下一个提示块做间隔。
+ */
+function headerIndexes(prompt: PromptRange, count: number): readonly number[] {
+	const start =
+		count === prompt.height + HEADER_GAP_LINES
+			? prompt.start
+			: prompt.start + prompt.height - count;
+	return Array.from({ length: count }, (_, index) => start + index);
 }
 
 function contentWidth(terminalWidth: number): number {
@@ -509,6 +566,7 @@ type ResponseBlockKind = "text" | "thinking" | "tools" | "notice";
 
 function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
 	if (typeof line === "string") return "text";
+	if (line.kind === "markdown") return "text";
 	if (line.kind === "tool") return line.isError === true ? "notice" : "tools";
 	if (line.kind === "toolGroup") return "tools";
 	if (line.kind === "thinkingBlock") return "thinking";
@@ -519,13 +577,26 @@ function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
  * 相邻两条内容之间是否需要空行。
  *
  * 连续正文和连续工具调用各自属于同一块，保持紧凑；思考区块与失败、警告各自独立成块，
- * 即使前后同类也要分开，否则流式输出读起来会糊成一片。
+ * 即使前后同类也要分开，否则流式输出读起来会糊成一片。工具调用的失败原因紧跟在调用行
+ * 之后，是同一件事的两半，不能被空行拆开。
  */
 function needsBlockGap(previous: TranscriptLine, current: TranscriptLine): boolean {
+	if (isToolFailure(previous, current)) return false;
 	const previousKind = responseBlockKind(previous);
 	const currentKind = responseBlockKind(current);
 	if (previousKind !== currentKind) return true;
 	return currentKind === "thinking" || currentKind === "notice";
+}
+
+/** 失败行是否属于上一条工具调用。 */
+function isToolFailure(previous: TranscriptLine, current: TranscriptLine): boolean {
+	if (typeof current !== "object" || current === null) return false;
+	if (current.kind !== "tool" || current.isError !== true) return false;
+	return (
+		typeof previous === "object" &&
+		previous !== null &&
+		(previous.kind === "tool" || previous.kind === "toolGroup")
+	);
 }
 
 function build(width: number, turns: readonly TranscriptTurn[], notice: string | undefined): TranscriptView {
@@ -560,6 +631,10 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 			previousLine = line;
 			if (typeof line === "string") {
 				lines.push(...responseLines(line, width, MESSAGE_TEXT_COLOR));
+				continue;
+			}
+			if (line.kind === "markdown") {
+				lines.push(...renderMarkdown(line.text, width));
 				continue;
 			}
 			if (line.kind === "thinkingBlock") {
@@ -733,7 +808,10 @@ function toolResultLines(
 	const lines = raw.length === 0 ? ["(no output)"] : raw.split("\n");
 	const visible = lines.slice(0, TOOL_RESULT_PREVIEW_LINES);
 	const prefix = `${baseIndent}  `;
-	const output = visible.flatMap((line) => wrappedLines(line, prefix, width, THEME.textSecondary));
+	// 结果同样是终端文本：Windows 命令带回车，其他工具可能带转义序列
+	const output = visible.flatMap((line) =>
+		wrappedLines(sanitizeLine(line), prefix, width, THEME.textSecondary),
+	);
 	if (lines.length > TOOL_RESULT_PREVIEW_LINES) {
 		output.push(
 			...wrappedLines(
@@ -768,8 +846,8 @@ function groupHeaderLabel(members: readonly TranscriptTool[]): string {
 /**
  * 工具调用行。
  *
- * 折叠时只显示核心命令：开头多余的工作根 `cd` 已经由描述模块剥掉。展开时换成完整命令，
- * 按正文换行，双击这一行切换。失败原因要完整看见，因此失败行始终按正文换行。
+ * 折叠时只显示核心命令：开头多余的工作根 `cd` 已经由描述模块剥掉。失败时这一行本身变成
+ * 错误行（× + 命令 + 耗时），不再另起一行；双击展开完整命令与详细错误。
  */
 function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_INDENT): readonly string[] {
 	const marker = tool.isError ? ERROR_MARKER : TOOL_MARKER;
@@ -778,33 +856,18 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 
 	if (tool.isError) {
 		const duration = tool.durationMs === undefined ? "" : ` (${formatDuration(tool.durationMs)})`;
-		const body = tool.detail.length === 0 ? tool.name : `${tool.name}  ${tool.detail}`;
-		return wrappedLines(body + duration, prefix, width, ERROR_COLOR);
+		// 失败行显示的是这次调用本身，不是错误摘要：摘要留给展开后的详情
+		const reason = sanitizeLine(tool.detail).trim();
+		const body = reason.length === 0 ? tool.name : `${tool.name}  ${reason}`;
+		const failed = wrappedLines(body + duration, prefix, width, ERROR_COLOR);
+		if (tool.detailExpanded === true && tool.fullDetail !== undefined) {
+			return [...failed, ...detailBand(tool, baseIndent, width)];
+		}
+		return failed;
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：色带从标题标记右侧留白后开始，上下各留一行；右侧铺到面板边缘
-		const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
-		const head = expandedToolHead(tool, baseIndent, width);
-		const kind = tool.detailKind ?? "text";
-		// 工具结果普遍以换行结尾，直接切行会在详情末尾多出一个空行，与下边距叠成两行留白
-		const rows = stripTrailingBlank(tool.fullDetail.split("\n"));
-		const syntax = kind === "diff" ? diffSyntax(rows, tool.detail) : undefined;
-		const body = [
-			bandBlankLine(width, bandStart),
-			...rows.flatMap((line, index) =>
-				detailBodyLines(
-					line,
-					kind,
-					width,
-					bandStart,
-					detailColor(kind, line),
-					syntax?.[index],
-				),
-			),
-			bandBlankLine(width, bandStart),
-		];
-		return [head, ...body];
+		return [expandedToolHead(tool, baseIndent, width), ...detailBand(tool, baseIndent, width)];
 	}
 
 	if (tool.detail.length === 0 && tool.metric === undefined) {
@@ -813,6 +876,35 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 
 	return [
 		toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, tool.linkTarget, width, tool.name === "Bash"),
+	];
+}
+
+/** 展开的详情色带：上下各留一行，右侧铺到面板边缘。失败行展开时也复用它。 */
+function detailBand(tool: TranscriptTool, baseIndent: string, width: number): readonly string[] {
+	const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
+	const kind = tool.detailKind ?? "text";
+	// 工具结果普遍以换行结尾，直接切行会在详情末尾多出一个空行，与下边距叠成两行留白
+	const rows = stripTrailingBlank((tool.fullDetail ?? "").split("\n"));
+	// 只截显示不截数据：全文仍在 tool.fullDetail 里，展开多长都不会把这一轮的其他内容挤出屏幕
+	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES);
+	const syntax = kind === "diff" ? diffSyntax(visible, tool.detail) : undefined;
+	const hidden = rows.length - visible.length;
+	return [
+		bandBlankLine(width, bandStart),
+		...visible.flatMap((line, index) =>
+			detailBodyLines(line, kind, width, bandStart, detailColor(kind, line), syntax?.[index]),
+		),
+		...(hidden === 0
+			? []
+			: detailBodyLines(
+					`… (${hidden} more lines)`,
+					"text",
+					width,
+					bandStart,
+					THEME.textSubtle,
+					undefined,
+				)),
+		bandBlankLine(width, bandStart),
 	];
 }
 
@@ -986,28 +1078,6 @@ function detailBodyLines(
 	);
 }
 
-/** 语法角色到颜色；无角色表示普通正文。 */
-function syntaxColor(token: SyntaxToken | undefined): string {
-	switch (token) {
-		case "keyword":
-			return THEME.syntaxKeyword;
-		case "string":
-			return THEME.syntaxString;
-		case "number":
-			return THEME.syntaxNumber;
-		case "comment":
-			return THEME.syntaxComment;
-		case "function":
-			return THEME.syntaxFunction;
-		case "type":
-			return THEME.syntaxType;
-		case "operator":
-			return THEME.syntaxOperator;
-		default:
-			return THEME.textPrimary;
-	}
-}
-
 /**
  * diff 里的代码着色。
  *
@@ -1155,23 +1225,6 @@ function detailColor(kind: ResultDetailKind, line: string): string {
 	return MESSAGE_TEXT_COLOR;
 }
 
-/** 截到指定宽度；放不下时末尾补省略号，保证结果不超过宽度。 */
-function fitToWidth(text: string, width: number): string {
-	if (width <= 0) return "";
-	if (displayWidth(text) <= width) return text;
-
-	const chars = Array.from(text);
-	let used = 0;
-	let end = 0;
-	while (end < chars.length) {
-		const charWidth = characterWidth(chars[end] ?? "");
-		if (used + charWidth > width - 1) break;
-		used += charWidth;
-		end += 1;
-	}
-	return `${chars.slice(0, end).join("")}…`;
-}
-
 /** 提示块上下各留一行背景，正文最多三行，放不下时在第三行末尾补省略号。 */
 function promptBlock(prompt: string, width: number): readonly string[] {
 	const prefixWidth = Math.min(PROMPT_PREFIX.length, width);
@@ -1232,29 +1285,6 @@ function wrapPrompt(text: string, limit: number, maxLines: number): readonly str
 	}
 	visible[maxLines - 1] = last.join("") + ellipsis;
 	return visible;
-}
-
-function wrapText(text: string, limit: number): string[] {
-	if (limit <= 0) return [""];
-
-	const chars = Array.from(text);
-	const lines: string[] = [];
-	let line = "";
-	let used = 0;
-
-	for (const char of chars) {
-		const charWidth = characterWidth(char);
-		if (used + charWidth > limit && line.length > 0) {
-			lines.push(line);
-			line = "";
-			used = 0;
-		}
-		line += char;
-		used += charWidth;
-	}
-
-	lines.push(line);
-	return lines;
 }
 
 /**
@@ -1318,31 +1348,6 @@ function paintSegments(
 		remaining -= displayWidth(visible);
 	}
 	return { text: output, width };
-}
-
-function truncateToWidth(text: string, width: number): string {
-	const chars = Array.from(text);
-	let used = 0;
-	let end = 0;
-
-	while (end < chars.length) {
-		const charWidth = characterWidth(chars[end]);
-		if (used + charWidth > width) break;
-		used += charWidth;
-		end += 1;
-	}
-
-	return chars.slice(0, end).join("");
-}
-
-function displayWidth(text: string): number {
-	let width = 0;
-	for (const char of text) width += characterWidth(char);
-	return width;
-}
-
-function characterWidth(char: string): number {
-	return eastAsianWidth(char.codePointAt(0) ?? 0);
 }
 
 function pinnedPrompt(prompts: readonly PromptRange[], top: number): PromptRange | undefined {

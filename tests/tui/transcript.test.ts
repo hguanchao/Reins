@@ -365,6 +365,24 @@ describe("工具调用行", () => {
 		assert.ok(text.includes("    edit 1: old -> new"));
 	});
 
+	it("展开详情超过上限时只渲染前面一段并给出剩余行数", () => {
+		const rows = Array.from({ length: 200 }, (_, index) => `line ${index + 1}`);
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "List",
+			detail: ".",
+			fullDetail: rows.join("\n"),
+			detailExpanded: true,
+		};
+		const text = renderTranscript(60, 300, [{ prompt: "hi", response: [tool] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("line 60"));
+		assert.equal(text.includes("line 61"), false);
+		assert.ok(text.includes("… (140 more lines)"));
+	});
+
 	it("只读工具展开后显示结果内容，而不是参数清单", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
@@ -809,21 +827,81 @@ describe("块级间距", () => {
 		assert.equal(listRow, bashRow + 1);
 	});
 
-	it("失败行独立成块，前后各空一行", () => {
+	it("失败原因紧跟自己的调用行，前后仍是独立块", () => {
 		const rows = rowsOf([
-			{ kind: "tool", name: "Bash", detail: "ls" },
-			{ kind: "tool", name: "Bash", detail: "exit 1", isError: true, durationMs: 5 },
+			"先执行一下。",
+			{ kind: "tool", name: "Bash", detail: "exit 1" },
+			{ kind: "tool", name: "Bash", detail: "exit code 1", isError: true, durationMs: 5 },
 			"换个方式继续。",
 		]);
 
-		const okRow = rows.findIndex((line) => line.includes("› Bash"));
+		const callRow = rows.findIndex((line) => line.includes("› Bash"));
 		const failedRow = rows.findIndex((line) => line.includes("× Bash"));
 		const textRow = rows.findIndex((line) => line.includes("换个方式继续"));
 
-		assert.equal(failedRow, okRow + 2);
-		assert.equal(rows[okRow + 1], "");
-		assert.equal(textRow, failedRow + 2);
+		// 失败行贴着自己的调用行；它和后文之间仍留一行
+		assert.equal(failedRow, callRow + 1);
+		assert.equal(rows[callRow - 1], "");
 		assert.equal(rows[failedRow + 1], "");
+		assert.equal(textRow, failedRow + 2);
+	});
+
+	it("失败原因里的回车不会覆盖整行", () => {
+		const response: TranscriptLine[] = [
+			{ kind: "tool", name: "Bash", detail: "BubbleSort.java:4: 编码错误\r", isError: true, durationMs: 464 },
+			...Array.from({ length: 12 }, (_, index) => `line ${index}`),
+		];
+		const rows = renderTranscript(80, 6, [{ prompt: "hi", response }], 0);
+		const row = rows.find((line) => line.includes("× Bash")) ?? "";
+		const text = plain(row);
+
+		assert.equal(row.includes("\r"), false);
+		assert.ok(text.startsWith("  × Bash  BubbleSort.java:4: 编码错误"));
+		assert.ok(text.includes("(464ms)"));
+	});
+
+	it("失败调用行自身显示命令与耗时，展开显示命令和错误详情", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "javac -d out BubbleSort.java",
+			isError: true,
+			durationMs: 363,
+			fullDetail: "javac -d out BubbleSort.java\n\nBubbleSort.java:4: 编码错误",
+			detailKind: "text",
+			detailExpanded: true,
+		};
+		const expanded = renderTranscript(80, 12, [{ prompt: "hi", response: [tool] }], 0)
+			.map((line) => plain(line))
+			.join("\n");
+
+		assert.ok(expanded.includes("× Bash  javac -d out BubbleSort.java (363ms)"));
+		assert.ok(expanded.includes("BubbleSort.java:4: 编码错误"));
+		assert.equal(expanded.includes("× Bash  BubbleSort.java:4"), false);
+
+		const collapsedTool: TranscriptTool = { ...tool, detailExpanded: false };
+		const collapsed = renderTranscript(80, 12, [{ prompt: "hi", response: [collapsedTool] }], 0)
+			.map((line) => plain(line))
+			.join("\n");
+		assert.ok(collapsed.includes("× Bash  javac -d out BubbleSort.java (363ms)"));
+		assert.equal(collapsed.includes("编码错误"), false);
+	});
+
+	it("展开结果里的回车与转义序列不会带进终端", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "ls",
+			result: "first\r\n\u001b[31mred\u001b[0m",
+			resultExpanded: true,
+		};
+		const rows = renderTranscript(40, 10, [{ prompt: "hi", response: [tool] }], 0);
+		const text = rows.map(plain).join("\n");
+
+		assert.equal(rows.join("").includes("\r"), false);
+		assert.equal(text.includes("\u001b"), false);
+		assert.ok(text.includes("first"));
+		assert.ok(text.includes("red"));
 	});
 
 	it("思考块与正文之间空一行，标题与思考正文之间留一行色带", () => {
@@ -850,6 +928,29 @@ describe("块级间距", () => {
 });
 
 describe("对话流", () => {
+	it("Markdown 文本块按排版渲染，普通字符串仍按纯文本", () => {
+		const rows = renderTranscript(
+			40,
+			12,
+			[
+				{
+					prompt: "hi",
+					response: [
+						{ kind: "markdown", text: "## 标题\n\n**粗体**文字" },
+						"普通字符串",
+					],
+				},
+			],
+			0,
+		).map((line) => plain(line).slice(0, -2));
+
+		assert.ok(rows.some((row) => row.trim() === "标题"));
+		assert.ok(rows.some((row) => row.includes("粗体文字")));
+		assert.ok(rows.some((row) => row.includes("普通字符串")));
+		assert.equal(rows.join("\n").includes("##"), false);
+		assert.equal(rows.join("\n").includes("**"), false);
+	});
+
 	it("用户提示使用 #16191d 背景和指定前缀/正文颜色，上下留一行背景", () => {
 		const lines = renderTranscript(40, 8, [{ prompt: "hello", response: [] }], 0);
 
@@ -891,25 +992,33 @@ describe("对话流", () => {
 		assert.ok(plain(lines[3] ?? "").endsWith("█"));
 	});
 
-	it("跨过下一条提示时滚动连续，不会被吸顶吞掉位移", () => {
+	it("下一条提示逼近时吸顶块从顶部收起，不截断下一个提示块", () => {
 		const turns: TranscriptTurn[] = [
 			{ prompt: "one", response: ["x"] },
 			{ prompt: "two", response: ["a", "b", "c"] },
 		];
-		const render = (top: number): string =>
-			renderTranscript(40, 8, turns, top)
-				.map((line) => plain(line).slice(0, -2))
-				.join("\n");
+		// 行：one 0-2，gap 3，x 4，轮间空行 5，two 6-8，gap 9，a 10…
+		const render = (top: number): readonly string[] => renderTranscript(40, 8, turns, top);
+		const text = (line: string | undefined): string => plain(line ?? "").slice(0, -2);
 
 		const at3 = render(3);
 		const at4 = render(4);
 		const at5 = render(5);
-		const bottom = render(6);
-		assert.notEqual(at3, at4);
-		assert.notEqual(at4, at5);
-		assert.ok(at5.includes(" › one"));
-		assert.ok(bottom.includes(" › two"));
-		assert.ok(bottom.includes("c"));
+		assert.notEqual(at3.map(text).join("\n"), at4.map(text).join("\n"));
+		assert.notEqual(at4.map(text).join("\n"), at5.map(text).join("\n"));
+
+		// top=3：吸顶块只剩正文与下留白，two 的上留白、正文、下留白完整
+		assert.ok(text(at3[0]).startsWith(" › one"));
+		assert.ok((at3[1] ?? "").includes(PROMPT_BG));
+		assert.equal(text(at3[2]).trim(), "");
+		assert.ok((at3[3] ?? "").includes(PROMPT_BG));
+		assert.ok(text(at3[4]).startsWith(" › two"));
+		assert.ok((at3[5] ?? "").includes(PROMPT_BG));
+
+		// 提示块完全被顶出去后不再吸顶，正常内容从头开始
+		assert.equal(at5.map(text).join("\n").includes(" › one"), false);
+		assert.ok(text(at5[2]).startsWith(" › two"));
+		assert.ok(render(6).map(text).join("\n").includes("c"));
 	});
 
 	it("上一条回复和下一条提示之间留一行间距", () => {

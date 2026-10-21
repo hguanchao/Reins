@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown 渲染对比 · Reins vs grok-build</title>
+<style>
+	:root {
+		color-scheme: dark;
+		--mono: "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas, "Noto Sans Mono CJK SC", "Microsoft YaHei UI", monospace;
+		--bg: #080a0d;
+		--panel: #0c0f13;
+		--line: #232b34;
+		--muted: #7e8a97;
+		--text: #d7dde4;
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0;
+		background:
+			radial-gradient(1200px 600px at 10% -10%, rgba(78, 201, 176, 0.08), transparent 60%),
+			radial-gradient(900px 500px at 95% 0%, rgba(122, 162, 247, 0.07), transparent 55%),
+			var(--bg);
+		color: var(--text);
+		font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei UI", sans-serif;
+	}
+	.page { max-width: 1560px; margin: 0 auto; padding: 28px 24px 80px; }
+	header h1 { margin: 0 0 8px; font-size: 22px; letter-spacing: 0.2px; }
+	header h1 span { color: var(--muted); font-weight: 500; font-size: 15px; margin-left: 10px; }
+	.lede { margin: 0; max-width: 980px; color: #8d99a6; font-size: 13.5px; }
+	.lede b { color: #c7d0da; font-weight: 600; }
+
+	.toolbar {
+		display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+		margin: 22px 0 14px;
+	}
+	.toolbar label { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 8px; }
+	select, textarea {
+		background: #0b0e12; color: #c8d0d9; border: 1px solid var(--line);
+		border-radius: 8px; padding: 7px 9px; font: inherit; font-size: 12.5px; outline: none;
+	}
+	select:focus, textarea:focus { border-color: #3a4652; }
+	input[type="range"] { width: 150px; accent-color: #4ec9b0; }
+	#widthLabel { min-width: 26px; font-variant-numeric: tabular-nums; color: #c7d0da; }
+
+	.editor { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden; margin-bottom: 20px; }
+	.editor-bar {
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 9px 14px; border-bottom: 1px solid #1b222a;
+		color: var(--muted); font-size: 12px;
+	}
+	.editor-bar code { color: #9fb0c0; }
+	textarea {
+		display: block; width: 100%; height: 168px; resize: vertical;
+		border: 0; border-radius: 0; padding: 14px 16px;
+		font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+	}
+
+	.panes { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+	@media (max-width: 1120px) { .panes { grid-template-columns: 1fr; } }
+	.pane {
+		border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+		background: #0c0c0c; box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+	}
+	.pane.grok { background: #0a0a0a; }
+	.pane-head {
+		display: flex; align-items: center; gap: 8px;
+		padding: 10px 14px; border-bottom: 1px solid #1b222a;
+		font-size: 12.5px; color: #a9b5c2;
+	}
+	.pane-head .dot { width: 8px; height: 8px; border-radius: 50%; background: #4ec9b0; box-shadow: 0 0 10px rgba(78, 201, 176, 0.5); }
+	.pane.grok .pane-head .dot { background: #7aa2f7; box-shadow: 0 0 10px rgba(122, 162, 247, 0.5); }
+	.pane-head .meta { margin-left: auto; color: #5b6571; font-size: 11.5px; }
+	.term {
+		margin: 0; padding: 14px 12px 18px;
+		font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+		white-space: pre; overflow-x: auto; min-height: 320px;
+		tab-size: 2;
+	}
+
+	/* ---- Reins 现有配色（theme.ts） ---- */
+	.reins .r-text { color: #e6e9ed; }
+	.reins .r-subtle { color: #6b7580; }
+	.reins .r-h1 { color: #4ec9b0; font-weight: 700; }
+	.reins .r-h2 { color: #61afef; font-weight: 700; }
+	.reins .r-h3 { color: #c792ea; font-weight: 700; }
+	.reins .r-h4 { color: #a7b0ba; font-weight: 700; }
+	.reins .r-h5 { color: #6b7580; font-weight: 700; }
+	.reins .r-h6 { color: #4a535d; }
+	.reins .r-link { color: #61afef; text-decoration: underline; }
+	.reins .r-url { color: #6b7580; }
+	.reins .r-code { color: #61afef; font-weight: 700; }
+	.reins .r-html { color: #4ec9b0; }
+	.reins .r-band { background: #111418; }
+	.reins .r-border { color: #2a3138; }
+	.reins .r-syn-kw { color: #c792ea; }
+	.reins .r-syn-str { color: #98c379; }
+	.reins .r-syn-num { color: #e0af68; }
+	.reins .r-syn-com { color: #6b7580; font-style: italic; }
+	.reins .r-code-text { color: #e6e9ed; }
+
+	/* ---- grok-build groknight 配色 ---- */
+	.grok .g-text { color: #c8c8c8; }
+	.grok .g-muted { color: #6c6c6c; }
+	.grok .g-h1 { color: #1abc9c; font-weight: 700; }
+	.grok .g-h2 { color: #7aa2f7; font-weight: 700; }
+	.grok .g-h3 { color: #9d7cd8; font-weight: 700; }
+	.grok .g-h4 { color: #787878; font-weight: 700; }
+	.grok .g-h5 { color: #6c6c6c; font-weight: 700; }
+	.grok .g-h6 { color: #5a5a5a; }
+	.grok .g-code { color: #3a95ab; font-weight: 700; }
+	.grok .g-link { color: #7aa6da; text-decoration: underline; }
+	.grok .g-url { color: #6c6c6c; }
+	.grok .g-band { background: #1c1c1c; }
+	.grok .g-border { color: #4b4b4b; }
+	.grok .g-task-checked { color: #9ece6a; }
+	.grok .g-task-unchecked { color: #6c6c6c; }
+	.grok .g-html { color: #7dcfff; }
+	.grok .g-syn-kw { color: #bb9af7; }
+	.grok .g-syn-str { color: #9ece6a; }
+	.grok .g-syn-num { color: #ff9e64; }
+	.grok .g-syn-com { color: #6c6c6c; font-style: italic; }
+	.grok .g-code-text { color: #c8c8c8; }
+
+	.quote { color: #6c6c6c; }
+	.bold { font-weight: 700; }
+	.italic { font-style: italic; }
+	.strike { text-decoration: line-through; }
+
+	.diffs { margin-top: 34px; }
+	.diffs h2 { font-size: 16px; margin: 0 0 6px; }
+	.diffs .note { color: var(--muted); font-size: 12.5px; margin: 0 0 16px; }
+	.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+	@media (max-width: 1120px) { .diff-grid { grid-template-columns: 1fr; } }
+	.diff {
+		display: flex; gap: 12px; padding: 12px 14px;
+		background: rgba(255, 255, 255, 0.018);
+		border: 1px solid #1c232b; border-radius: 10px;
+	}
+	.diff .no {
+		flex: 0 0 22px; height: 22px; border-radius: 6px;
+		background: #16202a; color: #7fd6c1; font: 600 12px/22px var(--mono);
+		text-align: center;
+	}
+	.diff b { color: #dbe3ec; font-weight: 600; }
+	.diff span { color: #8d99a6; font-size: 12.5px; }
+	.diff code { color: #b8c4d1; background: #11161c; border-radius: 4px; padding: 0 4px; font-family: var(--mono); font-size: 11.5px; }
+	footer { margin-top: 28px; color: #5f6b77; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+	<header>
+		<h1>Markdown 渲染对比 <span>Reins 改后 vs grok-build pretty</span></h1>
+		<p class="lede">
+			同一段 Markdown、同一宽度，左右各按一套规则渲染。左边是 Reins 按本轮要求改后的效果（六级标题、<code>text (url)</code>、蓝色加粗行内代码、盒线表格……）；
+			右边按 grok-build 的 <b>xai-grok-markdown</b> pretty 模式复刻。改上面的 Markdown 或拖动宽度，两边会实时重排。
+		</p>
+	</header>
+
+	<div class="toolbar">
+		<label>示例
+			<select id="sample">
+				<option value="main">综合示例</option>
+				<option value="real">真实回复</option>
+				<option value="code">代码 / 表格 / 链接</option>
+			</select>
+		</label>
+		<label>宽度 <input id="width" type="range" min="48" max="100" value="72"><span id="widthLabel">72</span></label>
+		<span style="color:#5f6b77;font-size:12px;">两侧共用同一内容宽度（列）</span>
+	</div>
+
+	<section class="editor">
+		<div class="editor-bar">
+			<span>Markdown 源</span>
+			<span><code>marked</code> 解析 · 改动实时生效</span>
+		</div>
+		<textarea id="source" spellcheck="false"></textarea>
+	</section>
+
+	<section class="panes">
+		<article class="pane reins">
+			<div class="pane-head"><span class="dot"></span>Reins 改后<span class="meta">2 空格缩进 · 单词换行</span></div>
+			<pre id="reins" class="term"></pre>
+		</article>
+		<article class="pane grok">
+			<div class="pane-head"><span class="dot"></span>grok-build pretty<span class="meta">源文本保真 · 单词换行</span></div>
+			<pre id="grok" class="term"></pre>
+		</article>
+	</section>
+
+	<section class="diffs">
+		<h2>当前的主要差异</h2>
+		<p class="note">grok 侧按 <code>xai-grok-markdown</code> 的 pretty 规则复刻，颜色取自 groknight 主题，用于对比观感，不是 Rust 渲染器的逐像素输出。</p>
+		<div class="diff-grid">
+			<div class="diff"><div class="no">01</div><div><b>代码块</b><br><span>Reins 保留上下留白和正文缩进，底色用更弱的一档 <code>#111418</code>；grok 顶格、无留白、每行 <code>#1c1c1c</code>。</span></div></div>
+			<div class="diff"><div class="no">02</div><div><b>任务列表</b><br><span>Reins 用 <code>[x] 已完成</code> 代替圆点；grok 保留圆点：<code>• [x] 已完成</code>，勾选框单独染色。</span></div></div>
+			<div class="diff"><div class="no">03</div><div><b>引用软换行</b><br><span>Reins 把引用里的软换行折叠成一行；grok 保留为多行，每行都带 <code>│</code>。</span></div></div>
+			<div class="diff"><div class="no">04</div><div><b>分割线</b><br><span>Reins 铺满整行；grok 只画 <code>───</code> 三个字符。</span></div></div>
+			<div class="diff"><div class="no">05</div><div><b>空行</b><br><span>Reins 块之间统一补一行；grok 尽量保留源文本里的空行数量。</span></div></div>
+			<div class="diff"><div class="no">06</div><div><b>表格表头</b><br><span>两边都是盒线表格、单元格左右留白并支持折行；Reins 表头加粗，grok 表头保持源文本样式（默认不加粗）。</span></div></div>
+			<div class="diff"><div class="no">07</div><div><b>图片</b><br><span>Reins 显示 <code>[image: alt](url)</code>；grok 显示 <code>!alt (url)</code>。地址都用弱化色。</span></div></div>
+			<div class="diff"><div class="no">08</div><div><b>配色</b><br><span>Reins 主文字 <code>#e6e9ed</code>、链接/行内代码 <code>#61afef</code>；grok 主文字 <code>#c8c8c8</code>、链接 <code>#7aa6da</code>、行内代码 <code>#3A95AB</code>。</span></div></div>
+			<div class="diff"><div class="no">09</div><div><b>标题调色板</b><br><span>两边都是六档；Reins 用主题里的青/蓝/紫/次灰/弱灰/暗灰，grok 用 groknight 的青/蓝/紫/亮灰/中灰/暗灰。</span></div></div>
+		</div>
+	</section>
+
+	<footer>Demo 文件：<code>demo.html</code> · 左侧规则对应 <code>src/tui/markdown.ts</code> · 右侧规则对应 <code>reference/grok-build/crates/codegen/xai-grok-markdown</code></footer>
+</div>
+
+<script type="text/plain" id="sample-main">
+# 一级标题
+## 二级标题
+### 三级标题
+#### 四级标题
+##### 五级标题
+###### 六级标题
+
+这是一段 **粗体**、*斜体*、~~删除线~~、`inline code` 和 [链接文字](https://example.com/path) 的文字。再放一段较长的英文观察换行：The quick brown fox jumps over the lazy dog while the terminal wraps the same text very differently.
+
+> 引用第一行
+> 引用第二行，包含 **粗体**。
+>
+> > 嵌套引用
+> > - 引用里的列表
+
+- 无序列表 A
+- 无序列表 B
+  - 嵌套项 C
+1. 有序列表一
+2. 有序列表二
+- [x] 已完成任务
+- [ ] 待办任务
+
+```ts
+// 代码块
+const answer: number = 42;
+console.log(`answer = ${answer}`);
+```
+
+| 名称 | 值 | 说明 |
+| --- | ---: | --- |
+| 中文 | 1 | 左对齐 |
+| Alpha | 22 | 比较长的说明 |
+
+
+---
+
+![截图](https://example.com/a.png)
+
+<div>行内 HTML 标签 <b>保留</b>，<br>换行。</div>
+</script>
+
+<script type="text/plain" id="sample-real">
+# 已熟悉项目
+
+这是一个很小的演示工作区。具体能做的事：
+
+**读写代码**
+- 读文件(支持大文件分段读)、精确替换片段、整文件重写、新建文件和目录
+- 全局搜索内容、按 glob 找文件、列目录树
+
+**跑命令**
+- 编译、运行、测试、构建(你这里是 JDK 1.8)
+- git 操作:看历史、看 diff、提交(目前这个工作区还不是 git 仓库)
+- 装依赖、跑脚本等一切需要 shell 的事
+
+**查错与验证**
+- 复现问题、读完整报错、定位根因,改完用项目自己的命令验证
+- 不需要你贴代码,我自己读文件、自己跑
+
+**拆解任务**
+- 单个自成一体的活(比如"通读整个仓库并总结架构")可以派给子代理在独立上下文里做,只把结论带回来
+
+**限制**
+- 不能访问工作区外的文件(除非你给绝对路径且在允许范围内)
+- 破坏性操作(git reset --hard、强制推送、递归删除)需要你明确授权那一次具体动作
+- 看不到你的屏幕,也不知道你没说过的上下文
+
+**放在你这个项目上,可行的具体事**
+- 给 `BubbleSort` 补 JUnit 测试和断言,替掉现在只打印的 `main`
+- 加 `build.gradle` 或 `pom.xml` / 一个 `Makefile`,把 `-encoding UTF-8` 固化下来
+- 初始化 git 仓库并加 `.gitignore`(忽略 `out/`)
+</script>
+
+<script type="text/plain" id="sample-code">
+## 代码块与链接
+
+行内代码 `npm run typecheck` 和链接 [仓库](https://github.com/example/repo)，以及一个比较长的链接 [文档入口](https://example.com/docs/getting-started/installation)。
+
+1. 第一步：
+   ```bash
+   npm install --save-exact marked@18.1.1
+   ```
+
+2. 第二步：
+
+```ts
+export function greet(name: string): string {
+  return `hello, ${name}`;
+}
+```
+
+| 命令 | 说明 |
+| --- | --- |
+| `npm test` | 跑全量测试 |
+| `npm run typecheck` | 类型检查 |
+
+> 引用里的代码：
+>
+> ```py
+> def f():
+>     return 1
+> ```
+
+![截图](https://example.com/a.png)
+</script>
+
+<script>/**
+ * marked v18.1.1 - a markdown parser
+ * Copyright (c) 2018-2026, MarkedJS. (MIT License)
+ * Copyright (c) 2011-2018, Christopher Jeffrey. (MIT License)
+ * https://github.com/markedjs/marked
+ */
+
+/**
+ * DO NOT EDIT THIS FILE
+ * The code in this file is generated from files in ./src/
+ */
+(function(g,f){if(typeof exports=="object"&&typeof module<"u"){module.exports=f()}else if("function"==typeof define && define.amd){define("marked",f)}else {g["marked"]=f()}}(typeof globalThis < "u" ? globalThis : typeof self < "u" ? self : this,function(){var exports={};var __exports=exports;var module={exports};
+"use strict";var V=Object.defineProperty;var Me=Object.getOwnPropertyDescriptor;var Ce=Object.getOwnPropertyNames;var Ie=Object.prototype.hasOwnProperty;var Be=(a,e)=>{for(var t in e)V(a,t,{get:e[t],enumerable:!0})},De=(a,e,t,n)=>{if(e&&typeof e=="object"||typeof e=="function")for(let i of Ce(e))!Ie.call(a,i)&&i!==t&&V(a,i,{get:()=>e[i],enumerable:!(n=Me(e,i))||n.enumerable});return a};var qe=a=>De(V({},"__esModule",{value:!0}),a);var jt={};Be(jt,{Hooks:()=>$,Lexer:()=>T,Marked:()=>H,Parser:()=>O,Renderer:()=>_,TextRenderer:()=>A,Tokenizer:()=>S,defaults:()=>w,getDefaults:()=>M,lexer:()=>Qt,marked:()=>g,options:()=>qt,parse:()=>Gt,parseInline:()=>Ht,parser:()=>Nt,setOptions:()=>Zt,use:()=>Le,walkTokens:()=>vt});module.exports=qe(jt);function M(){return{async:!1,breaks:!1,extensions:null,gfm:!0,hooks:null,pedantic:!1,renderer:null,silent:!1,tokenizer:null,walkTokens:null}}var w=M();function J(a){w=a}var C={exec:()=>null};function D(a){let e=[];return t=>{let n=Math.max(0,Math.min(3,t-1)),i=e[n];return i||(i=a(n),e[n]=i),i}}function h(a,e=""){let t=typeof a=="string"?a:a.source,n={replace:(i,r)=>{let o=typeof r=="string"?r:r.source;return o=o.replace(x.caret,"$1"),t=t.replace(i,o),n},getRegex:()=>new RegExp(t,e)};return n}var Ze=((a="")=>{try{return!!new RegExp("(?<=1)(?<!1)"+a)}catch{return!1}})(),x={codeRemoveIndent:/^(?: {0,3}\t| {1,4})/gm,outputLinkReplace:/\\([\[\]])/g,indentCodeCompensation:/^(\s+)(?:```)/,beginningSpace:/^\s+/,endingHash:/#$/,startingSpaceChar:/^ /,endingSpaceChar:/ $/,endingSpaceTabChar:/[ \t]$/,nonSpaceChar:/[^ ]/,newLineCharGlobal:/\n/g,tabCharGlobal:/\t/g,leadingSpaceTab:/^[ \t]+/,multipleSpaceGlobal:/\s+/g,blankLine:/^[ \t]*$/,doubleBlankLine:/\n[ \t]*\n[ \t]*$/,blockquoteStart:/^ {0,3}>/,blockquoteSetextReplace:/\n {0,3}((?:=+|-+) *)(?=\n|$)/g,blockquoteSetextReplace2:/^ {0,3}>[ \t]?/gm,listReplaceNesting:/^ {1,4}(?=( {4})*[^ ])/g,listIsTask:/^\[[ xX]\] +\S/,listReplaceTask:/^\[[ xX]\] +/,listTaskCheckbox:/\[[ xX]\]/,anyLine:/\n.*\n/,hrefBrackets:/^<(.*)>$/,tableDelimiter:/[:|]/,tableAlignChars:/^\||\| *$/g,tableRowBlankLine:/\n[ \t]*$/,tableAlignRight:/^ *-+: *$/,tableAlignCenter:/^ *:-+: *$/,tableAlignLeft:/^ *:-+ *$/,startATag:/^<a /i,endATag:/^<\/a>/i,startPreScriptTag:/^<(pre|code|kbd|script)(\s|>)/i,endPreScriptTag:/^<\/(pre|code|kbd|script)(\s|>)/i,startAngleBracket:/^</,endAngleBracket:/>$/,pedanticHrefTitle:/^([^'"]*[^\s])\s+(['"])(.*)\2/,unicodeAlphaNumeric:/[\p{L}\p{N}]/u,numericCharacterReference:/&#(?:(\d{1,7})|[Xx]([A-Fa-f0-9]{1,6}));/,numericCharacterReferenceOrAmpersand:/&#(?:(\d{1,7})|[Xx]([A-Fa-f0-9]{1,6}));|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/g,escapeTest:/[&<>"']/,escapeReplace:/[&<>"']/g,escapeTestNoEncode:/[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/,escapeReplaceNoEncode:/[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/g,caret:/(^|[^\[])\^/g,percentDecode:/%25/g,findPipe:/\|/g,splitPipe:/ \|/,slashPipe:/\\\|/g,carriageReturn:/\r\n|\r/g,spaceLine:/^ +$/gm,notSpaceStart:/^\S*/,endingNewline:/\n$/,listItemRegex:a=>new RegExp(`^( {0,3}${a})((?:[	 ][^\\n]*)?(?:\\n|$))`),nextBulletRegex:D(a=>new RegExp(`^ {0,${a}}(?:[*+-]|\\d{1,9}[.)])((?:[ 	][^\\n]*)?(?:\\n|$))`)),hrRegex:D(a=>new RegExp(`^ {0,${a}}((?:-[ 	]*){3,}|(?:_[ 	]*){3,}|(?:\\*[ 	]*){3,})(?:\\n+|$)`)),fencesBeginRegex:D(a=>new RegExp(`^ {0,${a}}(?:\`\`\`|~~~)`)),headingBeginRegex:D(a=>new RegExp(`^ {0,${a}}#`)),htmlBeginRegex:D(a=>new RegExp(`^ {0,${a}}(?:</?(?:${j})(?: +|$|/?>)|<(?:(?:script|pre|style|textarea)(?:[\\s>]|$)|!--)|<\\?|<![A-Za-z]|<!\\[CDATA\\[)`,"i")),blockquoteBeginRegex:D(a=>new RegExp(`^ {0,${a}}>`))},ve=/^(?:[ \t]*(?:\n|$))+/,He=/^((?: {4}| {0,3}\t)[^\n]+(?:\n(?:[ \t]*(?:\n|$))*)?)+/,Ge=/^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/,Q=/^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/,Ne=/^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/,ee=/ {0,3}(?:[*+-]|\d{1,9}[.)])/,me=/^(?!bull |blockCode|fences|blockquote|heading|html|table)((?:.|\n(?!\s*?\n|bull |fences|blockquote|heading|hr|html|table))+?)\n {0,3}(=+|-+) *(?:\n+|$)/,xe=h(me).replace(/bull/g,ee).replace(/blockCode/g,/(?: {4}| {0,3}\t)/).replace(/fences/g,/ {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g,/ {0,3}>/).replace(/heading/g,/ {0,3}#{1,6}(?:\s|$)/).replace(/hr/g,/ {0,3}(?:(?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/).replace(/html/g,/ {0,3}<[^\n>]+>\n/).replace(/\|table/g,"").getRegex(),Qe=h(me).replace(/bull/g,ee).replace(/blockCode/g,/(?: {4}| {0,3}\t)/).replace(/fences/g,/ {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g,/ {0,3}>/).replace(/heading/g,/ {0,3}#{1,6}(?:\s|$)/).replace(/hr/g,/ {0,3}(?:(?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/).replace(/html/g,/ {0,3}<[^\n>]+>\n/).replace(/table/g,/ {0,3}\|?(?:[:\- ]*\|)+[\:\- ]*\n/).getRegex(),te=/^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table|[ \t]+\n)[^\n]+)*)/,je=/^[^\n]+/,ne=/(?!\s*\])(?:\\[\s\S]|[^\[\]\\])+/,Fe=h(/^ {0,3}\[(label)\]: *(?:\n[ \t]*)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n[ \t]*)?| *\n[ \t]*)(title))? *(?:\n+|$)/).replace("label",ne).replace("title",/(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex(),Ue=h(/^(bull)([ \t][^\n]*?)?(?:\n|$)/).replace(/bull/g,ee).getRegex(),j="address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul",re=/<!--(?:-?>|[\s\S]*?(?:-->|$))/,Ke=h("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n*|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>[^\\n]*\\n*|$)|<![A-Z][\\s\\S]*?(?:>[^\\n]*\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>[^\\n]*\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|<(?!(?:script|pre|style|textarea)(?![a-z0-9-]))([a-z][a-z0-9-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$)|</[a-z][a-z0-9-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n[ 	]*)+\\n|$))","i").replace("comment",re).replace("tag",j).replace("attribute",/ +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex(),be=a=>h(te).replace("hr",Q).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("|lheading","").replace("|table","").replace("blockquote"," {0,3}>").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*(?:\\n|$))|~~~)[^\\n]*(?:\\n|$)").replace("list",a).replace("html"," {0,3}(?:</?(?:tag)(?: +|\\n|/?>)|<(?:(?:script|pre|style|textarea)(?:[\\s>]|$)|!--)|<\\?|<![A-Za-z]|<!\\[CDATA\\[)").replace("tag",j).getRegex(),Xe=be(/ {0,3}(?:[*+-]|1[.)])[ \t]+[^ \t\n]/),We=be(/ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t]|\n|$)/),Ve=h(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph",We).getRegex(),se={blockquote:Ve,code:He,def:Fe,fences:Ge,heading:Ne,hr:Q,html:Ke,lheading:xe,list:Ue,newline:ve,paragraph:Xe,table:C,text:je},ke=h("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr",Q).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("blockquote"," {0,3}>").replace("code","(?: {4}| {0,3}	)[^\\n]").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*(?:\\n|$))|~~~)[^\\n]*(?:\\n|$)").replace("list"," {0,3}(?:[*+-]|1[.)])[ \\t]").replace("html"," {0,3}(?:</?(?:tag)(?: +|\\n|/?>)|<(?:(?:script|pre|style|textarea)(?:[\\s>]|$)|!--)|<\\?|<![A-Za-z]|<!\\[CDATA\\[)").replace("tag",j).getRegex(),Je={...se,lheading:Qe,table:ke,paragraph:h(te).replace("hr",Q).replace("heading"," {0,3}#{1,6}(?:\\s|$)").replace("|lheading","").replace("table",ke).replace("blockquote"," {0,3}>").replace("fences"," {0,3}(?:`{3,}(?=[^`\\n]*(?:\\n|$))|~~~)[^\\n]*(?:\\n|$)").replace("list"," {0,3}(?:[*+-]|1[.)])[ \\t]+[^ \\t\\n]").replace("html"," {0,3}(?:</?(?:tag)(?: +|\\n|/?>)|<(?:(?:script|pre|style|textarea)(?:[\\s>]|$)|!--)|<\\?|<![A-Za-z]|<!\\[CDATA\\[)").replace("tag",j).getRegex()},Ye={...se,html:h(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment",re).replace(/tag/g,"(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),def:/^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/,heading:/^(#{1,6})(.*)(?:\n+|$)/,fences:C,lheading:/^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/,paragraph:h(te).replace("hr",Q).replace("heading",` *#{1,6} *[^
+]`).replace("lheading",xe).replace("|table","").replace("blockquote"," {0,3}>").replace("|fences","").replace("|list","").replace("|html","").replace("|tag","").getRegex()},et=/^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/,tt=/^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/,Re=/^( {2,}|\\)\n(?!\s*$)[ \t]*/,nt=/^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/,L=/[\p{P}\p{S}]/u,q=/[\s\p{P}\p{S}]/u,F=/[^\s\p{P}\p{S}]/u,rt=h(/^((?![*_])punctSpace)/,"u").replace(/punctSpace/g,q).getRegex(),st=/[\p{Pi}\p{Ps}"']/u,Te=/(?!~)[\p{P}\p{S}]/u,it=/(?!~)[\s\p{P}\p{S}]/u,ot=/(?:[^\s\p{P}\p{S}]|~)/u,at=h(/link|precode-code|html/,"g").replace("link",/\[(?:[^\[\]`]|(?<a>`+)[^`]+\k<a>(?!`))*?\]\((?:\\[\s\S]|[^\\\(\)]|\((?:\\[\s\S]|[^\\\(\)])*\))*\)/).replace("precode-",Ze?"(?<!`)()":"(^^|[^`])").replace("code",/(?<b>`+)[^`]+\k<b>(?!`)/).replace("html",/<(?! )[^<>]*?>/).getRegex(),Oe=/^(?:\*+(?:((?!\*)punct)|([^\s*]))?)|^_+(?:((?!_)punct)|([^\s_]))?/,lt=h(Oe,"u").replace(/punct/g,L).getRegex(),ut=h(Oe,"u").replace(/punct/g,Te).getRegex(),pt=/^(?:\*+(?:((?!\*)(?!openQuote)punct)|([^\s*]))?)|^_+(?:((?!_)(?!openQuote)punct)|([^\s_]))?/,ct=h(pt,"u").replace(/openQuote/g,st).replace(/punct/g,L).getRegex(),we="^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)punct(\\*+)(?=[\\s]|$)|notPunctSpace(\\*+)(?!\\*)(?=punctSpace|$)|(?!\\*)punctSpace(\\*+)(?=notPunctSpace)|[\\s](\\*+)(?!\\*)(?=punct)|(?!\\*)punct(\\*+)(?!\\*)(?=punct)|notPunctSpace(\\*+)(?=notPunctSpace)",ht=h(we,"gu").replace(/notPunctSpace/g,F).replace(/punctSpace/g,q).replace(/punct/g,L).getRegex(),dt=h(we,"gu").replace(/notPunctSpace/g,ot).replace(/punctSpace/g,it).replace(/punct/g,Te).getRegex(),kt="^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)punct(\\*+)(?=[\\s]|$)|notPunctSpace(\\*+)(?!\\*)(?=punctSpace|$)|(?!\\*)[\\s](\\*+)(?=notPunctSpace)|[\\s](\\*+)(?!\\*)(?=punct)|(?!\\*)punct(\\*+)(?!\\*)(?=punct)|(?:(?!\\*)punct|notPunctSpace)(\\*+)(?!\\*)(?=notPunctSpace)",gt=h(kt,"gu").replace(/notPunctSpace/g,F).replace(/punctSpace/g,q).replace(/punct/g,L).getRegex(),ft=h("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)punct(_+)(?=[\\s]|$)|notPunctSpace(_+)(?!_)(?=punctSpace|$)|(?!_)punctSpace(_+)(?=notPunctSpace)|[\\s](_+)(?!_)(?=punct)|(?!_)punct(_+)(?!_)(?=punct)","gu").replace(/notPunctSpace/g,F).replace(/punctSpace/g,q).replace(/punct/g,L).getRegex(),mt="^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)punct(_+)(?=[\\s]|$)|notPunctSpace(_+)(?!_)(?=punctSpace|$)|(?!_)[\\s](_+)(?=notPunctSpace)|[\\s](_+)(?!_)(?=punct)|(?!_)punct(_+)(?!_)(?=punct)|(?:(?!_)punct|notPunctSpace)(_+)(?!_)(?=notPunctSpace)",xt=h(mt,"gu").replace(/notPunctSpace/g,F).replace(/punctSpace/g,q).replace(/punct/g,L).getRegex(),bt=h(/^~~?(?:((?!~)punct)|[^\s~])/,"u").replace(/punct/g,L).getRegex(),Rt="^[^~]+(?=[^~])|(?!~)punct(~~?)(?=[\\s]|$)|notPunctSpace(~~?)(?!~)(?=punctSpace|$)|(?!~)punctSpace(~~?)(?=notPunctSpace)|[\\s](~~?)(?!~)(?=punct)|(?!~)punct(~~?)(?!~)(?=punct)|notPunctSpace(~~?)(?=notPunctSpace)",Tt=h(Rt,"gu").replace(/notPunctSpace/g,F).replace(/punctSpace/g,q).replace(/punct/g,L).getRegex(),Ot=h(/\\(punct)/,"gu").replace(/punct/g,L).getRegex(),wt=h(/(`+)(?:[^`]|[^`][\s\S]*?[^`])\1(?!`)|`+|\\(punct)/,"gu").replace(/punct/g,L).getRegex(),Pt=h(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme",/[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email",/[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex(),yt=h(re).replace("(?:-->|$)","-->").getRegex(),St=h("^comment|^</[a-zA-Z][a-zA-Z0-9-]*\\s*>|^<[a-zA-Z][a-zA-Z0-9-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment",yt).replace("attribute",/\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex(),Pe=/\[(?:\\[\s\S]|[^\[\]\\])*\]/,K=h(/(?:\[(?:brackets|\\[\s\S]|[^\[\]\\])*\]|\\[\s\S]|`+(?!`)[^`]*?`+(?!`)|``+(?=\])|[^\[\]\\`])*?/).replace("brackets",Pe).getRegex(),_t=h(/^!?\[(label)\]\([ \t\n]*(href)(?:(?:[ \t]+(?:\n[ \t]*)?|\n[ \t]*)(title))?[ \t\n]*\)/).replace("label",K).replace("href",/<(?:\\.|[^\n<>\\])+>|[^ \t\n\x00-\x1f]+|(?=\))/).replace("title",/"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex(),$t=h(/^!?\[(label)\]\[(ref)\]/).replace("label",K).replace("ref",ne).getRegex(),Lt=h(/^!?\[(ref)\](?:\[\])?/).replace("ref",ne).getRegex(),ge=/(?!\s*\])(?:\\[\s\S]|[^\[\]\\]){1,999}/,At=h(/(?:[^\[\]\\`]*(?:\[(?:brackets|\\[\s\S]|[^\[\]\\])*\]|\\[\s\S]|`+(?!`)[^`]*?`+(?!`)|``+(?=\]))){0,999}?[^\[\]\\`]*?/).replace("brackets",Pe).getRegex(),zt=h("reflink|nolink(?!\\()","g").replace("reflink",h(/^!?\[(label)\]\[(ref)\]/).replace("label",At).replace("ref",ge).getRegex()).replace("nolink",h(/^!?\[(ref)\](?:\[\])?/).replace("ref",ge).getRegex()).getRegex(),fe=/[hH][tT][tT][pP][sS]?|[fF][tT][pP]/,Et=/[A-Za-z0-9._+-]+@[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![\w-])/,Mt=h(/(?:mailto:email|xmpp:email(?:\/[A-Za-z0-9@.]+)?)/).replace(/email/g,Et).getRegex(),ie={_backpedal:C,anyPunctuation:Ot,anyPunctuationOutsideCode:wt,autolink:Pt,blockSkip:at,br:Re,code:tt,del:C,delLDelim:C,delRDelim:C,emStrongLDelim:lt,emStrongRDelimAst:ht,emStrongRDelimUnd:ft,escape:et,link:_t,nolink:Lt,punctuation:rt,reflink:$t,reflinkSearch:zt,tag:St,text:nt,url:C},Ct={...ie,emStrongLDelim:ct,emStrongRDelimAst:gt,emStrongRDelimUnd:xt,link:h(/^!?\[(label)\]\((.*?)\)/).replace("label",K).getRegex(),reflink:h(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label",K).getRegex()},Y={...ie,emStrongRDelimAst:dt,emStrongLDelim:ut,delLDelim:bt,delRDelim:Tt,url:h(/^emailProtocol|^((?:protocol):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/).replace("emailProtocol",Mt).replace("protocol",fe).replace("email",/[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![\w-])/).getRegex(),_backpedal:/(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/,del:/^(~~?)(?=[^\s~])((?:\\[\s\S]|[^\\])*?(?:\\[\s\S]|[^\s~\\]))\1(?=[^~]|$)/,text:h(/^(?:[^a-zA-Z0-9](?=emailProtocol)|(`+|~+|[^`~])(?:(?=[`~])|(?= {2,}\n)|(?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)|[\s\S]*?(?:(?=[\\<!\[`*~_]|\b_|protocol:\/\/|www\.|$)|[^ ](?= {2,}\n)|[^a-zA-Z0-9](?=emailProtocol)|[^a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-](?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@))))/).replace("protocol",fe).replace(/emailProtocol/g,/(?:mailto|xmpp):/).getRegex()},It={...Y,br:h(Re).replace("{2,}","*").getRegex(),text:h(Y.text).replace("\\b_","\\b_| {2,}\\n").replace(/\{2,\}/g,"*").getRegex()},U={normal:se,gfm:Je,pedantic:Ye},Z={normal:ie,gfm:Y,breaks:It,pedantic:Ct};var Bt={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"},ye=a=>Bt[a];function P(a,e){if(e){if(x.escapeTest.test(a))return a.replace(x.escapeReplace,ye)}else if(x.escapeTestNoEncode.test(a))return a.replace(x.escapeReplaceNoEncode,ye);return a}function Se(a){return x.numericCharacterReference.test(a)?a.replace(x.numericCharacterReferenceOrAmpersand,(e,t,n)=>{if(t===void 0&&n===void 0)return"&amp;";let i=t===void 0?Number.parseInt(n,16):Number.parseInt(t,10);return i===0||i>1114111||i>=55296&&i<=57343?"\uFFFD":i===38?"&amp;":String.fromCodePoint(i)}):a}function oe(a){try{a=encodeURI(a).replace(x.percentDecode,"%")}catch{return null}return a}function ae(a,e){let t=a.replace(x.findPipe,(r,o,s)=>{let l=!1,u=o;for(;--u>=0&&s[u]==="\\";)l=!l;return l?"|":" |"}),n=t.split(x.splitPipe),i=0;if(n[0].trim()||n.shift(),n.length>0&&!n.at(-1)?.trim()&&n.pop(),e)if(n.length>e)n.splice(e);else for(;n.length<e;)n.push("");for(;i<n.length;i++)n[i]=n[i].trim().replace(x.slashPipe,"|");return n}function z(a,e,t){let n=a.length;if(n===0)return"";let i=0;for(;i<n;){let r=a.charAt(n-i-1);if(r===e&&!t)i++;else if(r!==e&&t)i++;else break}return a.slice(0,n-i)}function le(a){let e=a.split(`
+`),t=e.length-1;for(;t>=0&&x.blankLine.test(e[t]);)t--;return e.length-t<=2?a:e.slice(0,t+1).join(`
+`)}function v(a){return a.trim().toLowerCase().toUpperCase().toLowerCase()}function ue(a,e){if(a.indexOf(e[0])===-1&&a.indexOf(e[1])===-1)return-1;let t=0;for(let n=0;n<a.length;n++)if(a[n]==="\\")n++;else if(a[n]===e[0])t++;else if(a[n]===e[1]&&(t--,t<0))return n;return t>0?-2:-1}function X(a,e=0){let t=e,n="";for(let i of a)if(i==="	"){let r=4-t%4;n+=" ".repeat(r),t+=r}else n+=i,t++;return n}function _e(a,e,t,n,i){let r=e.href,o=e.title||null,s=a[1].replace(i.other.outputLinkReplace,"$1"),l=a[0].charAt(0)==="!",u=n.state.inLink,c=n.state.linkEmitted,p=n.state.inRawBlock;n.state.inLink=!0,n.state.linkEmitted=!1;let d=n.inlineTokens(s),f=n.state.linkEmitted;if(n.state.linkEmitted=c,n.state.inLink=u,!l){if(f){n.state.inRawBlock=p;return}n.state.linkEmitted=!0}return{type:l?"image":"link",raw:t,href:r,title:o,text:s,tokens:d}}function Dt(a,e,t){let n=a.match(t.other.indentCodeCompensation);if(n===null)return e;let i=n[1];return e.split(`
+`).map(r=>{let o=r.match(t.other.beginningSpace);if(o===null)return r;let[s]=o;return r.slice(Math.min(s.length,i.length))}).join(`
+`)}function $e(a,e,t,n){if(!e.includes("<"))return!1;for(let i=0;i<e.length;i++){if(e[i]==="\\"){i++;continue}if(e[i]==="`"){let s=n.inline.code.exec(e.slice(i));if(s){i+=s[0].length-1;continue}}if(e[i]!=="<")continue;let r=a.slice(t+i),o=n.inline.tag.exec(r)||n.inline.autolink.exec(r);if(o){if(o[0].length>e.length-i)return!0;i+=o[0].length-1}}return!1}var S=class{options;rules;lexer;constructor(e){this.options=e||w}space(e){let t=this.rules.block.newline.exec(e);if(t&&t[0].length>0)return{type:"space",raw:t[0]}}code(e){let t=this.rules.block.code.exec(e);if(t){let n=this.options.pedantic?t[0]:le(t[0]),i=n.replace(this.rules.other.codeRemoveIndent,"");return{type:"code",raw:n,codeBlockStyle:"indented",text:i}}}fences(e){let t=this.rules.block.fences.exec(e);if(t){let n=t[0],i=Dt(n,t[3]||"",this.rules);return{type:"code",raw:n,lang:t[2]?t[2].trim().replace(this.rules.inline.anyPunctuation,"$1"):t[2],text:i}}}heading(e){let t=this.rules.block.heading.exec(e);if(t){let n=t[2].trim();if(this.rules.other.endingHash.test(n)){let i=z(n,"#");(this.options.pedantic||!i||this.rules.other.endingSpaceTabChar.test(i))&&(n=i.trim())}return{type:"heading",raw:z(t[0],`
+`),depth:t[1].length,text:n,tokens:this.lexer.inline(n)}}}hr(e){let t=this.rules.block.hr.exec(e);if(t)return{type:"hr",raw:z(t[0],`
+`)}}blockquote(e){let t=this.rules.block.blockquote.exec(e);if(t){let n=z(t[0],`
+`).split(`
+`),i="",r="",o=[];for(;n.length>0;){let s=!1,l=[],u;for(u=0;u<n.length;u++)if(this.rules.other.blockquoteStart.test(n[u]))l.push(n[u]),s=!0;else if(!s)l.push(n[u]);else break;n=n.slice(u);let c=l.join(`
+`),p=c.replace(this.rules.other.blockquoteSetextReplace,`
+    $1`).replace(this.rules.other.blockquoteSetextReplace2,"");i=i?`${i}
+${c}`:c,r=r?`${r}
+${p}`:p;let d=this.lexer.state.top;if(this.lexer.state.top=!0,this.lexer.blockTokens(p,o,!0),this.lexer.state.top=d,n.length===0)break;let f=o.at(-1);if(f?.type==="code"||f?.type==="heading"||f?.type==="hr"||f?.type==="html")break;if(f?.type==="blockquote"){let k=f,y=n.join(`
+`),R=k.raw+`
+`+y.replace(this.rules.other.blockquoteSetextReplace2,""),m=this.blockquote(R);o[o.length-1]=m;let E=R.substring(m.raw.length).replace(/^\n/,""),b=E?E.split(`
+`).length:0,G=b?n.slice(0,-b):n;G.length>0&&(i=`${i}
+${G.join(`
+`)}`),r=r.substring(0,r.length-k.text.length)+m.text;break}else if(f?.type==="list"){let k=f,y=k.raw+`
+`+n.join(`
+`),R=this.list(y);o[o.length-1]=R,i=i.substring(0,i.length-f.raw.length)+R.raw,r=r.substring(0,r.length-k.raw.length)+R.raw,n=y.substring(o.at(-1).raw.length).split(`
+`);continue}}return{type:"blockquote",raw:i,tokens:o,text:r}}}list(e){let t=this.rules.block.list.exec(e);if(t){let n=e,i=()=>n.length-e.length,r=t[1].trim(),o=r.length>1,s={type:"list",raw:"",ordered:o,start:o?+r.slice(0,-1):"",loose:!1,items:[]};r=o?`\\d{1,9}\\${r.slice(-1)}`:`\\${r}`,this.options.pedantic&&(r=o?r:"[*+-]");let l=this.rules.other.listItemRegex(r),u=!1;for(;e;){let p=!1,d="";if(!(t=l.exec(e))||this.rules.block.hr.test(e))break;let f=i();e=e.substring(t[0].length);let k=t[2].split(`
+`,1)[0],y=t[1].length,R=this.options.pedantic?X(k,y):k.replace(this.rules.other.leadingSpaceTab,W=>X(W,y)),m=e.split(`
+`,1)[0],E=!R.trim(),b=0;if(this.options.pedantic?(b=2,d=R.trimStart()):E?b=y+1:(b=R.search(this.rules.other.nonSpaceChar),b=b>4?1:b,d=R.slice(b),b+=y),E&&this.rules.other.blankLine.test(m)&&(e=e.substring(m.length+1),p=!0),!p){let W=this.rules.other.nextBulletRegex(b),pe=this.rules.other.hrRegex(b),ce=this.rules.other.fencesBeginRegex(b),he=this.rules.other.headingBeginRegex(b),Ae=this.rules.other.htmlBeginRegex(b),ze=this.rules.other.blockquoteBeginRegex(b);for(;e;){let de=e.split(`
+`,1)[0],N;if(m=de,this.options.pedantic?(m=m.replace(this.rules.other.listReplaceNesting,"  "),N=m):N=m.replace(this.rules.other.leadingSpaceTab,Ee=>X(Ee)),ce.test(m)||he.test(m)||Ae.test(m)||ze.test(m)||W.test(m)||pe.test(m))break;if(N.search(this.rules.other.nonSpaceChar)>=b||!m.trim())d+=`
+`+N.slice(b);else{if(E||R.replace(this.rules.other.tabCharGlobal,"    ").search(this.rules.other.nonSpaceChar)>=4||ce.test(R)||he.test(R)||pe.test(R))break;d+=`
+`+m}E=!m.trim(),e=e.substring(de.length+1),R=N.slice(b)}}let G=n.slice(f,i());s.loose||(u?s.loose=!0:this.rules.other.doubleBlankLine.test(G)&&(u=!0)),s.items.push({type:"list_item",raw:G,task:!!this.options.gfm&&this.rules.other.listIsTask.test(d),loose:!1,text:d,tokens:[]})}let c=s.items.at(-1);if(c)c.raw=c.raw.trimEnd(),c.text=c.text.trimEnd();else return;s.raw=n.slice(0,i()).trimEnd();for(let p of s.items)if(this.lexer.state.top=!1,p.tokens=this.lexer.blockTokens(p.text,[]),!s.loose){let d=p.tokens.filter(k=>k.type==="space"),f=d.length>0&&d.some(k=>this.rules.other.anyLine.test(k.raw));s.loose=f}for(let p of s.items){let d=p.tokens[0];if(p.task&&(d?.type==="text"||d?.type==="paragraph")){p.text=p.text.replace(this.rules.other.listReplaceTask,""),d.raw=d.raw.replace(this.rules.other.listReplaceTask,""),d.text=d.text.replace(this.rules.other.listReplaceTask,"");for(let k=this.lexer.inlineQueue.length-1;k>=0;k--)if(this.rules.other.listIsTask.test(this.lexer.inlineQueue[k].src)){this.lexer.inlineQueue[k].src=this.lexer.inlineQueue[k].src.replace(this.rules.other.listReplaceTask,"");break}let f=this.rules.other.listTaskCheckbox.exec(p.raw);if(f){let k={type:"checkbox",raw:f[0]+" ",checked:f[0]!=="[ ]"};p.checked=k.checked,s.loose?p.tokens[0]&&["paragraph","text"].includes(p.tokens[0].type)&&"tokens"in p.tokens[0]&&p.tokens[0].tokens?(p.tokens[0].raw=k.raw+p.tokens[0].raw,p.tokens[0].text=k.raw+p.tokens[0].text,p.tokens[0].tokens.unshift(k)):p.tokens.unshift({type:"paragraph",raw:k.raw,text:k.raw,tokens:[k]}):p.tokens.unshift(k)}}else p.task&&(p.task=!1)}if(s.loose)for(let p of s.items){p.loose=!0;for(let d of p.tokens)d.type==="text"&&(d.type="paragraph")}return s}}html(e){let t=this.rules.block.html.exec(e);if(t){let n=le(t[0]);return{type:"html",block:!0,raw:n,pre:t[1]==="pre"||t[1]==="script"||t[1]==="style",text:n}}}def(e){let t=this.rules.block.def.exec(e);if(t){if(!this.rules.other.startAngleBracket.test(t[2])&&ue(t[2],"()")!==-1)return;let n=v(t[1]).replace(this.rules.other.multipleSpaceGlobal," "),i=t[2]?t[2].replace(this.rules.other.hrefBrackets,"$1").replace(this.rules.inline.anyPunctuation,"$1"):"",r=t[3]?t[3].substring(1,t[3].length-1).replace(this.rules.inline.anyPunctuation,"$1"):t[3];return{type:"def",tag:n,raw:z(t[0],`
+`),href:i,title:r}}}table(e){let t=this.rules.block.table.exec(e);if(!t||!this.rules.other.tableDelimiter.test(t[2]))return;let n=ae(t[1]),i=t[2].replace(this.rules.other.tableAlignChars,"").split("|"),r=t[3]?.trim()?t[3].replace(this.rules.other.tableRowBlankLine,"").split(`
+`):[],o={type:"table",raw:z(t[0],`
+`),header:[],align:[],rows:[]};if(n.length===i.length){for(let s of i)this.rules.other.tableAlignRight.test(s)?o.align.push("right"):this.rules.other.tableAlignCenter.test(s)?o.align.push("center"):this.rules.other.tableAlignLeft.test(s)?o.align.push("left"):o.align.push(null);for(let s=0;s<n.length;s++)o.header.push({text:n[s],tokens:this.lexer.inline(n[s]),header:!0,align:o.align[s]});for(let s of r)o.rows.push(ae(s,o.header.length).map((l,u)=>({text:l,tokens:this.lexer.inline(l),header:!1,align:o.align[u]})));return o}}lheading(e){let t=this.rules.block.lheading.exec(e);if(t){let n=t[1].trim();return{type:"heading",raw:z(t[0],`
+`),depth:t[2].charAt(0)==="="?1:2,text:n,tokens:this.lexer.inline(n)}}}paragraph(e){let t=this.rules.block.paragraph.exec(e);if(t){let n=t[1].charAt(t[1].length-1)===`
+`?t[1].slice(0,-1):t[1];return{type:"paragraph",raw:t[0],text:n,tokens:this.lexer.inline(n)}}}text(e){let t=this.rules.block.text.exec(e);if(t)return{type:"text",raw:t[0],text:t[0],tokens:this.lexer.inline(t[0])}}escape(e){let t=this.rules.inline.escape.exec(e);if(t)return{type:"escape",raw:t[0],text:t[1]}}tag(e){let t=this.rules.inline.tag.exec(e);if(t)return!this.lexer.state.inLink&&this.rules.other.startATag.test(t[0])?this.lexer.state.inLink=!0:this.lexer.state.inLink&&this.rules.other.endATag.test(t[0])&&(this.lexer.state.inLink=!1),!this.lexer.state.inRawBlock&&this.rules.other.startPreScriptTag.test(t[0])?this.lexer.state.inRawBlock=!0:this.lexer.state.inRawBlock&&this.rules.other.endPreScriptTag.test(t[0])&&(this.lexer.state.inRawBlock=!1),{type:"html",raw:t[0],inLink:this.lexer.state.inLink,inRawBlock:this.lexer.state.inRawBlock,block:!1,text:t[0]}}link(e){if(this.lexer.state.linkParenPossible===!1)return;let t=this.rules.inline.link.exec(e);if(t){let n=t[0].charAt(0)==="!"?2:1;if(!this.options.pedantic&&$e(e,t[1],n,this.rules))return;let i=t[2].trim();if(!this.options.pedantic&&this.rules.other.startAngleBracket.test(i)){if(!this.rules.other.endAngleBracket.test(i))return;let s=z(i.slice(0,-1),"\\");if((i.length-s.length)%2===0)return}else{let s=ue(t[2],"()");if(s===-2)return;if(s>-1){let u=(t[0].indexOf("!")===0?5:4)+t[1].length+s;t[2]=t[2].substring(0,s),t[0]=t[0].substring(0,u).trim(),t[3]=""}}let r=t[2],o="";if(this.options.pedantic){let s=this.rules.other.pedanticHrefTitle.exec(r);s&&(r=s[1],o=s[3])}else o=t[3]?t[3].slice(1,-1):"";return r=r.trim(),this.rules.other.startAngleBracket.test(r)&&(this.options.pedantic&&!this.rules.other.endAngleBracket.test(i)?r=r.slice(1):r=r.slice(1,-1)),_e(t,{href:r&&r.replace(this.rules.inline.anyPunctuation,"$1"),title:o&&o.replace(this.rules.inline.anyPunctuation,"$1")},t[0],this.lexer,this.rules)}}reflink(e,t){let n;if((n=this.rules.inline.reflink.exec(e))||(n=this.rules.inline.nolink.exec(e))){let i=n[0].charAt(0)==="!"?2:1;if(!this.options.pedantic&&$e(e,n[1],i,this.rules))return;let r=(n[2]||n[1]).replace(this.rules.other.multipleSpaceGlobal," "),o=t[v(r)];if(!o){let s=n[0].charAt(0);return{type:"text",raw:s,text:s}}return _e(n,o,n[0],this.lexer,this.rules)}}emStrong(e,t,n=""){let i=this.rules.inline.emStrongLDelim.exec(e);if(!i||!i[1]&&!i[2]&&!i[3]&&!i[4]||i[4]&&n.match(this.rules.other.unicodeAlphaNumeric))return;if(!(i[1]||i[3]||"")||!n||this.rules.inline.punctuation.exec(n)){let o=[...i[0]].length-1,s,l,u=o,c=0,p=i[0][0],d=n===p,f=p==="*"?this.rules.inline.emStrongRDelimAst:this.rules.inline.emStrongRDelimUnd;for(f.lastIndex=0,t=t.slice(-1*e.length+o);(i=f.exec(t))!==null;){if(s=i[1]||i[2]||i[3]||i[4]||i[5]||i[6],!s)continue;if(l=[...s].length,i[3]||i[4]){u+=l;continue}else if(i[5]||i[6]){if(o%3&&!((o+l)%3)){c+=l;continue}if(d)break}if(u-=l,u>0)continue;l=Math.min(l,l+u+c);let k=[...i[0]][0].length,y=e.slice(0,o+i.index+k+l);if(Math.min(o,l)%2){let m=y.slice(1,-1);return{type:"em",raw:y,text:m,tokens:this.lexer.inlineTokens(m)}}let R=y.slice(2,-2);return{type:"strong",raw:y,text:R,tokens:this.lexer.inlineTokens(R)}}}}codespan(e){let t=this.rules.inline.code.exec(e);if(t){let n=t[2].replace(this.rules.other.newLineCharGlobal," "),i=this.rules.other.nonSpaceChar.test(n),r=this.rules.other.startingSpaceChar.test(n)&&this.rules.other.endingSpaceChar.test(n);return i&&r&&(n=n.substring(1,n.length-1)),{type:"codespan",raw:t[0],text:n}}}br(e){let t=this.rules.inline.br.exec(e);if(t)return{type:"br",raw:t[0]}}del(e,t,n=""){let i=this.rules.inline.delLDelim.exec(e);if(!i)return;if(!(i[1]||"")||!n||this.rules.inline.punctuation.exec(n)){let o=[...i[0]].length-1,s,l,u=o,c=this.rules.inline.delRDelim;for(c.lastIndex=0,t=t.slice(-1*e.length+o);(i=c.exec(t))!==null;){if(s=i[1]||i[2]||i[3]||i[4]||i[5]||i[6],!s||(l=[...s].length,l!==o))continue;if(i[3]||i[4]){u+=l;continue}if(u-=l,u>0)continue;l=Math.min(l,l+u);let p=[...i[0]][0].length,d=e.slice(0,o+i.index+p+l),f=d.slice(o,-o);return{type:"del",raw:d,text:f,tokens:this.lexer.inlineTokens(f)}}}}autolink(e){let t=this.rules.inline.autolink.exec(e);if(t){let n,i;return t[2]==="@"?(n=t[1],i="mailto:"+n):(n=t[1],i=n),{type:"link",raw:t[0],text:n,href:i,autolink:!0,tokens:[{type:"text",raw:n,text:n}]}}}url(e){let t;if(t=this.rules.inline.url.exec(e)){let n,i;if(t[2]==="@")n=t[0],i="mailto:"+n;else{let r;do r=t[0],t[0]=this.rules.inline._backpedal.exec(t[0])?.[0]??"";while(r!==t[0]);n=t[0],t[1]==="www."?i="http://"+t[0]:i=t[0]}return{type:"link",raw:t[0],text:n,href:i,autolink:!0,tokens:[{type:"text",raw:n,text:n}]}}}inlineText(e){let t=this.rules.inline.text.exec(e);if(t){let n=this.lexer.state.inRawBlock;return{type:"text",raw:t[0],text:n?t[0]:Se(t[0]),escaped:n}}}};var T=class a{tokens;options;state;inlineQueue;tokenizer;constructor(e){this.tokens=[],this.tokens.links=Object.create(null),this.options=e||w,this.options.tokenizer=this.options.tokenizer||new S,this.tokenizer=this.options.tokenizer,this.tokenizer.options=this.options,this.tokenizer.lexer=this,this.inlineQueue=[],this.state={inLink:!1,inRawBlock:!1,linkEmitted:!1,linkParenPossible:!0,top:!0};let t={other:x,block:U.normal,inline:Z.normal};this.options.pedantic?(t.block=U.pedantic,t.inline=Z.pedantic):this.options.gfm&&(t.block=U.gfm,this.options.breaks?t.inline=Z.breaks:t.inline=Z.gfm),this.tokenizer.rules=t}static get rules(){return{block:U,inline:Z}}static lex(e,t){return new a(t).lex(e)}static lexInline(e,t){return new a(t).inlineTokens(e)}lex(e){e=e.replace(x.carriageReturn,`
+`),this.blockTokens(e,this.tokens);for(let t=0;t<this.inlineQueue.length;t++){let n=this.inlineQueue[t];this.inlineTokens(n.src,n.tokens)}return this.inlineQueue=[],this.tokens}blockTokens(e,t=[],n=!1){this.tokenizer.lexer=this,this.options.pedantic&&(e=e.replace(x.tabCharGlobal,"    ").replace(x.spaceLine,""));let i=1/0;for(;e;){if(e.length<i)i=e.length;else{this.infiniteLoopError(e.charCodeAt(0));break}let r;if(this.options.extensions?.block?.some(s=>(r=s.call({lexer:this},e,t))?(e=e.substring(r.raw.length),t.push(r),!0):!1))continue;if(r=this.tokenizer.space(e)){e=e.substring(r.raw.length);let s=t.at(-1);r.raw.length===1&&s!==void 0?s.raw+=`
+`:t.push(r);continue}if(r=this.tokenizer.code(e)){e=e.substring(r.raw.length);let s=t.at(-1);s?.type==="paragraph"||s?.type==="text"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.text,this.inlineQueue.at(-1).src=s.text):t.push(r);continue}if(r=this.tokenizer.fences(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.heading(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.hr(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.blockquote(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.list(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.html(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.def(e)){e=e.substring(r.raw.length);let s=t.at(-1);s?.type==="paragraph"||s?.type==="text"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.raw,this.inlineQueue.at(-1).src=s.text):this.tokens.links[r.tag]||(this.tokens.links[r.tag]={href:r.href,title:r.title},t.push(r));continue}if(r=this.tokenizer.table(e)){e=e.substring(r.raw.length),t.push(r);continue}if(r=this.tokenizer.lheading(e)){e=e.substring(r.raw.length),t.push(r);continue}let o=e;if(this.options.extensions?.startBlock){let s=1/0,l=e.slice(1),u;this.options.extensions.startBlock.forEach(c=>{u=c.call({lexer:this},l),typeof u=="number"&&u>=0&&(s=Math.min(s,u))}),s<1/0&&s>=0&&(o=e.substring(0,s+1))}if(this.state.top&&(r=this.tokenizer.paragraph(o))){let s=t.at(-1);n&&s?.type==="paragraph"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=s.text):t.push(r),n=o.length!==e.length,e=e.substring(r.raw.length);continue}if(r=this.tokenizer.text(e)){e=e.substring(r.raw.length);let s=t.at(-1);s?.type==="text"?(s.raw+=(s.raw.endsWith(`
+`)?"":`
+`)+r.raw,s.text+=`
+`+r.text,this.inlineQueue.pop(),this.inlineQueue.at(-1).src=s.text):t.push(r);continue}if(e){this.infiniteLoopError(e.charCodeAt(0));break}}return this.state.top=!0,t}inline(e,t=[]){return this.inlineQueue.push({src:e,tokens:t}),t}linkInText(e){if(!e.includes("["))return!1;let t=this.tokenizer.rules.inline.link;for(let n of e.matchAll(this.tokenizer.rules.inline.blockSkip))if(t.test(n[0])&&e.charAt(n.index-1)!=="!")return!0;for(let n of e.matchAll(this.tokenizer.rules.inline.reflinkSearch)){let i=n[0],r=i.lastIndexOf("[");if(!(i.charAt(0)==="!"||!Object.hasOwn(this.tokens.links,v(i.slice(r+1,-1))))&&!(r>1&&this.linkInText(i.slice(1,r-1))))return!0}return!1}inlineTokens(e,t=[]){this.tokenizer.lexer=this;let n=this.state.linkParenPossible;this.state.linkParenPossible=n&&e.includes(")");try{return this.#e(e,t)}finally{this.state.linkParenPossible=n}}#e(e,t){let n=e;if(this.tokens.links&&e.includes("[")){let s=this.tokenizer.rules.inline.reflinkSearch,l=u=>{let c=u.lastIndexOf("[");if(!Object.hasOwn(this.tokens.links,v(u.slice(c+1,-1))))return u;if(c>1&&u.charAt(0)!=="!"){let p=u.slice(1,c-1);if(this.linkInText(p))return"["+p.replace(s,l)+"]["+"a".repeat(u.length-c-2)+"]"}return"["+"a".repeat(u.length-2)+"]"};n=n.replace(s,l)}n=n.replace(this.tokenizer.rules.inline.anyPunctuationOutsideCode,(s,l,u)=>u?"+".repeat(s.length):l?l+s.slice(l.length,-l.length).replace(/`/g,"+")+l:s),n=n.replace(this.tokenizer.rules.inline.blockSkip,(s,l,u)=>{let c=u?u.length:0;return s.slice(0,c)+"["+"a".repeat(s.length-c-2)+"]"}),n=this.options.hooks?.emStrongMask?.call({lexer:this},n)??n;let i=!1,r="",o=1/0;for(;e;){if(e.length<o)o=e.length;else{this.infiniteLoopError(e.charCodeAt(0));break}i||(r=""),i=!1;let s;if(this.options.extensions?.inline?.some(u=>(s=u.call({lexer:this},e,t))?(e=e.substring(s.raw.length),t.push(s),!0):!1))continue;if(s=this.tokenizer.escape(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.tag(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.link(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.reflink(e,this.tokens.links)){e=e.substring(s.raw.length);let u=t.at(-1);s.type==="text"&&u?.type==="text"?(u.raw+=s.raw,u.text+=s.text):t.push(s);continue}if(s=this.tokenizer.emStrong(e,n,r)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.codespan(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.br(e)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.del(e,n,r)){e=e.substring(s.raw.length),t.push(s);continue}if(s=this.tokenizer.autolink(e)){e=e.substring(s.raw.length),t.push(s);continue}if(!this.state.inLink&&(s=this.tokenizer.url(e))){e=e.substring(s.raw.length),t.push(s);continue}let l=e;if(this.options.extensions?.startInline){let u=1/0,c=e.slice(1),p;this.options.extensions.startInline.forEach(d=>{p=d.call({lexer:this},c),typeof p=="number"&&p>=0&&(u=Math.min(u,p))}),u<1/0&&u>=0&&(l=e.substring(0,u+1))}if(s=this.tokenizer.inlineText(l)){e=e.substring(s.raw.length),s.raw.slice(-1)!=="_"&&(r=s.raw.slice(-1)),i=!0;let u=t.at(-1);u?.type==="text"?(u.raw+=s.raw,u.text+=s.text):t.push(s);continue}if(e){this.infiniteLoopError(e.charCodeAt(0));break}}return t}infiniteLoopError(e){let t="Infinite loop on byte: "+e;if(this.options.silent)console.error(t);else throw new Error(t)}};var _=class{options;parser;constructor(e){this.options=e||w}space(e){return""}code({text:e,lang:t,escaped:n}){let i=(t||"").match(x.notSpaceStart)?.[0],r=e?e.replace(x.endingNewline,"")+`
+`:"";return i?'<pre><code class="language-'+P(i)+'">'+(n?r:P(r,!0))+`</code></pre>
+`:"<pre><code>"+(n?r:P(r,!0))+`</code></pre>
+`}blockquote({tokens:e}){return`<blockquote>
+${this.parser.parse(e)}</blockquote>
+`}html({text:e}){return e}def(e){return""}heading({tokens:e,depth:t}){return`<h${t}>${this.parser.parseInline(e)}</h${t}>
+`}hr(e){return`<hr>
+`}list(e){let t=e.ordered,n=e.start,i="";for(let s=0;s<e.items.length;s++){let l=e.items[s];i+=this.listitem(l)}let r=t?"ol":"ul",o=t&&n!==1?' start="'+n+'"':"";return"<"+r+o+`>
+`+i+"</"+r+`>
+`}listitem(e){return`<li>${this.parser.parse(e.tokens)}</li>
+`}checkbox({checked:e}){return"<input "+(e?'checked="" ':"")+'disabled="" type="checkbox"> '}paragraph({tokens:e}){return`<p>${this.parser.parseInline(e)}</p>
+`}table(e){let t="",n="";for(let r=0;r<e.header.length;r++)n+=this.tablecell(e.header[r]);t+=this.tablerow({text:n});let i="";for(let r=0;r<e.rows.length;r++){let o=e.rows[r];n="";for(let s=0;s<o.length;s++)n+=this.tablecell(o[s]);i+=this.tablerow({text:n})}return i&&(i=`<tbody>${i}</tbody>`),`<table>
+<thead>
+`+t+`</thead>
+`+i+`</table>
+`}tablerow({text:e}){return`<tr>
+${e}</tr>
+`}tablecell(e){let t=this.parser.parseInline(e.tokens),n=e.header?"th":"td";return(e.align?`<${n} align="${e.align}">`:`<${n}>`)+t+`</${n}>
+`}strong({tokens:e}){return`<strong>${this.parser.parseInline(e)}</strong>`}em({tokens:e}){return`<em>${this.parser.parseInline(e)}</em>`}codespan({text:e}){return`<code>${P(e,!0)}</code>`}br(e){return"<br>"}del({tokens:e}){return`<del>${this.parser.parseInline(e)}</del>`}link({href:e,title:t,text:n,tokens:i,autolink:r}){let o=r?P(n,!0):this.parser.parseInline(i),s=oe(e);if(s===null)return o;e=P(s,r);let l='<a href="'+e+'"';return t&&(l+=' title="'+P(t)+'"'),l+=">"+o+"</a>",l}image({href:e,title:t,text:n,tokens:i}){i&&(n=this.parser.parseInline(i,this.parser.textRenderer));let r=oe(e);if(r===null)return P(n);e=r;let o=`<img src="${P(e)}" alt="${P(n)}"`;return t&&(o+=` title="${P(t)}"`),o+=">",o}text(e){return"tokens"in e&&e.tokens?this.parser.parseInline(e.tokens):"escaped"in e&&e.escaped?e.text:P(e.text)}};var A=class{strong({text:e}){return e}em({text:e}){return e}codespan({text:e}){return e}del({text:e}){return e}html({text:e}){return e}text({text:e}){return e}link({text:e}){return""+e}image({text:e}){return""+e}br(){return""}checkbox({raw:e}){return e}};var O=class a{options;renderer;textRenderer;constructor(e){this.options=e||w,this.options.renderer=this.options.renderer||new _,this.renderer=this.options.renderer,this.renderer.options=this.options,this.renderer.parser=this,this.textRenderer=new A}static parse(e,t){return new a(t).parse(e)}static parseInline(e,t){return new a(t).parseInline(e)}parse(e){this.renderer.parser=this;let t="";for(let n=0;n<e.length;n++){let i=e[n];if(this.options.extensions?.renderers?.[i.type]){let o=i,s=this.options.extensions.renderers[o.type].call({parser:this},o);if(s!==!1||!["space","hr","heading","code","table","blockquote","list","checkbox","html","def","paragraph","text"].includes(o.type)){t+=s||"";continue}}let r=i;switch(r.type){case"space":{t+=this.renderer.space(r);break}case"hr":{t+=this.renderer.hr(r);break}case"heading":{t+=this.renderer.heading(r);break}case"code":{t+=this.renderer.code(r);break}case"table":{t+=this.renderer.table(r);break}case"blockquote":{t+=this.renderer.blockquote(r);break}case"list":{t+=this.renderer.list(r);break}case"checkbox":{t+=this.renderer.checkbox(r);break}case"html":{t+=this.renderer.html(r);break}case"def":{t+=this.renderer.def(r);break}case"paragraph":{t+=this.renderer.paragraph(r);break}case"text":{t+=this.renderer.text(r);break}default:{let o='Token with "'+r.type+'" type was not found.';if(this.options.silent)return console.error(o),"";throw new Error(o)}}}return t}parseInline(e,t=this.renderer){this.renderer.parser=this;let n="";for(let i=0;i<e.length;i++){let r=e[i];if(this.options.extensions?.renderers?.[r.type]){let s=this.options.extensions.renderers[r.type].call({parser:this},r);if(s!==!1||!["escape","html","link","image","checkbox","strong","em","codespan","br","del","text"].includes(r.type)){n+=s||"";continue}}let o=r;switch(o.type){case"escape":{n+=t.text(o);break}case"html":{n+=t.html(o);break}case"link":{n+=t.link(o);break}case"image":{n+=t.image(o);break}case"checkbox":{n+=t.checkbox(o);break}case"strong":{n+=t.strong(o);break}case"em":{n+=t.em(o);break}case"codespan":{n+=t.codespan(o);break}case"br":{n+=t.br(o);break}case"del":{n+=t.del(o);break}case"text":{n+=t.text(o);break}default:{let s='Token with "'+o.type+'" type was not found.';if(this.options.silent)return console.error(s),"";throw new Error(s)}}}return n}};var $=class{options;block;constructor(e){this.options=e||w}static passThroughHooks=new Set(["preprocess","postprocess","processAllTokens","emStrongMask"]);static passThroughHooksRespectAsync=new Set(["preprocess","postprocess","processAllTokens"]);preprocess(e){return e}postprocess(e){return e}processAllTokens(e){return e}emStrongMask(e){return e}provideLexer(e=this.block){return e?T.lex:T.lexInline}provideParser(e=this.block){return e?O.parse:O.parseInline}};function I(a,e){if(Array.isArray(e))for(let t=0;t<e.length;t++)a.push(e[t]);else a.push(e)}var H=class{defaults=M();options=this.setOptions;parse=this.parseMarkdown(!0);parseInline=this.parseMarkdown(!1);Parser=O;Renderer=_;TextRenderer=A;Lexer=T;Tokenizer=S;Hooks=$;constructor(...e){this.use(...e)}walkTokens(e,t){let n=[];for(let i of e)switch(I(n,t.call(this,i)),i.type){case"table":{let r=i;for(let o of r.header)I(n,this.walkTokens(o.tokens,t));for(let o of r.rows)for(let s of o)I(n,this.walkTokens(s.tokens,t));break}case"list":{let r=i;I(n,this.walkTokens(r.items,t));break}default:{let r=i;this.defaults.extensions?.childTokens?.[r.type]?this.defaults.extensions.childTokens[r.type].forEach(o=>{let s=r[o].flat(1/0);I(n,this.walkTokens(s,t))}):r.tokens&&I(n,this.walkTokens(r.tokens,t))}}return n}use(...e){let t=this.defaults.extensions||{renderers:{},childTokens:{}};return e.forEach(n=>{let i={...n};if(i.async=this.defaults.async||i.async||!1,n.extensions&&(n.extensions.forEach(r=>{if(!r.name)throw new Error("extension name required");if("renderer"in r){let o=t.renderers[r.name];o?t.renderers[r.name]=function(...s){let l=r.renderer.apply(this,s);return l===!1&&(l=o.apply(this,s)),l}:t.renderers[r.name]=r.renderer}if("tokenizer"in r){if(!r.level||r.level!=="block"&&r.level!=="inline")throw new Error("extension level must be 'block' or 'inline'");let o=t[r.level];o?o.unshift(r.tokenizer):t[r.level]=[r.tokenizer],r.start&&(r.level==="block"?t.startBlock?t.startBlock.push(r.start):t.startBlock=[r.start]:r.level==="inline"&&(t.startInline?t.startInline.push(r.start):t.startInline=[r.start]))}"childTokens"in r&&r.childTokens&&(t.childTokens[r.name]=r.childTokens)}),i.extensions=t),n.renderer){let r=this.defaults.renderer||new _(this.defaults);for(let o in n.renderer){if(!(o in r))throw new Error(`renderer '${o}' does not exist`);if(["options","parser"].includes(o))continue;let s=o,l=n.renderer[s],u=r[s];r[s]=(...c)=>{let p=l.apply(r,c);return p===!1&&(p=u.apply(r,c)),p||""}}i.renderer=r}if(n.tokenizer){let r=this.defaults.tokenizer||new S(this.defaults);for(let o in n.tokenizer){if(!(o in r))throw new Error(`tokenizer '${o}' does not exist`);if(["options","rules","lexer"].includes(o))continue;let s=o,l=n.tokenizer[s],u=r[s];r[s]=(...c)=>{let p=l.apply(r,c);return p===!1&&(p=u.apply(r,c)),p}}i.tokenizer=r}if(n.hooks){let r=this.defaults.hooks||new $;for(let o in n.hooks){if(!(o in r))throw new Error(`hook '${o}' does not exist`);if(["options","block"].includes(o))continue;let s=o,l=n.hooks[s],u=r[s];$.passThroughHooks.has(o)?r[s]=c=>{if(this.defaults.async&&$.passThroughHooksRespectAsync.has(o))return(async()=>{let d=await l.call(r,c);return u.call(r,d)})();let p=l.call(r,c);return u.call(r,p)}:r[s]=(...c)=>{if(this.defaults.async)return(async()=>{let d=await l.apply(r,c);return d===!1&&(d=await u.apply(r,c)),d})();let p=l.apply(r,c);return p===!1&&(p=u.apply(r,c)),p}}i.hooks=r}if(n.walkTokens){let r=this.defaults.walkTokens,o=n.walkTokens;i.walkTokens=function(s){let l=[];return l.push(o.call(this,s)),r&&I(l,r.call(this,s)),l}}this.defaults={...this.defaults,...i}}),this}setOptions(e){return this.defaults={...this.defaults,...e},this}lexer(e,t){return T.lex(e,t??this.defaults)}parser(e,t){return O.parse(e,t??this.defaults)}parseMarkdown(e){return(n,i)=>{let r={...i},o={...this.defaults,...r},s=this.onError(!!o.silent,!!o.async);if(this.defaults.async===!0&&r.async===!1)return s(new Error("marked(): The async option was set to true by an extension. Remove async: false from the parse options object to return a Promise."));if(typeof n>"u"||n===null)return s(new Error("marked(): input parameter is undefined or null"));if(typeof n!="string")return s(new Error("marked(): input parameter is of type "+Object.prototype.toString.call(n)+", string expected"));if(o.hooks&&(o.hooks.options=o,o.hooks.block=e),o.async)return(async()=>{let l=o.hooks?await o.hooks.preprocess(n):n,c=await(o.hooks?await o.hooks.provideLexer(e):e?T.lex:T.lexInline)(l,o),p=o.hooks?await o.hooks.processAllTokens(c):c;o.walkTokens&&await Promise.all(this.walkTokens(p,o.walkTokens));let f=await(o.hooks?await o.hooks.provideParser(e):e?O.parse:O.parseInline)(p,o);return o.hooks?await o.hooks.postprocess(f):f})().catch(s);try{o.hooks&&(n=o.hooks.preprocess(n));let u=(o.hooks?o.hooks.provideLexer(e):e?T.lex:T.lexInline)(n,o);o.hooks&&(u=o.hooks.processAllTokens(u)),o.walkTokens&&this.walkTokens(u,o.walkTokens);let p=(o.hooks?o.hooks.provideParser(e):e?O.parse:O.parseInline)(u,o);return o.hooks&&(p=o.hooks.postprocess(p)),p}catch(l){return s(l)}}}onError(e,t){return n=>{if(n.message+=`
+Please report this to https://github.com/markedjs/marked.`,e){let i="<p>An error occurred:</p><pre>"+P(n.message+"",!0)+"</pre>";return t?Promise.resolve(i):i}if(t)return Promise.reject(n);throw n}}};var B=new H;function g(a,e){return B.parse(a,e)}g.options=g.setOptions=function(a){return B.setOptions(a),g.defaults=B.defaults,J(g.defaults),g};g.getDefaults=M;g.defaults=w;function Le(...a){return B.use(...a),g.defaults=B.defaults,J(g.defaults),g}g.use=Le;g.walkTokens=function(a,e){return B.walkTokens(a,e)};g.parseInline=B.parseInline;g.Parser=O;g.parser=O.parse;g.Renderer=_;g.TextRenderer=A;g.Lexer=T;g.lexer=T.lex;g.Tokenizer=S;g.Hooks=$;g.parse=g;var qt=g.options,Zt=g.setOptions,vt=g.walkTokens,Ht=g.parseInline,Gt=g,Nt=O.parse,Qt=T.lex;
+
+if(__exports != exports)module.exports = exports;return module.exports}));
+//# sourceMappingURL=marked.umd.js.map
+</script>
+<script>
+(() => {
+	const BASE = 2;
+	const DEFAULT_COLS = 72;
+	const sourceEl = document.getElementById('source');
+	const sampleEl = document.getElementById('sample');
+	const widthEl = document.getElementById('width');
+	const widthLabel = document.getElementById('widthLabel');
+	const reinsEl = document.getElementById('reins');
+	const grokEl = document.getElementById('grok');
+
+	// ---------- 宽度与转义 ----------
+	function charWidth(ch) {
+		const cp = ch.codePointAt(0) ?? 0;
+		if (cp === 0) return 0;
+		if (cp >= 0x0300 && cp <= 0x036f) return 0;
+		if (
+			(cp >= 0x1100 && cp <= 0x115f) ||
+			(cp >= 0x2e80 && cp <= 0xa4cf) ||
+			(cp >= 0xac00 && cp <= 0xd7a3) ||
+			(cp >= 0xf900 && cp <= 0xfaff) ||
+			(cp >= 0xfe30 && cp <= 0xfe4f) ||
+			(cp >= 0xff00 && cp <= 0xff60) ||
+			(cp >= 0xffe0 && cp <= 0xffe6) ||
+			(cp >= 0x1f300 && cp <= 0x1faff) ||
+			(cp >= 0x20000 && cp <= 0x3fffd)
+		) return 2;
+		return 1;
+	}
+	function textWidth(text) {
+		let width = 0;
+		for (const ch of text) width += charWidth(ch);
+		return width;
+	}
+	function esc(text) {
+		return text.replace(/[&<>]/g, (ch) => (ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : '&gt;'));
+	}
+	function widthOfSpans(spans) {
+		return spans.reduce((sum, span) => sum + textWidth(span.text), 0);
+	}
+	function spaces(n, cls) {
+		return { text: ' '.repeat(Math.max(0, n)), cls };
+	}
+	function lineOf(spans) {
+		return { spans };
+	}
+	function blankLine() {
+		return { spans: [] };
+	}
+	function bandLine(base, spans) {
+		return { spans, band: true, base };
+	}
+
+	// ---------- 行内 token → 字符原子 ----------
+	function atom(ch, cls) {
+		return { ch, cls };
+	}
+	const BR = { br: true };
+
+	function inlineAtoms(tokens, side, cls, softBreak) {
+		const out = [];
+		for (const token of tokens || []) {
+			switch (token.type) {
+				case 'strong':
+					out.push(...inlineAtoms(token.tokens, side, `${cls} bold`, softBreak));
+					break;
+				case 'em':
+					out.push(...inlineAtoms(token.tokens, side, `${cls} italic`, softBreak));
+					break;
+				case 'del':
+					out.push(...inlineAtoms(token.tokens, side, `${cls} strike`, softBreak));
+					break;
+				case 'codespan': {
+					const codeCls = side === 'reins' ? 'r-code' : 'g-code';
+					for (const ch of token.text) out.push(atom(ch, codeCls));
+					break;
+				}
+				case 'link': {
+					const linkCls = side === 'reins' ? 'r-link' : 'g-link';
+					out.push(...inlineAtoms(token.tokens, side, `${cls} ${linkCls}`, softBreak));
+					const urlCls = side === 'reins' ? 'r-url' : 'g-url';
+					if (token.raw.trimStart().startsWith('[')) {
+						out.push(atom(' ', cls), atom('(', urlCls));
+						for (const ch of token.href) out.push(atom(ch, urlCls));
+						out.push(atom(')', urlCls));
+					}
+					break;
+				}
+				case 'image': {
+					const alt = token.text || '';
+					if (side === 'reins') {
+						for (const ch of `[image${alt ? `: ${alt}` : ''}]`) out.push(atom(ch, 'r-link'));
+						out.push(atom('(', 'r-url'));
+						for (const ch of token.href) out.push(atom(ch, 'r-url'));
+						out.push(atom(')', 'r-url'));
+					} else {
+						for (const ch of `!${alt} (${token.href})`) out.push(atom(ch, 'g-url'));
+					}
+					break;
+				}
+				case 'br':
+					out.push(BR);
+					break;
+				case 'html': {
+					if (/^<br\s*\/?>$/i.test(token.text)) {
+						out.push(BR);
+						break;
+					}
+					const htmlCls = side === 'reins' ? 'r-html' : 'g-html';
+					for (const ch of token.text) out.push(atom(ch, htmlCls));
+					break;
+				}
+				case 'escape':
+					for (const ch of token.text) out.push(atom(ch, cls));
+					break;
+				case 'checkbox':
+					break;
+				case 'text':
+					if (token.tokens && token.tokens.length > 0) {
+						out.push(...inlineAtoms(token.tokens, side, cls, softBreak));
+					} else {
+						for (const ch of token.text) {
+							if (ch === '\n') {
+								if (softBreak === 'keep' && side === 'grok') out.push(BR);
+								else out.push(atom(' ', cls));
+							} else {
+								out.push(atom(ch, cls));
+							}
+						}
+					}
+					break;
+				default:
+					if (token.tokens && token.tokens.length > 0) out.push(...inlineAtoms(token.tokens, side, cls, softBreak));
+					else if (typeof token.text === 'string') for (const ch of token.text) out.push(atom(ch, cls));
+			}
+		}
+		return out;
+	}
+
+	// ---------- 换行 ----------
+	function wrapAtoms(atoms, limit, word) {
+		const lines = [[]];
+		let used = 0;
+		for (const item of atoms) {
+			if (item.br) {
+				lines.push([]);
+				used = 0;
+				continue;
+			}
+			const width = charWidth(item.ch);
+			if (used + width > limit && used > 0) {
+				if (word) {
+					const current = lines[lines.length - 1];
+					let breakAt = -1;
+					for (let index = current.length - 1; index >= 0; index -= 1) {
+						if (current[index].ch === ' ') { breakAt = index; break; }
+					}
+					if (breakAt > 0) {
+						const carry = current.splice(breakAt + 1);
+						lines.push([]);
+						used = 0;
+						for (const carried of carry) {
+							lines[lines.length - 1].push(carried);
+							used += charWidth(carried.ch);
+						}
+					} else {
+						lines.push([]);
+						used = 0;
+					}
+				} else {
+					lines.push([]);
+					used = 0;
+				}
+			}
+			lines[lines.length - 1].push(item);
+			used += width;
+		}
+		return lines;
+	}
+
+	function atomsToSpans(atoms) {
+		const spans = [];
+		for (const item of atoms) {
+			const last = spans[spans.length - 1];
+			if (last && last.cls === item.cls) last.text += item.ch;
+			else spans.push({ text: item.ch, cls: item.cls });
+		}
+		return spans;
+	}
+
+	function wrapPrefixed(atoms, cols, firstPrefix, restPrefix, word) {
+		const limit = Math.max(1, cols - widthOfSpans(firstPrefix));
+		const wrapped = wrapAtoms(atoms, limit, word);
+		return wrapped.map((chars, index) => lineOf([
+			...(index === 0 ? firstPrefix : restPrefix),
+			...atomsToSpans(chars),
+		]));
+	}
+
+	// ---------- 代码高亮 ----------
+	const SYNTAX = /(\/\/.*|#.*$)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+(?:\.\d+)?\b)|(\b(?:const|let|var|function|return|if|else|for|while|class|new|import|from|export|public|private|static|void|int|interface|type|async|await|throw|try|catch|def|fn|use|struct|impl|mut|true|false|null|undefined)\b)/g;
+
+	function highlightLine(text, side) {
+		const prefix = side === 'reins' ? 'r' : 'g';
+		const spans = [];
+		let last = 0;
+		let match;
+		SYNTAX.lastIndex = 0;
+		while ((match = SYNTAX.exec(text)) !== null) {
+			if (match.index > last) spans.push({ text: text.slice(last, match.index), cls: `${prefix}-code-text` });
+			const kind = match[1] ? 'com' : match[2] ? 'str' : match[3] ? 'num' : 'kw';
+			spans.push({ text: match[0], cls: `${prefix}-syn-${kind}` });
+			last = match.index + match[0].length;
+			if (match[0].length === 0) SYNTAX.lastIndex += 1;
+		}
+		if (last < text.length) spans.push({ text: text.slice(last), cls: `${prefix}-code-text` });
+		return spans;
+	}
+
+	// ---------- 块 ----------
+	function renderHeading(token, side, indent, cols) {
+		const cls = side === 'reins'
+			? `r-h${Math.min(6, token.depth)}`
+			: `g-h${Math.min(6, token.depth)}`;
+		const atoms = inlineAtoms(token.tokens, side, cls);
+		const prefix = [spaces(indent, side === 'reins' ? 'r-text' : 'g-text')];
+		return wrapPrefixed(atoms, cols, prefix, prefix, true);
+	}
+
+	function renderParagraph(token, side, indent, cols, softBreak) {
+		const cls = side === 'reins' ? 'r-text' : 'g-text';
+		const atoms = inlineAtoms(token.tokens, side, cls, softBreak);
+		const prefix = [spaces(indent, cls)];
+		return wrapPrefixed(atoms, cols, prefix, prefix, true);
+	}
+
+	function renderList(token, side, indent, cols) {
+		const lines = [];
+		let number = typeof token.start === 'number' ? token.start : 1;
+		const textCls = side === 'reins' ? 'r-text' : 'g-text';
+		const itemSoft = side === 'grok' ? 'keep' : 'space';
+		for (const item of token.items) {
+			const marker = [];
+			if (side === 'reins') {
+				if (item.task) marker.push({ text: item.checked ? '[x] ' : '[ ] ', cls: 'r-subtle' });
+				else marker.push({ text: token.ordered ? `${number}. ` : '• ', cls: 'r-subtle' });
+			} else {
+				marker.push({ text: token.ordered ? `${number}. ` : '• ', cls: 'g-muted' });
+				if (item.task) {
+					marker.push({
+						text: item.checked ? '[x] ' : '[ ] ',
+						cls: item.checked ? 'g-task-checked' : 'g-task-unchecked',
+					});
+				}
+			}
+			const contentIndent = indent + widthOfSpans(marker);
+			let first = true;
+			for (const child of item.tokens) {
+				if (child.type === 'checkbox') continue;
+				if (first && (child.type === 'paragraph' || child.type === 'text')) {
+					const atoms = inlineAtoms(child.tokens, side, textCls, itemSoft);
+					lines.push(...wrapPrefixed(
+						atoms,
+						cols,
+						[spaces(indent, textCls), ...marker],
+						[spaces(contentIndent, textCls)],
+						true,
+					));
+					first = false;
+					continue;
+				}
+				if (first) {
+					lines.push(lineOf([spaces(indent, textCls), ...marker]));
+					first = false;
+				}
+				if (child.type === 'list') lines.push(...renderList(child, side, contentIndent, cols));
+				else {
+					if (child.type === 'code' && side === 'grok') {
+						const last = lines[lines.length - 1];
+						if (last && last.spans.some((span) => span.text.trim().length > 0)) lines.push(blankLine());
+					}
+					lines.push(...renderBlock(child, side, contentIndent, cols, itemSoft));
+				}
+			}
+			if (first) lines.push(lineOf([spaces(indent, textCls), ...marker]));
+			number += 1;
+		}
+		return lines;
+	}
+
+	function addQuoteBar(line, indent, side) {
+		if (line.band) {
+			const textCls = side === 'reins' ? 'r-text' : 'g-text';
+			return {
+				...line,
+				prefix: [spaces(indent, textCls), { text: '│ ', cls: 'quote' }],
+			};
+		}
+		const textCls = side === 'reins' ? 'r-text' : 'g-text';
+		let remove = indent + 2;
+		const spans = [];
+		for (const span of line.spans) {
+			if (remove > 0 && span.text.trim() === '') {
+				const cut = Math.min(remove, span.text.length);
+				if (cut < span.text.length) spans.push({ ...span, text: span.text.slice(cut) });
+				remove -= cut;
+				continue;
+			}
+			spans.push(span);
+		}
+		return lineOf([spaces(indent, textCls), { text: '│ ', cls: 'quote' }, ...spans]);
+	}
+
+	function renderQuote(token, side, indent, cols) {
+		const inner = [];
+		const innerSoft = side === 'grok' ? 'keep' : 'space';
+		let first = true;
+		for (const child of token.tokens) {
+			if (child.type === 'space') continue;
+			if (!first) inner.push(blankLine());
+			inner.push(...renderBlock(child, side, indent + 2, cols, innerSoft));
+			first = false;
+		}
+		return inner.map((line) => addQuoteBar(line, indent, side));
+	}
+
+	function renderCode(token, side, indent, cols) {
+		const codeLines = token.text.replace(/\n$/, '').split('\n');
+		const base = side === 'reins' ? indent : BASE;
+		const pad = side === 'reins' ? 1 : 0;
+		const lines = [];
+		if (side === 'reins') lines.push(bandLine(base, []));
+		for (const text of codeLines) {
+			const spans = [];
+			if (pad > 0) spans.push(spaces(pad, 'r-text'));
+			spans.push(...highlightLine(text, side));
+			lines.push(bandLine(base, spans));
+		}
+		if (side === 'reins') lines.push(bandLine(base, []));
+		return lines;
+	}
+
+	function cellText(cell) {
+		return inlineAtoms(cell.tokens, 'grok', 'g-text')
+			.map((item) => (item.br ? ' ' : item.ch))
+			.join('')
+			.trim();
+	}
+
+	function fitCell(text, width) {
+		if (textWidth(text) <= width) return text;
+		let out = '';
+		for (const ch of text) {
+			if (textWidth(out + ch) > width - 1) break;
+			out += ch;
+		}
+		return `${out}…`;
+	}
+
+	function padCell(text, width, align) {
+		const visible = fitCell(text, width);
+		const gap = Math.max(0, width - textWidth(visible));
+		if (align === 'right') return `${' '.repeat(gap)}${visible}`;
+		if (align === 'center') {
+			const left = Math.floor(gap / 2);
+			return `${' '.repeat(left)}${visible}${' '.repeat(gap - left)}`;
+		}
+		return `${visible}${' '.repeat(gap)}`;
+	}
+
+	function columnWidths(rows, count) {
+		return Array.from({ length: count }, (_, index) =>
+			Math.max(3, ...rows.map((row) => textWidth(row[index] || ''))),
+		);
+	}
+
+	function wrapCell(text, width) {
+		const atoms = [...text].map((ch) => atom(ch, 'cell'));
+		return wrapAtoms(atoms, Math.max(1, width), true).map((line) => line.map((item) => item.ch).join(''));
+	}
+
+	function renderTable(token, side, indent, cols) {
+		const header = token.header.map(cellText);
+		const body = token.rows.map((row) => row.map(cellText));
+		const count = header.length;
+		if (count === 0) return [];
+		const all = [header, ...body];
+		let widths = columnWidths(all, count);
+		const textCls = side === 'reins' ? 'r-text' : 'g-text';
+		const borderCls = side === 'reins' ? 'r-border' : 'g-border';
+		const pad = 1;
+		const overhead = count * (2 * pad + 1) + 1;
+		const budget = Math.max(count * 3, cols - indent - overhead);
+		while (widths.reduce((sum, width) => sum + width, 0) > budget) {
+			let widest = 0;
+			for (let index = 1; index < widths.length; index += 1) {
+				if (widths[index] > widths[widest]) widest = index;
+			}
+			if (widths[widest] <= 3) break;
+			widths[widest] -= 1;
+		}
+		const lines = [];
+		const border = (left, mid, right) => lineOf([
+			spaces(indent, textCls),
+			{ text: left + widths.map((w) => '─'.repeat(w + pad * 2)).join(mid) + right, cls: borderCls },
+		]);
+		const boxRows = (cells, isHeader) => {
+			const wrapped = cells.map((cell, index) => wrapCell(cell, widths[index]));
+			const height = Math.max(1, ...wrapped.map((cellLines) => cellLines.length));
+			const out = [];
+			for (let line = 0; line < height; line += 1) {
+				const spans = [spaces(indent, textCls)];
+				for (let index = 0; index < count; index += 1) {
+					spans.push({ text: '│', cls: borderCls });
+					const text = padCell(wrapped[index][line] || '', widths[index], token.align[index]);
+					spans.push({
+						text: ` ${text} `,
+						cls: isHeader && side === 'reins' ? 'r-text bold' : textCls,
+					});
+				}
+				spans.push({ text: '│', cls: borderCls });
+				out.push(lineOf(spans));
+			}
+			return out;
+		};
+		lines.push(border('┌', '┬', '┐'));
+		lines.push(...boxRows(header, true));
+		lines.push(border('├', '┼', '┤'));
+		for (const row of body) lines.push(...boxRows(row, false));
+		lines.push(border('└', '┴', '┘'));
+		return lines;
+	}
+
+	function renderHtml(token, side, indent, cols) {
+		const htmlCls = side === 'reins' ? 'r-html' : 'g-html';
+		const textCls = side === 'reins' ? 'r-text' : 'g-text';
+		const atoms = [];
+		for (const part of token.text.match(/<[^>]*>|[^<]+/g) || []) {
+			const cls = part.startsWith('<') ? htmlCls : textCls;
+			for (const ch of part) atoms.push(atom(ch, cls));
+		}
+		return wrapPrefixed(
+			atoms,
+			cols,
+			[spaces(indent, textCls)],
+			[spaces(indent, textCls)],
+			true,
+		);
+	}
+
+	function renderBlock(token, side, indent, cols, softBreak) {
+		switch (token.type) {
+			case 'heading': return renderHeading(token, side, indent, cols);
+			case 'paragraph':
+			case 'text': return renderParagraph(token, side, indent, cols, softBreak);
+			case 'list': return renderList(token, side, indent, cols);
+			case 'blockquote': return renderQuote(token, side, indent, cols);
+			case 'code': return renderCode(token, side, indent, cols);
+			case 'table': return renderTable(token, side, indent, cols);
+			case 'html': return renderHtml(token, side, indent, cols);
+			case 'hr':
+				return [lineOf([
+					spaces(indent, side === 'reins' ? 'r-text' : 'g-text'),
+					side === 'reins'
+						? { text: '─'.repeat(Math.max(1, cols - indent)), cls: 'r-border' }
+						: { text: '───', cls: 'g-muted' },
+				])];
+			default:
+				return [];
+		}
+	}
+
+	// ---------- 渲染成 HTML ----------
+	function spansHtml(spans) {
+		let out = '';
+		for (const span of spans) {
+			if (!span.text) continue;
+			out += span.cls ? `<span class="${span.cls}">${esc(span.text)}</span>` : esc(span.text);
+		}
+		return out;
+	}
+
+	function renderLine(line, cols, side) {
+		if (line.band) {
+			const plain = line.spans.map((span) => span.text).join('');
+			const lead = line.prefix ? spansHtml(line.prefix) : ' '.repeat(line.base);
+			const leadWidth = line.prefix ? widthOfSpans(line.prefix) : line.base;
+			const pad = ' '.repeat(Math.max(0, cols - leadWidth - textWidth(plain)));
+			const bandClass = side === 'reins' ? 'r-band' : 'g-band';
+			return `${lead}<span class="${bandClass}">${spansHtml(line.spans)}${pad}</span>`;
+		}
+		const used = widthOfSpans(line.spans);
+		const pad = ' '.repeat(Math.max(0, cols - used));
+		return `${spansHtml(line.spans)}${pad}`;
+	}
+
+	function renderSide(markdown, side, cols) {
+		const tokens = marked.lexer(markdown, { gfm: true });
+		const lines = [];
+		let pendingSpace = 0;
+		for (const token of tokens) {
+			if (token.type === 'def') continue;
+			if (token.type === 'space') {
+				pendingSpace = Math.max(pendingSpace, (token.raw.match(/\n/g) || []).length - 1);
+				continue;
+			}
+			const block = renderBlock(token, side, BASE, cols, 'space');
+			if (block.length === 0) continue;
+			if (lines.length > 0) {
+				// Reins 统一一块一行；grok 保留源文本里的多空行（最少一行）
+				const gaps = side === 'grok' ? Math.max(1, pendingSpace) : 1;
+				for (let index = 0; index < gaps; index += 1) lines.push(blankLine());
+			}
+			lines.push(...block);
+			pendingSpace = 0;
+		}
+		return lines.map((line) => renderLine(line, cols, side)).join('\n');
+	}
+
+	function render() {
+		const cols = Number(widthEl.value) || DEFAULT_COLS;
+		widthLabel.textContent = String(cols);
+		const markdown = sourceEl.value;
+		reinsEl.innerHTML = renderSide(markdown, 'reins', cols);
+		grokEl.innerHTML = renderSide(markdown, 'grok', cols);
+	}
+
+	let timer;
+	sourceEl.addEventListener('input', () => {
+		clearTimeout(timer);
+		timer = setTimeout(render, 120);
+	});
+	widthEl.addEventListener('input', render);
+	sampleEl.addEventListener('change', () => {
+		const sample = document.getElementById(`sample-${sampleEl.value}`);
+		sourceEl.value = sample.textContent.trim();
+		render();
+	});
+
+	sourceEl.value = document.getElementById(`sample-${['main', 'real', 'code'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'main'}`).textContent.trim();
+	sampleEl.value = ['main', 'real', 'code'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'main';
+	render();
+})();
+</script>
+</body>
+</html>

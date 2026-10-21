@@ -4,9 +4,9 @@ import {
 	userText,
 	type LlmMessage,
 } from "../llm/messages.ts";
-import { describeToolCall, displayToolName } from "../tools/describe.ts";
+import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
-import { appendToolLine, findToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
+import { appendToolLine, findToolByCallId, findTopLevelToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 把会话消息折叠成对话流。
@@ -49,7 +49,7 @@ export function buildTranscriptHistory(
 			case "assistant": {
 				const turn = ensureTurn("(earlier conversation)");
 				const text = assistantText(message);
-				if (text.length > 0) turn.response.push(...text.split("\n"));
+				if (text.length > 0) turn.response.push({ kind: "markdown", text });
 				for (const call of assistantToolCalls(message)) {
 					const described = describeToolCall(call.name, call.arguments, workspaceRoot);
 					appendToolLine(
@@ -89,6 +89,16 @@ export function buildTranscriptHistory(
 					break;
 				}
 				const turn = ensureTurn("(earlier conversation)");
+				const tool = findTopLevelToolByCallId(turn.response, message.toolCallId);
+				if (tool !== undefined) {
+					// 与实时一致：失败结果改调用行本身，错误详情留给双击展开
+					tool.isError = true;
+					tool.detailKind = "text";
+					const errorText = sanitizeDetail(message.content);
+					const command = tool.fullDetail ?? tool.detail;
+					tool.fullDetail = errorText.length > 0 ? `${command}\n\n${errorText}` : command;
+					break;
+				}
 				turn.response.push({
 					kind: "tool",
 					name: displayToolName(message.toolName),

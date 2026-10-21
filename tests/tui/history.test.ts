@@ -31,11 +31,11 @@ describe("会话历史回填", () => {
 		assert.equal(turns.length, 2);
 		assert.equal(turns[0]?.prompt, "hello");
 		assert.deepEqual(turns[0]?.response, [
-			"hi",
+			{ kind: "markdown", text: "hi" },
 			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents\nmore", metric: "2 lines", fullDetail: "1  file contents\n2  more", detailKind: "file" },
 		]);
 		assert.equal(turns[1]?.prompt, "next");
-		assert.deepEqual(turns[1]?.response, ["done"]);
+		assert.deepEqual(turns[1]?.response, [{ kind: "markdown", text: "done" }]);
 	});
 
 	it("工具成功不落行，失败保留一行", () => {
@@ -66,6 +66,35 @@ describe("会话历史回填", () => {
 			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents", metric: "1 line", fullDetail: "1  file contents", detailKind: "file" },
 			{ kind: "tool", name: "Bash", detail: "boom", isError: true },
 		]);
+	});
+
+	it("失败结果改回调用行，不再另起一行", () => {
+		const messages: LlmMessage[] = [
+			{
+				role: "assistant",
+				content: [{ type: "toolCall", id: "1", name: "bash", arguments: { command: "false" } }],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "1",
+				toolName: "bash",
+				content: "exit 1\ndetail",
+				isError: true,
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages);
+		const response = turns[0]?.response ?? [];
+
+		assert.equal(response.length, 1);
+		const tool = response[0];
+		assert.ok(typeof tool === "object" && tool !== null && tool.kind === "tool");
+		if (typeof tool !== "object" || tool === null || tool.kind !== "tool") return;
+		assert.equal(tool.isError, true);
+		assert.equal(tool.detail, "false");
+		assert.equal(tool.detailKind, "text");
+		assert.ok((tool.fullDetail ?? "").includes("false"));
+		assert.ok((tool.fullDetail ?? "").includes("exit 1\ndetail"));
 	});
 
 	it("连续只读调用回填成收起的工具组", () => {
@@ -139,6 +168,6 @@ describe("会话历史回填", () => {
 
 		assert.equal(turns.length, 1);
 		assert.equal(turns[0]?.prompt, "(earlier conversation)");
-		assert.deepEqual(turns[0]?.response, ["continued"]);
+		assert.deepEqual(turns[0]?.response, [{ kind: "markdown", text: "continued" }]);
 	});
 });

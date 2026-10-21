@@ -16,6 +16,8 @@ import { THEME } from "./theme.ts";
 export interface InputLine {
 	readonly prefix: string;
 	readonly text: string;
+	/** text 开头属于命令的字符数；0 表示这一行没有命令 */
+	readonly commandEnd?: number;
 }
 
 export interface InputView {
@@ -87,6 +89,8 @@ export interface FooterLayout {
 	readonly showStatus?: boolean;
 	/** 输入光标位置；省略时停在末尾 */
 	readonly cursor?: number;
+	/** 输入开头命中的命令占多少字符（含斜杠）；0 或不给表示没有命中 */
+	readonly commandLength?: number;
 }
 
 /** 多行输入最多同时显示几行，再多就围绕光标滚动。 */
@@ -116,7 +120,12 @@ const CACHE_ICON = "⚡";
  * 支持显式换行：多行粘贴后每行单独显示，最多同时显示 MAX_VISIBLE_INPUT_LINES 行，围绕
  * 光标滚动。光标所在行会横向滚动，保证光标始终可见。
  */
-export function inputView(input: string, width: number, cursor = input.length): InputView {
+export function inputView(
+	input: string,
+	width: number,
+	cursor = input.length,
+	commandLength = 0,
+): InputView {
 	const columns = Math.max(0, width);
 	const logical = input.split("\n");
 	const cursorAt = Math.min(Math.max(0, cursor), input.length);
@@ -144,16 +153,22 @@ export function inputView(input: string, width: number, cursor = input.length): 
 		);
 		const prefixWidth = displayWidth(prefix);
 		const textWidth = Math.max(0, columns - prefixWidth - 1);
+		// 命令只可能在输入的第一行开头，且不含换行
+		const commandChars = logicalIndex === 0 ? Math.min(commandLength, Array.from(text).length) : 0;
 
 		if (logicalIndex !== lineIndex) {
-			return { prefix, text: truncateToWidth(text, textWidth) };
+			const shown = truncateToWidth(text, textWidth);
+			return { prefix, text: shown, commandEnd: Math.min(commandChars, Array.from(shown).length) };
 		}
 
 		const window = lineWindow(text, offset, textWidth);
 		cursorLine = { prefix, text: window.text };
 		cursorWidth = window.cursorWidth;
 		cursorPrefixWidth = prefixWidth;
-		return cursorLine;
+		return {
+			...cursorLine,
+			commandEnd: Math.max(0, Math.min(commandChars - window.start, Array.from(window.text).length)),
+		};
 	});
 
 	return {
@@ -170,14 +185,14 @@ function lineWindow(
 	text: string,
 	cursorOffset: number,
 	width: number,
-): { readonly text: string; readonly cursorWidth: number } {
+): { readonly text: string; readonly cursorWidth: number; readonly start: number } {
 	const chars = Array.from(text);
 	const cursorChars = Array.from(text.slice(0, cursorOffset)).length;
 	const widths = chars.map((char) => characterWidth(char));
 	const total = widths.reduce((sum, item) => sum + item, 0);
 	const cursorTotal = widths.slice(0, cursorChars).reduce((sum, item) => sum + item, 0);
 
-	if (total <= width) return { text, cursorWidth: cursorTotal };
+	if (total <= width) return { text, cursorWidth: cursorTotal, start: 0 };
 
 	let start = 0;
 	if (cursorTotal > width) {
@@ -203,7 +218,7 @@ function lineWindow(
 	const visibleCursor = widths
 		.slice(start, cursorChars)
 		.reduce((sum, item) => sum + item, 0);
-	return { text: chars.slice(start, end).join(""), cursorWidth: visibleCursor };
+	return { text: chars.slice(start, end).join(""), cursorWidth: visibleCursor, start };
 }
 
 export function renderFooter(
@@ -215,16 +230,29 @@ export function renderFooter(
 	layout?: FooterLayout,
 ): readonly string[] {
 	const columns = Math.max(0, width);
-	const view = inputView(input, columns, layout?.cursor);
+	const view = inputView(input, columns, layout?.cursor, layout?.commandLength ?? 0);
 	const lines: string[] = [];
 	if (layout?.leadingGap !== false) lines.push("");
 	if (layout?.showStatus !== false) lines.push(statusLine(columns, status));
 	lines.push(colored(horizontal(columns), focused));
 	for (const line of view.lines) {
-		lines.push(colored(line.prefix, focused) + line.text);
+		lines.push(colored(line.prefix, focused) + commandText(line));
 	}
 	lines.push(colored(horizontal(columns), focused), infoLine(columns, info));
 	return lines;
+}
+
+/**
+ * 输入行正文：命中的命令用强调色，参数与其它文字保持正文色。
+ *
+ * 只换颜色不改宽度，光标列与横向滚动的计算不受影响。
+ */
+function commandText(line: InputLine): string {
+	const end = line.commandEnd ?? 0;
+	if (end <= 0) return line.text;
+	const chars = Array.from(line.text);
+	if (end >= chars.length) return `${FOCUS_COLOR}${line.text}${RESET}`;
+	return `${FOCUS_COLOR}${chars.slice(0, end).join("")}${RESET}${chars.slice(end).join("")}`;
 }
 
 /**

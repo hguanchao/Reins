@@ -6,7 +6,7 @@ import { inputView, renderFooter, type FooterInfo } from "./footer.ts";
 import { THINKING_LEVELS, type NotifyMode, type ThinkingLevel } from "../config/config-file.ts";
 import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
-import { describeToolCall, displayToolName } from "../tools/describe.ts";
+import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { formatDuration, formatElapsed } from "../tools/format.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
 import { renderMain } from "./main.ts";
@@ -30,7 +30,8 @@ import {
 } from "./command-menu.ts";
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, renderHelpPage } from "./help-page.ts";
-import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
+import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 
 /**
  * 全屏启动。
@@ -55,14 +56,30 @@ const ENABLE_FOCUS_REPORTING = "\x1b[?1004h";
 const DISABLE_FOCUS_REPORTING = "\x1b[?1004l";
 const FOCUS_IN = "\x1b[I";
 const FOCUS_OUT = "\x1b[O";
-/** 按钮事件上报加 SGR 坐标；按住拖动时也会收到移动事件。 */
-const ENABLE_MOUSE = "\x1b[?1002h\x1b[?1006h";
-const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1002l";
+/**
+ * 按钮事件上报加 SGR 坐标。
+ *
+ * 1002 只上报按住键的拖动，1003 连指针的空移动也上报——悬停高亮靠的是后者。两个都开：不认
+ * 1003 的终端退回只有拖动上报，点击与拖动照常可用，只是没有悬停。代价是鼠标每动一下都有
+ * 数据进来，所以悬停只在状态真的变化时才重绘。
+ */
+const ENABLE_MOUSE = "\x1b[?1002h\x1b[?1003h\x1b[?1006h";
+const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1003l\x1b[?1002l";
 /** 粘贴多行内容时不把换行当成提交。 */
 const ENABLE_BRACKETED_PASTE = "\x1b[?2004h";
 const DISABLE_BRACKETED_PASTE = "\x1b[?2004l";
-const CLEAR_SCREEN = "\x1b[2J";
-const CURSOR_HOME = "\x1b[H";
+/**
+ * DEC 2026 同步输出：整帧写完才一次性呈现。
+ *
+ * 每帧重绘整屏，如果终端边解析边刷新，滚动和转圈时就会看到半帧旧内容、半帧新内容。
+ * 不支持的终端会忽略这两个序列，行为与现在一致。
+ */
+const BEGIN_SYNCHRONIZED_UPDATE = "\x1b[?2026h";
+const END_SYNCHRONIZED_UPDATE = "\x1b[?2026l";
+const RESET = "\x1b[0m";
+/** 擦掉光标所在行；逐行覆盖前先擦，页脚这类不补满宽度的行才不会留下上一帧的尾巴。 */
+const ERASE_LINE = "\x1b[K";
+const ERASE_BELOW = "\x1b[J";
 const DEFAULT_COLUMNS = 80;
 const DEFAULT_ROWS = 24;
 /** Ctrl+C 在原始模式下以控制字符到达，不会触发 SIGINT，必须自己识别。 */
@@ -88,6 +105,16 @@ const AGENT_UNAVAILABLE = "Agent unavailable";
 const ABORTING = "Aborting...";
 const ABORTED = "Aborted";
 const ERROR_STATUS = "Error";
+
+/**
+ * 一轮进行中也能执行的命令。
+ *
+ * 它们只影响界面（帮助页、选择面板）或下一轮，不碰正在跑的那一轮：模型与思考等级在
+ * startRun 时就已交给客户端，改的是下一轮。/compact 会另起一轮，插件命令由插件自己决定，
+ * 都等这一轮结束。
+ */
+const TURN_SAFE_COMMANDS: ReadonlySet<string> = new Set(["help", "model", "effort"]);
+
 /** 一轮结束后状态行停留的时间。 */
 const STATUS_CLEAR_MS = 1500;
 
@@ -103,8 +130,8 @@ interface ActiveTurn {
 	readonly startedAt: number;
 	/** 已经完成的文本与工具行 */
 	readonly lines: TranscriptLine[];
-	/** 当前还没等到换行的文本 */
-	partial: string;
+	/** 当前正在流式写入的 Markdown 文本块；遇到工具、系统行或回合结束时关闭 */
+	textBlock: TranscriptMarkdown | undefined;
 	/** 当前这段思考是什么时候开始的；没有思考在进行时为空 */
 	thinkingStartedAt: number | undefined;
 	/** 当前正在写入的思考区块；结束后仍留在 lines 里供双击展开 */
@@ -207,6 +234,18 @@ export interface TuiOptions {
 }
 
 /**
+ * 重试原因压成一行短提示。
+ *
+ * 状态行只有一行：控制字符会弄乱排版，过长的原因（端点常把整段错误体塞进消息里）会把
+ * 计时与用量挤掉。
+ */
+function shortReason(reason: string): string {
+	const first = reason.split("\n", 1)[0] ?? "";
+	const clean = first.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
+	return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
+}
+
+/**
  * 在备用屏里显示界面，直到使用者连按两次 Ctrl+C。
  *
  * 返回值就是进程退出码：正常退出为 0。终端不是 TTY 时由调用方先拦下，这里不重复判断——
@@ -276,6 +315,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 有历史或输入过内容就显示对话流。 */
 	let hasInput = turns.length > 0;
 	/** 首次绘制时把已有历史滚到底部。 */
+	/**
+	 * 一轮进行中执行的命令，回复暂存在这里，等这一轮结束再落进对话流。
+	 *
+	 * 直接插进对话流不行：视图会跟着最后一条提示贴底，排在后面的块被持续输出顶走，排在前面的
+	 * 块当场就被滚出视野。等这一轮收尾再追加，位置在末尾、时间顺序也对。
+	 */
+	const pendingCommandTurns: LiveTurn[] = [];
 	let initialScroll = turns.length > 0;
 	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
 	let focused = true;
@@ -292,6 +338,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let transcriptDirty = true;
 	/** 是否正按住滚动条拖动。 */
 	let draggingScrollbar = false;
+	/** 指针是否停在置底按钮上；只影响按钮颜色。 */
+	let buttonHovered = false;
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
 	/** 状态是不是失败结局；失败用错误色，别跟「正在进行」混成一样。 */
@@ -428,6 +476,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 							? renderCommandMenu(width, commandMenu)
 							: [];
 		const inputLines = inputView(input, width, inputCursor);
+		// 输入以已注册的命令开头时把命令本身着色，参数保持正文色
+		const typedCommand = input.startsWith("/") ? (input.slice(1).split(/\s/, 1)[0] ?? "") : "";
+		const commandLength = commands().some((item) => item.name === typedCommand)
+			? typedCommand.length + 1
+			: 0;
 		const footer =
 			helpOpen || approvalPrompt !== undefined
 				? []
@@ -441,10 +494,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 								!helpOpen,
 							undefined,
 							currentInfo(),
-							{ leadingGap: false, showStatus: false, cursor: inputCursor },
+							{ leadingGap: false, showStatus: false, cursor: inputCursor, commandLength },
 						)
 					: renderFooter(width, input, focused, status, currentInfo(), {
 							cursor: inputCursor,
+							commandLength,
 						});
 		const transcriptShown = !helpOpen && (hasInput || activeWarning !== undefined);
 		const main = helpOpen
@@ -471,9 +525,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		// 每一行按自己的坐标写，而不是靠换行符顺推。一行的实际列宽取决于终端怎么算其中的字符
 		// （歧义宽度字符各终端算 1 列或 2 列），算得比我们宽时终端会替它换行，顺推下去后面的
 		// 行就整体错位。按坐标写时溢出的尾巴会被下一行覆盖，只损失这一行末尾一两个字符。
-		let frame = HIDE_CURSOR + CURSOR_HOME + CLEAR_SCREEN;
+		// 不再整屏清空：先擦行再覆盖，旧内容不会在清屏与重绘之间闪一下。
+		let frame = HIDE_CURSOR + BEGIN_SYNCHRONIZED_UPDATE;
 		for (let row = 0; row < lines.length; row += 1) {
-			frame += `${moveCursor(row + 1, 1)}${lines[row]}`;
+			frame += `${moveCursor(row + 1, 1)}${RESET}${ERASE_LINE}${lines[row]}`;
 		}
 		// 滚动条列最后单独画：它只依赖自己的行列位置，内容怎么换行都不会把它带断
 		if (transcriptShown) {
@@ -482,7 +537,19 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				frame += `${moveCursor(row + 1, width)}${gutter[row]}`;
 			}
 		}
-		stdout.write(frame + cursor);
+		// 置底按钮同样单独定位：它盖在对话流最后一行右端，只在真的离开底部时出现
+		const showButton = transcriptShown && !menuOpen() && scrollTop < maxScroll;
+		// 按钮没画出来时悬停状态要一起清掉，否则下次出现会带着上一次的高亮
+		if (!showButton) buttonHovered = false;
+		if (showButton) {
+			const button = scrollButtonPlacement(width, mainHeight, buttonHovered);
+			if (button !== undefined) frame += `${moveCursor(button.row, button.column)}${button.text}`;
+		}
+		// 终端变高后，上一帧底部的行不在这一帧的覆盖范围内，补一次擦除
+		if (lines.length < height) {
+			frame += `${moveCursor(lines.length + 1, 1)}${RESET}${ERASE_BELOW}`;
+		}
+		stdout.write(frame + cursor + END_SYNCHRONIZED_UPDATE);
 	};
 
 	const maxScroll = (): number => {
@@ -656,12 +723,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	const syncTurn = (active: ActiveTurn): void => {
 		const response = active.turn.response;
-		// 流式增量只追加新完成的行；整份数组复制会让每个 token 都随历史长度线性变慢
-		if (response.length > active.lines.length) response.length = active.lines.length;
+		// 只追加新行；整份数组复制会让每个 token 都随历史长度线性变慢
 		for (let index = response.length; index < active.lines.length; index += 1) {
 			response.push(active.lines[index]!);
 		}
-		if (active.partial.length > 0) response.push(active.partial);
 		markNewContent();
 	};
 
@@ -670,21 +735,21 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const response = active.turn.response;
 		response.length = 0;
 		response.push(...active.lines);
-		if (active.partial.length > 0) response.push(active.partial);
 		markNewContent();
 	};
 
-	const flushPartial = (active: ActiveTurn): void => {
-		if (active.partial.length === 0) return;
-		active.lines.push(active.partial);
-		active.partial = "";
+	const closeText = (active: ActiveTurn): void => {
+		active.textBlock = undefined;
 	};
 
 	const appendAssistantText = (active: ActiveTurn, delta: string): void => {
-		active.partial += delta;
-		const parts = active.partial.split("\n");
-		active.partial = parts.pop() ?? "";
-		active.lines.push(...parts);
+		let block = active.textBlock;
+		if (block === undefined) {
+			block = { kind: "markdown", text: "" };
+			active.textBlock = block;
+			active.lines.push(block);
+		}
+		block.text += delta;
 		syncTurn(active);
 	};
 
@@ -700,7 +765,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	const appendLine = (active: ActiveTurn, line: TranscriptLine): void => {
-		flushPartial(active);
+		closeText(active);
 		active.lines.push(line);
 		syncTurn(active);
 	};
@@ -744,10 +809,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				setStatus(WRITING_RESPONSE);
 				break;
 			case "reasoning_delta":
-				// 思考开始：插入区块；正文实时写入，运行时默认只显示最后五行
+				// 思考开始：插入区块；正文实时写入，运行时默认只显示最后五行。
+				// 不关闭当前文本块：同一条 assistant 消息的文本继续写回原来的块，思考块单独插在
+				// 它后面。这样迟到的思考片段不会把一句话切成两段。
+				if (active.thinkingBlock === undefined && event.text.trim().length === 0) {
+					// 纯空白的思考没有可显示内容，不建一个只有标题的空块
+					setStatus(THINKING);
+					break;
+				}
 				if (active.thinkingBlock === undefined) {
 					active.thinkingStartedAt = Date.now();
-					flushPartial(active);
 					const block: TranscriptThinking = {
 						kind: "thinkingBlock",
 						header: `Thinking… ${formatElapsed(0)}`,
@@ -775,7 +846,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					group: described.group,
 					callId: event.callId,
 				};
-				flushPartial(active);
+				closeText(active);
 				if (appendToolLine(active.lines, tool, true)) syncTurnFull(active);
 				else syncTurn(active);
 				setStatus(`Running ${described.name}...`);
@@ -787,13 +858,25 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			case "tool_end":
 				// 成功不落行：工具调用本身已经显示；结果挂到调用行，Ctrl+O 可展开
 				if (event.isError) {
-					appendLine(active, {
-						kind: "tool",
-						name: displayToolName(event.name),
-						detail: event.summary,
-						isError: true,
-						durationMs: event.durationMs,
-					});
+					const tool = findTopLevelToolByCallId(active.lines, event.callId);
+					if (tool !== undefined) {
+						// 失败行就是调用行本身：保留命令与耗时，错误详情留给双击展开
+						tool.isError = true;
+						tool.durationMs = event.durationMs;
+						tool.detailKind = "text";
+						const errorText = sanitizeDetail(event.content ?? event.summary);
+						const command = tool.fullDetail ?? tool.detail;
+						tool.fullDetail = errorText.length > 0 ? `${command}\n\n${errorText}` : command;
+						markTranscriptDirty();
+					} else {
+						appendLine(active, {
+							kind: "tool",
+							name: displayToolName(event.name),
+							detail: event.summary,
+							isError: true,
+							durationMs: event.durationMs,
+						});
+					}
 				} else {
 					const tool = findToolByCallId(active.lines, event.callId);
 					if (tool !== undefined) {
@@ -840,9 +923,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				// 每次请求的用量都反映到页脚上，不必等整轮跑完
 				options.agent?.refreshInfo();
 				break;
-			case "retrying":
-				setStatus(`Retrying (${event.attempt})...`);
+			case "retrying": {
+				// 带上原因：只说「在重试」的话，限流、5xx 与连接断掉看起来一模一样
+				const reason = shortReason(event.reason);
+				setStatus(`Retrying (${event.attempt})...${reason.length === 0 ? "" : ` ${reason}`}`);
 				break;
+			}
 			case "error":
 				closeThinking(active);
 				appendLine(active, { text: `Error: ${event.message}`, kind: "error" });
@@ -858,8 +944,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			case "turn_end":
 				// 只思考、没产出正文也没调工具的一次请求，摘要行也要落下
 				closeThinking(active);
+				closeText(active);
 				break;
 			case "run_end":
+				closeText(active);
 				break;
 		}
 
@@ -913,6 +1001,24 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		render();
 	};
 
+	/**
+	 * 把一条命令的回复放进对话流。
+	 *
+	 * 一轮进行中时先排队，等这一轮结束再追加：对话流会跟着最后一条提示贴底，插在流中间
+	 * 无论排前还是排后都会被顶走。页脚已经即时反映了新模型，这里是留给回看的记录。
+	 */
+	const appendCommandTurn = (prompt: string, response: readonly TranscriptLine[]): void => {
+		const block: LiveTurn = { prompt, response: [...response] };
+		markNewContent();
+		hasInput = true;
+		if (activeTurn !== undefined) {
+			pendingCommandTurns.push(block);
+			return;
+		}
+		turns.push(block);
+		render();
+	};
+
 	const confirmMenu = (): void => {
 		if (modelMenu === undefined) return;
 
@@ -930,7 +1036,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				ready = result.ready;
 				activeWarning = result.warning;
 				response = [
-					`Model switched to ${item.provider}/${item.model}.`,
+					`Model switched to ${item.provider}/${item.model}${activeTurn === undefined ? "." : " (from the next turn)."}`,
 					...result.warnings.map((text) => ({ kind: "warning" as const, text })),
 				];
 			} catch (error) {
@@ -941,13 +1047,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					},
 				];
 			}
-			turns.push({ prompt: "/model", response });
-			markNewContent();
-			hasInput = true;
+			appendCommandTurn("/model", response);
 		}
 		render();
 	};
-
 	const cancelMenu = (): void => {
 		modelMenu = undefined;
 		effortMenu = undefined;
@@ -998,7 +1101,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			let response: TranscriptLine[];
 			try {
 				source.select(level);
-				response = [`Effort set to ${level}.`];
+				response = [
+					`Effort set to ${level}${activeTurn === undefined ? "." : " (from the next turn)."}`,
+				];
 			} catch (error) {
 				response = [
 					{
@@ -1007,9 +1112,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					},
 				];
 			}
-			turns.push({ prompt: "/effort", response });
-			markNewContent();
-			hasInput = true;
+			appendCommandTurn("/effort", response);
 		}
 		render();
 	};
@@ -1082,7 +1185,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			controller: new AbortController(),
 			startedAt: Date.now(),
 			lines: [],
-			partial: "",
+			textBlock: undefined,
 			thinkingStartedAt: undefined,
 			thinkingBlock: undefined,
 			tokensUsed: 0,
@@ -1120,11 +1223,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			.finally(() => {
 				if (activeTurn !== active) return;
 				closeThinking(active);
-				flushPartial(active);
+				closeText(active);
 				collapseToolGroups(active.lines);
 				syncTurn(active);
 				activeTurn = undefined;
 				stopSpinner();
+				// 这一轮期间切过的模型/思考等级，现在落到对话流末尾
+				if (pendingCommandTurns.length > 0) {
+					turns.push(...pendingCommandTurns);
+					pendingCommandTurns.length = 0;
+					markNewContent();
+				}
 				options.approval?.denyAll();
 				syncApprovalPrompt();
 				if (finished) return;
@@ -1304,20 +1413,24 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 回车发送：把输入交给真实 TurnDriver，事件驱动对话流与状态行。 */
 	const submit = (): boolean => {
 		if (input.length === 0) return false;
-		// 一轮进行中不接受新提交；状态行继续显示当前进度
-		if (activeTurn !== undefined) return false;
 
 		const message = input.trim();
 		if (message.length === 0) return false;
-		rememberInput(message);
 		const selected = commandMenu?.items[commandMenu.cursor];
 		const command = selected ?? findCommand(message);
 		if (message.startsWith("/") && command !== undefined) {
+			// 一轮进行中只放行不碰对话的命令；其余等这一轮结束，与之前一样静默丢弃
+			if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(command.name)) return false;
 			// 命令先于受限检查执行：/model 正是用来修复配置对不上的入口
+			rememberInput(message);
 			executeCommand(command, selected === undefined ? commandArgs(message, command.name) : "");
 			return true;
 		}
 
+		// 一轮进行中不接受新提交；状态行继续显示当前进度
+		if (activeTurn !== undefined) return false;
+
+		rememberInput(message);
 		if (!ready) {
 			// 配置没读成功时不进入对话：保留输入内容，只把原因放到运行时状态行
 			commandMenu = undefined;
@@ -1358,7 +1471,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const panelHeight = terminalHeight(stdout);
 			const panelTop = Math.max(0, panelHeight - footerHeight());
 			for (const event of mouseEvents(text)) {
-				const motion = event.button >= 32 && event.button < 64;
+				const motion = dragMotion(event.button);
 				const action =
 					event.row === panelTop + 5
 						? approvalActionAt(panelWidth, approvalPrompt, event.column - 1)
@@ -1403,7 +1516,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const panelsHeight = terminalHeight(stdout);
 			const panelTop = Math.max(0, panelsHeight - footerHeight());
 			for (const event of mouseEvents(text)) {
-				const motion = event.button >= 32 && event.button < 64;
+				const motion = dragMotion(event.button);
 				if (modelMenu !== undefined) {
 					const index = menuIndexAtRow(
 						event.row,
@@ -1520,8 +1633,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const beforeScroll = scrollTop;
 		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;
+		let hoverChanged = false;
 		let wheelSteps = 0;
 		let dragRow: number | undefined;
+		/** 置底按钮；命中判定与悬停都用同一份位置，保证画在哪里就能点在哪里。 */
+		const bottomButton = menuOpen() ? undefined : scrollButtonPlacement(width, mainHeight);
+		/** 按钮此刻是否真的画着：没画出来的位置不该被点中，也不该响应悬停。 */
+		const buttonShown = bottomButton !== undefined && scrollTop < maxScroll();
 
 		const lastIn = withoutMouse.lastIndexOf(FOCUS_IN);
 		const lastOut = withoutMouse.lastIndexOf(FOCUS_OUT);
@@ -1537,12 +1655,33 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		for (const event of mouseEvents(text)) {
 			const left = (event.button & 3) === 0;
 			const motion = event.button >= 32 && event.button < 64;
+			// 低两位是 3 表示没有按键：1003 模式下这类事件只是指针在移动，也就是悬停
+			const hover = motion && (event.button & 3) === 3;
+
+			if (hover) {
+				const over = buttonShown && scrollButtonHit(bottomButton, event.row, event.column);
+				if (over !== buttonHovered) {
+					buttonHovered = over;
+					hoverChanged = true;
+				}
+				continue;
+			}
 
 			if (event.press && event.button === 64) {
 				wheelSteps -= 1;
 			} else if (event.press && event.button === 65) {
 				wheelSteps += 1;
 			} else if (event.press && left && !motion) {
+				// 置底按钮盖在对话流上，命中就回到底部并恢复跟随，不再往下走双击与聚焦判断
+				if (buttonShown && scrollButtonHit(bottomButton, event.row, event.column)) {
+					scrollTop = maxScroll();
+					follow = true;
+					draggingScrollbar = false;
+					lastClick = undefined;
+					render();
+					return;
+				}
+
 				const now = Date.now();
 				const doubleClick =
 					lastClick !== undefined &&
@@ -1630,7 +1769,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			// 命令补全面板不拦截文字输入，只接管上下键、Esc 与鼠标
 			const commandPanelTop = Math.max(0, terminalHeight(stdout) - footerHeight());
 			for (const event of mouseEvents(text)) {
-				const motion = event.button >= 32 && event.button < 64;
+				const motion = dragMotion(event.button);
 				const index = menuIndexAtRow(
 					event.row,
 					commandPanelTop,
@@ -1676,6 +1815,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				render();
 				return;
 			}
+		}
+
+		// 输入框失焦后，回车只负责把焦点抢回来：这一下不提交，避免误发已经打好的内容。
+		// 只认单独的换行块，粘贴进来的多行内容不会被当成聚焦键吞掉。
+		if (!focused && (withoutMouse === "\r" || withoutMouse === "\n")) {
+			focused = true;
+			render();
+			return;
 		}
 
 		const previous = input;
@@ -1740,7 +1887,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			if (!submitted && (focusChanged || scrollChanged)) render();
 			return;
 		}
-		if (input !== previous || inputCursor !== previousCursor || edit.handled || focusChanged || scrollChanged) {
+		if (input !== previous || inputCursor !== previousCursor || edit.handled || focusChanged || hoverChanged || scrollChanged) {
 			render();
 		}
 	};
@@ -1854,6 +2001,15 @@ interface MouseInput {
 	readonly row: number;
 	/** SGR 的 M 表示按下，m 表示松开 */
 	readonly press: boolean;
+}
+
+/**
+ * 按住键拖动的移动事件。
+ *
+ * 1003 模式还会上报没按键的纯移动（低两位为 3），那只是指针在挪，不能当成拖动去改选中项。
+ */
+function dragMotion(button: number): boolean {
+	return button >= 32 && button < 64 && (button & 3) !== 3;
 }
 
 function mouseEvents(text: string): readonly MouseInput[] {

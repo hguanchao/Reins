@@ -63,6 +63,26 @@ describe("页脚输入框", () => {
 		assert.ok(lines[3].endsWith("abc"));
 	});
 
+	it("命中的命令着色，参数保持正文色", () => {
+		const lines = renderFooter(40, "/model 当前", true, undefined, undefined, {
+			commandLength: 6,
+		});
+		const line = lines[3] ?? "";
+
+		// 提示符是强调色，命令本身也是强调色，参数回到正文
+		assert.equal(plain(line), " › /model 当前");
+		assert.ok(line.includes(`${FOCUS}/model${"\x1b[0m"}`));
+		assert.ok(line.endsWith(" 当前"));
+	});
+
+	it("没命中命令时不加任何颜色", () => {
+		const lines = renderFooter(40, "/mod", true, undefined, undefined, { commandLength: 0 });
+		const line = lines[3] ?? "";
+
+		assert.equal(plain(line), " › /mod");
+		assert.equal(line.split(FOCUS).length, 2);
+	});
+
 	it("输入框下方显示项目、分支、模型、思考强度、上下文与缓存命中率", () => {
 		const lines = renderFooter(120, "", true, undefined, SESSION_INFO);
 		const line = lines[5] ?? "";
