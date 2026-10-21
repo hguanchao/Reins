@@ -9,7 +9,7 @@ import { walk, type WalkEntry } from "./walk.ts";
  *
  * 只列一层时，模型要摸清一个仓库的结构就得反复调用；一次递归列出又可能把上下文灌满。
  * 这里按字符预算展开：小目录直接展开，大子树折叠成文件数与扩展名汇总，和搜索结果里的
- * 过滤口径保持一致——跳过 .git 与 node_modules，不跟随符号链接。
+ * 过滤口径保持一致——按 .gitignore 过滤，不跟随符号链接。
  */
 
 const PARAMETERS = {
@@ -35,6 +35,8 @@ const DEFAULT_LIMIT = 1000;
 const MAX_LIMIT = 10_000;
 /** 一次列出的字符上限；超出后优先保留根层条目，子树收敛成汇总行。 */
 const MAX_OUTPUT_CHARS = 10_000;
+/** 单个目录最多列出的子项数；再多的收成一行，否则一个缓存目录就能占满整屏。 */
+const MAX_CHILDREN_PER_DIRECTORY = 20;
 const TOP_EXTENSIONS = 3;
 const TREE_BRANCH = "├── ";
 const TREE_LAST = "└── ";
@@ -59,8 +61,9 @@ export const lsTool: ToolDefinition<LsArgs> = {
 	summary: "List a directory tree, summarizing large subtrees",
 	description:
 		"List files and directories recursively from path (default: workspace root). Small directories are " +
-		"expanded; large subtrees are summarized with file counts and extension breakdowns. Skips .git and " +
-		"node_modules and does not follow symlinks. Stops after limit entries.",
+		"expanded; large subtrees are summarized with file counts and extension breakdowns, and a directory " +
+		"with many children is cut off after 20. Respects .gitignore and does not follow symlinks. Stops " +
+		"after limit entries.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
@@ -187,12 +190,27 @@ function summaryCost(node: TreeNode, prefix: string): number {
 	return line.length === 0 ? 0 : prefix.length + line.length + 1;
 }
 
+/**
+ * 当前目录要渲染的子项与被折叠的条数。
+ *
+ * 渲染与预算展开必须用同一份结果：缩进里的最后一项标记（└── 还是 ├──）取决于它后面还有没有
+ * 兄弟项，两处算得不一样，展开出来的子树就会错位。
+ */
+function visibleChildren(node: TreeNode): {
+	readonly shown: readonly TreeNode[];
+	readonly hidden: number;
+} {
+	const children = sortedChildren(node);
+	const shown = children.slice(0, MAX_CHILDREN_PER_DIRECTORY);
+	return { shown, hidden: children.length - shown.length };
+}
+
 /** 按当前 expanded 标记渲染子树；未展开的目录用摘要行代替子项。 */
 function renderChildren(node: TreeNode, prefix: string): string {
-	const children = sortedChildren(node);
+	const { shown, hidden } = visibleChildren(node);
 	let output = "";
-	for (const [index, child] of children.entries()) {
-		const last = index === children.length - 1;
+	for (const [index, child] of shown.entries()) {
+		const last = index === shown.length - 1 && hidden === 0;
 		output += `${prefix}${last ? TREE_LAST : TREE_BRANCH}${child.name}${child.directory ? "/" : ""}\n`;
 		if (!child.directory) continue;
 		const childPrefix = `${prefix}${last ? TREE_SPACE : TREE_PIPE}`;
@@ -203,6 +221,7 @@ function renderChildren(node: TreeNode, prefix: string): string {
 		const line = summary(child);
 		if (line.length > 0) output += `${childPrefix}${line}\n`;
 	}
+	if (hidden > 0) output += `${prefix}${TREE_LAST}… +${hidden} more\n`;
 	return output;
 }
 
@@ -212,10 +231,10 @@ function enqueueChildren(
 	prefix: string,
 	queue: { node: TreeNode; prefix: string }[],
 ): void {
-	const children = sortedChildren(node);
-	for (const [index, child] of children.entries()) {
+	const { shown, hidden } = visibleChildren(node);
+	for (const [index, child] of shown.entries()) {
 		if (!child.directory) continue;
-		const last = index === children.length - 1;
+		const last = index === shown.length - 1 && hidden === 0;
 		queue.push({ node: child, prefix: `${prefix}${last ? TREE_SPACE : TREE_PIPE}` });
 	}
 }

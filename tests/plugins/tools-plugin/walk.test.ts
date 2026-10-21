@@ -38,6 +38,74 @@ function link(target: string, path: string): boolean {
 }
 
 describe("目录遍历", () => {
+	it("按 .gitignore 过滤，且始终不进入 .git", () => {
+		withTree((root) => {
+			mkdirSync(join(root, "node_modules"));
+			writeFileSync(join(root, "node_modules", "skip.js"), "x");
+			mkdirSync(join(root, ".git"));
+			writeFileSync(join(root, ".git", "HEAD"), "x");
+			writeFileSync(join(root, "debug.log"), "x");
+			writeFileSync(join(root, ".gitignore"), "node_modules\ndebug.log\n");
+
+			const paths = [...walk(root, { maxEntries: 200 })].map((entry) => entry.relative);
+
+			assert.ok(paths.includes("real/inside.txt"));
+			assert.equal(paths.some((path) => path.startsWith("node_modules")), false);
+			assert.equal(paths.includes("debug.log"), false);
+			// .git 不靠 .gitignore：任何仓库都不会把自己的版本库目录写进忽略规则
+			assert.equal(paths.some((path) => path.startsWith(".git/")), false);
+		});
+	});
+
+	it("没有 .gitignore 时不跳过任何目录", () => {
+		withTree((root) => {
+			mkdirSync(join(root, "node_modules"));
+			writeFileSync(join(root, "node_modules", "keep.js"), "x");
+
+			const paths = [...walk(root, { maxEntries: 200 })].map((entry) => entry.relative);
+
+			assert.ok(paths.includes("node_modules/keep.js"));
+		});
+	});
+
+	it("子目录的 .gitignore 只作用于它自己那层", () => {
+		withTree((root) => {
+			mkdirSync(join(root, "a"));
+			mkdirSync(join(root, "b"));
+			writeFileSync(join(root, "a", ".gitignore"), "*.tmp\n");
+			writeFileSync(join(root, "a", "x.tmp"), "x");
+			writeFileSync(join(root, "b", "x.tmp"), "x");
+
+			const paths = [...walk(root, { maxEntries: 200 })].map((entry) => entry.relative);
+
+			assert.equal(paths.includes("a/x.tmp"), false);
+			assert.ok(paths.includes("b/x.tmp"));
+		});
+	});
+
+	it("祖先目录的 .gitignore 生效，到仓库根为止", () => {
+		const outer = mkdtempSync(join(tmpdir(), "reins-walk-parent-"));
+		try {
+			const repo = join(outer, "repo");
+			const sub = join(repo, "sub");
+			mkdirSync(sub, { recursive: true });
+			mkdirSync(join(repo, ".git"));
+			writeFileSync(join(repo, ".gitignore"), "*.log\n");
+			writeFileSync(join(outer, ".gitignore"), "b.txt\n");
+			writeFileSync(join(sub, "a.log"), "x");
+			writeFileSync(join(sub, "b.txt"), "x");
+
+			const paths = [...walk(sub, { maxEntries: 100 })].map((entry) => entry.relative);
+
+			// 仓库根的规则对子目录生效
+			assert.equal(paths.includes("a.log"), false);
+			// 仓库根之上（outer）的规则不该再影响这个项目
+			assert.ok(paths.includes("b.txt"));
+		} finally {
+			rmSync(outer, { recursive: true, force: true });
+		}
+	});
+
 	it("跳过符号链接，不进入链接目标", (t) => {
 		withTree((root) => {
 			if (!link(join(root, "real"), join(root, "link"))) {

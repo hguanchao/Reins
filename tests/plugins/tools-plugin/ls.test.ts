@@ -19,13 +19,15 @@ function context(root: string) {
 }
 
 describe("列出目录树", () => {
-	it("递归列出文件，小目录展开，跳过 .git 与 node_modules", async () => {
+	it("递归列出文件，小目录展开，按 .gitignore 跳过", async () => {
 		const root = mkdtempSync(join(tmpdir(), "reins-ls-"));
 		try {
 			mkdirSync(join(root, "output"), { recursive: true });
 			mkdirSync(join(root, "server", "__pycache__"), { recursive: true });
 			mkdirSync(join(root, ".git"), { recursive: true });
 			mkdirSync(join(root, "node_modules"), { recursive: true });
+			mkdirSync(join(root, ".venv", "lib"), { recursive: true });
+			writeFileSync(join(root, ".gitignore"), "node_modules\n.venv\n__pycache__\n");
 			writeFileSync(join(root, "docker-compose.yml"), "");
 			writeFileSync(join(root, "Dockerfile"), "");
 			writeFileSync(join(root, "README.md"), "");
@@ -35,6 +37,7 @@ describe("列出目录树", () => {
 			writeFileSync(join(root, "server", "__pycache__", "x.pyc"), "");
 			writeFileSync(join(root, ".git", "hidden"), "");
 			writeFileSync(join(root, "node_modules", "skip.js"), "");
+			writeFileSync(join(root, ".venv", "lib", "site.py"), "");
 
 			const result = await lsTool.execute({ ...context(root), args: { path: "." } });
 			const content = result.content;
@@ -45,31 +48,57 @@ describe("列出目录树", () => {
 			assert.ok(content.includes("│   ├── a.txt"));
 			assert.ok(content.includes("│   └── b.csv"));
 			assert.ok(content.includes("└── server/"));
-			assert.ok(content.includes("    ├── __init__.py"));
-			assert.ok(content.includes("    └── __pycache__/"));
-			assert.ok(content.includes("        └── x.pyc"));
-			assert.equal(content.includes(".git"), false);
+			assert.ok(content.includes("    └── __init__.py"));
+			// .gitignore 本身要列出来，.git/ 目录不列
+			assert.ok(content.includes("├── .gitignore"));
+			assert.equal(content.includes(".git/"), false);
 			assert.equal(content.includes("node_modules"), false);
-			assert.equal((result.details as { total: number }).total, 5);
+			assert.equal(content.includes(".venv"), false);
+			assert.equal(content.includes("__pycache__"), false);
+			assert.equal(content.includes("x.pyc"), false);
+			// 根层：.gitignore、docker-compose.yml、Dockerfile、output/、README.md、server/
+			assert.equal((result.details as { total: number }).total, 6);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
 
-	it("大目录折叠成文件数与扩展名汇总", async () => {
-		const root = mkdtempSync(join(tmpdir(), "reins-ls-big-"));
+	it("宽目录只列前 20 个子项，其余收成一行", async () => {
+		const root = mkdtempSync(join(tmpdir(), "reins-ls-wide-"));
 		try {
-			const big = join(root, "big");
-			mkdirSync(big);
-			for (let index = 0; index < 200; index += 1) {
-				writeFileSync(join(big, `file-${String(index).padStart(3, "0")}-${"x".repeat(60)}.txt`), "");
+			const wide = join(root, "wide");
+			mkdirSync(wide);
+			for (let index = 0; index < 50; index += 1) {
+				writeFileSync(join(wide, `file-${String(index).padStart(3, "0")}.txt`), "");
 			}
 
 			const result = await lsTool.execute({ ...context(root), args: { path: "." } });
 
-			assert.ok(result.content.includes("└── big/"));
-			assert.ok(result.content.includes("    [200 files in subtree: 200 *.txt]"));
-			assert.equal(result.content.includes("file-000"), false);
+			assert.ok(result.content.includes("└── wide/"));
+			assert.ok(result.content.includes("file-000.txt"));
+			assert.ok(result.content.includes("file-019.txt"));
+			assert.equal(result.content.includes("file-020.txt"), false);
+			assert.ok(result.content.includes("… +30 more"));
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("字符预算用尽后剩余子树收敛成文件数与扩展名汇总", async () => {
+		const root = mkdtempSync(join(tmpdir(), "reins-ls-big-"));
+		try {
+			// 10 个目录、每个 20 个长名字文件：前几个把字符预算吃掉，后面的只能给汇总行
+			for (let dir = 0; dir < 10; dir += 1) {
+				const child = join(root, `d${dir}`);
+				mkdirSync(child);
+				for (let index = 0; index < 20; index += 1) {
+					writeFileSync(join(child, `${"x".repeat(60)}-${index}.txt`), "");
+				}
+			}
+
+			const result = await lsTool.execute({ ...context(root), args: { path: "." } });
+
+			assert.match(result.content, /\[\d+ files? in subtree: \d+ \*\.txt\]/);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
