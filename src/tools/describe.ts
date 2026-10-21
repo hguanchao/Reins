@@ -108,7 +108,7 @@ function describeDetail(tool: string, args: Record<string, unknown>, workspaceRo
 		}
 		case "ls": {
 			const path = text(args["path"]);
-			return path === undefined || path === "." ? "" : shortenPath(path, 48);
+			return shortenPath(path ?? ".", 48);
 		}
 		case "subagent":
 			return firstLine(text(args["task"]) ?? "(no task)", 120);
@@ -155,10 +155,9 @@ function fileLinkTarget(
 	workspaceRoot: string | undefined,
 ): string | undefined {
 	if (tool !== "read" && tool !== "write" && tool !== "edit" && tool !== "ls") return undefined;
-	const path = text(args["path"]);
+	// ls 缺省路径就是工作根本身，折叠行同样显示为 `.`，链接跟着指向工作根
+	const path = text(args["path"]) ?? (tool === "ls" ? "." : undefined);
 	if (path === undefined) return undefined;
-	// 折叠行里没有可见的目标文本，不挂链接
-	if (tool === "ls" && path === ".") return undefined;
 
 	const expanded = expandHome(path);
 	// 没有工作根时无法可靠解析相对路径；绝对路径不受影响

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { pathToFileURL } from "node:url";
 
 import { describeToolCall, displayToolName } from "../../src/tools/describe.ts";
 
@@ -105,9 +106,10 @@ describe("工具调用摘要", () => {
 		assert.equal(grep.fullDetail, undefined);
 		assert.equal(describeToolCall("grep", { pattern: "TODO" }).detail, "TODO");
 
-		assert.equal(describeToolCall("ls", { path: "." }).detail, "");
+		assert.equal(describeToolCall("ls", { path: "." }).detail, ".");
 		assert.equal(describeToolCall("ls", { path: "." }).fullDetail, undefined);
-		assert.equal(describeToolCall("ls", { limit: 10 }).detail, "");
+		// 缺省路径就是工作根：折叠行里同样要写出列的是哪个目录
+		assert.equal(describeToolCall("ls", { limit: 10 }).detail, ".");
 		assert.equal(describeToolCall("ls", { limit: 10 }).fullDetail, undefined);
 
 		const listed = describeToolCall("ls", { path: "server/core", limit: 10 });
@@ -140,10 +142,11 @@ describe("工具调用摘要", () => {
 		assert.ok(describeToolCall("write", { path: "a.ts", content: "" }, root).linkTarget);
 		assert.ok(describeToolCall("edit", { path: "a.ts", edits: [] }, root).linkTarget);
 		assert.ok(describeToolCall("ls", { path: "src" }, root).linkTarget?.endsWith("/src"));
+		// 缺省路径同样有可见的 `.`，链接指向工作根
+		assert.equal(describeToolCall("ls", {}, root).linkTarget, pathToFileURL(root).href);
 
-		// 没有工作根时无法可靠解析相对路径；没有目标文本时也不挂链接
+		// 没有工作根时无法可靠解析相对路径
 		assert.equal(describeToolCall("read", { path: "src/a.ts" }).linkTarget, undefined);
-		assert.equal(describeToolCall("ls", { path: "." }, root).linkTarget, undefined);
 		assert.equal(describeToolCall("bash", { command: "ls" }, root).linkTarget, undefined);
 	});
 
