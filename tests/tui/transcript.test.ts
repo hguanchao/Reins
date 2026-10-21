@@ -25,7 +25,8 @@ const NOTICE_TEXT = "\x1b[38;2;224;175;104m";
 
 function plain(line: string): string {
 	return line
-		.replace(/\x1b\[[0-9;]*m/g, "")
+		// 下划线样式带子参数，形如 \x1b[4:5m，所以要允许冒号
+		.replace(/\x1b\[[0-9;:]*m/g, "")
 		.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "");
 }
 
@@ -69,7 +70,7 @@ describe("思考区块", () => {
 		assert.ok(text.includes("one") && text.includes("seven"));
 	});
 
-	it("正文缩进到标题首字，只有正文铺底色", () => {
+	it("正文缩进到标题首字，色带从行首铺满", () => {
 		const block = blockOf("Thinking…", true);
 		const turn: TranscriptTurn = { prompt: "hi", response: [block] };
 		const lines = renderTranscript(40, 12, [turn], 0);
@@ -81,7 +82,7 @@ describe("思考区块", () => {
 		assert.ok(plain(header).startsWith("  ✻ Thinking…"));
 		assert.ok(plain(body).startsWith("     three"));
 		assert.equal(header.includes(THEME.surface), false);
-		assert.equal(body.indexOf(THEME.surface), 4);
+		assert.equal(body.indexOf(THEME.surface), 0);
 	});
 
 	it("展开时只提亮标题标签，耗时保持弱化", () => {
@@ -118,7 +119,7 @@ describe("思考区块", () => {
 		assert.equal(plain(first).trim(), "one");
 
 		const body = lines.find((line) => plain(line).includes("three")) ?? "";
-		assert.ok(body.startsWith(`    ${THEME.surface}`));
+		assert.ok(body.startsWith(THEME.surface));
 		assert.ok(plain(body).startsWith("     three"));
 
 		const lastRow = lines.findIndex((line) => plain(line).includes("seven"));
@@ -140,6 +141,43 @@ describe("思考区块", () => {
 });
 
 describe("工具调用行", () => {
+	it("Bash 命令折叠态是琥珀色虚线，展开态是实线", () => {
+		const collapsed: TranscriptTool = { kind: "tool", name: "Bash", detail: "npm test" };
+		const collapsedLine =
+			renderTranscript(60, 10, [{ prompt: "hi", response: [collapsed] }], 0).find((line) =>
+				plain(line).includes("› Bash"),
+			) ?? "";
+		assert.ok(collapsedLine.includes(THEME.warning));
+		assert.ok(collapsedLine.includes("\x1b[4:5m"));
+
+		const expanded: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "npm test",
+			fullDetail: "npm test -- --watch",
+			detailKind: "text",
+			detailExpanded: true,
+		};
+		const expandHead =
+			renderTranscript(60, 12, [{ prompt: "hi", response: [expanded] }], 0).find((line) =>
+				plain(line).includes("◆ Bash"),
+			) ?? "";
+		assert.ok(expandHead.includes(THEME.warning));
+		assert.ok(expandHead.includes("\x1b[4m"));
+		assert.equal(expandHead.includes("\x1b[4:5m"), false);
+	});
+
+	it("其他工具的参数不加下划线", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Read", detail: "a.ts" }],
+		};
+		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("› Read")) ?? "";
+
+		assert.equal(line.includes("\x1b[4:5m"), false);
+		assert.equal(line.includes(THEME.warning), false);
+	});
+
 	it("一行放得下时显示名称与参数，两者同色", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hi",
@@ -343,12 +381,12 @@ describe("工具调用行", () => {
 		assert.equal(text.includes("path:"), false);
 		assert.ok(lines.some((line) => line.includes(THEME.surface)));
 
-		// 标题行不铺色带；详情在标题标记列右侧留白后开始铺
+		// 标题行不铺色带；色带从行首铺满，内容缩进在里侧
 		const head = lines.find((line) => plain(line).includes("◆ Read"));
 		const body = lines.find((line) => plain(line).includes("1  line 1"));
 		assert.ok(plain(head ?? "").startsWith("  "));
 		assert.equal(head?.includes(THEME.surface), false);
-		assert.ok(body?.startsWith(`    ${THEME.surface}`));
+		assert.ok(body?.startsWith(THEME.surface));
 	});
 
 	it("展开标题与 Thought 同色，文件路径用实线下划线", () => {
@@ -411,9 +449,9 @@ describe("工具调用行", () => {
 		const body = lines.find((line) => plain(line).includes("git log --oneline"));
 		assert.ok(body);
 
-		// 2 列标题缩进 + 2 列带外留白 + 1 列带内留白
+		// 2 列标题缩进 + 2 列带外留白 + 1 列带内留白；底色从行首铺起
 		assert.ok(plain(body).startsWith("     git log --oneline"));
-		assert.equal(body.indexOf(THEME.surface), 4);
+		assert.equal(body.indexOf(THEME.surface), 0);
 	});
 
 	it("结果末尾的换行不再多占一行，下边距只有一行", () => {
@@ -486,16 +524,17 @@ describe("工具调用行", () => {
 		for (const [label, item] of cases) {
 			for (const width of [40, 60, 88]) {
 				const lines = renderTranscript(width, 12, [{ prompt: "hi", response: [item] }], 0);
-				const starts = new Set<number>();
+				let bands = 0;
 				for (const line of lines) {
 					assert.equal(displayWidth(plain(line)), width, `${label}@${width} 行宽不精确`);
 
-					// 用户提示块从第 1 列铺满整宽，只取它之后的详情色带
 					const at = line.indexOf("\x1b[48;2;");
-					if (at <= 0) continue;
-					starts.add(displayWidth(plain(line.slice(0, at))) + 1);
+					if (at < 0) continue;
+					// 详情色带从行首铺满整宽，与面板边缘之间不留黑缝
+					assert.equal(displayWidth(plain(line.slice(0, at))), 0, `${label}@${width} 色带未从行首铺起`);
+					bands += 1;
 				}
-				assert.deepEqual([...starts], [5], `${label}@${width} 色带起点不唯一`);
+				assert.ok(bands > 0, `${label}@${width} 没有色带`);
 			}
 		}
 	});

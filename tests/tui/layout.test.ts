@@ -143,7 +143,8 @@ function cursorAt(output: FakeOutput, row: number, column: number): boolean {
 
 function plain(line: string): string {
 	return line
-		.replace(/\x1b\[[0-9;]*m/g, "")
+		// 下划线样式带子参数，形如 \x1b[4:5m，所以要允许冒号
+		.replace(/\x1b\[[0-9;:]*m/g, "")
 		.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "");
 }
 
