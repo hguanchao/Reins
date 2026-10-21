@@ -17,7 +17,11 @@
 		"noUnusedParameters": true,
 
 		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true
+		"forceConsistentCasingInFileNames": true,
+
+		"paths": {
+			"highlight.js": ["./types/highlight.js.d.ts"]
+		}
 	},
-	"include": ["src/**/*.ts", "tests/**/*.ts"]
+	"include": ["src/**/*.ts", "tests/**/*.ts", "types/**/*.d.ts"]
 }
