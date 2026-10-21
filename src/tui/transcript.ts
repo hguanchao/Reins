@@ -160,8 +160,10 @@ const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
 /** 右侧固定预留一列空隙和一列滚动条。 */
 const GUTTER_WIDTH = 2;
-/** 展开详情的面板在右侧留出的内边距；左侧同样留一列。 */
+/** 展开详情右侧留出的内边距：正文不贴着色带右缘。 */
 const DETAIL_RIGHT_PADDING = 1;
+/** 详情色带相对标题标记列的左侧留白：色带不贴菱形，行号也不与标题文字挤在同一侧。 */
+const DETAIL_BAND_LEFT = 2;
 
 export interface PromptRange {
 	/** 提示块第一行在 transcript 里的下标 */
@@ -769,13 +771,14 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
-		// 展开：标题行不着色，详情从标题符号右侧一列开始铺色带
-		const bandStart = displayWidth(baseIndent) + 1;
+		// 展开：标题行不着色；色带在标题标记右侧再留出 DETAIL_BAND_LEFT 列，上下各留一行
+		const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
 		const head = expandedToolHead(tool, baseIndent, width);
 		const kind = tool.detailKind ?? "text";
 		const rows = tool.fullDetail.split("\n");
 		const syntax = kind === "diff" ? diffSyntax(rows, tool.detail) : undefined;
 		const body = [
+			bandBlankLine(width, bandStart),
 			...rows.flatMap((line, index) =>
 				detailBodyLines(
 					line,

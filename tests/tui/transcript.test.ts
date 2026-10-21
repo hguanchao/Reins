@@ -332,17 +332,18 @@ describe("工具调用行", () => {
 
 		assert.ok(text.includes("  ◆ Read  a.ts"));
 		assert.equal(text.includes("(2 lines)"), false);
-		assert.ok(text.includes("    1  line 1"));
-		assert.ok(text.includes("    2  line 2"));
+		// 2 列标题缩进 + 2 列带外留白 + 1 列带内缩进
+		assert.ok(text.includes("     1  line 1"));
+		assert.ok(text.includes("     2  line 2"));
 		assert.equal(text.includes("path:"), false);
 		assert.ok(lines.some((line) => line.includes(THEME.surface)));
 
-		// 标题行不铺色带；详情从标题标记列开始铺
+		// 标题行不铺色带；详情在标题标记列右侧留白后开始铺
 		const head = lines.find((line) => plain(line).includes("◆ Read"));
 		const body = lines.find((line) => plain(line).includes("1  line 1"));
 		assert.ok(plain(head ?? "").startsWith("  "));
 		assert.equal(head?.includes(THEME.surface), false);
-		assert.ok(body?.startsWith(`   ${THEME.surface}`));
+		assert.ok(body?.startsWith(`    ${THEME.surface}`));
 	});
 
 	it("展开标题与 Thought 同色，文件路径用实线下划线", () => {
@@ -367,7 +368,7 @@ describe("工具调用行", () => {
 		assert.equal(head.includes("\x1b]8;;"), false);
 	});
 
-	it("展开详情上方不留空行，下方留一行", () => {
+	it("展开详情上下各留一行色带", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
 			name: "Read",
@@ -380,9 +381,12 @@ describe("工具调用行", () => {
 		const headRow = lines.findIndex((line) => plain(line).includes("◆ Read"));
 		assert.ok(headRow >= 0);
 
-		const content = lines[headRow + 1] ?? "";
-		const bottom = lines[headRow + 2] ?? "";
+		const top = lines[headRow + 1] ?? "";
+		const content = lines[headRow + 2] ?? "";
+		const bottom = lines[headRow + 3] ?? "";
 
+		assert.ok(top.includes(THEME.surface));
+		assert.equal(plain(top).trim(), "");
 		assert.ok(content.includes(THEME.surface));
 		assert.ok(plain(content).includes("1  line 1"));
 		assert.ok(bottom.includes(THEME.surface));
