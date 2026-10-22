@@ -537,7 +537,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				frame += `${moveCursor(row + 1, width)}${gutter[row]}`;
 			}
 		}
-		// 置底按钮同样单独定位：它盖在对话流最后一行右端，只在真的离开底部时出现
+		// 置底按钮同样单独定位：它盖在对话流最后一行中部，只在真的离开底部时出现
 		const showButton = transcriptShown && !menuOpen() && scrollTop < maxScroll;
 		// 按钮没画出来时悬停状态要一起清掉，否则下次出现会带着上一次的高亮
 		if (!showButton) buttonHovered = false;

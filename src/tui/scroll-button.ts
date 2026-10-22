@@ -2,15 +2,15 @@ import { displayWidth } from "./menu-panel.ts";
 import { THEME } from "./theme.ts";
 
 /**
- * 对话流右下角的置底按钮。
+ * 对话流底部居中的置底按钮。
  *
- * 只在上滚离开底部时出现：用一行高的浮层盖住对话流最后一行右端，不占布局高度，因此不需要
- * 改动任何高度与行号计算。右端留出最后一列给滚动条，两者不会叠在一起。
+ * 只在上滚离开底部时出现：用一行高的浮层盖住对话流最后一行中部，不占布局高度，因此不需要
+ * 改动任何高度与行号计算。最后一列留给滚动条，居中按它左侧的正文区计算，两者不会叠在一起。
  */
 
 /** 符号两侧各留两列内边距：单行小目标用鼠标很难点中，胶囊要做得比符号本身宽。 */
 const LABEL = "  ▼  ";
-/** 命中区在按钮左侧再放宽一列；右侧紧挨滚动条，不再外扩。 */
+/** 命中区在按钮左右各放宽一列，让这个窄小的目标更好点中。 */
 const HIT_SLOP = 1;
 /** 默认弱色：不跟正文抢注意力；指针移上来才用强调色，说明这里可以点。 */
 const IDLE_COLOR = THEME.textSubtle;
@@ -34,9 +34,9 @@ export interface ScrollButtonPlacement {
 /**
  * 按钮的位置；终端放不下时返回 undefined。
  *
- * 宽度按显示宽度算，符号或内边距换成宽字符也不会把右侧顶到滚动条上。按钮左侧至少留一列正文，
- * 否则整行被盖满，就看不出这是浮层而不是正文。highlighted 只换符号颜色，位置与命中区不变，
- * 因此指针在按钮上移动时不会因为宽度变化而闪。
+ * 宽度按显示宽度算，符号或内边距换成宽字符也不会把右侧顶到滚动条上。居中只在滚动条左侧的
+ * 正文区里算：整行居中会让按钮往右偏半列，紧贴滚动条反而看不出是浮层。highlighted 只换符号
+ * 颜色，位置与命中区不变，因此指针在按钮上移动时不会因为宽度变化而闪。
  */
 export function scrollButtonPlacement(
 	width: number,
@@ -48,16 +48,19 @@ export function scrollButtonPlacement(
 	const labelWidth = displayWidth(LABEL);
 	if (rows === 0 || columns < labelWidth + 2) return undefined;
 
-	// 右边界停在 columns - 1，最后一列始终是滚动条
-	const column = columns - labelWidth;
+	// 最后一列始终是滚动条，居中按它左侧的正文区算，左右余量才真正相等
+	const contentWidth = columns - 1;
+	const column = Math.floor((contentWidth - labelWidth) / 2) + 1;
 	const hitColumn = Math.max(1, column - HIT_SLOP);
+	// 命中区左右对称外扩，但右边界不能落到滚动条那一列，否则拖动滚动条会误触回底
+	const hitEnd = Math.min(contentWidth, column + labelWidth - 1 + HIT_SLOP);
 	return {
 		row: rows,
 		column,
 		width: labelWidth,
 		text: `${THEME.surface}${highlighted ? HOVER_COLOR : IDLE_COLOR}${LABEL}${THEME.reset}`,
 		hitColumn,
-		hitWidth: column + labelWidth - hitColumn,
+		hitWidth: hitEnd - hitColumn + 1,
 	};
 }
 

@@ -2373,27 +2373,27 @@ describe("全屏布局", () => {
 			t.mock.timers.tick(100);
 
 			// 贴在底部时没有可置底的东西，不画按钮
-			assert.equal(lastFrame(output).includes("\x1b[6;35H"), false);
+			assert.equal(lastFrame(output).includes("\x1b[6;18H"), false);
 
-			// 拖到顶部后按钮出现在对话流最后一行右端，默认是弱色
+			// 拖到顶部后按钮出现在对话流最后一行底部居中，默认是弱色
 			input.emit("data", Buffer.from("\x1b[<0;40;1M"));
 			input.emit("data", Buffer.from("\x1b[<0;40;1m"));
-			const idle = `\x1b[6;35H${THEME.surface}${THEME.textSubtle}  ▼  ${THEME.reset}`;
+			const idle = `\x1b[6;18H${THEME.surface}${THEME.textSubtle}  ▼  ${THEME.reset}`;
 			assert.ok(lastFrame(output).includes(idle));
 
 			// 指针移进按钮范围后高亮
-			input.emit("data", Buffer.from("\x1b[<35;36;6M"));
-			assert.ok(lastFrame(output).includes(`\x1b[6;35H${THEME.surface}${THEME.accent}  ▼  ${THEME.reset}`));
+			input.emit("data", Buffer.from("\x1b[<35;19;6M"));
+			assert.ok(lastFrame(output).includes(`\x1b[6;18H${THEME.surface}${THEME.accent}  ▼  ${THEME.reset}`));
 
 			// 移出去恢复弱色
 			input.emit("data", Buffer.from("\x1b[<35;5;5M"));
 			assert.ok(lastFrame(output).includes(idle));
 
 			// 点按钮左侧的命中扩展区也算命中：小目标留出容错
-			input.emit("data", Buffer.from("\x1b[<0;34;6M"));
+			input.emit("data", Buffer.from("\x1b[<0;17;6M"));
 			const back = frameLines(output).slice(0, 6).map(plain);
 			assert.ok(back.slice(2).join("\n").includes("line 16"));
-			assert.equal(lastFrame(output).includes("\x1b[6;35H"), false);
+			assert.equal(lastFrame(output).includes("\x1b[6;18H"), false);
 		} finally {
 			exitTui(input);
 		}

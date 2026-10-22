@@ -5,14 +5,16 @@ import { scrollButtonHit, scrollButtonPlacement } from "../../src/tui/scroll-but
 import { THEME } from "../../src/tui/theme.ts";
 
 describe("置底按钮", () => {
-	it("贴在对话流最后一行右端，最后一列留给滚动条", () => {
+	it("贴在对话流最后一行底部居中，最后一列留给滚动条", () => {
 		const placement = scrollButtonPlacement(40, 6);
 		assert.ok(placement);
 		assert.equal(placement.row, 6);
-		assert.equal(placement.column, 35);
+		assert.equal(placement.column, 18);
 		assert.equal(placement.width, 5);
-		// 右边界停在 width - 1，滚动条占最后一列
-		assert.equal(placement.column + placement.width - 1, 39);
+		// 居中按滚动条左侧的正文区算，左右余量必须相等
+		const rightEdge = placement.column + placement.width - 1;
+		assert.equal(rightEdge, 22);
+		assert.equal(placement.column - 1, 39 - rightEdge);
 		assert.ok(placement.text.includes("▼"));
 		assert.ok(placement.text.includes(THEME.surface));
 		assert.ok(placement.text.includes(THEME.textSubtle));
@@ -34,12 +36,15 @@ describe("置底按钮", () => {
 		assert.equal(idle.text.includes(THEME.accent), false);
 	});
 
-	it("命中区比按钮左侧宽一列，右侧不侵入滚动条", () => {
+	it("命中区在按钮左右各宽一列，不侵入滚动条", () => {
 		const placement = scrollButtonPlacement(40, 6);
 		assert.ok(placement);
-		assert.equal(placement.hitColumn, 34);
-		assert.equal(placement.hitWidth, 6);
-		assert.equal(placement.hitColumn + placement.hitWidth - 1, 39);
+		assert.equal(placement.hitColumn, 17);
+		assert.equal(placement.hitWidth, 7);
+		// 命中区左右对称外扩，右边界仍在正文区内，碰不到最后一列的滚动条
+		assert.equal(placement.hitColumn, placement.column - 1);
+		assert.equal(placement.hitColumn + placement.hitWidth - 1, placement.column + placement.width);
+		assert.ok(placement.hitColumn + placement.hitWidth - 1 < 40);
 	});
 
 	it("没有高度或终端太窄时不画", () => {
@@ -48,22 +53,24 @@ describe("置底按钮", () => {
 		assert.equal(scrollButtonPlacement(6, 6), undefined);
 	});
 
-	it("刚好放得下时左侧仍留出正文", () => {
+	it("刚好放得下时也居中，命中区停在滚动条左侧", () => {
 		const placement = scrollButtonPlacement(7, 3);
 		assert.ok(placement);
-		assert.equal(placement.column, 2);
-		assert.equal(placement.column + placement.width - 1, 6);
+		assert.equal(placement.column, 1);
+		assert.equal(placement.column + placement.width - 1, 5);
 		assert.equal(placement.hitColumn, 1);
+		// 第 7 列是滚动条，命中区最多到第 6 列
+		assert.equal(placement.hitColumn + placement.hitWidth - 1, 6);
 	});
 
 	it("命中只看按钮覆盖的行与列区间", () => {
 		const placement = scrollButtonPlacement(40, 6);
 		assert.ok(placement);
-		assert.equal(scrollButtonHit(placement, 6, 34), true);
-		assert.equal(scrollButtonHit(placement, 6, 35), true);
-		assert.equal(scrollButtonHit(placement, 6, 39), true);
-		assert.equal(scrollButtonHit(placement, 6, 33), false);
-		assert.equal(scrollButtonHit(placement, 6, 40), false);
-		assert.equal(scrollButtonHit(placement, 5, 35), false);
+		assert.equal(scrollButtonHit(placement, 6, 17), true);
+		assert.equal(scrollButtonHit(placement, 6, 18), true);
+		assert.equal(scrollButtonHit(placement, 6, 23), true);
+		assert.equal(scrollButtonHit(placement, 6, 16), false);
+		assert.equal(scrollButtonHit(placement, 6, 24), false);
+		assert.equal(scrollButtonHit(placement, 5, 18), false);
 	});
 });
