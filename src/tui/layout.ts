@@ -1584,7 +1584,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 
 		if (modelMenu !== undefined || effortMenu !== undefined) {
-			// 选择面板是模态的：上下键、回车、Esc 与鼠标点击都可用
+			// 面板只接管选择相关的按键（上下、回车、Tab、Esc）与鼠标；其余按键放行给输入框。
+			// 文字一变面板就收掉（见 editInput 处）：面板由命令打开，输入不再是那条命令
 			const panelsHeight = terminalHeight(stdout);
 			const panelTop = Math.max(0, panelsHeight - footerHeight());
 			for (const event of mouseEvents(text)) {
@@ -1652,18 +1653,23 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			}
 
 			const key = menuKey(text);
-			if (modelMenu !== undefined) {
-				if (key === "up") moveMenu(-1);
-				else if (key === "down") moveMenu(1);
-				else if (key === "enter") confirmMenu();
-				else if (key === "escape") cancelMenu();
-			} else {
-				if (key === "up") moveEffortMenu(-1);
-				else if (key === "down") moveEffortMenu(1);
-				else if (key === "enter") confirmEffortMenu();
-				else if (key === "escape") cancelEffortMenu();
+			const inModel = modelMenu !== undefined;
+			if (key === "up" || key === "down") {
+				if (inModel) moveMenu(key === "up" ? -1 : 1);
+				else moveEffortMenu(key === "up" ? -1 : 1);
+				return;
 			}
-			return;
+			if (key === "enter" || key === "tab") {
+				if (inModel) confirmMenu();
+				else confirmEffortMenu();
+				return;
+			}
+			if (key === "escape") {
+				if (inModel) cancelMenu();
+				else cancelEffortMenu();
+				return;
+			}
+			// 其余按键放行：打字的瞬间面板会随输入变化收掉（见下面的编辑处理）
 		}
 
 		if (openPage !== undefined) {
@@ -1889,6 +1895,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				moveCommandMenu(key === "up" ? -1 : 1);
 				return;
 			}
+			if (key === "tab") {
+				// 补全命令名但留一个空格：多数命令还要带参数，补全不该顺手执行
+				const selected = commandMenu.items[commandMenu.cursor];
+				if (selected !== undefined) {
+					setInput(`/${selected.name} `);
+					updateCommandMenu();
+					render();
+				}
+				return;
+			}
 			if (key === "escape") {
 				commandMenu = undefined;
 				render();
@@ -1955,6 +1971,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const edit = editInput(input, inputCursor, withoutMouse, pasting);
 		pasting = edit.pasting;
 		if (edit.text !== previous) historyIndex = -1;
+		// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
+		// 命令补全面板相反，跟着新输入继续过滤
+		if (edit.text !== previous && (modelMenu !== undefined || effortMenu !== undefined)) {
+			modelMenu = undefined;
+			effortMenu = undefined;
+		}
 		setInput(edit.text, edit.cursor);
 		updateCommandMenu();
 		// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流；
@@ -2042,10 +2064,12 @@ function approvalKey(text: string, canAlways: boolean): ApprovalKey | undefined 
 }
 
 /** 菜单打开时只认这四个键；普通字符与鼠标事件一律忽略。 */
-function menuKey(text: string): "up" | "down" | "enter" | "escape" | undefined {
+function menuKey(text: string): "up" | "down" | "enter" | "tab" | "escape" | undefined {
 	if (text.includes("\x1b[A") || text.includes("\x1bOA")) return "up";
 	if (text.includes("\x1b[B") || text.includes("\x1bOB")) return "down";
 	if (text.includes("\r") || text.includes("\n")) return "enter";
+	// 只认单独的制表符：粘贴的内容里可能带 \t，不能把整块粘贴当成一次确认
+	if (text === "\t") return "tab";
 	if (text === "\x1b") return "escape";
 	return undefined;
 }

@@ -647,6 +647,103 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("Tab 与回车一样确认模型面板的选择", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let selected: string | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: (item) => {
+					selected = `${item.provider}/${item.model}`;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			input.emit("data", Buffer.from("\x1b[B"));
+			input.emit("data", Buffer.from("\t"));
+			assert.equal(selected, "openai/gpt-5.2");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("面板打开时打字：面板收掉，文字进输入框", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let calls = 0;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: () => {
+					calls += 1;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			// `/model` 不再是当前输入的内容，面板失去意义
+			input.emit("data", Buffer.from("x"));
+
+			assert.equal(calls, 0);
+			const lines = frameLines(output).map(plain);
+			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
+			assert.ok(lines.some((line) => line.includes("/modelx")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令补全里 Tab 补出命令名与空格，不直接执行", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let calls = 0;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: () => {
+					calls += 1;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/mo"));
+			// 第一项是 /model；Tab 只补全，面板继续跟着新输入过滤
+			input.emit("data", Buffer.from("\t"));
+
+			assert.equal(calls, 0);
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line.includes("/model ")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("输入斜杠立即显示命令补全，配置不可用时也显示", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
