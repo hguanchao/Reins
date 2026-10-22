@@ -2150,7 +2150,7 @@ describe("全屏布局", () => {
 			assert.ok(text.includes("› Read  a.ts"));
 			assert.ok(text.includes("Running Read..."));
 
-			agent.emit({ type: "tool_end", callId: "c1", name: "read", isError: false, durationMs: 12, summary: "" });
+			agent.emit({ type: "tool_end", callId: "c1", name: "read", isError: false, durationMs: 12, summary: "A-BODY" });
 			t.mock.timers.tick(100);
 
 			text = frameLines(output).map(plain).join("\n");
@@ -2268,7 +2268,7 @@ describe("全屏布局", () => {
 		try {
 			input.emit("data", Buffer.from("hi\r"));
 			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
-			agent.emit({ type: "tool_end", callId: "c1", name: "read", isError: false, durationMs: 1, summary: "" });
+			agent.emit({ type: "tool_end", callId: "c1", name: "read", isError: false, durationMs: 1, summary: "A-BODY" });
 			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "b.ts" } });
 			t.mock.timers.tick(100);
 

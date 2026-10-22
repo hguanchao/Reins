@@ -131,15 +131,13 @@ const SCROLLBAR_COLOR = THEME.scrollbar;
 const SCROLLBAR_TRACK = " ";
 const SCROLLBAR_THUMB = "█";
 const RESET = THEME.reset;
-/** 实线下划线：展开后的路径与命令用它，和折叠态的虚线区分开。 */
-const UNDERLINE = "\x1b[4m";
 /**
- * 点状下划线（SGR 4:4）。
+ * 实线下划线。
  *
- * 路径的下划线由终端为 OSC 8 链接绘制，外观是点线；命令没有链接可挂，
- * 但要让折叠态的下划线看起来一致，因此显式用同一种点线样式。
+ * 只表示一件事：这一行的参数可以点开（链接）或展开。不用点线——SGR 4:4 要靠终端与字体
+ * 同时支持，不支持时退化成实线，反而和链接线混成一样；与其这样，不如只用一种线型。
  */
-const DOTTED_UNDERLINE = "\x1b[4:4m";
+const UNDERLINE = "\x1b[4m";
 
 /** 一段带颜色的文本；着色只到这一段为止，渲染完要回到调用方给的颜色。 */
 interface ColoredSegment {
@@ -498,9 +496,11 @@ export function toolHeaderAtRow(
  *
  * 命令全文（折叠时被截短的部分）与工具结果都算。`python script.py` 这类命令本身没有被截短，
  * 但它的输出仍然值得看一眼——不能因为「命令没藏东西」就把结果也一起锁在门外。
+ * 空输出不算：展开只会得到一行「(no output)」，那不该让人以为这里有东西。
  */
 function hasExpandableDetail(tool: TranscriptTool): boolean {
-	return tool.fullDetail !== undefined || tool.result !== undefined;
+	if (tool.fullDetail !== undefined) return true;
+	return tool.result !== undefined && tool.result.trim().length > 0;
 }
 
 export function toolHeaderInView(
@@ -874,8 +874,12 @@ function groupHeaderLabel(members: readonly TranscriptTool[]): string {
  * 错误行（× + 命令 + 耗时），不再另起一行；双击展开完整命令与详细错误。
  */
 function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_INDENT): readonly string[] {
-	const marker = tool.isError ? ERROR_MARKER : TOOL_MARKER;
-	const prefix = `${baseIndent}${marker} `;
+	// 下划线表示「这一行有东西可点开」。已完成又什么都展不开的行连标记也不给——它长得
+	// 像能点，实际什么都不会发生。运行中的行仍留着标记：否则箭头会在结果到达那一刻冒出来
+	const interactive = tool.linkTarget !== undefined || hasExpandableDetail(tool);
+	const finished = tool.result !== undefined || tool.fullDetail !== undefined || tool.isError;
+	const marker = tool.isError ? ERROR_MARKER : !finished || interactive ? TOOL_MARKER : "";
+	const prefix = marker.length === 0 ? baseIndent : `${baseIndent}${marker} `;
 	const limit = Math.max(0, width - displayWidth(prefix));
 
 	if (tool.isError) {
@@ -904,7 +908,7 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	return [
-		toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, tool.linkTarget, width),
+		toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, tool.linkTarget, width, interactive),
 	];
 }
 
@@ -945,6 +949,7 @@ function toolSummaryLine(
 	metric: string | undefined,
 	linkTarget: string | undefined,
 	width: number,
+	interactive: boolean,
 ): string {
 	const head = fitToWidth(`${prefix}${name}`, width);
 	const headWidth = displayWidth(head);
@@ -962,11 +967,11 @@ function toolSummaryLine(
 		Math.max(0, available - displayWidth(tail) - displayWidth(shownMetric)),
 	);
 	const metricPart = shownMetric.length === 0 ? "" : `${TOOL_NAME_COLOR}${shownMetric}${RESET}`;
-	// 折叠态的约定：参数一律点状下划线，表示「这一行可以展开」。带 OSC 8 链接的参数由
-	// 终端自己画线，不再叠加一层；没有链接的（命令、搜索模式等）靠这条点线保持同样的暗示
+	// 可点开或可展开的参数一律带下划线，用的是与链接同一种实线：终端不给点线兜底，
+	// 线型区别在不同终端里根本看不出来，不如只用「有线 / 没线」表达一件事
 	const tailPart =
-		linkTarget === undefined && shownTail.length > 2
-			? `${shownTail.slice(0, 2)}${TOOL_NAME_COLOR}${DOTTED_UNDERLINE}${shownTail.slice(2)}`
+		linkTarget === undefined && interactive && shownTail.length > 2
+			? `${shownTail.slice(0, 2)}${TOOL_NAME_COLOR}${UNDERLINE}${shownTail.slice(2)}`
 			: `${TOOL_NAME_COLOR}${shownTail}`;
 	return `${TOOL_NAME_COLOR}${head}${RESET}${tailPart}${RESET}${metricPart}${padding}`;
 }

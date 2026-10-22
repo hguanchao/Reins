@@ -143,17 +143,21 @@ describe("思考区块", () => {
 });
 
 describe("工具调用行", () => {
-	it("Bash 命令折叠态与普通参数同色，展开态才是琥珀色实线", () => {
-		const collapsed: TranscriptTool = { kind: "tool", name: "Bash", detail: "npm test" };
+	it("Bash 命令折叠态与普通参数同色，展开后才换成琥珀色", () => {
+		const collapsed: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "npm test",
+			result: "ok",
+		};
 		const collapsedLine =
 			renderTranscript(60, 10, [{ prompt: "hi", response: [collapsed] }], 0).find((line) =>
 				plain(line).includes("› Bash"),
 			) ?? "";
-		// 折叠态与其它工具的参数一致：弱化色，只有一条点状下划线
+		// 折叠态与其它工具的参数一致：弱化色 + 一条实线下划线
 		assert.ok(collapsedLine.includes(THEME.textSubtle));
 		assert.equal(collapsedLine.includes(THEME.warning), false);
-		// 点状下划线用 SGR 4:4，与文件路径由 OSC 8 链接画出的点线外观一致
-		assert.ok(collapsedLine.includes("\x1b[4:4m"));
+		assert.ok(collapsedLine.includes("\x1b[4m"));
 
 		const expanded: TranscriptTool = {
 			kind: "tool",
@@ -171,19 +175,43 @@ describe("工具调用行", () => {
 		assert.ok(expandHead.includes("\x1b[4m"));
 	});
 
-	it("没有链接的参数也画点状下划线，与命令保持一致", () => {
+	it("没有链接的参数也画同一种实线下划线", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hi",
-			response: [{ kind: "tool", name: "Grep", detail: "TODO" }],
+			response: [{ kind: "tool", name: "Grep", detail: "TODO", result: "a.ts:1" }],
 		};
 		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("› Grep")) ?? "";
 
 		// 可展开就该有「可以展开」的暗示，不能只有命令和文件路径有
-		assert.ok(line.includes("\x1b[4:4m"));
+		assert.ok(line.includes("\x1b[4m"));
 		// 没有 linkTarget 时不该挂 OSC 8 链接
 		assert.equal(line.includes("\x1b]8;;"), false);
 		// 折叠态仍用弱化色，琥珀色留给展开后的命令
 		assert.equal(line.includes(THEME.warning), false);
+	});
+
+	it("既不可点也不可展开的行不加下划线，也不带行首标记", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Grep", detail: "TODO", result: "" }],
+		};
+		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("Grep")) ?? "";
+
+		assert.equal(line.includes("\x1b[4m"), false);
+		assert.equal(line.includes("\x1b[4:4m"), false);
+		assert.equal(line.includes("\x1b]8;;"), false);
+		// 没有可点的东西就不该挂一个暗示「能点」的箭头
+		assert.equal(plain(line).includes("›"), false);
+	});
+
+	it("运行中的工具仍带行首标记，标记不会在完成时才冒出来", () => {
+		const turn: TranscriptTurn = {
+			prompt: "hi",
+			response: [{ kind: "tool", name: "Grep", detail: "TODO" }],
+		};
+		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("Grep")) ?? "";
+
+		assert.equal(plain(line).includes("› Grep"), true);
 	});
 
 	it("展开态一律实线下划线并带上参数色", () => {
