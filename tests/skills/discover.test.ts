@@ -99,6 +99,37 @@ describe("技能发现", () => {
 		assert.deepEqual(discoverSkills(rootsOf(root)), []);
 	});
 
+	it("块标量写法也能读出说明：> 折成一行，| 保留换行", () => {
+		const root = tempRoot();
+		writeSkill(
+			root,
+			"folded",
+			["---", "name: folded", "description: >", "  第一行", "  第二行", "---"].join("\n"),
+		);
+		writeSkill(
+			root,
+			"literal",
+			["---", "name: literal", "description: |", "  第一行", "  第二行", "---"].join("\n"),
+		);
+
+		assert.deepEqual(
+			discoverSkills(rootsOf(root)).map((skill) => [skill.name, skill.description]),
+			[
+				["folded", "第一行 第二行"],
+				["literal", "第一行\n第二行"],
+			],
+		);
+	});
+
+	it("块标量之后的键仍然生效", () => {
+		const root = tempRoot();
+		writeSkill(root, "dir", ["---", "description: >", "  说明", "name: after-block", "---"].join("\n"));
+
+		const skill = discoverSkills(rootsOf(root))[0];
+		assert.equal(skill?.name, "after-block");
+		assert.equal(skill?.description, "说明");
+	});
+
 	it("按名称排序，而不是按目录名", () => {
 		const root = tempRoot();
 		writeSkill(root, "z-directory", ["---", "name: alpha", "---"].join("\n"));

@@ -134,8 +134,11 @@ function readSkillFile(path: string): string | undefined {
 /**
  * 解析开头的 frontmatter。
  *
- * 只认单行的 `key: value`，不引入 YAML 解析器：这两项都是短标量，为一份清单背上整套 YAML
- * 语义不划算。没有 frontmatter、没有收尾的 `---` 都按空处理，名称回退到目录名。
+ * 只认 `key: value` 与 `key: >` / `key: |` 两种写法，不引入 YAML 解析器：这两项都是短标量，
+ * 为一份清单背上整套 YAML 语义不划算。但块标量必须认——`description: >` 折行写法很常见，
+ * 只认单行的话会把它读成一个字面的 `>`，比读不出来更糟。
+ *
+ * 没有 frontmatter、没有收尾的 `---` 都按空处理，名称回退到目录名。
  */
 function parseFrontmatter(contents: string): Frontmatter {
 	const lines = contents.split(/\r?\n/);
@@ -145,16 +148,57 @@ function parseFrontmatter(contents: string): Frontmatter {
 	if (end < 0) return { name: undefined, description: undefined };
 
 	const front: Frontmatter = { name: undefined, description: undefined };
-	for (const line of lines.slice(1, end)) {
+	for (let index = 1; index < end; index += 1) {
+		const line = lines[index] ?? "";
 		const separator = line.indexOf(":");
 		if (separator <= 0) continue;
+
 		const key = line.slice(0, separator).trim();
-		const value = unquote(line.slice(separator + 1).trim());
+		const raw = line.slice(separator + 1).trim();
+		let value: string;
+		if (BLOCK_MARKERS.has(raw)) {
+			const block = readBlockScalar(lines, index + 1, end, raw.startsWith(">"));
+			value = block.text;
+			index = block.next - 1;
+		} else {
+			value = unquote(raw);
+		}
+
 		if (value.length === 0) continue;
 		if (key === "name") front.name = value;
 		if (key === "description") front.description = value;
 	}
 	return front;
+}
+
+/** `>` 折成一行，`|` 保留换行；`-`/`+` 只是尾部空行的取舍，这里统一去掉尾部空行。 */
+const BLOCK_MARKERS: ReadonlySet<string> = new Set([">", ">-", ">+", "|", "|-", "|+"]);
+
+/**
+ * 读一个块标量的正文：后续比键缩进更深的行都属于它，回到顶层缩进就结束。
+ *
+ * 返回的 `next` 指向块之后的第一行，调用方据此跳过已经消费过的行。
+ */
+function readBlockScalar(
+	lines: readonly string[],
+	start: number,
+	end: number,
+	fold: boolean,
+): { readonly text: string; readonly next: number } {
+	const collected: string[] = [];
+	let index = start;
+	for (; index < end; index += 1) {
+		const line = lines[index] ?? "";
+		if (line.trim().length === 0) {
+			collected.push("");
+			continue;
+		}
+		// 没有前导空白说明回到了顶层：块到此为止
+		if (!/^\s/.test(line)) break;
+		collected.push(line.trim());
+	}
+	while (collected.length > 0 && collected[collected.length - 1] === "") collected.pop();
+	return { text: collected.join(fold ? " " : "\n"), next: index };
 }
 
 /** 去掉成对的引号；只去一对，不处理转义——写技能的人不会在这里放嵌套引号。 */
