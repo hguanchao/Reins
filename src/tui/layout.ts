@@ -467,6 +467,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let effortMenu: EffortMenuState | undefined;
 	let sessionMenu: SessionMenuState | undefined;
 	let commandMenu: CommandMenuState | undefined;
+	/**
+	 * 使用者用 Esc 主动关掉补全面板之后，输入没变就不再自动弹出。
+	 *
+	 * 否则每按一次键都会重新算一遍补全，面板刚关掉又冒出来，像关不掉一样；而且重开时光标
+	 * 回到第一项，接着按回车会执行错的命令。
+	 */
+	let commandMenuDismissed = false;
 	/** 占据主区域的整屏页；打开期间视口只跟着它自己的滚动。 */
 	let openPage: PageKind | undefined;
 	/** 整屏页从顶部滚过的行数。 */
@@ -1423,6 +1430,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 输入变化后重算命令补全列表；只匹配斜杠后不含空格的命令名。 */
 	const updateCommandMenu = (): void => {
 		if (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined) return;
+		// Esc 关掉之后不再自动弹出：输入一变会重置这个标记，那时才会重新计算
+		if (commandMenuDismissed) {
+			commandMenu = undefined;
+			return;
+		}
 
 		// 敲完命令名再按空格：有二级选择面板的直接打开它，没有的就把补全面板收掉。
 		// 这里只认「命令名 + 空格」本身，后面已经打了参数就不再插手
@@ -1831,10 +1843,19 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const message = input.trim();
 		if (message.length === 0) return false;
 		const selected = commandMenu?.items[commandMenu.cursor];
+		// 只有一个斜杠、又没有选中项：还不算命令，也不该当成提问发给模型
+		if (message === "/" && selected === undefined) return false;
 		const command = selected ?? findCommand(message);
 		if (message.startsWith("/") && command !== undefined) {
-			// 一轮进行中只放行不碰对话的命令；其余等这一轮结束，与之前一样静默丢弃
-			if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(command.name)) return false;
+			// 一轮进行中只放行不碰对话的命令；其余要等这一轮结束，但得说清为什么没执行。
+			// 补全面板此刻占着状态行的位置，先收起它，提示才看得见
+			if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(command.name)) {
+				commandMenu = undefined;
+				commandMenuDismissed = true;
+				setStatus(`/${command.name} is unavailable while a turn is running`);
+				render();
+				return false;
+			}
 			// 命令先于受限检查执行：/model 正是用来修复配置对不上的入口
 			rememberInput(message);
 			executeCommand(command, selected === undefined ? commandArgs(message, command.name) : "");
@@ -2307,6 +2328,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			}
 			if (key === "escape") {
 				commandMenu = undefined;
+				// 记下这次主动关闭：输入不变就不再自动弹回来
+				commandMenuDismissed = true;
 				render();
 				return;
 			}
@@ -2399,7 +2422,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		const edit = editInput(input, inputCursor, withoutMouse, pasting);
 		pasting = edit.pasting;
-		if (edit.text !== previous) historyIndex = -1;
+		if (edit.text !== previous) {
+			historyIndex = -1;
+			// 输入变了，之前用 Esc 关掉补全面板的决定就作废：新内容该有自己的补全
+			commandMenuDismissed = false;
+		}
 		// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
 		// 命令补全面板相反，跟着新输入继续过滤
 		if (edit.text !== previous && (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined)) {

@@ -371,11 +371,17 @@ describe("全屏布局", () => {
 			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
 			input.emit("data", Buffer.from("\x1b"));
 
-			// /compact 会另起一轮，运行中仍然挡掉：对话流里不该出现这条提示
+			// /compact 会另起一轮，运行中仍然挡掉：对话流里不该出现这条提示，
+			// 状态行要说明为什么没执行，而不是静默丢弃
 			input.emit("data", Buffer.from("/compact\r"));
 			const afterCompact = frameLines(output).slice(0, 6).map(plain).join("\n");
 			assert.equal(afterCompact.includes("/compact"), false);
-			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for response..."));
+			assert.ok(
+				frameLines(output)
+					.map(plain)
+					.join("\n")
+					.includes("/compact is unavailable"),
+			);
 
 			// /session 会替换整段历史，运行中同样挡掉；Tab 也只补全，不打开菜单
 			input.emit("data", Buffer.from("/session\r"));
@@ -661,10 +667,14 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("second\r"));
 			assert.ok(frameLines(output).map(plain).join("\n").includes("↳ second"));
 
+			// 先中止让这一轮收尾：运行中 /session 是被挡下的，切不了会话
+			pressCtrlC(input);
+			agent.emit({ type: "aborted" });
+			await agent.finish();
+			assert.ok(frameLines(output).map(plain).join("\n").includes("↳ second"));
+
 			// /session 会换掉整段对话，排队消息属于旧会话
-			input.emit("data", Buffer.from("/session\r"));
-			t.mock.timers.tick(50);
-			input.emit("data", Buffer.from("\r"));
+			input.emit("data", Buffer.from("/session fedcba9876543210\r"));
 			assert.equal(frameLines(output).map(plain).join("\n").includes("↳ second"), false);
 			assert.deepEqual(agent.prompts, ["first"]);
 		} finally {
@@ -1002,6 +1012,70 @@ describe("全屏布局", () => {
 		}
 
 		assert.equal(await running, 0);
+	});
+
+	it("Esc 关掉命令补全面板后不会自己弹回来", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		const panelOpen = (): boolean =>
+			frameLines(output).map(plain).some((line) => line.includes("/help"));
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			assert.equal(panelOpen(), true, "输入斜杠后面板打开");
+
+			input.emit("data", Buffer.from("\x1b"));
+			assert.equal(panelOpen(), false, "Esc 关掉面板");
+
+			// 输入没变时再按回车，不会把面板重新算出来
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(panelOpen(), false, "输入不变时面板保持关闭");
+
+			// 输入一变，补全重新出现
+			input.emit("data", Buffer.from("h"));
+			assert.equal(panelOpen(), true, "继续输入后补全回来");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("只有斜杠时回车不发送也不入队", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+
+			// 一个斜杠还不是命令：关掉补全后回车，既不入队也不发出去
+			input.emit("data", Buffer.from("/"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("\r"));
+			assert.deepEqual(agent.prompts, ["first"]);
+			assert.equal(frameLines(output).map(plain).join("\n").includes("↳ /"), false);
+			assert.ok(
+				frameLines(output).map(plain).some((line) => line.trim() === "› /"),
+				"输入框保留那个斜杠",
+			);
+		} finally {
+			exitTui(input);
+		}
 	});
 
 	it("命令补全面板点击只移动选中项，回车才执行", () => {
