@@ -148,17 +148,37 @@ function describeFullDetail(tool: string, args: Record<string, unknown>, detail:
 	}
 }
 
-/** 文件类工具的目标路径转成 OSC 8 可用的 file:// 链接。 */
+/**
+ * 工具的目标转成 OSC 8 可用的 file:// 链接。
+ *
+ * 折叠行的下划线由终端为链接绘制，所以每个工具都得有一个目标才有一致的线：
+ * - 文件类工具指向那个文件；
+ * - 搜索类工具指向它搜索的目录；
+ * - 命令指向它执行时所在的工作根——命令本身没有可打开的东西，点开它跑过的目录
+ *   是这里唯一说得通的落点。
+ */
 function fileLinkTarget(
 	tool: string,
 	args: Record<string, unknown>,
 	workspaceRoot: string | undefined,
 ): string | undefined {
-	if (tool !== "read" && tool !== "write" && tool !== "edit" && tool !== "ls") return undefined;
-	// ls 缺省路径就是工作根本身，折叠行同样显示为 `.`，链接跟着指向工作根
-	const path = text(args["path"]) ?? (tool === "ls" ? "." : undefined);
-	if (path === undefined) return undefined;
+	if (tool === "bash") return directoryUrl(".", workspaceRoot);
+	if (tool === "read" || tool === "write" || tool === "edit" || tool === "ls") {
+		// ls 缺省路径就是工作根本身，折叠行同样显示为 `.`，链接跟着指向工作根
+		const path = text(args["path"]) ?? (tool === "ls" ? "." : undefined);
+		return path === undefined ? undefined : resolveUrl(path, workspaceRoot);
+	}
+	if (tool === "find" || tool === "grep") return directoryUrl(text(args["path"]) ?? ".", workspaceRoot);
+	return undefined;
+}
 
+function directoryUrl(path: string, workspaceRoot: string | undefined): string | undefined {
+	const href = resolveUrl(path, workspaceRoot);
+	// 目录 URL 以斜杠结尾，点击打开的是文件夹而不是它里面的同名文件
+	return href === undefined || href.endsWith("/") ? href : `${href}/`;
+}
+
+function resolveUrl(path: string, workspaceRoot: string | undefined): string | undefined {
 	const expanded = expandHome(path);
 	// 没有工作根时无法可靠解析相对路径；绝对路径不受影响
 	if (!isAbsolute(expanded) && workspaceRoot === undefined) return undefined;

@@ -147,7 +147,19 @@ describe("工具调用摘要", () => {
 
 		// 没有工作根时无法可靠解析相对路径
 		assert.equal(describeToolCall("read", { path: "src/a.ts" }).linkTarget, undefined);
-		assert.equal(describeToolCall("bash", { command: "ls" }, root).linkTarget, undefined);
+
+		// 命令与搜索工具没有文件可指，链接落在它们作用的目录上
+		assert.equal(
+			describeToolCall("bash", { command: "ls" }, root).linkTarget,
+			`${pathToFileURL(root).href}/`,
+		);
+		assert.equal(
+			describeToolCall("find", { pattern: "*", path: "src" }, root).linkTarget,
+			`${pathToFileURL(root).href}/src/`,
+		);
+		assert.equal(describeToolCall("grep", { pattern: "x" }, root).linkTarget, `${pathToFileURL(root).href}/`);
+		// 没有工作根时连命令也没有落点
+		assert.equal(describeToolCall("bash", { command: "ls" }).linkTarget, undefined);
 	});
 
 	it("subagent 折叠只取任务首行，展开显示完整任务", () => {
