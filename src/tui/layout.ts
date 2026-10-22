@@ -211,11 +211,11 @@ type PageKind = "help" | "skills" | "mcps";
 /**
  * `/skills` 页的内容。
  *
- * 清单在装配时读定，与写进提示词的那一份是同一个快照：页面若显示模型看不到的技能，
- * 排查「为什么模型没用它」时就对不上了。
+ * 清单按需读取：每次打开页面都重扫一遍，改完 SKILL.md 重新打开就能看到。提示词那一份也是
+ * 每轮重读的，两者取的是同一个来源，不会一个看得到、另一个看不到。
  */
 export interface SkillsPageSource {
-	readonly entries: readonly SkillPageEntry[];
+	readonly list: () => readonly SkillPageEntry[];
 	/** 实际扫过的目录，脚注逐条列出 */
 	readonly directories: readonly string[];
 }
@@ -351,7 +351,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (kind === "skills") {
 			const source = options.skills;
 			if (source === undefined) return skillsPageLines(width, [], []);
-			return skillsPageLines(width, source.entries, source.directories);
+			return skillsPageLines(width, source.list(), source.directories);
 		}
 		return mcpsPageLines(width, options.mcpServers?.() ?? []);
 	};
@@ -980,6 +980,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "compaction_skipped":
 				appendLine(active, `  ${event.message}`);
+				break;
+			case "notice":
+				// 与这一轮无关的提示走状态行：它不该占对话流的位置，看一眼就够了
+				setStatus(event.message);
+				render();
 				break;
 			case "usage_recorded":
 				// 压缩请求花掉的 token 属于压缩成本，不算这一轮对话的用量

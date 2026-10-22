@@ -112,7 +112,7 @@ export function skillsPageLines(
 				];
 	const footnotes = [
 		...directories.map((directory) => `Looking in ${directory}`),
-		"New skills take effect after a restart.",
+		"Changes take effect on the next turn.",
 	];
 	return sectionPageLines(SKILLS_TITLE, sections, footnotes, width);
 }

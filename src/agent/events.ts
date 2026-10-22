@@ -64,6 +64,8 @@ export type AgentEvent =
 	| { readonly type: "compaction_failed"; readonly message: string }
 	/** 手动压缩时没有可压缩的部分：上下文本来就短，保持不变 */
 	| { readonly type: "compaction_skipped"; readonly message: string }
+	/** 一句与这一轮无关但要让人看见的提示，比如配置刚被重新读取 */
+	| { readonly type: "notice"; readonly message: string }
 	/** 模型返回出错或连接中断。整个回合到此为止。 */
 	| { readonly type: "error"; readonly message: string }
 	/** 用户中止 */

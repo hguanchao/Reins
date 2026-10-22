@@ -2744,7 +2744,7 @@ describe("全屏布局", () => {
 			version: "1.2.3",
 			info: FOOTER_INFO,
 			skills: {
-				entries: [
+				list: () => [
 					{
 						name: "writer",
 						description: "把改动整理成文档",
@@ -2776,6 +2776,37 @@ describe("全屏布局", () => {
 			// 关掉之后回到启动画面：页面没有留下任何残影
 			input.emit("data", Buffer.from("\x1b"));
 			assert.ok(frameLines(output).map(plain).join("\n").includes("v1.2.3"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("/skills 每次打开都重扫，改完技能重新打开就能看到", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		let entries = [{ name: "writer", description: "旧说明", scope: "user" as const }];
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			skills: { list: () => entries, directories: ["/skills"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/skills\r"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("旧说明"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			entries = [{ name: "writer", description: "新说明", scope: "user" as const }];
+			input.emit("data", Buffer.from("/skills\r"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("新说明"));
+			assert.equal(text.includes("旧说明"), false);
 		} finally {
 			exitTui(input);
 		}

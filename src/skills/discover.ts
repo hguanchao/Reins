@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { closeSync, openSync, readSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -44,6 +44,8 @@ export interface SkillInfo {
 
 const SKILL_FILE = "SKILL.md";
 const FRONTMATTER_FENCE = "---";
+/** 只读文件开头这么多字节：frontmatter 在这里，正文再长也不必整份读进来 */
+const HEAD_BYTES = 8 * 1024;
 
 /**
  * 默认技能根。
@@ -114,11 +116,18 @@ function discoverRoot(root: SkillRoot): readonly SkillInfo[] {
 }
 
 function readSkillFile(path: string): string | undefined {
+	// frontmatter 一定在开头；清单每轮都要扫一遍，只读开头这一段，别让某个大文件拖慢一轮
+	let descriptor: number | undefined;
 	try {
-		return readFileSync(path, "utf8");
+		descriptor = openSync(path, "r");
+		const buffer = Buffer.alloc(HEAD_BYTES);
+		const read = readSync(descriptor, buffer, 0, HEAD_BYTES, 0);
+		return buffer.subarray(0, read).toString("utf8");
 	} catch {
 		// 目录不是技能目录，或者文件读不出来：两种情况都当作「这里没有技能」
 		return undefined;
+	} finally {
+		if (descriptor !== undefined) closeSync(descriptor);
 	}
 }
 

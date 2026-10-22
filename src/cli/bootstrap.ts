@@ -1,3 +1,4 @@
+import { existsSync, statSync } from "node:fs";
 import { basename } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
@@ -11,6 +12,7 @@ import { initializeConfigFiles } from "../config/initialize.ts";
 import { ModelCatalog } from "../config/model-catalog.ts";
 import { updateModelSelection, updateUserConfigValue } from "../config/write-back.ts";
 import { mergeConfigs, mergeProviders } from "../config/merge.ts";
+import { applyLiveConfig, diffConfig } from "../config/reload.ts";
 import { loadProviders, type ProvidersConfig } from "../config/providers-file.ts";
 import {
 	configFilePath,
@@ -37,7 +39,7 @@ import {
 	lastContextTokens,
 	sumUsage,
 } from "../session/usage.ts";
-import { defaultSkillRoots, discoverSkills } from "../skills/discover.ts";
+import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -138,16 +140,17 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 
 	const workRoot = process.cwd();
 
-	// 技能一次读定：写进提示词的那一份与 /skills 显示的是同一个快照，改完要重启才生效
+	// 技能每轮重扫：改完 SKILL.md 下一轮就生效，不必重启
 	const skillRoots = defaultSkillRoots(workRoot, "trusted" in loaded && loaded.trusted);
-	const skills = discoverSkills(skillRoots);
+	const skills = (): readonly SkillInfo[] => discoverSkills(skillRoots);
 	const skillsPage = {
-		entries: skills.map((skill) => ({
-			name: skill.name,
-			description: skill.description.length === 0 ? "(no description)" : skill.description,
-			note: skill.path,
-			scope: skill.scope,
-		})),
+		list: () =>
+			skills().map((skill) => ({
+				name: skill.name,
+				description: skill.description.length === 0 ? "(no description)" : skill.description,
+				note: skill.path,
+				scope: skill.scope,
+			})),
 		directories: skillRoots.map((root) => root.directory),
 	};
 
@@ -183,6 +186,8 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	const policy = new PermissionPolicy(config.approval);
 	const catalog = new ModelCatalog(providersConfig, config, initialSelection);
 	let activeConfig = config;
+	/** 上一轮看到的配置文件版本；变了就重读一次 */
+	let configStamp = configFileStamp(configFile, projectConfigFilePath(workRoot));
 	const reviewer =
 		config.approval === "auto"
 			? createDynamicReviewer(catalog, () => activeConfig, workRoot)
@@ -276,12 +281,49 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		}
 	};
 
+	/**
+	 * 配置变了就重读一次。
+	 *
+	 * 只应用每轮重新读取的那部分，其余明确说「要重启」——配置项一半生效、一半不生效，
+	 * 比整体不生效更难解释清楚到底发生了什么。
+	 *
+	 * 返回一句给使用者看的话；文件没动过时返回 undefined。
+	 */
+	const reloadConfigIfChanged = (): string | undefined => {
+		const stamp = configFileStamp(configFile, projectConfigFilePath(workRoot));
+		if (stamp === configStamp) return undefined;
+		configStamp = stamp;
+
+		let next: Config;
+		try {
+			next = readConfigQuietly(options, workRoot, "trusted" in loaded && loaded.trusted);
+		} catch {
+			return "Config could not be re-read; keeping the previous settings";
+		}
+
+		const diff = diffConfig(activeConfig, next);
+		if (diff.live.length === 0 && diff.restart.length === 0) return undefined;
+		if (diff.live.length > 0) {
+			activeConfig = applyLiveConfig(activeConfig, next, diff.live);
+			refreshInfo();
+		}
+
+		const applied = diff.live.length === 0 ? [] : [`Config reloaded: ${diff.live.join(", ")}`];
+		const pending = diff.restart.length === 0 ? [] : [`restart to apply: ${diff.restart.join(", ")}`];
+		return applied.length > 0
+			? [...applied, ...pending].join(" · ")
+			: `Config changed · ${pending.join(" · ")}`;
+	};
+
 	/** 一轮真实对话。模型/思考等级都从当前目录读取，切换后下一轮立即生效。 */
 	const runTurn = async (
 		prompt: string,
 		onEvent: AgentEventListener,
 		signal: AbortSignal,
 	): Promise<void> => {
+		const reloaded = reloadConfigIfChanged();
+		if (reloaded !== undefined) await onEvent({ type: "notice", message: reloaded });
+
 		const current = catalog.selection;
 		if (current === undefined) throw new Error("No model selected; run /model first");
 		const compactor = createCompactor(activeConfig, current);
@@ -799,6 +841,35 @@ function disabledPlugins(config: Config): ReadonlySet<string> {
 	return new Set(config.plugins.disabled);
 }
 
+/** 配置文件的「版本」：修改时间与大小。读不到就当它不存在。 */
+function configFileStamp(...paths: readonly string[]): string {
+	return paths
+		.map((path) => {
+			try {
+				const info = statSync(path);
+				return `${info.mtimeMs}:${info.size}`;
+			} catch {
+				return "-";
+			}
+		})
+		.join("|");
+}
+
+/**
+ * 重新读一遍配置，不打印任何东西。
+ *
+ * 与启动时共用同一套合并规则，但信任结论沿用启动时那一次：界面已经起来了，往 stderr 写
+ * 提示会毁屏；而信任是启动期的决定，中途重新问一遍也没有意义。
+ */
+function readConfigQuietly(options: CliOptions, workRoot: string, trusted: boolean): Config {
+	const userConfig = ConfigFile.load(options.configPath ?? configFilePath());
+	if (!trusted) return userConfig.config;
+	const projectPath = projectConfigFilePath(workRoot);
+	return existsSync(projectPath)
+		? mergeConfigs(userConfig, ConfigFile.load(projectPath))
+		: userConfig.config;
+}
+
 function createSandboxFor(config: Config, workRoot: string, host: PluginHost): SandboxView {
 	const setup = createSandbox(config.sandbox, workRoot, host.backends());
 	for (const warning of setup.warnings) writeStderr(`${warning}\n`);
@@ -889,8 +960,8 @@ function createDriverFor(
 		readonly session: Session;
 		readonly workspace: WorkspaceBoundary;
 		readonly sandbox: SandboxView;
-		/** 可用技能；写进提示词，正文由模型自己用 read 工具去读 */
-		readonly skills?: readonly PromptSkill[];
+		/** 可用技能；每轮重新取，改完 SKILL.md 下一轮就生效 */
+		readonly skills?: () => readonly PromptSkill[];
 	},
 	onEvent: AgentEventListener,
 ): TurnDriver {

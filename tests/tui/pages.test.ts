@@ -119,7 +119,7 @@ describe("整屏页", () => {
 		assert.ok(text.includes("把改动整理成文档"));
 		assert.ok(text.includes("/home/me/.reins/skills/writer/SKILL.md"));
 		assert.ok(text.includes("reviewer"));
-		assert.ok(text.includes("restart"));
+		assert.ok(text.includes("next turn"));
 	});
 
 	it("技能页没有技能时给出空状态，而不是只剩一个标题", () => {
