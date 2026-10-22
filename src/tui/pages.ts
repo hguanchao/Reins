@@ -39,7 +39,7 @@ export interface PageSection {
 /** 命令之外的固定内容。 */
 const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Enter", description: "Send the prompt or confirm the selected action" },
-	{ name: "Tab", description: "Complete or confirm the selected menu item" },
+	{ name: "Tab", description: "Complete the selected item into the prompt" },
 	{ name: "Esc", description: "Close a menu or this page; deny an approval" },
 	{ name: "Ctrl+C twice", description: "Exit the interface" },
 	{ name: "Up / Down", description: "Prompt history, menu navigation, or page scrolling" },

@@ -1,0 +1,31 @@
+import type { Session } from "../session/session.ts";
+import type { SessionStore } from "../session/store.ts";
+import { buildTranscriptHistory } from "../tui/history.ts";
+import type { TranscriptTurn } from "../tui/transcript.ts";
+import { resumeSession } from "./session-target.ts";
+
+export interface SwitchedSession {
+	readonly session: Session;
+	readonly history: readonly TranscriptTurn[];
+}
+
+/**
+ * 打开目标会话并读出它的对话流。
+ *
+ * 目标文件缺失或损坏时在打开阶段就失败，当前会话完全不受影响；关闭旧会话由调用方拿到
+ * 新会话之后再做，保证写入器交接只有一次。
+ */
+export function openSessionForSwitch(
+	workRoot: string,
+	id: string,
+	store: SessionStore,
+): SwitchedSession {
+	const session = resumeSession(workRoot, id, store);
+	try {
+		return { session, history: buildTranscriptHistory(session.state().messages, workRoot) };
+	} catch (error) {
+		// 读不出历史就不再保留这个目标会话的写入通道；原始错误更重要，关闭失败不再覆盖它
+		void session.close().catch(() => {});
+		throw error;
+	}
+}

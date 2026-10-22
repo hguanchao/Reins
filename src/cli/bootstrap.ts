@@ -20,6 +20,7 @@ import {
 	pluginsDir,
 	projectConfigFilePath,
 	projectProvidersFilePath,
+	sessionsDir,
 	spillDir,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
@@ -49,12 +50,13 @@ import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { currentBranch } from "../workspace/git.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
-import { runTui, type EffortMenuSource, type ModelMenuSource } from "../tui/layout.ts";
+import { runTui, type EffortMenuSource, type ModelMenuSource, type SessionMenuSource } from "../tui/layout.ts";
 import { buildTranscriptHistory } from "../tui/history.ts";
 import type { FooterInfo } from "../tui/footer.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { runPrintMode } from "./print-mode.ts";
 import { createSession, resumeCommand, resumeSession } from "./session-target.ts";
+import { openSessionForSwitch } from "./session-switch.ts";
 import { createStartupTimer } from "./startup-timer.ts";
 import { readVersion } from "../version.ts";
 
@@ -252,15 +254,17 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		return 1;
 	}
 	if (session === undefined) return 1;
+	// 当前会话会被 /session 菜单替换；后续所有装配都读这个可变引用
+	let activeSession: Session = session;
 	startup.mark("session");
 
 	let sessionPersisted =
-		options.resume !== undefined || (loaded.ok && session.path !== null);
+		options.resume !== undefined || (loaded.ok && activeSession.path !== null);
 	/** 从受限模式恢复后补建会话文件；失败只报告，不阻止本次使用。 */
 	const markSessionReady = (): void => {
-		if (sessionPersisted || session.path === null) return;
+		if (sessionPersisted || activeSession.path === null) return;
 		try {
-			session.begin();
+			activeSession.begin();
 			sessionPersisted = true;
 		} catch (error) {
 			writeStderr(
@@ -271,14 +275,15 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 
 	let footerInfo =
 		initialSelection !== undefined
-			? createFooterInfo(workRoot, activeConfig, initialSelection, session)
-			: createUnavailableFooterInfo(workRoot, session);
-	const history = buildTranscriptHistory(session.state().messages, workRoot);
+			? createFooterInfo(workRoot, activeConfig, initialSelection, activeSession)
+			: createUnavailableFooterInfo(workRoot, activeSession);
+	const history = buildTranscriptHistory(activeSession.state().messages, workRoot);
 	const refreshInfo = (): void => {
 		const current = catalog.selection;
-		if (current !== undefined) {
-			footerInfo = createFooterInfo(workRoot, activeConfig, current, session);
-		}
+		footerInfo =
+			current === undefined
+				? createUnavailableFooterInfo(workRoot, activeSession)
+				: createFooterInfo(workRoot, activeConfig, current, activeSession);
 	};
 
 	/**
@@ -332,9 +337,9 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 				config: activeConfig,
 				selection: current,
 				compactor,
-				contextTokens: lastContextTokens(session.entries()),
+				contextTokens: lastContextTokens(activeSession.entries()),
 			},
-			{ registry, session, workspace, sandbox, skills },
+			{ registry, session: activeSession, workspace, sandbox, skills },
 			onEvent,
 		);
 		await driver.run(prompt, signal);
@@ -363,9 +368,9 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 				config: activeConfig,
 				selection: current,
 				compactor,
-				contextTokens: lastContextTokens(session.entries()),
+				contextTokens: lastContextTokens(activeSession.entries()),
 			},
-			{ registry, session, workspace, sandbox, skills },
+			{ registry, session: activeSession, workspace, sandbox, skills },
 			onEvent,
 		);
 		await driver.compact(signal);
@@ -379,7 +384,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		providersFile,
 		writePath: configFile,
 		onSelection: (next) => {
-			footerInfo = createFooterInfo(workRoot, activeConfig, next, session);
+			footerInfo = createFooterInfo(workRoot, activeConfig, next, activeSession);
 		},
 		onReady: markSessionReady,
 	});
@@ -422,6 +427,39 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		},
 	};
 
+	/** `/session` 菜单的数据来源；没有会话存储时不提供，命令随之不可用。 */
+	const sessionMenu: SessionMenuSource | undefined =
+		store === undefined
+			? undefined
+			: {
+					list: () => {
+						const active = activeSession.id;
+						return store.list(sessionsDir(workRoot)).map((listing) => ({
+							id: listing.id,
+							title: sessionTitle(listing.title),
+							hint: sessionAge(listing.updatedAt),
+							current: listing.id === active,
+						}));
+					},
+					select: (id) => {
+						const previous = activeSession;
+						if (id === previous.id) return { changed: false, history: [], warnings: [] };
+
+						const switched = openSessionForSwitch(workRoot, id, store);
+
+						// 旧会话先释放写入器，之后条目才只落到新会话里
+						void previous.close().catch((error: unknown) => {
+							writeStderr(
+								`reins: could not close the previous session: ${error instanceof Error ? error.message : String(error)}\n`,
+							);
+						});
+						activeSession = switched.session;
+						sessionPersisted = activeSession.path !== null;
+						refreshInfo();
+						return { changed: true, history: switched.history, warnings: [] };
+					},
+				};
+
 	try {
 		const code = await runTui({
 			version: readVersion(),
@@ -430,6 +468,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			ready,
 			skills: skillsPage,
 			mcpServers: mcpStatus === undefined ? undefined : mcpServerRows,
+			sessionMenu,
 			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
 			modelMenu,
@@ -439,13 +478,13 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			history,
 			workspaceRoot: workRoot,
 		});
-		if (sessionPersisted) writeStdout(`${resumeCommand(session.id)}\n`);
+		if (sessionPersisted) writeStdout(`${resumeCommand(activeSession.id)}\n`);
 		return code;
 	} catch (error) {
 		writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
 	} finally {
-		await session.close();
+		await activeSession.close();
 	}
 }
 
@@ -1058,6 +1097,27 @@ function createSessionFor(workRoot: string, store: SessionStore | undefined): Se
 		writeStderr("No session store (session-plugin is disabled or failed to load), this session will not be saved to a file\n");
 	}
 	return createSession(workRoot, store);
+}
+
+/** 会话菜单里的一行标题：控制字符会弄乱面板，统一换成空格。 */
+function sessionTitle(title: string | undefined): string {
+	const text = (title ?? "").replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
+	return text.length === 0 ? "(no conversation yet)" : text;
+}
+
+/** 会话最近活动的短表示；菜单一行里只放得下几个字符。 */
+function sessionAge(updatedAt: string): string {
+	const elapsed = Date.now() - Date.parse(updatedAt);
+	if (!Number.isFinite(elapsed) || elapsed < 0) return "";
+	const minutes = Math.floor(elapsed / 60_000);
+	if (minutes < 1) return "now";
+	if (minutes < 60) return `${minutes}m`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h`;
+	const days = Math.floor(hours / 24);
+	if (days < 7) return `${days}d`;
+	const weeks = Math.floor(days / 7);
+	return weeks < 52 ? `${weeks}w` : `${Math.floor(weeks / 52)}y`;
 }
 
 function writeStdout(text: string): void {

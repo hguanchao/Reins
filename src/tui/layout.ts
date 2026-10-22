@@ -23,6 +23,12 @@ import {
 	type EffortMenuState,
 } from "./effort-menu.ts";
 import {
+	sessionMenuHeight,
+	renderSessionMenu,
+	type SessionMenuItem,
+	type SessionMenuState,
+} from "./session-menu.ts";
+import {
 	commandMenuHeight,
 	renderCommandMenu,
 	type CommandMenuItem,
@@ -102,6 +108,7 @@ const WRITING_RESPONSE = "Writing response...";
 /** 配置不可用时按下回车给出的提示；不启动对话，避免看起来已经正常工作。 */
 const CONFIGURATION_REQUIRED = "Configuration required";
 const AGENT_UNAVAILABLE = "Agent unavailable";
+const SESSION_UNAVAILABLE = "Session storage is unavailable";
 const ABORTING = "Aborting...";
 const ABORTED = "Aborted";
 const ERROR_STATUS = "Error";
@@ -176,6 +183,21 @@ export interface ModelMenuSource {
 	readonly select: (item: ModelMenuItem) => ModelSwitchResult;
 }
 
+/** 切换会话的结果：对话流要整体换掉，而不是在末尾追加。 */
+export interface SessionSwitchResult {
+	/** false 表示选中的就是当前会话，界面不需要重放历史 */
+	readonly changed: boolean;
+	readonly history: readonly TranscriptTurn[];
+	readonly warnings: readonly string[];
+}
+
+export interface SessionMenuSource {
+	/** 当前项目的全部会话，按最近活动从新到旧；每次打开菜单时重新取 */
+	readonly list: () => readonly SessionMenuItem[];
+	/** 切换会话；失败时抛错，由界面显示原因 */
+	readonly select: (id: string) => SessionSwitchResult;
+}
+
 export interface EffortMenuSource {
 	/** 当前配置里的思考等级；切换后重新读取 */
 	readonly current: () => ThinkingLevel;
@@ -242,6 +264,8 @@ export interface TuiOptions {
 	readonly skills?: SkillsPageSource;
 	/** /mcps 的数据来源；不提供时该命令不可用（MCP 插件缺席就是这种情况） */
 	readonly mcpServers?: () => readonly PageEntry[];
+	/** /session 菜单的数据来源；不提供时该命令不可用（没有会话存储时就是这种情况） */
+	readonly sessionMenu?: SessionMenuSource;
 	/** 一轮结束时的提醒方式；默认 auto（失焦时响铃） */
 	readonly notify?: NotifyMode;
 	/** 启动时回填的历史对话；续聊时使用 */
@@ -300,6 +324,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					? "Requires a valid configuration"
 					: "Compress the conversation context into a summary now",
 			enabled: options.agent?.compact !== undefined,
+		},
+		{
+			name: "session",
+			description:
+				options.sessionMenu === undefined
+					? "Session storage is unavailable"
+					: "Switch to another session in this project",
+			enabled: options.sessionMenu !== undefined,
 		},
 		{
 			name: "help",
@@ -416,6 +448,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let approvalSelection: ApprovalAnswer = "once";
 	let modelMenu: ModelMenuState | undefined;
 	let effortMenu: EffortMenuState | undefined;
+	let sessionMenu: SessionMenuState | undefined;
 	let commandMenu: CommandMenuState | undefined;
 	/** 占据主区域的整屏页；打开期间视口只跟着它自己的滚动。 */
 	let openPage: PageKind | undefined;
@@ -454,13 +487,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				? modelMenuHeight(modelMenu.items.length)
 				: effortMenu !== undefined
 					? effortMenuHeight()
-					: commandMenu !== undefined
-						? commandMenuHeight(commandMenu.items.length)
-						: 0;
+					: sessionMenu !== undefined
+						? sessionMenuHeight(sessionMenu.items.length)
+						: commandMenu !== undefined
+							? commandMenuHeight(commandMenu.items.length)
+							: 0;
 	const menuOpen = (): boolean =>
 		approvalPrompt !== undefined ||
 		modelMenu !== undefined ||
 		effortMenu !== undefined ||
+		sessionMenu !== undefined ||
 		commandMenu !== undefined;
 	/** 整屏页与菜单一样把输入框让给内容：紧凑页脚、不画光标。 */
 	const compactFooter = (): boolean => menuOpen() || openPage !== undefined;
@@ -536,9 +572,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					? renderModelMenu(width, modelMenu)
 					: effortMenu !== undefined
 						? renderEffortMenu(width, effortMenu)
-						: commandMenu !== undefined
-							? renderCommandMenu(width, commandMenu)
-							: [];
+						: sessionMenu !== undefined
+							? renderSessionMenu(width, sessionMenu)
+							: commandMenu !== undefined
+								? renderCommandMenu(width, commandMenu)
+								: [];
 		const inputLines = inputView(input, width, inputCursor);
 		// 输入以已注册的命令开头时把命令本身着色，参数保持正文色
 		const typedCommand = input.startsWith("/") ? (input.slice(1).split(/\s/, 1)[0] ?? "") : "";
@@ -555,6 +593,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 							focused &&
 								modelMenu === undefined &&
 								effortMenu === undefined &&
+								sessionMenu === undefined &&
 								openPage === undefined,
 							undefined,
 							currentInfo(),
@@ -582,6 +621,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			openPage === undefined &&
 			modelMenu === undefined &&
 			effortMenu === undefined &&
+			sessionMenu === undefined &&
 			approvalPrompt === undefined &&
 			inputRow <= height
 				? moveCursor(inputRow, inputLines.column) + SHOW_CURSOR
@@ -1092,38 +1132,56 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		render();
 	};
 
+	/** 写回模型选择；菜单回车确认与 `/model <provider>/<model>` 共用同一条路径。 */
+	const selectModel = (item: ModelMenuItem): void => {
+		const source = options.modelMenu;
+		if (source === undefined) return;
+
+		let response: TranscriptLine[];
+		try {
+			const result = source.select(item);
+			ready = result.ready;
+			activeWarning = result.warning;
+			response = [
+				`Model switched to ${item.provider}/${item.model}${activeTurn === undefined ? "." : " (from the next turn)."}`,
+				...result.warnings.map((text) => ({ kind: "warning" as const, text })),
+			];
+		} catch (error) {
+			response = [
+				{
+					kind: "error",
+					text: `Error: Failed to switch model: ${error instanceof Error ? error.message : String(error)}`,
+				},
+			];
+		}
+		appendCommandTurn("/model", response);
+	};
+
 	const confirmMenu = (): void => {
 		if (modelMenu === undefined) return;
 
 		const item = modelMenu.items[modelMenu.cursor];
-		const source = options.modelMenu;
 		modelMenu = undefined;
 		effortMenu = undefined;
 		commandMenu = undefined;
 		setInput("");
 
-		if (item !== undefined && source !== undefined) {
-			let response: TranscriptLine[];
-			try {
-				const result = source.select(item);
-				ready = result.ready;
-				activeWarning = result.warning;
-				response = [
-					`Model switched to ${item.provider}/${item.model}${activeTurn === undefined ? "." : " (from the next turn)."}`,
-					...result.warnings.map((text) => ({ kind: "warning" as const, text })),
-				];
-			} catch (error) {
-				response = [
-					{
-						kind: "error",
-						text: `Error: Failed to switch model: ${error instanceof Error ? error.message : String(error)}`,
-					},
-				];
-			}
-			appendCommandTurn("/model", response);
-		}
+		if (item !== undefined) selectModel(item);
 		render();
 	};
+
+	/** Tab 在最后一级面板只把选中项补进输入框，不执行；要切换仍按回车。 */
+	const completeModelMenu = (): void => {
+		const item = modelMenu?.items[modelMenu.cursor];
+		if (item === undefined) return;
+
+		modelMenu = undefined;
+		effortMenu = undefined;
+		commandMenu = undefined;
+		setInput(`/model ${item.provider}/${item.model}`);
+		render();
+	};
+
 	const cancelMenu = (): void => {
 		modelMenu = undefined;
 		effortMenu = undefined;
@@ -1162,31 +1220,46 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		render();
 	};
 
+	/** 写回思考等级；菜单回车确认与 `/effort <level>` 共用同一条路径。 */
+	const selectEffort = (level: ThinkingLevel): void => {
+		const source = options.effortMenu;
+		if (source === undefined) return;
+
+		let response: TranscriptLine[];
+		try {
+			source.select(level);
+			response = [
+				`Effort set to ${level}${activeTurn === undefined ? "." : " (from the next turn)."}`,
+			];
+		} catch (error) {
+			response = [
+				{
+					kind: "error",
+					text: `Error: Failed to set effort: ${error instanceof Error ? error.message : String(error)}`,
+				},
+			];
+		}
+		appendCommandTurn("/effort", response);
+	};
+
 	const confirmEffortMenu = (): void => {
 		if (effortMenu === undefined) return;
 
 		const level = THINKING_LEVELS[effortMenu.cursor];
-		const source = options.effortMenu;
 		effortMenu = undefined;
 		setInput("");
 
-		if (level !== undefined && source !== undefined) {
-			let response: TranscriptLine[];
-			try {
-				source.select(level);
-				response = [
-					`Effort set to ${level}${activeTurn === undefined ? "." : " (from the next turn)."}`,
-				];
-			} catch (error) {
-				response = [
-					{
-						kind: "error",
-						text: `Error: Failed to set effort: ${error instanceof Error ? error.message : String(error)}`,
-					},
-				];
-			}
-			appendCommandTurn("/effort", response);
-		}
+		if (level !== undefined) selectEffort(level);
+		render();
+	};
+
+	/** Tab 在最后一级面板只把选中项补进输入框，不执行；要写回仍按回车。 */
+	const completeEffortMenu = (): void => {
+		const level = effortMenu === undefined ? undefined : THINKING_LEVELS[effortMenu.cursor];
+		if (level === undefined) return;
+
+		effortMenu = undefined;
+		setInput(`/effort ${level}`);
 		render();
 	};
 
@@ -1197,9 +1270,132 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		render();
 	};
 
+	const keepSessionCursor = (): void => {
+		if (sessionMenu === undefined) return;
+		sessionMenu.scrollTop = keepVisible(
+			sessionMenu.scrollTop,
+			sessionMenu.cursor,
+			sessionMenu.items.length,
+		);
+	};
+
+	const openSessionMenu = (): void => {
+		const source = options.sessionMenu;
+		if (source === undefined) return;
+
+		commandMenu = undefined;
+		modelMenu = undefined;
+		effortMenu = undefined;
+		let items: readonly SessionMenuItem[];
+		try {
+			items = source.list();
+		} catch (error) {
+			setInput("");
+			follow = true;
+			const message = error instanceof Error ? error.message : String(error);
+			appendCommandTurn("/session", [
+				{ kind: "error", text: `Error: Failed to list sessions: ${message}` },
+			]);
+			return;
+		}
+		if (items.length === 0) {
+			setInput("");
+			follow = true;
+			appendCommandTurn("/session", ["No sessions in this project yet."]);
+			return;
+		}
+
+		const current = items.findIndex((item) => item.current);
+		sessionMenu = { items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
+		keepSessionCursor();
+		render();
+	};
+
+	const moveSessionMenu = (delta: number): void => {
+		if (sessionMenu === undefined) return;
+		sessionMenu.cursor = Math.min(
+			sessionMenu.items.length - 1,
+			Math.max(0, sessionMenu.cursor + delta),
+		);
+		keepSessionCursor();
+		render();
+	};
+
+	/** 切换后整段对话流都要换掉；旧会话的写入器同时释放。 */
+	const switchSession = (id: string): void => {
+		const source = options.sessionMenu;
+		if (source === undefined) return;
+
+		let result: SessionSwitchResult;
+		try {
+			result = source.select(id);
+		} catch (error) {
+			follow = true;
+			const message = error instanceof Error ? error.message : String(error);
+			appendCommandTurn("/session", [
+				{ kind: "error", text: `Error: Failed to switch session: ${message}` },
+			]);
+			return;
+		}
+		if (!result.changed) {
+			render();
+			return;
+		}
+
+		turns.length = 0;
+		for (const turn of result.history) {
+			turns.push({ prompt: turn.prompt, response: [...turn.response] });
+		}
+		markTranscriptDirty();
+		initialScroll = false;
+		scrollTop = 0;
+		follow = true;
+		hasInput = turns.length > 0;
+		// 上一个会话留下的状态/错误不该跟着出现在新会话里
+		clearStatus();
+		appendCommandTurn("/session", [`Switched to session ${id}.`, ...result.warnings]);
+	};
+
+	const confirmSessionMenu = (): void => {
+		if (sessionMenu === undefined) return;
+
+		const item = sessionMenu.items[sessionMenu.cursor];
+		sessionMenu = undefined;
+		commandMenu = undefined;
+		modelMenu = undefined;
+		effortMenu = undefined;
+		setInput("");
+
+		// 选中的就是当前会话：关掉面板即可，不必重放一遍历史
+		if (item === undefined || item.current) {
+			render();
+			return;
+		}
+		switchSession(item.id);
+	};
+
+	/** Tab 在最后一级面板只补全，不切换；要切换仍按回车。 */
+	const completeSessionMenu = (): void => {
+		const item = sessionMenu?.items[sessionMenu.cursor];
+		if (item === undefined) return;
+
+		sessionMenu = undefined;
+		commandMenu = undefined;
+		modelMenu = undefined;
+		effortMenu = undefined;
+		setInput(`/session ${item.id}`);
+		render();
+	};
+
+	const cancelSessionMenu = (): void => {
+		sessionMenu = undefined;
+		setInput("");
+		render();
+	};
+
 	/** 输入变化后重算命令补全列表；只匹配斜杠后不含空格的命令名。 */
 	const updateCommandMenu = (): void => {
-		if (modelMenu !== undefined) return;
+		if (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined) return;
 
 		if (input.startsWith("/") && !input.slice(1).includes(" ")) {
 			const query = input.slice(1).toLowerCase();
@@ -1209,11 +1405,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					command.description.toLowerCase().includes(query),
 			);
 			if (items.length > 0) {
+				// 输入完整命令名时，光标落到这条命令上：描述里含同一个词的其他命令
+				// 也匹配得上，不这样做，敲完 /session 回车会先执行排在前面的 /model
+				const exact = items.findIndex((item) => item.name === query);
 				const previous = commandMenu?.items[commandMenu.cursor]?.name;
 				const cursor =
-					previous === undefined
-						? 0
-						: Math.max(0, items.findIndex((item) => item.name === previous));
+					exact >= 0
+						? exact
+						: previous === undefined
+							? 0
+							: Math.max(0, items.findIndex((item) => item.name === previous));
 				commandMenu = {
 					items,
 					cursor,
@@ -1382,7 +1583,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		setInput(`/${command.name}`);
 
 		if (command.name === "model") {
-			if (options.modelMenu === undefined) {
+			const source = options.modelMenu;
+			if (source === undefined) {
 				setInput("");
 				statusElapsedMs = 0;
 				statusTokens = 0;
@@ -1390,12 +1592,34 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				render();
 				return;
 			}
-			openModelMenu();
+
+			const target = args.trim();
+			if (target.length === 0) {
+				openModelMenu();
+				return;
+			}
+
+			const items = source.list();
+			const item = items.find((candidate) => `${candidate.provider}/${candidate.model}` === target);
+			if (item === undefined) {
+				appendCommandTurn("/model", [
+					items.length === 0
+						? "No models are available."
+						: {
+								kind: "error",
+								text: `Error: Unknown model: ${target}. Run /model to choose from the list.`,
+							},
+				]);
+				return;
+			}
+			setInput("");
+			selectModel(item);
 			return;
 		}
 
 		if (command.name === "effort") {
-			if (options.effortMenu === undefined) {
+			const source = options.effortMenu;
+			if (source === undefined) {
 				setInput("");
 				statusElapsedMs = 0;
 				statusTokens = 0;
@@ -1403,7 +1627,46 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				render();
 				return;
 			}
-			openEffortMenu();
+
+			const target = args.trim();
+			if (target.length === 0) {
+				openEffortMenu();
+				return;
+			}
+
+			const level = THINKING_LEVELS.find((candidate) => candidate === target);
+			if (level === undefined) {
+				appendCommandTurn("/effort", [
+					{
+						kind: "error",
+						text: `Error: Unknown effort: ${target}. Available: ${THINKING_LEVELS.join(", ")}.`,
+					},
+				]);
+				return;
+			}
+			setInput("");
+			selectEffort(level);
+			return;
+		}
+
+		if (command.name === "session") {
+			const source = options.sessionMenu;
+			if (source === undefined) {
+				setInput("");
+				statusElapsedMs = 0;
+				statusTokens = 0;
+				setStatus(SESSION_UNAVAILABLE);
+				render();
+				return;
+			}
+
+			const target = args.trim();
+			if (target.length === 0) {
+				openSessionMenu();
+				return;
+			}
+			setInput("");
+			switchSession(target);
 			return;
 		}
 
@@ -1583,7 +1846,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
-		if (modelMenu !== undefined || effortMenu !== undefined) {
+		if (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined) {
 			// 面板只接管选择相关的按键（上下、回车、Tab、Esc）与鼠标；其余按键放行给输入框。
 			// 文字一变面板就收掉（见 editInput 处）：面板由命令打开，输入不再是那条命令
 			const panelsHeight = terminalHeight(stdout);
@@ -1649,23 +1912,64 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						confirmEffortMenu();
 						return;
 					}
+				} else if (sessionMenu !== undefined) {
+					const index = menuIndexAtRow(
+						event.row,
+						panelTop,
+						sessionMenu.items.length,
+						sessionMenu.scrollTop,
+						sessionMenu.cursor,
+					);
+					if (motion) {
+						if (index !== undefined && index !== sessionMenu.cursor) {
+							sessionMenu.cursor = index;
+							keepSessionCursor();
+							render();
+							return;
+						}
+						continue;
+					}
+					if (event.press && event.button === 64) {
+						moveSessionMenu(-1);
+						return;
+					}
+					if (event.press && event.button === 65) {
+						moveSessionMenu(1);
+						return;
+					}
+					if (event.press && (event.button & 3) === 0 && index !== undefined) {
+						sessionMenu.cursor = index;
+						confirmSessionMenu();
+						return;
+					}
 				}
 			}
 
 			const key = menuKey(text);
 			const inModel = modelMenu !== undefined;
+			const inSession = sessionMenu !== undefined;
 			if (key === "up" || key === "down") {
 				if (inModel) moveMenu(key === "up" ? -1 : 1);
+				else if (inSession) moveSessionMenu(key === "up" ? -1 : 1);
 				else moveEffortMenu(key === "up" ? -1 : 1);
 				return;
 			}
-			if (key === "enter" || key === "tab") {
+			if (key === "enter") {
 				if (inModel) confirmMenu();
+				else if (inSession) confirmSessionMenu();
 				else confirmEffortMenu();
+				return;
+			}
+			if (key === "tab") {
+				// 最后一级面板没有更深的选择：Tab 只补进输入框，不代替回车执行
+				if (inModel) completeModelMenu();
+				else if (inSession) completeSessionMenu();
+				else completeEffortMenu();
 				return;
 			}
 			if (key === "escape") {
 				if (inModel) cancelMenu();
+				else if (inSession) cancelSessionMenu();
 				else cancelEffortMenu();
 				return;
 			}
@@ -1896,13 +2200,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				return;
 			}
 			if (key === "tab") {
-				// 补全命令名但留一个空格：多数命令还要带参数，补全不该顺手执行
 				const selected = commandMenu.items[commandMenu.cursor];
-				if (selected !== undefined) {
-					setInput(`/${selected.name} `);
-					updateCommandMenu();
-					render();
+				if (selected === undefined) return;
+				// 有二级选择面板的命令，Tab 等同于回车：直接打开面板；一轮进行中只放行安全命令
+				const opensPanel =
+					(selected.name === "model" && options.modelMenu !== undefined) ||
+					(selected.name === "effort" && options.effortMenu !== undefined) ||
+					(selected.name === "session" && options.sessionMenu !== undefined);
+				if (opensPanel && (activeTurn === undefined || TURN_SAFE_COMMANDS.has(selected.name))) {
+					executeCommand(selected);
+					return;
 				}
+				// 其余命令只补全命令名与一个空格，补全面板保持打开：Tab 不执行也不收起
+				setInput(`/${selected.name} `);
+				render();
 				return;
 			}
 			if (key === "escape") {
@@ -1973,9 +2284,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (edit.text !== previous) historyIndex = -1;
 		// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
 		// 命令补全面板相反，跟着新输入继续过滤
-		if (edit.text !== previous && (modelMenu !== undefined || effortMenu !== undefined)) {
+		if (edit.text !== previous && (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined)) {
 			modelMenu = undefined;
 			effortMenu = undefined;
+			sessionMenu = undefined;
 		}
 		setInput(edit.text, edit.cursor);
 		updateCommandMenu();

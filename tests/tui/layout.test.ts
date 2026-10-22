@@ -106,6 +106,10 @@ const MODEL_ITEMS = [
 	{ provider: "openai", model: "gpt-5.2", name: "GPT-5.2", current: false },
 	{ provider: "openai", model: "gpt-5.2-mini", name: "GPT-5.2 Mini", current: false },
 ];
+const SESSION_ITEMS = [
+	{ id: "0123456789abcdef", title: "Fix the login flow", hint: "2h", current: true },
+	{ id: "fedcba9876543210", title: "Write the release notes", hint: "3d", current: false },
+];
 
 function pressCtrlC(input: FakeInput): void {
 	input.emit("data", Buffer.from([3]));
@@ -337,6 +341,7 @@ describe("全屏布局", () => {
 			agent: agent.runtime,
 			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
 			effortMenu: { current: () => "medium", select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			sessionMenu: { list: () => SESSION_ITEMS, select: () => ({ changed: false, history: [], warnings: [] }) },
 			stdin: input,
 			stdout: output,
 		});
@@ -366,6 +371,12 @@ describe("全屏布局", () => {
 			const afterCompact = frameLines(output).slice(0, 6).map(plain).join("\n");
 			assert.equal(afterCompact.includes("/compact"), false);
 			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for response..."));
+
+			// /session 会替换整段历史，运行中同样挡掉；Tab 也只补全，不打开菜单
+			input.emit("data", Buffer.from("/session\r"));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("Fix the login flow"), false);
+			input.emit("data", Buffer.from("\t"));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("Fix the login flow"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -647,9 +658,10 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("Tab 与回车一样确认模型面板的选择", async () => {
+	it("模型面板按 Tab 只补全到输入框，回车才切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		output.columns = 80;
 		let selected: string | undefined;
 		const running = runTui({
 			version: "1.2.3",
@@ -669,7 +681,114 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from("/model\r"));
 			input.emit("data", Buffer.from("\x1b[B"));
 			input.emit("data", Buffer.from("\t"));
+
+			assert.equal(selected, undefined);
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line === " › /model openai/gpt-5.2"));
+			// 模型面板已经收起，没有切换记录
+			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
+
+			input.emit("data", Buffer.from("\r"));
 			assert.equal(selected, "openai/gpt-5.2");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("思考等级面板按 Tab 只补全到输入框，回车才写回", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		let selected: string | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			effortMenu: {
+				current: () => "medium",
+				select: (level) => {
+					selected = level;
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/effort\r"));
+			input.emit("data", Buffer.from("\x1b[B"));
+			input.emit("data", Buffer.from("\t"));
+
+			assert.equal(selected, undefined);
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line === " › /effort high"));
+
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(selected, "high");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("/model 带未知模型时报告错误，不切换", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let calls = 0;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: () => {
+					calls += 1;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model nope\r"));
+
+			assert.equal(calls, 0);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Unknown model: nope"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("/effort 带未知等级时报告错误，不写回", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		let selected: string | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			effortMenu: {
+				current: () => "medium",
+				select: (level) => {
+					selected = level;
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/effort bogus\r"));
+
+			assert.equal(selected, undefined);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Unknown effort: bogus"));
 		} finally {
 			exitTui(input);
 		}
@@ -711,7 +830,232 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 补出命令名与空格，不直接执行", async () => {
+	it("命令补全里 Tab 补出普通命令名，补全面板保持打开", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/hel"));
+			input.emit("data", Buffer.from("\t"));
+
+			const lines = frameLines(output).map(plain);
+			// 输入框补全成带空格的命令名
+			assert.ok(lines.some((line) => line === " › /help "));
+			// 补全面板没有收掉，说明行仍在画面里
+			assert.ok(lines.some((line) => line.includes("Show the commands and keys")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令补全里 Tab 直接打开模型面板", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		let calls = 0;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: () => {
+					calls += 1;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model"));
+			input.emit("data", Buffer.from("\t"));
+
+			assert.equal(calls, 0);
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line.includes("fengshao/deepseek-v4.1-flash")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令补全里 Tab 直接打开思考等级面板", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			effortMenu: {
+				current: () => "medium",
+				select: () => {},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/effort"));
+			input.emit("data", Buffer.from("\t"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("xhigh"));
+			assert.ok(text.includes("› medium"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("/session 打开当前项目的会话菜单，Esc 返回", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session\r"));
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Fix the login flow"));
+			assert.ok(text.includes("0123456789abcdef"));
+			assert.ok(text.includes("Write the release notes"));
+			assert.ok(text.includes("current"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Write the release notes"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("会话菜单按 Tab 只补全，回车才切换并替换对话流", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		let selected: string | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: (id) => {
+					selected = id;
+					return {
+						changed: true,
+						history: [{ prompt: "old work", response: ["old answer"] }],
+						warnings: [],
+					};
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session\r"));
+			input.emit("data", Buffer.from("\x1b[B"));
+			input.emit("data", Buffer.from("\t"));
+
+			assert.equal(selected, undefined);
+			let lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line === " › /session fedcba9876543210"));
+			assert.equal(lines.some((line) => line.includes("Write the release notes")), false);
+
+			input.emit("data", Buffer.from("\r"));
+
+			assert.equal(selected, "fedcba9876543210");
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("old work"));
+			assert.ok(text.includes("old answer"));
+			assert.ok(text.includes("Switched to session fedcba9876543210."));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("会话切换失败时报告错误，保留当前对话", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => {
+					throw new Error("Session file is broken");
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session fedcba9876543210\r"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Failed to switch session"));
+			assert.ok(text.includes("Session file is broken"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令补全里 Tab 直接打开会话菜单", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session"));
+			input.emit("data", Buffer.from("\t"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Fix the login flow"));
+			assert.ok(text.includes("Write the release notes"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("面板打开时退格：面板收掉，输入删掉一个字符", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		let calls = 0;
@@ -730,13 +1074,59 @@ describe("全屏布局", () => {
 		});
 
 		try {
-			input.emit("data", Buffer.from("/mo"));
-			// 第一项是 /model；Tab 只补全，面板继续跟着新输入过滤
-			input.emit("data", Buffer.from("\t"));
+			input.emit("data", Buffer.from("/model\r"));
+			input.emit("data", Buffer.from("\x7f"));
 
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
-			assert.ok(lines.some((line) => line.includes("/model ")));
+			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
+			// 补全面板里也有 `/model`，只有整行匹配输入框才能确认退格真的删掉了字符
+			assert.ok(lines.some((line) => line === " › /mode"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("没有菜单时 Tab 不改动输入", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\t"));
+
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.includes(" › abc"));
+			// 输入框里不该留下制表符
+			assert.equal(lines.some((line) => line.includes("\t")), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("面板打开时连按两次 Ctrl+C 仍能退出", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			pressCtrlC(input);
+			// 第一次只进入待确认状态，不该退出备用屏
+			assert.equal(output.chunks.some((chunk) => chunk.includes(LEAVE)), false);
+			pressCtrlC(input);
+			assert.ok(output.chunks.some((chunk) => chunk.includes(LEAVE)));
 		} finally {
 			exitTui(input);
 		}
@@ -748,7 +1138,7 @@ describe("全屏布局", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
-		// 六条命令的面板占八行，默认 12 行终端会把主区域挤没，警告就看不见了
+		// 七条命令的面板占九行，默认 12 行终端会把主区域挤没，警告就看不见了
 		output.rows = 20;
 		const running = runTui({
 			version: "1.2.3",
@@ -770,7 +1160,7 @@ describe("全屏布局", () => {
 			assert.ok(text.includes("/compact"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 6 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 7 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);
