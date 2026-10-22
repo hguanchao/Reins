@@ -51,6 +51,7 @@ import type { FooterInfo } from "../tui/footer.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { runPrintMode } from "./print-mode.ts";
 import { createSession, resumeCommand, resumeSession } from "./session-target.ts";
+import { createStartupTimer } from "./startup-timer.ts";
 import { readVersion } from "../version.ts";
 
 /**
@@ -129,8 +130,11 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	// 确认界面起得来才补配置模板：起不来时不在磁盘上留下半套准备
 	initializeConfig(options);
 
-	const workRoot = process.cwd();
+	// 首帧之前的每一步都记一笔：慢在哪只能看数据，插件与沙箱是最可能拖时间的两处
+	const startup = createStartupTimer({ env: process.env, write: writeStderr });
 	const loaded = await loadSelection(options);
+
+	const workRoot = process.cwd();
 	const configFile = options.configPath ?? configFilePath();
 	const providersFile = options.providersPath ?? providersFilePath();
 
@@ -155,6 +159,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	const config = loaded.ok ? loaded.value.config : loaded.config;
 	const providersConfig = loaded.ok ? loaded.value.providersConfig : loaded.providersConfig;
 	const initialSelection = loaded.ok ? loaded.value.selection : undefined;
+	startup.mark("config");
 
 	// 权限、工具、插件与沙箱：与非交互模式使用同一条装配路径
 	const approvals = new ApprovalBroker();
@@ -185,7 +190,9 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	for (const failure of failures) {
 		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 	}
+	startup.mark("plugins");
 	reportExternalFailures(await loadExternalPlugins(host));
+	startup.mark("external");
 
 	let sandbox: SandboxView;
 	try {
@@ -197,6 +204,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	warnUnsandboxedMcpServers(config);
 
 	const workspace = new WorkspaceBoundary(workRoot);
+	startup.mark("sandbox");
 	const store = host.sessionStore();
 	let session: Session | undefined;
 	try {
@@ -215,6 +223,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		return 1;
 	}
 	if (session === undefined) return 1;
+	startup.mark("session");
 
 	let sessionPersisted =
 		options.resume !== undefined || (loaded.ok && session.path !== null);
@@ -319,6 +328,9 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 
 	const warning = loaded.ok ? undefined : `Warning: ${loaded.error.message}`;
 	const ready = loaded.ok;
+	// 首帧之前的装配到此为止：后面的菜单数据源只是几个闭包，不花时间
+	startup.mark("ready");
+	startup.report();
 
 	/** 插件与宿主命令共用一份清单；按需读取，不在装载之后拍成快照。 */
 	const pluginCommands = {
