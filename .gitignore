@@ -5,3 +5,4 @@ reference/
 
 # 工具生成的会话状态
 .zcode/
+.workbuddy/
