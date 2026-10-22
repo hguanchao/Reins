@@ -962,24 +962,23 @@ function toolSummaryLine(
 	const shownMetric = metricFits ? metricText : "";
 	const detailBudget = Math.max(0, available - displayWidth(shownMetric));
 	const tail = detail.length === 0 ? "" : fitToWidth(`  ${detail}`, detailBudget);
-	const shownTail = linkTarget === undefined ? tail : linkTail(tail, linkTarget);
 	const padding = " ".repeat(
 		Math.max(0, available - displayWidth(tail) - displayWidth(shownMetric)),
 	);
 	const metricPart = shownMetric.length === 0 ? "" : `${TOOL_NAME_COLOR}${shownMetric}${RESET}`;
-	// 可点开或可展开的参数一律带下划线，用的是与链接同一种实线：终端不给点线兜底，
-	// 线型区别在不同终端里根本看不出来，不如只用「有线 / 没线」表达一件事
+	// 有线 = 这一行能点开。链接与非链接都自己画实线：终端给 OSC 8 链接的装饰可能是
+	// 「悬停才画」，静止态就只剩一行没线的文字，和可展开的参数对不上
+	const lead = tail.slice(0, 2);
+	const body = tail.slice(2);
 	const tailPart =
-		linkTarget === undefined && interactive && shownTail.length > 2
-			? `${shownTail.slice(0, 2)}${TOOL_NAME_COLOR}${UNDERLINE}${shownTail.slice(2)}`
-			: `${TOOL_NAME_COLOR}${shownTail}`;
+		body.length === 0
+			? `${TOOL_NAME_COLOR}${tail}`
+			: linkTarget !== undefined
+				? `${TOOL_NAME_COLOR}${lead}${UNDERLINE}${osc8Link(linkTarget, body)}`
+				: interactive
+					? `${TOOL_NAME_COLOR}${lead}${UNDERLINE}${body}`
+					: `${TOOL_NAME_COLOR}${tail}`;
 	return `${TOOL_NAME_COLOR}${head}${RESET}${tailPart}${RESET}${metricPart}${padding}`;
-}
-
-/** 给参数文本挂上 OSC 8 链接；前导缩进留在链接外，终端只给路径画下划线。 */
-function linkTail(tail: string, target: string): string {
-	if (tail.length <= 2) return tail;
-	return `${tail.slice(0, 2)}${osc8Link(target, tail.slice(2))}`;
 }
 
 function osc8Link(target: string, text: string): string {
