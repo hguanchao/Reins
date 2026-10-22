@@ -27,6 +27,13 @@ export interface PageSection {
 	readonly entries: readonly PageEntry[];
 	/** 一条都没有时顶替条目显示的一句话 */
 	readonly empty?: string;
+	/**
+	 * 名称独占一行，说明与 note 缩进在下。
+	 *
+	 * 名字长、说明也长的清单用这个：表格布局靠名称列对齐，一旦名称被截断或说明折成好几行，
+	 * 对齐反而帮倒忙——技能名是标识符，截成 `codebase-desi…` 就认不出来了。
+	 */
+	readonly layout?: "card";
 }
 
 /** 命令之外的固定内容。 */
@@ -62,6 +69,10 @@ const MIN_INLINE_DESCRIPTION = 8;
 const ENTRY_INDENT = "  ";
 /** 名称与说明之间留两列。 */
 const ENTRY_GAP = "  ";
+/** 卡片式的名称缩进。 */
+const CARD_INDENT = "  ";
+/** 卡片式的说明与 note 缩进：比名称再深两列，让层级一眼看得出来。 */
+const CARD_BODY_INDENT = "    ";
 
 const TITLE_COLOR = THEME.accent;
 const SECTION_COLOR = THEME.textSubtle;
@@ -107,8 +118,10 @@ export function skillsPageLines(
 		skills.length === 0
 			? [{ title: "Skills", entries: [], empty: "No skills yet." }]
 			: [
-					...(user.length === 0 ? [] : [{ title: "User skills", entries: user }]),
-					...(project.length === 0 ? [] : [{ title: "Project skills", entries: project }]),
+					...(user.length === 0 ? [] : [{ title: "User skills", entries: user, layout: "card" as const }]),
+					...(project.length === 0
+						? []
+						: [{ title: "Project skills", entries: project, layout: "card" as const }]),
 				];
 	const footnotes = [
 		...directories.map((directory) => `Looking in ${directory}`),
@@ -183,6 +196,15 @@ function sectionLines(section: PageSection, width: number): readonly string[] {
 		return lines;
 	}
 
+	if (section.layout === "card") {
+		// 每条占三四行，不隔一行就会连成一片，看不出上一条到哪结束
+		section.entries.forEach((entry, index) => {
+			if (index > 0) lines.push("");
+			lines.push(...cardLines(entry, width));
+		});
+		return lines;
+	}
+
 	const nameWidth = Math.min(
 		NAME_COLUMN_MAX,
 		Math.max(1, ...section.entries.map((entry) => displayWidth(entry.name))),
@@ -193,9 +215,38 @@ function sectionLines(section: PageSection, width: number): readonly string[] {
 	return lines;
 }
 
+/**
+ * 卡片式条目：名称一行，说明与 note 各占一段缩进。
+ *
+ * 名称不设列宽上限，只在放不下时按终端宽度截断——它是标识符，能完整显示就别动它。
+ */
+function cardLines(entry: PageEntry, width: number): readonly string[] {
+	const indent = CARD_INDENT.slice(0, width);
+	const bodyIndent = CARD_BODY_INDENT.slice(0, width);
+	const bodyWidth = Math.max(1, width - displayWidth(bodyIndent));
+	const lines = [`${indent}${NAME_COLOR}${truncate(entry.name, Math.max(1, width - displayWidth(indent)))}${RESET}`];
+
+	if (entry.description.length > 0) {
+		for (const line of wrapText(entry.description, bodyWidth)) {
+			lines.push(`${bodyIndent}${DESCRIPTION_COLOR}${line}${RESET}`);
+		}
+	}
+	if (entry.note !== undefined) {
+		for (const line of wrapText(entry.note, bodyWidth)) {
+			lines.push(`${bodyIndent}${NOTE_COLOR}${line}${RESET}`);
+		}
+	}
+	return lines;
+}
+
 /** 名称列定宽；右侧放不下说明时说明另起一行，缩进退回名称列起点。 */
 function entryLines(entry: PageEntry, nameWidth: number, width: number): readonly string[] {
-	const head = `${ENTRY_INDENT}${padEnd(entry.name, nameWidth)}${ENTRY_GAP}`;
+	// 超长的名称不按列宽截断：名称是标识符，截成 `my-company-int…` 就认不出来了。让它这一行
+	// 溢出列宽，说明照常另起一行，其余行的对齐不受影响；只在连整行都放不下时才截。
+	const available = Math.max(1, width - displayWidth(ENTRY_INDENT) - displayWidth(ENTRY_GAP));
+	const label =
+		displayWidth(entry.name) > nameWidth ? truncate(entry.name, available) : padEnd(entry.name, nameWidth);
+	const head = `${ENTRY_INDENT}${label}${ENTRY_GAP}`;
 	const headWidth = displayWidth(head);
 	const noteLines =
 		entry.note === undefined

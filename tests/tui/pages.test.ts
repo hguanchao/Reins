@@ -122,6 +122,40 @@ describe("整屏页", () => {
 		assert.ok(text.includes("next turn"));
 	});
 
+	it("技能名不截断：名字再长也完整显示", () => {
+		const text = skillsPageLines(
+			80,
+			[{ name: "karparthy-guidelines", description: "Behavioral guidelines", scope: "user" }],
+			[],
+		)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("karparthy-guidelines"));
+		assert.equal(text.includes("…"), false);
+	});
+
+	it("技能条目之间留空行，说明与路径缩进比名称深", () => {
+		const rows = skillsPageLines(
+			80,
+			[
+				{ name: "alpha", description: "第一条", note: "/skills/alpha/SKILL.md", scope: "user" },
+				{ name: "beta", description: "第二条", note: "/skills/beta/SKILL.md", scope: "user" },
+			],
+			[],
+		).map(plain);
+
+		const alpha = rows.indexOf("  alpha");
+		const beta = rows.indexOf("  beta");
+		assert.ok(alpha > 0 && beta > alpha);
+		// 名称、说明、路径三级缩进依次加深
+		assert.equal(rows[alpha + 1], "    第一条");
+		assert.equal(rows[alpha + 2], "    /skills/alpha/SKILL.md");
+		// 两条之间正好一个空行
+		assert.equal(rows[beta - 1], "");
+		assert.notEqual(rows[beta - 2], "");
+	});
+
 	it("技能页没有技能时给出空状态，而不是只剩一个标题", () => {
 		const text = skillsPageLines(80, [], ["/home/me/.reins/skills"]).map(plain).join("\n");
 
@@ -140,6 +174,15 @@ describe("整屏页", () => {
 		const empty = mcpsPageLines(80, []).map(plain).join("\n");
 		assert.ok(empty.includes("No MCP servers configured."));
 		assert.ok(empty.includes("mcp_servers"));
+	});
+
+	it("MCP 页的超长 server 名不被截断，说明另起一行", () => {
+		const rows = mcpsPageLines(40, [
+			{ name: "my-company-internal-tools", description: "connected  2 tools: a, b" },
+		]).map(plain);
+
+		assert.ok(rows.some((line) => line.includes("my-company-internal-tools")));
+		assert.equal(rows.some((line) => line.includes("…")), false);
 	});
 
 	it("视口取窗口，行数固定为 height", () => {
