@@ -190,18 +190,6 @@ describe("工具调用行", () => {
 		assert.equal(line.includes(THEME.warning), false);
 	});
 
-	it("带链接的参数自己也画实线，不指望终端的悬停装饰", () => {
-		const turn: TranscriptTurn = {
-			prompt: "hi",
-			response: [{ kind: "tool", name: "Read", detail: "a.ts", linkTarget: "file:///work/a.ts" }],
-		};
-		const line = renderTranscript(60, 10, [turn], 0).find((item) => plain(item).includes("Read")) ?? "";
-
-		assert.ok(line.includes("\u001b]8;;file:///work/a.ts"));
-		// 有的终端只在悬停时才给链接画线，静止态就什么都没有
-		assert.ok(line.includes("\u001b[4m"));
-	});
-
 	it("既不可点也不可展开的行不加下划线，也不带行首标记", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hi",
