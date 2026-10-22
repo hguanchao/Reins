@@ -47,8 +47,8 @@ describe("模型选择面板", () => {
 
 		assert.ok(lines[1]?.startsWith(" › fengshao/deepseek-v4.1-flash"));
 		assert.ok(lines[2]?.startsWith("   openai/gpt-5.2"));
-		assert.equal(lines[1]?.indexOf("DeepSeek V4.1 Flash"), 33);
-		assert.equal(lines[2]?.indexOf("GPT-5.2"), 33);
+		assert.equal(lines[1]?.indexOf("DeepSeek V4.1 Flash"), 35);
+		assert.equal(lines[2]?.indexOf("GPT-5.2"), 35);
 		assert.equal(lines[1]?.indexOf("current"), 65);
 		assert.equal(lines[2]?.includes("current"), false);
 		assert.equal(lines[4], BORDER.repeat(72));

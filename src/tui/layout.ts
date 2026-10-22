@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
 
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
-import { inputView, renderFooter, type FooterInfo } from "./footer.ts";
+import { inputView, queueHeight, renderFooter, type FooterInfo } from "./footer.ts";
 import { THINKING_LEVELS, type NotifyMode, type ThinkingLevel } from "../config/config-file.ts";
 import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
@@ -109,8 +109,11 @@ const WRITING_RESPONSE = "Writing response...";
 const CONFIGURATION_REQUIRED = "Configuration required";
 const AGENT_UNAVAILABLE = "Agent unavailable";
 const SESSION_UNAVAILABLE = "Session storage is unavailable";
-const ABORTING = "Aborting...";
-const ABORTED = "Aborted";
+/** 使用者按下中断之后的状态。主动停下不是错误，用中性措辞，不染错误色。 */
+const ABORTING = "Stopping...";
+const STOPPED = "Stopped";
+/** 对话流里的中断标记：说明这一轮的回答在这里被截断了。 */
+const INTERRUPTED = "Interrupted";
 const ERROR_STATUS = "Error";
 
 /**
@@ -390,6 +393,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	let input = "";
 	let inputCursor = 0;
+	/**
+	 * 排队中的消息，按发送顺序。
+	 *
+	 * 一轮进行中提交的内容放这里，本轮收尾后再逐条各发一轮。它们不进会话文件：排队消息还没
+	 * 发生过，写进会话会让重放出现模型从未见过的用户消息。
+	 */
+	const queued: string[] = [];
+	/**
+	 * 下一次中止是否要把队首立刻发出去。
+	 *
+	 * 中止默认不续发队列，只有 Esc 这一个入口例外：使用者按它就是要「别等这一轮了，说下一条」。
+	 * 用一次性标志而不是改中止规则，别的中止路径（Ctrl+C、退出）行为保持不变。
+	 */
+	let sendQueuedAfterAbort = false;
 	/** 输入历史：只在本次界面会话里保留。 */
 	const inputHistory: string[] = [];
 	let historyIndex = -1;
@@ -435,7 +452,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
 	/** 状态是不是失败结局；失败用错误色，别跟「正在进行」混成一样。 */
-	let statusTone: "warning" | "error" | undefined;
+	let statusTone: "warning" | "error" | "stopped" | undefined;
 	let statusPhaseMs = 0;
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
@@ -509,7 +526,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		// 整屏页不保留输入框与常驻信息
 		if (openPage !== undefined) return 0;
 		const lines = inputLineCount();
-		if (!compactFooter()) return 5 + lines;
+		if (!compactFooter()) return 5 + queueHeight(queued.length) + lines;
 		return 3 + lines + menuHeight();
 	};
 
@@ -556,10 +573,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			statusText === undefined
 				? undefined
 				: {
-						// 失败结局不带转圈符号也不扫光：那两样都表示还在动，出错时它已经停了
-						symbol: statusTone === "error" ? "" : (SPINNER_FRAMES[spinnerFrame] ?? ""),
+						// 转圈与扫光都表示「还在动」：失败与主动停下都不该带着它们
+						symbol:
+							statusTone === "error" || statusTone === "stopped"
+								? ""
+								: (SPINNER_FRAMES[spinnerFrame] ?? ""),
 						text: statusText,
-						sweep: statusTone === "error" ? undefined : sweepPhase,
+						sweep: statusTone === "error" || statusTone === "stopped" ? undefined : sweepPhase,
 						tone: statusTone,
 						phaseMs: statusPhaseMs,
 						elapsedMs: statusElapsedMs,
@@ -602,6 +622,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					: renderFooter(width, input, focused, status, currentInfo(), {
 							cursor: inputCursor,
 							commandLength,
+							queued,
 						});
 		const transcriptShown = openPage === undefined && (hasInput || activeWarning !== undefined);
 		const main =
@@ -615,13 +636,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const lines = [...mainLines, ...menuLines, ...footer].slice(0, height);
 		const inputRow = compactFooter()
 			? mainHeight + menuHeight() + 2 + inputLines.row
-			: mainHeight + 4 + inputLines.row;
+			: mainHeight + 4 + queueHeight(queued.length) + inputLines.row;
+		// 选择面板只盖在输入框上方，输入行仍然可见可编辑，光标照常显示；
+		// 只有整屏页与审批面板会夺走焦点
 		const cursor =
 			focused &&
 			openPage === undefined &&
-			modelMenu === undefined &&
-			effortMenu === undefined &&
-			sessionMenu === undefined &&
 			approvalPrompt === undefined &&
 			inputRow <= height
 				? moveCursor(inputRow, inputLines.column) + SHOW_CURSOR
@@ -732,7 +752,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
-	const setStatus = (text: string, tone?: "warning" | "error"): void => {
+	const setStatus = (text: string, tone?: "warning" | "error" | "stopped"): void => {
 		statusText = text;
 		statusTone = tone;
 		statusPhaseMs = 0;
@@ -1050,9 +1070,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "aborted":
 				closeThinking(active);
-				appendLine(active, { text: "Error: aborted", kind: "error" });
+				// 使用者主动停下不是错误：用中性说明，不染错误色，也不加错误标记
+				appendLine(active, { text: INTERRUPTED, kind: "info" });
 				active.outcome = "aborted";
-				setStatus(ABORTED, "error");
+				setStatus(STOPPED, "stopped");
 				break;
 			case "turn_end":
 				// 只思考、没产出正文也没调工具的一次请求，摘要行也要落下
@@ -1179,6 +1200,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		effortMenu = undefined;
 		commandMenu = undefined;
 		setInput(`/model ${item.provider}/${item.model}`);
+		// 补进输入框之后使用者要按回车确认，焦点必须在输入框上，否则那一下只会被当成抢焦点
+		focused = true;
 		render();
 	};
 
@@ -1260,6 +1283,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		effortMenu = undefined;
 		setInput(`/effort ${level}`);
+		focused = true;
 		render();
 	};
 
@@ -1353,6 +1377,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		hasInput = turns.length > 0;
 		// 上一个会话留下的状态/错误不该跟着出现在新会话里
 		clearStatus();
+		// 排队消息是发给旧会话的，换会话后没有意义
+		queued.length = 0;
 		appendCommandTurn("/session", [`Switched to session ${id}.`, ...result.warnings]);
 	};
 
@@ -1384,6 +1410,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		modelMenu = undefined;
 		effortMenu = undefined;
 		setInput(`/session ${item.id}`);
+		focused = true;
 		render();
 	};
 
@@ -1396,6 +1423,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 输入变化后重算命令补全列表；只匹配斜杠后不含空格的命令名。 */
 	const updateCommandMenu = (): void => {
 		if (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined) return;
+
+		// 敲完命令名再按空格：有二级选择面板的直接打开它，没有的就把补全面板收掉。
+		// 这里只认「命令名 + 空格」本身，后面已经打了参数就不再插手
+		if (input.startsWith("/") && input.endsWith(" ") && !input.slice(1, -1).includes(" ")) {
+			const name = input.slice(1, -1).toLowerCase();
+			const command = commands().find((item) => item.name === name);
+			commandMenu = undefined;
+			if (command !== undefined) {
+				if (name === "model") openModelMenu();
+				else if (name === "effort") openEffortMenu();
+				else if (name === "session") openSessionMenu();
+			}
+			return;
+		}
 
 		if (input.startsWith("/") && !input.slice(1).includes(" ")) {
 			const query = input.slice(1).toLowerCase();
@@ -1517,17 +1558,21 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				statusTokens = active.tokensUsed;
 				if (active.outcome === "done") {
 					clearStatus();
+				} else if (active.outcome === "aborted") {
+					setStatus(STOPPED, "stopped");
+					scheduleStatusClear();
 				} else {
-					setStatus(
-						active.outcome === "aborted" ? ABORTED : ERROR_STATUS,
-						"error",
-					);
+					setStatus(ERROR_STATUS, "error");
 					scheduleStatusClear();
 				}
 				render();
 				if (active.outcome !== "aborted") {
 					notify(active.outcome === "done" ? "Turn complete" : "Turn failed");
 				}
+				// 排队消息接上：中止是使用者的明确意图，默认不替他续发；只有 Esc 请求过立即发送才例外
+				const sendQueued = sendQueuedAfterAbort;
+				sendQueuedAfterAbort = false;
+				if ((active.outcome !== "aborted" || sendQueued) && queued.length > 0) drainQueue();
 			});
 	};
 
@@ -1745,9 +1790,43 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		return true;
 	};
 
+	/**
+	 * 把一条普通提问交给真实对话。
+	 *
+	 * 提交与出队都走这里：排队消息出队后与使用者当场提交是同一件事，差别只在谁触发的。
+	 */
+	const launch = (prompt: string): void => {
+		const agent = options.agent;
+		if (agent === undefined) {
+			commandMenu = undefined;
+			statusElapsedMs = 0;
+			statusTokens = 0;
+			setStatus(AGENT_UNAVAILABLE);
+			render();
+			return;
+		}
+		startRun(prompt, (onEvent, signal) => agent.runTurn(prompt, onEvent, signal));
+	};
+
+	/**
+	 * 一轮结束后取队首再发一轮。
+	 *
+	 * 只有正常收尾才续发：被中止说明使用者要停下来，队列留着等他决定，不能替他继续。
+	 */
+	const drainQueue = (): void => {
+		const next = queued.shift();
+		if (next === undefined) return;
+		launch(next);
+	};
+
 	/** 回车发送：把输入交给真实 TurnDriver，事件驱动对话流与状态行。 */
 	const submit = (): boolean => {
-		if (input.length === 0) return false;
+		if (input.length === 0) {
+			// 输入框空着而队列里还有东西：回车把队首发出去，中止之后靠它恢复队列
+			if (activeTurn !== undefined || queued.length === 0) return false;
+			drainQueue();
+			return true;
+		}
 
 		const message = input.trim();
 		if (message.length === 0) return false;
@@ -1762,10 +1841,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return true;
 		}
 
-		// 一轮进行中不接受新提交；状态行继续显示当前进度
-		if (activeTurn !== undefined) return false;
-
 		rememberInput(message);
+		// 一轮进行中不再丢输入：排进队列，本轮收尾后自动发送
+		if (activeTurn !== undefined) {
+			commandMenu = undefined;
+			setInput("");
+			queued.push(message);
+			render();
+			return true;
+		}
+
 		if (!ready) {
 			// 配置没读成功时不进入对话：保留输入内容，只把原因放到运行时状态行
 			commandMenu = undefined;
@@ -1776,20 +1861,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return false;
 		}
 
-		const agent = options.agent;
-		if (agent === undefined) {
-			commandMenu = undefined;
-			statusElapsedMs = 0;
-			statusTokens = 0;
-			setStatus(AGENT_UNAVAILABLE);
-			render();
-			return false;
-		}
-
 		setInput("");
-		if (message.length === 0) return false;
-
-		startRun(message, (onEvent, signal) => agent.runTurn(message, onEvent, signal));
+		launch(message);
 		return true;
 	};
 
@@ -1849,8 +1922,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined) {
 			// 面板只接管选择相关的按键（上下、回车、Tab、Esc）与鼠标；其余按键放行给输入框。
 			// 文字一变面板就收掉（见 editInput 处）：面板由命令打开，输入不再是那条命令
-			const panelsHeight = terminalHeight(stdout);
-			const panelTop = Math.max(0, panelsHeight - footerHeight());
+			// 面板上边框画在页脚区的第一行，页脚高 N 行时它就是 height-N+1（1 基）
+			const panelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1); 
 			for (const event of mouseEvents(text)) {
 				const motion = dragMotion(event.button);
 				if (modelMenu !== undefined) {
@@ -1879,8 +1952,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						return;
 					}
 					if (event.press && (event.button & 3) === 0 && index !== undefined) {
+						// 点击只移动选中项，不执行也不回显：确认始终由回车完成。
+						// 焦点留在输入框：面板盖在输入框上方，回车仍是输入框的按键
 						modelMenu.cursor = index;
-						confirmMenu();
+						keepMenuCursor();
+						focused = true;
+						render();
 						return;
 					}
 				} else if (effortMenu !== undefined) {
@@ -1908,8 +1985,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						return;
 					}
 					if (event.press && (event.button & 3) === 0 && index !== undefined) {
+						// 点击只移动选中项，回车才写回配置；焦点留在输入框
 						effortMenu.cursor = index;
-						confirmEffortMenu();
+						focused = true;
+						render();
 						return;
 					}
 				} else if (sessionMenu !== undefined) {
@@ -1938,8 +2017,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						return;
 					}
 					if (event.press && (event.button & 3) === 0 && index !== undefined) {
+						// 点击只移动选中项，回车才真正切换会话；焦点留在输入框
 						sessionMenu.cursor = index;
-						confirmSessionMenu();
+						keepSessionCursor();
+						focused = true;
+						render();
 						return;
 					}
 				}
@@ -2121,8 +2203,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				const inputLineTotal = inputView(input, width, inputCursor).lines.length;
 				const inputTop =
 					height -
-					(compactFooter() ? 3 + inputLineTotal : 5 + inputLineTotal) +
-					(compactFooter() ? 2 : 4);
+					(compactFooter() ? 3 + inputLineTotal : 5 + queueHeight(queued.length) + inputLineTotal) +
+					(compactFooter() ? 2 : 4 + queueHeight(queued.length));
 				const insideInput =
 					event.row >= inputTop && event.row < inputTop + inputLineTotal;
 				if (insideInput !== focused) {
@@ -2156,7 +2238,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		if (commandMenu !== undefined) {
 			// 命令补全面板不拦截文字输入，只接管上下键、Esc 与鼠标
-			const commandPanelTop = Math.max(0, terminalHeight(stdout) - footerHeight());
+			const commandPanelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1);
 			for (const event of mouseEvents(text)) {
 				const motion = dragMotion(event.button);
 				const index = menuIndexAtRow(
@@ -2188,8 +2270,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					return;
 				}
 				if (event.press && (event.button & 3) === 0 && index !== undefined) {
+					// 点击只移动选中项，回车才执行；焦点留在输入框
 					commandMenu.cursor = index;
-					submit();
+					commandMenu.scrollTop = keepVisible(
+						commandMenu.scrollTop,
+						commandMenu.cursor,
+						commandMenu.items.length,
+					);
+					focused = true;
+					render();
 					return;
 				}
 			}
@@ -2230,7 +2319,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			render();
 			return;
 		}
-
 		const previous = input;
 		const previousCursor = inputCursor;
 		if (text === "\x05" && commandMenu === undefined) {
@@ -2264,6 +2352,36 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			}
 			render();
 			return;
+		}
+
+		// 排队消息的三个操作：Esc 中止并立即发队首，Alt+Up 撤回队尾，Alt+Down 丢弃队尾
+		if (commandMenu === undefined) {
+			if (withoutMouse === "\x1b" && activeTurn !== undefined && queued.length > 0) {
+				// 中止默认不续发队列；这是唯一的例外——使用者明确要求立刻发出去
+				sendQueuedAfterAbort = true;
+				options.approval?.denyAll();
+				activeTurn.controller.abort();
+				setStatus(ABORTING);
+				render();
+				return;
+			}
+
+			const queueKey = queuedEditKey(withoutMouse);
+			// 撤回与编辑是同一条路径：取回即出队，清掉文字就是取消
+			if (queueKey === "recall") {
+				const recalled = queued.pop();
+				if (recalled !== undefined) {
+					setInput(input.length === 0 ? recalled : `${recalled}\n${input}`);
+					updateCommandMenu();
+					render();
+					return;
+				}
+			}
+			// 丢弃不回填输入框：排错了的消息直接扔掉，不必先取回再删
+			if (queueKey === "discard" && queued.pop() !== undefined) {
+				render();
+				return;
+			}
 		}
 
 		const step = historyKey(withoutMouse);
@@ -2393,6 +2511,17 @@ function historyKey(text: string): -1 | 1 | undefined {
 	return undefined;
 }
 
+/**
+ * 撤回或丢弃排队消息的按键：Alt+Up 取回队尾，Alt+Down 直接丢弃。
+ *
+ * 只认单独到达的序列：方向键本身要给输入历史和光标用，必须靠修饰键把它们分开。
+ */
+function queuedEditKey(text: string): "recall" | "discard" | undefined {
+	if (text === "\x1b[1;3A" || text === "\x1b[1;9A") return "recall";
+	if (text === "\x1b[1;3B" || text === "\x1b[1;9B") return "discard";
+	return undefined;
+}
+
 /** 对话流滚动键；不与输入行的 Home/End 抢按键。 */
 function scrollKey(text: string): "pageUp" | "pageDown" | "top" | undefined {
 	if (text === "\x1b[5~") return "pageUp";
@@ -2441,6 +2570,12 @@ function mouseEvents(text: string): readonly MouseInput[] {
 }
 
 /** 菜单面板的屏幕行对应哪个条目；top 是面板第一行的 0 基坐标。 */
+/**
+ * 菜单面板的屏幕行对应哪个条目。
+ *
+ * row 是终端上报的 1 基行号；panelTop 是面板上边框所在的 1 基行号。条目从上边框下一行
+ * 开始，所以偏移量是 row - panelTop - 1。
+ */
 function menuIndexAtRow(
 	row: number,
 	panelTop: number,
@@ -2450,7 +2585,7 @@ function menuIndexAtRow(
 ): number | undefined {
 	const visible = Math.min(Math.max(0, itemCount), MENU_MAX_VISIBLE);
 	if (visible === 0) return undefined;
-	const offset = row - (panelTop + 2);
+	const offset = row - panelTop - 1;
 	if (offset < 0 || offset >= visible) return undefined;
 	const index = keepVisible(scrollTop, cursor, itemCount) + offset;
 	return index < itemCount ? index : undefined;

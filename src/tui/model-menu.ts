@@ -41,7 +41,8 @@ export const MODEL_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
 const PREFIX_WIDTH = 3;
-const GAP = 2;
+/** 相邻两列之间的间距。 */
+const GAP = 4;
 const CURRENT_WIDTH = 7;
 
 /** 面板总高度：上边框、可见行、底部空白、下边框。 */

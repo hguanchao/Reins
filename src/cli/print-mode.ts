@@ -64,7 +64,8 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				state.failed = true;
 				return;
 			case "aborted":
-				deps.stderr("\n× Error: aborted\n");
+				// 中断是使用者主动停下，不是错误；退出码仍为非零，脚本据此判断这一轮没跑完
+				deps.stderr("\n· Interrupted\n");
 				state.failed = true;
 				return;
 			default:

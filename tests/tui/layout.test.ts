@@ -43,6 +43,8 @@ class FakeOutput extends EventEmitter {
 
 interface FakeAgent {
 	readonly runtime: AgentRuntime;
+	/** 已经交给 runTurn 的提示，按发送顺序 */
+	readonly prompts: string[];
 	emit(event: AgentEvent): void;
 	finish(): Promise<void>;
 }
@@ -55,15 +57,18 @@ function createFakeAgent(onRefresh: () => void = () => {}): FakeAgent {
 				readonly resolve: () => void;
 		  }
 		| undefined;
+	const prompts: string[] = [];
 
 	return {
 		runtime: {
-			runTurn: (_prompt, onEvent) =>
+			runTurn: (prompt, onEvent) =>
 				new Promise<void>((resolve) => {
+					prompts.push(prompt);
 					current = { listener: onEvent, resolve };
 				}),
 			refreshInfo: onRefresh,
 		},
+		prompts,
 		emit: (event) => {
 			void current?.listener(event);
 		},
@@ -107,8 +112,8 @@ const MODEL_ITEMS = [
 	{ provider: "openai", model: "gpt-5.2-mini", name: "GPT-5.2 Mini", current: false },
 ];
 const SESSION_ITEMS = [
-	{ id: "0123456789abcdef", title: "Fix the login flow", hint: "2h", current: true },
-	{ id: "fedcba9876543210", title: "Write the release notes", hint: "3d", current: false },
+	{ id: "0123456789abcdef", title: "Fix the login flow", time: "2 hours ago", current: true },
+	{ id: "fedcba9876543210", title: "Write the release notes", time: "3 days ago", current: false },
 ];
 
 function pressCtrlC(input: FakeInput): void {
@@ -382,8 +387,292 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("运行中切模型，确认块等这一轮结束再落进对话流", async (t) => {
+	it("一轮进行中提交的消息排进队列，本轮结束后逐条自动发送", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			assert.deepEqual(agent.prompts, ["first"]);
+
+			// 运行中再提交：进队列，不立刻开跑，输入框清空
+			input.emit("data", Buffer.from("second\r"));
+			input.emit("data", Buffer.from("third\r"));
+			assert.deepEqual(agent.prompts, ["first"]);
+			const queuedFrame = frameLines(output).map(plain).join("\n");
+			assert.ok(queuedFrame.includes("↳ second"));
+			assert.ok(queuedFrame.includes("↳ third"));
+
+			// 本轮收尾后队首自动开跑，队列里只剩一条
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first", "second"]);
+			const afterFirst = frameLines(output).map(plain).join("\n");
+			assert.equal(afterFirst.includes("↳ second"), false);
+			assert.ok(afterFirst.includes("↳ third"));
+
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first", "second", "third"]);
+			await agent.finish();
+			assert.equal(frameLines(output).map(plain).join("\n").includes("↳"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("中止后队列不自动续发，空输入回车把队首发出去", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("second\r"));
+			assert.deepEqual(agent.prompts, ["first"]);
+
+			// 使用者中止这一轮：队列留着，不替他继续
+			pressCtrlC(input);
+			agent.emit({ type: "aborted" });
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first"]);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("↳ second"));
+
+			// 输入框空着按回车：队首顶上来
+			input.emit("data", Buffer.from("\r"));
+			assert.deepEqual(agent.prompts, ["first", "second"]);
+			assert.equal(frameLines(output).map(plain).join("\n").includes("↳ second"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("Alt+Up 把最近一条排队消息拉回输入框", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		// 对话流里的用户提示也用 " › " 开头，输入行在页脚，取最后一处匹配
+		const inputLine = (): string => {
+			const lines = frameLines(output);
+			const index = lines.findLastIndex((line) => plain(line).startsWith(" › "));
+			return index < 0 ? "" : plain(lines[index] ?? "").trimEnd();
+		};
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("second\r"));
+
+			// 取回队尾一条：撤回与编辑是同一条路径
+			input.emit("data", Buffer.from("\x1b[1;3A"));
+			assert.equal(inputLine(), " › second");
+			assert.equal(frameLines(output).map(plain).join("\n").includes("↳ second"), false);
+
+			// 队列空了再按不做事，输入内容不被覆盖
+			input.emit("data", Buffer.from("\x1b[1;3A"));
+			assert.equal(inputLine(), " › second");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("Alt+Down 直接丢弃队尾，不回填输入框", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("second\r"));
+			input.emit("data", Buffer.from("third\r"));
+
+			// 只丢队尾一条，输入框保持为空
+			input.emit("data", Buffer.from("\x1b[1;3B"));
+			const lines = frameLines(output).map(plain).join("\n");
+			assert.ok(lines.includes("↳ second"));
+			assert.equal(lines.includes("↳ third"), false);
+			assert.equal(lines.includes("› third"), false);
+
+			// 队列空了再按不做事
+			input.emit("data", Buffer.from("\x1b[1;3B"));
+			input.emit("data", Buffer.from("\x1b[1;3B"));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("↳"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("Esc 中止本轮并立即发送队首", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("second\r"));
+			input.emit("data", Buffer.from("third\r"));
+			assert.deepEqual(agent.prompts, ["first"]);
+
+			// Esc 打断当前回合，队首不等下一轮就发出去
+			input.emit("data", Buffer.from("\x1b"));
+			agent.emit({ type: "aborted" });
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first", "second"]);
+			const lines = frameLines(output).map(plain).join("\n");
+			assert.equal(lines.includes("↳ second"), false);
+			assert.ok(lines.includes("↳ third"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("队列为空时 Esc 只中止，不额外发送", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("\x1b"));
+			agent.emit({ type: "aborted" });
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first"]);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("撤回排队消息时排在已输入内容之前", async (t) => {		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("second\r"));
+
+			// 已经打了一半的字留在原处，取回的消息排在它前面
+			input.emit("data", Buffer.from("half"));
+			input.emit("data", Buffer.from("\x1b[1;3A"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› second"));
+			assert.ok(text.includes("   half"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("切换会话时清空队列", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: true, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("second\r"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("↳ second"));
+
+			// /session 会换掉整段对话，排队消息属于旧会话
+			input.emit("data", Buffer.from("/session\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("↳ second"), false);
+			assert.deepEqual(agent.prompts, ["first"]);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("运行中切模型，确认块等这一轮结束再落进对话流", async (t) => {		t.mock.timers.enable({ apis: ["setInterval"] });
 
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -487,6 +776,69 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("输入完整命令再按空格，直接打开对应的选择面板", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session "));
+			const lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line.includes(" 2 ────")), "会话面板打开了");
+			assert.ok(lines.some((line) => line.includes("Fix the login flow")));
+			// 命令本身留在输入框里，面板只是提前展开
+			assert.ok(lines.some((line) => line.trim() === "› /session"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令后面继续输入参数时面板收起", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session "));
+			assert.ok(frameLines(output).map(plain).some((line) => line.includes(" 2 ────")));
+
+			input.emit("data", Buffer.from("fedcba"));
+			assert.equal(
+				frameLines(output).map(plain).some((line) => line.includes(" 2 ────")),
+				false,
+				"开始打参数后不再显示面板",
+			);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("输入 /model 在输入框上方打开模型面板", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -505,7 +857,8 @@ describe("全屏布局", () => {
 			assert.ok(lines.some((line) => line.endsWith(" 3 ────")));
 			assert.ok(lines.some((line) => line.includes("fengshao/")));
 			assert.ok(lines.some((line) => line.includes("› /model")));
-			assert.equal(CURSOR_SUFFIX.test(rawFrame(output)), false);
+			// 面板只盖在输入框上方，输入行仍然可编辑，光标照常显示
+			assert.equal(CURSOR_SUFFIX.test(rawFrame(output)), true);
 		} finally {
 			exitTui(input);
 		}
@@ -513,7 +866,96 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("模型面板支持鼠标点击选择", async () => {
+	it("会话面板的鼠标点击只移动选中项，回车才切换", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 40;
+		output.rows = 12;
+		let selected: string | undefined;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: (id) => {
+					selected = id;
+					return { changed: true, history: [], warnings: [] };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session\r"));
+			// 行号从画面里取，不写死：面板位置取决于终端高度与页脚
+			const rows = frameLines(output).map(plain);
+			const borderRow = rows.findIndex((line) => line.includes(" 2 ────")) + 1;
+			const secondRow = rows.findIndex((line) => line.includes("fedcba9876543210")) + 1;
+			assert.ok(borderRow > 0 && secondRow > 0, "面板与第二项都画出来了");
+
+			// 上边框本身不响应
+			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
+			assert.equal(selected, undefined);
+
+			// 点第二项只移动选中符号，不切换也不回显
+			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
+			assert.equal(selected, undefined, "点击不直接切换会话");
+			const afterClick = frameLines(output).map(plain);
+			assert.ok(afterClick.some((line) => line.includes("› fedcba9876543210")), "选中符号移到该项");
+			assert.ok(
+				afterClick.some((line) => line.trim() === "› /session"),
+				"输入框保持不变，不回显选中项",
+			);
+
+			// 回车才真正切换
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(selected, "fedcba9876543210");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("会话面板里点击当前会话不重新加载", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 40;
+		output.rows = 12;
+		let selectCalls = 0;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => {
+					selectCalls += 1;
+					return { changed: true, history: [], warnings: [] };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session\r"));
+			const rows = frameLines(output).map(plain);
+			const currentRow = rows.findIndex((line) => line.includes("0123456789abcdef")) + 1;
+			assert.ok(currentRow > 0);
+
+			// 点当前会话：面板收掉，但不切换
+			input.emit("data", Buffer.from(`\x1b[<0;10;${currentRow}M`));
+			assert.equal(selectCalls, 0);
+			assert.equal(frameLines(output).map(plain).join("\n").includes("Fix the login flow"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("模型面板点击只移动选中项，回车才切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -535,8 +977,25 @@ describe("全屏布局", () => {
 
 		try {
 			input.emit("data", Buffer.from("/model\r"));
-			// 面板从主区域底部开始：第 13 行是第一项，第 14 行是第二项
-			input.emit("data", Buffer.from("\x1b[<0;10;14M"));
+			const rows = frameLines(output).map(plain);
+			const borderRow = rows.findIndex((line) => line.includes(" 3 ────")) + 1;
+			const secondRow = rows.findIndex((line) => line.includes("openai/gpt-5.2")) + 1;
+			assert.ok(borderRow > 0 && secondRow > 0);
+
+			// 点上边框不响应，点第二项只移动选中符号
+			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
+			assert.equal(selected, undefined);
+			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
+			assert.equal(selected, undefined, "点击不直接切换模型");
+			const afterClick = frameLines(output).map(plain);
+			assert.ok(afterClick.some((line) => line.includes("› openai/gpt-5.2")), "选中符号移到该项");
+			assert.ok(
+				afterClick.some((line) => line.trim() === "› /model"),
+				"输入框保持不变，不回显选中项",
+			);
+
+			// 回车才真正切换
+			input.emit("data", Buffer.from("\r"));
 			assert.equal(selected, "openai/gpt-5.2");
 		} finally {
 			exitTui(input);
@@ -545,7 +1004,7 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全面板支持鼠标点击执行", () => {
+	it("命令补全面板点击只移动选中项，回车才执行", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -562,8 +1021,15 @@ describe("全屏布局", () => {
 			assert.ok(row > 0);
 			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
 
-			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — help"));
+			// 只移动选中符号：帮助页没有打开，输入框也没被改写
+			const afterClick = frameLines(output).map(plain);
+			assert.equal(afterClick.join("\n").includes("Reins — help"), false);
+			assert.ok(afterClick.some((line) => line.includes("› /help")), "选中符号移到 /help");
+			assert.ok(afterClick.some((line) => line.trim() === "› /"), "输入框仍只有一个斜杠");
+
+			// 回车才真正执行
+			input.emit("data", Buffer.from("\r"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Reins — help"));
 		} finally {
 			exitTui(input);
 		}
@@ -2798,13 +3264,18 @@ describe("全屏布局", () => {
 			agent.emit({ type: "aborted" });
 			t.mock.timers.tick(100);
 
-			const status = frameLines(output).find((line) => plain(line).includes("Aborted"));
+			// 主动停下不是错误：状态行用中性措辞，不染错误色，也不带错误标记
+			const status = frameLines(output).find((line) => plain(line).includes("Stopped"));
 			assert.ok(status);
-			assert.ok(status.includes(THEME.error));
-			assert.ok(plain(status).trimStart().startsWith("Aborted"));
-			assert.ok(
-				frameLines(output).some((line) => plain(line).includes("× Error: aborted")),
-			);
+			assert.equal(status.includes(THEME.error), false);
+			assert.ok(plain(status).trimStart().startsWith("Stopped"));
+
+			// 对话流里留一条弱化色的说明，标出回答在这里被截断
+			const note = frameLines(output).find((line) => plain(line).includes("Interrupted"));
+			assert.ok(note);
+			assert.ok(note.includes(THEME.textSubtle));
+			assert.equal(plain(note).includes("Error"), false);
+			assert.equal(frameLines(output).some((line) => plain(line).includes("×")), false);
 		} finally {
 			exitTui(input);
 		}
@@ -3378,12 +3849,12 @@ describe("全屏布局", () => {
 			assert.equal(wheeled[0], top[2]);
 
 			// 一直滚到底，按键分区与脚注都可见
-			for (let index = 0; index < 40; index += 1) input.emit("data", Buffer.from("\x1b[B"));
+			for (let index = 0; index < 100; index += 1) input.emit("data", Buffer.from("\x1b[B"));
 			const bottom = frameLines(output).map(plain).join("\n");
 			assert.ok(bottom.includes("Run reins --help"));
 
 			// 一直滚回顶部后不再上移
-			for (let index = 0; index < 60; index += 1) input.emit("data", Buffer.from("\x1b[A"));
+			for (let index = 0; index < 200; index += 1) input.emit("data", Buffer.from("\x1b[A"));
 			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
 		} finally {
 			exitTui(input);

@@ -26,7 +26,7 @@ describe("思考等级面板", () => {
 		const lines = renderEffortMenu(80, { current: "medium", cursor: 2, scrollTop: 0 });
 		const rows = lines.map(plain);
 
-		assert.equal(rows[1]?.indexOf("No reasoning; fastest responses"), 11);
+		assert.equal(rows[1]?.indexOf("No reasoning; fastest responses"), 13);
 		assert.ok(rows[2]?.includes("Quick tasks where you review each result"));
 		assert.ok(rows[3]?.includes("Everyday work with a clear scope"));
 		assert.ok(rows[4]?.includes("Work where correctness and edge cases matter"));

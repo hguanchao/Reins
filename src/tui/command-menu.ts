@@ -40,6 +40,9 @@ export interface CommandMenuState {
 export const COMMAND_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
 const PREFIX_WIDTH = 3;
+/** 命令名与说明之间的间距。 */
+const GAP = "    ";
+const GAP_WIDTH = displayWidth(GAP);
 export function commandMenuHeight(itemCount: number): number {
 	return menuHeight(itemCount);
 }
@@ -72,8 +75,9 @@ function layoutColumns(width: number, items: readonly CommandMenuItem[]): Column
 		1,
 		...items.map((item) => displayWidth(`/${item.name}`)),
 	);
-	const nameWidth = Math.min(longestName, Math.max(1, width - PREFIX_WIDTH - 2 - 4));
-	const remaining = width - PREFIX_WIDTH - nameWidth - 2;
+	// 命令名之后留出间距，再给说明至少留 4 列；放不下时命令名先被截
+	const nameWidth = Math.min(longestName, Math.max(1, width - PREFIX_WIDTH - GAP_WIDTH - 4));
+	const remaining = width - PREFIX_WIDTH - nameWidth - GAP_WIDTH;
 	const descriptionWidth = remaining >= 4 ? remaining : 0;
 	return { nameWidth, descriptionWidth };
 }
@@ -89,7 +93,7 @@ function row(
 	const description =
 		columns.descriptionWidth > 0 ? padEnd(item.description, columns.descriptionWidth) : "";
 	const descriptionSegment =
-		columns.descriptionWidth > 0 ? `${" ".repeat(2)}${description}` : "";
+		columns.descriptionWidth > 0 ? `${GAP}${description}` : "";
 	const head = `${prefix}${name}${descriptionSegment}`;
 	const padding = " ".repeat(Math.max(0, width - displayWidth(head)));
 	const nameColor = item.enabled
@@ -102,7 +106,7 @@ function row(
 		? ` ${ACCENT_COLOR}›${nameColor} `
 		: prefix;
 	const descriptionOutput =
-		columns.descriptionWidth > 0 ? `${" ".repeat(2)}${MUTED_COLOR}${description}` : "";
+		columns.descriptionWidth > 0 ? `${GAP}${MUTED_COLOR}${description}` : "";
 
 	return `${PANEL_BG}${nameColor}${prefixOutput}${name}${boldOff}${descriptionOutput}${padding}${RESET}`;
 }

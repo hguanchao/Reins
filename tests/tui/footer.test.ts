@@ -5,6 +5,7 @@ import {
 	COMPACT_FOOTER_HEIGHT,
 	FOOTER_HEIGHT,
 	inputView,
+	queueHeight,
 	renderFooter,
 	type FooterInfo,
 } from "../../src/tui/footer.ts";
@@ -324,5 +325,66 @@ describe("页脚输入框", () => {
 		assert.equal(inputView("abcdef", 5).text, "f");
 		assert.equal(inputView("你好世界", 6).column, 6);
 		assert.equal(inputView("你好世界", 6).text, "界");
+	});
+});
+
+describe("排队消息预览", () => {
+	it("没有排队消息时不占行", () => {
+		assert.equal(queueHeight(0), 0);
+		assert.equal(renderFooter(20, "", true).length, FOOTER_HEIGHT);
+	});
+
+	it("每条排队消息占一行，排在状态行与输入框上边框之间", () => {
+		const lines = renderFooter(40, "", true, { symbol: "⠋", text: "Thinking..." }, undefined, {
+			queued: ["顺便更新 README", "然后跑一遍测试"],
+		});
+
+		assert.equal(lines.length, FOOTER_HEIGHT + 2);
+		assert.equal(queueHeight(2), 2);
+		assert.equal(plain(lines[2] ?? ""), " ↳ 顺便更新 README");
+		assert.equal(plain(lines[3] ?? ""), " ↳ 然后跑一遍测试");
+		// 上边框挪到排队行之后，输入行紧跟其后
+		assert.equal(plain(lines[4] ?? ""), BORDER.repeat(40));
+		assert.equal(plain(lines[5] ?? ""), " › ");
+	});
+
+	it("超出上限时收成一行计数", () => {
+		const lines = renderFooter(40, "", true, undefined, undefined, {
+			queued: ["一", "二", "三", "四", "五"],
+		});
+
+		assert.equal(queueHeight(5), 4);
+		assert.equal(lines.length, FOOTER_HEIGHT + 4);
+		assert.equal(plain(lines[2] ?? ""), " ↳ 一");
+		assert.equal(plain(lines[4] ?? ""), " ↳ 三");
+		assert.equal(plain(lines[5] ?? ""), "   +2 more");
+		assert.equal(plain(lines[6] ?? ""), BORDER.repeat(40));
+	});
+
+	it("单条消息压成一行并按宽度截断", () => {
+		const lines = renderFooter(16, "", true, undefined, undefined, {
+			queued: ["第一行\n第二行\t制表"],
+		});
+
+		// 换行与制表符都压成一个空格；宽度 16 去掉 " ↳ " 与右侧留白后只放得下 12 列
+		assert.equal(plain(lines[2] ?? ""), " ↳ 第一行 第二");
+	});
+
+	it("预览用弱化色，与正文区分", () => {
+		const lines = renderFooter(30, "", true, undefined, undefined, { queued: ["稍后再说"] });
+
+		assert.ok(lines[2]?.startsWith("\x1b[38;2;107;117;128m"));
+		assert.ok(lines[2]?.endsWith("\x1b[0m"));
+	});
+
+	it("紧凑页脚不显示排队预览：菜单打开时它会让面板错位", () => {
+		const lines = renderFooter(30, "", false, undefined, undefined, {
+			leadingGap: false,
+			showStatus: false,
+			queued: ["稍后再说"],
+		});
+
+		assert.equal(lines.length, COMPACT_FOOTER_HEIGHT);
+		assert.equal(lines.some((line) => plain(line).includes("↳")), false);
 	});
 });

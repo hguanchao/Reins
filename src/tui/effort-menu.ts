@@ -31,7 +31,8 @@ export interface EffortMenuState {
 }
 
 const PREFIX_WIDTH = 3;
-const GAP = 2;
+/** 相邻两列之间的间距。 */
+const GAP = 4;
 const CURRENT_WIDTH = 7;
 
 /** 用使用场景说明每个等级，光看 low/high 这些缩写很难判断该选哪个。 */

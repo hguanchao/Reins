@@ -60,9 +60,9 @@ export interface RuntimeStatus {
 	readonly sweep?: number;
 	/**
 	 * 色调。默认是「正在进行」的强调色 + 扫光；warning 表示遇挫但还在继续（重试），
-	 * error 表示这一轮已经失败。
+	 * error 表示这一轮已经失败，stopped 表示使用者主动停下——后两者都是静止状态。
 	 */
-	readonly tone?: "warning" | "error";
+	readonly tone?: "warning" | "error" | "stopped";
 }
 
 /** 扫光从强调色暗部过渡到白色。 */
@@ -78,12 +78,25 @@ const ACCENT_COLOR = THEME.accent;
 /** 结局是失败时状态文字用它。 */
 const ERROR_COLOR = THEME.error;
 const WARNING_COLOR = THEME.warning;
+/** 主动停下的状态文字：中性弱化色，既不像错误那样刺眼，也不像进行中那样吸引注意。 */
+const STOPPED_COLOR = THEME.textSubtle;
 
 /** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
 export const FOOTER_HEIGHT = 6;
 
 /** 菜单打开时的紧凑页脚：上边框、输入行、下边框、常驻信息行。 */
 export const COMPACT_FOOTER_HEIGHT = 4;
+
+/**
+ * 排队预览占几行。
+ *
+ * 行数只由这里决定：绘制、页脚高度与光标定位必须用同一个数，否则输入框会整体错位。
+ * 空队列不占行。
+ */
+export function queueHeight(count: number): number {
+	if (count <= 0) return 0;
+	return Math.min(count, QUEUE_MAX_VISIBLE) + (count > QUEUE_MAX_VISIBLE ? 1 : 0);
+}
 
 /** 页脚布局开关；默认是完整的六行。 */
 export interface FooterLayout {
@@ -95,6 +108,8 @@ export interface FooterLayout {
 	readonly cursor?: number;
 	/** 输入开头命中的命令占多少字符（含斜杠）；0 或不给表示没有命中 */
 	readonly commandLength?: number;
+	/** 排队中的消息，按发送顺序；只在完整页脚里显示 */
+	readonly queued?: readonly string[];
 }
 
 /** 多行输入最多同时显示几行，再多就围绕光标滚动。 */
@@ -102,6 +117,12 @@ export const MAX_VISIBLE_INPUT_LINES = 6;
 
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";
+/** 排队消息的缩进与标记，列宽与输入提示符一致，两处文字对齐。 */
+const QUEUE_PREFIX = " ↳ ";
+/** 排队预览最多显示几条；更多的收成一行计数。 */
+const QUEUE_MAX_VISIBLE = 3;
+/** 排队消息比正文弱一档：它还没发生，不该跟正在进行的对话抢注意力。 */
+const QUEUE_COLOR = THEME.textSubtle;
 /** 多行输入的续行缩进，与首行正文对齐。 */
 const INPUT_CONTINUATION = "   ";
 /** 获得焦点时边框与提示符使用强调色。 */
@@ -237,13 +258,44 @@ export function renderFooter(
 	const view = inputView(input, columns, layout?.cursor, layout?.commandLength ?? 0);
 	const lines: string[] = [];
 	if (layout?.leadingGap !== false) lines.push("");
-	if (layout?.showStatus !== false) lines.push(statusLine(columns, status));
+	if (layout?.showStatus !== false) {
+		lines.push(statusLine(columns, status));
+		// 排队预览与状态行描述的是同一件事：正在跑的回合之外还等着什么。紧凑页脚把这块
+		// 面积让给菜单面板，两者一起收起。
+		lines.push(...queueLines(columns, layout?.queued ?? []));
+	}
 	lines.push(colored(horizontal(columns), focused));
 	for (const line of view.lines) {
 		lines.push(colored(line.prefix, focused) + commandText(line));
 	}
 	lines.push(colored(horizontal(columns), focused), infoLine(columns, info));
 	return lines;
+}
+
+/**
+ * 排队消息的预览行。
+ *
+ * 每条只占一行：排队的是「稍后要说什么」，看个开头就够；整条铺开会把正在跑的回复挤出视野。
+ * 超出上限的部分收成一行计数，让人知道还有几条在后面。
+ */
+function queueLines(width: number, queued: readonly string[]): readonly string[] {
+	if (queued.length === 0) return [];
+
+	const prefixWidth = displayWidth(QUEUE_PREFIX);
+	const textWidth = Math.max(1, width - prefixWidth - 1);
+	const lines = queued
+		.slice(0, QUEUE_MAX_VISIBLE)
+		.map((text) => `${QUEUE_COLOR}${QUEUE_PREFIX}${truncateToWidth(oneLine(text), textWidth)}${RESET}`);
+	const hidden = queued.length - QUEUE_MAX_VISIBLE;
+	if (hidden > 0) {
+		lines.push(`${QUEUE_COLOR}${" ".repeat(prefixWidth)}+${hidden} more${RESET}`);
+	}
+	return lines;
+}
+
+/** 换行与制表符会把一条消息撑成多行，预览里一律压成单行。 */
+function oneLine(text: string): string {
+	return text.replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -322,9 +374,11 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态的 #6b7580
 	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
 	const rest = line.slice(visibleActivity.length);
+	const toneColor =
+		status.tone === "error" ? ERROR_COLOR : status.tone === "warning" ? WARNING_COLOR : STOPPED_COLOR;
 	const head =
 		status.tone !== undefined
-			? `${status.tone === "error" ? ERROR_COLOR : WARNING_COLOR}${visibleActivity}${RESET}`
+			? `${toneColor}${visibleActivity}${RESET}`
 			: status.sweep === undefined
 				? `${ACCENT_COLOR}${visibleActivity}${RESET}`
 				: swept(visibleActivity, status.sweep);

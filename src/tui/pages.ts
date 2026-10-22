@@ -38,13 +38,15 @@ export interface PageSection {
 
 /** 命令之外的固定内容。 */
 const KEY_ENTRIES: readonly PageEntry[] = [
-	{ name: "Enter", description: "Send the prompt or confirm the selected action" },
+	{ name: "Enter", description: "Send the prompt; queue it while a turn is running" },
 	{ name: "Tab", description: "Complete the selected item into the prompt" },
-	{ name: "Esc", description: "Close a menu or this page; deny an approval" },
+	{ name: "Esc", description: "Close a menu or this page; deny an approval; interrupt and send the first queued message" },
 	{ name: "Ctrl+C twice", description: "Exit the interface" },
 	{ name: "Up / Down", description: "Prompt history, menu navigation, or page scrolling" },
 	{ name: "Left / Right", description: "Move the prompt cursor or approval selection" },
 	{ name: "Home / End", description: "Move to the start or end of the input line" },
+	{ name: "Alt+Up", description: "Take the last queued message back into the prompt" },
+	{ name: "Alt+Down", description: "Discard the last queued message" },
 	{ name: "PgUp / PgDn", description: "Scroll the conversation or this page" },
 	{ name: "Ctrl+Home/End", description: "Jump to the oldest or latest output" },
 	{ name: "Ctrl+E", description: "Expand or collapse the latest thinking or tool group" },

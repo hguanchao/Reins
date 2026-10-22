@@ -41,8 +41,8 @@ describe("命令补全面板", () => {
 		assert.equal(rows[1]?.indexOf("›"), 1);
 		assert.equal(rows[1]?.indexOf("/"), 3);
 		assert.equal(rows[2]?.indexOf("/"), 3);
-		assert.equal(rows[1]?.indexOf("Switch the current model"), 12);
-		assert.equal(rows[2]?.indexOf("Reload external plugins"), 12);
+		assert.equal(rows[1]?.indexOf("Switch the current model"), 14);
+		assert.equal(rows[2]?.indexOf("Reload external plugins"), 14);
 		assert.equal(rows[3], "─".repeat(72));
 	});
 

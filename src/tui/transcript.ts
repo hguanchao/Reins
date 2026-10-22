@@ -43,10 +43,15 @@ export interface TranscriptMarkdown {
 	text: string;
 }
 
-/** 需要与正文区分开的一行：警告和失败是要看见的事。 */
+/**
+ * 需要与正文区分开的一行。
+ *
+ * error 与 warning 是要让人看见的问题；info 是中性的过程说明（比如使用者主动停下），
+ * 用弱化色，不该按错误对待。
+ */
 export interface TranscriptNote {
 	readonly text: string;
-	readonly kind: "error" | "warning";
+	readonly kind: "error" | "warning" | "info";
 }
 
 /**
@@ -690,15 +695,12 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 				}
 				continue;
 			}
-			const warning = line.kind === "warning";
-			lines.push(
-				...wrappedLines(
-					warning ? `Warning: ${line.text}` : line.text,
-					`${RESPONSE_INDENT}${warning ? "!" : ERROR_MARKER} `,
-					width,
-					warning ? NOTICE_COLOR : ERROR_COLOR,
-				),
-			);
+			// 三种提示各有自己的标记与颜色：问题要显眼，中性说明只求看得见
+			const marker = line.kind === "warning" ? "!" : line.kind === "info" ? "·" : ERROR_MARKER;
+			const color =
+				line.kind === "warning" ? NOTICE_COLOR : line.kind === "info" ? THINKING_COLOR : ERROR_COLOR;
+			const text = line.kind === "warning" ? `Warning: ${line.text}` : line.text;
+			lines.push(...wrappedLines(text, `${RESPONSE_INDENT}${marker} `, width, color));
 		}
 		prompts.push({ start, height: promptLines.length, responseStart });
 		previousHadResponse = turn.response.length > 0;

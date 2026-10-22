@@ -7,6 +7,7 @@ import { Compactor, compactionWindow, estimateTokens } from "../agent/compactor.
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
+import { sessionAge } from "./session-age.ts";
 import { ConfigFile, type Config } from "../config/config-file.ts";
 import { initializeConfigFiles } from "../config/initialize.ts";
 import { ModelCatalog } from "../config/model-catalog.ts";
@@ -437,7 +438,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 						return store.list(sessionsDir(workRoot)).map((listing) => ({
 							id: listing.id,
 							title: sessionTitle(listing.title),
-							hint: sessionAge(listing.updatedAt),
+							time: sessionAge(listing.updatedAt),
 							current: listing.id === active,
 						}));
 					},
@@ -1103,21 +1104,6 @@ function createSessionFor(workRoot: string, store: SessionStore | undefined): Se
 function sessionTitle(title: string | undefined): string {
 	const text = (title ?? "").replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
 	return text.length === 0 ? "(no conversation yet)" : text;
-}
-
-/** 会话最近活动的短表示；菜单一行里只放得下几个字符。 */
-function sessionAge(updatedAt: string): string {
-	const elapsed = Date.now() - Date.parse(updatedAt);
-	if (!Number.isFinite(elapsed) || elapsed < 0) return "";
-	const minutes = Math.floor(elapsed / 60_000);
-	if (minutes < 1) return "now";
-	if (minutes < 60) return `${minutes}m`;
-	const hours = Math.floor(minutes / 60);
-	if (hours < 24) return `${hours}h`;
-	const days = Math.floor(hours / 24);
-	if (days < 7) return `${days}d`;
-	const weeks = Math.floor(days / 7);
-	return weeks < 52 ? `${weeks}w` : `${Math.floor(weeks / 52)}y`;
 }
 
 function writeStdout(text: string): void {
