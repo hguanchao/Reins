@@ -148,34 +148,6 @@ describe("插件宿主", () => {
 		);
 	});
 
-	it("重载:旧插件注册的工具与命令被卸下,作废后的注册被拒", async () => {
-		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
-		const host = new PluginHost(registry, new PermissionPolicy("ask"));
-
-		const lateRegister: PluginApi[] = [];
-		await host.loadExternal([
-			pluginOf("old", (api) => {
-				api.registerTool(toolNamed("old_tool"));
-				api.registerCommand({ name: "old-cmd", description: "", run: async () => undefined });
-				lateRegister.push(api);
-			}),
-		]);
-		assert.equal(registry.get("old_tool")?.name, "old_tool");
-
-		// 旧的一代已经完全卸下;残留引用再注册一律拒绝
-		await host.loadExternal([
-			pluginOf("new", (api) => {
-				api.registerTool(toolNamed("new_tool"));
-			}),
-		]);
-		assert.equal(registry.get("old_tool"), undefined);
-		assert.deepEqual(host.commands().map((command) => command.name), []);
-		assert.ok(registry.get("new_tool") !== undefined);
-
-		assert.throws(() => lateRegister[0]!.registerTool(toolNamed("late")), /stale/);
-		assert.ok(registry.get("late") === undefined);
-	});
-
 	it("装载完成后插件仍可补注册:远端连上才知道能力的情形", async () => {
 		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
 		const host = new PluginHost(registry, new PermissionPolicy("ask"));

@@ -12,7 +12,6 @@ import type { ToolRegistry, ToolSource } from "../tools/registry.ts";
  * 设置审批方式、也没有改沙箱模式的方法——那些是宿主的安全边界，插件不该有能力放宽自己。
  *
  * 插件之间没有共享的引用，只有宿主：它拿到的 api 是宿主给的，能做的也只是往宿主这里登记。
- * 因此热重载只要换掉这一层就够了——旧的那一代连注册的入口都不再作数。
  */
 
 /** 交到插件手上的那部分能力。 */
@@ -61,8 +60,6 @@ export interface PluginFailure {
  * 每个插件各有一份，而不是共用几个字段：插件可以在装载结束之后继续注册工具（远端连上之后
  * 才知道自己有哪些能力），共用字段会让那些迟到的注册落进另一个插件的队列里，跟着它一起
  * 提交或一起回滚。
- *
- * 它也记着这个插件注册过什么。重载要按这份清单卸下，所以装载之后补注册的也算在里面。
  */
 interface Pending {
 	readonly tools: AnyToolDefinition[];
@@ -72,10 +69,8 @@ interface Pending {
 	store: SessionStore | undefined;
 	/** 这个插件的装载是否还在进行。结束后再注册就直接生效——已经没有可回滚的对象了 */
 	open: boolean;
-	/** 这一代是否已经被换掉。作废之后它的 api 再往里注册一律拒绝 */
+	/** 这一代是否已经作废。装载失败的插件不该还能往注册表里补东西 */
 	stale: boolean;
-	readonly registeredTools: string[];
-	readonly registeredCommands: string[];
 }
 
 export class PluginHost {
@@ -84,8 +79,6 @@ export class PluginHost {
 	readonly #commands = new Map<string, PluginCommand>();
 	readonly #backends: SandboxBackend[] = [];
 	#sessionStore: SessionStore | undefined;
-	/** 已装载的外部插件。重载时按这份记录卸下 */
-	#external: Pending[] = [];
 
 	constructor(tools: ToolRegistry, policy: PermissionPolicy) {
 		this.#tools = tools;
@@ -106,21 +99,12 @@ export class PluginHost {
 	}
 
 	/**
-	 * 装载外部插件；已经装过一批时先把它们卸干净。再调用一次就是热重载。
+	 * 装载外部插件。
 	 *
-	 * 卸在装之前，顺序不能换：先装载会撞上同名的旧工具。而只卸工具不作废旧上下文，旧插件
-	 * 还能往注册表里塞东西——「重载后旧上下文失效」这件事要在这里落实。
-	 *
-	 * 随包分发的插件与核心工具不在其中：重载不该让产品本身的能力消失。
+	 * 与随包插件分开，因为两者的信任级别不同：外部插件声明的只读工具不能像随包插件那样直接
+	 * 放行，必须走审批。启动时装一次就够，改完插件要重启进程才能生效。
 	 */
 	async loadExternal(plugins: readonly Plugin[]): Promise<readonly PluginFailure[]> {
-		for (const loaded of this.#external) {
-			loaded.stale = true;
-			for (const name of loaded.registeredTools) this.#tools.removePluginTool(name);
-			for (const name of loaded.registeredCommands) this.#commands.delete(name);
-		}
-		this.#external = [];
-
 		return this.#load(plugins, true);
 	}
 
@@ -164,7 +148,6 @@ export class PluginHost {
 				await plugin.setup(this.#api(pending, source));
 				pending.open = false;
 				this.#commit(pending, source);
-				if (external) this.#external.push(pending);
 			} catch (error) {
 				// 装载失败的那一代同样作废：它不该还能往注册表里补东西
 				pending.open = false;
@@ -182,7 +165,7 @@ export class PluginHost {
 	#api(pending: Pending, source: ToolSource): PluginApi {
 		const assertLive = (): void => {
 			if (pending.stale) {
-				throw new Error("This plugin context is stale: a reload replaced it; wait for the next load to register");
+				throw new Error("This plugin context is stale: its setup failed, so later registrations are refused");
 			}
 		};
 
@@ -192,7 +175,6 @@ export class PluginHost {
 				if (!pending.open) {
 					// 装载已经结束：这是插件在后台拿到能力之后才注册的，直接生效
 					this.#tools.register(tool, source);
-					pending.registeredTools.push(tool.name);
 					return;
 				}
 				pending.tools.push(tool);
@@ -224,16 +206,10 @@ export class PluginHost {
 
 	#commit(pending: Pending, source: ToolSource): void {
 		// 工具先提交：它的重名检查会抛错，抛在这里仍算在该插件名下
-		for (const tool of pending.tools) {
-			this.#tools.register(tool, source);
-			pending.registeredTools.push(tool.name);
-		}
+		for (const tool of pending.tools) this.#tools.register(tool, source);
 		for (const backend of pending.backends) this.#backends.push(backend);
 		for (const rule of pending.rules) this.#policy.addRule(rule);
-		for (const command of pending.commands) {
-			this.#commands.set(command.name, command);
-			pending.registeredCommands.push(command.name);
-		}
+		for (const command of pending.commands) this.#commands.set(command.name, command);
 		if (pending.store !== undefined) this.#sessionStore = pending.store;
 	}
 }
@@ -247,7 +223,5 @@ function newPending(): Pending {
 		store: undefined,
 		open: true,
 		stale: false,
-		registeredTools: [],
-		registeredCommands: [],
 	};
 }

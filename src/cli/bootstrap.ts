@@ -177,7 +177,6 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
-	const external = prepareExternalPlugins(host);
 	const failures = await host.load(
 		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
 			(plugin) => !disabledPlugins(config).has(plugin.name),
@@ -186,7 +185,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	for (const failure of failures) {
 		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 	}
-	reportExternalFailures(await external.load());
+	reportExternalFailures(await loadExternalPlugins(host));
 
 	let sandbox: SandboxView;
 	try {
@@ -321,7 +320,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	const warning = loaded.ok ? undefined : `Warning: ${loaded.error.message}`;
 	const ready = loaded.ok;
 
-	/** 插件与宿主命令共用一份清单；热重载后下一次补全会重新取。 */
+	/** 插件与宿主命令共用一份清单；按需读取，不在装载之后拍成快照。 */
 	const pluginCommands = {
 		list: () =>
 			host.commands().map((command) => ({
@@ -545,7 +544,6 @@ async function runPrint(options: CliOptions): Promise<number> {
 	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
-	const external = prepareExternalPlugins(host);
 	const failures = await host.load(
 		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
 			(plugin) => !disabledPlugins(config).has(plugin.name),
@@ -555,7 +553,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
 		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 	}
-	reportExternalFailures(await external.load());
+	reportExternalFailures(await loadExternalPlugins(host));
 
 	let sandbox: SandboxView;
 	try {
@@ -899,27 +897,13 @@ function createReviewer(
 }
 
 /**
- * 建好外部插件的装载器，并登记 /reload。
+ * 装载外部插件。
  *
- * 命令要赶在插件装载之前登记：先占住名字，插件再想用同一个名字就会成为一条清楚的装载失败，
- * 而不是启动到一半崩掉。
+ * 放在随包插件之后：两者共用一份注册表，重名要在这里成为一条清楚的装载失败。只在启动时装
+ * 一次——改完插件文件要重启进程，没有热重载。
  */
-function prepareExternalPlugins(host: PluginHost): ExternalPlugins {
-	const external = new ExternalPlugins({ directory: pluginsDir(), host });
-	host.addCommand({
-		name: "reload",
-		description: "Reload external plugins (no restart needed after edits)",
-		async run(_args, context) {
-			const failures = await external.load();
-			if (failures.length === 0) {
-				context.print("External plugins reloaded");
-				return;
-			}
-			context.print("External plugins reloaded, but these plugins failed to load:");
-			for (const failure of failures) context.print(`  ${failure.plugin}: ${failure.message}`);
-		},
-	});
-	return external;
+async function loadExternalPlugins(host: PluginHost): Promise<readonly PluginFailure[]> {
+	return new ExternalPlugins({ directory: pluginsDir(), host }).load();
 }
 
 function reportExternalFailures(failures: readonly PluginFailure[]): void {

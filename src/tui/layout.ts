@@ -185,7 +185,7 @@ export interface EffortMenuSource {
 
 /** 插件与宿主注册的斜杠命令；由装配处桥接到 PluginHost。 */
 export interface PluginCommandSource {
-	/** 当前可用的命令；每次重算补全时重新取，热重载后能看到变化 */
+	/** 当前可用的命令；每次重算补全时重新取，不在界面创建时拍成快照 */
 	readonly list: () => readonly CommandMenuItem[];
 	/** 执行命令并返回要显示在对话流里的输出行；失败时抛错 */
 	readonly run: (name: string, args: string) => Promise<readonly string[]>;

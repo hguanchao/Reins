@@ -81,13 +81,6 @@ describe("工具注册表", () => {
 		assert.deepEqual(registry.describe(), [{ name: "echo-tool", source: "bundled" }]);
 	});
 
-	it("卸载插件工具，核心工具不许卸载", () => {
-		const registry = registryWith(ALLOW);
-		registry.removePluginTool("not-there"); // 不存在:无事发生
-
-		assert.throws(() => registry.removePluginTool("echo-tool"), /Core tool .* cannot be removed/);
-	});
-
 	it("附加工具:复制出新注册表，原名占用报错", () => {
 		const registry = registryWith(ALLOW);
 		const extra = toolWith(ECHO_SCHEMA, async () => ({ content: "x" }));
