@@ -49,7 +49,7 @@ const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Ctrl+E", description: "Expand or collapse the latest thinking or tool group" },
 	{ name: "Ctrl+O", description: "Show or hide the latest successful tool result" },
 	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar" },
-	{ name: "Double-click", description: "Expand or collapse thinking, tool groups, and long tool details" },
+	{ name: "Double-click", description: "Expand or collapse thinking, tool groups, and tool details" },
 	{ name: "y / a / n", description: "Allow once, always allow, or deny an approval" },
 ];
 

@@ -1430,6 +1430,60 @@ describe("全屏布局", () => {
 		}
 	});
 
+	it("命令没被截短时，双击仍能展开它的输出", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("跑一下\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "bash",
+				args: { command: "python bubble_sort.py" },
+			});
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: false,
+				durationMs: 264,
+				summary: "SORTED-OUTPUT",
+				content: "SORTED-OUTPUT",
+			});
+			t.mock.timers.tick(100);
+
+			// 结果默认不展开：这一行折叠时只显示命令与耗时
+			assert.equal(frameLines(output).map(plain).join("\n").includes("SORTED-OUTPUT"), false);
+
+			const row =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("Bash")) + 1;
+			assert.ok(row > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+
+			const expanded = frameLines(output).map(plain).join("\n");
+			assert.ok(expanded.includes("SORTED-OUTPUT"));
+			// 行首换成展开标记，不再写着「折叠着」
+			assert.ok(expanded.includes("◆ Bash"));
+
+			// 再双击一次收起
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("SORTED-OUTPUT"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("双击展开的工具组成员，显示该成员的完整参数", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

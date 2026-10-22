@@ -479,6 +479,16 @@ export function toolHeaderAtRow(
 	return toolHeaderInView(buildTranscriptView(terminalWidth, turns, notice), height, scrollTop, row);
 }
 
+/**
+ * 这一行有没有可展开的东西。
+ *
+ * 命令全文（折叠时被截短的部分）与工具结果都算。`python script.py` 这类命令本身没有被截短，
+ * 但它的输出仍然值得看一眼——不能因为「命令没藏东西」就把结果也一起锁在门外。
+ */
+function hasExpandableDetail(tool: TranscriptTool): boolean {
+	return tool.fullDetail !== undefined || tool.result !== undefined;
+}
+
 export function toolHeaderInView(
 	view: TranscriptView,
 	height: number,
@@ -646,8 +656,8 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 			if (line.kind === "tool") {
 				const toolStart = lines.length;
 				lines.push(...toolLines(line, width));
-				// 只有完整命令与折叠态不同时才值得展开，没有可展开的内容就不登记命中区
-				if (line.fullDetail !== undefined) toolHeaders.push({ start: toolStart, tool: line });
+				// 有命令全文或有结果，就有可展开的东西；两样都没有就不登记命中区
+				if (hasExpandableDetail(line)) toolHeaders.push({ start: toolStart, tool: line });
 				if (line.resultExpanded && line.result !== undefined) {
 					lines.push(...toolResultLines(line, width));
 				}
@@ -660,7 +670,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 				// 单个成员直接按普通工具行渲染，没有组头可点
 				if (line.members.length >= 2) groupHeaders.push({ start: groupStart, group: line });
 				for (const member of rendered.memberStarts) {
-					if (member.tool.fullDetail !== undefined) {
+					if (hasExpandableDetail(member.tool)) {
 						toolHeaders.push({ start: groupStart + member.start, tool: member.tool });
 					}
 				}
@@ -868,6 +878,11 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 
 	if (tool.fullDetail !== undefined && tool.detailExpanded === true) {
 		return [expandedToolHead(tool, baseIndent, width), ...detailBand(tool, baseIndent, width)];
+	}
+
+	// 只有结果可展时，行首也要换成展开标记：否则内容出来了，行首还写着「折叠着」
+	if (tool.resultExpanded === true && tool.fullDetail === undefined) {
+		return [expandedToolHead(tool, baseIndent, width)];
 	}
 
 	if (tool.detail.length === 0 && tool.metric === undefined) {

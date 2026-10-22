@@ -1791,7 +1791,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 					const tool = toolHeaderInView(view, mainHeight, scrollTop, event.row);
 					if (tool !== undefined) {
-						tool.detailExpanded = !(tool.detailExpanded ?? false);
+						// 一次双击把这一行藏着的东西打开。有 fullDetail 时展开的就是它本身
+						// （文件类工具的结果、或被截短的命令），不再另铺一遍原始结果
+						const open = tool.detailExpanded === true || tool.resultExpanded === true;
+						tool.detailExpanded = !open;
+						if (tool.fullDetail === undefined && tool.result !== undefined) {
+							tool.resultExpanded = !open;
+						}
 						markTranscriptDirty();
 						lastClick = undefined;
 						follow = false;
