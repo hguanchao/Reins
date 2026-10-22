@@ -281,7 +281,8 @@ describe("静默超时与重试间隔", () => {
 		assert.equal(endpoint.count(), 2);
 		assert.deepEqual(seen, ["[DONE]"]);
 		assert.equal(retries.length, 1);
-		assert.match(retries[0] ?? "", /HTTP 429/);
+		// 重试原因是给人看的：状态码换成一句话，服务端那句补充信息留着
+		assert.equal(retries[0], "1:Rate limited · slow down");
 	});
 
 	it("Retry-After 要求等得超出上限时立刻报出来，不干等", async () => {

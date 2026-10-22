@@ -403,7 +403,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
 	/** 状态是不是失败结局；失败用错误色，别跟「正在进行」混成一样。 */
-	let statusTone: "error" | undefined;
+	let statusTone: "warning" | "error" | undefined;
 	let statusPhaseMs = 0;
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
@@ -690,7 +690,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
-	const setStatus = (text: string, tone?: "error"): void => {
+	const setStatus = (text: string, tone?: "warning" | "error"): void => {
 		statusText = text;
 		statusTone = tone;
 		statusPhaseMs = 0;
@@ -994,9 +994,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				options.agent?.refreshInfo();
 				break;
 			case "retrying": {
-				// 带上原因：只说「在重试」的话，限流、5xx 与连接断掉看起来一模一样
+				// 原因排在前面：限流、5xx 与连接断掉的样子完全不同，先说清是哪一种
+				const retry = `Retrying (${event.attempt}/${event.maxAttempts})...`;
 				const reason = shortReason(event.reason);
-				setStatus(`Retrying (${event.attempt})...${reason.length === 0 ? "" : ` ${reason}`}`);
+				setStatus(reason.length === 0 ? retry : `${reason} · ${retry}`, "warning");
 				break;
 			}
 			case "error":

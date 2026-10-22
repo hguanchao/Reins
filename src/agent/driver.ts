@@ -413,7 +413,12 @@ export class TurnDriver {
 			cacheKey: this.#deps.session.id,
 			onRetry: (attempt, reason) => {
 				// HTTP 层不等待监听者：重试提示只是给界面看的，不能拖慢退避
-				void this.emit({ type: "retrying", attempt, reason });
+				void this.emit({
+					type: "retrying",
+					attempt,
+					maxAttempts: this.#deps.config.maxRetries,
+					reason,
+				});
 			},
 			signal,
 		};

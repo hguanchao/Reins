@@ -434,12 +434,14 @@ describe("全屏布局", () => {
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
-			agent.emit({ type: "retrying", attempt: 1, reason: "HTTP 429: slow down" });
+			agent.emit({ type: "retrying", attempt: 1, maxAttempts: 5, reason: "Rate limited" });
 			t.mock.timers.tick(100);
 
 			assert.ok(
-				frameLines(output).map(plain).join("\n").includes("Retrying (1)... HTTP 429: slow down"),
+				frameLines(output).map(plain).join("\n").includes("Rate limited · Retrying (1/5)..."),
 			);
+			// 重试用警告色，与「正在进行」的强调色分开：它不是正常推进，但也没失败
+			assert.ok(rawFrame(output).includes("\x1b[38;2;224;175;104m"));
 		} finally {
 			exitTui(input);
 		}
@@ -1775,10 +1777,10 @@ describe("全屏布局", () => {
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
-			agent.emit({ type: "retrying", attempt: 2, reason: "connection reset" });
+			agent.emit({ type: "retrying", attempt: 2, maxAttempts: 5, reason: "connection reset" });
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Retrying (2)..."));
+			assert.ok(text.includes("Retrying (2/5)..."));
 		} finally {
 			exitTui(input);
 		}

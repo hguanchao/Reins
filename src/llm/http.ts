@@ -2,6 +2,7 @@ import { createParser } from "eventsource-parser";
 import { ProxyAgent } from "undici";
 
 import { readVersion } from "../version.ts";
+import { describeFailure } from "./failure.ts";
 import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "./retry.ts";
 
 /** 服务端返回非成功状态。带上响应体片段，否则只能看到一行状态码。 */
@@ -89,7 +90,8 @@ export async function postSse(
 			) {
 				throw error;
 			}
-			request.onRetry?.(attempt + 1, describeError(error));
+			// 重试提示是给人看的：先翻译成一句人话，别把原始报文丢到状态行上
+			request.onRetry?.(attempt + 1, describeFailure(describeError(error)));
 			await delay(
 				retryDelay(attempt, policy, error instanceof LlmHttpError ? error.retryAfterMs : undefined),
 				request.signal,

@@ -45,7 +45,14 @@ export type AgentEvent =
 			readonly tokens: number;
 	  }
 	/** 请求失败后正在重试：此时还没有新的内容，界面据此说明为什么还在等 */
-	| { readonly type: "retrying"; readonly attempt: number; readonly reason: string }
+	| {
+			readonly type: "retrying";
+			readonly attempt: number;
+			/** 最多重试几次；有上限才知道还要等多久 */
+			readonly maxAttempts: number;
+			/** 一句人话，不是上游的原始报文 */
+			readonly reason: string;
+	  }
 	/** 上下文太长，开始把前面一段换成摘要 */
 	| {
 			readonly type: "compaction_start";

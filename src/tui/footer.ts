@@ -58,8 +58,11 @@ export interface RuntimeStatus {
 	readonly tokens?: number;
 	/** 扫光位置，0 到 1；省略时静态显示。 */
 	readonly sweep?: number;
-	/** 结局是失败时用错误色，而不是「正在进行」的强调色 */
-	readonly tone?: "error";
+	/**
+	 * 色调。默认是「正在进行」的强调色 + 扫光；warning 表示遇挫但还在继续（重试），
+	 * error 表示这一轮已经失败。
+	 */
+	readonly tone?: "warning" | "error";
 }
 
 /** 扫光从强调色暗部过渡到白色。 */
@@ -74,6 +77,7 @@ const INFO_COLOR = THEME.textSecondary;
 const ACCENT_COLOR = THEME.accent;
 /** 结局是失败时状态文字用它。 */
 const ERROR_COLOR = THEME.error;
+const WARNING_COLOR = THEME.warning;
 
 /** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
 export const FOOTER_HEIGHT = 6;
@@ -319,9 +323,11 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
 	const rest = line.slice(visibleActivity.length);
 	const head =
-		status.sweep === undefined || status.tone === "error"
-			? `${status.tone === "error" ? ERROR_COLOR : ACCENT_COLOR}${visibleActivity}${RESET}`
-			: swept(visibleActivity, status.sweep);
+		status.tone !== undefined
+			? `${status.tone === "error" ? ERROR_COLOR : WARNING_COLOR}${visibleActivity}${RESET}`
+			: status.sweep === undefined
+				? `${ACCENT_COLOR}${visibleActivity}${RESET}`
+				: swept(visibleActivity, status.sweep);
 	return head + (rest.length > 0 ? `${STATUS_META_COLOR}${rest}${RESET}` : "");
 }
 

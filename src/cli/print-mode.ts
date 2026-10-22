@@ -57,7 +57,7 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				deps.stderr(`\n× Error: compaction failed, continuing with the context as is: ${event.message}\n`);
 				return;
 			case "retrying":
-				deps.stderr(`\n· retrying (${event.attempt}): ${event.reason}\n`);
+				deps.stderr(`\n· retrying (${event.attempt}/${event.maxAttempts}): ${event.reason}\n`);
 				return;
 			case "error":
 				deps.stderr(`\n× Error: ${event.message}\n`);
