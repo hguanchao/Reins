@@ -823,30 +823,40 @@ function toolGroupLines(
 }
 
 /** 成功工具结果：缩进在工具行下方，超过预览行数时收敛。 */
+/**
+ * 成功工具的结果。
+ *
+ * 与展开的命令全文用同一条色带：两者都是「这一行摊开后的内容」，样式不同会让人以为
+ * 其中一种没有展开。结果同样是终端文本——Windows 命令带回车，其他工具可能带转义序列，
+ * 先清洗再上屏。
+ */
 function toolResultLines(
 	tool: TranscriptTool,
 	width: number,
 	baseIndent = RESPONSE_INDENT,
 ): readonly string[] {
 	const raw = tool.result ?? "";
-	const lines = raw.length === 0 ? ["(no output)"] : raw.split("\n");
-	const visible = lines.slice(0, TOOL_RESULT_PREVIEW_LINES);
-	const prefix = `${baseIndent}  `;
-	// 结果同样是终端文本：Windows 命令带回车，其他工具可能带转义序列
-	const output = visible.flatMap((line) =>
-		wrappedLines(sanitizeLine(line), prefix, width, THEME.textSecondary),
-	);
-	if (lines.length > TOOL_RESULT_PREVIEW_LINES) {
-		output.push(
-			...wrappedLines(
-				`… (${lines.length - TOOL_RESULT_PREVIEW_LINES} more lines)`,
-				prefix,
-				width,
-				THEME.textSecondary,
-			),
-		);
-	}
-	return output;
+	const rows = stripTrailingBlank((raw.length === 0 ? "(no output)" : raw).split("\n"));
+	const visible = rows.slice(0, TOOL_RESULT_PREVIEW_LINES);
+	const hidden = rows.length - visible.length;
+	const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
+
+	return [
+		bandBlankLine(width, bandStart),
+		...visible.flatMap((line) =>
+			bandedWrappedLines(sanitizeLine(line), width, THEME.textSecondary, bandStart, DETAIL_RIGHT_PADDING),
+		),
+		...(hidden === 0
+			? []
+			: bandedWrappedLines(
+					`… (${hidden} more lines)`,
+					width,
+					THEME.textSubtle,
+					bandStart,
+					DETAIL_RIGHT_PADDING,
+				)),
+		bandBlankLine(width, bandStart),
+	];
 }
 
 /** 组头按固定顺序汇总：Read → Listed → Searched。 */

@@ -214,6 +214,22 @@ describe("工具调用行", () => {
 		assert.equal(plain(line).includes("› Grep"), true);
 	});
 
+	it("展开的结果与展开的命令用同一条色带", () => {
+		const expanded: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "ls -la",
+			result: "total 8\ndrwxr-xr-x 1 Chao .",
+			resultExpanded: true,
+		};
+		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [expanded] }], 0).filter((line) =>
+			plain(line).includes("total 8"),
+		);
+
+		assert.equal(lines.length, 1);
+		assert.ok(lines[0]?.includes(THEME.surface));
+	});
+
 	it("展开态一律实线下划线并带上参数色", () => {
 		const expanded: TranscriptTool = {
 			kind: "tool",
