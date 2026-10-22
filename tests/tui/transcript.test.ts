@@ -171,18 +171,37 @@ describe("工具调用行", () => {
 		assert.ok(expandHead.includes("\x1b[4m"));
 	});
 
-	it("其他工具的参数不加下划线", () => {
+	it("没有链接的参数也画点状下划线，与命令保持一致", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hi",
 			response: [{ kind: "tool", name: "Grep", detail: "TODO" }],
 		};
 		const line = renderTranscript(40, 8, [turn], 0).find((item) => plain(item).includes("› Grep")) ?? "";
 
-		assert.equal(line.includes("\x1b[4:4m"), false);
-		assert.equal(line.includes("\x1b[4:5m"), false);
-		// 没有 linkTarget 也没有命令身份时不该挂任何 OSC 8 链接
+		// 可展开就该有「可以展开」的暗示，不能只有命令和文件路径有
+		assert.ok(line.includes("\x1b[4:4m"));
+		// 没有 linkTarget 时不该挂 OSC 8 链接
 		assert.equal(line.includes("\x1b]8;;"), false);
+		// 折叠态仍用弱化色，琥珀色留给展开后的命令
 		assert.equal(line.includes(THEME.warning), false);
+	});
+
+	it("展开态一律实线下划线并带上参数色", () => {
+		const expanded: TranscriptTool = {
+			kind: "tool",
+			name: "Grep",
+			detail: "TODO",
+			fullDetail: "TODO in src",
+			detailKind: "text",
+			detailExpanded: true,
+		};
+		const head =
+			renderTranscript(60, 10, [{ prompt: "hi", response: [expanded] }], 0).find((line) =>
+				plain(line).includes("◆ Grep"),
+			) ?? "";
+
+		assert.ok(head.includes("\x1b[4m"));
+		assert.ok(head.includes(THEME.path));
 	});
 
 	it("一行放得下时显示名称与参数，两者同色", () => {

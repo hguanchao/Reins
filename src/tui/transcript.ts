@@ -904,7 +904,7 @@ function toolLines(tool: TranscriptTool, width: number, baseIndent = RESPONSE_IN
 	}
 
 	return [
-		toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, tool.linkTarget, width, tool.name === "Bash"),
+		toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, tool.linkTarget, width),
 	];
 }
 
@@ -945,7 +945,6 @@ function toolSummaryLine(
 	metric: string | undefined,
 	linkTarget: string | undefined,
 	width: number,
-	command: boolean,
 ): string {
 	const head = fitToWidth(`${prefix}${name}`, width);
 	const headWidth = displayWidth(head);
@@ -963,9 +962,10 @@ function toolSummaryLine(
 		Math.max(0, available - displayWidth(tail) - displayWidth(shownMetric)),
 	);
 	const metricPart = shownMetric.length === 0 ? "" : `${TOOL_NAME_COLOR}${shownMetric}${RESET}`;
-	// 命令带点状下划线，表示「可以展开看全文」；颜色与其它参数一致，展开后才换成琥珀色
+	// 折叠态的约定：参数一律点状下划线，表示「这一行可以展开」。带 OSC 8 链接的参数由
+	// 终端自己画线，不再叠加一层；没有链接的（命令、搜索模式等）靠这条点线保持同样的暗示
 	const tailPart =
-		command && shownTail.length > 2
+		linkTarget === undefined && shownTail.length > 2
 			? `${shownTail.slice(0, 2)}${TOOL_NAME_COLOR}${DOTTED_UNDERLINE}${shownTail.slice(2)}`
 			: `${TOOL_NAME_COLOR}${shownTail}`;
 	return `${TOOL_NAME_COLOR}${head}${RESET}${tailPart}${RESET}${metricPart}${padding}`;
@@ -1001,10 +1001,10 @@ function expandedToolHead(tool: TranscriptTool, baseIndent: string, width: numbe
 
 	const detail = truncateToWidth(tool.detail, Math.max(0, width - used));
 	const command = tool.name === "Bash";
-	const detailColor = command ? THEME.warning : tool.linkTarget === undefined ? THEME.textPrimary : THEME.path;
-	// 命令总是带下划线（展开态为实线）；文件路径只在有链接时下划线
-	const underlined = command || tool.linkTarget !== undefined;
-	const detailPart = detail.length === 0 ? "" : `${underlined ? UNDERLINE : ""}${detail}`;
+	// 展开态一律实线下划线 + 参数色：命令用琥珀（它是要重跑的东西），其余用路径色。
+	// 与折叠态的点状下划线对应——同一段文字从虚线变实线，就是「已经展开」的信号
+	const detailColor = command ? THEME.warning : THEME.path;
+	const detailPart = detail.length === 0 ? "" : `${UNDERLINE}${detail}`;
 	const padding = " ".repeat(Math.max(0, width - used - displayWidth(detail)));
 
 	return `${THEME.textPrimary}${prefix}${name}${RESET}${gap}${detailColor}${detailPart}${RESET}${padding}`;
