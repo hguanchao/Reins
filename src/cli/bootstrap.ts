@@ -17,6 +17,7 @@ import {
 	pluginsDir,
 	projectConfigFilePath,
 	projectProvidersFilePath,
+	skillsDir,
 	spillDir,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
@@ -28,7 +29,7 @@ import { ApprovalBroker } from "../permission/approval.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PluginHost, type PluginFailure } from "../plugins/host.ts";
 import { ExternalPlugins } from "../plugins/external.ts";
-import { bundledPlugins } from "../plugins/registry.ts";
+import { bundledPlugins, type McpStatusSource } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
 import {
@@ -36,6 +37,7 @@ import {
 	lastContextTokens,
 	sumUsage,
 } from "../session/usage.ts";
+import { discoverSkills } from "../skills/discover.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -135,6 +137,18 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	const loaded = await loadSelection(options);
 
 	const workRoot = process.cwd();
+
+	// 技能清单按需读：改完 SKILL.md 重新打开 /skills 就能看到，启动时不必为此扫一遍目录
+	const skillDirectory = skillsDir();
+	const skills = {
+		directory: skillDirectory,
+		list: () =>
+			discoverSkills(skillDirectory).map((skill) => ({
+				name: skill.name,
+				description: skill.description.length === 0 ? "(no description)" : skill.description,
+			})),
+	};
+
 	const configFile = options.configPath ?? configFilePath();
 	const providersFile = options.providersPath ?? providersFilePath();
 
@@ -147,6 +161,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 				info: createUnavailableFooterInfo(workRoot, session),
 				warning: `Warning: ${loaded.error.message}`,
 				ready: false,
+				skills,
 			});
 		} catch (error) {
 			writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -182,10 +197,17 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
 
 	const host = new PluginHost(registry, policy);
+	/** MCP 连接清单由插件装载时交过来；插件缺席时保持 undefined，/mcps 也随之不可用。 */
+	let mcpStatus: McpStatusSource | undefined;
 	const failures = await host.load(
-		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
-			(plugin) => !disabledPlugins(config).has(plugin.name),
-		),
+		bundledPlugins({
+			cwd: workRoot,
+			version: readVersion(),
+			mcpServers: config.mcpServers,
+			onMcpStatus: (source) => {
+				mcpStatus = source;
+			},
+		}).filter((plugin) => !disabledPlugins(config).has(plugin.name)),
 	);
 	for (const failure of failures) {
 		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
@@ -328,6 +350,12 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 
 	const warning = loaded.ok ? undefined : `Warning: ${loaded.error.message}`;
 	const ready = loaded.ok;
+	/** /mcps 的一行：server 名单独一列，状态与细节合成说明。 */
+	const mcpServerRows = (): readonly { readonly name: string; readonly description: string }[] =>
+		(mcpStatus?.() ?? []).map((row) => ({
+			name: row.name,
+			description: row.detail.length === 0 ? row.status : `${row.status}  ${row.detail}`,
+		}));
 	// 首帧之前的装配到此为止：后面的菜单数据源只是几个闭包，不花时间
 	startup.mark("ready");
 	startup.report();
@@ -356,6 +384,8 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			info: () => footerInfo,
 			warning,
 			ready,
+			skills,
+			mcpServers: mcpStatus === undefined ? undefined : mcpServerRows,
 			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
 			modelMenu,

@@ -541,8 +541,13 @@ describe("全屏布局", () => {
 
 		try {
 			input.emit("data", Buffer.from("/"));
-			// 面板第一项是 /model，第四项是 /help
-			input.emit("data", Buffer.from("\x1b[<0;10;15M"));
+			// 点 /help 那一行：命令清单会随内置命令增减而整体移动，按内容找行比写死行号稳
+			const row =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("/help")) + 1;
+			assert.ok(row > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
 
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("Reins — help"));
@@ -644,6 +649,8 @@ describe("全屏布局", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
+		// 六条命令的面板占八行，默认 12 行终端会把主区域挤没，警告就看不见了
+		output.rows = 20;
 		const running = runTui({
 			version: "1.2.3",
 			info: FOOTER_INFO,
@@ -664,7 +671,7 @@ describe("全屏布局", () => {
 			assert.ok(text.includes("/compact"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 4 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 6 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);
@@ -2722,6 +2729,46 @@ describe("全屏布局", () => {
 			assert.ok(back.join("\n").includes("v1.2.3"));
 			assert.equal(back.join("\n").includes("Reins — help"), false);
 			assert.equal(back[9], " › ");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("输入 /skills 与 /mcps 打开对应的整屏页，Esc 返回", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			skills: {
+				directory: "/home/me/.reins/skills",
+				list: () => [{ name: "writer", description: "把改动整理成文档" }],
+			},
+			mcpServers: () => [{ name: "context7", description: "connected  2 tools: a, b" }],
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/skills\r"));
+			const skills = frameLines(output).map(plain);
+			assert.equal(skills[0], "Reins — skills");
+			assert.ok(skills.join("\n").includes("writer"));
+			assert.ok(skills.join("\n").includes("SKILL.md"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("/mcps\r"));
+			const mcps = frameLines(output).map(plain);
+			assert.equal(mcps[0], "Reins — MCP servers");
+			assert.ok(mcps.join("\n").includes("context7"));
+			assert.ok(mcps.join("\n").includes("2 tools"));
+
+			// 关掉之后回到启动画面：页面没有留下任何残影
+			input.emit("data", Buffer.from("\x1b"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("v1.2.3"));
 		} finally {
 			exitTui(input);
 		}

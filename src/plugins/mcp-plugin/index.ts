@@ -23,12 +23,30 @@ import {
  * 一样不少。插件能做的只是「告诉宿主远端有什么」，管不到判定。
  */
 
+/** 一个 server 当前的状态，交给界面排版用。 */
+export interface McpStatus {
+	readonly name: string;
+	/** connecting / connected / unreachable / disabled */
+	readonly status: string;
+	/** 补充说明：工具数量、失败原因；没有可说的就是空串 */
+	readonly detail: string;
+}
+
+export type McpStatusSource = () => readonly McpStatus[];
+
 export interface McpPluginOptions {
 	/** 工作目录：stdio 型的 server 在这里起子进程 */
 	readonly cwd: string;
 	/** 本程序自己的版本，握手里报给服务端 */
 	readonly version: string;
 	readonly servers: readonly McpServerConfig[];
+	/**
+	 * 把连接清单交出去。
+	 *
+	 * `/mcps` 是整屏页，要按终端宽度排版；插件命令只能吐纯文本行，宽度它看不到。因此清单
+	 * 从这里交给装配处，再由装配处转给界面。
+	 */
+	readonly onStatus?: (source: McpStatusSource) => void;
 }
 
 type ConnectionStatus = "connecting" | "ready" | "failed" | "disabled";
@@ -90,21 +108,20 @@ class McpConnection {
 	}
 
 	/** 一行清单。连不上的必须把原因说出来，否则使用者只知道「没连上」。 */
-	describe(): string {
-		const name = this.name.padEnd(16);
+	status(): McpStatus {
 		switch (this.#status) {
 			case "disabled":
-				return `${name} disabled`;
+				return { name: this.name, status: "disabled", detail: "" };
 			case "connecting":
-				return `${name} connecting`;
+				return { name: this.name, status: "connecting", detail: "" };
 			case "ready": {
-				const tools = this.#tools.length === 0
+				const detail = this.#tools.length === 0
 					? "no tools"
 					: `${this.#tools.length} tools: ${this.#tools.join(", ")}`;
-				return `${name} connected  ${tools}`;
+				return { name: this.name, status: "connected", detail };
 			}
 			case "failed":
-				return `${name} unreachable  ${this.#failure}`;
+				return { name: this.name, status: "unreachable", detail: this.#failure };
 		}
 	}
 
@@ -157,17 +174,8 @@ export function createMcpPlugin(options: McpPluginOptions): Plugin {
 				(server) => new McpConnection(server, options.cwd, options.version),
 			);
 
-			api.registerCommand({
-				name: "mcps",
-				description: "Show MCP server connections and their tools",
-				async run(_args, context) {
-					if (connections.length === 0) {
-						context.print("No MCP servers configured. Add [mcp_servers.<name>] to config.toml.");
-						return;
-					}
-					for (const connection of connections) context.print(connection.describe());
-				},
-			});
+			// 清单交给装配处，再由它转给界面：/mcps 要在整屏页里按宽度排版
+			options.onStatus?.(() => connections.map((connection) => connection.status()));
 
 			// 后台连接：不 await，连不上的进 /mcps 的清单，不挡启动
 			for (const connection of connections) void connection.start(api);

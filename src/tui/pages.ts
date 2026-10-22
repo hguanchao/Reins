@@ -5,26 +5,34 @@ import { displayWidth, padEnd, truncate } from "./menu-panel.ts";
 import { THEME } from "./theme.ts";
 
 /**
- * 整屏帮助页。
+ * 整屏页。
  *
- * 命令行 --help 讲的是启动参数，这里讲界面里的斜杠命令与按键，受众不同，内容分开维护。命令
- * 清单由调用方传进来，与补全面板共用同一份，新增命令时不会漏；按键是界面自己定的，写在这里。
+ * 帮助页、技能清单、MCP 连接清单共用一套排版：标题、若干分节、每节若干「名称 + 说明」的
+ * 条目，再加一段脚注。三者都是「看一眼就关」的只读清单，没必要各写一套。
  *
- * 页面内容按宽度排好版交给调用方，滚动与视口裁切由 renderHelpPage 负责。
+ * 页面内容按宽度排好版交给调用方，滚动与视口裁切由 renderPage 负责——调用方不必知道内容有
+ * 多长，只管把视口高度给它。
  */
 
-interface HelpEntry {
-	/** 左列的名称，按键或命令 */
+export interface PageEntry {
+	/** 左列的名称 */
 	readonly name: string;
 	readonly description: string;
 }
 
+export interface PageSection {
+	readonly title: string;
+	readonly entries: readonly PageEntry[];
+	/** 一条都没有时顶替条目显示的一句话 */
+	readonly empty?: string;
+}
+
 /** 命令之外的固定内容。 */
-const KEY_ENTRIES: readonly HelpEntry[] = [
+const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Enter", description: "Send the prompt or confirm the selected action" },
 	{ name: "Esc", description: "Close a menu or this page; deny an approval" },
 	{ name: "Ctrl+C twice", description: "Exit the interface" },
-	{ name: "Up / Down", description: "Prompt history, menu navigation, or help scrolling" },
+	{ name: "Up / Down", description: "Prompt history, menu navigation, or page scrolling" },
 	{ name: "Left / Right", description: "Move the prompt cursor or approval selection" },
 	{ name: "Home / End", description: "Move to the start or end of the input line" },
 	{ name: "PgUp / PgDn", description: "Scroll the conversation or this page" },
@@ -36,10 +44,14 @@ const KEY_ENTRIES: readonly HelpEntry[] = [
 	{ name: "y / a / n", description: "Allow once, always allow, or deny an approval" },
 ];
 
-const TITLE = "Reins — help";
+const HELP_TITLE = "Reins — help";
+const SKILLS_TITLE = "Reins — skills";
+const MCPS_TITLE = "Reins — MCP servers";
 const COMMANDS_TITLE = "Commands";
 const KEYS_TITLE = "Keys";
-const FOOTNOTE = "Run reins --help outside the interface for command-line options.";
+const SKILLS_SECTION = "Installed skills";
+const SERVERS_SECTION = "Servers";
+const HELP_FOOTNOTE = "Run reins --help outside the interface for command-line options.";
 
 /** 名称列最宽到这里为止，再长就截断，免得说明被挤得读不了。 */
 const NAME_COLUMN_MAX = 14;
@@ -56,22 +68,81 @@ const NAME_COLOR = THEME.textPrimary;
 const DESCRIPTION_COLOR = THEME.textSecondary;
 const RESET = THEME.reset;
 
+/** 命令清单由调用方传进来，与补全面板共用同一份，新增命令时不会漏。 */
+export function helpPageLines(width: number, commands: readonly CommandMenuItem[]): readonly string[] {
+	return sectionPageLines(
+		HELP_TITLE,
+		[
+			{
+				title: COMMANDS_TITLE,
+				entries: commands.map((command) => ({
+					name: `/${command.name}`,
+					description: command.description,
+				})),
+			},
+			{ title: KEYS_TITLE, entries: KEY_ENTRIES },
+		],
+		[HELP_FOOTNOTE],
+		width,
+	);
+}
+
+/** 技能清单；目录由调用方给出，脚注要照着它说清楚该把文件放哪。 */
+export function skillsPageLines(
+	width: number,
+	skills: readonly PageEntry[],
+	directory: string,
+): readonly string[] {
+	return sectionPageLines(
+		SKILLS_TITLE,
+		[
+			{
+				title: SKILLS_SECTION,
+				entries: skills,
+				empty: "No skills yet.",
+			},
+		],
+		[`Each skill is a folder with a SKILL.md under ${directory}`],
+		width,
+	);
+}
+
+/** MCP 连接清单；连不上的要把原因带出来，否则使用者只知道「没连上」。 */
+export function mcpsPageLines(width: number, servers: readonly PageEntry[]): readonly string[] {
+	return sectionPageLines(
+		MCPS_TITLE,
+		[
+			{
+				title: SERVERS_SECTION,
+				entries: servers,
+				empty: "No MCP servers configured.",
+			},
+		],
+		["Add [mcp_servers.<name>] to config.toml to connect one."],
+		width,
+	);
+}
+
 /**
  * 排版后的完整内容。
  *
  * 每行都带好颜色，调用方直接拼进画面即可；宽度不够时说明文字换行，续行与首行说明对齐。
  */
-export function helpPageLines(width: number, commands: readonly CommandMenuItem[]): readonly string[] {
+export function sectionPageLines(
+	title: string,
+	sections: readonly PageSection[],
+	footnotes: readonly string[],
+	width: number,
+): readonly string[] {
 	const columns = Math.max(0, width);
-	const commandEntries: readonly HelpEntry[] = commands.map((command) => ({
-		name: `/${command.name}`,
-		description: command.description,
-	}));
-	const lines: string[] = [`${TITLE_COLOR}${truncate(TITLE, columns)}${RESET}`];
-	lines.push(...sectionLines(COMMANDS_TITLE, commandEntries, columns));
-	lines.push(...sectionLines(KEYS_TITLE, KEY_ENTRIES, columns));
-	lines.push("");
-	lines.push(...wrapText(FOOTNOTE, columns).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
+	const lines: string[] = [`${TITLE_COLOR}${truncate(title, columns)}${RESET}`];
+	for (const section of sections) {
+		lines.push(...sectionLines(section, columns));
+	}
+	if (footnotes.length > 0) lines.push("");
+	for (const footnote of footnotes) {
+		lines.push(...wrapText(footnote, columns).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
+	}
 	return lines;
 }
 
@@ -81,7 +152,7 @@ export function helpPageLines(width: number, commands: readonly CommandMenuItem[
  * 返回的行数恰好等于 height，内容不足时补空行；scrollTop 超出范围时收敛到两端，因此内容
  * 整体放得下时它恒为 0。
  */
-export function renderHelpPage(
+export function renderPage(
 	lines: readonly string[],
 	height: number,
 	scrollTop: number,
@@ -93,24 +164,27 @@ export function renderHelpPage(
 	return Array.from({ length: rows }, (_, index) => lines[top + index] ?? "");
 }
 
-function sectionLines(
-	title: string,
-	entries: readonly HelpEntry[],
-	width: number,
-): readonly string[] {
+function sectionLines(section: PageSection, width: number): readonly string[] {
+	const lines: string[] = ["", `${SECTION_COLOR}${truncate(section.title, width)}${RESET}`];
+	if (section.entries.length === 0) {
+		if (section.empty !== undefined) {
+			lines.push(...wrapText(section.empty, width).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
+		}
+		return lines;
+	}
+
 	const nameWidth = Math.min(
 		NAME_COLUMN_MAX,
-		Math.max(1, ...entries.map((entry) => displayWidth(entry.name))),
+		Math.max(1, ...section.entries.map((entry) => displayWidth(entry.name))),
 		// 名称列连同两侧间距必须留在终端宽度内，否则整行会被撑出去
 		Math.max(1, width - displayWidth(ENTRY_INDENT) - displayWidth(ENTRY_GAP)),
 	);
-	const lines: string[] = ["", `${SECTION_COLOR}${truncate(title, width)}${RESET}`];
-	for (const entry of entries) lines.push(...entryLines(entry, nameWidth, width));
+	for (const entry of section.entries) lines.push(...entryLines(entry, nameWidth, width));
 	return lines;
 }
 
 /** 名称列定宽；右侧放不下说明时说明另起一行，缩进退回名称列起点。 */
-function entryLines(entry: HelpEntry, nameWidth: number, width: number): readonly string[] {
+function entryLines(entry: PageEntry, nameWidth: number, width: number): readonly string[] {
 	const head = `${ENTRY_INDENT}${padEnd(entry.name, nameWidth)}${ENTRY_GAP}`;
 	const headWidth = displayWidth(head);
 

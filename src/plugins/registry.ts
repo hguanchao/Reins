@@ -1,7 +1,7 @@
 import type { McpServerConfig } from "../config/config-file.ts";
 import type { SessionStore } from "../session/store.ts";
 import type { Plugin } from "./host.ts";
-import { createMcpPlugin } from "./mcp-plugin/index.ts";
+import { createMcpPlugin, type McpStatusSource } from "./mcp-plugin/index.ts";
 import sandboxPlugin from "./sandbox-plugin/index.ts";
 import sessionPlugin, { createSessionStore } from "./session-plugin/index.ts";
 import toolsPlugin from "./tools-plugin/index.ts";
@@ -26,6 +26,8 @@ export interface BundledPluginContext {
 	 * 看不见的地方留下副作用。
 	 */
 	readonly mcpServers: readonly McpServerConfig[];
+	/** 把 MCP 连接清单交给装配处；界面用它排 /mcps 页。 */
+	readonly onMcpStatus?: (source: McpStatusSource) => void;
 }
 
 export function bundledPlugins(context: BundledPluginContext): readonly Plugin[] {
@@ -33,7 +35,12 @@ export function bundledPlugins(context: BundledPluginContext): readonly Plugin[]
 		toolsPlugin,
 		sessionPlugin,
 		sandboxPlugin,
-		createMcpPlugin({ cwd: context.cwd, version: context.version, servers: context.mcpServers }),
+		createMcpPlugin({
+			cwd: context.cwd,
+			version: context.version,
+			servers: context.mcpServers,
+			onStatus: context.onMcpStatus,
+		}),
 	];
 }
 
@@ -48,3 +55,4 @@ export function createBundledSessionStore(): SessionStore {
 }
 
 export { sandboxPlugin, sessionPlugin, toolsPlugin };
+export type { McpStatus, McpStatusSource } from "./mcp-plugin/index.ts";

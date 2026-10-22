@@ -29,7 +29,7 @@ import {
 	type CommandMenuState,
 } from "./command-menu.ts";
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
-import { helpPageLines, renderHelpPage } from "./help-page.ts";
+import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
 import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 
@@ -205,6 +205,21 @@ export interface AgentRuntime {
 	readonly refreshInfo: () => void;
 }
 
+/** 整屏页的三种内容；三者共用同一套排版与滚动。 */
+type PageKind = "help" | "skills" | "mcps";
+
+/**
+ * `/skills` 的数据来源。
+ *
+ * 清单在打开页面时才读：改完 SKILL.md 重新打开就能看到，启动时也不用为一张可能没人看的
+ * 清单去扫目录。
+ */
+export interface SkillsSource {
+	/** 技能所在目录；页面脚注要照着它说清楚文件该放哪 */
+	readonly directory: string;
+	readonly list: () => readonly PageEntry[];
+}
+
 export interface TuiOptions {
 	readonly version: string;
 	/** 输入框下方常驻信息：项目、分支、模型、思考强度、上下文与缓存命中率 */
@@ -223,6 +238,10 @@ export interface TuiOptions {
 	readonly effortMenu?: EffortMenuSource;
 	/** 插件与宿主注册的斜杠命令；不提供时只有内置命令 */
 	readonly pluginCommands?: PluginCommandSource;
+	/** /skills 的数据来源；不提供时该命令不可用 */
+	readonly skills?: SkillsSource;
+	/** /mcps 的数据来源；不提供时该命令不可用（MCP 插件缺席就是这种情况） */
+	readonly mcpServers?: () => readonly PageEntry[];
 	/** 一轮结束时的提醒方式；默认 auto（失焦时响铃） */
 	readonly notify?: NotifyMode;
 	/** 启动时回填的历史对话；续聊时使用 */
@@ -287,6 +306,22 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			description: "Show the commands and keys",
 			enabled: true,
 		},
+		{
+			name: "skills",
+			description:
+				options.skills === undefined
+					? "Unavailable in this session"
+					: "List the skills found on disk",
+			enabled: options.skills !== undefined,
+		},
+		{
+			name: "mcps",
+			description:
+				options.mcpServers === undefined
+					? "No MCP plugin in this session"
+					: "List MCP server connections and their tools",
+			enabled: options.mcpServers !== undefined,
+		},
 	];
 
 	/** 内置命令 + 当前插件命令；同名时内置优先，插件不能顶掉 /model 这类入口。 */
@@ -294,6 +329,31 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const plugin = options.pluginCommands?.list() ?? [];
 		const names = new Set(builtinCommands.map((command) => command.name));
 		return [...builtinCommands, ...plugin.filter((command) => !names.has(command.name))];
+	};
+
+	/** 打开一整页：滚动位置回到顶部，下次绘制按当前宽度重排。 */
+	const showPage = (kind: PageKind): void => {
+		openPage = kind;
+		pageScrollTop = 0;
+		pageCache = undefined;
+	};
+
+	/** 页面内容；宽度变了才重排，滚动与重绘都复用同一份。 */
+	const pageLines = (kind: PageKind, width: number): readonly string[] => {
+		if (pageCache?.kind === kind && pageCache.width === width) return pageCache.lines;
+		const lines = buildPage(kind, width);
+		pageCache = { kind, width, lines };
+		return lines;
+	};
+
+	const buildPage = (kind: PageKind, width: number): readonly string[] => {
+		if (kind === "help") return helpPageLines(width, commands());
+		if (kind === "skills") {
+			const source = options.skills;
+			if (source === undefined) return skillsPageLines(width, [], "");
+			return skillsPageLines(width, source.list(), source.directory);
+		}
+		return mcpsPageLines(width, options.mcpServers?.() ?? []);
 	};
 
 	let input = "";
@@ -357,10 +417,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let modelMenu: ModelMenuState | undefined;
 	let effortMenu: EffortMenuState | undefined;
 	let commandMenu: CommandMenuState | undefined;
-	/** 帮助页是否占据主区域；打开期间视口只跟着它自己的滚动。 */
-	let helpOpen = false;
-	/** 帮助页从顶部滚过的行数。 */
-	let helpScrollTop = 0;
+	/** 占据主区域的整屏页；打开期间视口只跟着它自己的滚动。 */
+	let openPage: PageKind | undefined;
+	/** 整屏页从顶部滚过的行数。 */
+	let pageScrollTop = 0;
+	/** 排好版的页面内容；宽度不变就复用，滚动与重绘都不必重排。 */
+	let pageCache:
+		| { readonly kind: PageKind; readonly width: number; readonly lines: readonly string[] }
+		| undefined;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 	let exitArmed = false;
@@ -398,16 +462,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		modelMenu !== undefined ||
 		effortMenu !== undefined ||
 		commandMenu !== undefined;
-	/** 帮助页与菜单一样把输入框让给内容：紧凑页脚、不画光标。 */
-	const compactFooter = (): boolean => menuOpen() || helpOpen;
+	/** 整屏页与菜单一样把输入框让给内容：紧凑页脚、不画光标。 */
+	const compactFooter = (): boolean => menuOpen() || openPage !== undefined;
 	const inputLineCount = (): number => {
 		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 		return inputView(input, width, inputCursor).lines.length;
 	};
 	const footerHeight = (): number => {
 		if (approvalPrompt !== undefined) return APPROVAL_PANEL_HEIGHT;
-		// 帮助页是整屏页面，不保留输入框与常驻信息
-		if (helpOpen) return 0;
+		// 整屏页不保留输入框与常驻信息
+		if (openPage !== undefined) return 0;
 		const lines = inputLineCount();
 		if (!compactFooter()) return 5 + lines;
 		return 3 + lines + menuHeight();
@@ -482,7 +546,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			? typedCommand.length + 1
 			: 0;
 		const footer =
-			helpOpen || approvalPrompt !== undefined
+			openPage !== undefined || approvalPrompt !== undefined
 				? []
 				: compactFooter()
 					? renderFooter(
@@ -491,7 +555,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 							focused &&
 								modelMenu === undefined &&
 								effortMenu === undefined &&
-								!helpOpen,
+								openPage === undefined,
 							undefined,
 							currentInfo(),
 							{ leadingGap: false, showStatus: false, cursor: inputCursor, commandLength },
@@ -500,12 +564,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 							cursor: inputCursor,
 							commandLength,
 						});
-		const transcriptShown = !helpOpen && (hasInput || activeWarning !== undefined);
-		const main = helpOpen
-			? renderHelpPage(helpPageLines(width, commands()), mainHeight, helpScrollTop)
-			: transcriptShown
-				? renderTranscriptView(view, mainHeight, scrollTop)
-				: renderMain(width, mainHeight, options.version);
+		const transcriptShown = openPage === undefined && (hasInput || activeWarning !== undefined);
+		const main =
+			openPage !== undefined
+				? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
+				: transcriptShown
+					? renderTranscriptView(view, mainHeight, scrollTop)
+					: renderMain(width, mainHeight, options.version);
 		const mainLines = [...main];
 		// 整屏自上而下：主区域、面板、页脚；终端比内容矮时只保留前几行
 		const lines = [...mainLines, ...menuLines, ...footer].slice(0, height);
@@ -514,7 +579,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			: mainHeight + 4 + inputLines.row;
 		const cursor =
 			focused &&
-			!helpOpen &&
+			openPage === undefined &&
 			modelMenu === undefined &&
 			effortMenu === undefined &&
 			approvalPrompt === undefined &&
@@ -1348,11 +1413,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
-		if (command.name === "help") {
-			// 命令名不留在输入框里：帮助页期间输入框不接受按键
+		if (command.name === "help" || command.name === "skills" || command.name === "mcps") {
+			// 命令名不留在输入框里：整屏页期间输入框不接受按键
 			setInput("");
-			helpOpen = true;
-			helpScrollTop = 0;
+			showPage(command.name);
 			render();
 			return;
 		}
@@ -1594,34 +1658,35 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
-		if (helpOpen) {
-			// 帮助页也是模态的：上下键与滚轮翻页，Esc 返回，其它按键忽略
+		if (openPage !== undefined) {
+			// 整屏页是模态的：上下键与滚轮翻页，Esc 返回，其它按键忽略
 			const rows = Math.max(0, terminalHeight(stdout) - footerHeight());
 			const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
-			const total = helpPageLines(width, commands()).length;
-			let steps = 0;			for (const event of mouseEvents(text)) {
+			const total = pageLines(openPage, width).length;
+			let steps = 0;
+			for (const event of mouseEvents(text)) {
 				if (event.press && event.button === 64) steps -= 1;
 				else if (event.press && event.button === 65) steps += 1;
 			}
 			const key = menuKey(text);
 			if (key === "up") steps -= 1;
 			if (key === "down") steps += 1;
-			const page = scrollKey(text);
-			if (page === "pageUp") steps -= rows;
-			if (page === "pageDown") steps += rows;
-			if (page === "top") helpScrollTop = 0;
+			const scroll = scrollKey(text);
+			if (scroll === "pageUp") steps -= rows;
+			if (scroll === "pageDown") steps += rows;
 
 			if (key === "escape") {
-				helpOpen = false;
+				openPage = undefined;
 				render();
 				return;
 			}
-			if (page === "top") {
+			if (scroll === "top") {
+				pageScrollTop = 0;
 				render();
 				return;
 			}
 			if (steps !== 0) {
-				helpScrollTop = Math.min(Math.max(0, helpScrollTop + steps), Math.max(0, total - rows));
+				pageScrollTop = Math.min(Math.max(0, pageScrollTop + steps), Math.max(0, total - rows));
 				render();
 			}
 			return;

@@ -42,6 +42,16 @@ export function pluginsDir(): string {
 }
 
 /**
+ * 技能目录。
+ *
+ * 与插件同理放在配置目录下：技能是使用者攒下来的工作方式，不该跟着某个项目走。每个技能
+ * 占一个子目录，里面放 SKILL.md。
+ */
+export function skillsDir(): string {
+	return join(configDir(), "skills");
+}
+
+/**
  * 会话文件所在目录。
  *
  * 按工作根分目录，同一个目录下的会话聚在一起，换目录工作时各自看到自己的历史。

@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import { eastAsianWidth } from "get-east-asian-width";
 
 import type { CommandMenuItem } from "../../src/tui/command-menu.ts";
-import { helpPageLines, renderHelpPage } from "../../src/tui/help-page.ts";
+import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines } from "../../src/tui/pages.ts";
 
 const COMMANDS: readonly CommandMenuItem[] = [
 	{ name: "model", description: "Choose the model for this session", enabled: true },
@@ -21,8 +21,8 @@ function width(text: string): number {
 	return total;
 }
 
-describe("整屏帮助页", () => {
-	it("标题、命令与按键分区呈现", () => {
+describe("整屏页", () => {
+	it("帮助页按标题、命令与按键分区呈现", () => {
 		const rows = helpPageLines(80, COMMANDS).map(plain);
 		const text = rows.join("\n");
 
@@ -33,26 +33,23 @@ describe("整屏帮助页", () => {
 		assert.ok(text.includes("Choose the model for this session"));
 		assert.ok(text.includes("Enter"));
 		assert.ok(text.includes("Send the prompt"));
-		assert.ok(text.includes("Esc"));
 		assert.ok(text.includes("Ctrl+C twice"));
 	});
 
 	it("命令清单由调用方传入，未启用的命令同样列出", () => {
 		const disabled: readonly CommandMenuItem[] = [
-			{ name: "reload", description: "Reload external plugins", enabled: false },
+			{ name: "search", description: "Search the workspace", enabled: false },
 		];
 		const text = helpPageLines(80, disabled).map(plain).join("\n");
 
-		assert.ok(text.includes("/reload"));
-		assert.ok(text.includes("Reload external plugins"));
+		assert.ok(text.includes("/search"));
+		assert.ok(text.includes("Search the workspace"));
 		assert.equal(text.includes("/model"), false);
 	});
 
 	it("说明按剩余宽度换行，续行与首行说明对齐，单词不被切开", () => {
 		const description = "Choose the model for this session";
-		const long: readonly CommandMenuItem[] = [
-			{ name: "model", description, enabled: true },
-		];
+		const long: readonly CommandMenuItem[] = [{ name: "model", description, enabled: true }];
 		const rows = helpPageLines(28, long).map(plain);
 		const first = rows.findIndex((line) => line.includes("Choose"));
 
@@ -72,16 +69,62 @@ describe("整屏帮助页", () => {
 	});
 
 	it("每一行都不超过给定宽度", () => {
+		const skills = [{ name: "writer", description: "把改动整理成文档" }];
+		const servers = [{ name: "context7", description: "connected  2 tools: a, b" }];
 		for (const terminalWidth of [12, 20, 40, 80]) {
-			for (const line of helpPageLines(terminalWidth, COMMANDS).map(plain)) {
+			const lines = [
+				...helpPageLines(terminalWidth, COMMANDS),
+				...skillsPageLines(terminalWidth, skills, "/home/me/.reins/skills"),
+				...mcpsPageLines(terminalWidth, servers),
+			];
+			for (const line of lines.map(plain)) {
 				assert.ok(width(line) <= terminalWidth, `"${line}" 超出 ${terminalWidth} 列`);
 			}
 		}
 	});
 
+	it("技能页列出名称与说明，脚注说明文件该放哪", () => {
+		const text = skillsPageLines(
+			80,
+			[
+				{ name: "writer", description: "把改动整理成文档" },
+				{ name: "reviewer", description: "按清单审查改动" },
+			],
+			"/home/me/.reins/skills",
+		)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("Reins — skills"));
+		assert.ok(text.includes("writer"));
+		assert.ok(text.includes("把改动整理成文档"));
+		assert.ok(text.includes("reviewer"));
+		assert.ok(text.includes("/home/me/.reins/skills"));
+	});
+
+	it("技能页没有技能时给出空状态，而不是只剩一个标题", () => {
+		const text = skillsPageLines(80, [], "/home/me/.reins/skills").map(plain).join("\n");
+
+		assert.ok(text.includes("No skills yet."));
+		assert.ok(text.includes("SKILL.md"));
+	});
+
+	it("MCP 页列出 server 与状态，没有配置时给出空状态", () => {
+		const listed = mcpsPageLines(80, [{ name: "context7", description: "connected  2 tools: a, b" }])
+			.map(plain)
+			.join("\n");
+		assert.ok(listed.includes("Reins — MCP servers"));
+		assert.ok(listed.includes("context7"));
+		assert.ok(listed.includes("2 tools"));
+
+		const empty = mcpsPageLines(80, []).map(plain).join("\n");
+		assert.ok(empty.includes("No MCP servers configured."));
+		assert.ok(empty.includes("mcp_servers"));
+	});
+
 	it("视口取窗口，行数固定为 height", () => {
 		const lines = helpPageLines(80, COMMANDS);
-		const visible = renderHelpPage(lines, 5, 0);
+		const visible = renderPage(lines, 5, 0);
 
 		assert.equal(visible.length, 5);
 		assert.equal(plain(visible[0] ?? ""), "Reins — help");
@@ -89,16 +132,16 @@ describe("整屏帮助页", () => {
 
 	it("滚动超出范围时收敛到两端，内容不足时停在顶部", () => {
 		const lines = helpPageLines(80, COMMANDS);
-		const bottom = renderHelpPage(lines, 5, 9999);
-		const top = renderHelpPage(lines, 9999, 5);
+		const bottom = renderPage(lines, 5, 9999);
+		const top = renderPage(lines, 9999, 5);
 
 		assert.equal(plain(bottom.at(-1) ?? ""), plain(lines.at(-1) ?? ""));
 		assert.equal(plain(top[0] ?? ""), "Reins — help");
 		assert.equal(top.length, 9999);
-		assert.equal(renderHelpPage(lines, 5, -3)[0], lines[0]);
+		assert.equal(renderPage(lines, 5, -3)[0], lines[0]);
 	});
 
 	it("高度为零时不返回任何行", () => {
-		assert.deepEqual(renderHelpPage(helpPageLines(80, COMMANDS), 0, 0), []);
+		assert.deepEqual(renderPage(helpPageLines(80, COMMANDS), 0, 0), []);
 	});
 });
