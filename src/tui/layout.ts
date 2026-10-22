@@ -31,7 +31,7 @@ import {
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
-import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 
 /**
  * 全屏启动。
@@ -597,7 +597,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 		// 滚动条列最后单独画：它只依赖自己的行列位置，内容怎么换行都不会把它带断
 		if (transcriptShown) {
-			const gutter = scrollbarColumn(mainHeight, metrics.totalLines, scrollTop);
+			// 用 scrollLines 而不是 totalLines：留白也是能滚到的范围，滑块大小与位置得按
+			// 真实量程算，否则滑块几乎满格、怎么滚都不动
+			const gutter = scrollbarColumn(mainHeight, metrics.scrollLines, scrollTop);
 			for (let row = 0; row < gutter.length; row += 1) {
 				frame += `${moveCursor(row + 1, width)}${gutter[row]}`;
 			}
@@ -1837,7 +1839,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 		if (dragRow !== undefined) {
 			const limit = maxScroll();
-			scrollTop = scrollTopFromRow(dragRow, mainHeight, limit);
+			scrollTop = scrollTopForRow(dragRow, mainHeight, limit);
 			follow = scrollTop >= limit;
 		}
 		const scrollChanged = scrollTop !== beforeScroll;
@@ -2100,13 +2102,6 @@ function mouseEvents(text: string): readonly MouseInput[] {
 		});
 	}
 	return events;
-}
-
-function scrollTopFromRow(row: number, height: number, maxScroll: number): number {
-	if (maxScroll === 0 || height <= 1) return 0;
-
-	const clamped = Math.min(Math.max(1, row), height);
-	return Math.round(((clamped - 1) / (height - 1)) * maxScroll);
 }
 
 /** 菜单面板的屏幕行对应哪个条目；top 是面板第一行的 0 基坐标。 */

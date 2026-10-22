@@ -6,6 +6,8 @@ import {
 	collapseToolGroups,
 	renderTranscript,
 	scrollbarColumn,
+	scrollbarThumb,
+	scrollTopForRow,
 	thinkingHeaderAtRow,
 	toolGroupHeaderAtRow,
 	toolHeaderAtRow,
@@ -1057,7 +1059,7 @@ describe("对话流", () => {
 		assert.ok(at2.includes("r3"));
 	});
 
-	it("只有翻页留白、内容未超出视口时不显示滚动条", () => {
+	it("内容未超出视口时不显示滚动条，也不留可滚的空白", () => {
 		const lines = renderTranscript(
 			40,
 			12,
@@ -1065,12 +1067,13 @@ describe("对话流", () => {
 				{ prompt: "one", response: ["x"] },
 				{ prompt: "two", response: [] },
 			],
+			// 请求滚到第 6 行：内容不足一屏时没有可滚的余地，应该停在顶部
 			6,
 		);
 
 		assert.ok(lines.every((line) => !plain(line).includes("█")));
-		// 翻页仍然生效：第二条提示停在视口顶部
-		assert.ok(plain(lines[1] ?? "").startsWith(" › two"));
+		// 停在顶部：第一条提示仍在第一行，没有被翻页留白顶上去
+		assert.ok(plain(lines[1] ?? "").startsWith(" › one"));
 	});
 
 	it("给出最后一条提示的起始行，供发送后翻页", () => {
@@ -1190,5 +1193,48 @@ describe("滚动条列", () => {
 
 	it("内容没超出视口时整列为空", () => {
 		assert.equal(marks(10, 10, 0).trim(), "");
+	});
+
+	it("滑块位置随滚动量变化，不会卡在一处", () => {
+		// 内容 28 行 + 13 行留白，视口 26 行：真实可滚 15 行
+		const tops = [0, 5, 10, 15].map((top) => marks(26, 41, top).indexOf("█"));
+
+		for (let index = 1; index < tops.length; index += 1) {
+			assert.ok(
+				(tops[index] ?? 0) > (tops[index - 1] ?? 0),
+				`第 ${index} 次滚动滑块没有下移：${tops.join(", ")}`,
+			);
+		}
+	});
+
+	it("拖到哪，滑块就落在哪", () => {
+		const height = 26;
+		const scrollLines = 41;
+		const maxScroll = scrollLines - height;
+		const thumb = scrollbarThumb(height, scrollLines);
+
+		// 滑块中心能覆盖的那几行：拖过去之后中心应当落在光标上
+		for (const row of [10, 14, 18]) {
+			const top = scrollTopForRow(row, height, maxScroll);
+			const thumbTop = Math.round((top / maxScroll) * thumb.maxTop);
+			assert.equal(
+				thumbTop + Math.floor(thumb.height / 2),
+				row - 1,
+				`拖到第 ${row} 行时滑块中心不在光标处`,
+			);
+		}
+
+		// 两端收敛：拖到顶就是 0，拖到底就是最大滚动量
+		assert.equal(scrollTopForRow(1, height, maxScroll), 0);
+		assert.equal(scrollTopForRow(height, height, maxScroll), maxScroll);
+	});
+
+	it("内容不足一屏时不留可滚的空白", () => {
+		const metrics = transcriptMetrics(40, 12, [
+			{ prompt: "one", response: ["x"] },
+			{ prompt: "two", response: [] },
+		]);
+
+		assert.equal(metrics.scrollLines, metrics.totalLines);
 	});
 });
