@@ -70,6 +70,43 @@ describe("系统提示词", () => {
 		);
 	});
 
+	it("技能只列名称、说明与 SKILL.md 路径，正文不进提示词", () => {
+		const sections = buildPromptSections({
+			cwd: "/work",
+			tools: [],
+			skills: [
+				{ name: "writer", description: "把改动整理成文档", path: "/skills/writer/SKILL.md" },
+				{ name: "bare", description: "", path: "/skills/bare/SKILL.md" },
+			],
+		});
+
+		assert.ok(sections["skills"]?.includes("- writer: 把改动整理成文档 (/skills/writer/SKILL.md)"));
+		// 没有说明时不留一个空冒号
+		assert.ok(sections["skills"]?.includes("- bare (/skills/bare/SKILL.md)"));
+		assert.ok(sections["skills"]?.includes("Read a skill's SKILL.md"));
+	});
+
+	it("没有技能时不写这一节", () => {
+		assert.equal(buildPromptSections({ cwd: "/work", tools: [] })["skills"], undefined);
+		assert.equal(buildPromptSections({ cwd: "/work", tools: [], skills: [] })["skills"], undefined);
+	});
+
+	it("技能排在工具之后、规则之前", () => {
+		const text = renderSystemPrompt(
+			buildPromptSections({
+				cwd: "/work",
+				tools: [tool("read", "Read a file.")],
+				skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
+			}),
+		);
+
+		const tools = text.indexOf("You can use these tools:");
+		const skills = text.indexOf("Skills you can use:");
+		const rules = text.indexOf("Tool rules:");
+		assert.ok(tools >= 0 && skills > tools);
+		assert.ok(rules > skills);
+	});
+
 	it("分段按固定顺序拼接", () => {
 		const text = renderSystemPrompt({
 			cwd: "cwd",

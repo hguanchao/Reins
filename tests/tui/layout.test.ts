@@ -2744,8 +2744,15 @@ describe("全屏布局", () => {
 			version: "1.2.3",
 			info: FOOTER_INFO,
 			skills: {
-				directory: "/home/me/.reins/skills",
-				list: () => [{ name: "writer", description: "把改动整理成文档" }],
+				entries: [
+					{
+						name: "writer",
+						description: "把改动整理成文档",
+						note: "/home/me/.reins/skills/writer/SKILL.md",
+						scope: "user",
+					},
+				],
+				directories: ["/home/me/.reins/skills"],
 			},
 			mcpServers: () => [{ name: "context7", description: "connected  2 tools: a, b" }],
 			stdin: input,

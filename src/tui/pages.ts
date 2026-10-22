@@ -18,6 +18,8 @@ export interface PageEntry {
 	/** 左列的名称 */
 	readonly name: string;
 	readonly description: string;
+	/** 另起一行的小字；用来放位置这类不该挤进说明列的信息 */
+	readonly note?: string;
 }
 
 export interface PageSection {
@@ -49,7 +51,6 @@ const SKILLS_TITLE = "Reins — skills";
 const MCPS_TITLE = "Reins — MCP servers";
 const COMMANDS_TITLE = "Commands";
 const KEYS_TITLE = "Keys";
-const SKILLS_SECTION = "Installed skills";
 const SERVERS_SECTION = "Servers";
 const HELP_FOOTNOTE = "Run reins --help outside the interface for command-line options.";
 
@@ -66,6 +67,8 @@ const TITLE_COLOR = THEME.accent;
 const SECTION_COLOR = THEME.textSubtle;
 const NAME_COLOR = THEME.textPrimary;
 const DESCRIPTION_COLOR = THEME.textSecondary;
+/** 小字比说明还弱一档：它是补充信息，不该跟说明抢注意力 */
+const NOTE_COLOR = THEME.textSubtle;
 const RESET = THEME.reset;
 
 /** 命令清单由调用方传进来，与补全面板共用同一份，新增命令时不会漏。 */
@@ -87,24 +90,31 @@ export function helpPageLines(width: number, commands: readonly CommandMenuItem[
 	);
 }
 
-/** 技能清单；目录由调用方给出，脚注要照着它说清楚该把文件放哪。 */
+/** 技能页的条目：多一个来源，用来分节。 */
+export interface SkillPageEntry extends PageEntry {
+	readonly scope: "user" | "project";
+}
+
+/** 技能清单；目录由调用方给出，脚注要照着它说清楚都扫了哪里。 */
 export function skillsPageLines(
 	width: number,
-	skills: readonly PageEntry[],
-	directory: string,
+	skills: readonly SkillPageEntry[],
+	directories: readonly string[],
 ): readonly string[] {
-	return sectionPageLines(
-		SKILLS_TITLE,
-		[
-			{
-				title: SKILLS_SECTION,
-				entries: skills,
-				empty: "No skills yet.",
-			},
-		],
-		[`Each skill is a folder with a SKILL.md under ${directory}`],
-		width,
-	);
+	const user = skills.filter((skill) => skill.scope === "user");
+	const project = skills.filter((skill) => skill.scope === "project");
+	const sections: PageSection[] =
+		skills.length === 0
+			? [{ title: "Skills", entries: [], empty: "No skills yet." }]
+			: [
+					...(user.length === 0 ? [] : [{ title: "User skills", entries: user }]),
+					...(project.length === 0 ? [] : [{ title: "Project skills", entries: project }]),
+				];
+	const footnotes = [
+		...directories.map((directory) => `Looking in ${directory}`),
+		"New skills take effect after a restart.",
+	];
+	return sectionPageLines(SKILLS_TITLE, sections, footnotes, width);
 }
 
 /** MCP 连接清单；连不上的要把原因带出来，否则使用者只知道「没连上」。 */
@@ -187,6 +197,12 @@ function sectionLines(section: PageSection, width: number): readonly string[] {
 function entryLines(entry: PageEntry, nameWidth: number, width: number): readonly string[] {
 	const head = `${ENTRY_INDENT}${padEnd(entry.name, nameWidth)}${ENTRY_GAP}`;
 	const headWidth = displayWidth(head);
+	const noteLines =
+		entry.note === undefined
+			? []
+			: wrapText(entry.note, Math.max(1, width - displayWidth(ENTRY_INDENT))).map(
+					(line) => `${ENTRY_INDENT}${NOTE_COLOR}${line}${RESET}`,
+				);
 
 	if (width - headWidth < MIN_INLINE_DESCRIPTION) {
 		const indent = ENTRY_INDENT.slice(0, width);
@@ -195,16 +211,20 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 			...wrapText(entry.description, Math.max(1, width - displayWidth(indent))).map(
 				(line) => `${indent}${DESCRIPTION_COLOR}${line}${RESET}`,
 			),
+			...noteLines,
 		];
 	}
 
 	const wrapped = wrapText(entry.description, width - headWidth);
 	const indent = " ".repeat(headWidth);
-	return wrapped.map((line, index) =>
-		index === 0
-			? `${NAME_COLOR}${head}${DESCRIPTION_COLOR}${line}${RESET}`
-			: `${indent}${DESCRIPTION_COLOR}${line}${RESET}`,
-	);
+	return [
+		...wrapped.map((line, index) =>
+			index === 0
+				? `${NAME_COLOR}${head}${DESCRIPTION_COLOR}${line}${RESET}`
+				: `${indent}${DESCRIPTION_COLOR}${line}${RESET}`,
+		),
+		...noteLines,
+	];
 }
 
 /**

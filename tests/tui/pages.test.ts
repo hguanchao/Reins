@@ -69,12 +69,19 @@ describe("整屏页", () => {
 	});
 
 	it("每一行都不超过给定宽度", () => {
-		const skills = [{ name: "writer", description: "把改动整理成文档" }];
+		const skills = [
+			{
+				name: "writer",
+				description: "把改动整理成文档",
+				note: "/home/me/.reins/skills/writer/SKILL.md",
+				scope: "user" as const,
+			},
+		];
 		const servers = [{ name: "context7", description: "connected  2 tools: a, b" }];
 		for (const terminalWidth of [12, 20, 40, 80]) {
 			const lines = [
 				...helpPageLines(terminalWidth, COMMANDS),
-				...skillsPageLines(terminalWidth, skills, "/home/me/.reins/skills"),
+				...skillsPageLines(terminalWidth, skills, ["/home/me/.reins/skills"]),
 				...mcpsPageLines(terminalWidth, servers),
 			];
 			for (const line of lines.map(plain)) {
@@ -83,30 +90,43 @@ describe("整屏页", () => {
 		}
 	});
 
-	it("技能页列出名称与说明，脚注说明文件该放哪", () => {
+	it("技能页按来源分节，并带上 SKILL.md 的路径", () => {
 		const text = skillsPageLines(
 			80,
 			[
-				{ name: "writer", description: "把改动整理成文档" },
-				{ name: "reviewer", description: "按清单审查改动" },
+				{
+					name: "writer",
+					description: "把改动整理成文档",
+					note: "/home/me/.reins/skills/writer/SKILL.md",
+					scope: "user",
+				},
+				{
+					name: "reviewer",
+					description: "按清单审查改动",
+					note: "/repo/.agents/skills/reviewer/SKILL.md",
+					scope: "project",
+				},
 			],
-			"/home/me/.reins/skills",
+			["/home/me/.reins/skills", "/repo/.agents/skills"],
 		)
 			.map(plain)
 			.join("\n");
 
 		assert.ok(text.includes("Reins — skills"));
+		assert.ok(text.includes("User skills"));
+		assert.ok(text.includes("Project skills"));
 		assert.ok(text.includes("writer"));
 		assert.ok(text.includes("把改动整理成文档"));
+		assert.ok(text.includes("/home/me/.reins/skills/writer/SKILL.md"));
 		assert.ok(text.includes("reviewer"));
-		assert.ok(text.includes("/home/me/.reins/skills"));
+		assert.ok(text.includes("restart"));
 	});
 
 	it("技能页没有技能时给出空状态，而不是只剩一个标题", () => {
-		const text = skillsPageLines(80, [], "/home/me/.reins/skills").map(plain).join("\n");
+		const text = skillsPageLines(80, [], ["/home/me/.reins/skills"]).map(plain).join("\n");
 
 		assert.ok(text.includes("No skills yet."));
-		assert.ok(text.includes("SKILL.md"));
+		assert.ok(text.includes("/home/me/.reins/skills"));
 	});
 
 	it("MCP 页列出 server 与状态，没有配置时给出空状态", () => {

@@ -1,7 +1,56 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, describe, it } from "node:test";
 
-import { findSavedDecision, readTrustedRoots, resolveTrust } from "../../src/workspace/trust.ts";
+import {
+	findProjectResources,
+	findSavedDecision,
+	readTrustedRoots,
+	resolveTrust,
+} from "../../src/workspace/trust.ts";
+
+const created: string[] = [];
+
+function tempWorkspace(): string {
+	const directory = mkdtempSync(join(tmpdir(), "reins-trust-"));
+	created.push(directory);
+	return directory;
+}
+
+after(() => {
+	for (const directory of created) rmSync(directory, { recursive: true, force: true });
+});
+
+describe("工作区里的受保护资源", () => {
+	it("什么都没有时不列任何东西", () => {
+		const root = tempWorkspace();
+
+		assert.deepEqual(findProjectResources(root).files, []);
+		assert.deepEqual(findProjectResources(root).skillDirectories, []);
+	});
+
+	it("项目级技能目录同样需要信任，两个位置都算", () => {
+		const root = tempWorkspace();
+		mkdirSync(join(root, ".reins", "skills"), { recursive: true });
+		mkdirSync(join(root, ".agents", "skills"), { recursive: true });
+
+		const resources = findProjectResources(root);
+		assert.deepEqual(resources.skillDirectories, [
+			join(root, ".reins", "skills"),
+			join(root, ".agents", "skills"),
+		]);
+	});
+
+	it("技能是文件而不是目录时不算数", () => {
+		const root = tempWorkspace();
+		mkdirSync(join(root, ".agents"), { recursive: true });
+		writeFileSync(join(root, ".agents", "skills"), "", "utf8");
+
+		assert.deepEqual(findProjectResources(root).skillDirectories, []);
+	});
+});
 
 describe("信任清单匹配", () => {
 	it("目录本身与祖先目录建立的信任被子目录继承", () => {

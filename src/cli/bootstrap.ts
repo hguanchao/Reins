@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
+import type { PromptSkill } from "../agent/prompt.ts";
 import { Compactor, compactionWindow, estimateTokens } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
@@ -17,7 +18,6 @@ import {
 	pluginsDir,
 	projectConfigFilePath,
 	projectProvidersFilePath,
-	skillsDir,
 	spillDir,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
@@ -37,7 +37,7 @@ import {
 	lastContextTokens,
 	sumUsage,
 } from "../session/usage.ts";
-import { discoverSkills } from "../skills/discover.ts";
+import { defaultSkillRoots, discoverSkills } from "../skills/discover.ts";
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
@@ -138,15 +138,17 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 
 	const workRoot = process.cwd();
 
-	// 技能清单按需读：改完 SKILL.md 重新打开 /skills 就能看到，启动时不必为此扫一遍目录
-	const skillDirectory = skillsDir();
-	const skills = {
-		directory: skillDirectory,
-		list: () =>
-			discoverSkills(skillDirectory).map((skill) => ({
-				name: skill.name,
-				description: skill.description.length === 0 ? "(no description)" : skill.description,
-			})),
+	// 技能一次读定：写进提示词的那一份与 /skills 显示的是同一个快照，改完要重启才生效
+	const skillRoots = defaultSkillRoots(workRoot, "trusted" in loaded && loaded.trusted);
+	const skills = discoverSkills(skillRoots);
+	const skillsPage = {
+		entries: skills.map((skill) => ({
+			name: skill.name,
+			description: skill.description.length === 0 ? "(no description)" : skill.description,
+			note: skill.path,
+			scope: skill.scope,
+		})),
+		directories: skillRoots.map((root) => root.directory),
 	};
 
 	const configFile = options.configPath ?? configFilePath();
@@ -161,7 +163,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 				info: createUnavailableFooterInfo(workRoot, session),
 				warning: `Warning: ${loaded.error.message}`,
 				ready: false,
-				skills,
+				skills: skillsPage,
 			});
 		} catch (error) {
 			writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -290,7 +292,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 				compactor,
 				contextTokens: lastContextTokens(session.entries()),
 			},
-			{ registry, session, workspace, sandbox },
+			{ registry, session, workspace, sandbox, skills },
 			onEvent,
 		);
 		await driver.run(prompt, signal);
@@ -321,7 +323,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 				compactor,
 				contextTokens: lastContextTokens(session.entries()),
 			},
-			{ registry, session, workspace, sandbox },
+			{ registry, session, workspace, sandbox, skills },
 			onEvent,
 		);
 		await driver.compact(signal);
@@ -384,7 +386,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			info: () => footerInfo,
 			warning,
 			ready,
-			skills,
+			skills: skillsPage,
 			mcpServers: mcpStatus === undefined ? undefined : mcpServerRows,
 			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
@@ -633,6 +635,8 @@ async function runPrint(options: CliOptions): Promise<number> {
 export type SelectionResult =
 	| {
 			readonly ok: true;
+			/** 工作区是否已取得信任：项目级技能要靠它决定扫不扫 */
+			readonly trusted: boolean;
 			readonly value: {
 				readonly config: Config;
 				readonly providersConfig: ProvidersConfig;
@@ -643,6 +647,7 @@ export type SelectionResult =
 			/** 配置本身读得动，只是 provider/model 对不上；/model 可以修复 */
 			readonly ok: false;
 			readonly recoverable: true;
+			readonly trusted: boolean;
 			readonly config: Config;
 			readonly providersConfig: ProvidersConfig;
 			readonly error: ConfigError;
@@ -664,6 +669,7 @@ export async function loadSelection(options: CliOptions): Promise<SelectionResul
 	try {
 		return {
 			ok: true,
+			trusted: effective.trust.trusted,
 			value: {
 				config: effective.config,
 				providersConfig: effective.providersConfig,
@@ -680,6 +686,7 @@ export async function loadSelection(options: CliOptions): Promise<SelectionResul
 			return {
 				ok: false,
 				recoverable: true,
+				trusted: effective.trust.trusted,
 				config: effective.config,
 				providersConfig: effective.providersConfig,
 				error,
@@ -714,7 +721,10 @@ async function loadEffectiveConfig(
 	const userProvidersPath = options.providersPath ?? providersFilePath();
 	const userConfig = ConfigFile.load(userConfigPath);
 	const userProviders = loadProviders(userProvidersPath);
-	const resources = findProjectResources(workRoot).files;
+	const projectResources = findProjectResources(workRoot);
+	const resources = projectResources.files;
+	// 项目配置与项目级技能都会影响程序行为，任有其一时都得先取得信任
+	const protectedResources = [...projectResources.files, ...projectResources.skillDirectories];
 
 	if (options.configPath !== undefined) {
 		return {
@@ -730,7 +740,7 @@ async function loadEffectiveConfig(
 		root: workRoot,
 		override: options.trust,
 		trustedRoots: userConfig.config.plugins.trusted,
-		hasProtectedResources: resources.length > 0,
+		hasProtectedResources: protectedResources.length > 0,
 	});
 
 	if (decision.source === "flag") {
@@ -740,9 +750,9 @@ async function loadEffectiveConfig(
 	}
 
 	if (!decision.trusted) {
-		if (resources.length > 0) {
+		if (protectedResources.length > 0) {
 			writeStderr(
-				`Skipped the workspace config that needs trust: ${resources.join(", ")}\nPass --trust to use them.\n`,
+				`Skipped the workspace config that needs trust: ${protectedResources.join(", ")}\nPass --trust to use them.\n`,
 			);
 		}
 		return {
@@ -879,6 +889,8 @@ function createDriverFor(
 		readonly session: Session;
 		readonly workspace: WorkspaceBoundary;
 		readonly sandbox: SandboxView;
+		/** 可用技能；写进提示词，正文由模型自己用 read 工具去读 */
+		readonly skills?: readonly PromptSkill[];
 	},
 	onEvent: AgentEventListener,
 ): TurnDriver {
@@ -908,6 +920,7 @@ function createDriverFor(
 		workspace: shared.workspace,
 		sandbox: shared.sandbox,
 		onEvent,
+		...(shared.skills === undefined ? {} : { skills: shared.skills }),
 		...(context.compactor === undefined ? {} : { compactor: context.compactor }),
 		...(context.contextTokens === undefined ? {} : { contextTokens: context.contextTokens }),
 	});

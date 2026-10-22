@@ -2,7 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { updateUserConfigValue } from "../config/write-back.ts";
-import { projectConfigFilePath, projectDirPath } from "../config/paths.ts";
+import { projectAgentsSkillsDir, projectConfigFilePath, projectDirPath, projectSkillsDir } from "../config/paths.ts";
 
 /**
  * 工作区信任。
@@ -20,6 +20,8 @@ export interface ProjectResources {
 	readonly directory: string;
 	/** 需要信任才能读取的具体文件 */
 	readonly files: readonly string[];
+	/** 需要信任才能读取的技能目录 */
+	readonly skillDirectories: readonly string[];
 }
 
 /** 找出工作区里需要信任才能读取的东西。没有就不必问。 */
@@ -28,7 +30,11 @@ export function findProjectResources(root: string): ProjectResources {
 	const candidates = [projectConfigFilePath(root), join(directory, "providers.json")];
 	// 只列出确有其物的文件：让使用者为不存在的东西做决定没有意义
 	const files = candidates.filter((path) => existsSync(path) && statSync(path).isFile());
-	return { directory, files };
+	// 技能清单会进系统提示词，与项目配置同属「这个目录能影响程序行为」的一类，因此一并算数
+	const skillDirectories = [projectSkillsDir(root), projectAgentsSkillsDir(root)].filter(
+		(path) => existsSync(path) && statSync(path).isDirectory(),
+	);
+	return { directory, files, skillDirectories };
 }
 
 export interface TrustDecision {

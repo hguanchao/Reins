@@ -10,7 +10,7 @@ import type { SessionToolDeclaration } from "../session/port.ts";
  */
 
 /** 渲染顺序。提示词的结构固定，顺序不随注册顺序变化，否则每次请求的缓存前缀都不一样。 */
-export const SECTION_ORDER: readonly string[] = ["preamble", "tools", "rules", "cwd"];
+export const SECTION_ORDER: readonly string[] = ["preamble", "tools", "skills", "rules", "cwd"];
 
 const PREAMBLE = `You are Reins, a coding agent running in the user's terminal. You work inside a workspace: inspect it, change files, run commands, and report the result.
 
@@ -32,7 +32,16 @@ How to communicate:
 - Refer to files by path, with line numbers when they help. Do not refer to "above", "below", or an earlier message.`;
 
 const TOOLS_HEADING = "You can use these tools:";
+const SKILLS_HEADING = "Skills you can use:";
 const RULES_HEADING = "Tool rules:";
+/**
+ * 技能只列名称、说明与文件位置，正文不进提示词。
+ *
+ * 一个技能动辄几百行，全部塞进每一轮请求既贵又冲淡真正相关的指令；按需去读那一个文件，
+ * 上下文里只留它读到的部分。
+ */
+const SKILLS_FOOTNOTE =
+	"Read a skill's SKILL.md before following it. Its instructions take precedence over the general guidance above.";
 
 /**
  * 子代理的交代。
@@ -107,9 +116,19 @@ function buildRules(tools: readonly ToolDeclaration[]): string {
 	return rules.map((rule) => `- ${rule}`).join("\n");
 }
 
+/** 提示词里的一条技能：只要够模型判断「该不该读」，不要正文。 */
+export interface PromptSkill {
+	readonly name: string;
+	readonly description: string;
+	/** SKILL.md 的绝对路径 */
+	readonly path: string;
+}
+
 export interface PromptInput {
 	readonly cwd: string;
 	readonly tools: readonly ToolDeclaration[];
+	/** 可用的技能；为空时不写这一节，省下每一轮的那几行 */
+	readonly skills?: readonly PromptSkill[];
 }
 
 /** 生成当前应当生效的分段。只有内容变化时才需要写进会话。 */
@@ -124,6 +143,18 @@ export function buildPromptSections(input: PromptInput): Record<string, string> 
 		sections["tools"] = [
 			TOOLS_HEADING,
 			...input.tools.map((tool) => `- ${tool.name}: ${tool.summary ?? tool.description}`),
+		].join("\n");
+	}
+	const skills = input.skills ?? [];
+	if (skills.length > 0) {
+		sections["skills"] = [
+			SKILLS_HEADING,
+			...skills.map((skill) =>
+				skill.description.length === 0
+					? `- ${skill.name} (${skill.path})`
+					: `- ${skill.name}: ${skill.description} (${skill.path})`,
+			),
+			SKILLS_FOOTNOTE,
 		].join("\n");
 	}
 	return sections;

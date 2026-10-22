@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { discoverSkills } from "../../src/skills/discover.ts";
+import {
+	defaultSkillRoots,
+	discoverSkills,
+	type SkillRoot,
+	type SkillScope,
+} from "../../src/skills/discover.ts";
 
 const created: string[] = [];
 
@@ -22,16 +27,26 @@ function writeSkill(root: string, name: string, contents: string): string {
 	return directory;
 }
 
+function rootsOf(
+	...entries: readonly (string | readonly [string, SkillScope])[]
+): readonly SkillRoot[] {
+	return entries.map((entry) =>
+		typeof entry === "string"
+			? { directory: entry, scope: "user" as const }
+			: { directory: entry[0], scope: entry[1] },
+	);
+}
+
 after(() => {
 	for (const directory of created) rmSync(directory, { recursive: true, force: true });
 });
 
 describe("技能发现", () => {
 	it("目录不存在时当作没有技能", () => {
-		assert.deepEqual(discoverSkills(join(tempRoot(), "missing")), []);
+		assert.deepEqual(discoverSkills(rootsOf(join(tempRoot(), "missing"))), []);
 	});
 
-	it("读出 frontmatter 里的名称与说明", () => {
+	it("读出 frontmatter 里的名称与说明，并带上 SKILL.md 的路径", () => {
 		const root = tempRoot();
 		const directory = writeSkill(
 			root,
@@ -39,8 +54,14 @@ describe("技能发现", () => {
 			["---", "name: writer", "description: 把改动整理成文档", "---", "", "# 正文"].join("\n"),
 		);
 
-		assert.deepEqual(discoverSkills(root), [
-			{ name: "writer", description: "把改动整理成文档", directory },
+		assert.deepEqual(discoverSkills(rootsOf(root)), [
+			{
+				name: "writer",
+				description: "把改动整理成文档",
+				path: join(directory, "SKILL.md"),
+				scope: "user",
+				directory,
+			},
 		]);
 	});
 
@@ -48,7 +69,7 @@ describe("技能发现", () => {
 		const root = tempRoot();
 		writeSkill(root, "plain", "# 只有正文\n");
 
-		const skills = discoverSkills(root);
+		const skills = discoverSkills(rootsOf(root));
 		assert.equal(skills.length, 1);
 		assert.equal(skills[0]?.name, "plain");
 		assert.equal(skills[0]?.description, "");
@@ -58,7 +79,7 @@ describe("技能发现", () => {
 		const root = tempRoot();
 		writeSkill(root, "unclosed", ["---", "name: never-used", "description: 也不算"].join("\n"));
 
-		assert.equal(discoverSkills(root)[0]?.name, "unclosed");
+		assert.equal(discoverSkills(rootsOf(root))[0]?.name, "unclosed");
 	});
 
 	it("去掉成对的引号", () => {
@@ -66,7 +87,7 @@ describe("技能发现", () => {
 		writeSkill(root, "quoted", ["---", 'name: "带 空格"', "description: '单引号'", "---"].join("\n"));
 
 		assert.deepEqual(
-			discoverSkills(root).map((skill) => [skill.name, skill.description]),
+			discoverSkills(rootsOf(root)).map((skill) => [skill.name, skill.description]),
 			[["带 空格", "单引号"]],
 		);
 	});
@@ -75,7 +96,7 @@ describe("技能发现", () => {
 		const root = tempRoot();
 		mkdirSync(join(root, "empty"), { recursive: true });
 
-		assert.deepEqual(discoverSkills(root), []);
+		assert.deepEqual(discoverSkills(rootsOf(root)), []);
 	});
 
 	it("按名称排序，而不是按目录名", () => {
@@ -84,8 +105,66 @@ describe("技能发现", () => {
 		writeSkill(root, "a-directory", ["---", "name: zeta", "---"].join("\n"));
 
 		assert.deepEqual(
-			discoverSkills(root).map((skill) => skill.name),
+			discoverSkills(rootsOf(root)).map((skill) => skill.name),
 			["alpha", "zeta"],
+		);
+	});
+
+	it("多个根合并成一份清单", () => {
+		const userRoot = tempRoot();
+		const projectRoot = tempRoot();
+		writeSkill(userRoot, "writer", ["---", "name: writer", "---"].join("\n"));
+		writeSkill(projectRoot, "reviewer", ["---", "name: reviewer", "---"].join("\n"));
+
+		const skills = discoverSkills(rootsOf([userRoot, "user"], [projectRoot, "project"]));
+		assert.deepEqual(
+			skills.map((skill) => [skill.name, skill.scope]),
+			[
+				["reviewer", "project"],
+				["writer", "user"],
+			],
+		);
+	});
+
+	it("同名时项目级覆盖用户级", () => {
+		const userRoot = tempRoot();
+		const projectRoot = tempRoot();
+		writeSkill(userRoot, "writer", ["---", "name: writer", "description: 用户版", "---"].join("\n"));
+		writeSkill(projectRoot, "writer", ["---", "name: writer", "description: 项目版", "---"].join("\n"));
+
+		const skills = discoverSkills(rootsOf([userRoot, "user"], [projectRoot, "project"]));
+		assert.equal(skills.length, 1);
+		assert.equal(skills[0]?.description, "项目版");
+		assert.equal(skills[0]?.scope, "project");
+	});
+
+	it("根的顺序不影响项目级优先", () => {
+		const userRoot = tempRoot();
+		const projectRoot = tempRoot();
+		writeSkill(userRoot, "writer", ["---", "name: writer", "description: 用户版", "---"].join("\n"));
+		writeSkill(projectRoot, "writer", ["---", "name: writer", "description: 项目版", "---"].join("\n"));
+
+		const skills = discoverSkills(rootsOf([projectRoot, "project"], [userRoot, "user"]));
+		assert.equal(skills[0]?.description, "项目版");
+	});
+
+	it("默认根：用户级总是两根，项目级只在受信任时加进来", () => {
+		const untrusted = defaultSkillRoots("/repo", false);
+		assert.deepEqual(
+			untrusted.map((root) => root.scope),
+			["user", "user"],
+		);
+		// 用户级两根：Reins 自己的目录 + 跨工具的 .agents/skills
+		assert.ok(untrusted.some((root) => root.directory.endsWith(join(".agents", "skills"))));
+
+		const trusted = defaultSkillRoots("/repo", true);
+		assert.deepEqual(
+			trusted.map((root) => root.scope),
+			["user", "user", "project", "project"],
+		);
+		assert.deepEqual(
+			trusted.slice(2).map((root) => root.directory),
+			[join("/repo", ".reins", "skills"), join("/repo", ".agents", "skills")],
 		);
 	});
 });

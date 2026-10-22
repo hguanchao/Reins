@@ -52,6 +52,26 @@ export function skillsDir(): string {
 }
 
 /**
+ * 跨工具的技能目录。
+ *
+ * `.agents/skills` 是几个终端 agent 共同认的位置，认它等于白捡使用者已经装好的技能，
+ * 不必让同一份技能在每个工具里各存一遍。
+ */
+export function agentsSkillsDir(): string {
+	return join(homedir(), ".agents", "skills");
+}
+
+/** 工作区里的技能目录，与 `.reins/config.toml` 同级。 */
+export function projectSkillsDir(workRoot: string): string {
+	return join(projectDirPath(workRoot), "skills");
+}
+
+/** 工作区里的跨工具技能目录。 */
+export function projectAgentsSkillsDir(workRoot: string): string {
+	return join(workRoot, ".agents", "skills");
+}
+
+/**
  * 会话文件所在目录。
  *
  * 按工作根分目录，同一个目录下的会话聚在一起，换目录工作时各自看到自己的历史。

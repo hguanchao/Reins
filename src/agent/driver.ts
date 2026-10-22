@@ -17,7 +17,7 @@ import type { ToolRegistry } from "../tools/registry.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { estimateTokens, type Compactor } from "./compactor.ts";
 import type { AgentEvent, AgentEventListener } from "./events.ts";
-import { buildPromptSections, renderSystemPrompt, toSessionTools } from "./prompt.ts";
+import { buildPromptSections, renderSystemPrompt, toSessionTools, type PromptSkill } from "./prompt.ts";
 
 /**
  * 回合驱动。
@@ -39,6 +39,8 @@ export interface DriverDeps {
 	readonly workspace: WorkspaceBoundary;
 	readonly sandbox: SandboxView;
 	readonly onEvent: AgentEventListener;
+	/** 可用技能；装配处一次读定，运行中不重扫——提示词分段因此不会每轮抖动 */
+	readonly skills?: readonly PromptSkill[];
 	/** 上下文压缩。没有它（上限未知或未配置）就不压缩，请求照原样发出去 */
 	readonly compactor?: Compactor;
 	/** 本次运行开始时已知的上下文规模；续聊或每轮新建驱动时由装配处从会话记录里带来 */
@@ -356,6 +358,7 @@ export class TurnDriver {
 		const desiredSections = buildPromptSections({
 			cwd: this.#deps.workspace.root,
 			tools: this.#deps.tools.list(),
+			skills: this.#deps.skills,
 		});
 		const sectionChanges: Record<string, string | null> = {};
 		for (const [name, body] of Object.entries(desiredSections)) {

@@ -29,7 +29,7 @@ import {
 	type CommandMenuState,
 } from "./command-menu.ts";
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
-import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry } from "./pages.ts";
+import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
 import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 
@@ -209,15 +209,15 @@ export interface AgentRuntime {
 type PageKind = "help" | "skills" | "mcps";
 
 /**
- * `/skills` 的数据来源。
+ * `/skills` 页的内容。
  *
- * 清单在打开页面时才读：改完 SKILL.md 重新打开就能看到，启动时也不用为一张可能没人看的
- * 清单去扫目录。
+ * 清单在装配时读定，与写进提示词的那一份是同一个快照：页面若显示模型看不到的技能，
+ * 排查「为什么模型没用它」时就对不上了。
  */
-export interface SkillsSource {
-	/** 技能所在目录；页面脚注要照着它说清楚文件该放哪 */
-	readonly directory: string;
-	readonly list: () => readonly PageEntry[];
+export interface SkillsPageSource {
+	readonly entries: readonly SkillPageEntry[];
+	/** 实际扫过的目录，脚注逐条列出 */
+	readonly directories: readonly string[];
 }
 
 export interface TuiOptions {
@@ -239,7 +239,7 @@ export interface TuiOptions {
 	/** 插件与宿主注册的斜杠命令；不提供时只有内置命令 */
 	readonly pluginCommands?: PluginCommandSource;
 	/** /skills 的数据来源；不提供时该命令不可用 */
-	readonly skills?: SkillsSource;
+	readonly skills?: SkillsPageSource;
 	/** /mcps 的数据来源；不提供时该命令不可用（MCP 插件缺席就是这种情况） */
 	readonly mcpServers?: () => readonly PageEntry[];
 	/** 一轮结束时的提醒方式；默认 auto（失焦时响铃） */
@@ -350,8 +350,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (kind === "help") return helpPageLines(width, commands());
 		if (kind === "skills") {
 			const source = options.skills;
-			if (source === undefined) return skillsPageLines(width, [], "");
-			return skillsPageLines(width, source.list(), source.directory);
+			if (source === undefined) return skillsPageLines(width, [], []);
+			return skillsPageLines(width, source.entries, source.directories);
 		}
 		return mcpsPageLines(width, options.mcpServers?.() ?? []);
 	};
