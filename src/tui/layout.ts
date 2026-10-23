@@ -1974,12 +1974,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						return;
 					}
 					if (event.press && (event.button & 3) === 0 && index !== undefined) {
-						// 点击只移动选中项，不执行也不回显：确认始终由回车完成。
-						// 焦点留在输入框：面板盖在输入框上方，回车仍是输入框的按键
+						// 点击即选中并确认：面板上点哪一项就用哪一项
 						modelMenu.cursor = index;
 						keepMenuCursor();
-						focused = true;
-						render();
+						confirmMenu();
 						return;
 					}
 				} else if (effortMenu !== undefined) {
@@ -2007,10 +2005,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						return;
 					}
 					if (event.press && (event.button & 3) === 0 && index !== undefined) {
-						// 点击只移动选中项，回车才写回配置；焦点留在输入框
+						// 点击即选中并确认：面板上点哪一档就用哪一档
 						effortMenu.cursor = index;
-						focused = true;
-						render();
+						confirmEffortMenu();
 						return;
 					}
 				} else if (sessionMenu !== undefined) {
@@ -2039,11 +2036,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						return;
 					}
 					if (event.press && (event.button & 3) === 0 && index !== undefined) {
-						// 点击只移动选中项，回车才真正切换会话；焦点留在输入框
+						// 点击即选中并确认：面板上点哪个会话就切到哪个会话
 						sessionMenu.cursor = index;
 						keepSessionCursor();
-						focused = true;
-						render();
+						confirmSessionMenu();
 						return;
 					}
 				}
@@ -2292,15 +2288,23 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					return;
 				}
 				if (event.press && (event.button & 3) === 0 && index !== undefined) {
-					// 点击只移动选中项，回车才执行；焦点留在输入框
+					// 点击即选中并执行，与回车一致：有二级面板的命令点开面板，其余直接执行
 					commandMenu.cursor = index;
 					commandMenu.scrollTop = keepVisible(
 						commandMenu.scrollTop,
 						commandMenu.cursor,
 						commandMenu.items.length,
 					);
-					focused = true;
-					render();
+					const selected = commandMenu.items[commandMenu.cursor];
+					if (selected === undefined) return;
+					if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(selected.name)) {
+						commandMenu = undefined;
+						commandMenuDismissed = true;
+						setStatus(`/${selected.name} is unavailable while a turn is running`);
+						render();
+						return;
+					}
+					executeCommand(selected);
 					return;
 				}
 			}

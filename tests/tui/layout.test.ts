@@ -876,7 +876,7 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("会话面板的鼠标点击只移动选中项，回车才切换", async () => {
+	it("会话面板的鼠标点击即切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 40;
@@ -908,19 +908,17 @@ describe("全屏布局", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
 			assert.equal(selected, undefined);
 
-			// 点第二项只移动选中符号，不切换也不回显
+			// 点第二项直接切换，不需要回车
 			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
-			assert.equal(selected, undefined, "点击不直接切换会话");
-			const afterClick = frameLines(output).map(plain);
-			assert.ok(afterClick.some((line) => line.includes("› fedcba9876543210")), "选中符号移到该项");
-			assert.ok(
-				afterClick.some((line) => line.trim() === "› /session"),
-				"输入框保持不变，不回显选中项",
+			assert.equal(selected, "fedcba9876543210", "点击即切换会话");
+			assert.equal(
+				frameLines(output)
+					.map(plain)
+					.join("\n")
+					.includes("Fix the login flow"),
+				false,
+				"面板收掉",
 			);
-
-			// 回车才真正切换
-			input.emit("data", Buffer.from("\r"));
-			assert.equal(selected, "fedcba9876543210");
 		} finally {
 			exitTui(input);
 		}
@@ -965,7 +963,7 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("模型面板点击只移动选中项，回车才切换", async () => {
+	it("模型面板点击即切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -992,21 +990,21 @@ describe("全屏布局", () => {
 			const secondRow = rows.findIndex((line) => line.includes("openai/gpt-5.2")) + 1;
 			assert.ok(borderRow > 0 && secondRow > 0);
 
-			// 点上边框不响应，点第二项只移动选中符号
+			// 点上边框不响应
 			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
 			assert.equal(selected, undefined);
-			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
-			assert.equal(selected, undefined, "点击不直接切换模型");
-			const afterClick = frameLines(output).map(plain);
-			assert.ok(afterClick.some((line) => line.includes("› openai/gpt-5.2")), "选中符号移到该项");
-			assert.ok(
-				afterClick.some((line) => line.trim() === "› /model"),
-				"输入框保持不变，不回显选中项",
-			);
 
-			// 回车才真正切换
-			input.emit("data", Buffer.from("\r"));
-			assert.equal(selected, "openai/gpt-5.2");
+			// 点第二项直接切换，不需要回车
+			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
+			assert.equal(selected, "openai/gpt-5.2", "点击即切换模型");
+			// 面板收起：画面上不再有面板上边框
+			assert.equal(
+				frameLines(output)
+					.map(plain)
+					.some((line) => line.includes(" 3 ────")),
+				false,
+				"面板收掉",
+			);
 		} finally {
 			exitTui(input);
 		}
@@ -1078,7 +1076,7 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("命令补全面板点击只移动选中项，回车才执行", () => {
+	it("命令补全面板点击即执行", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -1095,15 +1093,13 @@ describe("全屏布局", () => {
 			assert.ok(row > 0);
 			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
 
-			// 只移动选中符号：帮助页没有打开，输入框也没被改写
-			const afterClick = frameLines(output).map(plain);
-			assert.equal(afterClick.join("\n").includes("Reins — help"), false);
-			assert.ok(afterClick.some((line) => line.includes("› /help")), "选中符号移到 /help");
-			assert.ok(afterClick.some((line) => line.trim() === "› /"), "输入框仍只有一个斜杠");
-
-			// 回车才真正执行
-			input.emit("data", Buffer.from("\r"));
-			assert.ok(frameLines(output).map(plain).join("\n").includes("Reins — help"));
+			// 点击即执行：帮助页直接打开，不需要回车
+			assert.ok(
+				frameLines(output)
+					.map(plain)
+					.join("\n")
+					.includes("Reins — help"),
+			);
 		} finally {
 			exitTui(input);
 		}
