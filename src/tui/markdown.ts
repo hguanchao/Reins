@@ -245,7 +245,10 @@ function appendTable(token: Tokens.Table, context: Context, rows: Row[]): void {
 	rows.push(tableBorder("┌", "┬", "┐", widths, context));
 	pushTableRows(rows, context, header, widths, token.align, `${BOLD}${BODY}`);
 	rows.push(tableBorder("├", "┼", "┤", widths, context));
-	for (const row of body) pushTableRows(rows, context, row, widths, token.align, BODY);
+	for (const [index, row] of body.entries()) {
+		if (index > 0) rows.push(tableBorder("├", "┼", "┤", widths, context));
+		pushTableRows(rows, context, row, widths, token.align, BODY);
+	}
 	rows.push(tableBorder("└", "┴", "┘", widths, context));
 }
 

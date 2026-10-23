@@ -145,6 +145,21 @@ describe("Markdown 排版", () => {
 		assert.ok(narrow.every((line) => displayWidth(plain(line)) === 30));
 	});
 
+	it("表格正文每行之间都有横线，形成全边框网格", () => {
+		const rows = texts(render("| a | b |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |", 40));
+		const borders = rows.filter((line) => line.includes("┼"));
+		const top = rows.find((line) => line.includes("┌")) ?? "";
+
+		// 表头下 1 根 + 正文两行之间 1 根，共 2 根行间横线
+		assert.equal(borders.length, 2);
+		// 每根行间横线的 ┼ 与顶边框的 ┬ 对齐，且横线铺满整个表格宽度
+		for (const border of borders) {
+			assert.equal(border.indexOf("┼"), top.indexOf("┬"));
+			assert.ok(border.trim().startsWith("├"));
+			assert.ok(border.trim().endsWith("┤"));
+		}
+	});
+
 	it("HTML 标签保留并高亮", () => {
 		const row = render("行内 <b>粗</b> 文字")[0] ?? "";
 
