@@ -49,6 +49,30 @@ describe("审批判定", () => {
 		assert.deepEqual(new PermissionPolicy("yolo").decide("write", WRITES, {}), { kind: "allow" });
 	});
 
+	it("运行中切换审批方式，判定立刻跟着变", () => {
+		const policy = new PermissionPolicy("ask");
+		assert.equal(policy.mode, "ask");
+		assert.deepEqual(policy.decide("write", WRITES, {}).kind, "ask");
+
+		policy.setMode("yolo");
+		assert.equal(policy.mode, "yolo");
+		assert.deepEqual(policy.decide("write", WRITES, {}), { kind: "allow" });
+
+		policy.setMode("auto");
+		assert.equal(policy.mode, "auto");
+		assert.deepEqual(policy.decide("write", WRITES, {}).kind, "review");
+	});
+
+	it("切换只影响后续判定，会话放行与规则仍然优先", () => {
+		const policy = new PermissionPolicy("ask");
+		policy.addRule(rule("deny", (tool: string) => tool === "bash"));
+		policy.allowForSession("write", { key: "src/a.ts", label: "src/a.ts" });
+
+		policy.setMode("yolo");
+		assert.deepEqual(policy.decide("bash", WRITES, {}), { kind: "deny", reason: "blocked by rule" });
+		assert.deepEqual(policy.decide("write", WRITES, {}, "core", "src/a.ts"), { kind: "allow" });
+	});
+
 	it("规则排在最前：明令禁止不被审批方式绕过", () => {
 		const policy = new PermissionPolicy("yolo");
 		policy.addRule(rule("deny", (tool: string) => tool === "bash"));

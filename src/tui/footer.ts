@@ -1,5 +1,6 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
+import type { ApprovalMode } from "../config/config-file.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -8,9 +9,9 @@ import { THEME } from "./theme.ts";
  * 默认六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行；边框铺满整个终端宽度。
  * 模型面板打开时改用紧凑四行，去掉空白与状态行，让面板直接接在输入框上方。空白间隔把对话流
  * 和运行时状态行分开，正文滚到底时不会贴在一起。运行时状态在有任务时显示加载符号与状态文字，
- * 空闲时留空；常驻信息行显示项目、分支、模型、思考强度、上下文与缓存命中率。光标交给终端自己
- * 画，下方输入区只算出实际显示哪一段以及光标应落在第几列。边框与提示符随焦点切换颜色，正文
- * 保持默认颜色。
+ * 空闲时留空；常驻信息行左侧显示项目、分支、模型、思考强度、上下文与缓存命中率，行尾固定显示
+ * 审批方式徽标（Shift+Tab 切换）。光标交给终端自己画，下方输入区只算出实际显示哪一段以及光标
+ * 应落在第几列。边框与提示符随焦点切换颜色，正文保持默认颜色。
  */
 
 export interface InputLine {
@@ -46,6 +47,12 @@ export interface FooterInfo {
 	readonly contextWindow: number | undefined;
 	/** 缓存读取占输入侧 token 的比例，0 到 1 */
 	readonly cacheHitRate: number;
+	/**
+	 * 当前审批方式；在行尾固定显示 ASK/AUTO/YOLO 徽标。
+	 *
+	 * 省略时不画徽标——配置读不出来时没有可信的审批方式，显示任何一档都会误导。
+	 */
+	readonly approval?: ApprovalMode;
 }
 
 /** 运行时状态：加载符号、状态文字、阶段计时、总计时与本轮 token 已用。 */
@@ -311,17 +318,41 @@ function commandText(line: InputLine): string {
 	return `${FOCUS_COLOR}${chars.slice(0, end).join("")}${RESET}${chars.slice(end).join("")}`;
 }
 
+/** 审批徽标的配色按风险分级：逐次询问是安全默认，自动审查是「谨慎放行」，完全放行最刺眼。 */
+const APPROVAL_BADGE_COLORS: Readonly<Record<ApprovalMode, string>> = {
+	ask: THEME.accent,
+	auto: THEME.warning,
+	yolo: THEME.error,
+};
+
+/** 信息行右端的呼吸空间：状态行与对话流都避开最右两列（一列间距加一列滚动条），徽标右缘对齐同一条竖线。 */
+const INFO_RIGHT_MARGIN = 2;
+/** 正文与徽标之间至少留出的间隔列数。 */
+const BADGE_GAP = 2;
+
 /**
  * 常驻信息行。
  *
  * 按「项目·分支 | 模型·思考强度 | 上下文 | 缓存命中率」分组；分支不存在时整段省略，
- * 上下文上限未声明时只写已用量。整行统一用暗色，避免和正文抢注意力。
+ * 上下文上限未声明时只写已用量。整行统一用暗色，避免和对话流正文抢注意力；审批徽标按模式
+ * 着色，固定钉在行尾，一眼可辨当前放行到哪一档（Shift+Tab 切换）。
  *
- * 终端变窄时按优先级整项舍弃，而不是从右侧硬截：先丢缓存，再丢项目位置，再丢模型，
+ * 终端变窄时按优先级整项舍弃正文，而不是从右侧硬截：先丢缓存，再丢项目位置，再丢模型，
  * 最后只保留上下文并截断。上下文是判断何时该压缩的依据，让它最先消失最不划算。
+ * 徽标占的列从正文可用宽度里先扣掉；窄到放不下「一列间隔 + 徽标」时整个徽标让位——
+ * 行尾是固定锚点，宁可暂时看不到模式，也不能让整行折行打乱页脚排版。
  */
 function infoLine(width: number, info: FooterInfo | undefined): string {
 	if (info === undefined) return "";
+
+	const badge = info.approval === undefined ? "" : info.approval.toUpperCase();
+	// 徽标右缘停在 width - INFO_RIGHT_MARGIN；起点至少留出一列，否则整行会超出宽度
+	const badgeColumn = width - INFO_RIGHT_MARGIN - badge.length;
+	const showBadge = badge.length > 0 && badgeColumn >= 1;
+	const available = Math.max(
+		0,
+		width - INFO_RIGHT_MARGIN - (showBadge ? badge.length + BADGE_GAP : 0),
+	);
 
 	const location =
 		info.branch === undefined
@@ -330,22 +361,27 @@ function infoLine(width: number, info: FooterInfo | undefined): string {
 	const model = `${MODEL_ICON} ${info.model} · ${EFFORT_ICON} ${info.effort}`;
 	const context = `${CONTEXT_ICON} ${formatContext(info.contextUsed, info.contextWindow)}`;
 	const cache = `${CACHE_ICON} ${Math.round(info.cacheHitRate * 100)}%`;
-	// 与运行时状态行一样避开最右侧两列，两行文字在同一条竖线上收尾
-	const available = Math.max(0, width - 2);
 
-	for (const parts of [
+	let text = "";
+	for (const group of [
 		[location, model, context, cache],
 		[location, model, context],
 		[model, context],
 		[context],
 	]) {
-		const text = parts.join(" | ");
-		if (displayWidth(text) <= available) return `${INFO_COLOR}${text}${RESET}`;
+		const candidate = group.join(" | ");
+		if (displayWidth(candidate) <= available) {
+			text = candidate;
+			break;
+		}
 	}
+	if (text === "" && available > 0) text = truncateToWidth(context, available).trimEnd();
 
-	const text = truncateToWidth(context, available).trimEnd();
-	if (text.length === 0) return "";
-	return `${INFO_COLOR}${text}${RESET}`;
+	const body = text === "" ? "" : `${INFO_COLOR}${text}${RESET}`;
+	if (!showBadge || info.approval === undefined) return body;
+
+	const gap = Math.max(1, badgeColumn - displayWidth(text));
+	return `${body}${" ".repeat(gap)}${APPROVAL_BADGE_COLORS[info.approval]}${badge}${RESET}`;
 }
 
 function statusLine(width: number, status: RuntimeStatus | undefined): string {

@@ -3932,4 +3932,105 @@ describe("全屏布局", () => {
 
 		assert.equal(await running, 0);
 	});
+
+	it("Shift+Tab 循环切换审批模式，页脚徽标跟着变且按键不落进输入框", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let mode: "ask" | "auto" | "yolo" = "ask";
+		const selected: string[] = [];
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			approvalMode: {
+				current: () => mode,
+				select: (next) => {
+					selected.push(next);
+					mode = next;
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			// 首帧徽标是启动档位
+			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("ASK"));
+
+			// 循环顺序与配置清单一致：ask → auto → yolo → 回到 ask
+			input.emit("data", Buffer.from("\x1b[Z"));
+			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("AUTO"));
+			input.emit("data", Buffer.from("\x1b[Z"));
+			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("YOLO"));
+			input.emit("data", Buffer.from("\x1b[Z"));
+			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("ASK"));
+			assert.deepEqual(selected, ["auto", "yolo", "ask"]);
+
+			// 热键被吞掉，不会把序列拆成文字插进输入行
+			assert.equal(plain(frameLines(output)[9] ?? ""), " › ");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("选择菜单开着时 Shift+Tab 仍然切模式，不影响补全", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		let mode: "ask" | "auto" | "yolo" = "ask";
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			approvalMode: { current: () => mode, select: (next) => { mode = next; } },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/model\r"));
+			const opened = frameLines(output).map(plain).join("\n");
+			assert.ok(opened.includes("openai/"));
+
+			input.emit("data", Buffer.from("\x1b[Z"));
+			assert.equal(mode, "auto");
+			const frame = frameLines(output).map(plain);
+			// 面板还在：Shift+Tab 不代替 Tab 补全，也不收起菜单；徽标行跟着换档
+			assert.ok(frame.some((line) => line.includes("openai/")));
+			assert.ok(frame.some((line) => line.includes(" › /model")));
+			assert.ok(frame.some((line) => line.trimEnd().endsWith("AUTO")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("切换失败时报告原因，档位保持不动", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			approvalMode: {
+				current: () => "ask",
+				select: () => {
+					throw new Error("policy busy");
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x1b[Z"));
+			assert.ok(plain(frameLines(output)[7] ?? "").includes("Failed to switch approval"));
+			// 徽标仍停在原档位
+			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("ASK"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
 });

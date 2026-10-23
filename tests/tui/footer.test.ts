@@ -124,6 +124,42 @@ describe("页脚输入框", () => {
 		assert.equal(lineAt(20), "📊 100K / 1M");
 	});
 
+	it("审批徽标固定停在行尾，正文照常排在左侧", () => {
+		const line = plain(renderFooter(120, "", true, undefined, { ...SESSION_INFO, approval: "yolo" })[5] ?? "");
+
+		assert.ok(line.endsWith("YOLO"));
+		// 徽标只占右端固定几列：原本完整的一组信息仍全部在位
+		assert.ok(line.startsWith("📁 Reins · 🌿 main | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M | ⚡ 98%"));
+	});
+
+	it("窄到放不下徽标时整档让位，不折行", () => {
+		// 宽度不足以在行尾（避开最右两列）摆下 4 列的 YOLO 与至少一列间隔
+		const line = plain(renderFooter(6, "", true, undefined, { ...SESSION_INFO, approval: "yolo" })[5] ?? "");
+
+		assert.equal(line.includes("YOLO"), false);
+		assert.ok(line.length > 0);
+	});
+
+	it("三档审批徽标各自用对应颜色", () => {
+		const ASK = "\x1b[38;2;78;201;176m";
+		const WARNING = "\x1b[38;2;224;175;104m";
+		const ERROR = "\x1b[38;2;224;108;117m";
+		const line = (approval: "ask" | "auto" | "yolo"): string =>
+			renderFooter(120, "", true, undefined, { ...SESSION_INFO, approval })[5] ?? "";
+
+		assert.ok(line("ask").includes(`${ASK}ASK`));
+		assert.ok(line("auto").includes(`${WARNING}AUTO`));
+		assert.ok(line("yolo").includes(`${ERROR}YOLO`));
+	});
+
+	it("省略审批时不画徽标，整行回到原有排版", () => {
+		const line = renderFooter(120, "", true, undefined, SESSION_INFO)[5] ?? "";
+
+		assert.equal(line.includes("ASK"), false);
+		assert.equal(line.includes("AUTO"), false);
+		assert.equal(line.includes("YOLO"), false);
+	});
+
 	it("上下文本身放不下时按显示宽度截断，不切半个 emoji", () => {
 		assert.equal(plain(renderFooter(10, "", true, undefined, SESSION_INFO)[5] ?? ""), "📊 100K");
 		assert.equal(plain(renderFooter(9, "", true, undefined, SESSION_INFO)[5] ?? ""), "📊 100K");

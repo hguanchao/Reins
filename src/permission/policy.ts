@@ -33,12 +33,28 @@ export type PermissionDecision =
 	| { readonly kind: "review"; readonly reason: string };
 
 export class PermissionPolicy {
-	readonly #mode: ApprovalMode;
+	/** 审批方式可在会话内切换（Shift+Tab），所以可变；判定每次读当前值，切换即时生效。 */
+	#mode: ApprovalMode;
 	readonly #rules: PermissionRule[] = [];
 	/** 本会话内使用者明确放行的范围；只存在于当前进程，退出即失效 */
 	readonly #sessionAllowed = new Set<string>();
 
 	constructor(mode: ApprovalMode) {
+		this.#mode = mode;
+	}
+
+	/** 当前审批方式；界面徽标逐帧读取，不在界面侧拍快照。 */
+	get mode(): ApprovalMode {
+		return this.#mode;
+	}
+
+	/**
+	 * 切换审批方式。
+	 *
+	 * 只改本进程的判定，不回写配置文件：放宽审批（尤其降到 yolo）不该因为一次快捷键
+	 * 就悄悄持久化，重启后回到使用者写定的取值。
+	 */
+	setMode(mode: ApprovalMode): void {
 		this.#mode = mode;
 	}
 

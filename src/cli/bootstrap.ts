@@ -8,7 +8,7 @@ import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts
 import type { AgentEventListener } from "../agent/events.ts";
 import { ConfigError } from "../config/config-error.ts";
 import { sessionAge } from "./session-age.ts";
-import { ConfigFile, type Config } from "../config/config-file.ts";
+import { ConfigFile, type ApprovalMode, type Config } from "../config/config-file.ts";
 import { initializeConfigFiles } from "../config/initialize.ts";
 import { ModelCatalog } from "../config/model-catalog.ts";
 import { updateModelSelection, updateUserConfigValue } from "../config/write-back.ts";
@@ -51,7 +51,13 @@ import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { currentBranch } from "../workspace/git.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
-import { runTui, type EffortMenuSource, type ModelMenuSource, type SessionMenuSource } from "../tui/layout.ts";
+import {
+	runTui,
+	type ApprovalModeSource,
+	type EffortMenuSource,
+	type ModelMenuSource,
+	type SessionMenuSource,
+} from "../tui/layout.ts";
 import { buildTranscriptHistory } from "../tui/history.ts";
 import type { FooterInfo } from "../tui/footer.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
@@ -191,10 +197,10 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	let activeConfig = config;
 	/** 上一轮看到的配置文件版本；变了就重读一次 */
 	let configStamp = configFileStamp(configFile, projectConfigFilePath(workRoot));
-	const reviewer =
-		config.approval === "auto"
-			? createDynamicReviewer(catalog, () => activeConfig, workRoot)
-			: undefined;
+	// 交互模式的审查模型常驻：它是懒封装（只在真的走到 review 那一步才建客户端），
+	// 启动时不花钱。审批方式能靠 Shift+Tab 在运行中切到 auto，此时必须已经有审查者可用，
+	// 不能像非交互模式那样按启动配置决定要不要挂。
+	const reviewer = createDynamicReviewer(catalog, () => activeConfig, workRoot);
 	const gate = new PermissionGate({
 		policy,
 		reviewer,
@@ -398,6 +404,16 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		},
 	});
 
+	// Shift+Tab 的宿主侧：只动本进程的权限策略，不写配置文件。放宽审批不该因为一次快捷键
+	// 就悄悄持久化，重启后回到使用者写定的取值；activeConfig.approval 保持与文件一致，
+	// 免得热重载把「会话内的临时切换」误读成「配置文件被改动」。
+	const approvalMode = {
+		current: () => policy.mode,
+		select: (next: ApprovalMode) => {
+			policy.setMode(next);
+		},
+	} satisfies ApprovalModeSource;
+
 	const warning = loaded.ok ? undefined : `Warning: ${loaded.error.message}`;
 	const ready = loaded.ok;
 	/** /mcps 的一行：server 名单独一列，状态与细节合成说明。 */
@@ -472,6 +488,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			sessionMenu,
 			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
+			approvalMode,
 			modelMenu,
 			effortMenu,
 			pluginCommands,

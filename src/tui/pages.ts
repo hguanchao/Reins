@@ -40,6 +40,7 @@ export interface PageSection {
 const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Enter", description: "Send the prompt; queue it while a turn is running" },
 	{ name: "Tab", description: "Complete the selected item into the prompt" },
+	{ name: "Shift+Tab", description: "Cycle the approval mode: ask, auto, yolo" },
 	{ name: "Esc", description: "Close a menu or this page; deny an approval; interrupt and send the first queued message" },
 	{ name: "Ctrl+C twice", description: "Exit the interface" },
 	{ name: "Up / Down", description: "Prompt history, menu navigation, or page scrolling" },

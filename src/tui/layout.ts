@@ -3,7 +3,7 @@ import { StringDecoder } from "node:string_decoder";
 
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
 import { inputView, queueHeight, renderFooter, type FooterInfo } from "./footer.ts";
-import { THINKING_LEVELS, type NotifyMode, type ThinkingLevel } from "../config/config-file.ts";
+import { APPROVAL_MODES, THINKING_LEVELS, type ApprovalMode, type NotifyMode, type ThinkingLevel } from "../config/config-file.ts";
 import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
@@ -208,6 +208,19 @@ export interface EffortMenuSource {
 	readonly select: (level: ThinkingLevel) => void;
 }
 
+/**
+ * 审批模式的数据来源。
+ *
+ * 只提供「读当前档位」和「落到下一档」两件事，循环顺序与按键都由界面决定：宿主只管策略，
+ * 界面管交互，二者各自单一职责。切换只在本次运行内有效，不回写配置。
+ */
+export interface ApprovalModeSource {
+	/** 当前审批方式；徽标逐帧读取，不拍快照 */
+	readonly current: () => ApprovalMode;
+	/** 切到指定档位；失败时抛错，由界面显示原因 */
+	readonly select: (mode: ApprovalMode) => void;
+}
+
 /** 插件与宿主注册的斜杠命令；由装配处桥接到 PluginHost。 */
 export interface PluginCommandSource {
 	/** 当前可用的命令；每次重算补全时重新取，不在界面创建时拍成快照 */
@@ -257,6 +270,8 @@ export interface TuiOptions {
 	readonly agent?: AgentRuntime;
 	/** 工具审批桥接；不提供时不会弹出审批面板 */
 	readonly approval?: ApprovalBroker;
+	/** 审批模式的数据来源；不提供时 Shift+Tab 无效、页脚也不显示徽标 */
+	readonly approvalMode?: ApprovalModeSource;
 	/** /model 菜单的数据来源；不提供时 /model 按普通输入处理 */
 	readonly modelMenu?: ModelMenuSource;
 	/** /effort 菜单的数据来源；不提供时 /effort 不可用 */
@@ -490,8 +505,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let finish = (): void => {};
 	const decoder = new StringDecoder("utf8");
 
-	const currentInfo = (): FooterInfo =>
-		typeof options.info === "function" ? options.info() : options.info;
+	/**
+	 * 页脚常驻信息。
+	 *
+	 * 审批徽标每帧从数据源现读，而不是跟着启动配置拍快照：Shift+Tab 切换之后下一帧
+	 * 就得是新档位，否则显示与实际判定会脱节。
+	 */
+	const currentInfo = (): FooterInfo => {
+		const info = typeof options.info === "function" ? options.info() : options.info;
+		const mode = options.approvalMode?.current();
+		return mode === undefined ? info : { ...info, approval: mode };
+	};
 
 	/** 一轮结束的提醒。auto 只在终端失焦时响铃；desktop 在 macOS/Linux 调系统通知。 */
 	const notify = (message: string): void => {
@@ -1895,6 +1919,24 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
+		if (shiftTabKey(text) && options.approvalMode !== undefined) {
+			// 全局热键：任何面板下都先于其它分支处理，循环 ask → auto → yolo
+			const source = options.approvalMode;
+			const index = APPROVAL_MODES.indexOf(source.current());
+			const next = APPROVAL_MODES[(index + 1) % APPROVAL_MODES.length] ?? "ask";
+			try {
+				source.select(next);
+			} catch (error) {
+				setStatus(
+					`Failed to switch approval: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+				scheduleStatusClear();
+			}
+			render();
+			return;
+		}
+
 		if (approvalPrompt !== undefined) {
 			// 审批是模态的：鼠标可点动作；键盘左右移动、回车确认，y/a/n 直接执行，Esc 拒绝
 			const panelWidth = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
@@ -2523,6 +2565,18 @@ function approvalKey(text: string, canAlways: boolean): ApprovalKey | undefined 
 	if (canAlways && lower.includes("a")) return "always";
 	if (lower.includes("n")) return "deny";
 	return undefined;
+}
+
+/**
+ * Shift+Tab 的转义序列。
+ *
+ * 终端有三种说法：`\x1b[Z`（xterm 一系，含 Windows Terminal）、带修饰键列的
+ * `\x1b[1;2Z`、以及 kitty CSI-u 协议下的 `\x1b[9;2u`（9 是制表符码位，2 表示按下
+ * Shift）。只认整段精确匹配：粘贴内容被括在成对的粘贴标记里，永远不会恰好等于一个
+ * 裸序列；输入里零散的 `[Z` 之类文字也因此不会被当成切换。
+ */
+function shiftTabKey(text: string): boolean {
+	return text === "\x1b[Z" || text === "\x1b[1;2Z" || text === "\x1b[9;2u";
 }
 
 /** 菜单打开时只认这四个键；普通字符与鼠标事件一律忽略。 */
