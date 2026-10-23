@@ -1551,8 +1551,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (activeTurn !== active) return;
 				closeThinking(active);
 				closeText(active);
+				// 命令塌缩会把多条独立行并成一条组行，行数组可能整体变短，只能全量同步
 				collapseToolGroups(active.lines);
-				syncTurn(active);
+				syncTurnFull(active);
 				activeTurn = undefined;
 				stopSpinner();
 				// 这一轮期间切过的模型/思考等级，现在落到对话流末尾

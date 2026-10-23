@@ -186,12 +186,15 @@ describe("工具调用摘要", () => {
 		assert.ok(long.endsWith("…"));
 	});
 
-	it("只读探索工具带分组类型，其他工具没有", () => {
+	it("只读探索工具与命令带分组类型，写操作与其他工具没有", () => {
 		assert.equal(describeToolCall("read", { path: "a.ts" }).group, "read");
 		assert.equal(describeToolCall("ls", {}).group, "list");
 		assert.equal(describeToolCall("find", { pattern: "*" }).group, "search");
 		assert.equal(describeToolCall("grep", { pattern: "x" }).group, "search");
-		assert.equal(describeToolCall("bash", { command: "x" }).group, undefined);
+		// 命令是延迟分组：运行期独立成行，回合结束够数才塌
+		assert.equal(describeToolCall("bash", { command: "x" }).group, "command");
+		assert.equal(describeToolCall("write", { path: "a.ts" }).group, undefined);
+		assert.equal(describeToolCall("edit", { path: "a.ts" }).group, undefined);
 		assert.equal(describeToolCall("mcp__fs__read", {}).group, undefined);
 	});
 

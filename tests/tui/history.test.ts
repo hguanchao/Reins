@@ -154,6 +154,49 @@ describe("会话历史回填", () => {
 		);
 	});
 
+	it("回填时连续够数的命令塌成收起的命令组", () => {
+		const calls = Array.from({ length: 5 }, (_, i) => ({
+			type: "toolCall" as const,
+			id: `cmd${i}`,
+			name: "bash",
+			arguments: { command: `cmd${i}` },
+		}));
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "hi" },
+			{ role: "assistant", content: calls },
+		];
+
+		const turns = buildTranscriptHistory(messages);
+		const group = turns[0]?.response[0];
+
+		if (typeof group !== "object" || group === null || group.kind !== "toolGroup") {
+			throw new Error("expected a tool group");
+		}
+		assert.equal(group.members.length, 5);
+		assert.equal(group.expanded, false);
+	});
+
+	it("回填时失败的命令不进组", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "hi" },
+			{
+				role: "assistant",
+				content: Array.from({ length: 5 }, (_, i) => ({
+					type: "toolCall" as const,
+					id: `cmd${i}`,
+					name: "bash",
+					arguments: { command: `cmd${i}` },
+				})),
+			},
+			{ role: "toolResult", toolCallId: "cmd2", toolName: "bash", content: "boom", isError: true },
+		];
+
+		const turns = buildTranscriptHistory(messages);
+
+		// 失败行把命令串切成两段：两段都不足门槛，全部保持逐行
+		assert.equal(turns[0]?.response.length, 5);
+	});
+
 	it("跳过压缩摘要，前导助手消息归入 earlier conversation", () => {
 		const messages: LlmMessage[] = [
 			{

@@ -26,7 +26,7 @@ export interface ToolDescription {
 	readonly group?: ToolGroupKind;
 }
 
-export type ToolGroupKind = "read" | "list" | "search";
+export type ToolGroupKind = "read" | "list" | "search" | "command";
 
 /** 展开详情的上限，避免一次双击把整段文件内容或超长 JSON 灌进终端。 */
 const DETAIL_MAX_LINES = 40;
@@ -56,7 +56,12 @@ export function describeToolCall(
 	return group === undefined ? description : { ...description, group };
 }
 
-/** 只把连续、只读的探索调用收进工具组；写操作和命令保持独立。 */
+/**
+ * 探索类调用返回其分组类型；命令返回 "command"。
+ *
+ * "command" 是延迟分组：运行期命令仍各自独立成行（失败行、结果回挂都靠这一点），只有回合
+ * 结束时连续够数才塌成一组。写操作返回 undefined，永不进组。
+ */
 export function toolGroupKind(tool: string): ToolGroupKind | undefined {
 	switch (tool) {
 		case "read":
@@ -66,6 +71,8 @@ export function toolGroupKind(tool: string): ToolGroupKind | undefined {
 		case "find":
 		case "grep":
 			return "search";
+		case "bash":
+			return "command";
 		default:
 			return undefined;
 	}

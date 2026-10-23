@@ -79,7 +79,7 @@ export interface TranscriptTool {
 	durationMs?: number;
 	/** 工具调用 id，用于把成功结果挂回对应行 */
 	readonly callId?: string;
-	/** 只读探索工具的分组类型；失败行和写操作没有 */
+	/** 工具分组类型：只读探索工具即时成组；命令延迟到回合结束成组；写操作与失败行没有 */
 	readonly group?: ToolGroupKind;
 	/** 成功结果全文；展开时显示 */
 	result?: string;
@@ -88,9 +88,10 @@ export interface TranscriptTool {
 }
 
 /**
- * 连续只读工具的组合。
+ * 连续同类工具调用的组合。
  *
- * 运行时展开显示成员，回合结束折叠成一行组头；双击组头切换。成员保留完整工具行，展开时不丢信息。
+ * 只读探索组运行时展开显示成员，回合结束折叠成一行组头；命令组只在回合结束时由够数的
+ * 连续命令塌成，收起态。双击组头切换。成员保留完整工具行，展开时不丢信息。
  */
 export interface TranscriptToolGroup {
 	readonly kind: "toolGroup";
@@ -184,6 +185,8 @@ const TOOL_EXPANDED_MARKER = "◆";
 const TOOL_GROUP_EXPANDED_MARKER = EXPANDED_DIAMOND;
 /** 工具组成员比组头多缩进两格。 */
 const TOOL_GROUP_MEMBER_INDENT = `${RESPONSE_INDENT}  `;
+/** 连续命令至少多少条才塌成命令组：短序列逐行更直观，长序列才值得收成一行。 */
+const COMMAND_GROUP_MIN = 5;
 /** 错误行的标记：与工具失败行共用，错误消息因此有一致的起头。 */
 const ERROR_MARKER = "×";
 const PROMPT_MAX_LINES = 3;
@@ -235,6 +238,10 @@ export interface TranscriptMetrics {
  * 连续两个只读探索工具才收进组；单个工具、写操作、失败行和普通正文都会断开组。运行时
  * 传入 expanded=true 先展开，回合结束时由调用方统一收起。
  *
+ * 命令（group==="command"）是延迟分组：运行期一律独立成行，失败回挂与结果挂载都依赖这一
+ * 点；只有回合结束时连续够数才由 collapseToolGroups 塌成一组，所以这里既不主动入组，也不
+ * 让只读工具并进命令行。
+ *
  * 返回 true 表示把上一条普通工具行换成了组对象；调用方如果维护了另一份行数组，需要整段
  * 同步一次，不能只追加新增行。
  */
@@ -243,7 +250,7 @@ export function appendToolLine(
 	tool: TranscriptTool,
 	expanded: boolean,
 ): boolean {
-	if (tool.group === undefined || tool.isError === true) {
+	if (!isEagerGroup(tool.group) || tool.isError === true) {
 		lines.push(tool);
 		return false;
 	}
@@ -257,7 +264,7 @@ export function appendToolLine(
 		typeof last === "object" &&
 		last !== null &&
 		last.kind === "tool" &&
-		last.group !== undefined &&
+		isEagerGroup(last.group) &&
 		last.isError !== true
 	) {
 		lines[lines.length - 1] = { kind: "toolGroup", members: [last, tool], expanded };
@@ -267,13 +274,53 @@ export function appendToolLine(
 	return false;
 }
 
-/** 回合结束：把所有工具组收成一行组头。 */
-export function collapseToolGroups(lines: readonly TranscriptLine[]): void {
+/** 运行期即时成组的只读类型；命令是延迟分组，不在此列。 */
+function isEagerGroup(group: ToolGroupKind | undefined): boolean {
+	return group === "read" || group === "list" || group === "search";
+}
+
+/**
+ * 回合结束：收起所有工具组，并把连续够数的命令塌成一个命令组。
+ *
+ * 命令组只在结束时形成——运行期命令各自独立行（见 appendToolLine）。够数才塌：不足
+ * COMMAND_GROUP_MIN 条的短序列保持逐行，一眼能看完。失败的命令不进组，留在顶层可见。
+ */
+export function collapseToolGroups(lines: TranscriptLine[]): void {
+	mergeCommandRuns(lines);
 	for (const line of lines) {
 		if (typeof line === "object" && line !== null && line.kind === "toolGroup") {
 			line.expanded = false;
 		}
 	}
+}
+
+/** 把连续 ≥ COMMAND_GROUP_MIN 条成功的命令行替换成一个收起的命令组。 */
+function mergeCommandRuns(lines: TranscriptLine[]): void {
+	let i = 0;
+	while (i < lines.length) {
+		const start = i;
+		while (i < lines.length && isCollapsibleCommand(lines[i])) i += 1;
+		const runLength = i - start;
+		// 不可塌的行自己也要往前走一格，否则 runLength 为 0 时会原地不动
+		if (runLength < COMMAND_GROUP_MIN) {
+			i = start + runLength + 1;
+			continue;
+		}
+		const members = lines.slice(start, i) as TranscriptTool[];
+		lines.splice(start, runLength, { kind: "toolGroup", members, expanded: false });
+		i = start + 1;
+	}
+}
+
+/** 一条可塌进命令组的行：命令工具、非失败。 */
+function isCollapsibleCommand(line: TranscriptLine | undefined): boolean {
+	return (
+		typeof line === "object" &&
+		line !== null &&
+		line.kind === "tool" &&
+		line.group === "command" &&
+		line.isError !== true
+	);
 }
 
 /** 找到某个工具调用对应的展示行，成功结果据此挂回。 */
@@ -866,16 +913,19 @@ function groupHeaderLabel(members: readonly TranscriptTool[]): string {
 	let read = 0;
 	let list = 0;
 	let search = 0;
+	let command = 0;
 	for (const member of members) {
 		if (member.group === "read") read += 1;
 		else if (member.group === "list") list += 1;
 		else if (member.group === "search") search += 1;
+		else if (member.group === "command") command += 1;
 	}
 
 	const parts: string[] = [];
 	if (read > 0) parts.push(`Read ${read} ${read === 1 ? "file" : "files"}`);
 	if (list > 0) parts.push(`Listed ${list} ${list === 1 ? "dir" : "dirs"}`);
 	if (search > 0) parts.push(`Searched ${search} ${search === 1 ? "pattern" : "patterns"}`);
+	if (command > 0) parts.push(`Ran ${command} ${command === 1 ? "command" : "commands"}`);
 	return parts.join(", ");
 }
 

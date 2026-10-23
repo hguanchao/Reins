@@ -6,7 +6,7 @@ import {
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
-import { appendToolLine, findToolByCallId, findTopLevelToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
+import { appendToolLine, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
 
 /**
  * 把会话消息折叠成对话流。
@@ -109,6 +109,9 @@ export function buildTranscriptHistory(
 			}
 		}
 	}
+
+	// 回填等价于回合结束：命令组在这里塌缩，与实时路径共用同一套判定
+	for (const turn of turns) collapseToolGroups(turn.response);
 
 	return turns;
 }
