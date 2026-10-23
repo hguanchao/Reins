@@ -1,4 +1,5 @@
 import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename } from "node:path";
 
 import { TurnDriver } from "../agent/driver.ts";
@@ -157,7 +158,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			skills().map((skill) => ({
 				name: skill.name,
 				description: skill.description.length === 0 ? "(no description)" : skill.description,
-				note: skill.path,
+				note: abbreviateHome(skill.directory),
 				scope: skill.scope,
 			})),
 		directories: skillRoots.map((root) => root.directory),
@@ -504,6 +505,19 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	} finally {
 		await activeSession.close();
 	}
+}
+
+/**
+ * 主目录缩写成 `~`：整屏页展示来源用。
+ *
+ * 完整绝对路径一行放不下还常折行，而看清单的人只需要知道「来自哪一层」。不在主目录下的
+ * 路径原样返回——项目级来源本来就该看出是哪个仓库。
+ */
+function abbreviateHome(path: string): string {
+	const home = homedir();
+	return path === home || path.startsWith(`${home}\\`) || path.startsWith(`${home}/`)
+		? `~${path.slice(home.length)}`
+		: path;
 }
 
 /**

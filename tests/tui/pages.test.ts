@@ -5,6 +5,10 @@ import { eastAsianWidth } from "get-east-asian-width";
 
 import type { CommandMenuItem } from "../../src/tui/command-menu.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines } from "../../src/tui/pages.ts";
+import { THEME } from "../../src/tui/theme.ts";
+
+const NAME_COLOR = THEME.textPrimary;
+const DESCRIPTION_COLOR = THEME.textSecondary;
 
 const COMMANDS: readonly CommandMenuItem[] = [
 	{ name: "model", description: "Choose the model for this session", enabled: true },
@@ -73,7 +77,7 @@ describe("整屏页", () => {
 			{
 				name: "writer",
 				description: "把改动整理成文档",
-				note: "/home/me/.reins/skills/writer/SKILL.md",
+				note: "~/.reins/skills/writer",
 				scope: "user" as const,
 			},
 		];
@@ -90,20 +94,20 @@ describe("整屏页", () => {
 		}
 	});
 
-	it("技能页按来源分节，并带上 SKILL.md 的路径", () => {
+	it("技能页按来源分节，并带上缩写后的技能目录", () => {
 		const text = skillsPageLines(
 			80,
 			[
 				{
 					name: "writer",
 					description: "把改动整理成文档",
-					note: "/home/me/.reins/skills/writer/SKILL.md",
+					note: "~/.reins/skills/writer",
 					scope: "user",
 				},
 				{
 					name: "reviewer",
 					description: "按清单审查改动",
-					note: "/repo/.agents/skills/reviewer/SKILL.md",
+					note: "~/projects/repo/.agents/skills/reviewer",
 					scope: "project",
 				},
 			],
@@ -117,7 +121,7 @@ describe("整屏页", () => {
 		assert.ok(text.includes("Project skills"));
 		assert.ok(text.includes("writer"));
 		assert.ok(text.includes("把改动整理成文档"));
-		assert.ok(text.includes("/home/me/.reins/skills/writer/SKILL.md"));
+		assert.ok(text.includes("~/.reins/skills/writer"));
 		assert.ok(text.includes("reviewer"));
 		assert.ok(text.includes("next turn"));
 	});
@@ -135,25 +139,53 @@ describe("整屏页", () => {
 		assert.equal(text.includes("…"), false);
 	});
 
-	it("技能条目之间留空行，说明与路径缩进比名称深", () => {
+	it("技能条目之间留空行，说明缩进比名称深", () => {
 		const rows = skillsPageLines(
 			80,
 			[
-				{ name: "alpha", description: "第一条", note: "/skills/alpha/SKILL.md", scope: "user" },
-				{ name: "beta", description: "第二条", note: "/skills/beta/SKILL.md", scope: "user" },
+				{ name: "alpha", description: "第一条。说明。", note: "/skills/alpha", scope: "user" },
+				{ name: "beta", description: "第二条", note: "/skills/beta", scope: "user" },
 			],
 			[],
 		).map(plain);
 
-		const alpha = rows.indexOf("  alpha");
-		const beta = rows.indexOf("  beta");
+		const alpha = rows.findIndex((line) => line.startsWith("  alpha"));
+		const beta = rows.findIndex((line) => line.startsWith("  beta"));
 		assert.ok(alpha > 0 && beta > alpha);
-		// 名称、说明、路径三级缩进依次加深
-		assert.equal(rows[alpha + 1], "    第一条");
-		assert.equal(rows[alpha + 2], "    /skills/alpha/SKILL.md");
+		// 说明缩进比名称深两级；首句与后续各占一段
+		assert.ok(rows.slice(alpha + 1, beta).some((line) => line === "    第一条。"));
+		assert.ok(rows.slice(alpha + 1, beta).some((line) => line === "    说明。"));
 		// 两条之间正好一个空行
 		assert.equal(rows[beta - 1], "");
 		assert.notEqual(rows[beta - 2], "");
+	});
+
+	it("来源右对齐钉在名称行行尾，首句提亮、其余回到说明色", () => {
+		const rows = skillsPageLines(
+			60,
+			[
+				{
+					name: "agent-browser",
+					description: "Browser automation CLI. Use when automating any browser task.",
+					note: "~/.agents/skills/agent-browser",
+					scope: "user",
+				},
+			],
+			[],
+		);
+
+		const head = rows.findIndex((line) => plain(line).trimStart().startsWith("agent-browser"));
+		assert.ok(head > 0);
+		// 来源右对齐：名称行以来源结尾，且来源前面是纯空格
+		const headPlain = plain(rows[head] ?? "");
+		assert.ok(headPlain.trimEnd().endsWith("~/.agents/skills/agent-browser"));
+		assert.ok(/^\s*agent-browser\s+$/.test(headPlain.slice(0, headPlain.indexOf("~"))));
+		// 首句行带名称亮色；触发条件行带说明色
+		const leadRow = rows[head + 1] ?? "";
+		assert.ok(plain(leadRow).includes("Browser automation CLI."));
+		assert.ok(leadRow.includes(NAME_COLOR));
+		const restRow = rows.slice(head + 1).find((line) => line.includes("Use when automating"));
+		assert.ok(restRow?.includes(DESCRIPTION_COLOR));
 	});
 
 	it("技能页没有技能时给出空状态，而不是只剩一个标题", () => {
@@ -183,6 +215,28 @@ describe("整屏页", () => {
 
 		assert.ok(rows.some((line) => line.includes("my-company-internal-tools")));
 		assert.equal(rows.some((line) => line.includes("…")), false);
+	});
+
+	it("窄屏放不下名称加来源时，来源折到说明缩进而不是截断", () => {
+		const rows = skillsPageLines(
+			30,
+			[
+				{
+					name: "agent-browser",
+					description: "Automate browsers.",
+					note: "~/.agents/skills/agent-browser",
+					scope: "user",
+				},
+			],
+			[],
+		).map(plain);
+
+		// 名称独占一行且不截断；来源换到说明缩进列（超宽部分照常折行）
+		const nameRow = rows.indexOf("  agent-browser");
+		assert.ok(nameRow > 0);
+		assert.ok(rows.slice(nameRow + 1).some((line) => line.startsWith("    ~/.agents/skills/")));
+		// 说明也照常显示
+		assert.ok(rows.slice(nameRow + 1).some((line) => line.includes("Automate browsers.")));
 	});
 
 	it("视口取窗口，行数固定为 height", () => {

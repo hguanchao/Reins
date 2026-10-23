@@ -220,27 +220,64 @@ function sectionLines(section: PageSection, width: number): readonly string[] {
 }
 
 /**
- * 卡片式条目：名称一行，说明与 note 各占一段缩进。
+ * 卡片式条目：名称与来源同行，说明缩进在下。
  *
- * 名称不设列宽上限，只在放不下时按终端宽度截断——它是标识符，能完整显示就别动它。
+ * 名称不设列宽上限，只在放不下时按终端宽度截断——它是标识符，能完整显示就别动它。来源
+ * （note）右对齐钉在名称行的行尾，弱色弱到不跟名称抢注意力；窄到放不下「名称 + 间隔 + 来源」
+ * 时来源整段折到说明缩进里，宁可换位置也不截断。说明的第一句用正文亮色：一句话说清「这是
+ * 什么」，后续的触发条件之类的长文退到说明色，扫读时先看到每个技能是什么。
  */
 function cardLines(entry: PageEntry, width: number): readonly string[] {
 	const indent = CARD_INDENT.slice(0, width);
 	const bodyIndent = CARD_BODY_INDENT.slice(0, width);
 	const bodyWidth = Math.max(1, width - displayWidth(bodyIndent));
-	const lines = [`${indent}${NAME_COLOR}${truncate(entry.name, Math.max(1, width - displayWidth(indent)))}${RESET}`];
+	const nameWidth = Math.max(1, width - displayWidth(indent));
 
-	if (entry.description.length > 0) {
-		for (const line of wrapText(entry.description, bodyWidth)) {
-			lines.push(`${bodyIndent}${DESCRIPTION_COLOR}${line}${RESET}`);
-		}
-	}
-	if (entry.note !== undefined) {
-		for (const line of wrapText(entry.note, bodyWidth)) {
+	const note = entry.note ?? "";
+	// 名称与来源同行需要「至少一列间隔 + 来源」的余量；放不下时来源折到说明缩进里
+	const inlineNote = note.length > 0 && displayWidth(entry.name) + NOTE_GAP + displayWidth(note) <= nameWidth;
+	const head =
+		note.length === 0
+			? truncate(entry.name, nameWidth)
+			: inlineNote
+				? `${truncate(entry.name, nameWidth - displayWidth(note) - NOTE_GAP)}${NOTE_COLOR}${" ".repeat(
+						Math.max(1, nameWidth - displayWidth(entry.name) - displayWidth(note)),
+					)}${truncate(note, nameWidth)}${RESET}`
+				: truncate(entry.name, nameWidth);
+	const lines = [`${indent}${NAME_COLOR}${head}${RESET}`];
+
+	if (!inlineNote && note.length > 0) {
+		for (const line of wrapText(note, bodyWidth)) {
 			lines.push(`${bodyIndent}${NOTE_COLOR}${line}${RESET}`);
 		}
 	}
+
+	if (entry.description.length > 0) {
+		const [lead, ...rest] = splitFirstSentence(entry.description);
+		// 首句用亮色单独折行；剩余部分换回说明色。首句自己超宽时照常折行，只是整段都是亮色
+		for (const line of wrapText(lead, bodyWidth)) {
+			lines.push(`${bodyIndent}${NAME_COLOR}${line}${RESET}`);
+		}
+		const remainder = rest.join(" ");
+		if (remainder.length > 0) {
+			for (const line of wrapText(remainder, bodyWidth)) {
+				lines.push(`${bodyIndent}${DESCRIPTION_COLOR}${line}${RESET}`);
+			}
+		}
+	}
 	return lines;
+}
+
+/** 名称与行尾来源之间至少留出的间隔列数。 */
+const NOTE_GAP = 2;
+
+/** 把第一句与其余部分分开：以 `. `（或行尾的 `.`）为界；中文句号后没有空格，同样断句。 */
+function splitFirstSentence(text: string): readonly [string, string[]] {
+	const match = /^([^.!？?。]*[.!？?。])(.*)$/.exec(text);
+	if (match === null) return [text, []];
+	const lead = match[1] ?? text;
+	const rest = (match[2] ?? "").trim();
+	return [lead, rest.length === 0 ? [] : [rest]];
 }
 
 /** 名称列定宽；右侧放不下说明时说明另起一行，缩进退回名称列起点。 */
