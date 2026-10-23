@@ -111,16 +111,16 @@ describe("页脚输入框", () => {
 		assert.ok(plain(lines[5] ?? "").includes("📊 100K |"));
 	});
 
-	it("窄终端按优先级舍弃：先丢缓存，再丢位置，再丢模型，最后只留上下文", () => {
+	it("窄终端按优先级舍弃：先丢位置，再丢模型，再丢缓存，最后只留上下文", () => {
 		const lineAt = (width: number): string =>
 			plain(renderFooter(width, "", true, undefined, SESSION_INFO)[5] ?? "");
 
 		assert.ok(lineAt(80).endsWith("| ⚡ 98%"));
 		assert.equal(
 			lineAt(70),
-			"📁 Reins · 🌿 main | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M",
+			"🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M | ⚡ 98%",
 		);
-		assert.equal(lineAt(50), "🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M");
+		assert.equal(lineAt(40), "📊 100K / 1M | ⚡ 98%");
 		assert.equal(lineAt(20), "📊 100K / 1M");
 	});
 
@@ -138,6 +138,16 @@ describe("页脚输入框", () => {
 
 		assert.equal(line.includes("YOLO"), false);
 		assert.ok(line.length > 0);
+	});
+
+	it("窄屏下正文按优先级让位，徽标仍钉在行尾", () => {
+		const line = plain(renderFooter(24, "", true, undefined, { ...SESSION_INFO, approval: "auto" })[5] ?? "");
+
+		// 位置与模型都已舍弃，上下文保留；徽标照常停在避开最右两列的位置
+		assert.ok(line.includes("📊 100K / 1M"));
+		assert.equal(line.includes("Reins"), false);
+		assert.equal(line.includes("gpt-5.6-luna"), false);
+		assert.ok(line.endsWith("AUTO"));
 	});
 
 	it("三档审批徽标各自用对应颜色", () => {

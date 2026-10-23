@@ -337,10 +337,11 @@ const BADGE_GAP = 2;
  * 上下文上限未声明时只写已用量。整行统一用暗色，避免和对话流正文抢注意力；审批徽标按模式
  * 着色，固定钉在行尾，一眼可辨当前放行到哪一档（Shift+Tab 切换）。
  *
- * 终端变窄时按优先级整项舍弃正文，而不是从右侧硬截：先丢缓存，再丢项目位置，再丢模型，
- * 最后只保留上下文并截断。上下文是判断何时该压缩的依据，让它最先消失最不划算。
- * 徽标占的列从正文可用宽度里先扣掉；窄到放不下「一列间隔 + 徽标」时整个徽标让位——
- * 行尾是固定锚点，宁可暂时看不到模式，也不能让整行折行打乱页脚排版。
+ * 终端变窄时按优先级整项舍弃正文，而不是从右侧硬截：先丢项目位置，再丢模型，再丢缓存，
+ * 最后只保留上下文并截断。上下文是判断何时该压缩的依据，缓存命中率反映本回合的 token
+ * 复用，这两项比位置与模型更值得留在窄屏上。徽标占的列从正文可用宽度里先扣掉，正文
+ * 放不下时整段让位给徽标；只有连徽标本身都摆不进行尾时才隐藏——行尾是固定锚点，
+ * 宁可暂时看不到正文，也不能让整行折行打乱页脚排版。
  */
 function infoLine(width: number, info: FooterInfo | undefined): string {
 	if (info === undefined) return "";
@@ -365,8 +366,8 @@ function infoLine(width: number, info: FooterInfo | undefined): string {
 	let text = "";
 	for (const group of [
 		[location, model, context, cache],
-		[location, model, context],
-		[model, context],
+		[model, context, cache],
+		[context, cache],
 		[context],
 	]) {
 		const candidate = group.join(" | ");
