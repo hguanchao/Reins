@@ -3820,6 +3820,32 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("整屏页打开时第一次 Ctrl+C 返回对话流，2 秒内再按退出", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/help\r"));
+			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
+
+			pressCtrlC(input);
+			const back = frameLines(output).map(plain);
+			assert.ok(back.join("\n").includes("v1.2.3"));
+			assert.equal(back.join("\n").includes("Reins — help"), false);
+			// 第一次只返回对话流，不退出备用屏
+			assert.equal(output.chunks.some((chunk) => chunk.includes(LEAVE)), false);
+
+			// 退出确认窗口内的第二次按退出
+			pressCtrlC(input);
+			assert.ok(output.chunks.some((chunk) => chunk.includes(LEAVE)));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("输入 /skills 与 /mcps 打开对应的整屏页，Esc 返回", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();

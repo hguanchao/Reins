@@ -775,6 +775,18 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			render();
 			return;
 		}
+		if (openPage !== undefined) {
+			// 整屏页是模态视图：第一次按回对话流，连按两次才退出
+			if (exitArmed) {
+				cleanup();
+				return;
+			}
+			openPage = undefined;
+			exitArmed = true;
+			exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
+			render();
+			return;
+		}
 		if (exitArmed) {
 			cleanup();
 			return;
