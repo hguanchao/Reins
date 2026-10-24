@@ -26,7 +26,7 @@ describe("会话历史回填", () => {
 			{ role: "assistant", content: [{ type: "text", text: "done" }] },
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 
 		assert.equal(turns.length, 2);
 		assert.equal(turns[0]?.prompt, "hello");
@@ -60,7 +60,7 @@ describe("会话历史回填", () => {
 			},
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 
 		assert.deepEqual(turns[0]?.response, [
 			{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1", result: "file contents", metric: "1 line", fullDetail: "1  file contents", detailKind: "file" },
@@ -83,7 +83,7 @@ describe("会话历史回填", () => {
 			},
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 		const response = turns[0]?.response ?? [];
 
 		assert.equal(response.length, 1);
@@ -123,7 +123,7 @@ describe("会话历史回填", () => {
 			},
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 		const group = turns[0]?.response[0];
 
 		if (typeof group !== "object" || group === null || group.kind !== "toolGroup") {
@@ -146,7 +146,7 @@ describe("会话历史回填", () => {
 			},
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 
 		assert.deepEqual(
 			turns[0]?.response.map((line) => (line as { kind?: string }).kind),
@@ -166,7 +166,7 @@ describe("会话历史回填", () => {
 			{ role: "assistant", content: calls },
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 		const group = turns[0]?.response[0];
 
 		if (typeof group !== "object" || group === null || group.kind !== "toolGroup") {
@@ -191,7 +191,7 @@ describe("会话历史回填", () => {
 			{ role: "toolResult", toolCallId: "cmd2", toolName: "bash", content: "boom", isError: true },
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 
 		// 失败行把命令串切成两段：两段都不足门槛，全部保持逐行
 		assert.equal(turns[0]?.response.length, 5);
@@ -207,7 +207,7 @@ describe("会话历史回填", () => {
 			{ role: "assistant", content: [{ type: "text", text: "continued" }] },
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 
 		assert.equal(turns.length, 1);
 		assert.equal(turns[0]?.prompt, "(earlier conversation)");
@@ -215,8 +215,8 @@ describe("会话历史回填", () => {
 	});
 });
 
-describe("会话历史回填任务卡片", () => {
-	it("todo 调用回填成静态卡片,成功结果不落行", () => {
+describe("会话历史回填任务表", () => {
+	it("未收尾的 todo 调用只带出任务表,不进对话流", () => {
 		const messages: LlmMessage[] = [
 			{ role: "user", content: "go" },
 			{
@@ -242,19 +242,20 @@ describe("会话历史回填任务卡片", () => {
 			},
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const history = buildTranscriptHistory(messages);
 
-		assert.deepEqual(turns[0]?.response, [
-			{
-				kind: "todo",
-				explanation: "开工",
-				items: [{ content: "写工具", status: "in_progress" }],
-				collapsed: false,
-			},
-		]);
+		// 只有用户提示这一轮;任务表单独带出,供常驻面板恢复
+		assert.equal(history.turns.length, 1);
+		assert.deepEqual(history.turns[0]?.response, []);
+		assert.deepEqual(history.todo, {
+			kind: "todo",
+			explanation: "开工",
+			items: [{ content: "写工具", status: "in_progress" }],
+			collapsed: false,
+		});
 	});
 
-	it("超过五条的任务卡回填为收起态", () => {
+	it("收尾的旧表进对话流,最后一张未收尾的表留给面板", () => {
 		const messages: LlmMessage[] = [
 			{ role: "user", content: "go" },
 			{
@@ -263,6 +264,12 @@ describe("会话历史回填任务卡片", () => {
 					{
 						type: "toolCall",
 						id: "1",
+						name: "todo",
+						arguments: { todos: [{ content: "第一步", status: "completed" }] },
+					},
+					{
+						type: "toolCall",
+						id: "2",
 						name: "todo",
 						arguments: {
 							todos: Array.from({ length: 6 }, (_, index) => ({
@@ -275,12 +282,96 @@ describe("会话历史回填任务卡片", () => {
 			},
 		];
 
-		const turns = buildTranscriptHistory(messages);
-		const card = turns[0]?.response[0];
-		if (typeof card !== "object" || card === null || card.kind !== "todo") {
-			throw new Error("expected a todo card");
+		const history = buildTranscriptHistory(messages);
+
+		assert.equal(history.todo?.collapsed, true);
+		assert.equal(history.todo?.items.length, 6);
+		assert.deepEqual(
+			history.turns[0]?.response.map((line) => (line as { kind?: string }).kind),
+			["todo"],
+		);
+	});
+
+	it("全部收尾的任务表回填进对话流,面板不再保留", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: "1",
+						name: "todo",
+						arguments: {
+							todos: [
+								{ content: "写工具", status: "completed" },
+								{ content: "补测试", status: "failed" },
+							],
+						},
+					},
+				],
+			},
+		];
+
+		const history = buildTranscriptHistory(messages);
+
+		assert.equal(history.todo, undefined);
+		assert.equal(history.turns[0]?.response.length, 1);
+		const card = history.turns[0]?.response[0];
+		assert.equal(typeof card === "object" && card !== null && card.kind === "todo", true);
+		if (typeof card === "object" && card !== null && card.kind === "todo") {
+			assert.equal(card.items.length, 2);
 		}
-		assert.equal(card.collapsed, true);
+	});
+
+	it("先进行后收尾:中间态不再进对话流,只保留收尾的那张", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: "1",
+						name: "todo",
+						arguments: { todos: [{ content: "写工具", status: "in_progress" }] },
+					},
+					{
+						type: "toolCall",
+						id: "2",
+						name: "todo",
+						arguments: { todos: [{ content: "写工具", status: "completed" }] },
+					},
+				],
+			},
+		];
+
+		const history = buildTranscriptHistory(messages);
+
+		assert.equal(history.todo, undefined);
+		assert.equal(history.turns[0]?.response.length, 1);
+		const card = history.turns[0]?.response[0];
+		assert.equal(typeof card === "object" && card !== null && card.kind === "todo", true);
+		if (typeof card === "object" && card !== null && card.kind === "todo") {
+			assert.equal(card.items[0]?.status, "completed");
+		}
+	});
+
+	it("空表表示清空,面板与对话流都不留记录", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "1", name: "todo", arguments: { todos: [] } },
+				],
+			},
+		];
+
+		const history = buildTranscriptHistory(messages);
+
+		assert.equal(history.todo, undefined);
+		assert.deepEqual(history.turns[0]?.response, []);
 	});
 
 	it("畸形参数退回普通工具行,失败结果挂在该行上", () => {
@@ -301,10 +392,11 @@ describe("会话历史回填任务卡片", () => {
 			},
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const history = buildTranscriptHistory(messages);
 
-		assert.equal(turns[0]?.response.length, 1);
-		const line = turns[0]?.response[0];
+		assert.equal(history.todo, undefined);
+		assert.equal(history.turns[0]?.response.length, 1);
+		const line = history.turns[0]?.response[0];
 		assert.equal(typeof line === "object" && line !== null && line.kind === "tool", true);
 		if (typeof line === "object" && line !== null && line.kind === "tool") {
 			assert.equal(line.isError, true);
@@ -328,7 +420,7 @@ describe("会话历史回填子代理组", () => {
 			{ role: "toolResult", toolCallId: "s2", toolName: "subagent", content: "The subagent failed: boom", isError: true },
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 		const group = turns[0]?.response[0];
 		if (typeof group !== "object" || group === null || group.kind !== "subagentGroup") {
 			throw new Error("expected a subagent group");
@@ -352,7 +444,7 @@ describe("会话历史回填子代理组", () => {
 			{ role: "toolResult", toolCallId: "s", toolName: "subagent", content: "ok", isError: false },
 		];
 
-		const turns = buildTranscriptHistory(messages);
+		const turns = buildTranscriptHistory(messages).turns;
 		const kinds = turns[0]?.response.map((line) => (line as { kind?: string }).kind);
 		assert.deepEqual(kinds, ["tool", "subagentGroup"]);
 	});

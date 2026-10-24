@@ -1,14 +1,14 @@
 import { formatDuration } from "../tools/format.ts";
-import { swept } from "./sweep.ts";
-import { displayWidth, fitToWidth, truncateToWidth, wrappedLines } from "./text.ts";
+import { swept, type AnimationFrame } from "./sweep.ts";
+import { displayWidth, fitToWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
- * 对话流里的任务卡片：类型、参数解析与排版。
+ * 任务卡片：类型、参数解析与两种排版。
  *
- * 一次 todo 调用就是一张卡片，卡片自己不放状态——「当前列表」永远是会话里最后一次调用
- * 的参数，续聊与回填都靠会话重放。这里只负责把参数变成屏幕行，以及运行期间按帧重建
- * 进行中条目的转圈与扫光。
+ * 未收尾的列表只在常驻面板显示；全部完成或失败后整张卡落进对话流，面板随之清空。
+ * 一次 todo 调用就是一张卡片，卡片自己不放状态——「当前列表」永远是会话里最后一次
+ * 调用的参数，续聊与回填都靠会话重放。
  */
 
 /** 任务条目的状态;failed 表示这一步无法完成，与完成、进行中、待办并列。 */
@@ -23,14 +23,14 @@ export interface TranscriptTodoItem {
  * 任务卡片：一次 todo 调用的完整快照。
  *
  * 条目顺序保持模型给出的顺序——顺序本身就是执行顺序。running 由界面在回合结束时改回
- * false(与思考块同一先例):运行期间进行中的行是转圈加扫光，之后退为静态半圆。
+ * false(与思考块同一先例):运行期间当前任务行是转圈加扫光，之后退为静态形态。
  * collapsed 是收起态，条目多时默认收起，双击头行切换。taskStartedAt 是当前进行中
  * 任务的起点，由界面在卡片创建时写入(同一任务在上一张卡片里也进行时继承起点),
- * 只用于折叠头行的耗时显示。
+ * 用于头行与折叠头行的耗时显示。
  */
 export interface TranscriptTodo {
 	readonly kind: "todo";
-	/** 模型对这次更新的说明；空白时不渲染 */
+	/** 模型对这次更新的说明；当前排版不占行 */
 	readonly explanation?: string;
 	readonly items: readonly TranscriptTodoItem[];
 	running?: boolean;
@@ -38,24 +38,10 @@ export interface TranscriptTodo {
 	taskStartedAt?: number;
 }
 
-/** 渲染期重建动画行的原料：展开卡片的进行中条目行，或折叠卡片的头行。 */
-export type LiveTodoLine =
-	| { readonly kind: "item"; readonly indent: string; readonly content: string }
-	| { readonly kind: "header"; readonly card: TranscriptTodo }
-	| { readonly kind: "subagent"; readonly indent: string; readonly label: string; readonly summary: string };
-
-/** 重建进行中任务行的当前帧：盲文运行符与扫光相位都由 100ms 刷新帧推进。 */
-export interface TodoAnimationFrame {
-	readonly spinner: string;
-	readonly sweepPhase: number;
-}
-
 /** 头行与条目的缩进：与对话流的回复正文、工具行保持同一列起头。 */
 const CARD_INDENT = "  ";
 /** 头行标记：与工具行的 › 同款，卡片与工具调用在同一列起头。 */
 const CARD_MARKER = "›";
-/** 失败条目的标记：与错误行同用乘号 ×,失败在哪儿都是同一个符号。 */
-const FAILED_MARKER = "×";
 /** 任务卡头行的固定标签。 */
 const TODO_HEADER_LABEL = "Tasks";
 /** 条目超过这个数默认收起：短列表一眼全览，长列表只留状态行。 */
@@ -64,13 +50,11 @@ const TODO_EXPAND_MAX_ITEMS = 5;
 const TODO_RUNNING_NAME_WIDTH = 30;
 /** 任务条目比头行正文多缩进两列，条目标记正对头行标签的起头。 */
 const TODO_ITEM_INDENT = `${CARD_INDENT}  `;
-/** 斜体：任务卡说明行的强调方式。 */
-const ITALIC = "\x1b[3m";
 /** 加粗：进行中的任务行是全卡最亮的一项。 */
 const BOLD = "\x1b[1m";
-/** 任务卡头行标签：与工具组头同一档亮度，计数再弱一档。 */
-const TODO_HEADER_COLOR = THEME.textSecondary;
-const TODO_COUNT_COLOR = THEME.textSubtle;
+/** 任务卡头行标签：与子代理组头同一份强调青，计数弱一档。 */
+const TODO_HEADER_COLOR = THEME.accent;
+const TODO_COUNT_COLOR = THEME.textSecondary;
 /** 待办条目：读得出但不抢注意力。 */
 const TODO_PENDING_COLOR = THEME.textSecondary;
 /** 进行中条目：强调色加粗，扫光也以它为高亮终点。 */
@@ -79,174 +63,108 @@ const TODO_ACTIVE_COLOR = THEME.accent;
 const TODO_DONE_COLOR = THEME.accent;
 /** 失败条目：整行失败色,无删除线——失败在哪儿都是同一个符号同一份颜色。 */
 const TODO_FAILED_COLOR = THEME.error;
-/** 说明行：弱化灰加斜体。 */
-const TODO_EXPLANATION_COLOR = THEME.textSubtle;
+/** 剩余条数行：弱化到背景里，不跟任务条目抢注意力。 */
+const TODO_MORE_COLOR = THEME.textSubtle;
 
-/**
- * 任务卡片的屏幕行。
- *
- * 头行计数是「完成 / 总数」,空表写成 cleared。收起态只占头行一行；展开态渲染说明与
- * 全部条目。运行中的卡片把动画行(展开卡片的进行中条目、折叠卡片的头行)登记进
- * liveTodoLines,渲染期换转圈与扫光，这里一律先放静态行占位——两种形态行数一致，
- * 滚动与命中都不会因为换帧而错位。
- */
-export function todoCardLines(
-	card: TranscriptTodo,
-	width: number,
-	live: Map<number, LiveTodoLine>,
-	start: number,
-): readonly string[] {
-	if (card.collapsed === true) {
-		if (card.running === true && card.items.some((item) => item.status === "in_progress")) {
-			live.set(start, { kind: "header", card });
-		}
-		return [todoHeaderLine(card, width)];
-	}
+/** 任务表是否已经收尾：非空且没有待办、没有进行中。 */
+export function todoCardFinished(card: TranscriptTodo): boolean {
+	return (
+		card.items.length > 0 &&
+		card.items.every((item) => item.status === "completed" || item.status === "failed")
+	);
+}
 
-	const lines: string[] = [todoHeaderLine(card, width)];
-
-	const explanation = card.explanation?.trim() ?? "";
-	if (explanation.length > 0) {
-		lines.push(
-			...wrappedLines(explanation, TODO_ITEM_INDENT, width, `${TODO_EXPLANATION_COLOR}${ITALIC}`),
-		);
-	}
-
+/** 头行计数段：运行→完成→失败→待办，没有的段不显示。 */
+function todoCountSegments(card: TranscriptTodo): string {
+	let running = 0;
+	let done = 0;
+	let failed = 0;
+	let pending = 0;
 	for (const item of card.items) {
-		if (item.status === "pending") {
-			lines.push(...wrappedLines(item.content, `${TODO_ITEM_INDENT}○ `, width, TODO_PENDING_COLOR));
-			continue;
-		}
-		if (item.status === "completed") {
-			lines.push(
-				...wrappedLines(item.content, `${TODO_ITEM_INDENT}● `, width, TODO_DONE_COLOR),
-			);
-			continue;
-		}
-		if (item.status === "failed") {
-			lines.push(
-				...wrappedLines(item.content, `${TODO_ITEM_INDENT}${FAILED_MARKER} `, width, TODO_FAILED_COLOR),
-			);
-			continue;
-		}
-
-		// 进行中：静态占位行先入列,running 时再登记渲染期的动画原料
-		const active = `${TODO_ACTIVE_COLOR}${BOLD}`;
-		const staticLines = wrappedLines(item.content, `${TODO_ITEM_INDENT}◐ `, width, active);
-		lines.push(...staticLines);
-		if (card.running === true && staticLines[0] !== undefined) {
-			const budget = Math.max(0, width - displayWidth(`${TODO_ITEM_INDENT}◐ `));
-			live.set(start + lines.length - staticLines.length, {
-				kind: "item",
-				indent: TODO_ITEM_INDENT,
-				content: truncateToWidth(item.content, budget),
-			});
-		}
+		if (item.status === "in_progress") running += 1;
+		else if (item.status === "completed") done += 1;
+		else if (item.status === "failed") failed += 1;
+		else pending += 1;
 	}
 
-	return lines;
-}
-
-/** 任务卡头行：标签与计数同列于工具行，标签亮一档、计数弱一档。 */
-function todoHeaderLine(card: TranscriptTodo, width: number): string {
-	const done = card.items.filter((item) => item.status === "completed").length;
-	const count = card.items.length === 0 ? "cleared" : `${done}/${card.items.length}`;
-	const prefix = `${CARD_INDENT}${CARD_MARKER} `;
-	const head = `${prefix}${TODO_HEADER_LABEL}`;
-	const budget = Math.max(0, width - displayWidth(head));
-	const tail = truncateToWidth(`  ${count}`, budget);
-	const padding = " ".repeat(Math.max(0, budget - displayWidth(tail)));
-	return `${TODO_HEADER_COLOR}${head}${THEME.reset}${TODO_COUNT_COLOR}${tail}${THEME.reset}${padding}`;
-}
-
-/** 渲染期按当前帧重建动画行：展开卡片是条目行，折叠卡片是头行，子代理清单是运行行。 */
-export function animatedTodoLine(live: LiveTodoLine, frame: TodoAnimationFrame, width: number): string {
-	if (live.kind === "header") return animatedTodoHeader(live.card, frame, width);
-	if (live.kind === "subagent") {
-		return animatedSubagentLine(live.indent, live.label, live.summary, frame, width);
-	}
-	return animatedRunningLine(live.indent, live.content, frame, width);
+	const parts: string[] = [];
+	if (running > 0) parts.push(`${running} running`);
+	if (done > 0) parts.push(`${done} done`);
+	if (failed > 0) parts.push(`${failed} failed`);
+	if (pending > 0) parts.push(`${pending} pending`);
+	return parts.join(" · ");
 }
 
 /**
- * 任务卡片运行中条目的动画行:盲文运行符 + 扫光正文。
- */
-function animatedRunningLine(
-	indent: string,
-	content: string,
-	frame: TodoAnimationFrame,
-	width: number,
-): string {
-	const budget = Math.max(0, width - displayWidth(`${indent}◐ `));
-	const visible = truncateToWidth(content, budget);
-	const head = `${indent}${THEME.accent}${BOLD}${frame.spinner} `;
-	const body = swept(visible, frame.sweepPhase, THEME.accentDim, THEME.accentRgb);
-	const padding = " ".repeat(Math.max(0, budget - displayWidth(visible)));
-	return `${head}${body}${padding}`;
-}
-
-/**
- * 子代理清单运行行的动画行:转圈、标签与摘要整体扫光,全行青色加粗。
- */
-function animatedSubagentLine(
-	indent: string,
-	label: string,
-	summary: string,
-	frame: TodoAnimationFrame,
-	width: number,
-): string {
-	const budget = Math.max(0, width - displayWidth(indent) - 2);
-	const visible = truncateToWidth(`${frame.spinner} ${label}  ${summary}`, budget);
-	const body = swept(visible, frame.sweepPhase, THEME.accentDim, THEME.accentRgb);
-	const padding = " ".repeat(Math.max(0, budget - displayWidth(visible)));
-	return `${indent}${THEME.accent}${BOLD}${body}${padding}`;
-}
-
-/**
- * 折叠头行的运行期形态：计数 + 转圈运行符 + 扫光任务名 + 耗时。
+ * 任务卡头行：标签 + 状态计数 + 耗时；折叠且运行中时在末尾带转圈任务名。
  *
- * 窄屏按「计数 → 任务名 → 耗时」的优先级舍弃：计数说明全局进度，任务名说明此刻在
- * 干什么，耗时最有富余，放不下时先丢。任务名另受 TODO_RUNNING_NAME_WIDTH 的固定
- * 上限约束，超长省略。
+ * 展开态把当前任务交给清单行，头行只回答全局进度；折叠态没有清单行，任务名才回到
+ * 头行。窄屏时任务名先让步，计数与耗时最后才截断。
  */
-function animatedTodoHeader(card: TranscriptTodo, frame: TodoAnimationFrame, width: number): string {
-	const done = card.items.filter((item) => item.status === "completed").length;
+function todoHeaderLine(card: TranscriptTodo, width: number, frame?: AnimationFrame): string {
 	const label = `${CARD_INDENT}${CARD_MARKER} ${TODO_HEADER_LABEL}`;
-	const countPart = `  ${done}/${card.items.length}`;
-
-	const elapsed =
-		card.taskStartedAt === undefined ? "" : formatDuration(Date.now() - card.taskStartedAt);
-	const elapsedPart = elapsed.length === 0 ? "" : `  ${elapsed}`;
-
+	const counts = todoCountSegments(card);
 	const running = card.items.find((item) => item.status === "in_progress");
-	let name = "";
+	const isRunning = card.running === true && running !== undefined;
+	const elapsed =
+		isRunning && card.taskStartedAt !== undefined
+			? ` (${formatDuration(Date.now() - card.taskStartedAt)})`
+			: "";
+	const baseText = counts.length === 0 ? "" : `  ${counts}${elapsed}`;
+	const available = Math.max(0, width - displayWidth(label));
+	const base = truncateToWidth(baseText, available);
+
+	let namePart = "";
 	let nameWidth = 0;
-	if (running !== undefined) {
+	if (card.collapsed === true && isRunning && frame !== undefined) {
 		const budget = Math.max(
 			0,
-			width - displayWidth(label) - displayWidth(countPart) - displayWidth(elapsedPart) - displayWidth(`  ${frame.spinner} `),
+			available - displayWidth(base) - displayWidth(`  ${frame.spinner} `),
 		);
 		if (budget >= 2) {
-			name = fitToWidth(running.content, Math.min(TODO_RUNNING_NAME_WIDTH, budget));
+			const name = fitToWidth(running.content, Math.min(TODO_RUNNING_NAME_WIDTH, budget));
 			nameWidth = displayWidth(name);
+			namePart = `  ${TODO_ACTIVE_COLOR}${BOLD}${frame.spinner} ${swept(name, frame.sweepPhase, THEME.accentDim, THEME.accentRgb)}`;
 		}
 	}
 
-	const namePart =
-		name.length === 0
-			? ""
-			: `  ${TODO_ACTIVE_COLOR}${BOLD}${frame.spinner} ${swept(name, frame.sweepPhase, THEME.accentDim, THEME.accentRgb)}`;
-	const padding = " ".repeat(
-		Math.max(
-			0,
-			width -
-				displayWidth(label) -
-				displayWidth(countPart) -
-				(displayWidth(`  ${frame.spinner} `) + nameWidth) -
-				displayWidth(elapsedPart),
-		),
+	const used = displayWidth(label) + displayWidth(base) + (nameWidth === 0 ? 0 : 2 + displayWidth(frame?.spinner ?? " ") + 1 + nameWidth);
+	const padding = " ".repeat(Math.max(0, width - used));
+	return `${TODO_HEADER_COLOR}${label}${THEME.reset}${TODO_COUNT_COLOR}${base}${THEME.reset}${namePart}${padding}`;
+}
+
+/**
+ * 任务条目行：TaskN 标签与 SubagentN 同列，完成/待办标签青、正文灰，失败整行红，
+ * 进行中整行青加粗；带帧时用转圈与扫光替换静态半圆。
+ */
+function todoItemLine(
+	index: number,
+	item: TranscriptTodoItem,
+	width: number,
+	frame?: AnimationFrame,
+): string {
+	const label = `Task${index + 1}`;
+	const indent = TODO_ITEM_INDENT;
+	const budget = Math.max(
+		0,
+		width - displayWidth(indent) - 2 - displayWidth(label) - 2,
 	);
-	return `${TODO_HEADER_COLOR}${label}${THEME.reset}${TODO_COUNT_COLOR}${countPart}${THEME.reset}${namePart}${TODO_COUNT_COLOR}${elapsedPart}${THEME.reset}${padding}`;
+	const summary = truncateToWidth(item.content, budget);
+
+	if (item.status === "completed") {
+		return `${indent}${TODO_DONE_COLOR}● ${THEME.reset}${TODO_DONE_COLOR}${BOLD}${label}${THEME.reset}  ${TODO_PENDING_COLOR}${summary}${THEME.reset}`;
+	}
+	if (item.status === "failed") {
+		return `${indent}${TODO_FAILED_COLOR}× ${label}  ${summary}${THEME.reset}`;
+	}
+	if (item.status === "pending") {
+		return `${indent}${TODO_PENDING_COLOR}○ ${THEME.reset}${TODO_ACTIVE_COLOR}${BOLD}${label}${THEME.reset}  ${TODO_PENDING_COLOR}${summary}${THEME.reset}`;
+	}
+	if (frame !== undefined) {
+		const visible = `${frame.spinner} ${label}  ${summary}`;
+		return `${indent}${TODO_ACTIVE_COLOR}${BOLD}${swept(visible, frame.sweepPhase, THEME.accentDim, THEME.accentRgb)}`;
+	}
+	return `${indent}${TODO_ACTIVE_COLOR}${BOLD}◐ ${label}  ${summary}${THEME.reset}`;
 }
 
 /**
@@ -287,49 +205,43 @@ export function todoCardFromArgs(args: Record<string, unknown>): TranscriptTodo 
 	};
 }
 
-/** 常驻面板最多显示的条目数:全部内容对话流里都有,面板只回答「进行到哪」。 */
+/** 常驻面板最多显示的条目数:面板只回答「进行到哪」,条目再多也只列到上限。 */
 export const TODO_PANEL_MAX_ITEMS = 8;
 
 /**
- * 常驻面板的屏幕行。
+ * 已经收尾的任务卡落到对话流里的屏幕行。
  *
- * 追问「现在进行到哪」的只读镜像:头行 + 条目单行截断(不折行,面板不挤压对话流)。
- * 与对话流卡片共享同一张卡对象:收起状态、运行标记同步生效——用户收起卡片,面板也
- * 只留头行。全部完成缩成一行;空表不渲染(调用方以高度 0 收起)。条目超上限时显示
- * 剩余数。
+ * 与面板共用同一套头行和 TaskN 条目排版，但不再动画：全部状态都已静止。条目多时
+ * 默认收起（与面板同一条规则），双击头行展开。
+ */
+export function todoCardLines(card: TranscriptTodo, width: number): readonly string[] {
+	const head = todoHeaderLine(card, width);
+	if (card.collapsed === true) return [head];
+	return [head, ...card.items.map((item, index) => todoItemLine(index, item, width))];
+}
+
+/**
+ * 常驻面板的屏幕行：未收尾的任务卡唯一的显示位置。
+ *
+ * 头行 + 条目单行截断(不折行,面板不挤压对话流)。收起状态、运行标记与动画都由同一个
+ * 卡对象决定；收尾后的卡片不再进面板。条目超上限时显示剩余数。
  */
 export function todoPanelLines(
 	card: TranscriptTodo,
 	width: number,
-	frame: TodoAnimationFrame,
+	frame: AnimationFrame,
 ): readonly string[] {
-	if (card.items.length === 0) return [];
+	if (card.items.length === 0 || todoCardFinished(card)) return [];
 
-	// 头行:运行中有转圈任务名,静止与全完成用静态形态
-	const running = card.running === true && card.items.some((item) => item.status === "in_progress");
-	const head = running ? animatedTodoHeader(card, frame, width) : todoHeaderLine(card, width);
+	const head = todoHeaderLine(card, width, frame);
+	if (card.collapsed === true) return [head];
 
-	const done = card.items.filter((item) => item.status === "completed").length;
-	// 全部完成或用户收起时只留头行
-	if (done === card.items.length || card.collapsed === true) return [head];
-
-	const lines: string[] = [head];
+	const itemFrame = card.running === true ? frame : undefined;
 	const visible = card.items.slice(0, TODO_PANEL_MAX_ITEMS);
-	for (const item of visible) {
-		const summary = truncateToWidth(item.content, Math.max(0, width - displayWidth(TODO_ITEM_INDENT) - 2));
-		if (item.status === "completed") {
-			lines.push(`${TODO_ITEM_INDENT}${TODO_DONE_COLOR}● ${THEME.reset}  ${TODO_PENDING_COLOR}${summary}${THEME.reset}`);
-		} else if (item.status === "failed") {
-			lines.push(`${TODO_ITEM_INDENT}${TODO_FAILED_COLOR}× ${summary}${THEME.reset}`);
-		} else if (item.status === "in_progress") {
-			lines.push(`${TODO_ITEM_INDENT}${TODO_ACTIVE_COLOR}${BOLD}◐ ${summary}${THEME.reset}`);
-		} else {
-			lines.push(`${TODO_ITEM_INDENT}${TODO_PENDING_COLOR}○ ${summary}${THEME.reset}`);
-		}
-	}
+	const lines = [head, ...visible.map((item, index) => todoItemLine(index, item, width, itemFrame))];
 	const hidden = card.items.length - visible.length;
 	if (hidden > 0) {
-		lines.push(`${TODO_ITEM_INDENT}${TODO_EXPLANATION_COLOR}… ${hidden} more${THEME.reset}`);
+		lines.push(`${TODO_ITEM_INDENT}${TODO_MORE_COLOR}… ${hidden} more${THEME.reset}`);
 	}
 	return lines;
 }

@@ -11,6 +11,7 @@ import {
 	scrollbarThumb,
 	scrollTopForRow,
 	thinkingHeaderAtRow,
+	todoHeaderInView,
 	toggleLastExpandable,
 	toolGroupHeaderAtRow,
 	toolHeaderAtRow,
@@ -24,6 +25,7 @@ import {
 } from "../../src/tui/transcript.ts";
 import { displayWidth } from "../../src/tui/text.ts";
 import { THEME } from "../../src/tui/theme.ts";
+import type { TranscriptTodo } from "../../src/tui/todo-card.ts";
 
 const PROMPT_BG = "\x1b[48;2;22;25;29m";
 const MESSAGE_TEXT = "\x1b[38;2;230;233;237m";
@@ -1381,6 +1383,44 @@ describe("滚动条列", () => {
 	});
 });
 
+describe("收尾任务卡", () => {
+	const card: TranscriptTodo = {
+		kind: "todo",
+		items: [
+			{ content: "写工具", status: "completed" },
+			{ content: "修路径", status: "failed" },
+		],
+	};
+
+	it("头行汇总状态计数,清单带 TaskN 标签;头行可以命中", () => {
+		const view = buildTranscriptView(80, [{ prompt: "go", response: [card] }], undefined);
+		const text = view.lines.map(plain).join("\n");
+
+		assert.ok(text.includes("› Tasks  1 done · 1 failed"));
+		assert.ok(text.includes("● Task1  写工具"));
+		assert.ok(text.includes("× Task2  修路径"));
+		assert.equal(view.todoHeaders.length, 1);
+
+		const row = (view.todoHeaders[0]?.start ?? 0) + 1;
+		assert.equal(todoHeaderInView(view, 20, 0, row), card);
+		// 条目行不参与头行命中
+		assert.equal(todoHeaderInView(view, 20, 0, row + 1), undefined);
+	});
+
+	it("收起后只渲染头行,Ctrl+E 可以再展开", () => {
+		const collapsed: TranscriptTodo = { ...card, collapsed: true };
+		const turns: TranscriptTurn[] = [{ prompt: "go", response: [collapsed] }];
+		const text = renderTranscript(80, 12, turns, 0).map(plain).join("\n");
+
+		assert.ok(text.includes("› Tasks  1 done · 1 failed"));
+		assert.equal(text.includes("Task1"), false);
+
+		assert.equal(toggleLastExpandable(turns), true);
+		assert.equal(collapsed.collapsed, false);
+		assert.ok(renderTranscript(80, 12, turns, 0).map(plain).join("\n").includes("● Task1  写工具"));
+	});
+});
+
 describe("子代理组", () => {
 	type GroupMember = {
 		callId: string;
@@ -1463,7 +1503,7 @@ describe("子代理组", () => {
 		const running = group();
 		running.expanded = true;
 		const view = buildTranscriptView(60, [{ prompt: "go", response: [running] }], undefined);
-		assert.equal(view.liveTodoLines.size, 1);
+		assert.equal(view.liveLines.size, 1);
 
 		const animated = renderTranscriptView(view, 16, 0, { spinner: "⠋", sweepPhase: 0.5 });
 		const line = animated.find((row) => row.replace(/\x1b\[[0-9;]*m/g, "").includes("Subagent2")) ?? "";

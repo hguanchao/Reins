@@ -17,6 +17,7 @@ import type { ToolRegistry } from "../tools/registry.ts";
 import type { JsonSchema } from "../tools/schema.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { estimateTokens } from "./compactor.ts";
+import type { PromptInstruction } from "./instructions.ts";
 import { buildSubagentPrompt } from "./prompt.ts";
 
 /**
@@ -81,6 +82,8 @@ export interface SubagentDeps {
 	readonly maxSteps: number;
 	/** 子代理所用模型的上下文上限；声明后超过预算就提前收尾，不让端点拒绝 */
 	readonly contextWindow?: number;
+	/** 用户级与项目级规则；与主对话共用同一份来源 */
+	readonly instructions?: () => readonly PromptInstruction[];
 }
 
 export interface SubagentContext {
@@ -115,7 +118,11 @@ export class Subagent {
 
 	async run(task: string, context: SubagentContext): Promise<SubagentOutcome> {
 		const declarations = this.#deps.tools.list();
-		const system = buildSubagentPrompt({ cwd: context.workspace.root, tools: declarations });
+		const system = buildSubagentPrompt({
+			cwd: context.workspace.root,
+			tools: declarations,
+			instructions: this.#deps.instructions?.(),
+		});
 		const messages: LlmMessage[] = [{ role: "user", content: task }];
 		/** 最后一次说出口的话。用满步数时它是汇报里唯一有价值的部分 */
 		let said = "";

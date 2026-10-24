@@ -2,7 +2,13 @@ import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { updateUserConfigValue } from "../config/write-back.ts";
-import { projectAgentsSkillsDir, projectConfigFilePath, projectDirPath, projectSkillsDir } from "../config/paths.ts";
+import {
+	projectAgentsSkillsDir,
+	projectConfigFilePath,
+	projectDirPath,
+	projectInstructionFiles,
+	projectSkillsDir,
+} from "../config/paths.ts";
 
 /**
  * 工作区信任。
@@ -27,7 +33,12 @@ export interface ProjectResources {
 /** 找出工作区里需要信任才能读取的东西。没有就不必问。 */
 export function findProjectResources(root: string): ProjectResources {
 	const directory = projectDirPath(root);
-	const candidates = [projectConfigFilePath(root), join(directory, "providers.json")];
+	// 规则文件会进入系统提示词，和项目配置一样需要先取得信任
+	const candidates = [
+		projectConfigFilePath(root),
+		join(directory, "providers.json"),
+		...projectInstructionFiles(root),
+	];
 	// 只列出确有其物的文件：让使用者为不存在的东西做决定没有意义
 	const files = candidates.filter((path) => existsSync(path) && statSync(path).isFile());
 	// 技能清单会进系统提示词，与项目配置同属「这个目录能影响程序行为」的一类，因此一并算数

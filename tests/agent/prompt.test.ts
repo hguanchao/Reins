@@ -54,18 +54,44 @@ describe("系统提示词", () => {
 		assert.equal(withoutSearch?.includes("instead of their shell equivalents"), false);
 	});
 
-	it("注册了 todo 时生成任务表使用规则,未注册时不出现", () => {
+	it("注册了 todo 时生成具体的触发与收尾规则,未注册时不出现", () => {
 		const withTodo = buildPromptSections({
 			cwd: "/work",
 			tools: [tool("todo", "")],
 		}).rules;
-		assert.ok(withTodo?.includes("Plan multi-step work with todo"));
+		assert.ok(withTodo?.includes("three or more distinct steps"));
+		assert.ok(withTodo?.includes("exactly one task in_progress"));
+		assert.ok(withTodo?.includes("final call with every task completed or failed"));
+		assert.ok(withTodo?.includes("do not restate the list"));
 
 		const withoutTodo = buildPromptSections({
 			cwd: "/work",
 			tools: [tool("read", ""), tool("bash", "")],
 		}).rules;
-		assert.equal(withoutTodo?.includes("Plan multi-step work with todo"), false);
+		assert.equal(withoutTodo?.includes("Use todo"), false);
+	});
+
+	it("用户与项目规则作为独立分段,空列表不写", () => {
+		const sections = buildPromptSections({
+			cwd: "/work",
+			tools: [],
+			instructions: [
+				{ label: "~/.reins/AGENTS.md", text: "global rules" },
+				{ label: "AGENTS.md", text: "project rules" },
+			],
+		});
+		const body = sections["instructions"] ?? "";
+
+		assert.ok(body.includes("User and project instructions:"));
+		assert.ok(body.includes("## ~/.reins/AGENTS.md\nglobal rules"));
+		assert.ok(body.includes("## AGENTS.md\nproject rules"));
+		assert.ok(body.indexOf("global rules") < body.indexOf("project rules"));
+		assert.ok(body.includes("Project instructions are more specific"));
+
+		assert.equal(
+			buildPromptSections({ cwd: "/work", tools: [], instructions: [] })["instructions"],
+			undefined,
+		);
 	});
 
 	it("没有工具时不生成使用规则", () => {
@@ -126,23 +152,26 @@ describe("系统提示词", () => {
 			cwd: "cwd",
 			rules: "rules",
 			tools: "tools",
+			instructions: "instructions",
 			preamble: "preamble",
 			extra: "extra",
 		});
 
-		assert.equal(text, "preamble\n\ntools\n\nrules\n\ncwd\n\nextra");
+		assert.equal(text, "preamble\n\ntools\n\ninstructions\n\nrules\n\ncwd\n\nextra");
 	});
 
-	it("子代理使用自己的开场白并保留工具与工作根", () => {
+	it("子代理使用自己的开场白并保留工具、工作根与规则", () => {
 		const text = buildSubagentPrompt({
 			cwd: "/work",
 			tools: [tool("read", "Full read description", "Read a file")],
+			instructions: [{ label: "AGENTS.md", text: "Use tabs." }],
 		});
 
 		assert.ok(text.includes("You are a subagent handling one assigned task."));
 		assert.equal(text.includes("You are Reins"), false);
 		assert.ok(text.includes("- read: Read a file"));
 		assert.ok(text.includes("Workspace root: /work"));
+		assert.ok(text.includes("## AGENTS.md\nUse tabs."));
 	});
 
 	it("会话声明只记录完整描述与参数，不记录提示词摘要", () => {

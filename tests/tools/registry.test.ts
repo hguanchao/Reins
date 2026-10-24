@@ -93,6 +93,18 @@ describe("工具注册表", () => {
 		assert.equal(registry.get("echo-2"), undefined); // 原注册表不受影响
 	});
 
+	it("排除工具:复制出新注册表，原表不受影响", () => {
+		const registry = registryWith(ALLOW);
+		const extra: ToolDefinition = { ...ECHO, name: "echo-2" };
+		const withExtra = registry.withExtraTool(extra);
+		const reduced = withExtra.without("echo-tool");
+
+		assert.deepEqual(reduced.list().map((tool) => tool.name), ["echo-2"]);
+		assert.equal(reduced.get("echo-tool"), undefined);
+		assert.equal(withExtra.get("echo-tool")?.name, "echo-tool");
+		assert.throws(() => registry.without("missing"), /unknown tool/);
+	});
+
 	it("未知工具给出可用清单", async () => {
 		const outcome = await registryWith(ALLOW).call({ callId: "c", name: "nope", args: {} }, context());
 		assert.equal(outcome.isError, true);

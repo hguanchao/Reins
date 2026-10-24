@@ -121,6 +121,25 @@ export class ToolRegistry {
 		return copy;
 	}
 
+	/**
+	 * 复制一份注册表并排除指定工具。
+	 *
+	 * 用于给子代理这类子集去掉不需要的能力：排除后仍走同一条校验、审批与执行管线，
+	 * 原注册表不受影响。名字不存在时直接报错，避免拼写错误静默失效。
+	 */
+	without(...names: readonly string[]): ToolRegistry {
+		for (const name of names) {
+			if (!this.#tools.has(name)) {
+				throw new Error(`Cannot exclude an unknown tool: ${name}`);
+			}
+		}
+		const copy = new ToolRegistry(this.#spiller, this.#gate);
+		for (const [name, item] of this.#tools) {
+			if (!names.includes(name)) copy.#tools.set(name, item);
+		}
+		return copy;
+	}
+
 	get(name: string): AnyToolDefinition | undefined {
 		return this.#tools.get(name)?.definition;
 	}

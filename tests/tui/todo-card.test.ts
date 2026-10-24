@@ -2,28 +2,27 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
-	buildTranscriptView,
-	renderTranscript,
-	renderTranscriptView,
-	todoHeaderInView,
-	toggleLastExpandable,
-	type TranscriptTurn,
-} from "../../src/tui/transcript.ts";
-import { todoCardFromArgs, type TranscriptTodo } from "../../src/tui/todo-card.ts";
+	todoCardFinished,
+	todoCardFromArgs,
+	todoCardLines,
+	todoPanelLines,
+	TODO_PANEL_MAX_ITEMS,
+	type TranscriptTodo,
+} from "../../src/tui/todo-card.ts";
 import { displayWidth } from "../../src/tui/text.ts";
 import { THEME } from "../../src/tui/theme.ts";
 
 function plain(line: string): string {
-	return line
-		// 下划线样式带子参数，形如 \x1b[4:5m，所以要允许冒号
-		.replace(/\x1b\[[0-9;:]*m/g, "")
-		.replace(/\x1b\]8;;[^\x1b]*\x1b\\/g, "");
+	return line.replace(/\x1b\[[0-9;:]*m/g, "");
 }
 
-describe("任务卡片", () => {
+const FRAME = { spinner: "⠋", sweepPhase: 0.5 };
+
+describe("任务面板", () => {
 	const card: TranscriptTodo = {
 		kind: "todo",
 		explanation: "调整:先做渲染",
+		running: true,
 		items: [
 			{ content: "写工具", status: "completed" },
 			{ content: "渲染卡片", status: "in_progress" },
@@ -32,99 +31,150 @@ describe("任务卡片", () => {
 		],
 	};
 
-	it("四态符号、头行计数与说明行", () => {
-		const text = renderTranscript(40, 14, [{ prompt: "go", response: [card] }], 0)
-			.map(plain)
-			.join("\n");
+	it("头行汇总状态计数,条目带 TaskN 标签与四态符号", () => {
+		const text = todoPanelLines(card, 80, FRAME).map(plain).join("\n");
 
-		assert.ok(text.includes("  › Tasks  1/4"));
-		assert.ok(text.includes("    调整:先做渲染"));
-		assert.ok(text.includes("    ● 写工具"));
-		assert.ok(text.includes("    ◐ 渲染卡片"));
-		assert.ok(text.includes("    × 修路径"));
-		assert.ok(text.includes("    ○ 补测试"));
+		assert.ok(text.includes("  › Tasks  1 running · 1 done · 1 failed · 1 pending"));
+		assert.ok(text.includes("    ● Task1  写工具"));
+		assert.ok(text.includes("    ⠋ Task2  渲染卡片"));
+		assert.ok(text.includes("    × Task3  修路径"));
+		assert.ok(text.includes("    ○ Task4  补测试"));
 	});
 
-	it("完成与失败不带删除线,说明行斜体,进行中加粗,圆点与标签同青", () => {
-		const lines = renderTranscript(40, 14, [{ prompt: "go", response: [card] }], 0);
+	it("完成与失败不带删除线,进行中加粗,标签与圆点同青", () => {
+		const lines = todoPanelLines(card, 80, FRAME);
 		const find = (part: string): string => lines.find((line) => plain(line).includes(part)) ?? "";
 
-		// 与子代理清单同一份色板:圆点青、无删除线;失败整行红、无删除线
-		assert.ok(find("● 写工具").includes(THEME.accent));
-		assert.equal(find("● 写工具").includes("\x1b[9m"), false);
-		assert.ok(find("× 修路径").includes(THEME.error));
-		assert.equal(find("× 修路径").includes("\x1b[9m"), false);
-		assert.ok(find("◐ 渲染卡片").includes(THEME.accent));
-		assert.ok(find("◐ 渲染卡片").includes("\x1b[1m"));
-		assert.ok(find("调整:先做渲染").includes("\x1b[3m"));
+		// 与子代理清单同一份色板:圆点与标签青、无删除线;失败整行红、无删除线
+		assert.ok(find("● Task1").includes(THEME.accent));
+		assert.ok(find("写工具").includes(THEME.textSecondary));
+		assert.equal(find("● Task1").includes("\x1b[9m"), false);
+		assert.ok(find("× Task3").includes(THEME.error));
+		assert.equal(find("× Task3").includes("\x1b[9m"), false);
+		assert.ok(find("⠋ Task2").includes(THEME.accent));
+		assert.ok(find("⠋ Task2").includes("\x1b[1m"));
+		// 进行中的正文是逐字符扫光,比静态色带出更多前景色码
+		assert.ok((find("渲染卡片").match(/\x1b\[38;2;/g) ?? []).length > 1);
+		assert.ok(find("○ Task4").includes(THEME.accent));
+		assert.ok(find("补测试").includes(THEME.textSecondary));
 	});
 
-	it("空表渲染 cleared,不带条目", () => {
-		const empty: TranscriptTodo = { kind: "todo", items: [] };
-		const text = renderTranscript(40, 10, [{ prompt: "go", response: [empty] }], 0)
-			.map(plain)
-			.join("\n");
-
-		assert.ok(text.includes("  › Tasks  cleared"));
-		assert.equal(text.includes("○"), false);
-	});
-
-	it("长条目折行并悬挂缩进到条目正文列", () => {
-		const long: TranscriptTodo = {
+	it("空表与已收尾的表都不进面板", () => {
+		assert.deepEqual(todoPanelLines({ kind: "todo", items: [] }, 40, FRAME), []);
+		const finished: TranscriptTodo = {
 			kind: "todo",
-			items: [{ content: "给工具与卡片补齐单元测试,覆盖嵌套数组与枚举边界", status: "pending" }],
-		};
-		const lines = renderTranscript(30, 10, [{ prompt: "go", response: [long] }], 0).map(plain);
-
-		const first = lines.findIndex((line) => line.includes("○ 给工具"));
-		assert.ok(first >= 0);
-		const continuation = lines[first + 1] ?? "";
-		assert.ok(continuation.trim().length > 0);
-		// 续行与首行正文对齐:缩进 4 列 + 标记与空格 2 列
-		assert.equal(continuation.slice(0, 6), "      ");
-	});
-
-	it("卡片与相邻内容之间留空行", () => {
-		const turn: TranscriptTurn = {
-			prompt: "go",
-			response: [
-				card,
-				{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1" },
+			items: [
+				{ content: "写工具", status: "completed" },
+				{ content: "补测试", status: "failed" },
 			],
 		};
-		const text = renderTranscript(40, 16, [turn], 0).map(plain).join("\n");
-
-		const cardEnd = text.indexOf("○ 补测试");
-		const toolStart = text.indexOf("› Read");
-		assert.ok(cardEnd >= 0 && toolStart > cardEnd);
-		// 卡片末行与工具行之间隔着一个空行
-		assert.equal(text.slice(cardEnd, toolStart).split("\n").length, 3);
+		assert.deepEqual(todoPanelLines(finished, 40, FRAME), []);
 	});
 
-	it("running 卡片的进行中行按帧重建为转圈与扫光,静态卡片不受帧影响", () => {
-		const running: TranscriptTodo = { ...card, running: true };
-		const view = buildTranscriptView(40, [{ prompt: "go", response: [running] }], undefined);
-		assert.ok(view.liveTodoLines.size === 1);
+	it("条目截断为单行,不折行", () => {
+		const long: TranscriptTodo = {
+			kind: "todo",
+			items: [
+				{
+					content: "给工具与卡片补齐单元测试覆盖嵌套数组与枚举边界以及更多边界情形TAIL",
+					status: "pending",
+				},
+			],
+		};
+		const lines = todoPanelLines(long, 34, FRAME);
 
-		const staticText = renderTranscriptView(view, 16, 0).map(plain).join("\n");
-		assert.ok(staticText.includes("◐ 渲染卡片"));
+		assert.equal(lines.length, 2);
+		for (const line of lines) assert.ok(displayWidth(plain(line)) <= 34);
+		// 面板只留可见的一行,不换行承接剩余内容
+		assert.equal(plain(lines[1] ?? "").includes("TAIL"), false);
+	});
 
-		const frame = { spinner: "⠋", sweepPhase: 0.5 };
-		const animatedLines = renderTranscriptView(view, 16, 0, frame);
-		const animatedText = animatedLines.map(plain).join("\n");
-		assert.ok(animatedText.includes("⠋ 渲染卡片"));
-		assert.equal(animatedText.includes("◐ 渲染卡片"), false);
+	it("收起时只留头行,全部完成只走对话流", () => {
+		assert.equal(todoPanelLines({ ...card, collapsed: true }, 80, FRAME).length, 1);
 
-		const animatedLine = animatedLines.find((line) => plain(line).includes("渲染卡片")) ?? "";
-		// 扫光是逐字符 RGB 渐变,比静态色带出更多的前景色码
-		assert.ok((animatedLine.match(/\x1b\[38;2;/g) ?? []).length > 1);
-		assert.ok(animatedLine.includes("\x1b[1m"));
+		const done: TranscriptTodo = {
+			kind: "todo",
+			items: [
+				{ content: "写工具", status: "completed" },
+				{ content: "补测试", status: "completed" },
+			],
+		};
+		assert.deepEqual(todoPanelLines(done, 80, FRAME), []);
+		assert.ok(
+			todoCardLines(done, 80)
+				.map(plain)
+				.join("\n")
+				.includes("› Tasks  2 done"),
+		);
+	});
 
-		// 回合结束 running 置 false 后重建,即使带帧也只剩静态行
-		running.running = false;
-		const frozen = buildTranscriptView(40, [{ prompt: "go", response: [running] }], undefined);
-		assert.equal(frozen.liveTodoLines.size, 0);
-		assert.ok(renderTranscriptView(frozen, 16, 0, frame).map(plain).join("\n").includes("◐ 渲染卡片"));
+	it("条目超过上限时显示剩余数", () => {
+		const many: TranscriptTodo = {
+			kind: "todo",
+			items: Array.from({ length: TODO_PANEL_MAX_ITEMS + 2 }, (_, index) => ({
+				content: `任务${index + 1}`,
+				status: "pending" as const,
+			})),
+		};
+		const text = todoPanelLines(many, 80, FRAME).map(plain).join("\n");
+
+		assert.ok(text.includes("○ Task1  任务1"));
+		assert.ok(text.includes(`○ Task${TODO_PANEL_MAX_ITEMS}  任务${TODO_PANEL_MAX_ITEMS}`));
+		assert.equal(text.includes(`任务${TODO_PANEL_MAX_ITEMS + 1}`), false);
+		assert.ok(text.includes("… 2 more"));
+	});
+
+	it("展开时头行只显示计数与耗时,转圈落在当前任务行", () => {
+		const running: TranscriptTodo = {
+			kind: "todo",
+			running: true,
+			taskStartedAt: Date.now() - 12_300,
+			items: [
+				{ content: "写工具", status: "completed" },
+				{ content: "渲染卡片", status: "in_progress" },
+			],
+		};
+		const lines = todoPanelLines(running, 60, FRAME).map(plain);
+		const header = lines.find((line) => line.includes("Tasks")) ?? "";
+
+		assert.ok(header.includes("1 running · 1 done"));
+		assert.ok(header.includes("12.3s"));
+		assert.equal(header.includes("⠋"), false);
+		assert.ok(lines.some((line) => line.includes("⠋ Task2  渲染卡片")));
+	});
+
+	it("折叠时头行保留转圈任务名,任务名超 30 显示列省略", () => {
+		const running: TranscriptTodo = {
+			kind: "todo",
+			running: true,
+			collapsed: true,
+			taskStartedAt: Date.now() - 12_300,
+			items: [
+				{ content: "写工具", status: "completed" },
+				{ content: "给常驻面板补齐单元测试覆盖折叠与展开以及窄屏排版", status: "in_progress" },
+			],
+		};
+		const header = plain(todoPanelLines(running, 60, FRAME)[0] ?? "");
+
+		assert.ok(header.includes("⠋"));
+		assert.ok(header.includes("12.3s"));
+		// 任务名截到 30 显示列:显示宽度不超过上限,且以省略号结尾
+		const shown = /⠋ (.+?)\s*$/.exec(header)?.[1] ?? "";
+		assert.ok(shown.endsWith("…"));
+		assert.ok(displayWidth(shown) <= 30);
+		// 头行不超宽
+		assert.ok(displayWidth(header) <= 60);
+	});
+
+	it("没有进行中任务的头行只有计数", () => {
+		const idle: TranscriptTodo = {
+			kind: "todo",
+			running: true,
+			items: [{ content: "写工具", status: "pending" }],
+		};
+		const header = plain(todoPanelLines(idle, 60, FRAME)[0] ?? "");
+		assert.equal(header.includes("⠋"), false);
+		assert.ok(header.includes("› Tasks  1 pending"));
 	});
 
 	it("todoCardFromArgs 接受合法参数,拒绝一切不合预期的形状", () => {
@@ -155,101 +205,60 @@ describe("任务卡片", () => {
 		assert.equal(todoCardFromArgs({ explanation: 3, todos: [] }), undefined);
 	});
 
-	it("条目超过 5 条时默认收起,收起卡片只占头行一行", () => {
-		const card = todoCardFromArgs({
+	it("条目超过 5 条时默认收起", () => {
+		const parsed = todoCardFromArgs({
 			todos: Array.from({ length: 6 }, (_, index) => ({
 				content: `任务${index + 1}`,
 				status: index === 2 ? "in_progress" : "pending",
 			})),
 		});
-		assert.ok(card !== undefined);
-		assert.equal(card.collapsed, true);
+		assert.ok(parsed !== undefined);
+		assert.equal(parsed.collapsed, true);
 
-		const text = renderTranscript(40, 20, [{ prompt: "go", response: [card] }], 0)
-			.map(plain)
-			.join("\n");
-		assert.ok(text.includes("› Tasks  0/6"));
+		const text = todoPanelLines(parsed, 80, FRAME).map(plain).join("\n");
+		assert.ok(text.includes("1 running · 5 pending"));
 		assert.equal(text.includes("任务1"), false);
 
-		// 头行注册为命中区:双击据此切换收起/展开
-		const view = buildTranscriptView(40, [{ prompt: "go", response: [card] }], undefined);
-		const row =
-			view.lines.findIndex((line) => plain(line).includes("Tasks")) + 1;
-		assert.equal(todoHeaderInView(view, 20, 0, row), card);
-
-		// 双击语义:collapsed 翻转后条目全部可见
-		card.collapsed = false;
-		const expanded = renderTranscript(40, 20, [{ prompt: "go", response: [card] }], 0)
-			.map(plain)
-			.join("\n");
-		assert.ok(expanded.includes("○ 任务1"));
+		// 展开后条目全部可见
+		parsed.collapsed = false;
+		assert.ok(todoPanelLines(parsed, 80, FRAME).map(plain).join("\n").includes("○ Task1  任务1"));
 	});
+});
 
-	it("折叠头行运行期显示转圈任务名与耗时,任务名超 30 显示列省略", () => {
-		const card: TranscriptTodo = {
-			kind: "todo",
-			running: true,
-			collapsed: true,
-			taskStartedAt: Date.now() - 12_300,
-			items: [
-				{ content: "写工具", status: "completed" },
-				{ content: "给对话流任务卡片补齐单元测试覆盖折叠与展开", status: "in_progress" },
-			],
-		};
-		const view = buildTranscriptView(60, [{ prompt: "go", response: [card] }], undefined);
-		assert.equal(view.liveTodoLines.size, 1);
+describe("收尾任务卡回到对话流", () => {
+	const finished: TranscriptTodo = {
+		kind: "todo",
+		items: [
+			{ content: "列出 src/tui 目录", status: "completed" },
+			{ content: "统计各文件行数", status: "completed" },
+			{ content: "找出最大的文件", status: "failed" },
+			{ content: "用一句话汇总", status: "completed" },
+		],
+	};
 
-		// 静态占位只有计数;带帧重建后出现任务名与耗时
-		assert.ok(renderTranscriptView(view, 12, 0).map(plain).join("\n").includes("› Tasks  1/2"));
-		const frame = { spinner: "⠋", sweepPhase: 0.5 };
-		const lines = renderTranscriptView(view, 12, 0, frame);
-		const header = lines.find((line) => plain(line).includes("Tasks")) ?? "";
-		const headerPlain = plain(header);
-		assert.ok(headerPlain.includes("⠋"));
-		assert.ok(headerPlain.includes("12.3s"));
-		// 任务名截到 30 显示列:显示宽度不超过上限,且以省略号结尾
-		const shown = /⠋ (.+?)  12\.3s/.exec(headerPlain)?.[1] ?? "";
-		assert.ok(shown.endsWith("…"));
-		assert.ok(displayWidth(shown) <= 30);
-		// 头行不超宽
-		assert.ok(displayWidth(headerPlain) <= 60);
-	});
-
-	it("没有进行中任务或已结束的折叠卡片,头行只有计数", () => {
-		const idle: TranscriptTodo = {
-			kind: "todo",
-			running: true,
-			collapsed: true,
-			items: [{ content: "写工具", status: "completed" }],
-		};
-		const view = buildTranscriptView(60, [{ prompt: "go", response: [idle] }], undefined);
-		assert.equal(view.liveTodoLines.size, 0);
-
-		const done: TranscriptTodo = { ...idle, running: false, taskStartedAt: Date.now() };
-		const frozen = buildTranscriptView(60, [{ prompt: "go", response: [done] }], undefined);
-		assert.equal(frozen.liveTodoLines.size, 0);
-		assert.ok(
-			renderTranscriptView(frozen, 12, 0, { spinner: "⠋", sweepPhase: 0.5 })
-				.map(plain)
-				.join("\n")
-				.includes("› Tasks  1/1"),
+	it("完成或失败都算收尾,还有待办或进行中则不算", () => {
+		assert.equal(todoCardFinished(finished), true);
+		assert.equal(
+			todoCardFinished({
+				kind: "todo",
+				items: [
+					{ content: "a", status: "completed" },
+					{ content: "b", status: "pending" },
+				],
+			}),
+			false,
 		);
+		assert.equal(todoCardFinished({ kind: "todo", items: [] }), false);
 	});
 
-	it("Ctrl+E 展开或收起最近一张任务卡片", () => {
-		const card: TranscriptTodo = {
-			kind: "todo",
-			collapsed: true,
-			items: Array.from({ length: 6 }, (_, index) => ({
-				content: `任务${index + 1}`,
-				status: "pending",
-			})),
-		};
-		const turns: TranscriptTurn[] = [{ prompt: "go", response: [card] }];
+	it("头行汇总,清单沿用 TaskN 排版;收起时只留头行", () => {
+		const text = todoCardLines(finished, 80).map(plain).join("\n");
+		assert.ok(text.includes("  › Tasks  3 done · 1 failed"));
+		assert.ok(text.includes("    ● Task1  列出 src/tui 目录"));
+		assert.ok(text.includes("    × Task3  找出最大的文件"));
 
-		assert.equal(toggleLastExpandable(turns), true);
-		assert.equal(card.collapsed, false);
-		assert.equal(toggleLastExpandable(turns), true);
-		assert.equal(card.collapsed, true);
+		const collapsed = todoCardLines({ ...finished, collapsed: true }, 80).map(plain);
+		assert.equal(collapsed.length, 1);
+		assert.ok(collapsed[0]?.includes("3 done · 1 failed"));
 	});
 });

@@ -1,12 +1,15 @@
 import type { Session } from "../session/session.ts";
 import type { SessionStore } from "../session/store.ts";
 import { buildTranscriptHistory } from "../tui/history.ts";
+import type { TranscriptTodo } from "../tui/todo-card.ts";
 import type { TranscriptTurn } from "../tui/transcript.ts";
 import { resumeSession } from "./session-target.ts";
 
 export interface SwitchedSession {
 	readonly session: Session;
 	readonly history: readonly TranscriptTurn[];
+	/** 目标会话最后一张任务表；没有时面板保持收起 */
+	readonly todo?: TranscriptTodo;
 }
 
 /**
@@ -22,7 +25,8 @@ export function openSessionForSwitch(
 ): SwitchedSession {
 	const session = resumeSession(workRoot, id, store);
 	try {
-		return { session, history: buildTranscriptHistory(session.state().messages, workRoot) };
+		const history = buildTranscriptHistory(session.state().messages, workRoot);
+		return { session, history: history.turns, ...(history.todo === undefined ? {} : { todo: history.todo }) };
 	} catch (error) {
 		// 读不出历史就不再保留这个目标会话的写入通道；原始错误更重要，关闭失败不再覆盖它
 		void session.close().catch(() => {});

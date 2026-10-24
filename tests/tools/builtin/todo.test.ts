@@ -48,6 +48,13 @@ describe("任务列表工具", () => {
 		assert.ok(result.content.includes("non-empty"));
 	});
 
+	it("描述给出多步边界、整表更新与收尾规则", () => {
+		assert.ok(todoTool.description.includes("three or more distinct steps"));
+		assert.ok(todoTool.description.includes("COMPLETE current list"));
+		assert.ok(todoTool.description.includes("exactly one task in_progress"));
+		assert.ok(todoTool.description.includes("finish with every task completed or failed"));
+	});
+
 	it("只读标注:它只与对话内容交互,不需要审批", () => {
 		assert.deepEqual(todoTool.annotations, { readOnly: true, destructive: false, openWorld: false });
 	});

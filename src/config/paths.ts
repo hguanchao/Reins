@@ -72,6 +72,24 @@ export function projectAgentsSkillsDir(workRoot: string): string {
 }
 
 /**
+ * 用户级规则文件的候选清单，按优先级排列。
+ *
+ * 同目录里 `AGENTS.override.md` 存在时取代 `AGENTS.md` / `CLAUDE.md`；候选路径都列出来，
+ * 由读取方决定最终用哪一个，信任判定也能一次看到全部可能影响提示词的文件。
+ */
+export function userInstructionFiles(): readonly string[] {
+	return INSTRUCTION_FILE_NAMES.map((name) => join(configDir(), name));
+}
+
+/** 工作区规则文件的候选清单，优先级与用户级相同。 */
+export function projectInstructionFiles(workRoot: string): readonly string[] {
+	return INSTRUCTION_FILE_NAMES.map((name) => join(workRoot, name));
+}
+
+/** 规则文件名：override 优先，其余按 AGENTS.md、CLAUDE.md 的顺序回退。 */
+const INSTRUCTION_FILE_NAMES = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"] as const;
+
+/**
  * 会话文件所在目录。
  *
  * 按工作根分目录，同一个目录下的会话聚在一起，换目录工作时各自看到自己的历史。

@@ -2144,6 +2144,77 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("审批卡显示时对话流仍可双击展开和滚动", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+		const plainLines = (): string[] => frameLines(output).map(plain);
+		const rowOf = (needle: string): number =>
+			plainLines().findIndex((line) => line.includes(needle)) + 1;
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			const body = Array.from({ length: 30 }, (_, index) => `line${String(index + 1).padStart(2, "0")}`);
+			agent.emit({ type: "reasoning_delta", text: body.join("\n") });
+			t.mock.timers.tick(100);
+
+			void broker.request({ tool: "bash", risk: "destructive", detail: "npm test" });
+			t.mock.timers.tick(100);
+			assert.ok(plainLines().join("\n").includes("Permission required"));
+
+			// 双击审批卡上方的思考标题：对话流照常展开，审批卡不消失
+			let headerRow = rowOf("Thinking…");
+			assert.ok(headerRow > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			let text = plainLines().join("\n");
+			assert.ok(text.includes("line01"));
+			assert.ok(text.includes("Permission required"));
+
+			// PageDown/PageUp 滚动对话流
+			input.emit("data", Buffer.from("\x1b[6~"));
+			text = plainLines().join("\n");
+			assert.equal(text.includes("line01"), false);
+			assert.ok(text.includes("Permission required"));
+
+			input.emit("data", Buffer.from("\x1b[5~"));
+			text = plainLines().join("\n");
+			assert.ok(text.includes("line01"));
+
+			// 滚轮同样可以滚动
+			input.emit("data", Buffer.from(`${"\x1b[<65;10;10M".repeat(5)}`));
+			text = plainLines().join("\n");
+			assert.equal(text.includes("line01"), false);
+			input.emit("data", Buffer.from(`${"\x1b[<64;10;10M".repeat(5)}`));
+			text = plainLines().join("\n");
+			assert.ok(text.includes("line01"));
+
+			// 再双击收起，审批卡仍在
+			headerRow = rowOf("Thinking…");
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			text = plainLines().join("\n");
+			assert.equal(text.includes("line01"), false);
+			assert.ok(text.includes("Permission required"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("审批动作支持鼠标点击", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
@@ -4061,8 +4132,8 @@ describe("全屏布局", () => {
 	});
 });
 
-describe("任务卡片", () => {
-	it("tool_start 渲染卡片,运行期间进行中行是转圈与扫光,回合结束退为静态半圆", async (t) => {
+describe("任务面板", () => {
+	it("tool_start 只更新常驻面板,运行行转圈与扫光,回合结束回静态", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -4096,20 +4167,22 @@ describe("任务卡片", () => {
 			});
 
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("› Tasks  1/2"));
-			assert.ok(text.includes("开工"));
-			assert.ok(text.includes("● 写工具"));
+			// 卡片只在常驻面板出现一次;头行汇总计数,不再重复当前任务名
+			assert.equal(text.split("› Tasks  1 running · 1 done").length - 1, 1);
+			assert.ok(text.includes("● Task1  写工具"));
+			assert.ok(text.includes("⠋ Task2  渲染卡片"));
+			assert.equal(text.includes("开工"), false);
 
-			// 运行期间:盲文运行符替换半圆,正文是逐字符扫光
-			const runningLine = frameLines(output).find((line) => plain(line).includes("渲染卡片")) ?? "";
-			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(plain(runningLine)));
-			assert.ok((runningLine.match(/\x1b\[38;2;/g) ?? []).length > 1);
+			// 运行期间:转圈与扫光落在当前任务行
+			const runningRaw = frameLines(output).find((line) => plain(line).includes("Task2")) ?? "";
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(plain(runningRaw)));
+			assert.ok((runningRaw.match(/\x1b\[38;2;/g) ?? []).length > 1);
 
 			await agent.finish();
 
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("◐ 渲染卡片"));
-			assert.equal(text.includes("⠋"), false);
+			assert.ok(text.includes("◐ Task2  渲染卡片"));
+			assert.equal(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(text), false);
 		} finally {
 			exitTui(input);
 		}
@@ -4150,7 +4223,7 @@ describe("任务卡片", () => {
 	});
 });
 
-describe("任务卡片折叠", () => {
+describe("任务面板折叠", () => {
 	it("超过五条默认收起:头行显示计数,双击展开全部条目,再双击收起", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
@@ -4175,28 +4248,31 @@ describe("任务卡片折叠", () => {
 			});
 
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("› Tasks  0/6"));
-			assert.equal(text.includes("○ 任务1"), false);
+			assert.ok(text.includes("› Tasks  1 running · 5 pending"));
+			assert.equal(text.includes("○ Task1"), false);
 			// 运行中的折叠头行带转圈任务名
 			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] 任务3/.test(text));
 
-			const row =
+			const headerRow = (): number =>
 				frameLines(output)
 					.map(plain)
 					.findIndex((line) => line.includes("Tasks")) + 1;
+			let row = headerRow();
 			assert.ok(row > 0);
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("○ 任务1"));
+			assert.ok(text.includes("○ Task1  任务1"));
 			// 展开态的进行中行仍是转圈(回合还在运行)
-			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] 任务3/.test(text));
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Task3  任务3/.test(text));
 
+			// 面板变高后头行上移,重新取行号再双击
+			row = headerRow();
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("○ 任务1"), false);
+			assert.equal(text.includes("○ Task1"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -4337,16 +4413,16 @@ describe("常驻任务面板", () => {
 			});
 
 			let text = frameLines(output).map(plain).join("\n");
-			// 面板与对话流卡片同屏:头行出现两次(对话流一次、面板一次)
-			assert.ok(text.includes("› Tasks  1/2"));
-			assert.ok(text.includes("● 写工具"));
+			// 卡片只在面板出现:头行唯一,条目也跟着面板走
+			assert.equal(text.split("› Tasks  1 running · 1 done").length - 1, 1);
+			assert.equal(text.split("● Task1  写工具").length - 1, 1);
 
 			await agent.finish();
 
-			// 回合结束:面板仍在(跨回合),头行回静态,不再有转圈
+			// 回合结束:面板仍在(跨回合),运行行回静态,不再有转圈
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("› Tasks  1/2"));
-			assert.equal(text.includes("⠋"), false);
+			assert.ok(text.includes("› Tasks  1 running · 1 done"));
+			assert.equal(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(text), false);
 		} finally {
 			exitTui(input);
 		}
@@ -4354,7 +4430,78 @@ describe("常驻任务面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("全部完成后面板缩为一行,清空后面板消失", async (t) => {
+	it("续聊时用历史里的任务表恢复面板", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			history: [{ prompt: "old work", response: ["old answer"] }],
+			historyTodo: {
+				kind: "todo",
+				items: [
+					{ content: "写工具", status: "completed" },
+					{ content: "补测试", status: "pending" },
+				],
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.split("› Tasks  1 done · 1 pending").length - 1, 1);
+			assert.ok(text.includes("● Task1  写工具"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("切换会话时面板换成新会话的任务表", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			historyTodo: {
+				kind: "todo",
+				items: [{ content: "旧任务", status: "in_progress" }],
+			},
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({
+					changed: true,
+					history: [],
+					todo: { kind: "todo", items: [{ content: "新任务", status: "pending" }] },
+					warnings: [],
+				}),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session\r"));
+			input.emit("data", Buffer.from("\x1b[B"));
+			input.emit("data", Buffer.from("\r"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("○ Task1  新任务"));
+			assert.equal(text.includes("旧任务"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("全部完成后从面板移出,整张卡落到对话流", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -4374,8 +4521,50 @@ describe("常驻任务面板", () => {
 			t.mock.timers.tick(100);
 
 			let text = frameLines(output).map(plain).join("\n");
-			// 全部完成:面板只剩一行汇总
-			assert.ok(text.includes("› Tasks  2/2"));
+			// 收尾卡只在对话流出现一次,面板同时退出
+			assert.equal(text.split("› Tasks  2 done").length - 1, 1);
+			assert.equal(text.split("● Task1  写工具").length - 1, 1);
+			assert.ok(text.includes("● Task2  渲染卡片"));
+
+			// 新任务开始后,历史里的收尾卡仍在;面板换成新的未收尾表
+			agent.emit({
+				type: "tool_start",
+				callId: "c2",
+				name: "todo",
+				args: { todos: [{ content: "下一步", status: "in_progress" }] },
+			});
+			t.mock.timers.tick(100);
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.split("› Tasks  2 done").length - 1, 1);
+			assert.ok(text.includes("› Tasks  1 running"));
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Task1  下一步/.test(text));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("清空未收尾的任务表后面板消失,对话流不留卡", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: { todos: [{ content: "写工具", status: "in_progress" }] },
+			});
+			t.mock.timers.tick(100);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("› Tasks  1 running"));
 
 			agent.emit({
 				type: "tool_start",
@@ -4385,10 +4574,9 @@ describe("常驻任务面板", () => {
 			});
 			t.mock.timers.tick(100);
 
-			text = frameLines(output).map(plain).join("\n");
-			// 空表:面板高度 0,两张卡片各只在对话流出现一次,面板不再重复
-			assert.equal(text.split("› Tasks  2/2").length - 1, 1);
-			assert.equal(text.split("› Tasks  cleared").length - 1, 1);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("› Tasks"), false);
+			assert.equal(text.includes("写工具"), false);
 		} finally {
 			exitTui(input);
 		}

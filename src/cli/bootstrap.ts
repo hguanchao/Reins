@@ -7,6 +7,11 @@ import type { PromptSkill } from "../agent/prompt.ts";
 import { Compactor, compactionWindow, estimateTokens } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { AgentEventListener } from "../agent/events.ts";
+import {
+	defaultInstructionSources,
+	readInstructions,
+	type PromptInstruction,
+} from "../agent/instructions.ts";
 import { ConfigError } from "../config/config-error.ts";
 import { sessionAge } from "./session-age.ts";
 import { ConfigFile, type ApprovalMode, type Config } from "../config/config-file.ts";
@@ -149,10 +154,13 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	const loaded = await loadSelection(options);
 
 	const workRoot = process.cwd();
+	const trusted = "trusted" in loaded && loaded.trusted;
 
-	// 技能每轮重扫：改完 SKILL.md 下一轮就生效，不必重启
-	const skillRoots = defaultSkillRoots(workRoot, "trusted" in loaded && loaded.trusted);
+	// 技能与规则每轮重扫：改完 SKILL.md / AGENTS.md 下一轮就生效，不必重启
+	const skillRoots = defaultSkillRoots(workRoot, trusted);
 	const skills = (): readonly SkillInfo[] => discoverSkills(skillRoots);
+	const instructions = (): readonly PromptInstruction[] =>
+		readInstructions(defaultInstructionSources(workRoot, trusted));
 	const skillsPage = {
 		list: () =>
 			skills().map((skill) => ({
@@ -328,7 +336,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 					compactor,
 					contextTokens: lastContextTokens(activeSession.entries()),
 				},
-				{ registry, session: activeSession, workspace, sandbox, skills },
+				{ registry, session: activeSession, workspace, sandbox, skills, instructions },
 				onEvent,
 			),
 		};
@@ -456,7 +464,12 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 						activeSession = switched.session;
 						sessionPersisted = activeSession.path !== null;
 						refreshInfo();
-						return { changed: true, history: switched.history, warnings: [] };
+						return {
+							changed: true,
+							history: switched.history,
+							todo: switched.todo,
+							warnings: [],
+						};
 					},
 				};
 
@@ -476,7 +489,8 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			effortMenu,
 			pluginCommands,
 			notify: activeConfig.ui.notify,
-			history,
+			history: history.turns,
+			historyTodo: history.todo,
 			workspaceRoot: workRoot,
 		});
 		if (sessionPersisted) writeStdout(`${resumeCommand(activeSession.id)}\n`);
@@ -666,6 +680,8 @@ async function runPrint(options: CliOptions): Promise<number> {
 
 	const workRoot = process.cwd();
 	const workspace = new WorkspaceBoundary(workRoot);
+	const instructions = (): readonly PromptInstruction[] =>
+		readInstructions(defaultInstructionSources(workRoot, loaded.trusted));
 
 	// 审批链路：策略先立起来，插件装载时往里加规则
 	const policy = new PermissionPolicy(config.approval);
@@ -687,7 +703,11 @@ async function runPrint(options: CliOptions): Promise<number> {
 		return await runPrintMode({
 			prompt: options.prompt,
 			createDriver: (onEvent) =>
-				createDriverFor({ config, selection, compactor }, { registry, session, workspace, sandbox }, onEvent),
+				createDriverFor(
+					{ config, selection, compactor },
+					{ registry, session, workspace, sandbox, instructions },
+					onEvent,
+				),
 			workspaceRoot: workRoot,
 			stdout: writeStdout,
 			stderr: writeStderr,
@@ -985,6 +1005,8 @@ function createDriverFor(
 		readonly sandbox: SandboxView;
 		/** 可用技能；每轮重新取，改完 SKILL.md 下一轮就生效 */
 		readonly skills?: () => readonly PromptSkill[];
+		/** 用户级与项目级规则；每轮重新读，改完 AGENTS.md 下一轮就生效 */
+		readonly instructions?: () => readonly PromptInstruction[];
 	},
 	onEvent: AgentEventListener,
 ): TurnDriver {
@@ -996,11 +1018,12 @@ function createDriverFor(
 			model: context.selection.model,
 			config: context.config,
 			client,
-			// 交给子代理的是不含子代理工具的那一份，因此子代理不会再派子代理
-			tools: shared.registry,
+			// 子代理不再派子代理，也不需要主对话的任务表：任务表只在主面板与主对话里显示
+			tools: shared.registry.without("todo"),
 			session: shared.session,
 			maxSteps: context.config.maxTurns ?? DEFAULT_SUBAGENT_STEPS,
 			contextWindow: context.selection.model.contextWindow ?? context.config.contextWindow,
+			instructions: shared.instructions,
 		}),
 	);
 
@@ -1015,6 +1038,7 @@ function createDriverFor(
 		sandbox: shared.sandbox,
 		onEvent,
 		...(shared.skills === undefined ? {} : { skills: shared.skills }),
+		...(shared.instructions === undefined ? {} : { instructions: shared.instructions }),
 		...(context.compactor === undefined ? {} : { compactor: context.compactor }),
 		...(context.contextTokens === undefined ? {} : { contextTokens: context.contextTokens }),
 	});

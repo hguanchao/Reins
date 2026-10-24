@@ -14,7 +14,7 @@ const PARAMETERS = {
 	properties: {
 		explanation: {
 			type: "string",
-			description: "Optional note explaining this update; shown to the user above the list.",
+			description: "Optional short note explaining this update.",
 		},
 		todos: {
 			type: "array",
@@ -48,10 +48,11 @@ export const todoTool: ToolDefinition<TodoArgs> = {
 	name: "todo",
 	summary: "Record and update the task list for multi-step work",
 	description:
-		"Record and update a task list to plan multi-step work and show progress; skip it for single-step tasks. " +
-		"Every call replaces the whole list, so send the COMPLETE current list each time. " +
-		"Keep at most one task in_progress while work is going on, and mark tasks completed as soon as they are done. " +
-		"Mark a task failed when it cannot be completed, and say why in your text response.",
+		"Track a task list for multi-step work and show progress; use it for three or more distinct steps and " +
+		"skip single-step tasks. Every call replaces the whole list, so send the COMPLETE current list each " +
+		"time. Keep exactly one task in_progress while work is going on, mark tasks completed as soon as they " +
+		"are done, mark a task failed only when it cannot be completed, and finish with every task completed " +
+		"or failed. Do not restate the list in your reply.",
 	parameters: PARAMETERS,
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 

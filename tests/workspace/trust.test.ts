@@ -31,6 +31,24 @@ describe("工作区里的受保护资源", () => {
 		assert.deepEqual(findProjectResources(root).skillDirectories, []);
 	});
 
+	it("项目级 AGENTS.md / CLAUDE.md 也是受保护资源", () => {
+		const root = tempWorkspace();
+		writeFileSync(join(root, "AGENTS.md"), "use npm test", "utf8");
+		writeFileSync(join(root, "CLAUDE.md"), "use tabs", "utf8");
+
+		assert.deepEqual(findProjectResources(root).files, [
+			join(root, "AGENTS.md"),
+			join(root, "CLAUDE.md"),
+		]);
+
+		writeFileSync(join(root, "AGENTS.override.md"), "override", "utf8");
+		assert.deepEqual(findProjectResources(root).files, [
+			join(root, "AGENTS.override.md"),
+			join(root, "AGENTS.md"),
+			join(root, "CLAUDE.md"),
+		]);
+	});
+
 	it("项目级技能目录同样需要信任，两个位置都算", () => {
 		const root = tempWorkspace();
 		mkdirSync(join(root, ".reins", "skills"), { recursive: true });

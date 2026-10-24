@@ -5,7 +5,7 @@ import {
 	type LlmMessage,
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
-import { todoCardFromArgs } from "./todo-card.ts";
+import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "./todo-card.ts";
 import {
 	appendToolLine,
 	attachToolFailure,
@@ -22,6 +22,7 @@ import {
  *
  * 续聊时模型能看到的历史必须同样出现在界面上，否则页脚显示有上下文、对话区却是一片空白。
  * 压缩摘要不当作使用者提示展示；工具调用保留一行可读摘要，工具结果只保留失败原因。
+ * 已收尾的任务卡属于历史，回填进对话流；最后一张未收尾的卡单独带出，交给常驻面板。
  */
 
 const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
@@ -31,12 +32,19 @@ interface MutableTurn extends TranscriptTurn {
 	response: TranscriptLine[];
 }
 
+export interface TranscriptHistory {
+	readonly turns: readonly TranscriptTurn[];
+	/** 最后一张未收尾的任务表；续聊时用它恢复常驻面板 */
+	readonly todo?: TranscriptTodo;
+}
+
 export function buildTranscriptHistory(
 	messages: readonly LlmMessage[],
 	workspaceRoot?: string,
-): readonly TranscriptTurn[] {
+): TranscriptHistory {
 	const turns: MutableTurn[] = [];
 	let current: MutableTurn | undefined;
+	let lastTodo: TranscriptTodo | undefined;
 
 	const ensureTurn = (prompt: string): MutableTurn => {
 		if (current === undefined) {
@@ -56,24 +64,30 @@ export function buildTranscriptHistory(
 				break;
 			}
 			case "assistant": {
-				const turn = ensureTurn("(earlier conversation)");
+				let turn: MutableTurn | undefined;
+				const currentTurn = (): MutableTurn =>
+					(turn ??= ensureTurn("(earlier conversation)"));
 				const text = assistantText(message);
-				if (text.length > 0) turn.response.push({ kind: "markdown", text });
+				if (text.length > 0) currentTurn().response.push({ kind: "markdown", text });
 				for (const call of assistantToolCalls(message)) {
-					// 任务卡片与实时路径共用同一份参数解析；解析不了的形状退回普通工具行
-					const card = call.name === "todo" ? todoCardFromArgs(call.arguments) : undefined;
-					if (card !== undefined) {
-						turn.response.push(card);
-						continue;
+					// 任务表与实时路径共用同一份参数解析；解析不了的形状退回普通工具行
+					if (call.name === "todo") {
+						const card = todoCardFromArgs(call.arguments);
+						if (card !== undefined) {
+							lastTodo = card;
+							// 收尾的列表是历史，回到对话流；未收尾的留给常驻面板
+							if (todoCardFinished(card)) currentTurn().response.push(card);
+							continue;
+						}
 					}
 					// 同一条 assistant 消息里的多个子代理调用回填为同一个组,与实时归组一致
 					if (call.name === "subagent") {
-						appendSubagentMember(turn.response, call.id, subagentTaskOf(call.arguments));
+						appendSubagentMember(currentTurn().response, call.id, subagentTaskOf(call.arguments));
 						continue;
 					}
 					const described = describeToolCall(call.name, call.arguments, workspaceRoot);
 					appendToolLine(
-						turn.response,
+						currentTurn().response,
 						{
 							kind: "tool",
 							name: described.name,
@@ -96,8 +110,9 @@ export function buildTranscriptHistory(
 				// 子代理的结果改组员状态,不落普通工具行
 				if (message.toolName === "subagent" && attachSubagentResult(turns, message)) break;
 				if (!message.isError) {
-					const turn = ensureTurn("(earlier conversation)");
-					const tool = findToolByCallId(turn.response, message.toolCallId);
+					// 成功结果只挂回已有工具行；没有当前回合说明对应的调用没有落行(任务表)，不凭空造一个空回合
+					if (current === undefined) break;
+					const tool = findToolByCallId(current.response, message.toolCallId);
 					if (tool !== undefined) {
 						attachToolResult(tool, message.toolName, message.content);
 					}
@@ -124,7 +139,11 @@ export function buildTranscriptHistory(
 	// 回填等价于回合结束：命令组在这里塌缩，与实时路径共用同一套判定
 	for (const turn of turns) collapseToolGroups(turn.response);
 
-	return turns;
+	const todo =
+		lastTodo !== undefined && lastTodo.items.length > 0 && !todoCardFinished(lastTodo)
+			? lastTodo
+			: undefined;
+	return { turns, ...(todo === undefined ? {} : { todo }) };
 }
 
 function firstLine(content: string): string {

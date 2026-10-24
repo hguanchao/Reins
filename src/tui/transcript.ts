@@ -3,6 +3,7 @@ import { formatCompactTokens, formatDuration } from "../tools/format.ts";
 import { resultDetail, resultMetric, type ResultDetailKind } from "../tools/result-summary.ts";
 import { highlightCode, type SyntaxSegment } from "../tools/syntax.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { swept, type AnimationFrame } from "./sweep.ts";
 import { syntaxColor } from "./syntax-style.ts";
 import {
 	characterWidth,
@@ -14,13 +15,7 @@ import {
 	wrappedLines,
 } from "./text.ts";
 import { THEME } from "./theme.ts";
-import {
-	animatedTodoLine,
-	todoCardLines,
-	type LiveTodoLine,
-	type TodoAnimationFrame,
-	type TranscriptTodo,
-} from "./todo-card.ts";
+import { todoCardLines, type TranscriptTodo } from "./todo-card.ts";
 
 /** 子代理的一次运行的终态:组清单与单个调用行都从这里渲染。 */
 export interface SubagentRunView {
@@ -84,6 +79,13 @@ export type TranscriptLine =
 	| TranscriptSubagentGroup
 	| TranscriptTodo
 	| TranscriptMarkdown;
+
+/** 运行中的子代理清单行：渲染期按当前帧重建转圈与扫光。 */
+interface LiveSubagentLine {
+	readonly indent: string;
+	readonly label: string;
+	readonly summary: string;
+}
 
 /**
  * 模型回复里的 Markdown 文本块。
@@ -294,14 +296,13 @@ export interface TranscriptView {
 	/** 每条可展开的工具行在 lines 里的起点，双击命中使用 */
 	readonly toolHeaders: readonly { readonly start: number; readonly tool: TranscriptTool }[];
 	/**
-	 * 运行中卡片的动画行：lines 行号 → 重建所需的原料。
+	 * 运行中子代理清单行的动画原料：lines 行号 → 重建所需的内容。
 	 *
-	 * lines 里先放静态占位行（行数一致），渲染期由调用方带当前帧重建——展开卡片是
-	 * 进行中条目行，折叠卡片是带任务名与耗时的头行。这样 100ms 一帧的动画不需要
-	 * 重建整份视图。
+	 * lines 里先放静态占位行（行数一致），渲染期由调用方带当前帧重建为转圈与扫光。
+	 * 这样 100ms 一帧的动画不需要重建整份视图。
 	 */
-	readonly liveTodoLines: ReadonlyMap<number, LiveTodoLine>;
-	/** 每张任务卡的头行在 lines 里的起点，双击收起/展开使用 */
+	readonly liveLines: ReadonlyMap<number, LiveSubagentLine>;
+	/** 每张收尾任务卡的头行在 lines 里的起点，双击收起/展开使用 */
 	readonly todoHeaders: readonly { readonly start: number; readonly card: TranscriptTodo }[];
 	/** 每个子代理组头在 lines 里的起点，双击收起/展开使用 */
 	readonly subagentHeaders: readonly {
@@ -491,7 +492,7 @@ export function findTopLevelToolByCallId(
 	return undefined;
 }
 
-/** Ctrl+E：展开或收起最近一个思考区块、工具组或任务卡片。 */
+/** Ctrl+E：展开或收起最近一个思考区块、工具组、任务卡或子代理组。 */
 export function toggleLastExpandable(turns: readonly TranscriptTurn[]): boolean {
 	for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
 		const response = turns[turnIndex]?.response ?? [];
@@ -611,7 +612,7 @@ export function renderTranscriptView(
 	view: TranscriptView,
 	height: number,
 	scrollTop: number,
-	frame?: TodoAnimationFrame,
+	frame?: AnimationFrame,
 ): readonly string[] {
 	const rows = Math.max(0, height);
 	if (rows === 0) return [];
@@ -620,10 +621,10 @@ export function renderTranscriptView(
 	const { top } = scrollState(view, rows, scrollTop);
 	const indexes = visibleIndexes(view, rows, top);
 	const lineAt = (index: number): string => {
-		// 运行中卡片的进行中行按当前帧重建：动画只在可见行上花工夫，视图本身不重建
+		// 运行中的子代理行按当前帧重建：动画只在可见行上花工夫，视图本身不重建
 		if (frame !== undefined) {
-			const live = view.liveTodoLines.get(index);
-			if (live !== undefined) return animatedTodoLine(live, frame, view.width);
+			const live = view.liveLines.get(index);
+			if (live !== undefined) return animatedSubagentLine(live, frame, view.width);
 		}
 		return view.lines[index] ?? " ".repeat(view.width);
 	};
@@ -718,7 +719,7 @@ export function toolHeaderInView(
 	return view.toolHeaders.find((header) => header.start === lineIndex)?.tool;
 }
 
-/** 命中任务卡头行；双击在收起与展开之间切换。 */
+/** 命中收尾任务卡的头行；双击在收起与展开之间切换。 */
 export function todoHeaderInView(
 	view: TranscriptView,
 	height: number,
@@ -759,13 +760,13 @@ export function subagentFailureRowInView(
  *
  * 收起只有组头一行:标签 + 按 running→done→failed 顺序的计数段 + 括号耗时。
  * 展开追加剧清单一行一条,符号沿用任务卡片的四态语言;清单纯展示。
- * 运行中的耗时与计数由 layout 的 100ms 帧刷新:组行不进 liveTodoLines,
+ * 运行中的耗时与计数由 layout 的 100ms 帧刷新:组行不进 liveLines,
  * 每次 spinner tick 直接 markTranscriptDirty 让视图重建(每轮只有一个组,重建便宜)。
  */
 function subagentGroupLines(
 	group: TranscriptSubagentGroup,
 	width: number,
-	live: Map<number, LiveTodoLine>,
+	live: Map<number, LiveSubagentLine>,
 	start: number,
 ): { readonly lines: readonly string[]; readonly failureRows: readonly { readonly start: number; readonly callId: string }[] } {
 	const lines: string[] = [subagentGroupHead(group, width)];
@@ -783,7 +784,6 @@ function subagentGroupLines(
 		if (member.status === "running") {
 			const budget = Math.max(0, width - displayWidth(SUBAGENT_ITEM_INDENT) - 2);
 			live.set(memberStart, {
-				kind: "subagent",
 				indent: SUBAGENT_ITEM_INDENT,
 				label: truncateToWidth(`Subagent${index + 1}`, budget),
 				summary: truncateToWidth(member.task, Math.min(SUBAGENT_TASK_WIDTH, budget)),
@@ -791,6 +791,19 @@ function subagentGroupLines(
 		}
 	});
 	return { lines, failureRows };
+}
+
+/** 子代理清单运行行的动画行:转圈、标签与摘要整体扫光,全行青色加粗。 */
+function animatedSubagentLine(
+	live: LiveSubagentLine,
+	frame: AnimationFrame,
+	width: number,
+): string {
+	const budget = Math.max(0, width - displayWidth(live.indent) - 2);
+	const visible = truncateToWidth(`${frame.spinner} ${live.label}  ${live.summary}`, budget);
+	const body = swept(visible, frame.sweepPhase, THEME.accentDim, THEME.accentRgb);
+	const padding = " ".repeat(Math.max(0, budget - displayWidth(visible)));
+	return `${live.indent}${THEME.accent}${SUBAGENT_BOLD}${body}${padding}`;
 }
 
 /** 组头一行:青色标签 + 灰色计数段与括号统计(耗时、⇣token)。计数顺序固定 running→done→failed。 */
@@ -1004,7 +1017,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 	const thinkingHeaders: { start: number; block: TranscriptThinking }[] = [];
 	const groupHeaders: { start: number; group: TranscriptToolGroup }[] = [];
 	const toolHeaders: { start: number; tool: TranscriptTool }[] = [];
-	const liveTodoLines = new Map<number, LiveTodoLine>();
+	const liveLines = new Map<number, LiveSubagentLine>();
 	const todoHeaders: { start: number; card: TranscriptTodo }[] = [];
 	const subagentHeaders: { start: number; group: TranscriptSubagentGroup }[] = [];
 	const subagentFailureRows: { start: number; group: TranscriptSubagentGroup; callId: string }[] = [];
@@ -1072,13 +1085,13 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 			if (line.kind === "todo") {
 				const cardStart = lines.length;
 				todoHeaders.push({ start: cardStart, card: line });
-				lines.push(...todoCardLines(line, width, liveTodoLines, cardStart));
+				lines.push(...todoCardLines(line, width));
 				continue;
 			}
 			if (line.kind === "subagentGroup") {
 				const groupStart = lines.length;
 				subagentHeaders.push({ start: groupStart, group: line });
-				const rendered = subagentGroupLines(line, width, liveTodoLines, groupStart);
+				const rendered = subagentGroupLines(line, width, liveLines, groupStart);
 				lines.push(...rendered.lines);
 				// 失败行登记双击命中:展开/收起失败原因
 				for (const failure of rendered.failureRows) {
@@ -1097,7 +1110,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		previousHadResponse = turn.response.length > 0;
 	}
 
-	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveTodoLines, todoHeaders, subagentHeaders, subagentFailureRows };
+	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveLines, todoHeaders, subagentHeaders, subagentFailureRows };
 }
 
 

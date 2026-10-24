@@ -7,6 +7,7 @@ import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../.
 import type { LlmContentBlock, LlmMessage, LlmToolCallBlock, LlmUsage } from "../../src/llm/messages.ts";
 import type { AgentEvent } from "../../src/agent/events.ts";
 import type { CompactionResult, Compactor } from "../../src/agent/compactor.ts";
+import type { PromptInstruction } from "../../src/agent/instructions.ts";
 import type { SessionEntry, SessionState, SessionToolDeclaration } from "../../src/session/port.ts";
 
 const STOP: LlmUsage = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 };
@@ -117,7 +118,7 @@ function makeTools(executed: { calls: string[] } = { calls: [] }) {
 	};
 }
 
-function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor; contextTokens?: number; requests?: LlmRequest[]; onRequest?: (request: LlmRequest) => void }): TurnDriver {
+function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor; contextTokens?: number; requests?: LlmRequest[]; onRequest?: (request: LlmRequest) => void; instructions?: () => readonly PromptInstruction[] }): TurnDriver {
 	const queue = [...turns];
 	const client: LlmClient = {
 		api: "fake",
@@ -163,6 +164,7 @@ function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; s
 		sandbox: {} as never,
 		compactor: hooks.compactor,
 		...(hooks.contextTokens === undefined ? {} : { contextTokens: hooks.contextTokens }),
+		...(hooks.instructions === undefined ? {} : { instructions: hooks.instructions }),
 		onEvent: async (event) => {
 			hooks.events.push(event);
 		},
@@ -185,6 +187,34 @@ describe("回合驱动", () => {
 		const recorded = hooks.events.find((event) => event.type === "usage_recorded");
 		assert.ok(recorded?.type === "usage_recorded" && recorded.kind === "turn");
 		assert.equal(recorded?.type === "usage_recorded" ? recorded.tokens : 0, STOP.total);
+	});
+
+	it("规则内容变化时作为新的系统分段写进会话", async () => {
+		let rules = "Use npm test.";
+		const hooks = {
+			events: [] as AgentEvent[],
+			session: new MemorySession(),
+			tools: makeTools(),
+			instructions: () => [{ label: "AGENTS.md", text: rules }],
+		};
+		const driver = depsOf(
+			[
+				{ content: [{ type: "text", text: "one" }] },
+				{ content: [{ type: "text", text: "two" }] },
+			],
+			hooks,
+		);
+
+		await driver.run("first", SIGNAL);
+		const first = hooks.session.entries.filter((entry) => entry.type === "system").at(-1);
+		if (first?.type !== "system") throw new Error("expected a system entry");
+		assert.ok(first.sections["instructions"]?.includes("Use npm test."));
+
+		rules = "Use pnpm test.";
+		await driver.run("second", SIGNAL);
+		const last = hooks.session.entries.filter((entry) => entry.type === "system").at(-1);
+		if (last?.type !== "system") throw new Error("expected a system entry");
+		assert.ok(last.sections["instructions"]?.includes("Use pnpm test."));
 	});
 
 	it("请求重试时发出 retrying 事件", async () => {

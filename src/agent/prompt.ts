@@ -1,5 +1,6 @@
 import type { ToolDeclaration } from "../tools/contract.ts";
 import type { SessionToolDeclaration } from "../session/port.ts";
+import type { PromptInstruction } from "./instructions.ts";
 
 /**
  * 系统提示词的组装与渲染。
@@ -10,7 +11,7 @@ import type { SessionToolDeclaration } from "../session/port.ts";
  */
 
 /** 渲染顺序。提示词的结构固定，顺序不随注册顺序变化，否则每次请求的缓存前缀都不一样。 */
-const SECTION_ORDER: readonly string[] = ["preamble", "tools", "skills", "rules", "cwd"];
+const SECTION_ORDER: readonly string[] = ["preamble", "tools", "skills", "instructions", "rules", "cwd"];
 
 const PREAMBLE = `You are Reins, a coding agent running in the user's terminal. You work inside a workspace: inspect it, change files, run commands, and report the result.
 
@@ -33,6 +34,10 @@ How to communicate:
 
 const TOOLS_HEADING = "You can use these tools:";
 const SKILLS_HEADING = "Skills you can use:";
+const INSTRUCTIONS_HEADING = "User and project instructions:";
+const INSTRUCTIONS_FOOTNOTE =
+	"Project instructions are more specific than user instructions; where they conflict, follow the project's. " +
+	"Apply them to the current request; they do not replace it.";
 const RULES_HEADING = "Tool rules:";
 /**
  * 技能只列名称、说明与文件位置，正文不进提示词。
@@ -109,9 +114,12 @@ function buildRules(tools: readonly ToolDeclaration[]): string {
 	}
 	if (names.has("todo")) {
 		rules.push(
-			"Plan multi-step work with todo before starting; send the complete list, keep at most one task " +
-				"in_progress, mark tasks completed as soon as they are done, and mark a task failed only when " +
-				"it cannot be completed.",
+			"Use todo for work with three or more distinct steps; skip it for a single read, edit, command, " +
+				"or question. Before starting, send the complete list with short one-sentence steps. Keep " +
+				"exactly one task in_progress while work is going on, send the whole list again on every " +
+				"update, mark a task completed as soon as it is done, and mark it failed only when it cannot " +
+				"be completed. Make a final call with every task completed or failed, and do not restate the " +
+				"list in your reply.",
 		);
 	}
 	if (names.has("read") || names.has("bash")) {
@@ -136,6 +144,8 @@ export interface PromptInput {
 	readonly tools: readonly ToolDeclaration[];
 	/** 可用的技能；为空时不写这一节，省下每一轮的那几行 */
 	readonly skills?: readonly PromptSkill[];
+	/** 用户级与项目级规则文件（AGENTS.md）；为空时不写这一节 */
+	readonly instructions?: readonly PromptInstruction[];
 }
 
 /** 生成当前应当生效的分段。只有内容变化时才需要写进会话。 */
@@ -163,6 +173,14 @@ export function buildPromptSections(input: PromptInput): Record<string, string> 
 			),
 			SKILLS_FOOTNOTE,
 		].join("\n");
+	}
+	const instructions = input.instructions ?? [];
+	if (instructions.length > 0) {
+		sections["instructions"] = [
+			INSTRUCTIONS_HEADING,
+			...instructions.map((entry) => `## ${entry.label}\n${entry.text}`),
+			INSTRUCTIONS_FOOTNOTE,
+		].join("\n\n");
 	}
 	return sections;
 }

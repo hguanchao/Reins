@@ -36,8 +36,9 @@ import {
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
+import type { AnimationFrame } from "./sweep.ts";
 import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, subagentFailureRowInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
-import { todoCardFromArgs, todoPanelLines, TODO_PANEL_MAX_ITEMS, type TodoAnimationFrame, type TranscriptTodo } from "./todo-card.ts";
+import { todoCardFinished, todoCardFromArgs, todoPanelLines, TODO_PANEL_MAX_ITEMS, type TranscriptTodo } from "./todo-card.ts";
 
 /**
  * 全屏启动。
@@ -204,6 +205,8 @@ export interface SessionSwitchResult {
 	/** false 表示选中的就是当前会话，界面不需要重放历史 */
 	readonly changed: boolean;
 	readonly history: readonly TranscriptTurn[];
+	/** 新会话最后一张任务表；没有时常驻面板随之收起 */
+	readonly todo?: TranscriptTodo;
 	readonly warnings: readonly string[];
 }
 
@@ -301,6 +304,8 @@ export interface TuiOptions {
 	readonly notify?: NotifyMode;
 	/** 启动时回填的历史对话；续聊时使用 */
 	readonly history?: readonly TranscriptTurn[];
+	/** 历史里最后一张任务表；续聊时让常驻面板立即有内容 */
+	readonly historyTodo?: TranscriptTodo;
 	/** 工作根：用来判断命令开头的工作根 cd 是否多余，省略时原样显示 */
 	readonly workspaceRoot?: string;
 	readonly stdin?: TuiInput;
@@ -450,17 +455,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		response: [...turn.response],
 	}));
 	/**
-	 * 当前任务表:最近一次 todo 调用的卡片,常驻面板的数据源。
+	 * 当前任务表:最近一次未收尾的 todo 调用卡片,常驻面板的数据源。
 	 *
-	 * 面板回答「现在进行到哪」,对话流里的卡片是历史叙事——两者并存。任务表跨回合有效,
-	 * 回合结束不清空;启动时从历史里扫最后一张卡恢复,续聊后面板立即有内容。
+	 * 收尾后由 tool_start 处理整张卡落进对话流并清空这里。未收尾的表跨回合有效,
+	 * 回合结束不清空;启动时由调用方从历史里带出最后一张未收尾的卡,切会话时随历史
+	 * 一起替换。
 	 */
-	let currentTodo: TranscriptTodo | undefined = undefined;
-	for (let turnIndex = turns.length - 1; turnIndex >= 0 && currentTodo === undefined; turnIndex -= 1) {
-		for (const line of turns[turnIndex]?.response ?? []) {
-			if (typeof line === "object" && line !== null && line.kind === "todo") currentTodo = line;
-		}
-	}
+	let currentTodo: TranscriptTodo | undefined = options.historyTodo;
 	/** 有历史或输入过内容就显示对话流。 */
 	let hasInput = turns.length > 0;
 	/**
@@ -596,13 +597,19 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/**
-	 * 常驻任务面板的高度:无任务表或空表为 0,全部完成或用户收起缩为一行,其余头行加条目。
+	 * 常驻任务面板的高度:无任务表、空表或已收尾为 0;收起缩为一行,其余头行加条目。
 	 * 高度只在 todo 调用与收展切换时变化(低频),主区域随之重排。
 	 */
 	const todoPanelHeight = (): number => {
-		if (openPage !== undefined || currentTodo === undefined || currentTodo.items.length === 0) return 0;
-		const allDone = currentTodo.items.every((item) => item.status === "completed");
-		if (allDone || currentTodo.collapsed === true) return 1;
+		if (
+			openPage !== undefined ||
+			currentTodo === undefined ||
+			currentTodo.items.length === 0 ||
+			todoCardFinished(currentTodo)
+		) {
+			return 0;
+		}
+		if (currentTodo.collapsed === true) return 1;
 		return 1 + Math.min(currentTodo.items.length, TODO_PANEL_MAX_ITEMS);
 	};
 
@@ -713,19 +720,19 @@ export async function runTui(options: TuiOptions): Promise<number> {
 							queued,
 						});
 			const transcriptShown = openPage === undefined && (hasInput || activeWarning !== undefined);
-			// 运行中任务卡按当前帧重建转圈与扫光；没有动画行时这只是原样返回缓存行
-			const todoFrame: TodoAnimationFrame = { spinner: SPINNER_FRAMES[spinnerFrame] ?? "", sweepPhase };
+			// 运行中的行按当前帧重建转圈与扫光；没有动画行时这只是原样返回缓存行
+			const animation: AnimationFrame = { spinner: SPINNER_FRAMES[spinnerFrame] ?? "", sweepPhase };
 			const main =
 				openPage !== undefined
 					? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
 					: transcriptShown
-						? renderTranscriptView(view, mainHeight, scrollTop, todoFrame)
+						? renderTranscriptView(view, mainHeight, scrollTop, animation)
 						: renderMain(width, mainHeight, options.version);
 		const mainLines = [...main];
 		// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示
 		const panelLines =
 			openPage === undefined && currentTodo !== undefined
-				? [...todoPanelLines(currentTodo, width, todoFrame)]
+				? [...todoPanelLines(currentTodo, width, animation)]
 				: [];
 		// 整屏自上而下：主区域、任务面板、选择面板、页脚；终端比内容矮时只保留前几行
 		const lines = [...mainLines, ...panelLines, ...menuLines, ...footer].slice(0, height);
@@ -776,6 +783,93 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const width = terminalWidth();
 		const mainHeight = mainAreaHeight();
 		return Math.max(0, measureTranscriptView(currentTranscript(width), mainHeight).scrollLines - mainHeight);
+	};
+
+	/**
+	 * 双击对话流里的可展开行。
+	 *
+	 * 审批卡显示时也复用这一套：审批是模态的，但上方的对话流仍然可以查看，不能被一起冻结。
+	 */
+	const toggleTranscriptAt = (
+		row: number,
+		column: number,
+		mainHeight: number,
+		width: number,
+	): boolean => {
+		if (row > mainHeight || column >= width - 1) return false;
+		const view = currentTranscript(width);
+
+		const block = thinkingHeaderInView(view, mainHeight, scrollTop, row);
+		if (block !== undefined) {
+			block.expanded = !block.expanded;
+			markTranscriptDirty();
+			lastClick = undefined;
+			// 保持标题在点击时的屏幕位置：跟随到底部会让长内容直接跳到末尾
+			follow = false;
+			render();
+			return true;
+		}
+
+		const group = toolGroupHeaderInView(view, mainHeight, scrollTop, row);
+		if (group !== undefined) {
+			group.expanded = !group.expanded;
+			markTranscriptDirty();
+			lastClick = undefined;
+			follow = false;
+			render();
+			return true;
+		}
+
+		const tool = toolHeaderInView(view, mainHeight, scrollTop, row);
+		if (tool !== undefined) {
+			// 一次双击把这一行藏着的东西打开。有 fullDetail 时展开的就是它本身
+			// （文件类工具的结果、或被截短的命令），不再另铺一遍原始结果
+			const open = tool.detailExpanded === true || tool.resultExpanded === true;
+			tool.detailExpanded = !open;
+			if (tool.fullDetail === undefined && tool.result !== undefined) {
+				tool.resultExpanded = !open;
+			}
+			markTranscriptDirty();
+			lastClick = undefined;
+			follow = false;
+			render();
+			return true;
+		}
+
+		const todo = todoHeaderInView(view, mainHeight, scrollTop, row);
+		if (todo !== undefined) {
+			todo.collapsed = todo.collapsed !== true;
+			markTranscriptDirty();
+			lastClick = undefined;
+			follow = false;
+			render();
+			return true;
+		}
+
+		const subagents = subagentGroupHeaderInView(view, mainHeight, scrollTop, row);
+		if (subagents !== undefined) {
+			subagents.expanded = subagents.expanded !== true;
+			markTranscriptDirty();
+			lastClick = undefined;
+			follow = false;
+			render();
+			return true;
+		}
+
+		// 失败的子代理清单行:双击展开/收起失败原因
+		const failedRow = subagentFailureRowInView(view, mainHeight, scrollTop, row);
+		if (failedRow !== undefined) {
+			const member = failedRow.group.members.find((item) => item.callId === failedRow.callId);
+			if (member !== undefined) {
+				member.expanded = member.expanded !== true;
+				markTranscriptDirty();
+				lastClick = undefined;
+				follow = false;
+				render();
+				return true;
+			}
+		}
+		return false;
 	};
 
 	const disarm = (): void => {
@@ -901,8 +995,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					approvalPrompt.detail !== next.detail ||
 					approvalPrompt.saveShort !== next.saveShort;
 		if (next !== undefined && changed) {
-		approvalSelection = "once";
-	}
+			approvalSelection = "once";
+		}
 		approvalPrompt = next;
 		return changed;
 	};
@@ -1014,25 +1108,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		syncTurn(active);
 	};
 
-	/** 最近一张任务卡片：先看本轮，再往前找历史回合，用于进行中任务计时的继承。 */
-	const lastTodoCard = (active: ActiveTurn): TranscriptTodo | undefined => {
-		for (let index = active.lines.length - 1; index >= 0; index -= 1) {
-			const line = active.lines[index];
-			if (typeof line === "object" && line !== null && line.kind === "todo") return line;
-		}
-		for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
-			const response = turns[turnIndex]?.response ?? [];
-			for (let index = response.length - 1; index >= 0; index -= 1) {
-				const line = response[index];
-				if (typeof line === "object" && line !== null && line.kind === "todo") return line;
-			}
-		}
-		return undefined;
-	};
-
 	/**
-	 * 任务卡片直接按参数渲染：模型发来的列表就是界面要显示的内容。解析不了的形状返回
-	 * false 落回普通工具行，后面校验阶段的错误信息才有行可挂。
+	 * 任务卡片按生命周期分流：未收尾的进常驻面板，已收尾的落回对话流并清空面板。
+	 * 解析不了的形状返回 false 落回普通工具行，后面校验阶段的错误信息才有行可挂。
 	 */
 	const handleTodoCardStart = (
 		active: ActiveTurn,
@@ -1041,19 +1119,32 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (event.name !== "todo") return false;
 		const card = todoCardFromArgs(event.args);
 		if (card === undefined) return false;
+
+		// 空表表示清空；面板与对话流都不留痕迹
+		if (card.items.length === 0) {
+			currentTodo = undefined;
+			return true;
+		}
+
+		// 收尾：整张卡作为历史落进对话流，面板退出
+		if (todoCardFinished(card)) {
+			card.running = false;
+			appendLine(active, card);
+			currentTodo = undefined;
+			return true;
+		}
+
 		card.running = true;
 		const current = card.items.find((item) => item.status === "in_progress");
 		if (current !== undefined) {
 			// 计时起点：同一任务在上一张卡片里也进行时继承，否则从现在起算
-			const previousCard = lastTodoCard(active);
+			const previousCard = currentTodo;
 			const previous = previousCard?.items.find((item) => item.status === "in_progress");
 			card.taskStartedAt =
 				previousCard?.taskStartedAt !== undefined && previous?.content === current.content
 					? previousCard.taskStartedAt
 					: Date.now();
 		}
-		appendLine(active, card);
-		// 常驻面板同步换到这张新表:同一对象的引用,回合冻结对面板同样生效
 		currentTodo = card;
 		return true;
 	};
@@ -1578,6 +1669,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		for (const turn of result.history) {
 			turns.push({ prompt: turn.prompt, response: [...turn.response] });
 		}
+		// 任务表属于会话:随历史一起换成新会话的最后一张卡
+		currentTodo = result.todo;
 		markTranscriptDirty();
 		initialScroll = false;
 		scrollTop = 0;
@@ -1751,9 +1844,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (activeTurn !== active) return;
 				closeThinking(active);
 				closeText(active);
-				// 任务卡片退场：转圈与扫光只在回合运行期间存在，之后的进行中行是静态半圆
+				// 回合结束:还留在面板的任务表退回静态,转圈与扫光只在运行期间存在
+				if (currentTodo?.running === true) currentTodo.running = false;
 				for (const line of active.lines) {
-					if (typeof line === "object" && line !== null && line.kind === "todo") line.running = false;
 					// 子代理组冻结:没等到结果的成员按失败落定,总耗时定格
 					if (typeof line === "object" && line !== null && line.kind === "subagentGroup") {
 						for (const member of line.members) {
@@ -2176,28 +2269,111 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 
 		if (approvalPrompt !== undefined) {
-			// 审批是模态的：鼠标可点动作；键盘左右移动、回车确认，y/a/n 直接执行，Esc 拒绝
+			// 审批卡是模态的，但只接管自己的动作；上方对话流仍可滚动和双击展开
 			const panelWidth = terminalWidth();
 			const panelHeight = terminalHeight(stdout);
+			const mainHeight = mainAreaHeight();
 			const panelTop = Math.max(0, panelHeight - footerHeight());
+			let wheelSteps = 0;
+			let dragRow: number | undefined;
+
 			for (const event of mouseOf()) {
 				const motion = dragMotion(event.button);
 				const action =
 					event.row === panelTop + 5
 						? approvalActionAt(panelWidth, approvalPrompt, event.column - 1)
 						: undefined;
+				if (event.press && event.button === MOUSE_WHEEL_UP) {
+					wheelSteps -= 1;
+					continue;
+				}
+				if (event.press && event.button === MOUSE_WHEEL_DOWN) {
+					wheelSteps += 1;
+					continue;
+				}
 				if (motion) {
 					if (action !== undefined && action !== approvalSelection) {
 						approvalSelection = action;
 						render();
 					}
+					if (draggingScrollbar) dragRow = event.row;
 					continue;
 				}
-				if (!event.press || (event.button & MOUSE_BUTTON_MASK) !== 0) continue;
+				if (!event.press) {
+					draggingScrollbar = false;
+					continue;
+				}
+				if ((event.button & MOUSE_BUTTON_MASK) !== 0) continue;
 				if (action !== undefined) {
 					resolveApproval(action);
 					return;
 				}
+				if (event.column === panelWidth && event.row <= mainHeight && turns.length > 0) {
+					draggingScrollbar = true;
+					dragRow = event.row;
+					continue;
+				}
+				draggingScrollbar = false;
+				if (event.row > mainHeight) continue;
+
+				const now = Date.now();
+				const doubleClick =
+					lastClick !== undefined &&
+					now - lastClick.at <= DOUBLE_CLICK_MS &&
+					lastClick.row === event.row &&
+					lastClick.column === event.column;
+				lastClick = { at: now, row: event.row, column: event.column };
+				if (doubleClick && toggleTranscriptAt(event.row, event.column, mainHeight, panelWidth)) {
+					return;
+				}
+			}
+
+			if (wheelSteps !== 0) {
+				const limit = maxScroll();
+				scrollTop = Math.min(limit, Math.max(0, scrollTop + wheelSteps * WHEEL_STEP));
+				follow = scrollTop >= limit;
+				render();
+				return;
+			}
+			if (dragRow !== undefined) {
+				const limit = maxScroll();
+				scrollTop = scrollTopForRow(dragRow, mainHeight, limit);
+				follow = scrollTop >= limit;
+				render();
+				return;
+			}
+
+			const scroll = scrollKey(text);
+			if (scroll !== undefined) {
+				const limit = maxScroll();
+				if (scroll === "pageUp") {
+					scrollTop = Math.max(0, scrollTop - mainHeight);
+					follow = false;
+				} else if (scroll === "pageDown") {
+					scrollTop = Math.min(limit, scrollTop + mainHeight);
+					follow = scrollTop >= limit;
+				} else {
+					scrollTop = 0;
+					follow = false;
+				}
+				render();
+				return;
+			}
+			if (text === "\x05") {
+				if (toggleLastExpandable(turns)) {
+					markTranscriptDirty();
+					follow = false;
+					render();
+				}
+				return;
+			}
+			if (text === "\x0f") {
+				if (toggleLastToolResult(turns)) {
+					markTranscriptDirty();
+					follow = false;
+					render();
+				}
+				return;
 			}
 
 			const key = approvalKey(text, approvalPrompt.saveShort !== undefined);
@@ -2415,83 +2591,23 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					lastClick.column === event.column;
 				lastClick = { at: now, row: event.row, column: event.column };
 
-				// 双击思考标题展开/收起；滚动条列和页脚不参与
+				// 双击思考标题、工具组、任务卡或子代理组，展开或收起
+				if (doubleClick && toggleTranscriptAt(event.row, event.column, mainHeight, width)) {
+					return;
+				}
+
+				// 常驻面板头行:双击收起/展开条目。面板在对话流外面,行号要按自己的位置算
 				if (
 					doubleClick &&
-					event.row <= mainHeight &&
+					currentTodo !== undefined &&
+					todoPanelHeight() > 0 &&
+					event.row === mainHeight + 1 &&
 					event.column < width - 1
 				) {
-					const view = currentTranscript(width);
-					const block = thinkingHeaderInView(view, mainHeight, scrollTop, event.row);
-					if (block !== undefined) {
-						block.expanded = !block.expanded;
-						markTranscriptDirty();
-						lastClick = undefined;
-						// 保持标题在点击时的屏幕位置：跟随到底部会让长内容直接跳到末尾
-						follow = false;
-						render();
-						return;
-					}
-
-					const group = toolGroupHeaderInView(view, mainHeight, scrollTop, event.row);
-					if (group !== undefined) {
-						group.expanded = !group.expanded;
-						markTranscriptDirty();
-						lastClick = undefined;
-						follow = false;
-						render();
-						return;
-					}
-
-					const tool = toolHeaderInView(view, mainHeight, scrollTop, event.row);
-					if (tool !== undefined) {
-						// 一次双击把这一行藏着的东西打开。有 fullDetail 时展开的就是它本身
-						// （文件类工具的结果、或被截短的命令），不再另铺一遍原始结果
-						const open = tool.detailExpanded === true || tool.resultExpanded === true;
-						tool.detailExpanded = !open;
-						if (tool.fullDetail === undefined && tool.result !== undefined) {
-							tool.resultExpanded = !open;
-						}
-						markTranscriptDirty();
-						lastClick = undefined;
-						follow = false;
-						render();
-						return;
-					}
-
-					const todo = todoHeaderInView(view, mainHeight, scrollTop, event.row);
-					if (todo !== undefined) {
-						todo.collapsed = todo.collapsed !== true;
-						markTranscriptDirty();
-						lastClick = undefined;
-						follow = false;
-						render();
-						return;
-					}
-
-					const subagents = subagentGroupHeaderInView(view, mainHeight, scrollTop, event.row);
-					if (subagents !== undefined) {
-						subagents.expanded = subagents.expanded !== true;
-						markTranscriptDirty();
-						lastClick = undefined;
-						follow = false;
-						render();
-						return;
-					}
-
-					// 失败的子代理清单行:双击展开/收起失败原因
-					const failedRow = subagentFailureRowInView(view, mainHeight, scrollTop, event.row);
-					if (failedRow !== undefined) {
-						const member = failedRow.group.members.find((item) => item.callId === failedRow.callId);
-						if (member !== undefined) {
-							member.expanded = member.expanded !== true;
-							markTranscriptDirty();
-							lastClick = undefined;
-							follow = false;
-							render();
-							return;
-						}
-					}
+					currentTodo.collapsed = currentTodo.collapsed !== true;
+					lastClick = undefined;
+					render();
+					return;
 				}
 
 				const inputLineTotal = inputView(input, width, inputCursor).lines.length;

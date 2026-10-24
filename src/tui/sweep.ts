@@ -1,11 +1,17 @@
 import { THEME } from "./theme.ts";
 
 /**
- * 扫光：让一段静止的文字出现一道来回移动的亮带。
+ * 运行行动画：盲文转圈与扫光。
  *
- * 页脚运行时状态与对话流任务卡片共用这一份实现——同一道光只能有一个算法，基色与高亮色
- * 由调用方给出。
+ * 页脚运行时状态、常驻任务面板与子代理清单共用这一份帧数据与扫光实现——同一道光只能
+ * 有一个算法，基色与高亮色由调用方给出。
  */
+
+/** 一帧动画的原料：转圈字符与扫光相位都由界面的 100ms 刷新帧统一推进。 */
+export interface AnimationFrame {
+	readonly spinner: string;
+	readonly sweepPhase: number;
+}
 
 /** RGB 三元组;theme 里只有少数颜色需要同时给 SGR 与裸数值，这里只认数值。 */
 type Rgb = { readonly r: number; readonly g: number; readonly b: number };
