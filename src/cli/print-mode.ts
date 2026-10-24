@@ -1,6 +1,7 @@
 import type { TurnDriver } from "../agent/driver.ts";
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
 import { describeToolCall, displayToolName } from "../tools/describe.ts";
+import { formatDuration } from "../tools/format.ts";
 
 /**
  * 非交互模式。
@@ -40,7 +41,7 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 				// 成功不落行；失败要把原因说出来，否则使用者只知道「没做成」，不知道该改什么
 				if (event.isError) {
 					deps.stderr(
-						`  × ${displayToolName(event.name)}  ${event.summary} (${event.durationMs}ms)\n`,
+						`  × ${displayToolName(event.name)}  ${event.summary} (${formatDuration(event.durationMs)})\n`,
 					);
 				}
 				return;

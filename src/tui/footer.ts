@@ -1,6 +1,7 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
 import type { ApprovalMode } from "../config/config-file.ts";
+import { formatDuration } from "../tools/format.ts";
 import { swept } from "./sweep.ts";
 import { THEME } from "./theme.ts";
 
@@ -420,16 +421,6 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 				? `${ACCENT_COLOR}${visibleActivity}${RESET}`
 				: swept(visibleActivity, status.sweep, SWEEP_BASE, SWEEP_HIGHLIGHT);
 	return head + (rest.length > 0 ? `${STATUS_META_COLOR}${rest}${RESET}` : "");
-}
-
-/** 耗时不足一分钟保留一位小数秒；满一分钟后写成「1m」，有零头才带秒，如「1m1s」。 */
-function formatDuration(ms: number): string {
-	const tenths = Math.round(Math.max(0, ms) / 100);
-	if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
-	const seconds = Math.round(tenths / 10);
-	const minutes = Math.floor(seconds / 60);
-	const rest = seconds % 60;
-	return rest === 0 ? `${minutes}m` : `${minutes}m${rest}s`;
 }
 
 function formatContext(used: number, total: number | undefined): string {

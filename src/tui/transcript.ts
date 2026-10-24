@@ -1,5 +1,5 @@
 import { sanitizeLine, type ToolGroupKind } from "../tools/describe.ts";
-import { formatDuration, formatElapsed } from "../tools/format.ts";
+import { formatDuration } from "../tools/format.ts";
 import type { ResultDetailKind } from "../tools/result-summary.ts";
 import { highlightCode, type SyntaxSegment } from "../tools/syntax.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -979,7 +979,7 @@ function animatedTodoHeader(card: TranscriptTodo, frame: TodoAnimationFrame, wid
 	const countPart = `  ${done}/${card.items.length}`;
 
 	const elapsed =
-		card.taskStartedAt === undefined ? "" : formatElapsed(Date.now() - card.taskStartedAt);
+		card.taskStartedAt === undefined ? "" : formatDuration(Date.now() - card.taskStartedAt);
 	const elapsedPart = elapsed.length === 0 ? "" : `  ${elapsed}`;
 
 	const running = card.items.find((item) => item.status === "in_progress");

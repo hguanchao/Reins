@@ -298,7 +298,7 @@ describe("工具调用行", () => {
 
 		const failed = lines.find((line) => plain(line).includes("× Bash"));
 		assert.ok(failed);
-		assert.ok(plain(failed).startsWith("  × Bash  exit 1 (98ms)"));
+		assert.ok(plain(failed).startsWith("  × Bash  exit 1 (0.1s)"));
 		assert.ok(failed.includes(THEME.error));
 		assert.equal(failed.includes(THEME.textPrimary), false);
 		assert.equal(failed.includes(THEME.textSubtle), false);
@@ -1003,7 +1003,7 @@ describe("块级间距", () => {
 
 		assert.equal(row.includes("\r"), false);
 		assert.ok(text.startsWith("  × Bash  BubbleSort.java:4: 编码错误"));
-		assert.ok(text.includes("(464ms)"));
+		assert.ok(text.includes("(0.5s)"));
 	});
 
 	it("失败调用行自身显示命令与耗时，展开显示命令和错误详情", () => {
@@ -1021,7 +1021,7 @@ describe("块级间距", () => {
 			.map((line) => plain(line))
 			.join("\n");
 
-		assert.ok(expanded.includes("× Bash  javac -d out BubbleSort.java (363ms)"));
+		assert.ok(expanded.includes("× Bash  javac -d out BubbleSort.java (0.4s)"));
 		assert.ok(expanded.includes("BubbleSort.java:4: 编码错误"));
 		assert.equal(expanded.includes("× Bash  BubbleSort.java:4"), false);
 
@@ -1029,7 +1029,7 @@ describe("块级间距", () => {
 		const collapsed = renderTranscript(80, 12, [{ prompt: "hi", response: [collapsedTool] }], 0)
 			.map((line) => plain(line))
 			.join("\n");
-		assert.ok(collapsed.includes("× Bash  javac -d out BubbleSort.java (363ms)"));
+		assert.ok(collapsed.includes("× Bash  javac -d out BubbleSort.java (0.4s)"));
 		assert.equal(collapsed.includes("编码错误"), false);
 	});
 

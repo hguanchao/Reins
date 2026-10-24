@@ -7,7 +7,7 @@ import { APPROVAL_MODES, THINKING_LEVELS, type ApprovalMode, type NotifyMode, ty
 import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
-import { formatDuration, formatElapsed } from "../tools/format.ts";
+import { formatDuration } from "../tools/format.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
 import { renderMain } from "./main.ts";
 import { APPROVAL_PANEL_HEIGHT, approvalActionAt, renderApprovalPanel } from "./approval-panel.ts";
@@ -882,7 +882,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				const startedAt = activeTurn.thinkingStartedAt;
 				if (block !== undefined && startedAt !== undefined) {
 					// 按整秒更新，避免每个 spinner tick 都重建整份对话流
-					const header = `Thinking… ${formatElapsed(Math.floor((now - startedAt) / 1000) * 1000)}`;
+					const header = `Thinking… ${formatDuration(Math.floor((now - startedAt) / 1000) * 1000)}`;
 					if (block.header !== header) {
 						block.header = header;
 						markTranscriptDirty();
@@ -976,7 +976,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				block.body.push(block.partial);
 				block.partial = "";
 			}
-			block.header = `Thought for ${formatElapsed(Date.now() - startedAt)}`;
+			block.header = `Thought for ${formatDuration(Date.now() - startedAt)}`;
 			block.running = false;
 			block.expanded = false;
 		}
@@ -1009,7 +1009,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					active.thinkingStartedAt = Date.now();
 					const block: TranscriptThinking = {
 						kind: "thinkingBlock",
-						header: `Thinking… ${formatElapsed(0)}`,
+						header: `Thinking… ${formatDuration(0)}`,
 						body: [],
 						partial: "",
 						running: true,

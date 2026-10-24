@@ -3138,7 +3138,7 @@ describe("全屏布局", () => {
 
 			// 折叠态：多余的工作根 cd 已剥掉，只剩核心命令与耗时
 			let frame = text();
-			assert.ok(frame.includes("› Bash  npm test (10ms)"));
+			assert.ok(frame.includes("› Bash  npm test (0.0s)"));
 			assert.equal(frame.includes("cd /work"), false);
 
 			doubleClick(rowOf("› Bash"));
@@ -3148,7 +3148,7 @@ describe("全屏布局", () => {
 			doubleClick(rowOf("◆ Bash"));
 			frame = text();
 			assert.equal(frame.includes("cd /work"), false);
-			assert.ok(frame.includes("› Bash  npm test (10ms)"));
+			assert.ok(frame.includes("› Bash  npm test (0.0s)"));
 		} finally {
 			exitTui(input);
 		}
@@ -3188,7 +3188,7 @@ describe("全屏布局", () => {
 			let lines = frameLines(output);
 			text = lines.map(plain).join("\n");
 			// 失败直接落在调用行上：显示命令与耗时，不再另起一行错误摘要
-			assert.ok(text.includes("× Bash  false (3ms)"));
+			assert.ok(text.includes("× Bash  false (0.0s)"));
 			assert.equal(text.includes("× Bash  exit 1"), false);
 
 			// 双击这一行展开完整命令和详细报错

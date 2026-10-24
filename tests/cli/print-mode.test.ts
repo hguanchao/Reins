@@ -69,7 +69,7 @@ describe("非交互模式", () => {
 		});
 
 		assert.equal(code, 1);
-		assert.ok(stderr.join("").includes("× Bash  exit 1 (3ms)"));
+		assert.ok(stderr.join("").includes("× Bash  exit 1 (0.0s)"));
 		// 中断是使用者主动停下，不是错误：用中性说明，不带错误标记
 		assert.ok(stderr.join("").includes("· Interrupted"));
 		assert.equal(stderr.join("").includes("Error: aborted"), false);

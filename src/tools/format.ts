@@ -12,37 +12,27 @@ export function formatBytes(bytes: number): string {
 	return `${text.endsWith(".0") ? text.slice(0, -2) : text} ${units[unit]}`;
 }
 
-/** 耗时可读格式：毫秒、秒、分、时、天逐级收敛，避免长任务显示成一大串秒数。 */
+/**
+ * 耗时可读格式:界面里所有耗时的唯一格式。
+ *
+ * 秒起步保留一位小数(0.5s),不满一秒也不写毫秒;满一分钟收敛成 1m、1m1s,再往上
+ * 时、天逐级收敛,单位之间不留空格,保证在任何一行里都占最短且宽度可预测。
+ */
 export function formatDuration(ms: number): string {
-	if (!Number.isFinite(ms) || ms < 0) return "0ms";
-	if (ms < 1000) return `${Math.round(ms)}ms`;
+	// 负数与非有限值按 0 处理:调用方传来的多是两个时间戳之差,起点晚于终点就是负的
+	const tenths = Math.round((Number.isFinite(ms) && ms > 0 ? ms : 0) / 100);
+	if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
 
-	const totalSeconds = ms / 1000;
-	if (totalSeconds < 60) return `${trimDecimal(totalSeconds)}s`;
+	const totalSeconds = Math.round(tenths / 10);
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	if (minutes < 60) return seconds === 0 ? `${minutes}m` : `${minutes}m${seconds}s`;
 
-	const totalMinutes = Math.floor(totalSeconds / 60);
-	const seconds = Math.floor(totalSeconds % 60);
-	if (totalMinutes < 60) {
-		return seconds === 0 ? `${totalMinutes}m` : `${totalMinutes}m ${seconds}s`;
-	}
-
-	const hours = Math.floor(totalMinutes / 60);
-	const minutes = totalMinutes % 60;
-	if (hours < 24) return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
+	const hours = Math.floor(minutes / 60);
+	const restMinutes = minutes % 60;
+	if (hours < 24) return restMinutes === 0 ? `${hours}h` : `${hours}h${restMinutes}m`;
 
 	const days = Math.floor(hours / 24);
 	const restHours = hours % 24;
-	return restHours === 0 ? `${days}d` : `${days}d ${restHours}h`;
-}
-
-function trimDecimal(value: number): string {
-	const text = value.toFixed(1);
-	return text.endsWith(".0") ? text.slice(0, -2) : text;
-}
-
-/** 思考耗时：不足一分钟保留一位小数秒，更长的复用分/时/天格式。 */
-export function formatElapsed(ms: number): string {
-	if (!Number.isFinite(ms) || ms < 0) return "0.0s";
-	if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-	return formatDuration(Math.floor(ms / 1000) * 1000);
+	return restHours === 0 ? `${days}d` : `${days}d${restHours}h`;
 }
