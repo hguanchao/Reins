@@ -1,6 +1,6 @@
 import { formatDuration } from "../tools/format.ts";
 import { swept } from "./sweep.ts";
-import { displayWidth, truncateToWidth, wrappedLines } from "./text.ts";
+import { displayWidth, fitToWidth, truncateToWidth, wrappedLines } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -207,7 +207,7 @@ function animatedTodoHeader(card: TranscriptTodo, frame: TodoAnimationFrame, wid
 			width - displayWidth(label) - displayWidth(countPart) - displayWidth(elapsedPart) - displayWidth(`  ${frame.spinner} `),
 		);
 		if (budget >= 2) {
-			name = truncateWithEllipsis(running.content, Math.min(TODO_RUNNING_NAME_WIDTH, budget));
+			name = fitToWidth(running.content, Math.min(TODO_RUNNING_NAME_WIDTH, budget));
 			nameWidth = displayWidth(name);
 		}
 	}
@@ -227,12 +227,6 @@ function animatedTodoHeader(card: TranscriptTodo, frame: TodoAnimationFrame, wid
 		),
 	);
 	return `${TODO_HEADER_COLOR}${label}${THEME.reset}${TODO_COUNT_COLOR}${countPart}${THEME.reset}${namePart}${TODO_COUNT_COLOR}${elapsedPart}${THEME.reset}${padding}`;
-}
-
-/** 按显示宽度截断并补省略号；省略号本身占一列。 */
-function truncateWithEllipsis(text: string, maxWidth: number): string {
-	if (displayWidth(text) <= maxWidth) return text;
-	return `${truncateToWidth(text, Math.max(0, maxWidth - 1))}…`;
 }
 
 /**

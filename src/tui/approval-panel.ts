@@ -1,4 +1,3 @@
-import { eastAsianWidth } from "get-east-asian-width";
 import type { ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
 import { displayToolName } from "../tools/describe.ts";
@@ -9,7 +8,7 @@ import {
 	RESET,
 	padEnd,
 } from "./menu-panel.ts";
-import { displayWidth } from "./text.ts";
+import { displayWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -169,30 +168,18 @@ function detailLines(width: number, prompt: ApprovalPrompt): readonly [string, s
 	const secondLimit = Math.max(1, width - displayWidth(indent));
 	const detail = compact(prompt.detail);
 
-	const first = takeWidth(detail, firstLimit);
+	const first = truncateToWidth(detail, firstLimit);
 	const rest = detail.slice(first.length);
 	if (rest.length === 0) return [`${prefix}${first}`, ""];
 
-	let second = takeWidth(rest, secondLimit);
+	let second = truncateToWidth(rest, secondLimit);
 	if (second.length < rest.length) {
 		// 省略号自己也占一列；先少取一个字符再补上
-		second = `${takeWidth(rest, Math.max(0, secondLimit - 1))}…`;
+		second = `${truncateToWidth(rest, Math.max(0, secondLimit - 1))}…`;
 	}
 	return [`${prefix}${first}`, `${indent}${second}`];
 }
 
-/** 取显示宽度不超过 limit 的最长前缀，宽字符不会被切成半个。 */
-function takeWidth(text: string, limit: number): string {
-	let used = 0;
-	let output = "";
-	for (const char of text) {
-		const charWidth = eastAsianWidth(char.codePointAt(0) ?? 0);
-		if (used + charWidth > limit) break;
-		used += charWidth;
-		output += char;
-	}
-	return output;
-}
 
 /** 参数是格式化过的 JSON 或命令文本，压成一行才能放进固定高度的面板。 */
 function compact(detail: string): string {

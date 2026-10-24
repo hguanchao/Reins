@@ -1,4 +1,4 @@
-import { characterWidth, displayWidth } from "./text.ts";
+import { displayWidth, fitToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -23,7 +23,6 @@ export const RESET = THEME.reset;
 export const MENU_MAX_VISIBLE = 8;
 /** 上边框数量右侧固定的横线数。 */
 const TAIL_DASHES = 4;
-const ELLIPSIS = "…";
 
 /** 面板总高度：上边框、可见行、下边框。 */
 export function menuHeight(itemCount: number): number {
@@ -54,27 +53,11 @@ export function keepVisible(scrollTop: number, cursor: number, itemCount: number
 }
 
 export function padEnd(text: string, width: number): string {
-	const visible = truncate(text, width);
+	const visible = fitToWidth(text, width);
 	return visible + " ".repeat(Math.max(0, width - displayWidth(visible)));
 }
 
 export function padStart(text: string, width: number): string {
-	const visible = truncate(text, width);
+	const visible = fitToWidth(text, width);
 	return " ".repeat(Math.max(0, width - displayWidth(visible))) + visible;
-}
-
-export function truncate(text: string, width: number): string {
-	if (width <= 0) return "";
-	if (displayWidth(text) <= width) return text;
-
-	const limit = Math.max(0, width - displayWidth(ELLIPSIS));
-	let used = 0;
-	let output = "";
-	for (const char of text) {
-		const charWidth = characterWidth(char);
-		if (used + charWidth > limit) break;
-		used += charWidth;
-		output += char;
-	}
-	return output + ELLIPSIS;
 }

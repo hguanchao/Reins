@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { describeError } from "../describe-error.ts";
 import { ConfigError } from "./config-error.ts";
 import { configFilePath } from "./paths.ts";
 import {
@@ -309,10 +310,6 @@ export function readTextFile(file: string): string {
 	}
 	// 带 BOM 的文件在 Windows 上很常见，不该因此报解析错误
 	return source.startsWith("\uFEFF") ? source.slice(1) : source;
-}
-
-export function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 /** 解析阶段的错误补上文件路径，让所有配置错误都能报出「哪个文件的第几行第几列」。 */

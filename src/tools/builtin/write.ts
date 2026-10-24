@@ -2,11 +2,12 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { Buffer } from "node:buffer";
 import { dirname } from "node:path";
 
+import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { formatEditDiff } from "./edit-diff.ts";
 import { withFileMutation } from "./file-mutation-queue.ts";
-import { decodeTextFile, looksBinary } from "./text-file.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "./text-file.ts";
 
 /** 创建或覆盖文件。父目录不存在时一并建出来，省掉一次单独的建目录往返。 */
 
@@ -26,8 +27,6 @@ type WriteArgs = {
 
 /** 只给大小可控的文本生成 diff；整文件覆盖的 diff 不值得为超大文件付出代价。 */
 const MAX_DIFF_BYTES = 256 * 1024;
-const BINARY_PROBE_BYTES = 8192;
-
 export const writeTool: ToolDefinition<WriteArgs> = {
 	name: "write",
 	summary: "Create or fully overwrite a file; parent directories are created",
@@ -99,6 +98,3 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 	},
 };
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

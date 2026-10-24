@@ -1,3 +1,4 @@
+import { describeError } from "../describe-error.ts";
 import type { Config } from "../config/config-file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient, LlmResult } from "../llm/client.ts";
@@ -453,6 +454,3 @@ interface ToolOutcome {
 	readonly isError: boolean;
 }
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

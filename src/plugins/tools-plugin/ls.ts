@@ -1,5 +1,6 @@
 import { readdirSync, statSync } from "node:fs";
 
+import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
 import { walk, type WalkEntry } from "./walk.ts";
@@ -287,6 +288,3 @@ function renderTruncatedRoot(rootLine: string, root: TreeNode): string {
 	return `${output}    ...\n\nNote: this directory is too large to list fully; list a narrower path.\n`;
 }
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

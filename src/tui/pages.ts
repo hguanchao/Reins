@@ -1,8 +1,6 @@
-import { eastAsianWidth } from "get-east-asian-width";
-
 import type { CommandMenuItem } from "./command-menu.ts";
-import { padEnd, truncate } from "./menu-panel.ts";
-import { displayWidth } from "./text.ts";
+import { padEnd } from "./menu-panel.ts";
+import { characterWidth, displayWidth, fitToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -163,7 +161,7 @@ function sectionPageLines(
 	width: number,
 ): readonly string[] {
 	const columns = Math.max(0, width);
-	const lines: string[] = [`${TITLE_COLOR}${truncate(title, columns)}${RESET}`];
+	const lines: string[] = [`${TITLE_COLOR}${fitToWidth(title, columns)}${RESET}`];
 	for (const section of sections) {
 		lines.push(...sectionLines(section, columns));
 	}
@@ -193,7 +191,7 @@ export function renderPage(
 }
 
 function sectionLines(section: PageSection, width: number): readonly string[] {
-	const lines: string[] = ["", `${SECTION_COLOR}${truncate(section.title, width)}${RESET}`];
+	const lines: string[] = ["", `${SECTION_COLOR}${fitToWidth(section.title, width)}${RESET}`];
 	if (section.entries.length === 0) {
 		if (section.empty !== undefined) {
 			lines.push(...wrapText(section.empty, width).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
@@ -239,12 +237,12 @@ function cardLines(entry: PageEntry, width: number): readonly string[] {
 	const inlineNote = note.length > 0 && displayWidth(entry.name) + NOTE_GAP + displayWidth(note) <= nameWidth;
 	const head =
 		note.length === 0
-			? truncate(entry.name, nameWidth)
+			? fitToWidth(entry.name, nameWidth)
 			: inlineNote
-				? `${truncate(entry.name, nameWidth - displayWidth(note) - NOTE_GAP)}${NOTE_COLOR}${" ".repeat(
+				? `${fitToWidth(entry.name, nameWidth - displayWidth(note) - NOTE_GAP)}${NOTE_COLOR}${" ".repeat(
 						Math.max(1, nameWidth - displayWidth(entry.name) - displayWidth(note)),
-					)}${truncate(note, nameWidth)}${RESET}`
-				: truncate(entry.name, nameWidth);
+					)}${fitToWidth(note, nameWidth)}${RESET}`
+				: fitToWidth(entry.name, nameWidth);
 	const lines = [`${indent}${NAME_COLOR}${head}${RESET}`];
 
 	if (!inlineNote && note.length > 0) {
@@ -287,7 +285,7 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 	// 溢出列宽，说明照常另起一行，其余行的对齐不受影响；只在连整行都放不下时才截。
 	const available = Math.max(1, width - displayWidth(ENTRY_INDENT) - displayWidth(ENTRY_GAP));
 	const label =
-		displayWidth(entry.name) > nameWidth ? truncate(entry.name, available) : padEnd(entry.name, nameWidth);
+		displayWidth(entry.name) > nameWidth ? fitToWidth(entry.name, available) : padEnd(entry.name, nameWidth);
 	const head = `${ENTRY_INDENT}${label}${ENTRY_GAP}`;
 	const headWidth = displayWidth(head);
 	const noteLines =
@@ -355,7 +353,7 @@ function wrapText(text: string, limit: number): readonly string[] {
 		}
 
 		for (const char of word) {
-			const charWidth = eastAsianWidth(char.codePointAt(0) ?? 0);
+			const charWidth = characterWidth(char);
 			if (used + charWidth > limit && line.length > 0) push();
 			line += char;
 			used += charWidth;

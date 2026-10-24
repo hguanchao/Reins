@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 
+import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
-import { decodeTextFile, looksBinary } from "../../tools/builtin/text-file.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "../../tools/builtin/text-file.ts";
 import { MAX_LINE_LENGTH, truncateLine } from "../../tools/truncate.ts";
 import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "./walk.ts";
 
@@ -40,8 +41,6 @@ const DEFAULT_LIMIT = 100;
 /** 单个文件的大小上限。更大的多半是生成物或数据，扫它只是白花时间。 */
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 /** 判断内容的探查范围。 */
-const BINARY_PROBE_BYTES = 8192;
-
 export const grepTool: ToolDefinition<GrepArgs> = {
 	name: "grep",
 	summary: "Search file contents for a pattern",
@@ -118,6 +117,3 @@ function escapeRegExp(text: string): string {
 	return text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

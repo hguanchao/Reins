@@ -85,6 +85,9 @@ function encodeBytes(text: string, encoding: TextEncoding, hasBom: boolean): Buf
 	}
 }
 
+/** 二进制探测读取文件开头的字节数:三个文件工具共用同一个判断口径。 */
+export const BINARY_PROBE_BYTES = 8192;
+
 /** 文件开头是否像二进制内容。文本文件在开头不会出现零字节，不必读全文。 */
 export function looksBinary(buffer: Buffer, probeBytes: number): boolean {
 	// UTF-16 正文的每个 ASCII 字符都带一个零字节；带 BOM 时它就是文本，不能按二进制拒绝。

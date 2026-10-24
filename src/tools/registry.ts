@@ -1,3 +1,4 @@
+import { describeError } from "../describe-error.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionReadView } from "../session/port.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
@@ -224,6 +225,3 @@ function elapsed(startedAt: number): number {
 	return Math.max(0, Math.round(performance.now() - startedAt));
 }
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

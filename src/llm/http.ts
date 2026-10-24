@@ -1,6 +1,7 @@
 import { createParser } from "eventsource-parser";
 import { ProxyAgent } from "undici";
 
+import { describeError } from "../describe-error.ts";
 import { readVersion } from "../version.ts";
 import { describeFailure } from "./failure.ts";
 import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "./retry.ts";
@@ -106,9 +107,6 @@ function isRetryable(error: unknown): boolean {
 	return error instanceof TypeError;
 }
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
 
 async function postSseOnce(
 	request: SseRequest,

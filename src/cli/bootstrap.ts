@@ -15,7 +15,7 @@ import { ModelCatalog } from "../config/model-catalog.ts";
 import { updateModelSelection, updateUserConfigValue } from "../config/write-back.ts";
 import { mergeConfigs, mergeProviders } from "../config/merge.ts";
 import { applyLiveConfig, diffConfig } from "../config/reload.ts";
-import { loadProviders, type ProvidersConfig } from "../config/providers-file.ts";
+import { loadProviders, type ModelEntry, type ProviderEntry, type ProvidersConfig } from "../config/providers-file.ts";
 import {
 	configFilePath,
 	providersFilePath,
@@ -329,6 +329,31 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			: `Config changed · ${pending.join(" · ")}`;
 	};
 
+	/**
+	 * 按当前选中的模型建一次驱动。
+	 *
+	 * 对话与压缩共用:两者的差别只在最后调 run 还是 compact,装配(选模型、建压缩器、
+	 * 接会话与工具)是同一套。
+	 */
+	const createCurrentDriver = (onEvent: AgentEventListener) => {
+		const current = catalog.selection;
+		if (current === undefined) throw new Error("No model selected; run /model first");
+		const compactor = createCompactor(activeConfig, current);
+		return {
+			compactor,
+			driver: createDriverFor(
+				{
+					config: activeConfig,
+					selection: current,
+					compactor,
+					contextTokens: lastContextTokens(activeSession.entries()),
+				},
+				{ registry, session: activeSession, workspace, sandbox, skills },
+				onEvent,
+			),
+		};
+	};
+
 	/** 一轮真实对话。模型/思考等级都从当前目录读取，切换后下一轮立即生效。 */
 	const runTurn = async (
 		prompt: string,
@@ -338,19 +363,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		const reloaded = reloadConfigIfChanged();
 		if (reloaded !== undefined) await onEvent({ type: "notice", message: reloaded });
 
-		const current = catalog.selection;
-		if (current === undefined) throw new Error("No model selected; run /model first");
-		const compactor = createCompactor(activeConfig, current);
-		const driver = createDriverFor(
-			{
-				config: activeConfig,
-				selection: current,
-				compactor,
-				contextTokens: lastContextTokens(activeSession.entries()),
-			},
-			{ registry, session: activeSession, workspace, sandbox, skills },
-			onEvent,
-		);
+		const { driver } = createCurrentDriver(onEvent);
 		await driver.run(prompt, signal);
 	};
 
@@ -364,24 +377,12 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		onEvent: AgentEventListener,
 		signal: AbortSignal,
 	): Promise<void> => {
-		const current = catalog.selection;
-		if (current === undefined) throw new Error("No model selected; run /model first");
-		const compactor = createCompactor(activeConfig, current);
+		const { compactor, driver } = createCurrentDriver(onEvent);
 		if (compactor === undefined) {
 			throw new Error(
 				"No context window is declared for this model; set contextWindow in providers.json or context_window in the config",
 			);
 		}
-		const driver = createDriverFor(
-			{
-				config: activeConfig,
-				selection: current,
-				compactor,
-				contextTokens: lastContextTokens(activeSession.entries()),
-			},
-			{ registry, session: activeSession, workspace, sandbox, skills },
-			onEvent,
-		);
 		await driver.compact(signal);
 	};
 
@@ -957,10 +958,10 @@ function streamIdleTimeoutMs(config: Config): number | undefined {
 	return config.streamIdleTimeout > 0 ? config.streamIdleTimeout * 1000 : undefined;
 }
 
-function createClient(config: Config, selection: ModelSelection): ReturnType<LlmRegistry["create"]> {
+function createClient(config: Config, provider: ProviderEntry, model: ModelEntry): ReturnType<LlmRegistry["create"]> {
 	return createBuiltinLlmRegistry().create(
-		selection.provider,
-		selection.model,
+		provider,
+		model,
 		{
 			maxRetries: config.maxRetries,
 			baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
@@ -998,16 +999,7 @@ function createCompactor(
 		model === selection.model ? undefined : model.contextWindow,
 	);
 	return new Compactor({
-		client: createBuiltinLlmRegistry().create(
-			selection.provider,
-			model,
-			{
-				maxRetries: config.maxRetries,
-				baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
-			},
-			config.httpProxy,
-			streamIdleTimeoutMs(config),
-		),
+		client: createClient(config, selection.provider, model),
 		provider: selection.provider.id,
 		model,
 		contextWindow,
@@ -1038,7 +1030,7 @@ function createDriverFor(
 	onEvent: AgentEventListener,
 ): TurnDriver {
 	// 主对话与子代理共用同一个客户端：它们只是同一个端点的两次请求，客户端本身没有连接状态
-	const client = createClient(context.config, context.selection);
+	const client = createClient(context.config, context.selection.provider, context.selection.model);
 	const tools = shared.registry.withExtraTool(
 		createSubagentTool({
 			provider: context.selection.provider,
@@ -1076,18 +1068,8 @@ function createReviewer(
 	workRoot: string,
 ): ModelReviewer {
 	const reviewModel = selection.reviewModel ?? selection.model;
-	const registry: LlmRegistry = createBuiltinLlmRegistry();
 	return new ModelReviewer({
-		client: registry.create(
-			selection.provider,
-			reviewModel,
-			{
-				maxRetries: config.maxRetries,
-				baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
-			},
-			config.httpProxy,
-			streamIdleTimeoutMs(config),
-		),
+		client: createClient(config, selection.provider, reviewModel),
 		model: reviewModel.id,
 		maxTokens: reviewModel.maxTokens ?? config.maxTokens,
 		workspaceRoot: workRoot,

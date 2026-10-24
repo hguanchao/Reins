@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
+import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { formatEditDiff, type AppliedEdit } from "./edit-diff.ts";
@@ -181,6 +182,3 @@ function rejectEdit(original: string, edit: EditEntry, position: number): string
 	return undefined;
 }
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

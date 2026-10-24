@@ -1,9 +1,10 @@
 import { readFileSync, statSync } from "node:fs";
 
+import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { DEFAULT_LIMITS, splitLines, truncateHead } from "../truncate.ts";
-import { decodeTextFile, looksBinary, type TextFile } from "./text-file.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary, type TextFile } from "./text-file.ts";
 
 /**
  * 读取文件。
@@ -27,9 +28,6 @@ type ReadArgs = {
 	readonly offset?: number;
 	readonly limit?: number;
 };
-
-/** 判断内容的探查范围。 */
-const BINARY_PROBE_BYTES = 8192;
 
 export const readTool: ToolDefinition<ReadArgs> = {
 	name: "read",
@@ -102,6 +100,3 @@ export const readTool: ToolDefinition<ReadArgs> = {
 	},
 };
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

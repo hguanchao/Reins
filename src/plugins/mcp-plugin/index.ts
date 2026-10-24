@@ -1,3 +1,4 @@
+import { describeError } from "../../describe-error.ts";
 import type { McpServerConfig } from "../../config/config-file.ts";
 import type { AnyToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { Plugin, PluginApi } from "../host.ts";
@@ -215,6 +216,3 @@ function createMcpTool(
 	};
 }
 
-function describeError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}

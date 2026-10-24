@@ -760,7 +760,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 			}
 			previousLine = line;
 			if (typeof line === "string") {
-				lines.push(...responseLines(line, width, MESSAGE_TEXT_COLOR));
+				lines.push(...wrappedLines(line, RESPONSE_INDENT, width, MESSAGE_TEXT_COLOR));
 				continue;
 			}
 			if (line.kind === "markdown") {
@@ -1382,27 +1382,7 @@ function promptBlock(prompt: string, width: number): readonly string[] {
  * 按字符换行，交给对话流统一滚动。
  */
 function noticeLines(text: string, width: number): readonly string[] {
-	const firstPrefix = `${RESPONSE_INDENT}! `;
-	const continuationPrefix = " ".repeat(displayWidth(firstPrefix));
-	const limit = Math.max(0, width - displayWidth(firstPrefix));
-
-	return wrapText(text, limit).map((line, index) => {
-		const prefix = index === 0 ? firstPrefix : continuationPrefix;
-		const visible = truncateToWidth(prefix + line, width);
-		const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
-		return `${NOTICE_COLOR}${visible}${padding}${RESET}`;
-	});
-}
-
-function responseLines(text: string, width: number, color: string): readonly string[] {
-	const prefixWidth = Math.min(RESPONSE_INDENT.length, width);
-	const lines = wrapText(text, Math.max(0, width - prefixWidth));
-
-	return lines.map((line) => {
-		const content = truncateToWidth(RESPONSE_INDENT + line, width);
-		const padding = " ".repeat(Math.max(0, width - displayWidth(content)));
-		return `${color}${content}${padding}${RESET}`;
-	});
+	return wrappedLines(text, `${RESPONSE_INDENT}! `, width, NOTICE_COLOR);
 }
 
 function wrapPrompt(text: string, limit: number, maxLines: number): readonly string[] {

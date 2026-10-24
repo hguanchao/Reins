@@ -1,4 +1,4 @@
-import { displayWidth } from "./text.ts";
+import { displayWidth, fitToWidth } from "./text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
@@ -13,7 +13,6 @@ import {
 	menuHeight,
 	padEnd,
 	topBorder,
-	truncate,
 } from "./menu-panel.ts";
 
 /**
@@ -123,8 +122,8 @@ function row(width: number, item: SessionMenuItem, selected: boolean, columns: C
 
 	// 每段补齐到列宽，各列起点才对得齐；只有 current 在行尾，不需要补
 	const idText = padEnd(item.id, columns.idWidth);
-	const titleText = columns.titleWidth > 0 ? padEnd(truncate(item.title, columns.titleWidth), columns.titleWidth) : "";
-	const timeText = columns.timeWidth > 0 ? padEnd(truncate(item.time, columns.timeWidth), columns.timeWidth) : "";
+	const titleText = columns.titleWidth > 0 ? padEnd(fitToWidth(item.title, columns.titleWidth), columns.titleWidth) : "";
+	const timeText = columns.timeWidth > 0 ? padEnd(fitToWidth(item.time, columns.timeWidth), columns.timeWidth) : "";
 	const currentText = item.current && columns.showCurrent ? "current" : "";
 
 	// 先按纯文本拼一遍算宽度：颜色转义序列也算字符，直接量带色的字符串会少补白，
