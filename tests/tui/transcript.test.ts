@@ -1428,9 +1428,32 @@ describe("子代理组", () => {
 		assert.ok(text.includes("◈ Subagents"));
 		assert.ok(text.includes("● Subagent 1  梳理 tools 模块"));
 		assert.ok(text.includes("Subagent 2  检查测试场景"));
-		assert.ok(text.includes("× Subagent 3  upstream 500"));
+		// 失败行显示任务名,原因不占清单行
+		assert.ok(text.includes("× Subagent 3  修复路径"));
+		assert.equal(text.includes("upstream 500"), false);
 		assert.ok(text.includes("14.3s") && text.includes("22.6s"));
 		assert.ok(text.includes("4 running") === false);
+	});
+
+	it("失败的清单行双击展开原因色带,耗时隐藏", () => {
+		const failed = group({ expanded: true });
+		const view = buildTranscriptView(60, [{ prompt: "go", response: [failed] }], undefined);
+		// 命中登记在失败行首
+		assert.equal(view.subagentFailureRows.length, 1);
+
+		const member = failed.members[2];
+		if (member === undefined || member.status !== "failed") throw new Error("expected a failed member");
+		member.expanded = true;
+		const view2 = buildTranscriptView(60, [{ prompt: "go", response: [failed] }], undefined);
+		const lines = view2.lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
+		const headIndex = lines.findIndex((line) => line.includes("× Subagent 3"));
+		assert.ok(headIndex >= 0);
+		// 展开后:色带里是原因全文,且失败行不再显示耗时
+		const band = lines.slice(headIndex + 1).find((line) => line.includes("upstream 500"));
+		assert.ok(band !== undefined);
+		// 整行失败色:未剥色的行头带失败色码
+		assert.ok((view2.lines[headIndex] ?? "").includes(THEME.error));
+		assert.equal(lines[headIndex]?.includes("22.6s"), false);
 	});
 
 	it("运行中的清单行登记动画,渲染期重建为转圈与扫光", () => {

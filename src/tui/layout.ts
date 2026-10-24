@@ -36,7 +36,7 @@ import {
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
-import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, subagentFailureRowInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 import { todoCardFromArgs, type TodoAnimationFrame, type TranscriptTodo } from "./todo-card.ts";
 
 /**
@@ -796,9 +796,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
-	/** 取文本首行;失败原因摘要只留一句。 */
-	const firstLineOf = (text: string): string => text.split("\n", 1)[0] ?? "";
-
 	const onCtrlC = (): void => {
 		if (activeTurn !== undefined) {
 			// 第一次只中止当前轮；2 秒内再按一次强制退出
@@ -1066,7 +1063,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				| undefined;
 			member.status = event.isError ? "failed" : "done";
 			member.durationMs = details?.durationMs ?? event.durationMs;
-			if (event.isError) member.failure = firstLineOf(event.summary);
+			if (event.isError) member.failure = event.content ?? event.summary;
 			// 组内最后一个还在跑的结束了,整组的总耗时定格
 			if (line.members.every((item) => item.status !== "running")) {
 				line.durationMs = Date.now() - line.startedAt;
@@ -2440,6 +2437,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						follow = false;
 						render();
 						return;
+					}
+
+					// 失败的子代理清单行:双击展开/收起失败原因
+					const failedRow = subagentFailureRowInView(view, mainHeight, scrollTop, event.row);
+					if (failedRow !== undefined) {
+						const member = failedRow.group.members.find((item) => item.callId === failedRow.callId);
+						if (member !== undefined) {
+							member.expanded = member.expanded !== true;
+							markTranscriptDirty();
+							lastClick = undefined;
+							follow = false;
+							render();
+							return;
+						}
 					}
 				}
 

@@ -30,8 +30,10 @@ export interface SubagentRunView {
 	status: "running" | "done" | "failed";
 	/** 总耗时;终态定格,运行中由界面按 startedAt 每帧重算 */
 	durationMs?: number;
-	/** 失败原因摘要(首行);失败行的 detail 位 */
+	/** 完整失败原因;清单行只显示任务名,双击失败行展开看这里 */
 	failure?: string;
+	/** 失败行是否已展开;双击切换 */
+	expanded?: boolean;
 }
 
 /**
@@ -244,12 +246,13 @@ const SUBAGENT_TASK_WIDTH = 34;
 const SUBAGENT_PENDING_MARKER = "○";
 /**
  * 子代理的配色分工:组头标签与清单标签是青色(清单标签加粗),其余文字一律灰——
- * 一屏里抢眼的只有「有几个代理、各自叫什么」。
+ * 一屏里抢眼的只有「有几个代理、各自叫什么」。失败是唯一的例外:整行失败色。
  */
 const SUBAGENT_HEAD_COLOR = THEME.accent;
 const SUBAGENT_RUNNING_COLOR = THEME.accent;
 const SUBAGENT_TEXT_COLOR = THEME.textSecondary;
 const SUBAGENT_COUNT_COLOR = THEME.textSecondary;
+const SUBAGENT_FAILED_COLOR = THEME.error;
 /** 加粗:清单标签是全行焦点。 */
 const SUBAGENT_BOLD = "\x1b[1m";
 const PROMPT_MAX_LINES = 3;
@@ -298,6 +301,12 @@ export interface TranscriptView {
 	readonly subagentHeaders: readonly {
 		readonly start: number;
 		readonly group: TranscriptSubagentGroup;
+	}[];
+	/** 每条失败的子代理清单行在 lines 里的起点，双击展开/收起失败原因使用 */
+	readonly subagentFailureRows: readonly {
+		readonly start: number;
+		readonly group: TranscriptSubagentGroup;
+		readonly callId: string;
 	}[];
 }
 
@@ -727,6 +736,18 @@ export function subagentGroupHeaderInView(
 	return view.subagentHeaders.find((header) => header.start === lineIndex)?.group;
 }
 
+/** 命中失败的子代理清单行；双击展开/收起失败原因。 */
+export function subagentFailureRowInView(
+	view: TranscriptView,
+	height: number,
+	scrollTop: number,
+	row: number,
+): { readonly group: TranscriptSubagentGroup; readonly callId: string } | undefined {
+	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
+	if (lineIndex === undefined) return undefined;
+	return view.subagentFailureRows.find((entry) => entry.start === lineIndex);
+}
+
 /**
  * 子代理组的屏幕行。
  *
@@ -740,13 +761,18 @@ function subagentGroupLines(
 	width: number,
 	live: Map<number, LiveTodoLine>,
 	start: number,
-): readonly string[] {
+): { readonly lines: readonly string[]; readonly failureRows: readonly { readonly start: number; readonly callId: string }[] } {
 	const lines: string[] = [subagentGroupHead(group, width)];
+	const failureRows: { start: number; callId: string }[] = [];
 
-	if (group.expanded !== true) return lines;
+	if (group.expanded !== true) return { lines, failureRows };
 	group.members.forEach((member, index) => {
 		const memberStart = start + lines.length;
 		lines.push(...subagentMemberLines(member, width, index + 1));
+		// 失败行登记双击命中(行首,续行不参与)
+		if (member.status === "failed" && member.failure !== undefined) {
+			failureRows.push({ start: memberStart, callId: member.callId });
+		}
 		// 运行中的清单行登记动画原料:渲染期换转圈与扫光
 		if (member.status === "running") {
 			const budget = Math.max(0, width - displayWidth(SUBAGENT_ITEM_INDENT) - 2);
@@ -758,7 +784,7 @@ function subagentGroupLines(
 			});
 		}
 	});
-	return lines;
+	return { lines, failureRows };
 }
 
 /** 组头一行:青色标签 + 灰色计数段与括号耗时。计数顺序固定 running→done→failed。 */
@@ -798,34 +824,53 @@ function subagentMemberLines(
 ): readonly string[] {
 	const indent = SUBAGENT_ITEM_INDENT;
 	const label = `Subagent ${position}`;
-	const body = member.status === "failed" ? (member.failure ?? member.task) : member.task;
+	// 失败行也显示任务名:原因不占清单行,双击展开看
+	const summary = truncateToWidth(member.task, SUBAGENT_TASK_WIDTH);
 
-	// 耗时列右对齐钉在行尾;待办与运行中(耗时未定)没有
-	const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
-	const elapsedWidth = elapsed.length === 0 ? 0 : displayWidth(elapsed) + 2;
-	const budget = Math.max(0, width - displayWidth(indent) - 2 - elapsedWidth);
-	const summary = truncateToWidth(body, Math.min(SUBAGENT_TASK_WIDTH, budget));
-	const gap = Math.max(1, budget - displayWidth(summary) + 2);
-
-	// 颜色分工:标签青加粗,符号与摘要、耗时都是灰
 	if (member.status === "running") {
 		// 静态占位与动画行同构(运行符 + 标签 + 摘要),重建时只是换了着色与转圈帧
 		return [
-			`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}${" ".repeat(gap)}`,
+			`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`,
 		];
 	}
 	if (member.status === "failed") {
-		return [
-			`${indent}${SUBAGENT_TEXT_COLOR}× ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}${" ".repeat(gap)}${elapsed}`,
-		];
+		// 失败整行失败色:符号、标签、任务名一眼归为一处错误;耗时在展开时让位给原因色带
+		const failedHead = `${indent}${SUBAGENT_FAILED_COLOR}× ${label}  ${summary}${RESET}`;
+		if (member.expanded === true) return [failedHead, ...subagentFailureBand(member, width)];
+		const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
+		const gap = Math.max(
+			1,
+			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(elapsed) - 2,
+		);
+		return [`${failedHead}${" ".repeat(gap)}${elapsed}`];
 	}
 	if (member.status === "done") {
-		return [
-			`${indent}${SUBAGENT_TEXT_COLOR}● ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}${" ".repeat(gap)}${elapsed}`,
-		];
+		const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
+		const head = `${indent}${SUBAGENT_TEXT_COLOR}● ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`;
+		const gap = Math.max(
+			1,
+			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(elapsed) - 2,
+		);
+		return [`${head}${" ".repeat(gap)}${elapsed}`];
 	}
+	return [`${indent}${SUBAGENT_TEXT_COLOR}${SUBAGENT_PENDING_MARKER} ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`];
+}
+
+/** 失败原因色带:上下留白的 banded 形态,与工具详情同款;全文都在 member.failure 里。 */
+function subagentFailureBand(member: SubagentRunView, width: number): readonly string[] {
+	const bandStart = displayWidth(SUBAGENT_ITEM_INDENT) + DETAIL_BAND_LEFT;
+	const rows = (member.failure ?? "unknown failure").split("\n");
+	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES);
+	const hidden = rows.length - visible.length;
 	return [
-		`${indent}${SUBAGENT_TEXT_COLOR}${SUBAGENT_PENDING_MARKER} ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`,
+		bandBlankLine(width, bandStart),
+		...visible.flatMap((line) =>
+			bandedWrappedLines(sanitizeLine(line), width, SUBAGENT_FAILED_COLOR, bandStart, DETAIL_RIGHT_PADDING),
+		),
+		...(hidden === 0
+			? []
+			: bandedWrappedLines(`… (${hidden} more lines)`, width, THEME.textSubtle, bandStart, DETAIL_RIGHT_PADDING)),
+		bandBlankLine(width, bandStart),
 	];
 }
 
@@ -951,6 +996,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 	const liveTodoLines = new Map<number, LiveTodoLine>();
 	const todoHeaders: { start: number; card: TranscriptTodo }[] = [];
 	const subagentHeaders: { start: number; group: TranscriptSubagentGroup }[] = [];
+	const subagentFailureRows: { start: number; group: TranscriptSubagentGroup; callId: string }[] = [];
 	let previousHadResponse = false;
 
 	if (notice !== undefined && notice.length > 0) {
@@ -1021,7 +1067,12 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 			if (line.kind === "subagentGroup") {
 				const groupStart = lines.length;
 				subagentHeaders.push({ start: groupStart, group: line });
-				lines.push(...subagentGroupLines(line, width, liveTodoLines, groupStart));
+				const rendered = subagentGroupLines(line, width, liveTodoLines, groupStart);
+				lines.push(...rendered.lines);
+				// 失败行登记双击命中:展开/收起失败原因
+				for (const failure of rendered.failureRows) {
+					subagentFailureRows.push({ start: groupStart + failure.start, group: line, callId: failure.callId });
+				}
 				continue;
 			}
 			// 三种提示各有自己的标记与颜色：问题要显眼，中性说明只求看得见
@@ -1035,7 +1086,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		previousHadResponse = turn.response.length > 0;
 	}
 
-	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveTodoLines, todoHeaders, subagentHeaders };
+	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveTodoLines, todoHeaders, subagentHeaders, subagentFailureRows };
 }
 
 

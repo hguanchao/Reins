@@ -160,7 +160,7 @@ function attachSubagentResult(
 			const member = line.members.find((item) => item.callId === message.toolCallId);
 			if (member === undefined) continue;
 			member.status = message.isError ? "failed" : "done";
-			if (message.isError) member.failure = firstLine(message.content);
+			if (message.isError) member.failure = message.content;
 			return true;
 		}
 	}
