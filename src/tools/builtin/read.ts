@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 
+import { resolveToolPath } from "../tool-path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
@@ -41,17 +42,15 @@ export const readTool: ToolDefinition<ReadArgs> = {
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
-		const resolved = workspace.resolve(args.path);
-		sandbox.assertPathAllowed("read", resolved.absolute);
-		const displayPath = workspace.display(resolved.absolute);
+		const { absolute, display: displayPath } = resolveToolPath(workspace, sandbox, args.path, "read");
 
 		let buffer: Buffer;
 		try {
-			const stats = statSync(resolved.absolute);
+			const stats = statSync(absolute);
 			if (stats.isDirectory()) {
 				return { content: `${displayPath} is a directory, not a file. Pass the path of a file.`, isError: true };
 			}
-			buffer = readFileSync(resolved.absolute);
+			buffer = readFileSync(absolute);
 		} catch (error) {
 			return { content: `Failed to read ${displayPath}: ${describeError(error)}`, isError: true };
 		}

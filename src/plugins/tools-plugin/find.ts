@@ -1,3 +1,4 @@
+import { resolveToolPath } from "../../tools/tool-path.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
 import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "./walk.ts";
@@ -36,15 +37,14 @@ export const findTool: ToolDefinition<FindArgs> = {
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
-		const resolved = workspace.resolve(args.path ?? ".");
-		sandbox.assertPathAllowed("read", resolved.absolute);
+		const { absolute } = resolveToolPath(workspace, sandbox, args.path ?? ".", "read");
 		const limit = args.limit ?? DEFAULT_LIMIT;
 		// 模式里的正则元字符都会被转义，所以这里不存在编译失败的情形
 		const matcher = globToRegExp(args.pattern);
 
 		const matched: string[] = [];
 		let scanned = 0;
-		for (const entry of fileEntries(resolved.absolute, MAX_WALK_ENTRIES)) {
+		for (const entry of fileEntries(absolute, MAX_WALK_ENTRIES)) {
 			scanned += 1;
 			// 同时用相对工作根与相对起点两种路径去匹配，写 src/**/*.ts 与 **/*.ts 都能用
 			const displayPath = workspace.display(entry.absolute);

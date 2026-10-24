@@ -1,7 +1,7 @@
 import type { Config } from "../config/config-file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient } from "../llm/client.ts";
-import { clampEffort } from "../llm/effort.ts";
+import { requestOptions, requestTools, TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";
 import {
 	assistantText,
 	assistantToolCalls,
@@ -113,17 +113,8 @@ export class Subagent {
 				model: this.#deps.model.id,
 				system,
 				messages,
-				tools: declarations.map((tool) => ({
-					name: tool.name,
-					description: tool.description,
-					parameters: tool.parameters,
-				})),
-				maxTokens: this.#deps.model.maxTokens ?? this.#deps.config.maxTokens,
-				effort: clampEffort(
-					this.#deps.config.reasoningEffort,
-					this.#deps.model.reasoning,
-					this.#deps.model.thinkingLevelMap,
-				),
+				tools: requestTools(declarations),
+				...requestOptions(this.#deps.model, this.#deps.config),
 				onRetry: (attempt, reason) => context.onProgress(`retrying (${attempt}): ${reason}`),
 				signal: context.signal,
 			});
@@ -177,7 +168,7 @@ export class Subagent {
 						role: "toolResult",
 						toolCallId: call.id,
 						toolName: call.name,
-						content: TRUNCATED_ARGUMENTS,
+						content: TRUNCATED_TOOL_ARGUMENTS,
 						isError: true,
 					});
 				}
@@ -229,10 +220,6 @@ export class Subagent {
 		};
 	}
 }
-
-const TRUNCATED_ARGUMENTS =
-	"The previous response was cut off by the output limit, so its tool arguments may be incomplete;" +
-	" this call was not executed. Split the task into smaller steps.";
 
 function abortedReport(steps: number): string {
 	return `The subagent was cancelled before finishing (${steps} steps taken).`;

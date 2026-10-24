@@ -1,3 +1,5 @@
+import { quoteForShell } from "./shell-quote.ts";
+
 import type { SandboxBackend, SandboxPolicy } from "../../../sandbox/policy.ts";
 
 /**
@@ -39,8 +41,4 @@ export class SeatbeltBackend implements SandboxBackend {
 /** sandbox 的 profile 里字符串用双引号，内部的双引号与反斜杠要转义。 */
 function quoteForProfile(text: string): string {
 	return `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
-function quoteForShell(text: string): string {
-	return `'${text.replaceAll("'", "'\\''")}'`;
 }

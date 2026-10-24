@@ -1,8 +1,8 @@
+import { requestOptions, requestTools, TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";
 import { describeError } from "../describe-error.ts";
 import type { Config } from "../config/config-file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient, LlmResult } from "../llm/client.ts";
-import { clampEffort } from "../llm/effort.ts";
 import {
 	assistantToolCalls,
 	type LlmAssistantMessage,
@@ -156,12 +156,7 @@ export class TurnDriver {
 		if (result.stopReason === "length") {
 			// 输出被长度上限截断时，流式的参数可能只是前半截。拿去做执行是危险的：
 			// 一个被截断的路径或命令可能指向完全不同的东西。
-			await this.#recordFailures(
-				calls,
-				"The previous response was cut off by the output limit, so its tool arguments may be" +
-					" incomplete; this call was not executed. Split the task into smaller steps, or send" +
-					" less in a single response.",
-			);
+			await this.#recordFailures(calls, TRUNCATED_TOOL_ARGUMENTS);
 			return "continue";
 		}
 
@@ -413,17 +408,8 @@ export class TurnDriver {
 			model: this.#deps.model.id,
 			system: renderSystemPrompt(state.sections),
 			messages: state.messages,
-			tools: state.tools.map((tool) => ({
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.parameters,
-			})),
-			maxTokens: this.#deps.model.maxTokens ?? this.#deps.config.maxTokens,
-			effort: clampEffort(
-				this.#deps.config.reasoningEffort,
-				this.#deps.model.reasoning,
-				this.#deps.model.thinkingLevelMap,
-			),
+			tools: requestTools(state.tools),
+			...requestOptions(this.#deps.model, this.#deps.config),
 			// 同一段会话用同一个标识：端点据此把请求路由到同一片提示词缓存
 			cacheKey: this.#deps.session.id,
 			onRetry: (attempt, reason) => {

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { Buffer } from "node:buffer";
 import { dirname } from "node:path";
 
+import { resolveToolPath } from "../tool-path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
@@ -44,24 +45,22 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 	},
 
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
-		const resolved = workspace.resolve(args.path);
-		sandbox.assertPathAllowed("write", resolved.absolute);
-		const displayPath = workspace.display(resolved.absolute);
+		const { absolute, display: displayPath } = resolveToolPath(workspace, sandbox, args.path, "write");
 		const bytes = Buffer.byteLength(args.content, "utf8");
 
-		return withFileMutation(resolved.absolute, async (): Promise<ToolResult> => {
-			if (existsSync(resolved.absolute) && statSync(resolved.absolute).isDirectory()) {
+		return withFileMutation(absolute, async (): Promise<ToolResult> => {
+			if (existsSync(absolute) && statSync(absolute).isDirectory()) {
 				return { content: `${displayPath} is a directory and cannot be written`, isError: true };
 			}
 
-			const existed = existsSync(resolved.absolute);
-			const previousBytes = existed ? statSync(resolved.absolute).size : 0;
+			const existed = existsSync(absolute);
+			const previousBytes = existed ? statSync(absolute).size : 0;
 			let previous: string | undefined;
 			if (!existed && bytes <= MAX_DIFF_BYTES) {
 				previous = "";
 			} else if (existed && previousBytes <= MAX_DIFF_BYTES) {
 				try {
-					const buffer = readFileSync(resolved.absolute);
+					const buffer = readFileSync(absolute);
 					if (!looksBinary(buffer, BINARY_PROBE_BYTES)) previous = decodeTextFile(buffer).text;
 				} catch {
 					// 读不到旧内容不影响写入，只是这次没有 diff 可展示
@@ -70,8 +69,8 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 			}
 
 			try {
-				mkdirSync(dirname(resolved.absolute), { recursive: true });
-				writeFileSync(resolved.absolute, args.content, "utf8");
+				mkdirSync(dirname(absolute), { recursive: true });
+				writeFileSync(absolute, args.content, "utf8");
 			} catch (error) {
 				return { content: `Failed to write ${displayPath}: ${describeError(error)}`, isError: true };
 			}

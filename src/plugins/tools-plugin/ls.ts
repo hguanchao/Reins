@@ -1,5 +1,6 @@
 import { readdirSync, statSync } from "node:fs";
 
+import { resolveToolPath } from "../../tools/tool-path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
@@ -69,16 +70,14 @@ export const lsTool: ToolDefinition<LsArgs> = {
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
-		const resolved = workspace.resolve(args.path ?? ".");
-		sandbox.assertPathAllowed("read", resolved.absolute);
-		const displayPath = workspace.display(resolved.absolute);
+		const { absolute, display: displayPath } = resolveToolPath(workspace, sandbox, args.path ?? ".", "read");
 
 		try {
-			if (!statSync(resolved.absolute).isDirectory()) {
+			if (!statSync(absolute).isDirectory()) {
 				return { content: `${displayPath} is not a directory`, isError: true };
 			}
 			// walk 会静默跳过读不了的目录；根目录读不了时必须明确报错，不能假装它是空的
-			readdirSync(resolved.absolute);
+			readdirSync(absolute);
 		} catch (error) {
 			return { content: `Cannot list ${displayPath}: ${describeError(error)}`, isError: true };
 		}
@@ -86,7 +85,7 @@ export const lsTool: ToolDefinition<LsArgs> = {
 		const limit = Math.min(args.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
 		const entries: WalkEntry[] = [];
 		let truncated = false;
-		for (const entry of walk(resolved.absolute, { maxEntries: limit + 1 })) {
+		for (const entry of walk(absolute, { maxEntries: limit + 1 })) {
 			if (entries.length >= limit) {
 				truncated = true;
 				break;

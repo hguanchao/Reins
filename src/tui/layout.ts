@@ -484,6 +484,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let statusPhaseMs = 0;
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
+
+	/** 清零状态行的计时与用量:回合开始、命令切换、状态清空的场合都要回到同一起点。 */
+	const resetStatusMeta = (): void => {
+		statusElapsedMs = 0;
+		statusTokens = 0;
+	};
 	let statusPhaseStartedAt = 0;
 	let spinnerFrame = 0;
 	let sweepPhase = 0;
@@ -565,7 +571,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 整屏页与菜单一样把输入框让给内容：紧凑页脚、不画光标。 */
 	const compactFooter = (): boolean => menuOpen() || openPage !== undefined;
 	const inputLineCount = (): number => {
-		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+		const width = terminalWidth();
 		return inputView(input, width, inputCursor).lines.length;
 	};
 	const footerHeight = (): number => {
@@ -582,6 +588,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	 *
 	 * 光标定位与点击命中必须用同一份几何,否则页脚结构调整时两者会各错各的。
 	 */
+	/** 当前终端宽度;宽度变化是重建视图与重排面板的统一触发条件。 */
+	const terminalWidth = (): number => Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+
+	/** 页脚之外的主区域高度:对话流、整屏页与命中判定都用这一个数。 */
+	const mainAreaHeight = (): number => Math.max(0, terminalHeight(stdout) - footerHeight());
+
 	const inputTopRow = (mainHeight: number): number =>
 		compactFooter()
 			? mainHeight + menuHeight() + COMPACT_FOOTER_INPUT_ROW
@@ -609,7 +621,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	const render = (): void => {
-		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+		const width = terminalWidth();
 		const height = terminalHeight(stdout);
 		const mainHeight = Math.max(0, height - footerHeight());
 		const view = currentTranscript(width);
@@ -652,7 +664,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 								: [];
 		const inputLines = inputView(input, width, inputCursor);
 		// 输入以已注册的命令开头时把命令本身着色，参数保持正文色
-		const typedCommand = input.startsWith("/") ? (input.slice(1).split(/\s/, 1)[0] ?? "") : "";
+		const typedCommand = commandNameOf(input);
 		const commandLength = commands().some((item) => item.name === typedCommand)
 			? typedCommand.length + 1
 			: 0;
@@ -729,8 +741,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	const maxScroll = (): number => {
-		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
-		const mainHeight = Math.max(0, terminalHeight(stdout) - footerHeight());
+		const width = terminalWidth();
+		const mainHeight = mainAreaHeight();
 		return Math.max(0, measureTranscriptView(currentTranscript(width), mainHeight).scrollLines - mainHeight);
 	};
 
@@ -827,8 +839,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const clearStatus = (): void => {
 		statusText = undefined;
 		statusPhaseMs = 0;
-		statusElapsedMs = 0;
-		statusTokens = 0;
+		resetStatusMeta();
 	};
 
 	const scheduleStatusClear = (): void => {
@@ -1601,16 +1612,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		hasInput = true;
 		follow = true;
 		disarm();
-		statusElapsedMs = 0;
-		statusTokens = 0;
+		resetStatusMeta();
 		if (statusClearTimer !== undefined) {
 			clearTimeout(statusClearTimer);
 			statusClearTimer = undefined;
 		}
 		setStatus(WAITING_FOR_RESPONSE);
 
-		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
-		const mainHeight = Math.max(0, terminalHeight(stdout) - footerHeight());
+		const width = terminalWidth();
+		const mainHeight = mainAreaHeight();
 		scrollTop = measureTranscriptView(currentTranscript(width), mainHeight).lastPromptStart;
 		startSpinner();
 		render();
@@ -1686,8 +1696,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		markTranscriptDirty();
 		hasInput = true;
 		follow = true;
-		statusElapsedMs = 0;
-		statusTokens = 0;
+		resetStatusMeta();
 		if (statusClearTimer !== undefined) {
 			clearTimeout(statusClearTimer);
 			statusClearTimer = undefined;
@@ -1727,8 +1736,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const source = options.modelMenu;
 			if (source === undefined) {
 				setInput("");
-				statusElapsedMs = 0;
-				statusTokens = 0;
+				resetStatusMeta();
 				setStatus(CONFIGURATION_REQUIRED);
 				render();
 				return;
@@ -1762,8 +1770,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const source = options.effortMenu;
 			if (source === undefined) {
 				setInput("");
-				statusElapsedMs = 0;
-				statusTokens = 0;
+				resetStatusMeta();
 				setStatus(CONFIGURATION_REQUIRED);
 				render();
 				return;
@@ -1794,8 +1801,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const source = options.sessionMenu;
 			if (source === undefined) {
 				setInput("");
-				statusElapsedMs = 0;
-				statusTokens = 0;
+				resetStatusMeta();
 				setStatus(SESSION_UNAVAILABLE);
 				render();
 				return;
@@ -1815,8 +1821,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const compact = options.agent?.compact;
 			setInput("");
 			if (compact === undefined) {
-				statusElapsedMs = 0;
-				statusTokens = 0;
+				resetStatusMeta();
 				setStatus(CONFIGURATION_REQUIRED);
 				render();
 				return;
@@ -1842,11 +1847,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		render();
 	};
 
+	/** 取输入开头的命令名(不含斜杠);不是命令时返回空串。 */
+	const commandNameOf = (message: string): string =>
+		message.startsWith("/") ? (message.slice(1).split(/\s/, 1)[0] ?? "") : "";
+
 	/** 按命令名查找；命令名之后的文字是参数。 */
 	const findCommand = (message: string): CommandMenuItem | undefined => {
 		if (!message.startsWith("/")) return undefined;
-		const name = message.slice(1).split(/\s/, 1)[0] ?? "";
-		return commands().find((item) => item.name === name);
+		return commands().find((item) => item.name === commandNameOf(message));
 	};
 
 	const commandArgs = (message: string, name: string): string => {
@@ -1895,8 +1903,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const agent = options.agent;
 		if (agent === undefined) {
 			commandMenu = undefined;
-			statusElapsedMs = 0;
-			statusTokens = 0;
+			resetStatusMeta();
 			setStatus(AGENT_UNAVAILABLE);
 			render();
 			return;
@@ -1959,8 +1966,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (!ready) {
 			// 配置没读成功时不进入对话：保留输入内容，只把原因放到运行时状态行
 			commandMenu = undefined;
-			statusElapsedMs = 0;
-			statusTokens = 0;
+			resetStatusMeta();
 			setStatus(CONFIGURATION_REQUIRED);
 			render();
 			return false;
@@ -2042,7 +2048,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		if (approvalPrompt !== undefined) {
 			// 审批是模态的：鼠标可点动作；键盘左右移动、回车确认，y/a/n 直接执行，Esc 拒绝
-			const panelWidth = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+			const panelWidth = terminalWidth();
 			const panelHeight = terminalHeight(stdout);
 			const panelTop = Math.max(0, panelHeight - footerHeight());
 			for (const event of mouseOf()) {
@@ -2185,8 +2191,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		if (openPage !== undefined) {
 			// 整屏页是模态的：上下键与滚轮翻页，Esc 返回，其它按键忽略
-			const rows = Math.max(0, terminalHeight(stdout) - footerHeight());
-			const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+			const rows = mainAreaHeight();
+			const width = terminalWidth();
 			const total = pageLines(openPage, width).length;
 			let steps = 0;
 			for (const event of mouseOf()) {
@@ -2217,7 +2223,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
-		const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
+		const width = terminalWidth();
 		const height = terminalHeight(stdout);
 		const mainHeight = Math.max(0, height - footerHeight());
 		const beforeScroll = scrollTop;

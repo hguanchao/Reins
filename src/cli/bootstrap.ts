@@ -207,40 +207,20 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		reviewer,
 		confirmer: approvals.request,
 	});
-	const registry = new ToolRegistry(
-		new ResultSpiller(config.spillThreshold, spillDir()),
-		gate,
-	);
-	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
-
-	const host = new PluginHost(registry, policy);
 	/** MCP 连接清单由插件装载时交过来；插件缺席时保持 undefined，/mcps 也随之不可用。 */
 	let mcpStatus: McpStatusSource | undefined;
-	const failures = await host.load(
-		bundledPlugins({
-			cwd: workRoot,
-			version: readVersion(),
-			mcpServers: config.mcpServers,
-			onMcpStatus: (source) => {
-				mcpStatus = source;
-			},
-		}).filter((plugin) => !disabledPlugins(config).has(plugin.name)),
-	);
-	for (const failure of failures) {
-		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
-	}
-	startup.mark("plugins");
-	reportExternalFailures(await loadExternalPlugins(host));
-	startup.mark("external");
-
-	let sandbox: SandboxView;
-	try {
-		sandbox = createSandboxFor(config, workRoot, host);
-	} catch (error) {
-		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
-		return 1;
-	}
-	warnUnsandboxedMcpServers(config);
+	const pipeline = await assemblePipeline({
+		config,
+		workRoot,
+		policy,
+		gate,
+		onMcpStatus: (source) => {
+			mcpStatus = source;
+		},
+		onStage: (stage) => startup.mark(stage),
+	});
+	if (pipeline === null) return 1;
+	const { registry, host, sandbox } = pipeline;
 
 	const workspace = new WorkspaceBoundary(workRoot);
 	startup.mark("sandbox");
@@ -695,34 +675,10 @@ async function runPrint(options: CliOptions): Promise<number> {
 		reviewer:
 			config.approval === "auto" ? createReviewer(config, selection, workRoot) : undefined,
 	});
-
-	const registry = new ToolRegistry(
-		new ResultSpiller(config.spillThreshold, spillDir()),
-		gate,
-	);
-	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
-
-	const host = new PluginHost(registry, policy);
-	const failures = await host.load(
-		bundledPlugins({ cwd: workRoot, version: readVersion(), mcpServers: config.mcpServers }).filter(
-			(plugin) => !disabledPlugins(config).has(plugin.name),
-		),
-	);
-	for (const failure of failures) {
-		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
-		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
-	}
-	reportExternalFailures(await loadExternalPlugins(host));
-
-	let sandbox: SandboxView;
-	try {
-		sandbox = createSandboxFor(config, workRoot, host);
-	} catch (error) {
-		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
-		return 1;
-	}
-
-	warnUnsandboxedMcpServers(config);
+	const pipeline = await assemblePipeline({ config, workRoot, policy, gate });
+	if (pipeline === null) return 1;
+	const { registry, sandbox } = pipeline;
+	const host = pipeline.host;
 
 	const session = createSessionFor(workRoot, host.sessionStore());
 	const compactor = createCompactor(config, selection);
@@ -1087,6 +1043,53 @@ function createReviewer(
  */
 async function loadExternalPlugins(host: PluginHost): Promise<readonly PluginFailure[]> {
 	return new ExternalPlugins({ directory: pluginsDir(), host }).load();
+}
+
+/**
+ * 装配工具与插件管线。
+ *
+ * 交互与非交互共用这一段:注册表、核心工具、随包与外部插件、沙箱。审批门由调用方先按
+ * 「有没有人可问」建好传进来;onStage 给交互模式挂启动计时的阶段标记。
+ * 返回 null 表示沙箱起不来,原因已经写给使用者,调用方直接以失败退出。
+ */
+async function assemblePipeline(options: {
+	readonly config: Config;
+	readonly workRoot: string;
+	readonly policy: PermissionPolicy;
+	readonly gate: PermissionGate;
+	readonly onMcpStatus?: (source: McpStatusSource) => void;
+	readonly onStage?: (stage: string) => void;
+}): Promise<{ readonly registry: ToolRegistry; readonly host: PluginHost; readonly sandbox: SandboxView } | null> {
+	const { config, workRoot, policy, gate } = options;
+	const registry = new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), gate);
+	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
+
+	const host = new PluginHost(registry, policy);
+	const failures = await host.load(
+		bundledPlugins({
+			cwd: workRoot,
+			version: readVersion(),
+			mcpServers: config.mcpServers,
+			...(options.onMcpStatus === undefined ? {} : { onMcpStatus: options.onMcpStatus }),
+		}).filter((plugin) => !disabledPlugins(config).has(plugin.name)),
+	);
+	for (const failure of failures) {
+		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
+		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
+	}
+	options.onStage?.("plugins");
+	reportExternalFailures(await loadExternalPlugins(host));
+	options.onStage?.("external");
+
+	try {
+		const sandbox = createSandboxFor(config, workRoot, host);
+		// 沙箱缺席时把哪些 MCP server 因此裸奔说出来:不说,使用者只会以为它们被拦着
+		warnUnsandboxedMcpServers(config);
+		return { registry, host, sandbox };
+	} catch (error) {
+		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
+		return null;
+	}
 }
 
 function reportExternalFailures(failures: readonly PluginFailure[]): void {

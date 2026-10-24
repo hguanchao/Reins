@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { resolveToolPath } from "../../tools/tool-path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
@@ -52,8 +53,7 @@ export const grepTool: ToolDefinition<GrepArgs> = {
 	annotations: { readOnly: true, destructive: false, openWorld: false },
 
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
-		const resolved = workspace.resolve(args.path ?? ".");
-		sandbox.assertPathAllowed("read", resolved.absolute);
+		const { absolute } = resolveToolPath(workspace, sandbox, args.path ?? ".", "read");
 		const limit = args.limit ?? DEFAULT_LIMIT;
 
 		let matcher: RegExp;
@@ -68,7 +68,7 @@ export const grepTool: ToolDefinition<GrepArgs> = {
 		const matches: string[] = [];
 		let scannedFiles = 0;
 
-		for (const entry of fileEntries(resolved.absolute, MAX_WALK_ENTRIES)) {
+		for (const entry of fileEntries(absolute, MAX_WALK_ENTRIES)) {
 			const relativePath = workspace.display(entry.absolute);
 			if (fileMatcher !== undefined && !fileMatcher.test(entry.relative) && !fileMatcher.test(relativePath)) {
 				continue;

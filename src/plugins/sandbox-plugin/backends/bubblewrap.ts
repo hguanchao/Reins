@@ -1,4 +1,6 @@
 import { existsSync } from "node:fs";
+
+import { quoteForShell } from "./shell-quote.ts";
 import { delimiter, join } from "node:path";
 
 import type { SandboxBackend, SandboxPolicy } from "../../../sandbox/policy.ts";
@@ -42,6 +44,3 @@ function isOnPath(name: string): boolean {
 	return paths.some((directory) => directory.length > 0 && existsSync(join(directory, name)));
 }
 
-function quoteForShell(text: string): string {
-	return `'${text.replaceAll("'", "'\\''")}'`;
-}

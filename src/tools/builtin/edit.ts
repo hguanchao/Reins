@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
+import { resolveToolPath } from "../tool-path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
@@ -87,14 +88,12 @@ export const editTool: ToolDefinition<EditArgs> = {
 	},
 
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
-		const resolved = workspace.resolve(args.path);
-		sandbox.assertPathAllowed("write", resolved.absolute);
-		const displayPath = workspace.display(resolved.absolute);
+		const { absolute, display: displayPath } = resolveToolPath(workspace, sandbox, args.path, "write");
 
-		return withFileMutation(resolved.absolute, async (): Promise<ToolResult> => {
+		return withFileMutation(absolute, async (): Promise<ToolResult> => {
 			let buffer: Buffer;
 			try {
-				buffer = readFileSync(resolved.absolute);
+				buffer = readFileSync(absolute);
 			} catch (error) {
 				return { content: `Failed to read ${displayPath}: ${describeError(error)}`, isError: true };
 			}
@@ -135,7 +134,7 @@ export const editTool: ToolDefinition<EditArgs> = {
 			}
 
 			try {
-				writeFileSync(resolved.absolute, encodeTextFile(file, updated));
+				writeFileSync(absolute, encodeTextFile(file, updated));
 			} catch (error) {
 				return { content: `Failed to write ${displayPath}: ${describeError(error)}`, isError: true };
 			}
