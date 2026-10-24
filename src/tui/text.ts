@@ -1,7 +1,9 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
+import { THEME } from "./theme.ts";
+
 /**
- * 终端文本的宽度计算。
+ * 终端文本的宽度计算与基础排版。
  *
  * 一列宽度的判断必须与终端一致：中文、emoji 占两列，组合字符不占列。渲染层按字符折行、
  * 截断和补齐都只走这里，避免同一套规则散落在各处。
@@ -71,4 +73,32 @@ export function fitToWidth(text: string, width: number): string {
 		end += 1;
 	}
 	return `${chars.slice(0, end).join("")}…`;
+}
+
+/** 整行染一个颜色的排版行：截到宽度并用空格补齐，底色与高亮都不会只在半行上。 */
+export function coloredLine(text: string, width: number, color: string): string {
+	const visible = truncateToWidth(text, width);
+	const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
+	return `${color}${visible}${THEME.reset}${padding}`;
+}
+
+/**
+ * 折行并悬挂缩进：首行带 prefix，续行缩进到 prefix 之后，整段同一个颜色。
+ *
+ * 对话流里「一条逻辑行占多个屏幕行」的块（说明、通知、任务条目）都用它，续行才不会
+ * 折回行首盖住标记列。
+ */
+export function wrappedLines(
+	text: string,
+	prefix: string,
+	width: number,
+	color: string,
+): readonly string[] {
+	const prefixWidth = displayWidth(prefix);
+	const lines = wrapText(text, Math.max(0, width - prefixWidth));
+	const continuation = " ".repeat(prefixWidth);
+
+	return lines.map((line, index) =>
+		coloredLine(`${index === 0 ? prefix : continuation}${line}`, width, color),
+	);
 }

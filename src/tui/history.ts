@@ -6,12 +6,12 @@ import {
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
+import { todoCardFromArgs } from "./todo-card.ts";
 import {
 	appendToolLine,
 	collapseToolGroups,
 	findToolByCallId,
 	findTopLevelToolByCallId,
-	todoCardFromArgs,
 	type TranscriptLine,
 	type TranscriptTurn,
 } from "./transcript.ts";
