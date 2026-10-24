@@ -1,4 +1,4 @@
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 
@@ -937,8 +937,11 @@ function configFileStamp(...paths: readonly string[]): string {
 function readConfigQuietly(options: CliOptions, workRoot: string, trusted: boolean): Config {
 	const userConfig = ConfigFile.load(options.configPath ?? configFilePath());
 	if (!trusted) return userConfig.config;
+	// 与启动时共用同一份项目资源判定:目录与文件同名、providers.json 存在与否,
+	// 两处口径必须一致,否则热重载读到的配置与启动时不是同一套
 	const projectPath = projectConfigFilePath(workRoot);
-	return existsSync(projectPath)
+	const resources = findProjectResources(workRoot);
+	return resources.files.includes(projectPath)
 		? mergeConfigs(userConfig, ConfigFile.load(projectPath))
 		: userConfig.config;
 }

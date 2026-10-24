@@ -370,7 +370,9 @@ function toUsage(usage: WireUsage): LlmUsage {
 		output,
 		cacheRead,
 		cacheWrite,
-		total: usage.total_tokens ?? prompt + output,
+		// 端点不给 total 时按四项之和补齐,与 responses 协议同一口径:
+		// total 反映这一轮上下文有多大,缓存读写也算占用
+		total: usage.total_tokens ?? input + output + cacheRead + cacheWrite,
 	};
 }
 

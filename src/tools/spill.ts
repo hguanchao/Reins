@@ -42,7 +42,11 @@ export class ResultSpiller {
 	#write(toolName: string, content: string): string | undefined {
 		const safeName = toolName.replaceAll(/[^\w-]/g, "_");
 		this.#counter += 1;
-		const path = join(this.#directory, `reins-${safeName}-${Date.now()}-${this.#counter}.log`);
+		// 文件名带进程号:两个进程在同一毫秒落盘也不会互相覆盖
+		const path = join(
+			this.#directory,
+			`reins-${safeName}-${process.pid}-${Date.now()}-${this.#counter}.log`,
+		);
 		try {
 			mkdirSync(this.#directory, { recursive: true });
 			writeFileSync(path, content, "utf8");

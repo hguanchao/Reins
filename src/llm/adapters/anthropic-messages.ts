@@ -140,6 +140,8 @@ export class AnthropicMessagesClient implements LlmClient {
 				try {
 					event = JSON.parse(data) as StreamEvent;
 				} catch {
+					// 事件里混进无法解析的 data 行时跳过它:同一条流里后续事件仍有效,
+					// 为一行坏数据掐断整个响应不值得
 					return;
 				}
 				if (event.type === "error") {

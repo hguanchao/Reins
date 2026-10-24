@@ -399,13 +399,15 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	if (status.tokens !== undefined) rightParts.push(`⇣${formatCompactTokens(status.tokens)}`);
 	const right = rightParts.join("  ");
 
+	// 状态文本可能是中文或带宽字符,长度一律按显示列算:按码元截断会让宽字符撑破行宽,
+	// 右对齐的计时也会漂移
 	let line: string;
 	if (right.length === 0) {
-		line = left.slice(0, statusWidth);
-	} else if (left.length + right.length + 2 <= statusWidth) {
-		line = left + " ".repeat(statusWidth - left.length - right.length) + right;
+		line = truncateToWidth(left, statusWidth);
+	} else if (displayWidth(left) + displayWidth(right) + 2 <= statusWidth) {
+		line = left + " ".repeat(statusWidth - displayWidth(left) - displayWidth(right)) + right;
 	} else {
-		line = `${left}  ${right}`.slice(0, statusWidth);
+		line = truncateToWidth(`${left}  ${right}`, statusWidth);
 	}
 
 	// 扫光只覆盖活动描述；阶段计时、总计时和 token 保持静态的 #6b7580

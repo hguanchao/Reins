@@ -763,6 +763,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		finish();
 	};
 
+	/** 武装退出确认:2 秒内再按一次 Ctrl+C 才真正离开。三条路径共用同一份武装。 */
+	const armExit = (): void => {
+		exitArmed = true;
+		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
+	};
+
 	const onCtrlC = (): void => {
 		if (activeTurn !== undefined) {
 			// 第一次只中止当前轮；2 秒内再按一次强制退出
@@ -770,8 +776,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				cleanup();
 				return;
 			}
-			exitArmed = true;
-			exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
+			armExit();
 			options.approval?.denyAll();
 			activeTurn.controller.abort();
 			setStatus(ABORTING);
@@ -785,8 +790,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				return;
 			}
 			openPage = undefined;
-			exitArmed = true;
-			exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
+			armExit();
 			render();
 			return;
 		}
@@ -794,8 +798,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			cleanup();
 			return;
 		}
-		exitArmed = true;
-		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
+		armExit();
 	};
 
 	const setStatus = (text: string, tone?: "warning" | "error" | "stopped"): void => {
@@ -1970,7 +1973,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	const onData = (chunk: Buffer): void => {
 		const text = decoder.write(chunk);
-		if (text.includes(CTRL_C)) {
+		// Ctrl+C 只认真实的按键块:粘贴的内容被括在粘贴标记里,其中的 \x03 是正文,
+		// 不能当成中断或退出
+		if (text.includes(CTRL_C) && !pasting && !text.includes(PASTE_START)) {
 			onCtrlC();
 			return;
 		}
@@ -2611,6 +2616,8 @@ function desktopNotify(message: string): void {
 			: spawn("notify-send", [title, message], { stdio: "ignore", windowsHide: true });
 	// 系统没有对应命令时静默忽略：通知不该影响对话本身
 	child.on("error", () => {});
+	// 通知只是旁路提示,不能让事件循环为了它多等一拍
+	child.unref();
 }
 
 function terminalHeight(output: TuiOutput): number {
