@@ -838,21 +838,23 @@ function subagentMemberLines(
 		const failedHead = `${indent}${SUBAGENT_FAILED_COLOR}× ${label}  ${summary}${RESET}`;
 		if (member.expanded === true) return [failedHead, ...subagentFailureBand(member, width)];
 		const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
+		const metric = elapsed.length === 0 ? "" : ` (${elapsed})`;
 		const gap = Math.max(
 			1,
-			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(elapsed) - 2,
+			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(metric) - 2,
 		);
-		return [`${failedHead}${" ".repeat(gap)}${elapsed}`];
+		return [`${failedHead}${" ".repeat(gap)}${metric}`];
 	}
 	if (member.status === "done") {
 		// 完成圆点也是青色:与标签同一份强调,不落在灰档里
 		const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
+		const metric = elapsed.length === 0 ? "" : ` (${elapsed})`;
 		const head = `${indent}${SUBAGENT_RUNNING_COLOR}● ${RESET}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`;
 		const gap = Math.max(
 			1,
-			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(elapsed) - 2,
+			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(metric) - 2,
 		);
-		return [`${head}${" ".repeat(gap)}${elapsed}`];
+		return [`${head}${" ".repeat(gap)}${metric}`];
 	}
 	return [`${indent}${SUBAGENT_TEXT_COLOR}${SUBAGENT_PENDING_MARKER} ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`];
 }

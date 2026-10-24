@@ -1431,7 +1431,7 @@ describe("子代理组", () => {
 		// 失败行显示任务名,原因不占清单行
 		assert.ok(text.includes("× Subagent3  修复路径"));
 		assert.equal(text.includes("upstream 500"), false);
-		assert.ok(text.includes("14.3s") && text.includes("22.6s"));
+		assert.ok(text.includes("14.3s") && text.includes("(22.6s)"));
 		assert.ok(text.includes("4 running") === false);
 	});
 
