@@ -28,6 +28,35 @@ export interface ToolDescription {
 
 export type ToolGroupKind = "read" | "list" | "search" | "command";
 
+/**
+ * 内置工具的呈现元数据:一个工具在界面上的所有分发行为都从这张表查。
+ *
+ * 分组类型、展开态是否直接显示结果,过去散在 describe 与 result-summary 的多个
+ * switch/集合里,新增工具要改多处。收成一张表后,新增工具加一行。
+ */
+interface ToolPresentation {
+	/** 只读探索工具的分组类型;写操作与命令没有(命令是延迟分组,运行期不进组) */
+	readonly group?: ToolGroupKind;
+	/** 展开态直接显示结果内容,而不是把调用参数再列一遍 */
+	readonly resultIsDetail: boolean;
+}
+
+const TOOL_PRESENTATION: Readonly<Record<string, ToolPresentation>> = {
+	read: { group: "read", resultIsDetail: true },
+	write: { resultIsDetail: true },
+	edit: { resultIsDetail: true },
+	ls: { group: "list", resultIsDetail: true },
+	find: { group: "search", resultIsDetail: true },
+	grep: { group: "search", resultIsDetail: true },
+	bash: { group: "command", resultIsDetail: false },
+	subagent: { resultIsDetail: false },
+};
+
+/** 查一个工具的呈现元数据;未知工具(插件、MCP)返回 undefined。 */
+export function toolPresentation(tool: string): ToolPresentation | undefined {
+	return TOOL_PRESENTATION[tool];
+}
+
 /** 展开详情的上限，避免一次双击把整段文件内容或超长 JSON 灌进终端。 */
 const DETAIL_MAX_LINES = 40;
 const DETAIL_MAX_CHARS = 8 * 1024;
@@ -63,19 +92,7 @@ export function describeToolCall(
  * 结束时连续够数才塌成一组。写操作返回 undefined，永不进组。
  */
 function toolGroupKind(tool: string): ToolGroupKind | undefined {
-	switch (tool) {
-		case "read":
-			return "read";
-		case "ls":
-			return "list";
-		case "find":
-		case "grep":
-			return "search";
-		case "bash":
-			return "command";
-		default:
-			return undefined;
-	}
+	return toolPresentation(tool)?.group;
 }
 
 /** 内置工具里缩写不适合直接展示的，换成完整名称；工具本名仍保持原样。 */
@@ -130,15 +147,9 @@ function describeDetail(tool: string, args: Record<string, unknown>, workspaceRo
 
 /** 展开后的完整参数；返回 undefined 表示这次调用自己不带更多信息。 */
 function describeFullDetail(tool: string, args: Record<string, unknown>, detail: string): string | undefined {
+	// 展开内容来自结果的工具,调用参数不再重复展示
+	if (toolPresentation(tool)?.resultIsDetail === true) return undefined;
 	switch (tool) {
-		// 这些工具的展开内容来自结果，调用参数不再重复展示
-		case "read":
-		case "write":
-		case "edit":
-		case "ls":
-		case "find":
-		case "grep":
-			return undefined;
 		case "bash": {
 			const full = sanitizeLine(text(args["command"]) ?? "(no command)");
 			return full === detail ? undefined : full;
@@ -170,11 +181,13 @@ function fileLinkTarget(
 	workspaceRoot: string | undefined,
 ): string | undefined {
 	if (tool === "bash") return directoryUrl(".", workspaceRoot);
+	// 文件类工具(带 path 参数且指向单个文件)指向那个文件;
+	// ls 缺省路径就是工作根本身,折叠行同样显示为 `.`,链接跟着指向工作根
 	if (tool === "read" || tool === "write" || tool === "edit" || tool === "ls") {
-		// ls 缺省路径就是工作根本身，折叠行同样显示为 `.`，链接跟着指向工作根
 		const path = text(args["path"]) ?? (tool === "ls" ? "." : undefined);
 		return path === undefined ? undefined : resolveUrl(path, workspaceRoot);
 	}
+	// 搜索类工具指向它搜索的目录
 	if (tool === "find" || tool === "grep") return directoryUrl(text(args["path"]) ?? ".", workspaceRoot);
 	return undefined;
 }

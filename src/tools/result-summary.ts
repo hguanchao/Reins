@@ -1,5 +1,6 @@
 import { readFooterRange } from "./builtin/read.ts";
 import { sanitizeDetail } from "./describe.ts";
+import { toolPresentation } from "./describe.ts";
 import { formatBytes } from "./format.ts";
 import { hasSpillFooter, stripSpillFooter } from "./spill.ts";
 
@@ -11,7 +12,6 @@ export interface ResultDetail {
 }
 
 /** 展开态直接用结果的工具：参数不是用户想看的内容，结果才是。 */
-const RESULT_DETAIL_TOOLS = new Set(["read", "write", "ls", "find", "grep", "edit"]);
 /** 文件预览：超过这个行数时只显示开头与结尾，中间用省略号。 */
 const FILE_PREVIEW_FIRST = 5;
 const FILE_PREVIEW_LAST = 3;
@@ -27,7 +27,7 @@ export function resultDetail(
 	content: string | undefined,
 	details?: unknown,
 ): ResultDetail | undefined {
-	if (!RESULT_DETAIL_TOOLS.has(tool)) return undefined;
+	if (toolPresentation(tool)?.resultIsDetail !== true) return undefined;
 	if (content === undefined || content.length === 0) return undefined;
 
 	switch (tool) {
