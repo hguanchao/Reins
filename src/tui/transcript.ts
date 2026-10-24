@@ -779,7 +779,7 @@ function subagentGroupLines(
 			live.set(memberStart, {
 				kind: "subagent",
 				indent: SUBAGENT_ITEM_INDENT,
-				label: truncateToWidth(`Subagent ${index + 1}`, budget),
+				label: truncateToWidth(`Subagent${index + 1}`, budget),
 				summary: truncateToWidth(member.task, Math.min(SUBAGENT_TASK_WIDTH, budget)),
 			});
 		}
@@ -823,14 +823,14 @@ function subagentMemberLines(
 	position: number,
 ): readonly string[] {
 	const indent = SUBAGENT_ITEM_INDENT;
-	const label = `Subagent ${position}`;
+	const label = `Subagent${position}`;
 	// 失败行也显示任务名:原因不占清单行,双击展开看
 	const summary = truncateToWidth(member.task, SUBAGENT_TASK_WIDTH);
 
 	if (member.status === "running") {
-		// 静态占位与动画行同构(运行符 + 标签 + 摘要),重建时只是换了着色与转圈帧
+		// 静态占位与动画行同构(运行符 + 标签 + 摘要),重建时整行换扫光与转圈帧
 		return [
-			`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`,
+			`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}  ${summary}${RESET}`,
 		];
 	}
 	if (member.status === "failed") {
@@ -845,8 +845,9 @@ function subagentMemberLines(
 		return [`${failedHead}${" ".repeat(gap)}${elapsed}`];
 	}
 	if (member.status === "done") {
+		// 完成圆点也是青色:与标签同一份强调,不落在灰档里
 		const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
-		const head = `${indent}${SUBAGENT_TEXT_COLOR}● ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`;
+		const head = `${indent}${SUBAGENT_RUNNING_COLOR}● ${RESET}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`;
 		const gap = Math.max(
 			1,
 			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(elapsed) - 2,

@@ -188,7 +188,7 @@ function animatedRunningLine(
 }
 
 /**
- * 子代理清单运行行的动画行:转圈与标签青色加粗(扫光只扫标签),摘要保持灰。
+ * 子代理清单运行行的动画行:转圈、标签与摘要整体扫光,全行青色加粗。
  */
 function animatedSubagentLine(
 	indent: string,
@@ -198,13 +198,10 @@ function animatedSubagentLine(
 	width: number,
 ): string {
 	const budget = Math.max(0, width - displayWidth(indent) - 2);
-	const labelPart = truncateToWidth(label, budget);
-	const summaryPart = truncateToWidth(summary, Math.max(0, budget - displayWidth(labelPart) - 2));
-	const head = `${indent}${THEME.accent}${BOLD}${frame.spinner} ${swept(labelPart, frame.sweepPhase, THEME.accentDim, THEME.accentRgb)}`;
-	const padding = " ".repeat(
-		Math.max(0, budget - displayWidth(labelPart) - displayWidth(summaryPart)),
-	);
-	return `${head}  ${THEME.textSecondary}${summaryPart}${THEME.reset}${padding}`;
+	const visible = truncateToWidth(`${frame.spinner} ${label}  ${summary}`, budget);
+	const body = swept(visible, frame.sweepPhase, THEME.accentDim, THEME.accentRgb);
+	const padding = " ".repeat(Math.max(0, budget - displayWidth(visible)));
+	return `${indent}${THEME.accent}${BOLD}${body}${padding}`;
 }
 
 /**

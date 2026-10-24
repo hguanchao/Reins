@@ -4302,8 +4302,8 @@ describe("子代理组集成", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Subagent 1"));
-			assert.ok(text.includes("●") || text.includes("Subagent 2"));
+			assert.ok(text.includes("Subagent1"));
+			assert.ok(text.includes("●") || text.includes("Subagent2"));
 
 			await agent.finish();
 			text = frameLines(output).map(plain).join("\n");
