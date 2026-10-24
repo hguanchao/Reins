@@ -1,7 +1,8 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
 import type { CommandMenuItem } from "./command-menu.ts";
-import { displayWidth, padEnd, truncate } from "./menu-panel.ts";
+import { padEnd, truncate } from "./menu-panel.ts";
+import { displayWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**

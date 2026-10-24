@@ -300,11 +300,6 @@ function parseConfigFile(source: string, file: string): ConfigFile {
 	});
 }
 
-/** 从磁盘读取。 */
-export function loadConfig(file: string = configFilePath()): Config {
-	return parseConfig(readTextFile(file), file);
-}
-
 export function readTextFile(file: string): string {
 	let source: string;
 	try {

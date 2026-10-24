@@ -1,9 +1,8 @@
 import type { McpServerConfig } from "../config/config-file.ts";
-import type { SessionStore } from "../session/store.ts";
 import type { Plugin } from "./host.ts";
 import { createMcpPlugin, type McpStatusSource } from "./mcp-plugin/index.ts";
 import sandboxPlugin from "./sandbox-plugin/index.ts";
-import sessionPlugin, { createSessionStore } from "./session-plugin/index.ts";
+import sessionPlugin from "./session-plugin/index.ts";
 import toolsPlugin from "./tools-plugin/index.ts";
 
 /**
@@ -42,16 +41,6 @@ export function bundledPlugins(context: BundledPluginContext): readonly Plugin[]
 			onStatus: context.onMcpStatus,
 		}),
 	];
-}
-
-/**
- * 只取会话存储。
- *
- * 全屏界面还没读配置、也不需要工具与沙箱，为一个空会话去装载整套插件会连带起 MCP 进程。
- * 会话落盘本身不依赖那些能力，因此单独给一个入口。
- */
-export function createBundledSessionStore(): SessionStore {
-	return createSessionStore();
 }
 
 export { sandboxPlugin, sessionPlugin, toolsPlugin };

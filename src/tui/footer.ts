@@ -1,8 +1,7 @@
-import { eastAsianWidth } from "get-east-asian-width";
-
 import type { ApprovalMode } from "../config/config-file.ts";
 import { formatDuration } from "../tools/format.ts";
 import { swept } from "./sweep.ts";
+import { characterWidth, displayWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -452,33 +451,8 @@ function trimDecimal(value: number): string {
 }
 
 /** 按显示宽度截断，宽字符与 emoji 不会被切成半个。 */
-function truncateToWidth(text: string, width: number): string {
-	const chars = Array.from(text);
-	let used = 0;
-	let end = 0;
-
-	while (end < chars.length) {
-		const charWidth = eastAsianWidth(chars[end].codePointAt(0) ?? 0);
-		if (used + charWidth > width) break;
-		used += charWidth;
-		end += 1;
-	}
-
-	return chars.slice(0, end).join("");
-}
-
 function colored(text: string, focused: boolean): string {
 	return `${focused ? FOCUS_COLOR : BLUR_COLOR}${text}${RESET}`;
-}
-
-function displayWidth(text: string): number {
-	let width = 0;
-	for (const char of text) width += characterWidth(char);
-	return width;
-}
-
-function characterWidth(char: string): number {
-	return eastAsianWidth(char.codePointAt(0) ?? 0);
 }
 
 function horizontal(width: number): string {

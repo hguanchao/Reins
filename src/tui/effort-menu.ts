@@ -1,4 +1,5 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "../config/config-file.ts";
+import { displayWidth } from "./text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
@@ -9,7 +10,6 @@ import {
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
 	bottomBorder,
-	displayWidth,
 	keepVisible,
 	menuHeight,
 	padEnd,

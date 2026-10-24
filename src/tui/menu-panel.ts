@@ -1,5 +1,4 @@
-import { eastAsianWidth } from "get-east-asian-width";
-
+import { characterWidth, displayWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -78,14 +77,4 @@ export function truncate(text: string, width: number): string {
 		output += char;
 	}
 	return output + ELLIPSIS;
-}
-
-export function displayWidth(text: string): number {
-	let width = 0;
-	for (const char of text) width += characterWidth(char);
-	return width;
-}
-
-function characterWidth(char: string): number {
-	return eastAsianWidth(char.codePointAt(0) ?? 0);
 }

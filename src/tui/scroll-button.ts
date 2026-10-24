@@ -1,4 +1,4 @@
-import { displayWidth } from "./menu-panel.ts";
+import { displayWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**

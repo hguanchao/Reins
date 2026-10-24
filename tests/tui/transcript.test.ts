@@ -24,7 +24,7 @@ import {
 	type TranscriptToolGroup,
 	type TranscriptTurn,
 } from "../../src/tui/transcript.ts";
-import { displayWidth } from "../../src/tui/menu-panel.ts";
+import { displayWidth } from "../../src/tui/text.ts";
 import { THEME } from "../../src/tui/theme.ts";
 
 const PROMPT_BG = "\x1b[48;2;22;25;29m";

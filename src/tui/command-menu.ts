@@ -9,12 +9,12 @@ import {
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
 	bottomBorder,
-	displayWidth,
 	keepVisible,
 	menuHeight,
 	padEnd,
 	topBorder,
 } from "./menu-panel.ts";
+import { displayWidth } from "./text.ts";
 
 /**
  * 斜杠命令补全面板。
