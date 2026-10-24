@@ -193,12 +193,19 @@ export function parseSessionText(text: string): ParsedSessionFile {
 			skippedLines += 1;
 			continue;
 		}
-		if ((parsed as { type?: unknown }).type === "session") {
+		const record = parsed as Record<string, unknown>;
+		if (record["type"] === "session") {
+			// 会话头至少要有 id 与版本:续聊按 id 找文件,版本对不上时 open 会拒绝读取
+			if (typeof record["id"] !== "string" || typeof record["version"] !== "number") {
+				skippedLines += 1;
+				continue;
+			}
 			header = parsed as SessionHeaderEntry;
 			continue;
 		}
-		if (!isEntryType((parsed as { type?: unknown }).type)) {
-			// 认得条目才敢往下走：不认识的类型多半是更高版本写的，猜着读只会读出一段错的历史
+		if (!isEntryType(record["type"]) || !entryLooksIntact(record)) {
+			// 认得条目才敢往下走：不认识的类型多半是更高版本写的，猜着读只会读出一段错的历史;
+			// 认得但关键字段残缺的同样拒收,否则坏形状会在回放消费点炸成运行时错误
 			skippedLines += 1;
 			continue;
 		}
@@ -206,6 +213,48 @@ export function parseSessionText(text: string): ParsedSessionFile {
 	}
 
 	return { header, entries, skippedLines };
+}
+
+/**
+ * 条目关键字段的最小校验:只查回放路径真正会读的字段,不做完整形状断言。
+ *
+ * 会话文件是磁盘上的外部输入,外部改动与写盘中断都会留下残缺行;校验失败与解析失败
+ * 同一待遇(计入 skippedLines),宁可少读一行,不读一段会炸的历史。
+ */
+function entryLooksIntact(parsed: Record<string, unknown>): boolean {
+	switch (parsed["type"]) {
+		case "message": {
+			const message = parsed["message"];
+			if (typeof message !== "object" || message === null) return false;
+			const record = message as Record<string, unknown>;
+			const role = record["role"];
+			if (role === "toolResult") {
+				return (
+					typeof record["toolCallId"] === "string" &&
+					typeof record["toolName"] === "string" &&
+					typeof record["content"] === "string"
+				);
+			}
+			// user 与 assistant 的 content 可以是字符串或内容块数组,这里只验它存在
+			return (role === "user" || role === "assistant") && record["content"] !== undefined;
+		}
+		case "system":
+			return typeof parsed["sections"] === "object" && parsed["sections"] !== null;
+		case "model_change":
+			return typeof parsed["model"] === "string";
+		case "effort_change":
+			return typeof parsed["effort"] === "string";
+		case "usage":
+			return (
+				typeof parsed["model"] === "string" &&
+				typeof parsed["usage"] === "object" &&
+				parsed["usage"] !== null
+			);
+		case "compaction":
+			return typeof parsed["summary"] === "string" && Array.isArray(parsed["covered"]);
+		default:
+			return false;
+	}
 }
 
 function isEntryType(type: unknown): boolean {

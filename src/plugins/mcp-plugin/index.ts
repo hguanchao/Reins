@@ -61,6 +61,8 @@ class McpConnection {
 	#failure = "";
 	#tools: readonly string[] = [];
 	#client: McpClient | undefined;
+	/** 远程连接的生命周期信号:连接失败时中止它,在途的 fetch 与 SSE 才会真正断开。 */
+	#connectionAbort: AbortController | undefined;
 
 	constructor(config: McpServerConfig, cwd: string, version: string) {
 		this.#config = config;
@@ -105,6 +107,9 @@ class McpConnection {
 			// 传输层往往比请求失败更早知道原因（进程起不来、端点连不上），它记下的那句更具体：
 			// 请求那边只会看到「连接断了」，看不出到底为什么
 			if (this.#failure.length === 0) this.#failure = describeError(error);
+			// 失败了就中止连接信号:不中止的话在途的 fetch 与 SSE 会一直挂到对端关闭
+			this.#connectionAbort?.abort();
+			this.#connectionAbort = undefined;
 		}
 	}
 
@@ -160,10 +165,11 @@ class McpConnection {
 		}
 
 		const options = { url: config.url ?? "", headers: config.headers, onClose };
+		this.#connectionAbort = new AbortController();
 		if (config.type === "sse") {
-			return createSseTransport({ ...options, signal: new AbortController().signal });
+			return createSseTransport({ ...options, signal: this.#connectionAbort.signal });
 		}
-		return createHttpTransport({ ...options, signal: new AbortController().signal });
+		return createHttpTransport({ ...options, signal: this.#connectionAbort.signal });
 	}
 }
 

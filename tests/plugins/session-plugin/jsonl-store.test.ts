@@ -216,3 +216,49 @@ describe("会话文本解析", () => {
 		assert.equal(parsed.entries.length, 0);
 	});
 });
+
+describe("会话条目的字段校验", () => {
+	it("消息条目缺关键字段时拒收,不带着坏形状进回放", () => {
+		const bad = [
+			{ type: "message", message: { role: "toolResult", toolCallId: "1" } },
+			{ type: "message", message: { role: "assistant" } },
+			{ type: "message", message: "not an object" },
+			{ type: "message" },
+		];
+		const parsed = parseSessionText(bad.map((entry) => JSON.stringify(entry)).join("\n"));
+		assert.equal(parsed.entries.length, 0);
+		assert.equal(parsed.skippedLines, 4);
+	});
+
+	it("其余条目类型校验各自的关键字段", () => {
+		const bad = [
+			{ type: "system" },
+			{ type: "model_change" },
+			{ type: "effort_change", effort: 3 },
+			{ type: "usage", model: "m" },
+			{ type: "compaction", summary: "s" },
+		];
+		const parsed = parseSessionText(bad.map((entry) => JSON.stringify(entry)).join("\n"));
+		assert.equal(parsed.entries.length, 0);
+		assert.equal(parsed.skippedLines, 5);
+	});
+
+	it("会话头缺 id 或版本号按坏行拒收", () => {
+		const parsed = parseSessionText(
+			`${JSON.stringify({ type: "session", cwd: "/w" })}\n${JSON.stringify({ type: "session", id: "s", version: 1, cwd: "/w" })}\n`,
+		);
+		assert.equal(parsed.header?.id, "s");
+		assert.equal(parsed.skippedLines, 1);
+	});
+
+	it("形状完好的条目照常读入", () => {
+		const good = [
+			{ type: "message", id: "a", message: { role: "user", content: "hi" } },
+			{ type: "message", id: "b", message: { role: "toolResult", toolCallId: "1", toolName: "read", content: "x", isError: false } },
+			{ type: "usage", id: "c", provider: "p", model: "m", kind: "turn", usage: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, total: 3 }, cost: undefined },
+		];
+		const parsed = parseSessionText(good.map((entry) => JSON.stringify(entry)).join("\n"));
+		assert.equal(parsed.entries.length, 3);
+		assert.equal(parsed.skippedLines, 0);
+	});
+});
