@@ -116,16 +116,22 @@ const WHEEL_STEP = 3;
 /** 同一位置两次按下在这个窗口内算双击。 */
 const DOUBLE_CLICK_MS = 400;
 
-const WAITING_FOR_RESPONSE = "Waiting for response...";
+/** 等待模型回复：请求已发出，还没有任何增量到达。 */
+const WAITING_FOR_MODEL = "Waiting for model...";
+/** 等待子代理：任务已经派出，结果还没回来。 */
+const WAITING_FOR_SUBAGENT = "Waiting for subagent...";
 const THINKING = "Thinking...";
 const WRITING_RESPONSE = "Writing response...";
+/** 模型正在生成工具调用参数，工具尚未开始执行。 */
+const WRITING_TOOL_CALL = "Writing tool call...";
+const RUNNING_TOOL = "Running tool...";
+const COMPACTING_CONTEXT = "Compacting context...";
 /** 配置不可用时按下回车给出的提示；不启动对话，避免看起来已经正常工作。 */
 const CONFIGURATION_REQUIRED = "Configuration required";
 const AGENT_UNAVAILABLE = "Agent unavailable";
 const SESSION_UNAVAILABLE = "Session storage is unavailable";
 /** 使用者按下中断之后的状态。主动停下不是错误，用中性措辞，不染错误色。 */
 const ABORTING = "Stopping...";
-const STOPPED = "Stopped";
 /** 对话流里的中断标记：说明这一轮的回答在这里被截断了。 */
 const INTERRUPTED = "Interrupted";
 const ERROR_STATUS = "Error";
@@ -324,6 +330,24 @@ function shortReason(reason: string): string {
 	return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
 }
 
+/** 组里是否还有子代理在跑；并行派发时用它决定状态行还要不要继续等待。 */
+function hasRunningSubagent(lines: readonly TranscriptLine[]): boolean {
+	for (const line of lines) {
+		if (typeof line !== "object" || line === null || line.kind !== "subagentGroup") continue;
+		if (line.members.some((member) => member.status === "running")) return true;
+	}
+	return false;
+}
+
+/** 这次进度更新是否来自子代理；子代理的进度不该把状态改写回「运行工具」。 */
+function isSubagentCall(lines: readonly TranscriptLine[], callId: string): boolean {
+	for (const line of lines) {
+		if (typeof line !== "object" || line === null || line.kind !== "subagentGroup") continue;
+		if (line.members.some((member) => member.callId === callId)) return true;
+	}
+	return false;
+}
+
 /**
  * 在备用屏里显示界面，直到使用者连按两次 Ctrl+C。
  *
@@ -492,8 +516,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let buttonHovered = false;
 	/** 当前运行时状态；为空表示空闲。 */
 	let statusText: string | undefined;
-	/** 状态是不是失败结局；失败用错误色，别跟「正在进行」混成一样。 */
-	let statusTone: "warning" | "error" | "stopped" | undefined;
+	/** 运行状态的色调：重试、失败与阻断提示各用一种，别跟「正在进行」混成一样。 */
+	let statusTone: "warning" | "error" | "notice" | undefined;
 	let statusPhaseMs = 0;
 	let statusElapsedMs = 0;
 	let statusTokens = 0;
@@ -672,13 +696,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			statusText === undefined
 				? undefined
 				: {
-						// 转圈与扫光都表示「还在动」：失败与主动停下都不该带着它们
+						// 转圈与扫光都表示「还在动」：重试仍在进行，失败、阻断与提示都是静止的
 						symbol:
-							statusTone === "error" || statusTone === "stopped"
+							statusTone === "error" || statusTone === "notice"
 								? ""
 								: (SPINNER_FRAMES[spinnerFrame] ?? ""),
 						text: statusText,
-						sweep: statusTone === "error" || statusTone === "stopped" ? undefined : sweepPhase,
+						sweep: statusTone === undefined ? sweepPhase : undefined,
 						tone: statusTone,
 						phaseMs: statusPhaseMs,
 						elapsedMs: statusElapsedMs,
@@ -954,7 +978,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		armExit();
 	};
 
-	const setStatus = (text: string, tone?: "warning" | "error" | "stopped"): void => {
+	const setStatus = (text: string, tone?: "warning" | "error" | "notice"): void => {
 		statusText = text;
 		statusTone = tone;
 		statusPhaseMs = 0;
@@ -964,6 +988,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	/** 立即清空运行状态。完成后不保留额外的提示，回复本身就是结束信号。 */
 	const clearStatus = (): void => {
 		statusText = undefined;
+		statusTone = undefined;
 		statusPhaseMs = 0;
 		resetStatusMeta();
 	};
@@ -1235,7 +1260,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		switch (event.type) {
 			case "turn_start":
-				setStatus(WAITING_FOR_RESPONSE);
+				setStatus(WAITING_FOR_MODEL);
+				break;
+			case "writing_tool_call":
+				// 参数还在流里，工具没开始跑；不能提前显示成 Running
+				setStatus(WRITING_TOOL_CALL);
 				break;
 			case "text_delta":
 				closeThinking(active);
@@ -1270,8 +1299,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "tool_start": {
 				closeThinking(active);
-				if (handleTodoCardStart(active, event)) break;
-				if (handleSubagentStart(active, event)) break;
+				if (handleTodoCardStart(active, event)) {
+					// 任务表不产生模型等待：这一行已经交给面板处理，状态只需离开响应阶段
+					setStatus(RUNNING_TOOL);
+					break;
+				}
+				if (handleSubagentStart(active, event)) {
+					setStatus(WAITING_FOR_SUBAGENT);
+					break;
+				}
 				const described = describeToolCall(event.name, event.args, options.workspaceRoot);
 				const tool: TranscriptTool = {
 					kind: "tool",
@@ -1289,12 +1325,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			}
 			case "tool_update":
-				setStatus("Running tool...");
+				// 子代理的每一步进度仍是「等它回来」，不能显示成普通工具在跑
+				setStatus(isSubagentCall(active.lines, event.callId) ? WAITING_FOR_SUBAGENT : RUNNING_TOOL);
 				break;
 			case "tool_end":
 				if (handleSubagentEnd(active, event)) {
 					markTranscriptDirty();
-					setStatus(THINKING);
+					// 并行派发时还有一个在跑就继续等它，不能提前回到模型等待
+					setStatus(hasRunningSubagent(active.lines) ? WAITING_FOR_SUBAGENT : WAITING_FOR_MODEL);
 					break;
 				}
 				// 成功不落行：工具调用本身已经显示；结果挂到调用行，Ctrl+O 可展开
@@ -1320,14 +1358,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						markTranscriptDirty();
 					}
 				}
-				setStatus(THINKING);
+				// 工具结果已经写回会话，下一回合的请求就要发出
+				setStatus(WAITING_FOR_MODEL);
 				break;
 			case "compaction_start":
 				appendLine(
 					active,
 					`· compacting context (${event.messages} messages, ~${event.tokensBefore} tokens)`,
 				);
-				setStatus("Compacting context...");
+				setStatus(COMPACTING_CONTEXT);
 				break;
 			case "compaction_end":
 				appendLine(
@@ -1343,8 +1382,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				appendLine(active, `  ${event.message}`);
 				break;
 			case "notice":
-				// 与这一轮无关的提示走状态行：它不该占对话流的位置，看一眼就够了
-				setStatus(event.message);
+				// 与这一轮无关的提示走状态行：它不该占对话流的位置，看一眼就够了；
+				// 提示不是活动，不能带着转圈让人以为还在跑
+				setStatus(event.message, "notice");
 				render();
 				break;
 			case "usage_recorded":
@@ -1355,10 +1395,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				options.agent?.refreshInfo();
 				break;
 			case "retrying": {
-				// 原因排在前面：限流、5xx 与连接断掉的样子完全不同，先说清是哪一种
-				const retry = `Retrying (${event.attempt}/${event.maxAttempts})...`;
-				const reason = shortReason(event.reason);
-				setStatus(reason.length === 0 ? retry : `${reason} · ${retry}`, "warning");
+				// 动作在前：先说明系统正在重试，再用冒号补上这一次失败的原因
+				const retry = `Retrying (${event.attempt}/${event.maxAttempts})`;
+				const reason = shortReason(event.reason).replace(/[.…]+$/, "");
+				setStatus(reason.length === 0 ? `${retry}...` : `${retry}: ${reason}...`, "warning");
 				break;
 			}
 			case "error":
@@ -1369,10 +1409,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "aborted":
 				closeThinking(active);
-				// 使用者主动停下不是错误：用中性说明，不染错误色，也不加错误标记
+				// 使用者主动停下不是错误：用中性说明，不染错误色，也不加错误标记。
+				// 状态行直接清空，不再留一个「已停下」的静态结局
 				appendLine(active, { text: INTERRUPTED, kind: "info" });
 				active.outcome = "aborted";
-				setStatus(STOPPED, "stopped");
+				clearStatus();
 				break;
 			case "turn_end":
 				// 只思考、没产出正文也没调工具的一次请求，摘要行也要落下
@@ -1821,7 +1862,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			clearTimeout(statusClearTimer);
 			statusClearTimer = undefined;
 		}
-		setStatus(WAITING_FOR_RESPONSE);
+		setStatus(WAITING_FOR_MODEL);
 
 		const width = terminalWidth();
 		const mainHeight = mainAreaHeight();
@@ -1877,11 +1918,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				options.agent?.refreshInfo();
 				statusElapsedMs = Date.now() - active.startedAt;
 				statusTokens = active.tokensUsed;
-				if (active.outcome === "done") {
+				if (active.outcome === "aborted") {
+					// 主动停下由对话流里的 Interrupted 说明，状态行不再留结局
 					clearStatus();
-				} else if (active.outcome === "aborted") {
-					setStatus(STOPPED, "stopped");
-					scheduleStatusClear();
+				} else if (active.outcome === "done") {
+					clearStatus();
 				} else {
 					setStatus(ERROR_STATUS, "error");
 					scheduleStatusClear();
@@ -1981,7 +2022,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (source === undefined) {
 			setInput("");
 			resetStatusMeta();
-			setStatus(CONFIGURATION_REQUIRED);
+			setStatus(CONFIGURATION_REQUIRED, "notice");
 			return;
 		}
 
@@ -2014,7 +2055,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (source === undefined) {
 			setInput("");
 			resetStatusMeta();
-			setStatus(CONFIGURATION_REQUIRED);
+			setStatus(CONFIGURATION_REQUIRED, "notice");
 			return;
 		}
 
@@ -2044,7 +2085,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (source === undefined) {
 			setInput("");
 			resetStatusMeta();
-			setStatus(SESSION_UNAVAILABLE);
+			setStatus(SESSION_UNAVAILABLE, "notice");
 			return;
 		}
 
@@ -2063,7 +2104,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		setInput("");
 		if (compact === undefined) {
 			resetStatusMeta();
-			setStatus(CONFIGURATION_REQUIRED);
+			setStatus(CONFIGURATION_REQUIRED, "notice");
 			return;
 		}
 		startRun("/compact", compact);
@@ -2126,7 +2167,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (agent === undefined) {
 			commandMenu = undefined;
 			resetStatusMeta();
-			setStatus(AGENT_UNAVAILABLE);
+			setStatus(AGENT_UNAVAILABLE, "notice");
 			render();
 			return;
 		}
@@ -2165,7 +2206,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(command.name)) {
 				commandMenu = undefined;
 				commandMenuDismissed = true;
-				setStatus(`/${command.name} is unavailable while a turn is running`);
+				setStatus(`/${command.name} is unavailable while a turn is running`, "notice");
 				render();
 				return false;
 			}
@@ -2189,7 +2230,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			// 配置没读成功时不进入对话：保留输入内容，只把原因放到运行时状态行
 			commandMenu = undefined;
 			resetStatusMeta();
-			setStatus(CONFIGURATION_REQUIRED);
+			setStatus(CONFIGURATION_REQUIRED, "notice");
 			render();
 			return false;
 		}
@@ -2664,7 +2705,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(selected.name)) {
 							commandMenu = undefined;
 							commandMenuDismissed = true;
-							setStatus(`/${selected.name} is unavailable while a turn is running`);
+							setStatus(`/${selected.name} is unavailable while a turn is running`, "notice");
 							render();
 							return;
 						}

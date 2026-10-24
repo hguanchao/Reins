@@ -14,6 +14,8 @@ export type AgentEvent =
 	| { readonly type: "turn_start" }
 	| { readonly type: "text_delta"; readonly text: string }
 	| { readonly type: "reasoning_delta"; readonly text: string }
+	/** 模型开始写一次工具调用；参数还在流式传输，工具尚未执行 */
+	| { readonly type: "writing_tool_call"; readonly name: string }
 	| {
 			readonly type: "tool_start";
 			readonly callId: string;

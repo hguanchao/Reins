@@ -23,6 +23,11 @@ interface ScriptedTurn {
 function scriptedStream(turn: ScriptedTurn): LlmStream {
 	const stream = EventStream.incremental<LlmEvent, LlmResult>();
 	stream.push({ type: "text_delta", text: "chunk" });
+	for (const [index, block] of turn.content.entries()) {
+		if (block.type === "toolCall") {
+			stream.push({ type: "tool_call_start", index, id: block.id, name: block.name });
+		}
+	}
 	const stopReason =
 		turn.stopReason ?? (turn.content.some((block) => block.type === "toolCall") ? "toolUse" : "stop");
 	stream.close({
@@ -269,6 +274,10 @@ describe("回合驱动", () => {
 		).run("go", SIGNAL);
 
 		assert.deepEqual(calls, ['echo:{"x":1}']);
+		// 参数流式生成阶段先给界面一个「正在写工具调用」的信号
+		assert.ok(
+			hooks.events.some((event) => event.type === "writing_tool_call" && event.name === "echo"),
+		);
 		// 工具循环里的每一次请求都记一笔，界面因此能在轮次中途更新统计
 		assert.deepEqual(
 			hooks.events.filter((event) => event.type === "usage_recorded").length,

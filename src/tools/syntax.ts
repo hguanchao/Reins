@@ -36,7 +36,15 @@ import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
 /** 语法 token 的角色，与调色板一一对应；渲染层只认角色，不认第三方类名。 */
-export type SyntaxToken = "keyword" | "string" | "number" | "comment" | "function" | "type" | "operator";
+export type SyntaxToken =
+	| "keyword"
+	| "string"
+	| "number"
+	| "comment"
+	| "function"
+	| "type"
+	| "property"
+	| "operator";
 
 /** 一段同样式文本。 */
 export interface SyntaxSegment {
@@ -256,7 +264,9 @@ function tokenFor(className: readonly unknown[] | undefined): SyntaxToken | unde
 		if (entry === "hljs-comment" || entry === "hljs-quote") return "comment";
 		if (entry === "hljs-title") return "function";
 		if (entry === "hljs-type" || entry === "hljs-class") return "type";
-		if (entry === "hljs-attr" || entry === "hljs-attribute" || entry === "hljs-variable") return "operator";
+		// 属性与键名是对象里最先被扫到的标签，和运算符分开着色才读得清
+		if (entry === "hljs-attr" || entry === "hljs-attribute") return "property";
+		if (entry === "hljs-variable") return "operator";
 	}
 	return undefined;
 }

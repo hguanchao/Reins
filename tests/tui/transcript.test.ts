@@ -233,7 +233,7 @@ describe("工具调用行", () => {
 		);
 
 		assert.equal(lines.length, 1);
-		assert.ok(lines[0]?.includes(THEME.surface));
+		assert.ok(lines[0]?.includes(THEME.detailBg));
 	});
 
 	it("展开态一律实线下划线并带上参数色", () => {
@@ -473,14 +473,52 @@ describe("工具调用行", () => {
 		assert.ok(text.includes("     1  line 1"));
 		assert.ok(text.includes("     2  line 2"));
 		assert.equal(text.includes("path:"), false);
-		assert.ok(lines.some((line) => line.includes(THEME.surface)));
+		assert.ok(lines.some((line) => line.includes(THEME.detailBg)));
 
 		// 标题行不铺色带；色带外留四列，带内再留一列内边距
 		const head = lines.find((line) => plain(line).includes("◆ Read"));
 		const body = lines.find((line) => plain(line).includes("1  line 1"));
 		assert.ok(plain(head ?? "").startsWith("  "));
-		assert.equal(head?.includes(THEME.surface), false);
-		assert.ok(body?.startsWith(`    ${THEME.surface}`));
+		assert.equal(head?.includes(THEME.detailBg), false);
+		assert.ok(body?.startsWith(`    ${THEME.detailBg}`));
+	});
+
+	it("文件详情按扩展名着色，键名、字符串与数字分开", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a.json",
+			fullDetail: '1  {\n2    "name": "reins",\n3    "count": 2\n4  }',
+			detailKind: "file",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(60, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const key = lines.find((line) => plain(line).includes('"name"'));
+		const value = lines.find((line) => plain(line).includes('"reins"'));
+		const count = lines.find((line) => plain(line).includes('"count"'));
+
+		assert.ok(key?.includes(THEME.syntaxType));
+		assert.ok(value?.includes(THEME.syntaxString));
+		assert.ok(count?.includes(THEME.syntaxNumber));
+	});
+
+	it("详情里的制表符展开成空格，缩进处不留黑洞", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a.json",
+			fullDetail: '1  \t"name": "reins"',
+			detailKind: "file",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(40, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const body = lines.find((line) => plain(line).includes('"name"'));
+
+		assert.ok(body);
+		assert.equal(plain(body).includes("\t"), false);
+		// 行号后原来的制表位按 4 列展开，缩进仍然落在内容列
+		assert.ok(plain(body).includes('1   "name"'));
+		assert.ok(body.includes(THEME.detailBg));
 	});
 
 	it("展开标题与 Thought 同色，文件路径用实线下划线", () => {
@@ -522,11 +560,11 @@ describe("工具调用行", () => {
 		const content = lines[headRow + 2] ?? "";
 		const bottom = lines[headRow + 3] ?? "";
 
-		assert.ok(top.includes(THEME.surface));
+		assert.ok(top.includes(THEME.detailBg));
 		assert.equal(plain(top).trim(), "");
-		assert.ok(content.includes(THEME.surface));
+		assert.ok(content.includes(THEME.detailBg));
 		assert.ok(plain(content).includes("1  line 1"));
-		assert.ok(bottom.includes(THEME.surface));
+		assert.ok(bottom.includes(THEME.detailBg));
 		assert.equal(plain(bottom).trim(), "");
 	});
 
@@ -545,7 +583,7 @@ describe("工具调用行", () => {
 
 		// 2 列标题缩进 + 2 列带外留白 + 1 列带内留白
 		assert.ok(plain(body).startsWith("     git log --oneline"));
-		assert.equal(body.indexOf(THEME.surface), 4);
+		assert.equal(body.indexOf(THEME.detailBg), 4);
 	});
 
 	it("结果末尾的换行不再多占一行，下边距只有一行", () => {
@@ -622,7 +660,7 @@ describe("工具调用行", () => {
 				for (const line of lines) {
 					assert.equal(displayWidth(plain(line)), width, `${label}@${width} 行宽不精确`);
 
-					const at = line.indexOf("\x1b[48;2;");
+					const at = line.search(/\x1b\[48;[25];/);
 					// 用户提示块也从第 1 列铺底色，只统计它之后的详情色带
 					if (at <= 0) continue;
 					// 详情色带外留四列（2 列标题缩进 + 2 列留白），右缘铺到面板边缘
@@ -694,8 +732,8 @@ describe("工具调用行", () => {
 		assert.ok(added?.includes(THEME.syntaxKeyword));
 		assert.ok(added?.includes(THEME.syntaxNumber));
 		assert.ok(commented?.includes(THEME.syntaxComment));
-		// 上下文行没有底色，仍用浮起表面铺满
-		assert.ok(commented?.includes(THEME.surface));
+		// 上下文行没有增删色，仍用详情底色铺满
+		assert.ok(commented?.includes(THEME.detailBg));
 	});
 
 	it("认不出语言时 diff 不着色，但增删底色仍在", () => {

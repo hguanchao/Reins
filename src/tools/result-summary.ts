@@ -26,13 +26,14 @@ export function resultDetail(
 	tool: string,
 	content: string | undefined,
 	details?: unknown,
+	fileName?: string,
 ): ResultDetail | undefined {
 	if (toolPresentation(tool)?.resultIsDetail !== true) return undefined;
 	if (content === undefined || content.length === 0) return undefined;
 
 	switch (tool) {
 		case "read":
-			return readDetail(content, details);
+			return readDetail(content, details, fileName);
 		case "edit":
 			return diffDetail(content, details);
 		case "write":
@@ -43,7 +44,11 @@ export function resultDetail(
 }
 
 /** 文件内容带行号展开；范围来自结构化详情，历史回放则从结果尾注里取。 */
-function readDetail(content: string, details: unknown): ResultDetail | undefined {
+function readDetail(
+	content: string,
+	details: unknown,
+	fileName: string | undefined,
+): ResultDetail | undefined {
 	const info = record(details);
 	if (numberField(info, "lines") === 0 || / is empty$/.test(content)) {
 		return { text: "(empty)", kind: "text" };
@@ -61,12 +66,41 @@ function readDetail(content: string, details: unknown): ResultDetail | undefined
 	const lines = readLines(fullText ?? content, startLine, endLine);
 	if (lines.length === 0) return undefined;
 
-	const width = String(startLine + lines.length - 1).length;
-	const formatted = lines.map((line, index) => numberedLine(startLine + index, line, width));
+	const pretty = reindentJson(lines, stringField(info, "path") ?? fileName);
+	const display = pretty ?? lines;
+	// 重排后的行号是显示行号，不再对应原文件；多行 JSON 与普通文件仍按真实行号
+	const firstLine = pretty === undefined ? startLine : 1;
+	const width = String(firstLine + display.length - 1).length;
+	const formatted = display.map((line, index) => numberedLine(firstLine + index, line, width));
 	return {
 		text: previewLines(formatted, FILE_PREVIEW_FIRST, FILE_PREVIEW_LAST, width + 2),
 		kind: "file",
 	};
+}
+
+/**
+ * 压缩 JSON 重新缩进。
+ *
+ * 只有整段正文是一行对象或数组时才重排：机器生成的文件展开后无法阅读，这是重排唯一能
+ * 帮上忙的场景。多行 JSON 保持原样，行号才能继续对应文件；解析失败（读了一半、带注释）
+ * 就放弃，不能为了排版改坏内容。
+ */
+function reindentJson(
+	lines: readonly string[],
+	fileName: string | undefined,
+): readonly string[] | undefined {
+	if (fileName === undefined || !/\.json$/i.test(fileName) || lines.length !== 1) return undefined;
+	const trimmed = (lines[0] ?? "").trim();
+	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
+
+	try {
+		const parsed: unknown = JSON.parse(trimmed);
+		if (typeof parsed !== "object" || parsed === null) return undefined;
+		const formatted = JSON.stringify(parsed, null, 2);
+		return formatted === undefined ? undefined : formatted.split("\n");
+	} catch {
+		return undefined;
+	}
 }
 
 function numberedLine(number: number, line: string, width: number): string {

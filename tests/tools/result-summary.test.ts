@@ -20,6 +20,51 @@ describe("工具结果呈现", () => {
 		});
 	});
 
+	it("read 的压缩 JSON 按缩进展开", () => {
+		const compact = '{"name":"reins","count":2}';
+		assert.deepEqual(
+			resultDetail("read", compact, {
+				path: "package.json",
+				startLine: 1,
+				endLine: 1,
+				totalLines: 1,
+				text: compact,
+			}),
+			{
+				text: '1  {\n2    "name": "reins",\n3    "count": 2\n4  }',
+				kind: "file",
+			},
+		);
+
+		// 历史回放没有结构化详情，同样用折叠行的文件名判断
+		assert.deepEqual(resultDetail("read", '{"a":1}', undefined, "a.json"), {
+			text: '1  {\n2    "a": 1\n3  }',
+			kind: "file",
+		});
+	});
+
+	it("已经是多行或不是 JSON 时不重排，行号保持原样", () => {
+		const formatted = '{\n  "a": 1\n}';
+		const detail = resultDetail("read", formatted, {
+			path: "a.json",
+			startLine: 1,
+			endLine: 3,
+			totalLines: 3,
+			text: formatted,
+		});
+		assert.deepEqual(detail, { text: "1  {\n2    \"a\": 1\n3  }", kind: "file" });
+
+		assert.deepEqual(resultDetail("read", '{"a":1}', { path: "a.txt" }), {
+			text: '1  {"a":1}',
+			kind: "file",
+		});
+		// 读了一半的 JSON 解析不了，保持原样而不是丢掉内容
+		assert.deepEqual(resultDetail("read", '{"a":', { path: "a.json" }), {
+			text: '1  {"a":',
+			kind: "file",
+		});
+	});
+
 	it("read 长文件只显示前五行与后三行", () => {
 		const content = Array.from({ length: 185 }, (_, index) => `line ${index + 1}`).join("\n");
 		const detail = resultDetail("read", content, { startLine: 1, endLine: 185, totalLines: 185 });

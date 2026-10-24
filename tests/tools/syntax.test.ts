@@ -45,6 +45,17 @@ describe("代码着色", () => {
 		assert.equal(byText.get('"x"'), "string");
 	});
 
+	it("JSON 键名单独给出属性角色", () => {
+		const lines = highlightCode('{\n  "name": "reins",\n  "count": 2\n}', "a.json");
+		const key = lines?.[1]?.find((segment) => segment.text === '"name"');
+		const string = lines?.[1]?.find((segment) => segment.text === '"reins"');
+		const number = lines?.[2]?.find((segment) => segment.text === "2");
+
+		assert.equal(key?.token, "property");
+		assert.equal(string?.token, "string");
+		assert.equal(number?.token, "number");
+	});
+
 	it("注释跨行时后续行仍然是注释", () => {
 		const lines = highlightCode("/*\n  说明\n*/\nconst a = 1;", "a.ts");
 		assert.equal(lines?.[1]?.every((segment) => segment.token === "comment"), true);

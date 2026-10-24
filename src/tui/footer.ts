@@ -68,9 +68,9 @@ export interface RuntimeStatus {
 	readonly sweep?: number;
 	/**
 	 * 色调。默认是「正在进行」的强调色 + 扫光；warning 表示遇挫但还在继续（重试），
-	 * error 表示这一轮已经失败，stopped 表示使用者主动停下——后两者都是静止状态。
+	 * error 表示这一轮已经失败，notice 表示配置缺失这类阻断或提示——后两者都是静止状态。
 	 */
-	readonly tone?: "warning" | "error" | "stopped";
+	readonly tone?: "warning" | "error" | "notice";
 }
 
 /** 扫光从强调色暗部过渡到白色。 */
@@ -85,8 +85,8 @@ const ACCENT_COLOR = THEME.accent;
 /** 结局是失败时状态文字用它。 */
 const ERROR_COLOR = THEME.error;
 const WARNING_COLOR = THEME.warning;
-/** 主动停下的状态文字：中性弱化色，既不像错误那样刺眼，也不像进行中那样吸引注意。 */
-const STOPPED_COLOR = THEME.textSubtle;
+/** 阻断与提示的状态文字：中性色，不跟着转圈，也不像错误那样刺眼。 */
+const NOTICE_COLOR = THEME.textSecondary;
 
 /** 页脚固定六行：空白间隔、运行时状态、上边框、输入行、下边框、常驻信息行。 */
 export const FOOTER_HEIGHT = 6;
@@ -414,7 +414,7 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 	const visibleActivity = line.slice(0, Math.min(activity.length, line.length));
 	const rest = line.slice(visibleActivity.length);
 	const toneColor =
-		status.tone === "error" ? ERROR_COLOR : status.tone === "warning" ? WARNING_COLOR : STOPPED_COLOR;
+		status.tone === "error" ? ERROR_COLOR : status.tone === "warning" ? WARNING_COLOR : NOTICE_COLOR;
 	const head =
 		status.tone !== undefined
 			? `${toneColor}${visibleActivity}${RESET}`

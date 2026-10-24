@@ -9,6 +9,7 @@ import {
 	renderFooter,
 	type FooterInfo,
 } from "../../src/tui/footer.ts";
+import { THEME } from "../../src/tui/theme.ts";
 
 const BORDER = "─";
 const FOCUS = "\x1b[38;2;78;201;176m";
@@ -326,6 +327,24 @@ describe("页脚输入框", () => {
 	it("状态行超出宽度时截断", () => {
 		const lines = renderFooter(12, "", true, { symbol: "⠋", text: "Waiting for response..." });
 		assert.equal(plain(lines[1] ?? ""), " ⠋ Waiting");
+	});
+
+	it("阻断与提示用静态中性色，不占用强调色", () => {
+		const lines = renderFooter(60, "", true, {
+			symbol: "",
+			text: "Configuration required",
+			phaseMs: 0,
+			elapsedMs: 0,
+			tokens: 0,
+			tone: "notice",
+		});
+		const raw = lines[1] ?? "";
+
+		assert.ok(raw.includes(THEME.textSecondary));
+		assert.equal(raw.includes(THEME.accent), false);
+		assert.equal(raw.includes(THEME.error), false);
+		assert.equal(raw.includes(THEME.warning), false);
+		assert.ok(plain(raw).startsWith("  Configuration required"));
 	});
 
 	it("运行时状态可以带扫光", () => {

@@ -326,7 +326,13 @@ describe("全屏布局", () => {
 
 			text = plain(frameLines(output).join("\n"));
 			assert.ok(text.includes("Configuration required"));
-			assert.equal(text.includes("Waiting for response..."), false);
+			assert.equal(text.includes("Waiting for model..."), false);
+
+			// 阻断是静止提示：不转圈、不占用活动强调色
+			const status = frameLines(output).find((line) => plain(line).includes("Configuration required")) ?? "";
+			assert.equal(status.includes("⠋"), false);
+			assert.equal(status.includes(THEME.accent), false);
+			assert.ok(status.includes(THEME.textSecondary));
 		} finally {
 			exitTui(input);
 		}
@@ -354,7 +360,7 @@ describe("全屏布局", () => {
 		try {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(50);
-			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for response..."));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for model..."));
 
 			// /model 只影响下一轮，运行中照开
 			input.emit("data", Buffer.from("/model\r"));
@@ -748,7 +754,7 @@ describe("全屏布局", () => {
 			t.mock.timers.tick(100);
 
 			assert.ok(
-				frameLines(output).map(plain).join("\n").includes("Rate limited · Retrying (1/5)..."),
+				frameLines(output).map(plain).join("\n").includes("Retrying (1/5): Rate limited..."),
 			);
 			// 重试用警告色，与「正在进行」的强调色分开：它不是正常推进，但也没失败
 			assert.ok(rawFrame(output).includes("\x1b[38;2;224;175;104m"));
@@ -1789,7 +1795,7 @@ describe("全屏布局", () => {
 
 			input.emit("data", Buffer.from("hello\r"));
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Waiting for response..."));
+			assert.ok(text.includes("Waiting for model..."));
 			assert.equal(text.includes("Configuration required"), false);
 		} finally {
 			exitTui(input);
@@ -2070,7 +2076,7 @@ describe("全屏布局", () => {
 
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("Configuration required"));
-			assert.equal(text.includes("Waiting for response..."), false);
+			assert.equal(text.includes("Waiting for model..."), false);
 		} finally {
 			exitTui(input);
 		}
@@ -2111,7 +2117,8 @@ describe("全屏布局", () => {
 			let lines = frameLines(output);
 			let text = lines.map(plain).join("\n");
 			assert.ok(text.includes("Permission required"));
-			assert.ok(text.includes("Bash: npm test"));
+			assert.ok(text.includes("Bash  npm test"));
+			assert.ok(text.includes("←/→ select"));
 			assert.equal(text.includes("destructive"), false);
 			assert.ok(text.includes("[y] allow once"));
 			assert.ok(text.includes("[n] deny"));
@@ -2329,8 +2336,7 @@ describe("全屏布局", () => {
 			t.mock.timers.tick(100);
 
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("[a] always:"));
-			assert.ok(text.includes('"git status"'));
+			assert.ok(text.includes('[a] always for "git status"'));
 			assert.ok(text.includes("[n] deny"));
 
 			input.emit("data", Buffer.from("a"));
@@ -2807,11 +2813,11 @@ describe("全屏布局", () => {
 			frame = rawFrame(output);
 			assert.ok(frame.includes(FOCUS));
 			assert.ok(cursorAt(output, 10, 9));
-			assert.equal(plain(frameLines(output)[7] ?? "").includes("Waiting for response"), false);
+			assert.equal(plain(frameLines(output)[7] ?? "").includes("Waiting for model"), false);
 
 			// 焦点回来之后再按一次才真正提交
 			input.emit("data", Buffer.from("\r"));
-			assert.ok(plain(frameLines(output)[7] ?? "").includes("Waiting for response"));
+			assert.ok(plain(frameLines(output)[7] ?? "").includes("Waiting for model"));
 		} finally {
 			exitTui(input);
 		}
@@ -2863,7 +2869,7 @@ describe("全屏布局", () => {
 			assert.ok((lines[1] ?? "").includes("\x1b[38;2;230;233;237m"));
 			assert.equal((lines[3] ?? "").includes("\x1b[48;2;22;25;29m"), false);
 			const status = plain(lines[7] ?? "");
-			assert.ok(status.startsWith(" ⠋ Waiting for response...  0.0s"));
+			assert.ok(status.startsWith(" ⠋ Waiting for model...  0.0s"));
 			assert.ok(status.endsWith("0.0s  ⇣0"));
 			assert.equal(status.length, 58);
 			assert.ok((lines[7] ?? "").includes("\x1b[38;2;"));
@@ -2894,7 +2900,7 @@ describe("全屏布局", () => {
 
 			t.mock.timers.tick(300);
 			let status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Waiting for response..."));
+			assert.ok(status.includes("Waiting for model..."));
 			assert.ok(status.includes("0.3s"));
 			assert.ok(status.endsWith("0.3s  ⇣0"));
 
@@ -2928,7 +2934,8 @@ describe("全屏布局", () => {
 			agent.emit({ type: "retrying", attempt: 2, maxAttempts: 5, reason: "connection reset" });
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Retrying (2/5)..."));
+			assert.ok(text.includes("Retrying (2/5): connection reset..."));
+			assert.equal(text.includes("connection reset · Retrying"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -3015,7 +3022,7 @@ describe("全屏布局", () => {
 			const after = frameLines(output).map(plain).join("\n");
 			assert.ok(after.includes("440K / 1M"));
 			assert.ok(after.includes("⚡ 75%"));
-			assert.ok(after.includes("Waiting for response..."));
+			assert.ok(after.includes("Waiting for model..."));
 		} finally {
 			exitTui(input);
 		}
@@ -3391,7 +3398,7 @@ describe("全屏布局", () => {
 		}
 	});
 
-	it("中止状态不带冻结的转圈符号", (t) => {
+	it("中止后清空状态行，只在对话流留下说明", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -3405,18 +3412,57 @@ describe("全屏布局", () => {
 			agent.emit({ type: "aborted" });
 			t.mock.timers.tick(100);
 
-			// 主动停下不是错误：状态行用中性措辞，不染错误色，也不带错误标记
-			const status = frameLines(output).find((line) => plain(line).includes("Stopped"));
-			assert.ok(status);
-			assert.equal(status.includes(THEME.error), false);
-			assert.ok(plain(status).trimStart().startsWith("Stopped"));
+			const frame = frameLines(output);
+			const text = frame.map(plain).join("\n");
+			// 主动停下由对话流说明，状态行不再保留 Stopped 结局，也不再转圈
+			assert.equal(text.includes("Stopped"), false);
+			assert.equal(text.includes("Stopping..."), false);
+			assert.equal(text.includes("⠋"), false);
 
 			// 对话流里留一条弱化色的说明，标出回答在这里被截断
-			const note = frameLines(output).find((line) => plain(line).includes("Interrupted"));
+			const note = frame.find((line) => plain(line).includes("Interrupted"));
 			assert.ok(note);
 			assert.ok(note.includes(THEME.textSubtle));
 			assert.equal(plain(note).includes("Error"), false);
-			assert.equal(frameLines(output).some((line) => plain(line).includes("×")), false);
+			assert.equal(frame.some((line) => plain(line).includes("×")), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("状态行区分写工具调用、等待子代理与等待模型", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+
+			agent.emit({ type: "writing_tool_call", name: "read" });
+			let status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("Writing tool call..."));
+
+			agent.emit({ type: "tool_start", callId: "s1", name: "subagent", args: { task: "检查一" } });
+			agent.emit({ type: "tool_start", callId: "s2", name: "subagent", args: { task: "检查二" } });
+			status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("Waiting for subagent..."));
+
+			// 子代理内部的进度更新不能把状态改写成普通工具在跑
+			agent.emit({ type: "tool_update", callId: "s1", text: "step 2/8" });
+			status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("Waiting for subagent..."));
+
+			// 并行派发时先结束一个，另一个还在跑，状态仍是等待子代理
+			agent.emit({ type: "tool_end", callId: "s1", name: "subagent", isError: false, durationMs: 10, summary: "ok" });
+			status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("Waiting for subagent..."));
+
+			agent.emit({ type: "tool_end", callId: "s2", name: "subagent", isError: false, durationMs: 10, summary: "ok" });
+			status = plain(frameLines(output)[7] ?? "");
+			assert.ok(status.includes("Waiting for model..."));
 		} finally {
 			exitTui(input);
 		}
@@ -3703,7 +3749,7 @@ describe("全屏布局", () => {
 			assert.ok(lines.some((line) => line.startsWith(" › line1")));
 			assert.ok(lines.some((line) => line.startsWith("   line2")));
 			assert.ok(cursorAt(output, 10, 9));
-			assert.equal(lines.join("\n").includes("Waiting for response..."), false);
+			assert.equal(lines.join("\n").includes("Waiting for model..."), false);
 		} finally {
 			exitTui(input);
 		}

@@ -16,6 +16,8 @@ export function syntaxColor(token: SyntaxToken | undefined): string {
 			return THEME.syntaxFunction;
 		case "type":
 			return THEME.syntaxType;
+		case "property":
+			return THEME.syntaxType;
 		case "operator":
 			return THEME.syntaxOperator;
 		default:

@@ -273,6 +273,13 @@ const DETAIL_RIGHT_PADDING = 1;
 const DETAIL_BAND_LEFT = 2;
 /** 窄终端下正文至少保留的列数：行号与标记必须为它让位，否则这一行什么也读不到。 */
 const MIN_DETAIL_CONTENT = 4;
+/**
+ * 制表符宽度。
+ *
+ * 终端只会把光标跳到下一个制表位，不会为跳过的格子补底色；详情色带因此会在缩进处断开。
+ * 上屏前统一展开成空格，行宽计算与背景填充才一致。
+ */
+const TAB_STOP = 4;
 
 interface PromptRange {
 	/** 提示块第一行在 transcript 里的下标 */
@@ -436,7 +443,7 @@ export function attachToolResult(
 			? formatDuration(durationMs)
 			: resultMetric(name, details, content);
 	if (metric !== undefined) tool.metric = metric;
-	const detail = resultDetail(name, content, details);
+	const detail = resultDetail(name, content, details, tool.detail);
 	if (detail !== undefined) {
 		tool.fullDetail = detail.text;
 		tool.detailKind = detail.kind;
@@ -1243,7 +1250,7 @@ function toolResultLines(
 ): readonly string[] {
 	const raw = tool.result ?? "";
 	const rows = stripTrailingBlank((raw.length === 0 ? "(no output)" : raw).split("\n"));
-	const visible = rows.slice(0, TOOL_RESULT_PREVIEW_LINES);
+	const visible = rows.slice(0, TOOL_RESULT_PREVIEW_LINES).map(expandTabs);
 	const hidden = rows.length - visible.length;
 	const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
 
@@ -1338,8 +1345,13 @@ function detailBand(tool: TranscriptTool, baseIndent: string, width: number): re
 	// 工具结果普遍以换行结尾，直接切行会在详情末尾多出一个空行，与下边距叠成两行留白
 	const rows = stripTrailingBlank((tool.fullDetail ?? "").split("\n"));
 	// 只截显示不截数据：全文仍在 tool.fullDetail 里，展开多长都不会把这一轮的其他内容挤出屏幕
-	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES);
-	const syntax = kind === "diff" ? diffSyntax(visible, tool.detail) : undefined;
+	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES).map(expandTabs);
+	const syntax =
+		kind === "diff"
+			? diffSyntax(visible, tool.detail)
+			: kind === "file"
+				? fileSyntax(visible, tool.detail)
+				: undefined;
 	const hidden = rows.length - visible.length;
 	return [
 		bandBlankLine(width, bandStart),
@@ -1446,6 +1458,23 @@ function stripTrailingBlank(rows: readonly string[]): readonly string[] {
 	return end === rows.length ? rows : rows.slice(0, end);
 }
 
+/** 按固定制表位展开制表符；换行由调用方先切好，这里只处理行内。 */
+function expandTabs(text: string): string {
+	let column = 0;
+	let output = "";
+	for (const char of text) {
+		if (char === "\t") {
+			const width = TAB_STOP - (column % TAB_STOP);
+			output += " ".repeat(width);
+			column += width;
+			continue;
+		}
+		output += char;
+		column += characterWidth(char);
+	}
+	return output;
+}
+
 /**
  * 详情行：文件与 diff 带行号，续行按行号后的内容列悬挂缩进；其余按正文折行。
  *
@@ -1462,13 +1491,21 @@ function detailBodyLines(
 	if (kind === "file") {
 		const match = /^(\s*\d+  )(.*)$/.exec(line);
 		if (match !== null) {
+			const segments =
+				syntax === undefined
+					? [{ text: match[2] ?? "", color }]
+					: syntax.map((segment) => ({
+							text: segment.text,
+							// 没有角色的标点保持正文色，别把整行提亮成白色
+							color: segment.token === undefined ? color : syntaxColor(segment.token),
+						}));
 			return hangingLines(
 				match[1] ?? "",
 				"",
-				[{ text: match[2] ?? "", color }],
+				segments,
 				width,
 				bandStart,
-				THEME.surface,
+				THEME.detailBg,
 				THEME.textSubtle,
 				color,
 				DETAIL_RIGHT_PADDING,
@@ -1481,7 +1518,7 @@ function detailBodyLines(
 			const marker = match[2] ?? "  ";
 			// 增删由整行底色表示，代码本身按语法着色；认不出语言时退回正文色
 			const background =
-				marker === "+ " ? THEME.diffInsertBg : marker === "- " ? THEME.diffDeleteBg : THEME.surface;
+				marker === "+ " ? THEME.diffInsertBg : marker === "- " ? THEME.diffDeleteBg : THEME.detailBg;
 			// 行号跟着增删走：一眼能分出这一行的归属，不必来回对标记列
 			const markerColor = marker === "+ " ? THEME.success : marker === "- " ? THEME.error : color;
 			const segments =
@@ -1556,11 +1593,39 @@ function diffSyntax(
 	});
 }
 
+/**
+ * 文件内容的语法着色。
+ *
+ * 带行号的正文按行号后的内容列重建整段代码再解析，行号与省略行不进入源码：跨行结构
+ * 只有整段解析才能判对。行号宽度由预览层决定，这里只按「数字 + 两个空格」剥离。
+ */
+function fileSyntax(
+	rows: readonly string[],
+	fileName: string,
+): readonly (readonly SyntaxSegment[] | undefined)[] | undefined {
+	const code: string[] = [];
+	const slots: (number | undefined)[] = [];
+	for (const row of rows) {
+		const match = /^\s*\d+  (.*)$/.exec(row);
+		if (match === null) {
+			slots.push(undefined);
+			continue;
+		}
+		slots.push(code.length);
+		code.push(match[1] ?? "");
+	}
+	if (code.length === 0) return undefined;
+
+	const parsed = highlightCode(code.join("\n"), fileName);
+	if (parsed === undefined) return undefined;
+	return slots.map((slot) => (slot === undefined ? undefined : parsed[slot]));
+}
+
 /** 面板上下内边距：整条色带，不写内容。 */
 function bandBlankLine(width: number, bandStart: number): string {
 	const start = Math.max(0, Math.min(bandStart, width));
 	const lead = " ".repeat(start);
-	return `${lead}${THEME.surface}${" ".repeat(Math.max(0, width - start))}${RESET}`;
+	return `${lead}${THEME.detailBg}${" ".repeat(Math.max(0, width - start))}${RESET}`;
 }
 
 /** 带行号的行换行时，续行缩进到行号之后的内容列。 */
@@ -1637,7 +1702,7 @@ function bandedWrappedLines(
 		// 空行与 hunk 之间的省略行不写内容，只留底色；给它们上文字色会在整行铺出一片色块
 		const paint = visible.trim().length === 0 ? "" : color;
 		const padding = " ".repeat(Math.max(0, width - start - displayWidth(visible)));
-		return `${lead}${THEME.surface}${paint}${visible}${padding}${RESET}`;
+		return `${lead}${THEME.detailBg}${paint}${visible}${padding}${RESET}`;
 	});
 }
 

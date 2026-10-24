@@ -115,6 +115,9 @@ export class TurnDriver {
 			if (event.type === "text_delta") await this.emit({ type: "text_delta", text: event.text });
 			else if (event.type === "reasoning_delta") {
 				await this.emit({ type: "reasoning_delta", text: event.text });
+			} else if (event.type === "tool_call_start") {
+				// 参数还在流里，工具没开始跑；界面据此把「响应」与「调用工具」分开
+				await this.emit({ type: "writing_tool_call", name: event.name });
 			}
 		}
 

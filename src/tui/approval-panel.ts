@@ -6,7 +6,6 @@ import {
 	BORDER_COLOR,
 	PANEL_BG,
 	RESET,
-	padEnd,
 } from "./menu-panel.ts";
 import { displayWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
@@ -14,17 +13,21 @@ import { THEME } from "./theme.ts";
 /**
  * 工具审批面板。
  *
- * 卡片式六行：标题边框、工具：参数（最多两行）、空行、动作行、下边框。动作行可以用左右键
- * 移动高亮、回车确认，y/a/n 仍可直接执行；参数放不下时在第二行续写，仍放不下就在末尾省略。
+ * 六行：标题边框、工具与参数、参数续行、导航提示、动作行、下边框。
+ * 工具名与参数分层；参数最多两行；动作行按宽度逐级退化；选中动作加粗。
  */
 
 export const APPROVAL_PANEL_HEIGHT = 6;
 
 const TITLE = "Permission required";
+const HINT = "←/→ select · Enter confirm · Esc deny";
 /** 选中动作前的标记，与用户提示和工具调用保持一致。 */
 const ACTION_MARKER = "› ";
 /** 未选中的动作用同宽空白占位，移动高亮时文字不左右跳。 */
 const ACTION_SLOT = " ".repeat(displayWidth(ACTION_MARKER));
+/** 选中项加粗；之后必须关掉，否则后面的动作也会跟着变粗。 */
+const BOLD = "\x1b[1m";
+const BOLD_OFF = "\x1b[22m";
 
 export function renderApprovalPanel(
 	width: number,
@@ -32,16 +35,16 @@ export function renderApprovalPanel(
 	selected: ApprovalAnswer = "once",
 ): readonly string[] {
 	const columns = Math.max(1, width);
-	const [detail, continuation] = detailLines(columns, prompt);
+	const detail = detailLines(columns, prompt);
 	const actions = actionRow(columns, prompt, selected);
 
 	return [
 		titleBorder(columns),
-		content(detail, columns, THEME.textPrimary),
-		content(continuation, columns, THEME.textPrimary),
-		content("", columns, THEME.textPrimary),
+		toolLine(columns, prompt, detail),
+		continuationLine(columns, prompt, detail),
+		hintLine(columns),
 		styledContent(`  ${actions.styled}`, 2 + actions.width, columns),
-		`${BORDER_COLOR}${"─".repeat(columns)}${RESET}`,
+		bottomBorder(columns),
 	];
 }
 
@@ -55,15 +58,70 @@ function titleBorder(width: number): string {
 	return `${BORDER_COLOR}${"─".repeat(left)}${THEME.warning}${label}${BORDER_COLOR}${"─".repeat(right)}${RESET}`;
 }
 
-/** 一行内容：统一铺满面板底色，超宽时截断。 */
-function content(text: string, width: number, color: string): string {
-	return `${PANEL_BG}${color}${padEnd(text, width)}${RESET}`;
+function bottomBorder(width: number): string {
+	return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
 }
 
 /** 已经带样式的行：按纯文本宽度补空格，不能再用 padEnd 量带 ANSI 的字符串。 */
 function styledContent(styled: string, plainWidth: number, width: number): string {
 	const padding = " ".repeat(Math.max(0, width - plainWidth));
 	return `${PANEL_BG}${styled}${padding}${RESET}`;
+}
+
+interface DetailLines {
+	readonly tool: string;
+	readonly first: string;
+	readonly second: string;
+	/** 第二行缩进到参数首字所需的列数 */
+	readonly prefixWidth: number;
+}
+
+/** 工具名与参数分层：工具名青色，文件路径用路径蓝，其余参数用正文色。 */
+function toolLine(width: number, prompt: ApprovalPrompt, detail: DetailLines): string {
+	const leading = "  ";
+	const gap = "  ";
+	const used =
+		displayWidth(leading) + displayWidth(detail.tool) + displayWidth(gap) + displayWidth(detail.first);
+	const padding = " ".repeat(Math.max(0, width - used));
+	return `${PANEL_BG}${ACCENT_COLOR}${leading}${detail.tool}${detailColor(prompt)}${gap}${detail.first}${padding}${RESET}`;
+}
+
+/** 参数续行与参数首字对齐；短参数时整行留白。 */
+function continuationLine(width: number, prompt: ApprovalPrompt, detail: DetailLines): string {
+	const indent = " ".repeat(detail.prefixWidth);
+	const used = detail.prefixWidth + displayWidth(detail.second);
+	const padding = " ".repeat(Math.max(0, width - used));
+	return `${PANEL_BG}${detailColor(prompt)}${indent}${detail.second}${padding}${RESET}`;
+}
+
+/** 导航提示：y/a/n 已经写在动作里，这里补上左右与确认、拒绝键。 */
+function hintLine(width: number): string {
+	const text = truncateToWidth(`  ${HINT}`, width);
+	const padding = " ".repeat(Math.max(0, width - displayWidth(text)));
+	return `${PANEL_BG}${THEME.textSubtle}${text}${padding}${RESET}`;
+}
+
+function detailColor(prompt: ApprovalPrompt): string {
+	return prompt.tool === "edit" || prompt.tool === "write" ? THEME.path : THEME.textPrimary;
+}
+
+/** 把工具展示名与参数铺成最多两行；第二行仍放不下就在末尾省略。 */
+function detailLines(width: number, prompt: ApprovalPrompt): DetailLines {
+	const tool = displayToolName(prompt.tool);
+	const prefixWidth = 2 + displayWidth(tool) + 2;
+	const limit = Math.max(1, width - prefixWidth);
+	const detail = compact(prompt.detail);
+
+	const first = truncateToWidth(detail, limit);
+	const rest = detail.slice(first.length);
+	if (rest.length === 0) return { tool, first, second: "", prefixWidth };
+
+	let second = truncateToWidth(rest, limit);
+	if (second.length < rest.length) {
+		// 省略号自己也占一列；先少取一个字符再补上
+		second = `${truncateToWidth(rest, Math.max(0, limit - 1))}…`;
+	}
+	return { tool, first, second, prefixWidth };
 }
 
 interface ActionOption {
@@ -80,8 +138,7 @@ interface ActionRow {
  * 动作行。
  *
  * 先按宽度从“带完整范围”到“只有按键”逐级退化，避免窄终端下拒绝键被截掉；再把当前选中
- * 的动作高亮。只有选中项前面显示 ›，未选中项用同宽空白占位。左右键移动、回车确认都由
- * 界面负责，这里只负责显示。
+ * 的动作高亮加粗。只有选中项前面显示 ›，未选中项用同宽空白占位。
  */
 function actionRow(width: number, prompt: ApprovalPrompt, selected: ApprovalAnswer): ActionRow {
 	const options = layoutActions(width, prompt);
@@ -93,7 +150,7 @@ function actionRow(width: number, prompt: ApprovalPrompt, selected: ApprovalAnsw
 			}
 			// 拒绝用危险色，其余用强调色：选到拒绝时一眼能看出这是危险动作
 			const color = option.action === "deny" ? THEME.error : ACCENT_COLOR;
-			return `${color}${option.label}${THEME.textPrimary}`;
+			return `${BOLD}${color}${option.label}${BOLD_OFF}${THEME.textPrimary}`;
 		})
 		.join("   ");
 	return { styled, width: displayWidth(plain) };
@@ -115,6 +172,14 @@ export function approvalActionAt(
 	return undefined;
 }
 
+/** 可记住范围的文案：文件类不重复路径，Bash 保留具体命令前缀。 */
+function alwaysLabel(prompt: ApprovalPrompt): string | undefined {
+	if (prompt.saveShort === undefined) return undefined;
+	if (prompt.tool === "edit" || prompt.tool === "write") return "always for this file";
+	if (prompt.tool === "bash") return `always for "${prompt.saveShort}"`;
+	return `always: "${prompt.saveShort}"`;
+}
+
 function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOption[] {
 	const available = width - 2;
 	const once: ActionOption = { action: "once", label: `${ACTION_MARKER}[y] allow once` };
@@ -122,7 +187,8 @@ function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOp
 	const rowWidth = (options: readonly ActionOption[]): number =>
 		displayWidth(options.map((option) => option.label).join("   "));
 
-	if (prompt.saveShort === undefined) {
+	const alwaysText = alwaysLabel(prompt);
+	if (alwaysText === undefined) {
 		const full = [once, deny];
 		return rowWidth(full) <= available
 			? full
@@ -134,7 +200,7 @@ function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOp
 
 	const full = [
 		once,
-		{ action: "always" as const, label: `${ACTION_MARKER}[a] always: "${prompt.saveShort}"` },
+		{ action: "always" as const, label: `${ACTION_MARKER}[a] ${alwaysText}` },
 		deny,
 	];
 	if (rowWidth(full) <= available) return full;
@@ -159,27 +225,6 @@ function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOp
 		{ action: "deny", label: `${ACTION_MARKER}[n]` },
 	];
 }
-
-/** 把工具展示名与参数铺成最多两行；第二行仍放不下就在末尾省略。 */
-function detailLines(width: number, prompt: ApprovalPrompt): readonly [string, string] {
-	const prefix = `  ${displayToolName(prompt.tool)}: `;
-	const indent = " ".repeat(displayWidth(prefix));
-	const firstLimit = Math.max(1, width - displayWidth(prefix));
-	const secondLimit = Math.max(1, width - displayWidth(indent));
-	const detail = compact(prompt.detail);
-
-	const first = truncateToWidth(detail, firstLimit);
-	const rest = detail.slice(first.length);
-	if (rest.length === 0) return [`${prefix}${first}`, ""];
-
-	let second = truncateToWidth(rest, secondLimit);
-	if (second.length < rest.length) {
-		// 省略号自己也占一列；先少取一个字符再补上
-		second = `${truncateToWidth(rest, Math.max(0, secondLimit - 1))}…`;
-	}
-	return [`${prefix}${first}`, `${indent}${second}`];
-}
-
 
 /** 参数是格式化过的 JSON 或命令文本，压成一行才能放进固定高度的面板。 */
 function compact(detail: string): string {
