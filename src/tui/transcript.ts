@@ -22,6 +22,34 @@ import {
 	type TranscriptTodo,
 } from "./todo-card.ts";
 
+/** 子代理的一次运行的终态:组清单与单个调用行都从这里渲染。 */
+export interface SubagentRunView {
+	/** 派发时的任务描述,清单行的正文位 */
+	readonly task: string;
+	/** running 之外都是终态;结果到达与回合冻结都会改写它,因此可变 */
+	status: "running" | "done" | "failed";
+	/** 总耗时;终态定格,运行中由界面按 startedAt 每帧重算 */
+	durationMs?: number;
+	/** 失败原因摘要(首行);失败行的 detail 位 */
+	failure?: string;
+}
+
+/**
+ * 同一回合内多个子代理调用的组。
+ *
+ * 组头恒为 ›(展开 ◈),计数段按 running→done→failed 顺序实时翻新;清单用任务卡片的
+ * 四态符号语言,纯展示不可再展开——子代理的过程细节不进主对话流。
+ */
+export interface TranscriptSubagentGroup {
+	readonly kind: "subagentGroup";
+	readonly members: (SubagentRunView & { readonly callId: string })[];
+	/** 组的第一个子代理的派发时刻;运行中耗时由此起算 */
+	readonly startedAt: number;
+	/** 组的总耗时;全部结束时定格 */
+	durationMs?: number;
+	expanded: boolean;
+}
+
 /**
  * 对话流渲染。
  *
@@ -45,6 +73,7 @@ export type TranscriptLine =
 	| TranscriptThinking
 	| TranscriptTool
 	| TranscriptToolGroup
+	| TranscriptSubagentGroup
 	| TranscriptTodo
 	| TranscriptMarkdown;
 
@@ -205,6 +234,25 @@ const TOOL_GROUP_MEMBER_INDENT = `${RESPONSE_INDENT}  `;
 const COMMAND_GROUP_MIN = 5;
 /** 错误行的标记：与工具失败行共用，错误消息因此有一致的起头。 */
 const ERROR_MARKER = "×";
+/** 子代理组头的固定标签。 */
+const SUBAGENT_GROUP_LABEL = "Subagents";
+/** 子代理组清单的缩进:比组头正文深两列,与工具组成员同一节奏。 */
+const SUBAGENT_ITEM_INDENT = `${RESPONSE_INDENT}  `;
+/** 清单里任务摘要的显示宽度上限,超出省略。 */
+const SUBAGENT_TASK_WIDTH = 34;
+/** 待办与待派发子代理的标记:还没有可汇报的结局。 */
+const SUBAGENT_PENDING_MARKER = "○";
+/** 子代理组头与清单完成态的颜色:组头随工具组头,完成态用成功绿但不带删除线。 */
+const SUBAGENT_HEAD_COLOR = TOOL_GROUP_COLOR;
+const SUBAGENT_DONE_COLOR = THEME.success;
+/** 清单里运行中的行要转圈加扫光,渲染期重建;静态形态是青色加粗的占位行。 */
+const SUBAGENT_RUNNING_COLOR = THEME.accent;
+/** 计数段与清单的失败、计数、分隔:与任务卡片同一档色。 */
+const SUBAGENT_FAILED_COLOR = THEME.error;
+const SUBAGENT_PENDING_COLOR = THEME.textSecondary;
+const SUBAGENT_COUNT_COLOR = THEME.textSubtle;
+/** 加粗:运行中的行是焦点。 */
+const SUBAGENT_BOLD = "\x1b[1m";
 const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
 /** 右侧固定预留一列空隙和一列滚动条。 */
@@ -247,6 +295,11 @@ export interface TranscriptView {
 	readonly liveTodoLines: ReadonlyMap<number, LiveTodoLine>;
 	/** 每张任务卡的头行在 lines 里的起点，双击收起/展开使用 */
 	readonly todoHeaders: readonly { readonly start: number; readonly card: TranscriptTodo }[];
+	/** 每个子代理组头在 lines 里的起点，双击收起/展开使用 */
+	readonly subagentHeaders: readonly {
+		readonly start: number;
+		readonly group: TranscriptSubagentGroup;
+	}[];
 }
 
 export interface TranscriptMetrics {
@@ -437,6 +490,10 @@ export function toggleLastExpandable(turns: readonly TranscriptTurn[]): boolean 
 			}
 			if (line.kind === "todo") {
 				line.collapsed = line.collapsed !== true;
+				return true;
+			}
+			if (line.kind === "subagentGroup") {
+				line.expanded = line.expanded !== true;
 				return true;
 			}
 			if (line.kind === "toolGroup" && line.members.length >= 2) {
@@ -659,6 +716,111 @@ export function todoHeaderInView(
 	return view.todoHeaders.find((header) => header.start === lineIndex)?.card;
 }
 
+/** 命中子代理组头；双击在收起与展开之间切换。 */
+export function subagentGroupHeaderInView(
+	view: TranscriptView,
+	height: number,
+	scrollTop: number,
+	row: number,
+): TranscriptSubagentGroup | undefined {
+	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
+	if (lineIndex === undefined) return undefined;
+	return view.subagentHeaders.find((header) => header.start === lineIndex)?.group;
+}
+
+/**
+ * 子代理组的屏幕行。
+ *
+ * 收起只有组头一行:标签 + 按 running→done→failed 顺序的计数段 + 括号耗时。
+ * 展开追加剧清单一行一条,符号沿用任务卡片的四态语言;清单纯展示。
+ * 运行中的耗时与计数由 layout 的 100ms 帧刷新:组行不进 liveTodoLines,
+ * 每次 spinner tick 直接 markTranscriptDirty 让视图重建(每轮只有一个组,重建便宜)。
+ */
+function subagentGroupLines(
+	group: TranscriptSubagentGroup,
+	width: number,
+	live: Map<number, LiveTodoLine>,
+	start: number,
+): readonly string[] {
+	const lines: string[] = [subagentGroupHead(group, width)];
+
+	if (group.expanded !== true) return lines;
+	group.members.forEach((member, index) => {
+		const memberStart = start + lines.length;
+		lines.push(...subagentMemberLines(member, width, index + 1));
+		// 运行中的清单行登记动画原料:渲染期换转圈与扫光
+		if (member.status === "running") {
+			const budget = Math.max(0, width - displayWidth(SUBAGENT_ITEM_INDENT) - 2);
+			live.set(memberStart, {
+				kind: "subagent",
+				indent: SUBAGENT_ITEM_INDENT,
+				content: truncateToWidth(`Subagent${index + 1}  ${member.task}`, Math.min(SUBAGENT_TASK_WIDTH + 14, budget)),
+			});
+		}
+	});
+	return lines;
+}
+
+/** 组头一行:标签、计数段、括号耗时。计数顺序固定 running→done→failed。 */
+function subagentGroupHead(group: TranscriptSubagentGroup, width: number): string {
+	const marker = group.expanded === true ? TOOL_GROUP_EXPANDED_MARKER : TOOL_MARKER;
+	const prefix = `${RESPONSE_INDENT}${marker} `;
+	// 计数段的 ANSI 码不占列,head 的显示宽度要按纯文本算
+	const counts = countSegments(group);
+	const elapsed =
+		group.durationMs !== undefined
+			? formatDuration(group.durationMs)
+			: formatDuration(Math.max(0, Date.now() - group.startedAt));
+	const head = `${prefix}${SUBAGENT_GROUP_LABEL}  ${counts}`;
+	const headWidth = displayWidth(head.replace(/\x1b\[[0-9;]*m/g, ""));
+	const budget = Math.max(0, width - headWidth);
+	const metric = truncateToWidth(` (${elapsed})`, budget);
+	const padding = " ".repeat(Math.max(0, budget - displayWidth(metric)));
+	return `${SUBAGENT_HEAD_COLOR}${head}${RESET}${SUBAGENT_COUNT_COLOR}${metric}${RESET}${padding}`;
+}
+
+/** 计数段:running 青、done 绿、failed 红,没有的段不显示。 */
+function countSegments(group: TranscriptSubagentGroup): string {
+	const counts = { running: 0, done: 0, failed: 0 };
+	for (const member of group.members) counts[member.status] += 1;
+	const parts: string[] = [];
+	if (counts.running > 0) parts.push(`${SUBAGENT_RUNNING_COLOR}${counts.running} running${RESET}`);
+	if (counts.done > 0) parts.push(`${SUBAGENT_DONE_COLOR}${counts.done} done${RESET}`);
+	if (counts.failed > 0) parts.push(`${SUBAGENT_FAILED_COLOR}${counts.failed} failed${RESET}`);
+	// 分隔点跟着组头同色,前后各一列空格
+	return parts.join(`${RESET} ${SUBAGENT_HEAD_COLOR}· ${SUBAGENT_HEAD_COLOR}`);
+}
+
+/** 组清单的一条:四态符号 + 任务摘要 + 右对齐耗时;失败行正文位是原因摘要。 */
+function subagentMemberLines(
+	member: SubagentRunView & { readonly callId: string },
+	width: number,
+	position: number,
+): readonly string[] {
+	const indent = SUBAGENT_ITEM_INDENT;
+	const label = `Subagent${position}`;
+	const body = member.status === "failed" ? (member.failure ?? member.task) : member.task;
+
+	// 耗时列右对齐钉在行尾;待办与运行中(耗时未定)没有
+	const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
+	const elapsedWidth = elapsed.length === 0 ? 0 : displayWidth(elapsed) + 2;
+	const budget = Math.max(0, width - displayWidth(indent) - 2 - elapsedWidth);
+	const summary = truncateToWidth(body, Math.min(SUBAGENT_TASK_WIDTH, budget));
+	const gap = Math.max(1, budget - displayWidth(summary) + 2);
+
+	if (member.status === "running") {
+		// 静态占位与动画行同构(运行符 + 标签 + 摘要),重建时只是换了着色与转圈帧
+		return [`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}  ${summary}${RESET}${" ".repeat(gap)}`];
+	}
+	if (member.status === "failed") {
+		return [`${indent}${SUBAGENT_FAILED_COLOR}× ${label}  ${summary}${RESET}${" ".repeat(gap)}${elapsed}`];
+	}
+	if (member.status === "done") {
+		return [`${indent}${SUBAGENT_DONE_COLOR}● ${label}  ${summary}${RESET}${" ".repeat(gap)}${elapsed}`];
+	}
+	return [`${indent}${SUBAGENT_PENDING_COLOR}${SUBAGENT_PENDING_MARKER} ${label}  ${summary}${RESET}`];
+}
+
 function lineIndexAtRow(
 	view: TranscriptView,
 	height: number,
@@ -740,6 +902,8 @@ function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
 	if (line.kind === "toolGroup") return "tools";
 	if (line.kind === "thinkingBlock") return "thinking";
 	if (line.kind === "todo") return "todo";
+	// 子代理组与普通工具块同类:它是这一轮调用的过程,不该像警告那样自成一块
+	if (line.kind === "subagentGroup") return "tools";
 	return "notice";
 }
 
@@ -778,6 +942,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 	const toolHeaders: { start: number; tool: TranscriptTool }[] = [];
 	const liveTodoLines = new Map<number, LiveTodoLine>();
 	const todoHeaders: { start: number; card: TranscriptTodo }[] = [];
+	const subagentHeaders: { start: number; group: TranscriptSubagentGroup }[] = [];
 	let previousHadResponse = false;
 
 	if (notice !== undefined && notice.length > 0) {
@@ -845,6 +1010,12 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 				lines.push(...todoCardLines(line, width, liveTodoLines, cardStart));
 				continue;
 			}
+			if (line.kind === "subagentGroup") {
+				const groupStart = lines.length;
+				subagentHeaders.push({ start: groupStart, group: line });
+				lines.push(...subagentGroupLines(line, width, liveTodoLines, groupStart));
+				continue;
+			}
 			// 三种提示各有自己的标记与颜色：问题要显眼，中性说明只求看得见
 			const marker = line.kind === "warning" ? "!" : line.kind === "info" ? "·" : ERROR_MARKER;
 			const color =
@@ -856,7 +1027,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		previousHadResponse = turn.response.length > 0;
 	}
 
-	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveTodoLines, todoHeaders };
+	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveTodoLines, todoHeaders, subagentHeaders };
 }
 
 

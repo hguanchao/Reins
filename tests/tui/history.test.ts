@@ -312,3 +312,48 @@ describe("会话历史回填任务卡片", () => {
 		}
 	});
 });
+
+describe("会话历史回填子代理组", () => {
+	it("同一条助手消息里的多个子代理调用回填为一个组,结果改成员状态", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "s1", name: "subagent", arguments: { task: "梳理结构" } },
+					{ type: "toolCall", id: "s2", name: "subagent", arguments: { task: "修路径" } },
+				],
+			},
+			{ role: "toolResult", toolCallId: "s1", toolName: "subagent", content: "结构如下……", isError: false },
+			{ role: "toolResult", toolCallId: "s2", toolName: "subagent", content: "The subagent failed: boom", isError: true },
+		];
+
+		const turns = buildTranscriptHistory(messages);
+		const group = turns[0]?.response[0];
+		if (typeof group !== "object" || group === null || group.kind !== "subagentGroup") {
+			throw new Error("expected a subagent group");
+		}
+		assert.equal(group.members.length, 2);
+		assert.equal(group.members[0]?.status, "done");
+		assert.equal(group.members[1]?.status, "failed");
+		assert.equal(group.members[1]?.failure, "The subagent failed: boom");
+	});
+
+	it("普通工具与子代理混排时互不影响", () => {
+		const messages: LlmMessage[] = [
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "r", name: "read", arguments: { path: "a.ts" } },
+					{ type: "toolCall", id: "s", name: "subagent", arguments: { task: "梳理" } },
+				],
+			},
+			{ role: "toolResult", toolCallId: "r", toolName: "read", content: "x", isError: false },
+			{ role: "toolResult", toolCallId: "s", toolName: "subagent", content: "ok", isError: false },
+		];
+
+		const turns = buildTranscriptHistory(messages);
+		const kinds = turns[0]?.response.map((line) => (line as { kind?: string }).kind);
+		assert.deepEqual(kinds, ["tool", "subagentGroup"]);
+	});
+});

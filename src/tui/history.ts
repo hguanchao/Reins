@@ -66,6 +66,11 @@ export function buildTranscriptHistory(
 						turn.response.push(card);
 						continue;
 					}
+					// 同一条 assistant 消息里的多个子代理调用回填为同一个组,与实时归组一致
+					if (call.name === "subagent") {
+						appendSubagentMember(turn.response, call.id, subagentTaskOf(call.arguments));
+						continue;
+					}
 					const described = describeToolCall(call.name, call.arguments, workspaceRoot);
 					appendToolLine(
 						turn.response,
@@ -88,6 +93,8 @@ export function buildTranscriptHistory(
 				break;
 			}
 			case "toolResult": {
+				// 子代理的结果改组员状态,不落普通工具行
+				if (message.toolName === "subagent" && attachSubagentResult(turns, message)) break;
 				if (!message.isError) {
 					const turn = ensureTurn("(earlier conversation)");
 					const tool = findToolByCallId(turn.response, message.toolCallId);
@@ -123,4 +130,39 @@ export function buildTranscriptHistory(
 function firstLine(content: string): string {
 	const line = content.split("\n", 1)[0] ?? "";
 	return line.length > MAX_LINE ? `${line.slice(0, MAX_LINE)}…` : line;
+}
+
+/** 派发参数里的任务描述;形状不对就给一句占位,清单行总得有字。 */
+function subagentTaskOf(args: Record<string, unknown>): string {
+	const task = args["task"];
+	return typeof task === "string" && task.length > 0 ? task : "(no task)";
+}
+
+/** 把子代理调用追加进最近一个组;没有组(跨了消息)或最后一个不是组就开新组。 */
+function appendSubagentMember(response: TranscriptLine[], callId: string, task: string): void {
+	const last = response.at(-1);
+	if (typeof last === "object" && last !== null && last.kind === "subagentGroup") {
+		last.members.push({ callId, task, status: "done" });
+		return;
+	}
+	// 回填无法还原运行期起点,组耗时按 0 占位;终态由结果改写
+	response.push({ kind: "subagentGroup", members: [{ callId, task, status: "done" }], startedAt: 0, durationMs: undefined, expanded: false });
+}
+
+/** 子代理结果挂回组员:终态与失败原因落定;不是子代理结果返回 false。 */
+function attachSubagentResult(
+	turns: readonly MutableTurn[],
+	message: Extract<LlmMessage, { role: "toolResult" }>,
+): boolean {
+	for (const turn of turns) {
+		for (const line of turn.response) {
+			if (typeof line !== "object" || line === null || line.kind !== "subagentGroup") continue;
+			const member = line.members.find((item) => item.callId === message.toolCallId);
+			if (member === undefined) continue;
+			member.status = message.isError ? "failed" : "done";
+			if (message.isError) member.failure = firstLine(message.content);
+			return true;
+		}
+	}
+	return false;
 }

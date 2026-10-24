@@ -36,7 +36,7 @@ import {
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
-import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 import { todoCardFromArgs, type TodoAnimationFrame, type TranscriptTodo } from "./todo-card.ts";
 
 /**
@@ -796,6 +796,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		exitTimer = setTimeout(disarm, EXIT_CONFIRM_WINDOW_MS);
 	};
 
+	/** 取文本首行;失败原因摘要只留一句。 */
+	const firstLineOf = (text: string): string => text.split("\n", 1)[0] ?? "";
+
 	const onCtrlC = (): void => {
 		if (activeTurn !== undefined) {
 			// 第一次只中止当前轮；2 秒内再按一次强制退出
@@ -918,6 +921,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						markTranscriptDirty();
 					}
 				}
+				// 运行中的子代理组头:计数与耗时都在变,有组在跑才标脏重建
+				let subagentsRunning = false;
+				for (const line of activeTurn.lines) {
+					if (typeof line !== "object" || line === null || line.kind !== "subagentGroup") continue;
+					if (line.members.some((member) => member.status === "running")) {
+						subagentsRunning = true;
+						line.durationMs = undefined;
+					}
+				}
+				if (subagentsRunning) markTranscriptDirty();
 			}
 			render();
 		}, SPINNER_INTERVAL_MS);
@@ -1015,6 +1028,55 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/**
+	 * 子代理调用进组:本回合已有组就追加成员,否则开新组。
+	 * 返回 true 表示这个调用已被组消化,不再落普通工具行。
+	 */
+	const handleSubagentStart = (
+		active: ActiveTurn,
+		event: Extract<AgentEvent, { type: "tool_start" }>,
+	): boolean => {
+		if (event.name !== "subagent") return false;
+		const task = typeof event.args["task"] === "string" ? event.args["task"] : "";
+		const last = active.lines.at(-1);
+		if (typeof last === "object" && last !== null && last.kind === "subagentGroup") {
+			last.members.push({ callId: event.callId, task, status: "running" });
+		} else {
+			appendLine(active, {
+				kind: "subagentGroup",
+				members: [{ callId: event.callId, task, status: "running" }],
+				startedAt: Date.now(),
+				expanded: false,
+			});
+		}
+		return true;
+	};
+
+	/** 子代理结果挂回组里的成员:终态与耗时、失败原因都在这里落定。 */
+	const handleSubagentEnd = (
+		active: ActiveTurn,
+		event: Extract<AgentEvent, { type: "tool_end" }>,
+	): boolean => {
+		if (event.name !== "subagent") return false;
+		for (const line of active.lines) {
+			if (typeof line !== "object" || line === null || line.kind !== "subagentGroup") continue;
+			const member = line.members.find((item) => item.callId === event.callId);
+			if (member === undefined) continue;
+			const details = event.details as
+				| { durationMs?: number; lastActivity?: string }
+				| undefined;
+			member.status = event.isError ? "failed" : "done";
+			member.durationMs = details?.durationMs ?? event.durationMs;
+			if (event.isError) member.failure = firstLineOf(event.summary);
+			// 组内最后一个还在跑的结束了,整组的总耗时定格
+			if (line.members.every((item) => item.status !== "running")) {
+				line.durationMs = Date.now() - line.startedAt;
+			}
+			return true;
+		}
+		return false;
+	};
+
+	/**
 	 * 一段思考结束。
 	 *
 	 * 正文保留在区块里，但默认收起：运行中显示最后五行，结束后只显示标题。双击标题可在
@@ -1081,6 +1143,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			case "tool_start": {
 				closeThinking(active);
 				if (handleTodoCardStart(active, event)) break;
+				if (handleSubagentStart(active, event)) break;
 				const described = describeToolCall(event.name, event.args, options.workspaceRoot);
 				const tool: TranscriptTool = {
 					kind: "tool",
@@ -1101,6 +1164,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				setStatus("Running tool...");
 				break;
 			case "tool_end":
+				if (handleSubagentEnd(active, event)) {
+					markTranscriptDirty();
+					setStatus(THINKING);
+					break;
+				}
 				// 成功不落行：工具调用本身已经显示；结果挂到调用行，Ctrl+O 可展开
 				if (event.isError) {
 					const tool = findTopLevelToolByCallId(active.lines, event.callId);
@@ -1649,6 +1717,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				// 任务卡片退场：转圈与扫光只在回合运行期间存在，之后的进行中行是静态半圆
 				for (const line of active.lines) {
 					if (typeof line === "object" && line !== null && line.kind === "todo") line.running = false;
+					// 子代理组冻结:没等到结果的成员按失败落定,总耗时定格
+					if (typeof line === "object" && line !== null && line.kind === "subagentGroup") {
+						for (const member of line.members) {
+							if (member.status === "running") {
+								member.status = active.outcome === "done" ? "done" : "failed";
+								member.durationMs = Date.now() - line.startedAt;
+								if (member.status === "failed") member.failure = "the subagent never reported back";
+							}
+						}
+						line.durationMs = Date.now() - line.startedAt;
+					}
 				}
 				// 命令塌缩会把多条独立行并成一条组行，行数组可能整体变短，只能全量同步
 				collapseToolGroups(active.lines);
@@ -2346,6 +2425,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					const todo = todoHeaderInView(view, mainHeight, scrollTop, event.row);
 					if (todo !== undefined) {
 						todo.collapsed = todo.collapsed !== true;
+						markTranscriptDirty();
+						lastClick = undefined;
+						follow = false;
+						render();
+						return;
+					}
+
+					const subagents = subagentGroupHeaderInView(view, mainHeight, scrollTop, event.row);
+					if (subagents !== undefined) {
+						subagents.expanded = subagents.expanded !== true;
 						markTranscriptDirty();
 						lastClick = undefined;
 						follow = false;
