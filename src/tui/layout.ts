@@ -989,6 +989,32 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/**
+	 * 任务卡片直接按参数渲染：模型发来的列表就是界面要显示的内容。解析不了的形状返回
+	 * false 落回普通工具行，后面校验阶段的错误信息才有行可挂。
+	 */
+	const handleTodoCardStart = (
+		active: ActiveTurn,
+		event: Extract<AgentEvent, { type: "tool_start" }>,
+	): boolean => {
+		if (event.name !== "todo") return false;
+		const card = todoCardFromArgs(event.args);
+		if (card === undefined) return false;
+		card.running = true;
+		const current = card.items.find((item) => item.status === "in_progress");
+		if (current !== undefined) {
+			// 计时起点：同一任务在上一张卡片里也进行时继承，否则从现在起算
+			const previousCard = lastTodoCard(active);
+			const previous = previousCard?.items.find((item) => item.status === "in_progress");
+			card.taskStartedAt =
+				previousCard?.taskStartedAt !== undefined && previous?.content === current.content
+					? previousCard.taskStartedAt
+					: Date.now();
+		}
+		appendLine(active, card);
+		return true;
+	};
+
+	/**
 	 * 一段思考结束。
 	 *
 	 * 正文保留在区块里，但默认收起：运行中显示最后五行，结束后只显示标题。双击标题可在
@@ -1054,27 +1080,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "tool_start": {
 				closeThinking(active);
-				// 任务卡片直接按参数渲染：模型发来的列表就是界面要显示的内容。解析不了的
-				// 形状落回普通工具行，后面校验阶段的错误信息才有行可挂
-				if (event.name === "todo") {
-					const card = todoCardFromArgs(event.args);
-					if (card !== undefined) {
-						card.running = true;
-						const current = card.items.find((item) => item.status === "in_progress");
-						if (current !== undefined) {
-							// 计时起点：同一任务在上一张卡片里也进行时继承，否则从现在起算
-							const previousCard = lastTodoCard(active);
-							const previous = previousCard?.items.find((item) => item.status === "in_progress");
-							card.taskStartedAt =
-								previousCard?.taskStartedAt !== undefined &&
-								previous?.content === current.content
-									? previousCard.taskStartedAt
-									: Date.now();
-						}
-						appendLine(active, card);
-						break;
-					}
-				}
+				if (handleTodoCardStart(active, event)) break;
 				const described = describeToolCall(event.name, event.args, options.workspaceRoot);
 				const tool: TranscriptTool = {
 					kind: "tool",
@@ -1732,108 +1738,21 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		// 从补全面板执行时把输入补全成完整命令，面板打开期间看得清当前在做什么
 		setInput(`/${command.name}`);
 
-		if (command.name === "model") {
-			const source = options.modelMenu;
-			if (source === undefined) {
-				setInput("");
-				resetStatusMeta();
-				setStatus(CONFIGURATION_REQUIRED);
-				render();
-				return;
-			}
-
-			const target = args.trim();
-			if (target.length === 0) {
-				openModelMenu();
-				return;
-			}
-
-			const items = source.list();
-			const item = items.find((candidate) => `${candidate.provider}/${candidate.model}` === target);
-			if (item === undefined) {
-				appendCommandTurn("/model", [
-					items.length === 0
-						? "No models are available."
-						: {
-								kind: "error",
-								text: `Error: Unknown model: ${target}. Run /model to choose from the list.`,
-							},
-				]);
-				return;
-			}
-			setInput("");
-			selectModel(item);
-			return;
-		}
-
-		if (command.name === "effort") {
-			const source = options.effortMenu;
-			if (source === undefined) {
-				setInput("");
-				resetStatusMeta();
-				setStatus(CONFIGURATION_REQUIRED);
-				render();
-				return;
-			}
-
-			const target = args.trim();
-			if (target.length === 0) {
-				openEffortMenu();
-				return;
-			}
-
-			const level = THINKING_LEVELS.find((candidate) => candidate === target);
-			if (level === undefined) {
-				appendCommandTurn("/effort", [
-					{
-						kind: "error",
-						text: `Error: Unknown effort: ${target}. Available: ${THINKING_LEVELS.join(", ")}.`,
-					},
-				]);
-				return;
-			}
-			setInput("");
-			selectEffort(level);
-			return;
-		}
-
-		if (command.name === "session") {
-			const source = options.sessionMenu;
-			if (source === undefined) {
-				setInput("");
-				resetStatusMeta();
-				setStatus(SESSION_UNAVAILABLE);
-				render();
-				return;
-			}
-
-			const target = args.trim();
-			if (target.length === 0) {
-				openSessionMenu();
-				return;
-			}
-			setInput("");
-			switchSession(target);
-			return;
-		}
-
-		if (command.name === "compact") {
-			const compact = options.agent?.compact;
-			setInput("");
-			if (compact === undefined) {
-				resetStatusMeta();
-				setStatus(CONFIGURATION_REQUIRED);
-				render();
-				return;
-			}
-			startRun("/compact", compact);
-			return;
-		}
-
-		if (command.name === "help" || command.name === "skills" || command.name === "mcps") {
-			// 命令名不留在输入框里：整屏页期间输入框不接受按键
-			setInput("");
-			showPage(command.name);
+		// 每条命令的处理独立成函数:分支条件只剩名字匹配,新增命令加一个处理器
+		const handlers: Readonly<Record<string, () => void>> = {
+			model: () => executeModelCommand(args),
+			effort: () => executeEffortCommand(args),
+			session: () => executeSessionCommand(args),
+			compact: () => executeCompactCommand(),
+			help: () => showPage("help"),
+			skills: () => showPage("skills"),
+			mcps: () => showPage("mcps"),
+		};
+		const handler = handlers[command.name];
+		if (handler !== undefined) {
+			// 整屏页期间输入框不接受按键，命令名一律不留在输入框里
+			if (command.name === "help" || command.name === "skills" || command.name === "mcps") setInput("");
+			handler();
 			render();
 			return;
 		}
@@ -1845,6 +1764,100 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 		render();
+	};
+
+	/** /model:无参数开面板,带参数直接选中那个模型。 */
+	const executeModelCommand = (args: string): void => {
+		const source = options.modelMenu;
+		if (source === undefined) {
+			setInput("");
+			resetStatusMeta();
+			setStatus(CONFIGURATION_REQUIRED);
+			return;
+		}
+
+		const target = args.trim();
+		if (target.length === 0) {
+			openModelMenu();
+			return;
+		}
+
+		const items = source.list();
+		const item = items.find((candidate) => `${candidate.provider}/${candidate.model}` === target);
+		if (item === undefined) {
+			appendCommandTurn("/model", [
+				items.length === 0
+					? "No models are available."
+					: {
+							kind: "error",
+							text: `Error: Unknown model: ${target}. Run /model to choose from the list.`,
+						},
+			]);
+			return;
+		}
+		setInput("");
+		selectModel(item);
+	};
+
+	/** /effort:无参数开面板,带参数直接选中那一档。 */
+	const executeEffortCommand = (args: string): void => {
+		const source = options.effortMenu;
+		if (source === undefined) {
+			setInput("");
+			resetStatusMeta();
+			setStatus(CONFIGURATION_REQUIRED);
+			return;
+		}
+
+		const target = args.trim();
+		if (target.length === 0) {
+			openEffortMenu();
+			return;
+		}
+
+		const level = THINKING_LEVELS.find((candidate) => candidate === target);
+		if (level === undefined) {
+			appendCommandTurn("/effort", [
+				{
+					kind: "error",
+					text: `Error: Unknown effort: ${target}. Available: ${THINKING_LEVELS.join(", ")}.`,
+				},
+			]);
+			return;
+		}
+		setInput("");
+		selectEffort(level);
+	};
+
+	/** /session:无参数开面板,带参数直接切换到那个会话。 */
+	const executeSessionCommand = (args: string): void => {
+		const source = options.sessionMenu;
+		if (source === undefined) {
+			setInput("");
+			resetStatusMeta();
+			setStatus(SESSION_UNAVAILABLE);
+			return;
+		}
+
+		const target = args.trim();
+		if (target.length === 0) {
+			openSessionMenu();
+			return;
+		}
+		setInput("");
+		switchSession(target);
+	};
+
+	/** /compact:立即压缩一轮上下文。 */
+	const executeCompactCommand = (): void => {
+		const compact = options.agent?.compact;
+		setInput("");
+		if (compact === undefined) {
+			resetStatusMeta();
+			setStatus(CONFIGURATION_REQUIRED);
+			return;
+		}
+		startRun("/compact", compact);
 	};
 
 	/** 取输入开头的命令名(不含斜杠);不是命令时返回空串。 */
