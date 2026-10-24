@@ -90,7 +90,12 @@ describe("子代理", () => {
 	it("一次说话就收工:文本就是汇报", async () => {
 		const { deps } = makeDeps({ turns: [{ content: text("here is my report") }] });
 		const outcome = await new Subagent(deps).run("task", contextOf().context);
-		assert.deepEqual(outcome, { report: "here is my report", steps: 1, stopReason: "done" });
+		assert.deepEqual(
+			{ report: outcome.report, steps: outcome.steps, stopReason: outcome.stopReason },
+			{ report: "here is my report", steps: 1, stopReason: "done" },
+		);
+		assert.equal(typeof outcome.durationMs, "number");
+		assert.equal(outcome.lastActivity, undefined);
 	});
 
 	it("调工具再收工:结果按调用给回", async () => {
@@ -99,7 +104,11 @@ describe("子代理", () => {
 			execute: (call) => ({ content: `result:${call.name}`, isError: false }),
 		});
 		const outcome = await new Subagent(deps).run("t", contextOf().context);
-		assert.deepEqual(outcome, { report: "done", steps: 2, stopReason: "done" });
+		assert.deepEqual(
+			{ report: outcome.report, steps: outcome.steps, stopReason: outcome.stopReason },
+			{ report: "done", steps: 2, stopReason: "done" },
+		);
+		assert.equal(outcome.lastActivity, "find  x");
 		assert.deepEqual(toolCalls, ["find"]);
 	});
 
@@ -175,7 +184,10 @@ describe("子代理", () => {
 		});
 		const outcome = await new Subagent(deps).run("t", contextOf().context);
 		assert.deepEqual(toolCalls, []);
-		assert.deepEqual(outcome, { report: "wrapped", steps: 2, stopReason: "done" });
+		assert.deepEqual(
+			{ report: outcome.report, steps: outcome.steps, stopReason: outcome.stopReason },
+			{ report: "wrapped", steps: 2, stopReason: "done" },
+		);
 	});
 });
 

@@ -52,7 +52,7 @@ function stepBudgetCheck(
 	messages: readonly LlmMessage[],
 	context: SubagentContext,
 	contextWindow: number | undefined,
-): SubagentOutcome | undefined {
+): { report: string; steps: number; stopReason: SubagentStopReason } | undefined {
 	if (context.signal.aborted) {
 		return { report: abortedReport(step - 1), steps: step - 1, stopReason: "aborted" };
 	}
@@ -98,6 +98,10 @@ export interface SubagentOutcome {
 	readonly report: string;
 	readonly steps: number;
 	readonly stopReason: SubagentStopReason;
+	/** 本代理的总耗时（毫秒）；界面把它显示在调用行与清单行的耗时位 */
+	readonly durationMs: number;
+	/** 最后一步在调用的工具与参数摘要；界面在运行期间把它显示在调用行上 */
+	readonly lastActivity: string | undefined;
 }
 
 export class Subagent {
@@ -113,14 +117,19 @@ export class Subagent {
 		const messages: LlmMessage[] = [{ role: "user", content: task }];
 		/** 最后一次说出口的话。用满步数时它是汇报里唯一有价值的部分 */
 		let said = "";
+		const startedAt = Date.now();
+		/** 最后一次报给界面的活动描述(工具名+参数摘要),运行期间调用行就显示这一句 */
+		let lastActivity: string | undefined;
 
 		for (let step = 1; step <= this.#deps.maxSteps; step += 1) {
 			const stopped = stepBudgetCheck(step, messages, context, this.#deps.contextWindow);
-			if (stopped !== undefined) return stopped;
+			if (stopped !== undefined) return this.#finish(stopped, startedAt, lastActivity);
 			context.onProgress(`step ${step}/${this.#deps.maxSteps}`);
 
 			const stepResult = await this.#requestStep(system, messages, step, context);
-			if ("stopReason" in stepResult && "report" in stepResult) return stepResult;
+			if ("stopReason" in stepResult && "report" in stepResult) {
+				return this.#finish(stepResult, startedAt, lastActivity);
+			}
 			const result: LlmResult = stepResult;
 
 			if (result.usage !== undefined) {
@@ -142,11 +151,15 @@ export class Subagent {
 			const calls = assistantToolCalls(assistant);
 			if (calls.length === 0) {
 				// 不再要工具就是要交活了。一句话都没说时不能当成做完了
-				return {
-					report: text.length > 0 ? text : "The subagent produced no report.",
-					steps: step,
-					stopReason: "done",
-				};
+				return this.#finish(
+					{
+						report: text.length > 0 ? text : "The subagent produced no report.",
+						steps: step,
+						stopReason: "done",
+					},
+					startedAt,
+					lastActivity,
+				);
 			}
 
 			if (result.stopReason === "length") {
@@ -163,27 +176,49 @@ export class Subagent {
 				continue;
 			}
 
-			context.onProgress(`  calling ${calls.map((call) => call.name).join(", ")}`);
+			// 界面只看得到当前这一步:工具名+首个参数摘要,一句话说完它在干什么
+			const focus = calls[0];
+			lastActivity =
+				focus === undefined
+					? undefined
+					: `${focus.name}  ${firstArgumentSummary(focus.arguments)}`;
+			context.onProgress(lastActivity ?? `step ${step}/${this.#deps.maxSteps}`);
 			for (const outcome of await Promise.all(calls.map((call) => this.#callTool(call, context)))) {
 				messages.push(outcome);
 			}
 		}
 
-		const note = `The subagent used up its ${this.#deps.maxSteps}-step budget without finishing.`;
+		return this.#finish(
+			{
+				report: saidSuffix(said, this.#deps.maxSteps),
+				steps: this.#deps.maxSteps,
+				stopReason: "steps",
+			},
+			startedAt,
+			lastActivity,
+		);
+	}
+
+	/** 结局补上耗时与最后活动:所有 return 都经这里,字段口径只有这一份。 */
+	#finish(
+		outcome: { report: string; steps: number; stopReason: SubagentStopReason },
+		startedAt: number,
+		lastActivity: string | undefined,
+	): SubagentOutcome {
 		return {
-			report: said.length > 0 ? `${note}\nIts last words were:\n${said}` : note,
-			steps: this.#deps.maxSteps,
-			stopReason: "steps",
+			...outcome,
+			durationMs: Math.max(0, Date.now() - startedAt),
+			lastActivity,
 		};
 	}
 
-	/** 一步请求:发出去、消费增量、把请求层的中止与失败换算成结局。 */
+	/** 一步请求:发出去、消费增量、把请求层的中止与失败换算成结局(不含耗时,由 #finish 补)。 */
 	async #requestStep(
 		system: string,
 		messages: LlmMessage[],
 		steps: number,
 		context: SubagentContext,
-	): Promise<LlmResult | SubagentOutcome> {
+	): Promise<LlmResult | { report: string; steps: number; stopReason: SubagentStopReason }> {
 		const stream = this.#deps.client.stream({
 			model: this.#deps.model.id,
 			system,
@@ -248,6 +283,20 @@ function abortedReport(steps: number): string {
 	return `The subagent was cancelled before finishing (${steps} steps taken).`;
 }
 
+/** 用满步数时的汇报:预算说清楚,它最后说过的话是唯一有价值的线索。 */
+function saidSuffix(said: string, maxSteps: number): string {
+	const note = `The subagent used up its ${maxSteps}-step budget without finishing.`;
+	return said.length > 0 ? `${note}\nIts last words were:\n${said}` : note;
+}
+
+/** 首个参数的短摘要,给运行期的活动行看;没有可读参数时只给工具名。 */
+function firstArgumentSummary(args: Record<string, unknown>): string {
+	const first = Object.values(args).find((value) => typeof value === "string" && value.length > 0);
+	if (typeof first !== "string") return "";
+	const line = first.split("\n", 1)[0] ?? "";
+	return line.length > 30 ? `${line.slice(0, 29)}…` : line;
+}
+
 const PARAMETERS = {
 	type: "object",
 	properties: {
@@ -291,7 +340,13 @@ export function createSubagentTool(deps: SubagentDeps): AnyToolDefinition {
 				content: outcome.report,
 				// 没做完就算失败：报成成功会让模型以为这件事已经了结
 				isError: outcome.stopReason !== "done",
-				details: { steps: outcome.steps, stopReason: outcome.stopReason },
+				// 界面靠这份状态渲染调用行与清单行;只给界面,不发给模型
+				details: {
+					steps: outcome.steps,
+					stopReason: outcome.stopReason,
+					durationMs: outcome.durationMs,
+					lastActivity: outcome.lastActivity,
+				},
 			};
 		},
 	};
