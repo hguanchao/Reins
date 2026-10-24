@@ -37,7 +37,7 @@ import {
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
-import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoCardFromArgs, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TodoAnimationFrame, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoCardFromArgs, todoHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TodoAnimationFrame, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTodo, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 
 /**
  * 全屏启动。
@@ -942,6 +942,22 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		syncTurn(active);
 	};
 
+	/** 最近一张任务卡片:先看本轮,再往前找历史回合,用于进行中任务计时的继承。 */
+	const lastTodoCard = (active: ActiveTurn): TranscriptTodo | undefined => {
+		for (let index = active.lines.length - 1; index >= 0; index -= 1) {
+			const line = active.lines[index];
+			if (typeof line === "object" && line !== null && line.kind === "todo") return line;
+		}
+		for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+			const response = turns[turnIndex]?.response ?? [];
+			for (let index = response.length - 1; index >= 0; index -= 1) {
+				const line = response[index];
+				if (typeof line === "object" && line !== null && line.kind === "todo") return line;
+			}
+		}
+		return undefined;
+	};
+
 	/**
 	 * 一段思考结束。
 	 *
@@ -1014,6 +1030,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					const card = todoCardFromArgs(event.args);
 					if (card !== undefined) {
 						card.running = true;
+						const current = card.items.find((item) => item.status === "in_progress");
+						if (current !== undefined) {
+							// 计时起点:同一任务在上一张卡片里也进行时继承,否则从现在起算
+							const previousCard = lastTodoCard(active);
+							const previous = previousCard?.items.find((item) => item.status === "in_progress");
+							card.taskStartedAt =
+								previousCard?.taskStartedAt !== undefined &&
+								previous?.content === current.content
+									? previousCard.taskStartedAt
+									: Date.now();
+						}
 						appendLine(active, card);
 						break;
 					}
@@ -2280,6 +2307,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						if (tool.fullDetail === undefined && tool.result !== undefined) {
 							tool.resultExpanded = !open;
 						}
+						markTranscriptDirty();
+						lastClick = undefined;
+						follow = false;
+						render();
+						return;
+					}
+
+					const todo = todoHeaderInView(view, mainHeight, scrollTop, event.row);
+					if (todo !== undefined) {
+						todo.collapsed = todo.collapsed !== true;
 						markTranscriptDirty();
 						lastClick = undefined;
 						follow = false;

@@ -12,8 +12,10 @@ import {
 	scrollTopForRow,
 	thinkingHeaderAtRow,
 	todoCardFromArgs,
+	todoHeaderInView,
 	toolGroupHeaderAtRow,
 	toolHeaderAtRow,
+	toggleLastExpandable,
 	transcriptMetrics,
 	type TranscriptLine,
 	type TranscriptThinking,
@@ -1493,13 +1495,19 @@ describe("任务卡片", () => {
 				explanation: " 调整  ",
 				todos: [{ content: "写工具", status: "in_progress" }],
 			}),
-			{ kind: "todo", explanation: " 调整  ", items: [{ content: "写工具", status: "in_progress" }] },
+			{
+				kind: "todo",
+				explanation: " 调整  ",
+				items: [{ content: "写工具", status: "in_progress" }],
+				collapsed: false,
+			},
 		);
 		// 空白说明当作没有说明
-		assert.deepEqual(
-			todoCardFromArgs({ explanation: "   ", todos: [] }),
-			{ kind: "todo", items: [] },
-		);
+		assert.deepEqual(todoCardFromArgs({ explanation: "   ", todos: [] }), {
+			kind: "todo",
+			items: [],
+			collapsed: false,
+		});
 
 		assert.equal(todoCardFromArgs({ todos: "nope" }), undefined);
 		assert.equal(todoCardFromArgs({ todos: [{ content: "a" }] }), undefined);
@@ -1507,5 +1515,103 @@ describe("任务卡片", () => {
 		assert.equal(todoCardFromArgs({ todos: [{ content: "   ", status: "pending" }] }), undefined);
 		assert.equal(todoCardFromArgs({ todos: [{}] }), undefined);
 		assert.equal(todoCardFromArgs({ explanation: 3, todos: [] }), undefined);
+	});
+
+	it("条目超过 5 条时默认收起,收起卡片只占头行一行", () => {
+		const card = todoCardFromArgs({
+			todos: Array.from({ length: 6 }, (_, index) => ({
+				content: `任务${index + 1}`,
+				status: index === 2 ? "in_progress" : "pending",
+			})),
+		});
+		assert.ok(card !== undefined);
+		assert.equal(card.collapsed, true);
+
+		const text = renderTranscript(40, 20, [{ prompt: "go", response: [card] }], 0)
+			.map(plain)
+			.join("\n");
+		assert.ok(text.includes("› Tasks  0/6"));
+		assert.equal(text.includes("任务1"), false);
+
+		// 头行注册为命中区:双击据此切换收起/展开
+		const view = buildTranscriptView(40, [{ prompt: "go", response: [card] }], undefined);
+		const row =
+			view.lines.findIndex((line) => plain(line).includes("Tasks")) + 1;
+		assert.equal(todoHeaderInView(view, 20, 0, row), card);
+
+		// 双击语义:collapsed 翻转后条目全部可见
+		card.collapsed = false;
+		const expanded = renderTranscript(40, 20, [{ prompt: "go", response: [card] }], 0)
+			.map(plain)
+			.join("\n");
+		assert.ok(expanded.includes("○ 任务1"));
+	});
+
+	it("折叠头行运行期显示转圈任务名与耗时,任务名超 30 显示列省略", () => {
+		const card: TranscriptTodo = {
+			kind: "todo",
+			running: true,
+			collapsed: true,
+			taskStartedAt: Date.now() - 12_300,
+			items: [
+				{ content: "写工具", status: "completed" },
+				{ content: "给对话流任务卡片补齐单元测试覆盖折叠与展开", status: "in_progress" },
+			],
+		};
+		const view = buildTranscriptView(60, [{ prompt: "go", response: [card] }], undefined);
+		assert.equal(view.liveTodoLines.size, 1);
+
+		// 静态占位只有计数;带帧重建后出现任务名与耗时
+		assert.ok(renderTranscriptView(view, 12, 0).map(plain).join("\n").includes("› Tasks  1/2"));
+		const frame = { spinner: "⠋", sweepPhase: 0.5 };
+		const lines = renderTranscriptView(view, 12, 0, frame);
+		const header = lines.find((line) => plain(line).includes("Tasks")) ?? "";
+		const headerPlain = plain(header);
+		assert.ok(headerPlain.includes("⠋"));
+		assert.ok(headerPlain.includes("12.3s"));
+		// 任务名截到 30 显示列:显示宽度不超过上限,且以省略号结尾
+		const shown = /⠋ (.+?)  12\.3s/.exec(headerPlain)?.[1] ?? "";
+		assert.ok(shown.endsWith("…"));
+		assert.ok(displayWidth(shown) <= 30);
+		// 头行不超宽
+		assert.ok(displayWidth(headerPlain) <= 60);
+	});
+
+	it("没有进行中任务或已结束的折叠卡片,头行只有计数", () => {
+		const idle: TranscriptTodo = {
+			kind: "todo",
+			running: true,
+			collapsed: true,
+			items: [{ content: "写工具", status: "completed" }],
+		};
+		const view = buildTranscriptView(60, [{ prompt: "go", response: [idle] }], undefined);
+		assert.equal(view.liveTodoLines.size, 0);
+
+		const done: TranscriptTodo = { ...idle, running: false, taskStartedAt: Date.now() };
+		const frozen = buildTranscriptView(60, [{ prompt: "go", response: [done] }], undefined);
+		assert.equal(frozen.liveTodoLines.size, 0);
+		assert.ok(
+			renderTranscriptView(frozen, 12, 0, { spinner: "⠋", sweepPhase: 0.5 })
+				.map(plain)
+				.join("\n")
+				.includes("› Tasks  1/1"),
+		);
+	});
+
+	it("Ctrl+E 展开或收起最近一张任务卡片", () => {
+		const card: TranscriptTodo = {
+			kind: "todo",
+			collapsed: true,
+			items: Array.from({ length: 6 }, (_, index) => ({
+				content: `任务${index + 1}`,
+				status: "pending",
+			})),
+		};
+		const turns: TranscriptTurn[] = [{ prompt: "go", response: [card] }];
+
+		assert.equal(toggleLastExpandable(turns), true);
+		assert.equal(card.collapsed, false);
+		assert.equal(toggleLastExpandable(turns), true);
+		assert.equal(card.collapsed, true);
 	});
 });

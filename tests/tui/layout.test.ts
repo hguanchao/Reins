@@ -4149,3 +4149,123 @@ describe("任务卡片", () => {
 		assert.equal(await running, 0);
 	});
 });
+
+describe("任务卡片折叠", () => {
+	it("超过五条默认收起:头行显示计数,双击展开全部条目,再双击收起", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: {
+					todos: Array.from({ length: 6 }, (_, index) => ({
+						content: `任务${index + 1}`,
+						status: index === 2 ? "in_progress" : "pending",
+					})),
+				},
+			});
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Tasks  0/6"));
+			assert.equal(text.includes("○ 任务1"), false);
+			// 运行中的折叠头行带转圈任务名
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] 任务3/.test(text));
+
+			const row =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("Tasks")) + 1;
+			assert.ok(row > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("○ 任务1"));
+			// 展开态的进行中行仍是转圈(回合还在运行)
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] 任务3/.test(text));
+
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("○ 任务1"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("同一任务跨卡片更新时耗时继承,不重置", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			// 六条任务默认收起:头行显示进行中的任务 A 与从 0 起算的耗时
+			const list = (active: string, done: string) => [
+				{ content: "任务A", status: active },
+				{ content: "任务B", status: done },
+				...Array.from({ length: 4 }, (_, index) => ({
+					content: `任务${index + 3}`,
+					status: "pending",
+				})),
+			];
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: { todos: list("in_progress", "pending") },
+			});
+			let header = frameLines(output)
+				.map(plain)
+				.findLast((line) => line.includes("Tasks")) ?? "";
+			assert.ok(header.includes("任务A"));
+			assert.ok(/0\.0s/.test(header), `首张卡片耗时从 0 起算:${header}`);
+
+			// 又过 5 秒,模型更新列表但任务 A 仍在进行:计时应继承,显示 5 秒而非重置为 0
+			t.mock.timers.tick(5_000);
+			agent.emit({
+				type: "tool_start",
+				callId: "c2",
+				name: "todo",
+				args: { todos: list("in_progress", "pending") },
+			});
+			header = frameLines(output)
+				.map(plain)
+				.findLast((line) => line.includes("Tasks")) ?? "";
+			assert.ok(/5\.0s/.test(header), `同一任务跨更新继承计时:${header}`);
+
+			// 换了进行中任务:计时重新从 0 起算
+			t.mock.timers.tick(3_000);
+			agent.emit({
+				type: "tool_start",
+				callId: "c3",
+				name: "todo",
+				args: { todos: list("completed", "in_progress") },
+			});
+			header = frameLines(output)
+				.map(plain)
+				.findLast((line) => line.includes("Tasks")) ?? "";
+			assert.ok(header.includes("任务B"));
+			assert.ok(/0\.0s/.test(header), `换任务后计时重置:${header}`);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+});

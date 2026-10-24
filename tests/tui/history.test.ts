@@ -249,8 +249,38 @@ describe("会话历史回填任务卡片", () => {
 				kind: "todo",
 				explanation: "开工",
 				items: [{ content: "写工具", status: "in_progress" }],
+				collapsed: false,
 			},
 		]);
+	});
+
+	it("超过五条的任务卡回填为收起态", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: "1",
+						name: "todo",
+						arguments: {
+							todos: Array.from({ length: 6 }, (_, index) => ({
+								content: `任务${index + 1}`,
+								status: "pending",
+							})),
+						},
+					},
+				],
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages);
+		const card = turns[0]?.response[0];
+		if (typeof card !== "object" || card === null || card.kind !== "todo") {
+			throw new Error("expected a todo card");
+		}
+		assert.equal(card.collapsed, true);
 	});
 
 	it("畸形参数退回普通工具行,失败结果挂在该行上", () => {
