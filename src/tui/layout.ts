@@ -1059,14 +1059,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const member = line.members.find((item) => item.callId === event.callId);
 			if (member === undefined) continue;
 			const details = event.details as
-				| { durationMs?: number; lastActivity?: string }
+				| { durationMs?: number; lastActivity?: string; steps?: number; totalTokens?: number }
 				| undefined;
 			member.status = event.isError ? "failed" : "done";
 			member.durationMs = details?.durationMs ?? event.durationMs;
+			member.steps = details?.steps;
+			member.totalTokens = details?.totalTokens;
 			if (event.isError) member.failure = event.content ?? event.summary;
-			// 组内最后一个还在跑的结束了,整组的总耗时定格
+			// 组内最后一个还在跑的结束了,整组的总耗时与 token 合计定格
 			if (line.members.every((item) => item.status !== "running")) {
 				line.durationMs = Date.now() - line.startedAt;
+				line.totalTokens = line.members.reduce(
+					(sum, item) => sum + (item.totalTokens ?? 0),
+					0,
+				);
 			}
 			return true;
 		}

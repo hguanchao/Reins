@@ -1394,7 +1394,7 @@ describe("子代理组", () => {
 	): TranscriptSubagentGroup => ({
 		kind: "subagentGroup",
 		members: (overrides.members ?? [
-			{ callId: "1", task: "梳理 tools 模块", status: "done", durationMs: 14_300 },
+			{ callId: "1", task: "梳理 tools 模块", status: "done", durationMs: 14_300, steps: 12, totalTokens: 4100 },
 			{ callId: "2", task: "检查测试场景", status: "running" },
 			{ callId: "3", task: "修复路径", status: "failed", durationMs: 22_600, failure: "upstream 500" },
 		]) as TranscriptSubagentGroup["members"],
@@ -1415,7 +1415,7 @@ describe("子代理组", () => {
 	it("展开显示四态清单:●完成/转圈运行/×失败/○待办", () => {
 		const running = group({
 			members: [
-				{ callId: "1", task: "梳理 tools 模块", status: "done" as const, durationMs: 14_300 },
+				{ callId: "1", task: "梳理 tools 模块", status: "done" as const, durationMs: 14_300, steps: 12 },
 				{ callId: "2", task: "检查测试场景", status: "running" as const },
 				{ callId: "3", task: "修复路径", status: "failed" as const, durationMs: 22_600, failure: "upstream 500" },
 				{ callId: "4", task: "提交功能", status: "running" as const },
@@ -1431,7 +1431,8 @@ describe("子代理组", () => {
 		// 失败行显示任务名,原因不占清单行
 		assert.ok(text.includes("× Subagent3  修复路径"));
 		assert.equal(text.includes("upstream 500"), false);
-		assert.ok(text.includes("14.3s") && text.includes("(22.6s)"));
+		assert.ok(text.includes("(12 steps · 14.3s)"));
+		assert.ok(text.includes("(22.6s)"));
 		assert.ok(text.includes("4 running") === false);
 	});
 

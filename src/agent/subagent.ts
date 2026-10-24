@@ -102,6 +102,8 @@ export interface SubagentOutcome {
 	readonly durationMs: number;
 	/** 最后一步在调用的工具与参数摘要；界面在运行期间把它显示在调用行上 */
 	readonly lastActivity: string | undefined;
+	/** 本代理消耗的 token 总量(input+output+cache 合计);没有用量回报时为 undefined */
+	readonly totalTokens: number | undefined;
 }
 
 export class Subagent {
@@ -120,19 +122,22 @@ export class Subagent {
 		const startedAt = Date.now();
 		/** 最后一次报给界面的活动描述(工具名+参数摘要),运行期间调用行就显示这一句 */
 		let lastActivity: string | undefined;
+		/** 各步用量的合计;界面在清单行与组头显示 ⇣token */
+		let totalTokens: number | undefined = undefined;
 
 		for (let step = 1; step <= this.#deps.maxSteps; step += 1) {
 			const stopped = stepBudgetCheck(step, messages, context, this.#deps.contextWindow);
-			if (stopped !== undefined) return this.#finish(stopped, startedAt, lastActivity);
+			if (stopped !== undefined) return this.#finish(stopped, startedAt, lastActivity, totalTokens);
 			context.onProgress(`step ${step}/${this.#deps.maxSteps}`);
 
 			const stepResult = await this.#requestStep(system, messages, step, context);
 			if ("stopReason" in stepResult && "report" in stepResult) {
-				return this.#finish(stepResult, startedAt, lastActivity);
+				return this.#finish(stepResult, startedAt, lastActivity, totalTokens);
 			}
 			const result: LlmResult = stepResult;
 
 			if (result.usage !== undefined) {
+				totalTokens = (totalTokens ?? 0) + result.usage.total;
 				await this.#deps.session.append({
 					type: "usage",
 					provider: this.#deps.provider.id,
@@ -159,6 +164,7 @@ export class Subagent {
 					},
 					startedAt,
 					lastActivity,
+					totalTokens,
 				);
 			}
 
@@ -196,19 +202,22 @@ export class Subagent {
 			},
 			startedAt,
 			lastActivity,
+			totalTokens,
 		);
 	}
 
-	/** 结局补上耗时与最后活动:所有 return 都经这里,字段口径只有这一份。 */
+	/** 结局补上耗时与最后活动与用量合计:所有 return 都经这里,字段口径只有这一份。 */
 	#finish(
 		outcome: { report: string; steps: number; stopReason: SubagentStopReason },
 		startedAt: number,
 		lastActivity: string | undefined,
+		totalTokens: number | undefined,
 	): SubagentOutcome {
 		return {
 			...outcome,
 			durationMs: Math.max(0, Date.now() - startedAt),
 			lastActivity,
+			totalTokens,
 		};
 	}
 
@@ -346,6 +355,7 @@ export function createSubagentTool(deps: SubagentDeps): AnyToolDefinition {
 					stopReason: outcome.stopReason,
 					durationMs: outcome.durationMs,
 					lastActivity: outcome.lastActivity,
+					totalTokens: outcome.totalTokens,
 				},
 			};
 		},

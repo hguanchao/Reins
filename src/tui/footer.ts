@@ -1,5 +1,5 @@
 import type { ApprovalMode } from "../config/config-file.ts";
-import { formatDuration } from "../tools/format.ts";
+import { formatCompactTokens, formatDuration } from "../tools/format.ts";
 import { swept } from "./sweep.ts";
 import { characterWidth, displayWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
@@ -427,29 +427,6 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 function formatContext(used: number, total: number | undefined): string {
 	const current = formatCompactTokens(used);
 	return total === undefined ? current : `${current} / ${formatCompactTokens(total)}`;
-}
-
-/**
- * 常驻信息行与运行时状态共用同一套缩写。
- *
- * 100 以下保留整数；100 到 999 也进入 K，向下取整到一位小数，例如 999 → 0.9K；
- * 1000 以上四舍五入到一位小数；接近一百万的 K 值会进位成 M，不出现 1000K。
- */
-function formatCompactTokens(tokens: number): string {
-	const value = Math.max(0, tokens);
-	if (value >= 1_000_000) return `${trimDecimal(value / 1_000_000)}M`;
-	if (value >= 1_000) {
-		const thousands = Math.round((value / 1_000) * 10) / 10;
-		if (thousands >= 1_000) return `${trimDecimal(thousands / 1_000)}M`;
-		return `${trimDecimal(thousands)}K`;
-	}
-	if (value >= 100) return `${Math.floor(value / 100) / 10}K`;
-	return `${Math.round(value)}`;
-}
-
-function trimDecimal(value: number): string {
-	const rounded = Math.round(value * 10) / 10;
-	return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
 }
 
 /** 按显示宽度截断，宽字符与 emoji 不会被切成半个。 */

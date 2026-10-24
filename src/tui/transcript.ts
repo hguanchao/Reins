@@ -1,5 +1,5 @@
 import { sanitizeLine, type ToolGroupKind } from "../tools/describe.ts";
-import { formatDuration } from "../tools/format.ts";
+import { formatCompactTokens, formatDuration } from "../tools/format.ts";
 import { resultDetail, resultMetric, type ResultDetailKind } from "../tools/result-summary.ts";
 import { highlightCode, type SyntaxSegment } from "../tools/syntax.ts";
 import { renderMarkdown } from "./markdown.ts";
@@ -30,6 +30,10 @@ export interface SubagentRunView {
 	status: "running" | "done" | "failed";
 	/** 总耗时;终态定格,运行中由界面按 startedAt 每帧重算 */
 	durationMs?: number;
+	/** 本次委派的请求步数;结果到达时落定 */
+	steps?: number;
+	/** 本次委派消耗的 token 总量;结果到达时落定 */
+	totalTokens?: number;
 	/** 完整失败原因;清单行只显示任务名,双击失败行展开看这里 */
 	failure?: string;
 	/** 失败行是否已展开;双击切换 */
@@ -49,6 +53,8 @@ export interface TranscriptSubagentGroup {
 	readonly startedAt: number;
 	/** 组的总耗时;全部结束时定格 */
 	durationMs?: number;
+	/** 组内各子代理的 token 合计;全部结束时定格 */
+	totalTokens?: number;
 	expanded: boolean;
 }
 
@@ -787,7 +793,7 @@ function subagentGroupLines(
 	return { lines, failureRows };
 }
 
-/** 组头一行:青色标签 + 灰色计数段与括号耗时。计数顺序固定 running→done→failed。 */
+/** 组头一行:青色标签 + 灰色计数段与括号统计(耗时、⇣token)。计数顺序固定 running→done→failed。 */
 function subagentGroupHead(group: TranscriptSubagentGroup, width: number): string {
 	const marker = group.expanded === true ? TOOL_GROUP_EXPANDED_MARKER : TOOL_MARKER;
 	const prefix = `${RESPONSE_INDENT}${marker} `;
@@ -796,7 +802,12 @@ function subagentGroupHead(group: TranscriptSubagentGroup, width: number): strin
 		group.durationMs !== undefined
 			? formatDuration(group.durationMs)
 			: formatDuration(Math.max(0, Date.now() - group.startedAt));
-	const rest = `  ${counts} (${elapsed})`;
+	// token 合计只在全部结束时显示:运行中的组还没拿到各成员的用量
+	const tokens =
+		group.durationMs !== undefined && group.totalTokens !== undefined
+			? ` · ⇣${formatCompactTokens(group.totalTokens)}`
+			: "";
+	const rest = `  ${counts} (${elapsed}${tokens})`;
 	const restWidth = displayWidth(rest);
 	const label = truncateToWidth(SUBAGENT_GROUP_LABEL, Math.max(0, width - displayWidth(prefix) - restWidth));
 	const padding = " ".repeat(
@@ -816,7 +827,7 @@ function countSegments(group: TranscriptSubagentGroup): string {
 	return parts.join(" · ");
 }
 
-/** 组清单的一条:四态符号 + 任务摘要 + 右对齐耗时;失败行正文位是原因摘要。 */
+/** 组清单的一条:四态符号 + 任务摘要 + 右对齐统计段(steps · 耗时);失败行正文位是任务名。 */
 function subagentMemberLines(
 	member: SubagentRunView & { readonly callId: string },
 	width: number,
@@ -833,27 +844,24 @@ function subagentMemberLines(
 			`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}  ${summary}${RESET}`,
 		];
 	}
+	// 统计段:步数与耗时都进同一括号,段内 · 分隔(通用工具套规则)
+	const stats: string[] = [];
+	if (member.steps !== undefined) stats.push(`${member.steps} steps`);
+	if (member.durationMs !== undefined) stats.push(formatDuration(member.durationMs));
+	const metric = stats.length === 0 ? "" : ` (${stats.join(" · ")})`;
+	const gap = Math.max(
+		1,
+		width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(metric) - 2,
+	);
 	if (member.status === "failed") {
-		// 失败整行失败色:符号、标签、任务名一眼归为一处错误;耗时在展开时让位给原因色带
+		// 失败整行失败色:符号、标签、任务名一眼归为一处错误;展开时让位给原因色带
 		const failedHead = `${indent}${SUBAGENT_FAILED_COLOR}× ${label}  ${summary}${RESET}`;
 		if (member.expanded === true) return [failedHead, ...subagentFailureBand(member, width)];
-		const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
-		const metric = elapsed.length === 0 ? "" : ` (${elapsed})`;
-		const gap = Math.max(
-			1,
-			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(metric) - 2,
-		);
 		return [`${failedHead}${" ".repeat(gap)}${metric}`];
 	}
 	if (member.status === "done") {
 		// 完成圆点也是青色:与标签同一份强调,不落在灰档里
-		const elapsed = member.durationMs === undefined ? "" : formatDuration(member.durationMs);
-		const metric = elapsed.length === 0 ? "" : ` (${elapsed})`;
 		const head = `${indent}${SUBAGENT_RUNNING_COLOR}● ${RESET}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`;
-		const gap = Math.max(
-			1,
-			width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(metric) - 2,
-		);
 		return [`${head}${" ".repeat(gap)}${metric}`];
 	}
 	return [`${indent}${SUBAGENT_TEXT_COLOR}${SUBAGENT_PENDING_MARKER} ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`];

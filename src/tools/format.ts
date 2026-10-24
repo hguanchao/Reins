@@ -36,3 +36,26 @@ export function formatDuration(ms: number): string {
 	const restHours = hours % 24;
 	return restHours === 0 ? `${days}d` : `${days}d${restHours}h`;
 }
+
+/**
+ * token 数的紧凑缩写,全界面统一(页脚信息行、状态行、子代理统计)。
+ *
+ * 100 以下保留整数;100 到 999 也进入 K,向下取整到一位小数,例如 999 → 0.9K;
+ * 1000 以上四舍五入到一位小数;接近一百万的 K 值会进位成 M,不出现 1000K。
+ */
+export function formatCompactTokens(tokens: number): string {
+	const value = Math.max(0, tokens);
+	if (value >= 1_000_000) return `${trimDecimal(value / 1_000_000)}M`;
+	if (value >= 1_000) {
+		const thousands = Math.round((value / 1_000) * 10) / 10;
+		if (thousands >= 1_000) return `${trimDecimal(thousands / 1_000)}M`;
+		return `${trimDecimal(thousands)}K`;
+	}
+	if (value >= 100) return `${Math.floor(value / 100) / 10}K`;
+	return `${Math.round(value)}`;
+}
+
+function trimDecimal(value: number): string {
+	const rounded = Math.round(value * 10) / 10;
+	return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
+}
