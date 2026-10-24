@@ -64,8 +64,6 @@ const TODO_EXPAND_MAX_ITEMS = 5;
 const TODO_RUNNING_NAME_WIDTH = 30;
 /** 任务条目比头行正文多缩进两列，条目标记正对头行标签的起头。 */
 const TODO_ITEM_INDENT = `${CARD_INDENT}  `;
-/** 删除线：完成与失败的任务靠它退场。 */
-const STRIKETHROUGH = "\x1b[9m";
 /** 斜体：任务卡说明行的强调方式。 */
 const ITALIC = "\x1b[3m";
 /** 加粗：进行中的任务行是全卡最亮的一项。 */
@@ -77,9 +75,9 @@ const TODO_COUNT_COLOR = THEME.textSubtle;
 const TODO_PENDING_COLOR = THEME.textSecondary;
 /** 进行中条目：强调色加粗，扫光也以它为高亮终点。 */
 const TODO_ACTIVE_COLOR = THEME.accent;
-/** 完成条目：成功色配删除线，正反馈与退场感都要。 */
-const TODO_DONE_COLOR = THEME.success;
-/** 失败条目：与错误行同色，删除线只给符号与正文。 */
+/** 完成条目：圆点与标签同一份强调青，正文灰——与子代理清单同一份色板。 */
+const TODO_DONE_COLOR = THEME.accent;
+/** 失败条目：整行失败色,无删除线——失败在哪儿都是同一个符号同一份颜色。 */
 const TODO_FAILED_COLOR = THEME.error;
 /** 说明行：弱化灰加斜体。 */
 const TODO_EXPLANATION_COLOR = THEME.textSubtle;
@@ -121,13 +119,13 @@ export function todoCardLines(
 		}
 		if (item.status === "completed") {
 			lines.push(
-				...wrappedLines(item.content, `${TODO_ITEM_INDENT}● `, width, `${TODO_DONE_COLOR}${STRIKETHROUGH}`),
+				...wrappedLines(item.content, `${TODO_ITEM_INDENT}● `, width, TODO_DONE_COLOR),
 			);
 			continue;
 		}
 		if (item.status === "failed") {
 			lines.push(
-				...wrappedLines(item.content, `${TODO_ITEM_INDENT}${FAILED_MARKER} `, width, `${TODO_FAILED_COLOR}${STRIKETHROUGH}`),
+				...wrappedLines(item.content, `${TODO_ITEM_INDENT}${FAILED_MARKER} `, width, TODO_FAILED_COLOR),
 			);
 			continue;
 		}

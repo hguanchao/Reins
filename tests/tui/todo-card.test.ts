@@ -45,14 +45,15 @@ describe("任务卡片", () => {
 		assert.ok(text.includes("    ○ 补测试"));
 	});
 
-	it("完成与失败带删除线,说明行斜体,进行中加粗", () => {
+	it("完成与失败不带删除线,说明行斜体,进行中加粗,圆点与标签同青", () => {
 		const lines = renderTranscript(40, 14, [{ prompt: "go", response: [card] }], 0);
 		const find = (part: string): string => lines.find((line) => plain(line).includes(part)) ?? "";
 
-		assert.ok(find("● 写工具").includes(THEME.success));
-		assert.ok(find("● 写工具").includes("\x1b[9m"));
+		// 与子代理清单同一份色板:圆点青、无删除线;失败整行红、无删除线
+		assert.ok(find("● 写工具").includes(THEME.accent));
+		assert.equal(find("● 写工具").includes("\x1b[9m"), false);
 		assert.ok(find("× 修路径").includes(THEME.error));
-		assert.ok(find("× 修路径").includes("\x1b[9m"));
+		assert.equal(find("× 修路径").includes("\x1b[9m"), false);
 		assert.ok(find("◐ 渲染卡片").includes(THEME.accent));
 		assert.ok(find("◐ 渲染卡片").includes("\x1b[1m"));
 		assert.ok(find("调整:先做渲染").includes("\x1b[3m"));
