@@ -37,7 +37,7 @@ import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
 import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, subagentFailureRowInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
-import { todoCardFromArgs, type TodoAnimationFrame, type TranscriptTodo } from "./todo-card.ts";
+import { todoCardFromArgs, todoPanelLines, TODO_PANEL_MAX_ITEMS, type TodoAnimationFrame, type TranscriptTodo } from "./todo-card.ts";
 
 /**
  * 全屏启动。
@@ -449,6 +449,18 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		prompt: turn.prompt,
 		response: [...turn.response],
 	}));
+	/**
+	 * 当前任务表:最近一次 todo 调用的卡片,常驻面板的数据源。
+	 *
+	 * 面板回答「现在进行到哪」,对话流里的卡片是历史叙事——两者并存。任务表跨回合有效,
+	 * 回合结束不清空;启动时从历史里扫最后一张卡恢复,续聊后面板立即有内容。
+	 */
+	let currentTodo: TranscriptTodo | undefined = undefined;
+	for (let turnIndex = turns.length - 1; turnIndex >= 0 && currentTodo === undefined; turnIndex -= 1) {
+		for (const line of turns[turnIndex]?.response ?? []) {
+			if (typeof line === "object" && line !== null && line.kind === "todo") currentTodo = line;
+		}
+	}
 	/** 有历史或输入过内容就显示对话流。 */
 	let hasInput = turns.length > 0;
 	/**
@@ -584,6 +596,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/**
+	 * 常驻任务面板的高度:无任务表或空表为 0,全部完成或用户收起缩为一行,其余头行加条目。
+	 * 高度只在 todo 调用与收展切换时变化(低频),主区域随之重排。
+	 */
+	const todoPanelHeight = (): number => {
+		if (openPage !== undefined || currentTodo === undefined || currentTodo.items.length === 0) return 0;
+		const allDone = currentTodo.items.every((item) => item.status === "completed");
+		if (allDone || currentTodo.collapsed === true) return 1;
+		return 1 + Math.min(currentTodo.items.length, TODO_PANEL_MAX_ITEMS);
+	};
+
+	/**
 	 * 输入行首行在终端里的 1 基行号。
 	 *
 	 * 光标定位与点击命中必须用同一份几何,否则页脚结构调整时两者会各错各的。
@@ -592,7 +615,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const terminalWidth = (): number => Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 
 	/** 页脚之外的主区域高度:对话流、整屏页与命中判定都用这一个数。 */
-	const mainAreaHeight = (): number => Math.max(0, terminalHeight(stdout) - footerHeight());
+	const mainAreaHeight = (): number => Math.max(0, terminalHeight(stdout) - footerHeight() - todoPanelHeight());
 
 	const inputTopRow = (mainHeight: number): number =>
 		compactFooter()
@@ -623,7 +646,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const render = (): void => {
 		const width = terminalWidth();
 		const height = terminalHeight(stdout);
-		const mainHeight = Math.max(0, height - footerHeight());
+		const mainHeight = Math.max(0, height - footerHeight() - todoPanelHeight());
 		const view = currentTranscript(width);
 		const metrics = measureTranscriptView(view, mainHeight);
 		const maxScroll = Math.max(0, metrics.scrollLines - mainHeight);
@@ -695,8 +718,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						? renderTranscriptView(view, mainHeight, scrollTop, todoFrame)
 						: renderMain(width, mainHeight, options.version);
 		const mainLines = [...main];
-		// 整屏自上而下：主区域、面板、页脚；终端比内容矮时只保留前几行
-		const lines = [...mainLines, ...menuLines, ...footer].slice(0, height);
+		// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示
+		const panelLines =
+			openPage === undefined && currentTodo !== undefined
+				? [...todoPanelLines(currentTodo, width, todoFrame)]
+				: [];
+		// 整屏自上而下：主区域、任务面板、选择面板、页脚；终端比内容矮时只保留前几行
+		const lines = [...mainLines, ...panelLines, ...menuLines, ...footer].slice(0, height);
 		const inputRow = inputTopRow(mainHeight) + inputLines.row;
 		// 选择面板只盖在输入框上方，输入行仍然可见可编辑，光标照常显示；
 		// 只有整屏页与审批面板会夺走焦点
@@ -1021,6 +1049,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					: Date.now();
 		}
 		appendLine(active, card);
+		// 常驻面板同步换到这张新表:同一对象的引用,回合冻结对面板同样生效
+		currentTodo = card;
 		return true;
 	};
 
@@ -2320,7 +2350,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		const width = terminalWidth();
 		const height = terminalHeight(stdout);
-		const mainHeight = Math.max(0, height - footerHeight());
+		const mainHeight = Math.max(0, height - footerHeight() - todoPanelHeight());
 		const beforeScroll = scrollTop;
 		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;

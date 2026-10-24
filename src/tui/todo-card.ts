@@ -286,3 +286,50 @@ export function todoCardFromArgs(args: Record<string, unknown>): TranscriptTodo 
 		collapsed: items.length > TODO_EXPAND_MAX_ITEMS,
 	};
 }
+
+/** 常驻面板最多显示的条目数:全部内容对话流里都有,面板只回答「进行到哪」。 */
+export const TODO_PANEL_MAX_ITEMS = 8;
+
+/**
+ * 常驻面板的屏幕行。
+ *
+ * 追问「现在进行到哪」的只读镜像:头行 + 条目单行截断(不折行,面板不挤压对话流)。
+ * 与对话流卡片共享同一张卡对象:收起状态、运行标记同步生效——用户收起卡片,面板也
+ * 只留头行。全部完成缩成一行;空表不渲染(调用方以高度 0 收起)。条目超上限时显示
+ * 剩余数。
+ */
+export function todoPanelLines(
+	card: TranscriptTodo,
+	width: number,
+	frame: TodoAnimationFrame,
+): readonly string[] {
+	if (card.items.length === 0) return [];
+
+	// 头行:运行中有转圈任务名,静止与全完成用静态形态
+	const running = card.running === true && card.items.some((item) => item.status === "in_progress");
+	const head = running ? animatedTodoHeader(card, frame, width) : todoHeaderLine(card, width);
+
+	const done = card.items.filter((item) => item.status === "completed").length;
+	// 全部完成或用户收起时只留头行
+	if (done === card.items.length || card.collapsed === true) return [head];
+
+	const lines: string[] = [head];
+	const visible = card.items.slice(0, TODO_PANEL_MAX_ITEMS);
+	for (const item of visible) {
+		const summary = truncateToWidth(item.content, Math.max(0, width - displayWidth(TODO_ITEM_INDENT) - 2));
+		if (item.status === "completed") {
+			lines.push(`${TODO_ITEM_INDENT}${TODO_DONE_COLOR}● ${THEME.reset}  ${TODO_PENDING_COLOR}${summary}${THEME.reset}`);
+		} else if (item.status === "failed") {
+			lines.push(`${TODO_ITEM_INDENT}${TODO_FAILED_COLOR}× ${summary}${THEME.reset}`);
+		} else if (item.status === "in_progress") {
+			lines.push(`${TODO_ITEM_INDENT}${TODO_ACTIVE_COLOR}${BOLD}◐ ${summary}${THEME.reset}`);
+		} else {
+			lines.push(`${TODO_ITEM_INDENT}${TODO_PENDING_COLOR}○ ${summary}${THEME.reset}`);
+		}
+	}
+	const hidden = card.items.length - visible.length;
+	if (hidden > 0) {
+		lines.push(`${TODO_ITEM_INDENT}${TODO_EXPLANATION_COLOR}… ${hidden} more${THEME.reset}`);
+	}
+	return lines;
+}

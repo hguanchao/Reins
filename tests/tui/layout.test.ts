@@ -4316,3 +4316,83 @@ describe("子代理组集成", () => {
 		assert.equal(await running, 0);
 	});
 });
+
+describe("常驻任务面板", () => {
+	it("todo 调用后面板常驻:回合结束不消失,头行回静态,翻新计数", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: { todos: [{ content: "写工具", status: "completed" }, { content: "渲染卡片", status: "in_progress" }] },
+			});
+
+			let text = frameLines(output).map(plain).join("\n");
+			// 面板与对话流卡片同屏:头行出现两次(对话流一次、面板一次)
+			assert.ok(text.includes("› Tasks  1/2"));
+			assert.ok(text.includes("● 写工具"));
+
+			await agent.finish();
+
+			// 回合结束:面板仍在(跨回合),头行回静态,不再有转圈
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Tasks  1/2"));
+			assert.equal(text.includes("⠋"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("全部完成后面板缩为一行,清空后面板消失", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: { todos: [{ content: "写工具", status: "completed" }, { content: "渲染卡片", status: "completed" }] },
+			});
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			// 全部完成:面板只剩一行汇总
+			assert.ok(text.includes("› Tasks  2/2"));
+
+			agent.emit({
+				type: "tool_start",
+				callId: "c2",
+				name: "todo",
+				args: { todos: [] },
+			});
+			t.mock.timers.tick(100);
+
+			text = frameLines(output).map(plain).join("\n");
+			// 空表:面板高度 0,两张卡片各只在对话流出现一次,面板不再重复
+			assert.equal(text.split("› Tasks  2/2").length - 1, 1);
+			assert.equal(text.split("› Tasks  cleared").length - 1, 1);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+});
