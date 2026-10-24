@@ -124,80 +124,90 @@ interface DiffHunkView {
 function numberDiff(diff: string): string {
 	const hunks: DiffHunkView[] = [];
 	const leading: string[] = [];
-	let current: DiffHunkView | undefined;
-	let oldLine = 1;
-	let newLine = 1;
-	let max = 0;
+	const counters = { oldLine: 1, newLine: 1, max: 0 };
 
 	for (const line of diff.split("\n")) {
 		const header = /^@@ line (\d+) @@/.exec(line);
 		if (header !== null) {
-			current = { lines: [], firstNewLine: undefined, lastNewLine: undefined };
-			hunks.push(current);
-			oldLine = Number(header[1]);
-			newLine = oldLine;
-			max = Math.max(max, oldLine);
+			const at = Number(header[1]);
+			hunks.push({ lines: [], firstNewLine: undefined, lastNewLine: undefined });
+			counters.oldLine = at;
+			counters.newLine = at;
+			counters.max = Math.max(counters.max, at);
 			continue;
 		}
 
-		if (current === undefined) {
-			// 历史结果可能只有 diff 行没有 @@ 头；按第 1 行起补一个隐式 hunk
-			if (line.startsWith("-") || line.startsWith("+") || line.startsWith("  ")) {
-				current = { lines: [], firstNewLine: undefined, lastNewLine: undefined };
-				hunks.push(current);
-				oldLine = 1;
-				newLine = 1;
-			} else {
-				leading.push(line);
-				continue;
-			}
-		}
-		if (line.length === 0) continue;
-
-		if (line.startsWith("-")) {
-			current.lines.push({ number: oldLine, text: line });
-			max = Math.max(max, oldLine);
-			oldLine += 1;
-			continue;
-		}
-		if (line.startsWith("+")) {
-			current.lines.push({ number: newLine, text: line });
-			current.firstNewLine ??= newLine;
-			current.lastNewLine = newLine;
-			max = Math.max(max, newLine);
-			newLine += 1;
-			continue;
-		}
-		if (line.startsWith("  ")) {
-			current.lines.push({ number: oldLine, text: line });
-			current.firstNewLine ??= newLine;
-			current.lastNewLine = newLine;
-			max = Math.max(max, oldLine);
-			oldLine += 1;
-			newLine += 1;
-			continue;
-		}
-
-		current.lines.push({ text: line });
+		const hunk = currentHunk(hunks, leading, line, counters);
+		if (hunk === undefined) continue;
+		numberDiffLine(hunk, line, counters);
 	}
 
-	const width = String(max).length;
+	return renderNumberedDiff(hunks, leading, String(counters.max).length);
+}
+
+/** 找到这一行所属的 hunk；不属于任何 hunk 的引导行记进 leading 并返回 undefined。 */
+function currentHunk(
+	hunks: DiffHunkView[],
+	leading: string[],
+	line: string,
+	counters: { oldLine: number; newLine: number; max: number },
+): DiffHunkView | undefined {
+	if (hunks.length > 0 && line.length > 0) return hunks.at(-1);
+	// 历史结果可能只有 diff 行没有 @@ 头；按第 1 行起补一个隐式 hunk
+	if (line.startsWith("-") || line.startsWith("+") || line.startsWith("  ")) {
+		const implicit: DiffHunkView = { lines: [], firstNewLine: undefined, lastNewLine: undefined };
+		hunks.push(implicit);
+		counters.oldLine = 1;
+		counters.newLine = 1;
+		return implicit;
+	}
+	leading.push(line);
+	return undefined;
+}
+
+/** 按 +/-/上下文 三种前缀给一行编号并推进对应侧的行计数。 */
+function numberDiffLine(
+	hunk: DiffHunkView,
+	line: string,
+	counters: { oldLine: number; newLine: number; max: number },
+): void {
+	if (line.length === 0) return;
+	if (line.startsWith("-")) {
+		hunk.lines.push({ number: counters.oldLine, text: line });
+		counters.max = Math.max(counters.max, counters.oldLine);
+		counters.oldLine += 1;
+		return;
+	}
+	if (line.startsWith("+")) {
+		hunk.lines.push({ number: counters.newLine, text: line });
+		hunk.firstNewLine ??= counters.newLine;
+		hunk.lastNewLine = counters.newLine;
+		counters.max = Math.max(counters.max, counters.newLine);
+		counters.newLine += 1;
+		return;
+	}
+	if (line.startsWith("  ")) {
+		hunk.lines.push({ number: counters.oldLine, text: line });
+		hunk.firstNewLine ??= counters.newLine;
+		hunk.lastNewLine = counters.newLine;
+		counters.max = Math.max(counters.max, counters.oldLine);
+		counters.oldLine += 1;
+		counters.newLine += 1;
+		return;
+	}
+	hunk.lines.push({ text: line });
+}
+
+/** 把编号后的 hunk 渲染成行：hunk 之间插省略行，行号右对齐到同一宽度。 */
+function renderNumberedDiff(
+	hunks: readonly DiffHunkView[],
+	leading: readonly string[],
+	width: number,
+): string {
 	const output: string[] = leading.filter((line) => line.length > 0);
 
 	for (const [index, hunk] of hunks.entries()) {
-		if (index > 0) {
-			const previous = hunks[index - 1];
-			const gap =
-				hunk.firstNewLine !== undefined && previous?.lastNewLine !== undefined
-					? hunk.firstNewLine - previous.lastNewLine - 1
-					: undefined;
-			const label =
-				gap !== undefined && gap > 0
-					? `… ${gap} unchanged ${gap === 1 ? "line" : "lines"}`
-					: "…";
-			output.push(`${" ".repeat(width + 1)}${label}`);
-		}
-
+		if (index > 0) output.push(omittedLabel(hunks[index - 1], hunk, width));
 		for (const entry of hunk.lines) {
 			output.push(
 				entry.number === undefined
@@ -208,6 +218,19 @@ function numberDiff(diff: string): string {
 	}
 
 	return output.join("\n");
+}
+
+/** 两个相邻 hunk 之间的省略提示：间距按新文件行号算，间距为 0 时只给一个省略号。 */
+function omittedLabel(previous: DiffHunkView, next: DiffHunkView, width: number): string {
+	const gap =
+		next.firstNewLine !== undefined && previous.lastNewLine !== undefined
+			? next.firstNewLine - previous.lastNewLine - 1
+			: undefined;
+	const label =
+		gap !== undefined && gap > 0
+			? `… ${gap} unchanged ${gap === 1 ? "line" : "lines"}`
+			: "…";
+	return `${" ".repeat(width + 1)}${label}`;
 }
 
 

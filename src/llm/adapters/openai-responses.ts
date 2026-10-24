@@ -81,6 +81,99 @@ interface Terminal {
 	readonly reason: string | undefined;
 }
 
+/** 一次响应流跨事件累积的状态:终止事件与用量要到最后才用,工具调用参数分片到达。 */
+interface EventSession {
+	readonly pendingTools: Set<number>;
+	readonly finalArguments: Map<number, string>;
+	terminal: Terminal | undefined;
+	usage: LlmUsage | undefined;
+	responseModel: string;
+}
+
+/**
+ * 单个 SSE 事件的处理。
+ *
+ * 事件分派独立成函数而不是塞在流读取回调里:runProtocol 只管请求生命周期(发请求、
+ * 校验收尾、拼结果),每个事件怎么映射到这里看不到。
+ */
+function handleResponseEvent(
+	event: StreamEvent,
+	session: EventSession,
+	accumulator: ContentAccumulator,
+	emit: (event: LlmEvent) => void,
+): void {
+	const index = event.output_index;
+	switch (event.type) {
+		case "response.created":
+			if (typeof event.response?.model === "string") session.responseModel = event.response.model;
+			return;
+		case "response.output_item.added":
+			// 可选字段允许 null：端点习惯把「没有」写成 null，只判 undefined 会一头撞进去
+			if (index !== undefined && event.item != null) {
+				startItem(index, event.item, accumulator, session.pendingTools, emit);
+			}
+			return;
+		case "response.reasoning_summary_text.delta":
+		case "response.reasoning_text.delta":
+			if (index !== undefined && typeof event.delta === "string") {
+				accumulator.appendThinking(index, event.delta);
+				emit({ type: "reasoning_delta", text: event.delta });
+			}
+			return;
+		case "response.reasoning_summary_part.done":
+			if (index !== undefined) {
+				accumulator.appendThinking(index, "\n\n");
+				emit({ type: "reasoning_delta", text: "\n\n" });
+			}
+			return;
+		case "response.output_text.delta":
+		case "response.refusal.delta":
+			if (index !== undefined && typeof event.delta === "string") {
+				accumulator.appendText(index, event.delta);
+				emit({ type: "text_delta", text: event.delta });
+			}
+			return;
+		case "response.function_call_arguments.delta":
+			if (index !== undefined && typeof event.delta === "string") {
+				accumulator.appendToolArguments(index, event.delta);
+				emit({ type: "tool_call_delta", index, argsJson: event.delta });
+			}
+			return;
+		case "response.function_call_arguments.done":
+			if (index !== undefined && typeof event.arguments === "string") {
+				session.finalArguments.set(index, event.arguments);
+			}
+			return;
+		case "response.output_item.done":
+			if (index !== undefined && event.item != null) {
+				finishItem(index, event.item, session.finalArguments, accumulator, session.pendingTools, emit);
+			}
+			return;
+		case "response.completed":
+		case "response.incomplete": {
+			if (typeof event.response?.model === "string") session.responseModel = event.response.model;
+			if (event.response?.usage != null) session.usage = toUsage(event.response.usage);
+			session.terminal = {
+				status: event.type === "response.incomplete" ? "incomplete" : (event.response?.status ?? "completed"),
+				reason: event.response?.incomplete_details?.reason,
+			};
+			return;
+		}
+		case "response.failed": {
+			const error = event.response?.error;
+			const reason = event.response?.incomplete_details?.reason;
+			throw new Error(
+				error?.message ??
+					(reason === undefined ? "response failed without details" : `response incomplete: ${reason}`),
+			);
+		}
+		case "error":
+			throw new Error(event.message ?? event.code ?? "endpoint returned an error");
+		default:
+			return;
+	}
+}
+
 export class OpenAiResponsesClient extends ProtocolClient {
 	readonly api = "openai-responses";
 	constructor(
@@ -100,13 +193,15 @@ export class OpenAiResponsesClient extends ProtocolClient {
 	): Promise<LlmResult> {
 		// 密钥每次请求现取：command 形式的密钥可能是短期有效的，启动时取一次会在长会话里过期
 		const apiKey = await resolveApiKey(this.provider.apiKey, request.signal);
-		/** 已经出现但还没收到 output_item.done 的工具调用 */
-		const pendingTools = new Set<number>();
-		/** 流里先到的完整参数；output_item.done 可能省略 arguments */
-		const finalArguments = new Map<number, string>();
-		let terminal: Terminal | undefined;
-		let usage: LlmUsage | undefined;
-		let responseModel = this.model.id;
+		const session: EventSession = {
+			/** 已经出现但还没收到 output_item.done 的工具调用 */
+			pendingTools: new Set<number>(),
+			/** 流里先到的完整参数；output_item.done 可能省略 arguments */
+			finalArguments: new Map<number, string>(),
+			terminal: undefined,
+			usage: undefined,
+			responseModel: this.model.id,
+		};
 
 		await postSse(
 			{
@@ -121,7 +216,7 @@ export class OpenAiResponsesClient extends ProtocolClient {
 				onRetry: request.onRetry,
 				proxy: this.proxy,
 				// 终止事件到手就说明这一轮发完了，之后连接怎么断都算正常结束
-				complete: () => terminal !== undefined,
+				complete: () => session.terminal !== undefined,
 			},
 			(data) => {
 				let event: StreamEvent;
@@ -131,104 +226,34 @@ export class OpenAiResponsesClient extends ProtocolClient {
 					// 单个分片拼不成 JSON 就跳过：后续事件仍然能把这一轮补完整
 					return;
 				}
-
-				const index = event.output_index;
-				switch (event.type) {
-					case "response.created":
-						if (typeof event.response?.model === "string") responseModel = event.response.model;
-						return;
-					case "response.output_item.added":
-						// 可选字段允许 null：端点习惯把「没有」写成 null，只判 undefined 会一头撞进去
-						if (index !== undefined && event.item != null) {
-							startItem(index, event.item, accumulator, pendingTools, emit);
-						}
-						return;
-					case "response.reasoning_summary_text.delta":
-					case "response.reasoning_text.delta":
-						if (index !== undefined && typeof event.delta === "string") {
-							accumulator.appendThinking(index, event.delta);
-							emit({ type: "reasoning_delta", text: event.delta });
-						}
-						return;
-					case "response.reasoning_summary_part.done":
-						if (index !== undefined) {
-							accumulator.appendThinking(index, "\n\n");
-							emit({ type: "reasoning_delta", text: "\n\n" });
-						}
-						return;
-					case "response.output_text.delta":
-					case "response.refusal.delta":
-						if (index !== undefined && typeof event.delta === "string") {
-							accumulator.appendText(index, event.delta);
-							emit({ type: "text_delta", text: event.delta });
-						}
-						return;
-					case "response.function_call_arguments.delta":
-						if (index !== undefined && typeof event.delta === "string") {
-							accumulator.appendToolArguments(index, event.delta);
-							emit({ type: "tool_call_delta", index, argsJson: event.delta });
-						}
-						return;
-					case "response.function_call_arguments.done":
-						if (index !== undefined && typeof event.arguments === "string") {
-							finalArguments.set(index, event.arguments);
-						}
-						return;
-					case "response.output_item.done":
-						if (index !== undefined && event.item != null) {
-							finishItem(index, event.item, finalArguments, accumulator, pendingTools, emit);
-						}
-						return;
-					case "response.completed":
-					case "response.incomplete": {
-						if (typeof event.response?.model === "string") responseModel = event.response.model;
-						if (event.response?.usage != null) usage = toUsage(event.response.usage);
-						terminal = {
-							status: event.type === "response.incomplete" ? "incomplete" : (event.response?.status ?? "completed"),
-							reason: event.response?.incomplete_details?.reason,
-						};
-						return;
-					}
-					case "response.failed": {
-						const error = event.response?.error;
-						const reason = event.response?.incomplete_details?.reason;
-						throw new Error(
-							error?.message ??
-								(reason === undefined ? "response failed without details" : `response incomplete: ${reason}`),
-						);
-					}
-					case "error":
-						throw new Error(event.message ?? event.code ?? "endpoint returned an error");
-					default:
-						return;
-				}
+				handleResponseEvent(event, session, accumulator, emit);
 			},
 			this.policy,
 			this.idleTimeoutMs,
 		);
 
-		if (terminal === undefined) {
+		if (session.terminal === undefined) {
 			// 没有终止事件的流可能被截断过；当成完成会让残缺的工具调用被执行
 			throw new Error("the response has no terminal event; the connection may have been cut off early");
 		}
-		if (pendingTools.size > 0) {
+		if (session.pendingTools.size > 0) {
 			// 参数可能只到一半；把它当完整调用执行，工具会收到一个错误的参数对象
 			throw new Error("the response completed with an unfinished tool call");
 		}
 		accumulator.finishAll();
 
 		const content = accumulator.blocks();
-		const mapped = stopReasonOf(terminal.status, terminal.reason, content);
+		const mapped = stopReasonOf(session.terminal.status, session.terminal.reason, content);
 		// 空白回答当成功交出去，使用者只会以为模型不想说话；长度截断与内容过滤另有更具体的原因
 		if (mapped.stopReason === "stop" && !accumulator.hasOutput()) {
 			throw new Error("the endpoint returned an empty response");
 		}
 		return {
 			content,
-			usage,
+			usage: session.usage,
 			stopReason: mapped.stopReason,
 			errorMessage: mapped.errorMessage,
-			model: responseModel,
+			model: session.responseModel,
 		};
 	}
 

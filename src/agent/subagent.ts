@@ -1,6 +1,6 @@
 import type { Config } from "../config/config-file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
-import type { LlmClient } from "../llm/client.ts";
+import type { LlmClient, LlmResult } from "../llm/client.ts";
 import { requestOptions, requestTools, TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";
 import {
 	assistantText,
@@ -42,6 +42,31 @@ export const DEFAULT_SUBAGENT_STEPS = 20;
  * 估算不含系统提示词与工具声明，且还要给这一次的输出留空间，所以低于主对话的压缩阈值。
  */
 const CONTEXT_BUDGET_RATIO = 0.7;
+
+/**
+ * 一步开工前的两项检查:使用者是否已经中止、上下文是否撞到预算。
+ * 都没撞上返回 undefined,循环继续。
+ */
+function stepBudgetCheck(
+	step: number,
+	messages: readonly LlmMessage[],
+	context: SubagentContext,
+	contextWindow: number | undefined,
+): SubagentOutcome | undefined {
+	if (context.signal.aborted) {
+		return { report: abortedReport(step - 1), steps: step - 1, stopReason: "aborted" };
+	}
+	if (contextWindow === undefined) return undefined;
+	if (estimateTokens(messages) < contextWindow * CONTEXT_BUDGET_RATIO) return undefined;
+	return {
+		report:
+			`The subagent stopped before finishing: its context reached the ` +
+			`${Math.round(CONTEXT_BUDGET_RATIO * 100)}% budget of ${contextWindow} tokens. ` +
+			"Split the task into smaller pieces or ask for a narrower scope.",
+		steps: step - 1,
+		stopReason: "context",
+	};
+}
 
 export interface SubagentDeps {
 	readonly provider: ProviderEntry;
@@ -90,39 +115,13 @@ export class Subagent {
 		let said = "";
 
 		for (let step = 1; step <= this.#deps.maxSteps; step += 1) {
-			if (context.signal.aborted) {
-				return { report: abortedReport(step - 1), steps: step - 1, stopReason: "aborted" };
-			}
-			const contextWindow = this.#deps.contextWindow;
-			if (
-				contextWindow !== undefined &&
-				estimateTokens(messages) >= contextWindow * CONTEXT_BUDGET_RATIO
-			) {
-				return {
-					report:
-						`The subagent stopped before finishing: its context reached the ` +
-						`${Math.round(CONTEXT_BUDGET_RATIO * 100)}% budget of ${contextWindow} tokens. ` +
-						"Split the task into smaller pieces or ask for a narrower scope.",
-					steps: step - 1,
-					stopReason: "context",
-				};
-			}
+			const stopped = stepBudgetCheck(step, messages, context, this.#deps.contextWindow);
+			if (stopped !== undefined) return stopped;
 			context.onProgress(`step ${step}/${this.#deps.maxSteps}`);
 
-			const stream = this.#deps.client.stream({
-				model: this.#deps.model.id,
-				system,
-				messages,
-				tools: requestTools(declarations),
-				...requestOptions(this.#deps.model, this.#deps.config),
-				onRetry: (attempt, reason) => context.onProgress(`retrying (${attempt}): ${reason}`),
-				signal: context.signal,
-			});
-			// 子代理只看最终结论，但增量仍要消费掉：流不迭代会把整轮输出无限堆在缓冲里
-			for await (const event of stream) {
-				void event;
-			}
-			const result = await stream.result();
+			const stepResult = await this.#requestStep(system, messages, step, context);
+			if ("stopReason" in stepResult && "report" in stepResult) return stepResult;
+			const result: LlmResult = stepResult;
 
 			if (result.usage !== undefined) {
 				await this.#deps.session.append({
@@ -133,17 +132,6 @@ export class Subagent {
 					usage: result.usage,
 					cost: computeCost(this.#deps.model.cost, result.usage),
 				});
-			}
-
-			if (result.stopReason === "aborted") {
-				return { report: abortedReport(step), steps: step, stopReason: "aborted" };
-			}
-			if (result.stopReason === "error") {
-				return {
-					report: `The subagent failed and did not finish: ${result.errorMessage ?? "unknown error"}`,
-					steps: step,
-					stopReason: "error",
-				};
 			}
 
 			const assistant: LlmAssistantMessage = { role: "assistant", content: result.content };
@@ -187,6 +175,41 @@ export class Subagent {
 			steps: this.#deps.maxSteps,
 			stopReason: "steps",
 		};
+	}
+
+	/** 一步请求:发出去、消费增量、把请求层的中止与失败换算成结局。 */
+	async #requestStep(
+		system: string,
+		messages: LlmMessage[],
+		steps: number,
+		context: SubagentContext,
+	): Promise<LlmResult | SubagentOutcome> {
+		const stream = this.#deps.client.stream({
+			model: this.#deps.model.id,
+			system,
+			messages,
+			tools: requestTools(this.#deps.tools.list()),
+			...requestOptions(this.#deps.model, this.#deps.config),
+			onRetry: (attempt, reason) => context.onProgress(`retrying (${attempt}): ${reason}`),
+			signal: context.signal,
+		});
+		// 子代理只看最终结论，但增量仍要消费掉：流不迭代会把整轮输出无限堆在缓冲里
+		for await (const event of stream) {
+			void event;
+		}
+		const result = await stream.result();
+
+		if (result.stopReason === "aborted") {
+			return { report: abortedReport(steps), steps, stopReason: "aborted" };
+		}
+		if (result.stopReason === "error") {
+			return {
+				report: `The subagent failed and did not finish: ${result.errorMessage ?? "unknown error"}`,
+				steps,
+				stopReason: "error",
+			};
+		}
+		return result;
 	}
 
 	async #callTool(call: LlmToolCallBlock, context: SubagentContext): Promise<LlmToolResultMessage> {
