@@ -261,7 +261,6 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
 	}
-	if (session === undefined) return 1;
 	// 当前会话会被 /session 菜单替换；后续所有装配都读这个可变引用
 	let activeSession: Session = session;
 	startup.mark("session");
@@ -310,8 +309,10 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		let next: Config;
 		try {
 			next = readConfigQuietly(options, workRoot, "trusted" in loaded && loaded.trusted);
-		} catch {
-			return "Config could not be re-read; keeping the previous settings";
+		} catch (error) {
+			// 带上具体原因：配置错误本身带行列信息，丢掉它使用者只能瞎猜改哪儿
+			const detail = error instanceof Error ? error.message : String(error);
+			return `Config could not be re-read (${detail}); keeping the previous settings`;
 		}
 
 		const diff = diffConfig(activeConfig, next);
@@ -1109,15 +1110,6 @@ function reportExternalFailures(failures: readonly PluginFailure[]): void {
 	}
 }
 
-/**
- * 装载随包分发的插件。
- *
- * 失败只说一声：一个写坏的插件不该让整个程序起不来。禁用清单来自配置，而配置在装载之前
- * 就已经读过并取得过信任了。
- *
- * 这里不给 MCP server，也不装外部插件：`reins sessions` 只列会话，为了显示一份清单去起一堆
- * 外部进程、跑一遍别人的代码，既慢又会在使用者看不见的地方留下副作用。
- */
 /**
  * 新建本次会话。
  *

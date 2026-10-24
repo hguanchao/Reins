@@ -62,7 +62,7 @@ export function describeToolCall(
  * "command" 是延迟分组：运行期命令仍各自独立成行（失败行、结果回挂都靠这一点），只有回合
  * 结束时连续够数才塌成一组。写操作返回 undefined，永不进组。
  */
-export function toolGroupKind(tool: string): ToolGroupKind | undefined {
+function toolGroupKind(tool: string): ToolGroupKind | undefined {
 	switch (tool) {
 		case "read":
 			return "read";

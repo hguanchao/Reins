@@ -59,7 +59,7 @@ export function buildTranscriptHistory(
 				const text = assistantText(message);
 				if (text.length > 0) turn.response.push({ kind: "markdown", text });
 				for (const call of assistantToolCalls(message)) {
-					// 任务卡片与实时路径共用同一份参数解析;解析不了的形状退回普通工具行
+					// 任务卡片与实时路径共用同一份参数解析；解析不了的形状退回普通工具行
 					const card = call.name === "todo" ? todoCardFromArgs(call.arguments) : undefined;
 					if (card !== undefined) {
 						turn.response.push(card);

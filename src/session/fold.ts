@@ -62,7 +62,7 @@ export class SessionFolder {
 	}
 }
 
-/** 从零折叠出状态：读文件与导出走这条路。 */
+/** 从零折叠出状态：测试与一次性导出走这条路；持续读文件走 SessionFolder 的增量接口。 */
 export function foldEntries(entries: readonly SessionEntry[]): SessionState {
 	const folder = new SessionFolder();
 	for (const entry of entries) folder.add(entry);

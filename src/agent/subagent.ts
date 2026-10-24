@@ -127,7 +127,7 @@ export class Subagent {
 				onRetry: (attempt, reason) => context.onProgress(`retrying (${attempt}): ${reason}`),
 				signal: context.signal,
 			});
-			// 子代理只看最终结论,但增量仍要消费掉:流不迭代会把整轮输出无限堆在缓冲里
+			// 子代理只看最终结论，但增量仍要消费掉：流不迭代会把整轮输出无限堆在缓冲里
 			for await (const event of stream) {
 				void event;
 			}

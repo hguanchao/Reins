@@ -25,7 +25,7 @@ import {
 /**
  * 对话流渲染。
  *
- * 用户提示按 grok-build 的方式作为吸顶区块：发送后落在视口顶部，回复在它下方增长；
+ * 用户提示作为吸顶区块：发送后落在视口顶部，回复在它下方增长；
  * 回复向上滚出视口时，提示块固定在顶部，提示下方保留一行空隙。旧提示仍留在滚动流里，
  * 往上滚就能看到，不折叠、不汇总。
  *
@@ -216,7 +216,7 @@ const DETAIL_BAND_LEFT = 2;
 /** 窄终端下正文至少保留的列数：行号与标记必须为它让位，否则这一行什么也读不到。 */
 const MIN_DETAIL_CONTENT = 4;
 
-export interface PromptRange {
+interface PromptRange {
 	/** 提示块第一行在 transcript 里的下标 */
 	readonly start: number;
 	/** 提示块正文行数，1 到 3 */
@@ -932,7 +932,6 @@ function toolGroupLines(
 	return { lines, memberStarts };
 }
 
-/** 成功工具结果：缩进在工具行下方，超过预览行数时收敛。 */
 /**
  * 成功工具的结果。
  *

@@ -4,7 +4,7 @@
  * 面板里时间单独占一列，用完整词组比 `2h` 更容易一眼读懂；只保留最大单位，
  * 「2 hours ago」已经够判断新旧，再精确到分钟反而更长也更吵。
  *
- * 取整一律向下：刚过一小时写成「1 hour ago」而不是「1 hour ago」四舍五入成两小时，
+ * 取整一律向下：刚过一小时写成「1 hour ago」而不是四舍五入成「2 hours ago」，
  * 时间只会显得比实际更久，不会让人以为它比实际更新。
  */
 export function sessionAge(updatedAt: string, now = Date.now()): string {

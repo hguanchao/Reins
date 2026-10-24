@@ -156,7 +156,7 @@ export function mcpsPageLines(width: number, servers: readonly PageEntry[]): rea
  *
  * 每行都带好颜色，调用方直接拼进画面即可；宽度不够时说明文字换行，续行与首行说明对齐。
  */
-export function sectionPageLines(
+function sectionPageLines(
 	title: string,
 	sections: readonly PageSection[],
 	footnotes: readonly string[],

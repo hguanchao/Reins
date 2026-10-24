@@ -190,7 +190,7 @@ async function postSseOnce(
 		}
 	} finally {
 		if (idleTimer !== undefined) clearTimeout(idleTimer);
-		// 出错路径也要松手:内容出错时响应体没人再读,socket 会一直挂到对端关闭;
+		// 出错路径也要松手：内容出错时响应体没人再读,socket 会一直挂到对端关闭；
 		// 正常读完后的 cancel 是无害空操作
 		void reader.cancel().catch(() => {});
 	}

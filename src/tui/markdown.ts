@@ -84,8 +84,8 @@ const LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
 export function renderMarkdown(text: string, width: number): readonly string[] {
 	if (width <= 0 || text.length === 0) return [];
 
-	// 模型输出什么都能进来,解析器对畸形输入抛错不该把整帧渲染带崩——终端会停在
-	// 备用屏与原始模式里。渲染不出来就按普通正文折行,内容一行不丢
+	// 模型输出什么都能进来，解析器对畸形输入抛错不该把整帧渲染带崩——终端会停在
+	// 备用屏与原始模式里。渲染不出来就按普通正文折行，内容一行不丢
 	let tokens: Token[];
 	try {
 		tokens = lexer(text, { gfm: true });

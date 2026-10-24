@@ -439,7 +439,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	}));
 	/** 有历史或输入过内容就显示对话流。 */
 	let hasInput = turns.length > 0;
-	/** 首次绘制时把已有历史滚到底部。 */
 	/**
 	 * 一轮进行中执行的命令，回复暂存在这里，等这一轮结束再落进对话流。
 	 *
@@ -447,6 +446,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	 * 块当场就被滚出视野。等这一轮收尾再追加，位置在末尾、时间顺序也对。
 	 */
 	const pendingCommandTurns: LiveTurn[] = [];
+	/** 首次绘制时把已有历史滚到底部。 */
 	let initialScroll = turns.length > 0;
 	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
 	let focused = true;
@@ -657,7 +657,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 							queued,
 						});
 			const transcriptShown = openPage === undefined && (hasInput || activeWarning !== undefined);
-			// 运行中任务卡按当前帧重建转圈与扫光;没有动画行时这只是原样返回缓存行
+			// 运行中任务卡按当前帧重建转圈与扫光；没有动画行时这只是原样返回缓存行
 			const todoFrame: TodoAnimationFrame = { spinner: SPINNER_FRAMES[spinnerFrame] ?? "", sweepPhase };
 			const main =
 				openPage !== undefined
@@ -943,7 +943,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		syncTurn(active);
 	};
 
-	/** 最近一张任务卡片:先看本轮,再往前找历史回合,用于进行中任务计时的继承。 */
+	/** 最近一张任务卡片：先看本轮，再往前找历史回合，用于进行中任务计时的继承。 */
 	const lastTodoCard = (active: ActiveTurn): TranscriptTodo | undefined => {
 		for (let index = active.lines.length - 1; index >= 0; index -= 1) {
 			const line = active.lines[index];
@@ -1025,15 +1025,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "tool_start": {
 				closeThinking(active);
-				// 任务卡片直接按参数渲染:模型发来的列表就是界面要显示的内容。解析不了的
-				// 形状落回普通工具行,后面校验阶段的错误信息才有行可挂
+				// 任务卡片直接按参数渲染：模型发来的列表就是界面要显示的内容。解析不了的
+				// 形状落回普通工具行，后面校验阶段的错误信息才有行可挂
 				if (event.name === "todo") {
 					const card = todoCardFromArgs(event.args);
 					if (card !== undefined) {
 						card.running = true;
 						const current = card.items.find((item) => item.status === "in_progress");
 						if (current !== undefined) {
-							// 计时起点:同一任务在上一张卡片里也进行时继承,否则从现在起算
+							// 计时起点：同一任务在上一张卡片里也进行时继承，否则从现在起算
 							const previousCard = lastTodoCard(active);
 							const previous = previousCard?.items.find((item) => item.status === "in_progress");
 							card.taskStartedAt =
@@ -1627,7 +1627,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (activeTurn !== active) return;
 				closeThinking(active);
 				closeText(active);
-				// 任务卡片退场:转圈与扫光只在回合运行期间存在,之后的进行中行是静态半圆
+				// 任务卡片退场：转圈与扫光只在回合运行期间存在，之后的进行中行是静态半圆
 				for (const line of active.lines) {
 					if (typeof line === "object" && line !== null && line.kind === "todo") line.running = false;
 				}
@@ -2721,7 +2721,6 @@ function mouseEvents(text: string): readonly MouseInput[] {
 	return events;
 }
 
-/** 菜单面板的屏幕行对应哪个条目；top 是面板第一行的 0 基坐标。 */
 /**
  * 菜单面板的屏幕行对应哪个条目。
  *

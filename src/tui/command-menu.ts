@@ -37,7 +37,7 @@ export interface CommandMenuState {
 	scrollTop: number;
 }
 
-export const COMMAND_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
+const COMMAND_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
 const PREFIX_WIDTH = 3;
 /** 命令名与说明之间的间距。 */

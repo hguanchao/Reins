@@ -320,7 +320,7 @@ function toStopReason(stopReason: string): LlmStopReason {
 		case "max_tokens":
 			return "length";
 		default:
-			// refusal、pause_turn 这类未收录的原因不当作正常完成:残缺的回复按错误交出去,
+			// refusal、pause_turn 这类未收录的原因不当作正常完成：残缺的回复按错误交出去，
 			// 静默当 stop 会让被掐断的内容看起来像完整结论
 			return "error";
 	}

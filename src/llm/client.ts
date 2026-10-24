@@ -1,5 +1,4 @@
 import type { ReasoningEffort } from "./effort.ts";
-import type { EventStream } from "./event-stream.ts";
 import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage } from "./messages.ts";
 
 /**
@@ -71,5 +70,3 @@ export interface LlmClient {
 	 */
 	stream(request: LlmRequest): LlmStream;
 }
-
-export type { EventStream };

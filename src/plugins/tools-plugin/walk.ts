@@ -213,7 +213,7 @@ function verdictOf(matcher: ReturnType<typeof ignore>, path: string): boolean | 
 }
 
 /** 统一用正斜杠：结果要交给模型与配置，跨平台显示成一致的写法更省事。 */
-export function toPosix(path: string): string {
+function toPosix(path: string): string {
 	return path.split(sep).join("/");
 }
 
@@ -223,7 +223,7 @@ export function toPosix(path: string): string {
  * `ls-files -- .` 的输出相对当前目录，正好与遍历起点一致；`--others --exclude-standard`
  * 让未跟踪但未被忽略的文件也进入结果。不是仓库或 git 不可用时返回 undefined，由调用方回退。
  */
-export function listGitFiles(root: string): readonly string[] | undefined {
+function listGitFiles(root: string): readonly string[] | undefined {
 	const result = spawnSync(
 		"git",
 		["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "."],

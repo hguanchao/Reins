@@ -2,10 +2,10 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 /** 配置目录名，放在用户主目录下。 */
-export const CONFIG_DIR_NAME = ".reins";
+const CONFIG_DIR_NAME = ".reins";
 
-export const CONFIG_FILE_NAME = "config.toml";
-export const PROVIDERS_FILE_NAME = "providers.json";
+const CONFIG_FILE_NAME = "config.toml";
+const PROVIDERS_FILE_NAME = "providers.json";
 
 /** 配置目录，可用环境变量覆盖，便于测试与多套配置并存。 */
 export function configDir(): string {

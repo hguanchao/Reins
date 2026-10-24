@@ -171,7 +171,7 @@ class JsonlWriter implements SessionWriter {
 	}
 }
 
-export interface ParsedSessionFile {
+interface ParsedSessionFile {
 	readonly header: SessionHeaderEntry | undefined;
 	readonly entries: readonly SessionEntry[];
 	/** 解析不了的行数。文件被外部改动过或写到一半中断过时，用它判断完整性。 */

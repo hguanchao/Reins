@@ -38,7 +38,7 @@ export interface SessionMenuState {
 	scrollTop: number;
 }
 
-export const SESSION_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
+const SESSION_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 
 /** " › " 的显示宽度；未选中行用等宽空格占位。 */
 const PREFIX_WIDTH = 3;

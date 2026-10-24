@@ -41,7 +41,7 @@ export function resumeCommand(id: string): string {
  *
  * 文件名里带创建时间，便于按时间找人；后缀是短随机串，避免同一秒内启动两次时撞名。
  */
-export function sessionFilePath(workRoot: string): string {
+function sessionFilePath(workRoot: string): string {
 	const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
 	return join(sessionsDir(workRoot), `${stamp}_${randomBytes(4).toString("hex")}.jsonl`);
 }

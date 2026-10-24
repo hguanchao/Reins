@@ -169,8 +169,8 @@ export class TurnDriver {
 	}
 
 	async #runTools(calls: readonly LlmToolCallBlock[], signal: AbortSignal): Promise<void> {
-		// 并行执行,但不让单次调用的意外异常炸掉整批:助手消息已带着全部调用落进会话,
-		// 任何一条缺结果都会让后续请求被端点拒绝,所以异常也转成错误结果照常写回
+		// 并行执行，但不让单次调用的意外异常炸掉整批：助手消息已带着全部调用落进会话，
+		// 任何一条缺结果都会让后续请求被端点拒绝，所以异常也转成错误结果照常写回
 		const settled = await Promise.allSettled(calls.map((call) => this.#runTool(call, signal)));
 		const outcomes = settled.map((outcome, index) =>
 			outcome.status === "fulfilled"
@@ -213,7 +213,7 @@ export class TurnDriver {
 				signal,
 				onUpdate: (text) => {
 					// 阶段性输出只是给界面看的，不参与对话内容，因此不阻塞执行；
-					// 监听者自身出错也不往上抛,火后 Promise 的拒绝没人接会拖垮整个进程
+					// 监听者自身出错也不往上抛，火后 Promise 的拒绝没人接会拖垮整个进程
 					void this.emit({ type: "tool_update", callId: call.id, text }).catch(() => {});
 				},
 			},

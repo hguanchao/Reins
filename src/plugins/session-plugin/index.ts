@@ -11,7 +11,7 @@ import { JsonlSessionStore } from "./jsonl-store.ts";
 export const name = "session-plugin";
 
 /** 只需要落盘能力、不装载整套插件的场景（比如全屏界面启动）直接拿这个存储。 */
-export function createSessionStore(): SessionStore {
+function createSessionStore(): SessionStore {
 	return new JsonlSessionStore();
 }
 

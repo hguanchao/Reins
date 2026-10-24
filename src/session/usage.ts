@@ -113,7 +113,7 @@ export function lastContextTokens(entries: readonly SessionEntry[]): number | un
 	return undefined;
 }
 
-/** 把用量写成人看的一行，界面上与导出里都用它。 */
+/** 把用量写成人看的一行：测试与导出用；全屏界面自己另行排版。 */
 export function describeUsage(totals: UsageTotals): string {
 	const breakdown: string[] = [];
 	if (totals.compactions > 0) breakdown.push(`compactions: ${totals.compactions}`);

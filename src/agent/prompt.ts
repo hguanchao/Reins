@@ -10,7 +10,7 @@ import type { SessionToolDeclaration } from "../session/port.ts";
  */
 
 /** 渲染顺序。提示词的结构固定，顺序不随注册顺序变化，否则每次请求的缓存前缀都不一样。 */
-export const SECTION_ORDER: readonly string[] = ["preamble", "tools", "skills", "rules", "cwd"];
+const SECTION_ORDER: readonly string[] = ["preamble", "tools", "skills", "rules", "cwd"];
 
 const PREAMBLE = `You are Reins, a coding agent running in the user's terminal. You work inside a workspace: inspect it, change files, run commands, and report the result.
 

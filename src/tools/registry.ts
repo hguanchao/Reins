@@ -142,8 +142,8 @@ export class ToolRegistry {
 		}
 		const tool = registration.definition;
 
-		// prepareArguments 与 permissionScope 都可能来自插件,它们的异常不能让整轮工具执行
-		// 中断:助手消息已经带着调用落进会话,缺一条对应结果会让后续每轮请求都被端点拒绝
+		// prepareArguments 与 permissionScope 都可能来自插件，它们的异常不能让整轮工具执行
+		// 中断：助手消息已经带着调用落进会话，缺一条对应结果会让后续每轮请求都被端点拒绝
 		let prepared: Record<string, unknown>;
 		try {
 			prepared = tool.prepareArguments === undefined ? request.args : tool.prepareArguments(request.args);

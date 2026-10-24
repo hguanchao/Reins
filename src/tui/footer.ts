@@ -120,7 +120,7 @@ export interface FooterLayout {
 }
 
 /** 多行输入最多同时显示几行，再多就围绕光标滚动。 */
-export const MAX_VISIBLE_INPUT_LINES = 6;
+const MAX_VISIBLE_INPUT_LINES = 6;
 
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
 const INPUT_PREFIX = " › ";

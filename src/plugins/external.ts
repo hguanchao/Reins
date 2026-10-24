@@ -23,7 +23,7 @@ export interface ExternalPluginSource {
  * 目录不存在就当作没有插件：大多数人不会有外部插件，为此报错只会让人以为哪里配错了。
  * 只看顶层的一层 .ts 文件，不递归——插件的标识取自文件名，递归下去就得另发明一套命名规则。
  */
-export function discoverPlugins(directory: string): readonly ExternalPluginSource[] {
+function discoverPlugins(directory: string): readonly ExternalPluginSource[] {
 	let names: readonly string[];
 	try {
 		names = readdirSync(directory);
@@ -45,7 +45,7 @@ export function discoverPlugins(directory: string): readonly ExternalPluginSourc
  * 文件要默认导出一个符合契约的对象。标识必须与文件名一致：禁用清单、界面上的清单都按标识
  * 认人，两处对不上就只能靠猜。
  */
-export async function importPlugin(source: ExternalPluginSource): Promise<Plugin> {
+async function importPlugin(source: ExternalPluginSource): Promise<Plugin> {
 	const url = pathToFileURL(source.file);
 
 	let module: unknown;

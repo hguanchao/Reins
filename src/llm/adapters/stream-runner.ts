@@ -32,7 +32,7 @@ export function createLlmStream(
  * `content` 是失败前已经收到的内容：连接断了不等于那段回答没发生过，界面上早就显示过了，
  * 一并交出去，调用方才能决定要不要留档。
  */
-export function failedResult(
+function failedResult(
 	request: LlmRequest,
 	error: unknown,
 	content: LlmResult["content"] = [],
