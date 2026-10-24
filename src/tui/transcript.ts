@@ -1,6 +1,6 @@
 import { sanitizeLine, type ToolGroupKind } from "../tools/describe.ts";
 import { formatDuration } from "../tools/format.ts";
-import type { ResultDetailKind } from "../tools/result-summary.ts";
+import { resultDetail, resultMetric, type ResultDetailKind } from "../tools/result-summary.ts";
 import { highlightCode, type SyntaxSegment } from "../tools/syntax.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { syntaxColor } from "./syntax-style.ts";
@@ -347,6 +347,49 @@ function isCollapsibleCommand(line: TranscriptLine | undefined): boolean {
 		line.group === "command" &&
 		line.isError !== true
 	);
+}
+
+/**
+ * 把成功结果挂回工具调用行。
+ *
+ * 实时路径与历史回填共用同一份规则:指标怎么取、详情怎么展开,改判定只改这一处。
+ * bash 的折叠指标是耗时,耗时拿不到时(历史回填)退回 resultMetric 的通用口径。
+ */
+export function attachToolResult(
+	tool: TranscriptTool,
+	name: string,
+	content: string,
+	durationMs?: number,
+	details?: unknown,
+): void {
+	tool.result = content;
+	const metric =
+		name === "bash" && durationMs !== undefined
+			? formatDuration(durationMs)
+			: resultMetric(name, details, content);
+	if (metric !== undefined) tool.metric = metric;
+	const detail = resultDetail(name, content, details);
+	if (detail !== undefined) {
+		tool.fullDetail = detail.text;
+		tool.detailKind = detail.kind;
+	}
+}
+
+/**
+ * 把失败结果改写到工具调用行本身。
+ *
+ * 失败行就是调用行:保留命令与耗时,错误详情留给双击展开。
+ */
+export function attachToolFailure(
+	tool: TranscriptTool,
+	errorText: string,
+	durationMs?: number,
+): void {
+	tool.isError = true;
+	if (durationMs !== undefined) tool.durationMs = durationMs;
+	tool.detailKind = "text";
+	const command = tool.fullDetail ?? tool.detail;
+	tool.fullDetail = errorText.length > 0 ? `${command}\n\n${errorText}` : command;
 }
 
 /** 找到某个工具调用对应的展示行，成功结果据此挂回。 */

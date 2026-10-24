@@ -107,10 +107,8 @@ export const editTool: ToolDefinition<EditArgs> = {
 
 			const located: AppliedEdit[] = [];
 			for (const [position, edit] of args.edits.entries()) {
-				const problem = rejectEdit(original, edit, position);
-				if (problem !== undefined) return { content: problem, isError: true };
-
-				const start = original.indexOf(edit.oldText);
+				const start = locateEdit(original, edit, position);
+				if (typeof start === "string") return { content: start, isError: true };
 				located.push({ start, end: start + edit.oldText.length, newText: edit.newText });
 			}
 
@@ -157,12 +155,12 @@ export const editTool: ToolDefinition<EditArgs> = {
 };
 
 /**
- * 检查一条修改能否定位，返回拒绝理由或 undefined。
+ * 定位一条修改,返回它在原文中的起点或拒绝理由。
  *
  * oldText 为空必须拒绝：`indexOf("")` 恒为 0，放过去会变成「在文件开头插入」，而使用者的
  * 本意绝不是这个。
  */
-function rejectEdit(original: string, edit: EditEntry, position: number): string | undefined {
+function locateEdit(original: string, edit: EditEntry, position: number): number | string {
 	if (edit.oldText.length === 0) {
 		return `Edit ${position + 1} has an empty oldText. To delete content, set oldText to the text to delete and leave newText empty.`;
 	}
@@ -179,6 +177,6 @@ function rejectEdit(original: string, edit: EditEntry, position: number): string
 			"Extend oldText with enough context to make it unique."
 		);
 	}
-	return undefined;
+	return first;
 }
 

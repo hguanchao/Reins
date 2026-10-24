@@ -238,13 +238,16 @@ export class PermissionGate {
 	}
 }
 
+/** 审批提示里参数摘要的长度上限:确认动作要一眼读完。 */
+const CALL_SUMMARY_LIMIT = 400;
+
 /** 给确认面板看的调用摘要。bash 与文件工具直接给命令/路径，其余压成一行 JSON。 */
 function describeCall(tool: string, args: Record<string, unknown>): string {
 	if (tool === "bash" && typeof args["command"] === "string") return args["command"];
 	if ((tool === "edit" || tool === "write") && typeof args["path"] === "string") return args["path"];
 
 	const text = JSON.stringify(args);
-	return text.length > 400 ? `${text.slice(0, 400)}…` : text;
+	return text.length > CALL_SUMMARY_LIMIT ? `${text.slice(0, CALL_SUMMARY_LIMIT)}…` : text;
 }
 
 function riskLabel(annotations: ToolAnnotations): string {

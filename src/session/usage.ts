@@ -134,6 +134,9 @@ export function describeUsage(totals: UsageTotals): string {
  *
  * 按量级选小数位：便宜的模型一次请求可能只有万分之几美元，固定四位会一律显示成 0。
  */
+/** 低于这一美元数的金额改用六位小数:四位会把便宜模型的单次请求显示成 0。 */
+const COST_PRECISION_THRESHOLD = 0.01;
+
 function formatCost(value: number): string {
-	return `$${value < 0.01 ? value.toFixed(6) : value.toFixed(4)}`;
+	return `$${value < COST_PRECISION_THRESHOLD ? value.toFixed(6) : value.toFixed(4)}`;
 }

@@ -8,7 +8,6 @@ import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { formatDuration } from "../tools/format.ts";
-import { resultDetail, resultMetric } from "../tools/result-summary.ts";
 import { renderMain } from "./main.ts";
 import { APPROVAL_PANEL_HEIGHT, approvalActionAt, renderApprovalPanel } from "./approval-panel.ts";
 import {
@@ -37,7 +36,7 @@ import {
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
-import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 import { todoCardFromArgs, type TodoAnimationFrame, type TranscriptTodo } from "./todo-card.ts";
 
 /**
@@ -96,6 +95,14 @@ const EXIT_CONFIRM_WINDOW_MS = 2000;
 /** 运行时状态前的加载动画。 */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SPINNER_INTERVAL_MS = 100;
+/** 完整页脚除输入行外的固定行数:空白间隔、状态行、上下边框与常驻信息行。 */
+const FULL_FOOTER_FIXED_LINES = 5;
+/** 紧凑页脚除输入行外的固定行数:上下边框与常驻信息行。 */
+const COMPACT_FOOTER_FIXED_LINES = 3;
+/** 输入行首行相对页脚顶部的 1 基行号:完整页脚排在空行、状态行、上边框之后。 */
+const FULL_FOOTER_INPUT_ROW = 4;
+/** 紧凑页脚里输入行紧跟上边框。 */
+const COMPACT_FOOTER_INPUT_ROW = 2;
 /** 每帧把扫光往前推多少；整个状态行约 1.25 秒扫一遍。 */
 const SWEEP_STEP = 0.08;
 /** 滚轮每格滚动固定行数，保持手感稳定。 */
@@ -558,18 +565,24 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		// 整屏页不保留输入框与常驻信息
 		if (openPage !== undefined) return 0;
 		const lines = inputLineCount();
-		if (!compactFooter()) return 5 + queueHeight(queued.length) + lines;
-		return 3 + lines + menuHeight();
+		if (!compactFooter()) return FULL_FOOTER_FIXED_LINES + queueHeight(queued.length) + lines;
+		return COMPACT_FOOTER_FIXED_LINES + lines + menuHeight();
 	};
+
+	/**
+	 * 输入行首行在终端里的 1 基行号。
+	 *
+	 * 光标定位与点击命中必须用同一份几何,否则页脚结构调整时两者会各错各的。
+	 */
+	const inputTopRow = (mainHeight: number): number =>
+		compactFooter()
+			? mainHeight + menuHeight() + COMPACT_FOOTER_INPUT_ROW
+			: mainHeight + FULL_FOOTER_INPUT_ROW + queueHeight(queued.length);
 
 	const markTranscriptDirty = (): void => {
 		transcriptDirty = true;
 	};
 
-	/** 新内容进对话流；只标脏缓存，是否跟随底部由 follow 决定。 */
-	const markNewContent = (): void => {
-		transcriptDirty = true;
-	};
 
 	/** 宽度、警告或内容变化时重建；其余帧直接复用。 */
 	const currentTranscript = (width: number): TranscriptView => {
@@ -668,9 +681,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const mainLines = [...main];
 		// 整屏自上而下：主区域、面板、页脚；终端比内容矮时只保留前几行
 		const lines = [...mainLines, ...menuLines, ...footer].slice(0, height);
-		const inputRow = compactFooter()
-			? mainHeight + menuHeight() + 2 + inputLines.row
-			: mainHeight + 4 + queueHeight(queued.length) + inputLines.row;
+		const inputRow = inputTopRow(mainHeight) + inputLines.row;
 		// 选择面板只盖在输入框上方，输入行仍然可见可编辑，光标照常显示；
 		// 只有整屏页与审批面板会夺走焦点
 		const cursor =
@@ -903,7 +914,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		for (let index = response.length; index < active.lines.length; index += 1) {
 			response.push(active.lines[index]!);
 		}
-		markNewContent();
+		markTranscriptDirty();
 	};
 
 	/** 工具行被换成组对象时，另一份数组里的引用也要整体替换。 */
@@ -911,7 +922,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const response = active.turn.response;
 		response.length = 0;
 		response.push(...active.lines);
-		markNewContent();
+		markTranscriptDirty();
 	};
 
 	const closeText = (active: ActiveTurn): void => {
@@ -1074,12 +1085,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					const tool = findTopLevelToolByCallId(active.lines, event.callId);
 					if (tool !== undefined) {
 						// 失败行就是调用行本身：保留命令与耗时，错误详情留给双击展开
-						tool.isError = true;
-						tool.durationMs = event.durationMs;
-						tool.detailKind = "text";
-						const errorText = sanitizeDetail(event.content ?? event.summary);
-						const command = tool.fullDetail ?? tool.detail;
-						tool.fullDetail = errorText.length > 0 ? `${command}\n\n${errorText}` : command;
+						attachToolFailure(tool, sanitizeDetail(event.content ?? event.summary), event.durationMs);
 						markTranscriptDirty();
 					} else {
 						appendLine(active, {
@@ -1093,17 +1099,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				} else {
 					const tool = findToolByCallId(active.lines, event.callId);
 					if (tool !== undefined) {
-						tool.result = event.content ?? event.summary;
-						const metric =
-							event.name === "bash"
-								? formatDuration(event.durationMs)
-								: resultMetric(event.name, event.details, tool.result);
-						if (metric !== undefined) tool.metric = metric;
-						const detail = resultDetail(event.name, tool.result, event.details);
-						if (detail !== undefined) {
-							tool.fullDetail = detail.text;
-							tool.detailKind = detail.kind;
-						}
+						attachToolResult(tool, event.name, event.content ?? event.summary, event.durationMs, event.details);
 						markTranscriptDirty();
 					}
 				}
@@ -1199,7 +1195,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (items.length === 0) {
 			setInput("");
 			turns.push({ prompt: "/model", response: ["No models are available."] });
-			markNewContent();
+			markTranscriptDirty();
 			hasInput = true;
 			render();
 			return;
@@ -1229,7 +1225,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	 */
 	const appendCommandTurn = (prompt: string, response: readonly TranscriptLine[]): void => {
 		const block: LiveTurn = { prompt, response: [...response] };
-		markNewContent();
+		markTranscriptDirty();
 		hasInput = true;
 		if (activeTurn !== undefined) {
 			pendingCommandTurns.push(block);
@@ -1643,7 +1639,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (pendingCommandTurns.length > 0) {
 					turns.push(...pendingCommandTurns);
 					pendingCommandTurns.length = 0;
-					markNewContent();
+					markTranscriptDirty();
 				}
 				options.approval?.denyAll();
 				syncApprovalPrompt();
@@ -1700,7 +1696,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			.then((lines) => {
 				if (finished) return;
 				turn.response.push(...lines);
-				markNewContent();
+				markTranscriptDirty();
 				clearStatus();
 				render();
 				notify(`/${command.name} finished`);
@@ -1711,7 +1707,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					text: `Error: ${error instanceof Error ? error.message : String(error)}`,
 					kind: "error",
 				});
-				markNewContent();
+				markTranscriptDirty();
 				setStatus(ERROR_STATUS, "error");
 				render();
 				notify(`/${command.name} failed`);
@@ -1973,6 +1969,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	const onData = (chunk: Buffer): void => {
 		const text = decoder.write(chunk);
+		// 鼠标事件最多解析一次:同一条数据块会被多个面板分支检查,每次都跑一遍
+		// matchAll 是纯浪费;纯键盘块则一次也不解析
+		let mouseOfChunk: readonly MouseInput[] | undefined;
+		const mouseOf = (): readonly MouseInput[] => {
+			mouseOfChunk ??= mouseEvents(text);
+			return mouseOfChunk;
+		};
 		// Ctrl+C 只认真实的按键块:粘贴的内容被括在粘贴标记里,其中的 \x03 是正文,
 		// 不能当成中断或退出
 		if (text.includes(CTRL_C) && !pasting && !text.includes(PASTE_START)) {
@@ -2003,7 +2006,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const panelWidth = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 			const panelHeight = terminalHeight(stdout);
 			const panelTop = Math.max(0, panelHeight - footerHeight());
-			for (const event of mouseEvents(text)) {
+			for (const event of mouseOf()) {
 				const motion = dragMotion(event.button);
 				const action =
 					event.row === panelTop + 5
@@ -2049,7 +2052,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			// 文字一变面板就收掉（见 editInput 处）：面板由命令打开，输入不再是那条命令
 			// 面板上边框画在页脚区的第一行，页脚高 N 行时它就是 height-N+1（1 基）
 			const panelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1); 
-			for (const event of mouseEvents(text)) {
+			for (const event of mouseOf()) {
 				const motion = dragMotion(event.button);
 				if (modelMenu !== undefined) {
 					const index = menuIndexAtRow(
@@ -2185,7 +2188,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const width = Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 			const total = pageLines(openPage, width).length;
 			let steps = 0;
-			for (const event of mouseEvents(text)) {
+			for (const event of mouseOf()) {
 				if (event.press && event.button === 64) steps -= 1;
 				else if (event.press && event.button === 65) steps += 1;
 			}
@@ -2238,7 +2241,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			if (!next) draggingScrollbar = false;
 		}
 
-		for (const event of mouseEvents(text)) {
+		for (const event of mouseOf()) {
 			const left = (event.button & 3) === 0;
 			const motion = event.button >= 32 && event.button < 64;
 			// 低两位是 3 表示没有按键：1003 模式下这类事件只是指针在移动，也就是悬停
@@ -2332,10 +2335,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				}
 
 				const inputLineTotal = inputView(input, width, inputCursor).lines.length;
-				const inputTop =
-					height -
-					(compactFooter() ? 3 + inputLineTotal : 5 + queueHeight(queued.length) + inputLineTotal) +
-					(compactFooter() ? 2 : 4 + queueHeight(queued.length));
+				const inputTop = inputTopRow(mainHeight);
 				const insideInput =
 					event.row >= inputTop && event.row < inputTop + inputLineTotal;
 				if (insideInput !== focused) {
@@ -2370,7 +2370,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (commandMenu !== undefined) {
 			// 命令补全面板不拦截文字输入，只接管上下键、Esc 与鼠标
 			const commandPanelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1);
-			for (const event of mouseEvents(text)) {
+			for (const event of mouseOf()) {
 				const motion = dragMotion(event.button);
 				const index = menuIndexAtRow(
 					event.row,

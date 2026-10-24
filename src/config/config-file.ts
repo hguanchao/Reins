@@ -45,6 +45,9 @@ export const NOTIFY_MODES: readonly NotifyMode[] = ["auto", "bell", "desktop", "
 /** MCP server 的接入形态：stdio 起本地进程，http 与 sse 连远程端点。 */
 export type McpServerType = "stdio" | "http" | "sse";
 
+/** type 字段的合法取值,解析校验与提示共用这一份清单。 */
+const MCP_SERVER_TYPES = ["stdio", "http", "sse"] as const satisfies readonly McpServerType[];
+
 export interface McpServerConfig {
 	readonly name: string;
 	readonly type: McpServerType;
@@ -449,7 +452,6 @@ function readMcpServers(document: TomlDocument): readonly McpServerConfig[] {
 function readMcpServer(document: TomlDocument, name: string, path: readonly string[]): McpServerConfig {
 	const command = readString(document, [...path, "command"]);
 	const url = readString(document, [...path, "url"]);
-	const declaredType = readString(document, [...path, "type"]);
 
 	if (command !== undefined && url !== undefined) {
 		throw new ConfigError(`${describePath(path)} cannot set both command and url`, locate(document, path));
@@ -458,17 +460,9 @@ function readMcpServer(document: TomlDocument, name: string, path: readonly stri
 		throw new ConfigError(`${describePath(path)} needs either command or url`, locate(document, path));
 	}
 
-	let type: McpServerType;
-	if (declaredType === undefined) {
-		type = command === undefined ? "http" : "stdio";
-	} else if (declaredType === "stdio" || declaredType === "http" || declaredType === "sse") {
-		type = declaredType;
-	} else {
-		throw new ConfigError(
-			`${describePath([...path, "type"])} must be one of stdio, http, sse`,
-			locate(document, [...path, "type"]),
-		);
-	}
+	// 枚举校验走 readEnum,非法取值能报出「哪个键必须是哪几个值之一」
+	const type: McpServerType =
+		readEnum(document, [...path, "type"], MCP_SERVER_TYPES) ?? (command === undefined ? "http" : "stdio");
 
 	if (type === "stdio" && command === undefined) {
 		throw new ConfigError(`${describePath(path)} declared as stdio must set command`, locate(document, path));

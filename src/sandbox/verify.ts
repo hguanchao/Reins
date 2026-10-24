@@ -4,6 +4,9 @@ import { dirname, join } from "node:path";
 
 import type { SandboxView } from "./policy.ts";
 
+/** 一次探针的执行时限:挂住的沙箱说明配置有问题,等更久没有意义。 */
+const PROBE_TIMEOUT_MS = 10_000;
+
 /**
  * 核对命令隔离是否真的生效。
  *
@@ -20,7 +23,7 @@ export function verifyCommandIsolation(sandbox: SandboxView, root: string): void
 
 	let commandSucceeded = true;
 	try {
-		execSync(wrapped, { stdio: "ignore", timeout: 10_000 });
+		execSync(wrapped, { stdio: "ignore", timeout: PROBE_TIMEOUT_MS });
 	} catch {
 		// 被拒绝正是期望的结果
 		commandSucceeded = false;

@@ -5,10 +5,11 @@ import {
 	type LlmMessage,
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
-import { resultDetail, resultMetric } from "../tools/result-summary.ts";
 import { todoCardFromArgs } from "./todo-card.ts";
 import {
 	appendToolLine,
+	attachToolFailure,
+	attachToolResult,
 	collapseToolGroups,
 	findToolByCallId,
 	findTopLevelToolByCallId,
@@ -91,14 +92,7 @@ export function buildTranscriptHistory(
 					const turn = ensureTurn("(earlier conversation)");
 					const tool = findToolByCallId(turn.response, message.toolCallId);
 					if (tool !== undefined) {
-						tool.result = message.content;
-						const metric = resultMetric(message.toolName, undefined, message.content);
-						if (metric !== undefined) tool.metric = metric;
-						const detail = resultDetail(message.toolName, message.content);
-						if (detail !== undefined) {
-							tool.fullDetail = detail.text;
-							tool.detailKind = detail.kind;
-						}
+						attachToolResult(tool, message.toolName, message.content);
 					}
 					break;
 				}
@@ -106,11 +100,7 @@ export function buildTranscriptHistory(
 				const tool = findTopLevelToolByCallId(turn.response, message.toolCallId);
 				if (tool !== undefined) {
 					// 与实时一致：失败结果改调用行本身，错误详情留给双击展开
-					tool.isError = true;
-					tool.detailKind = "text";
-					const errorText = sanitizeDetail(message.content);
-					const command = tool.fullDetail ?? tool.detail;
-					tool.fullDetail = errorText.length > 0 ? `${command}\n\n${errorText}` : command;
+					attachToolFailure(tool, sanitizeDetail(message.content));
 					break;
 				}
 				turn.response.push({
