@@ -6,7 +6,15 @@ import {
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { resultDetail, resultMetric } from "../tools/result-summary.ts";
-import { appendToolLine, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, type TranscriptLine, type TranscriptTurn } from "./transcript.ts";
+import {
+	appendToolLine,
+	collapseToolGroups,
+	findToolByCallId,
+	findTopLevelToolByCallId,
+	todoCardFromArgs,
+	type TranscriptLine,
+	type TranscriptTurn,
+} from "./transcript.ts";
 
 /**
  * 把会话消息折叠成对话流。
@@ -51,6 +59,12 @@ export function buildTranscriptHistory(
 				const text = assistantText(message);
 				if (text.length > 0) turn.response.push({ kind: "markdown", text });
 				for (const call of assistantToolCalls(message)) {
+					// 任务卡片与实时路径共用同一份参数解析;解析不了的形状退回普通工具行
+					const card = call.name === "todo" ? todoCardFromArgs(call.arguments) : undefined;
+					if (card !== undefined) {
+						turn.response.push(card);
+						continue;
+					}
 					const described = describeToolCall(call.name, call.arguments, workspaceRoot);
 					appendToolLine(
 						turn.response,

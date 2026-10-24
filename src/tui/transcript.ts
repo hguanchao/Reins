@@ -3,6 +3,7 @@ import { formatDuration } from "../tools/format.ts";
 import type { ResultDetailKind } from "../tools/result-summary.ts";
 import { highlightCode, type SyntaxSegment } from "../tools/syntax.ts";
 import { renderMarkdown } from "./markdown.ts";
+import { swept } from "./sweep.ts";
 import { syntaxColor } from "./syntax-style.ts";
 import { characterWidth, displayWidth, fitToWidth, truncateToWidth, wrapText } from "./text.ts";
 import { THEME } from "./theme.ts";
@@ -30,6 +31,7 @@ export type TranscriptLine =
 	| TranscriptThinking
 	| TranscriptTool
 	| TranscriptToolGroup
+	| TranscriptTodo
 	| TranscriptMarkdown;
 
 /**
@@ -97,6 +99,28 @@ export interface TranscriptToolGroup {
 	readonly kind: "toolGroup";
 	readonly members: TranscriptTool[];
 	expanded: boolean;
+}
+
+/** 任务条目的状态；failed 表示这一步无法完成，与完成、进行中、待办并列。 */
+export type TranscriptTodoStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export interface TranscriptTodoItem {
+	readonly content: string;
+	readonly status: TranscriptTodoStatus;
+}
+
+/**
+ * 任务卡片：一次 todo 调用的完整快照。
+ *
+ * 条目顺序保持模型给出的顺序——顺序本身就是执行顺序。running 由界面在回合结束时改回
+ * false（与思考块同一先例）：运行期间进行中的行是转圈加扫光，之后退为静态半圆。
+ */
+export interface TranscriptTodo {
+	readonly kind: "todo";
+	/** 模型对这次更新的说明；空白时不渲染 */
+	readonly explanation?: string;
+	readonly items: readonly TranscriptTodoItem[];
+	running?: boolean;
 }
 
 /**
@@ -189,6 +213,29 @@ const TOOL_GROUP_MEMBER_INDENT = `${RESPONSE_INDENT}  `;
 const COMMAND_GROUP_MIN = 5;
 /** 错误行的标记：与工具失败行共用，错误消息因此有一致的起头。 */
 const ERROR_MARKER = "×";
+/** 任务卡头行的固定标签。 */
+const TODO_HEADER_LABEL = "Tasks";
+/** 任务条目比头行正文多缩进两列，条目标记正对头行标签的起头。 */
+const TODO_ITEM_INDENT = `${RESPONSE_INDENT}  `;
+/** 删除线：完成与失败的任务靠它退场。 */
+const STRIKETHROUGH = "\x1b[9m";
+/** 斜体：任务卡说明行与语法注释同一用法。 */
+const ITALIC = "\x1b[3m";
+/** 加粗：进行中的任务行是全卡最亮的一项。 */
+const BOLD = "\x1b[1m";
+/** 任务卡头行标签：与工具组头同一档亮度，计数再弱一档。 */
+const TODO_HEADER_COLOR = THEME.textSecondary;
+const TODO_COUNT_COLOR = THEME.textSubtle;
+/** 待办条目：读得出但不抢注意力。 */
+const TODO_PENDING_COLOR = THEME.textSecondary;
+/** 进行中条目：强调色加粗，扫光也以它为高亮终点。 */
+const TODO_ACTIVE_COLOR = THEME.accent;
+/** 完成条目：成功色配删除线，正反馈与退场感都要。 */
+const TODO_DONE_COLOR = THEME.success;
+/** 失败条目：与错误行同色，删除线只给符号与正文。 */
+const TODO_FAILED_COLOR = THEME.error;
+/** 说明行：弱化灰加斜体。 */
+const TODO_EXPLANATION_COLOR = THEME.textSubtle;
 const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
 /** 右侧固定预留一列空隙和一列滚动条。 */
@@ -221,6 +268,25 @@ export interface TranscriptView {
 	readonly groupHeaders: readonly { readonly start: number; readonly group: TranscriptToolGroup }[];
 	/** 每条可展开的工具行在 lines 里的起点，双击命中使用 */
 	readonly toolHeaders: readonly { readonly start: number; readonly tool: TranscriptTool }[];
+	/**
+	 * 运行中卡片的进行中行：lines 行号 → 重建动画行的原料。
+	 *
+	 * lines 里先放静态占位行（宽度一致），渲染期由调用方带当前帧重建为转圈加扫光——
+	 * 这样 100ms 一帧的动画不需要重建整份视图。
+	 */
+	readonly liveTodoLines: ReadonlyMap<number, LiveTodoLine>;
+}
+
+/** 渲染期重建动画行所需的原料：缩进加首段正文。 */
+export interface LiveTodoLine {
+	readonly indent: string;
+	readonly content: string;
+}
+
+/** 重建进行中任务行的当前帧：盲文运行符与扫光相位都由 100ms 刷新帧推进。 */
+export interface TodoAnimationFrame {
+	readonly spinner: string;
+	readonly sweepPhase: number;
 }
 
 export interface TranscriptMetrics {
@@ -467,6 +533,7 @@ export function renderTranscriptView(
 	view: TranscriptView,
 	height: number,
 	scrollTop: number,
+	frame?: TodoAnimationFrame,
 ): readonly string[] {
 	const rows = Math.max(0, height);
 	if (rows === 0) return [];
@@ -474,7 +541,14 @@ export function renderTranscriptView(
 
 	const { top } = scrollState(view, rows, scrollTop);
 	const indexes = visibleIndexes(view, rows, top);
-	const lineAt = (index: number): string => view.lines[index] ?? " ".repeat(view.width);
+	const lineAt = (index: number): string => {
+		// 运行中卡片的进行中行按当前帧重建：动画只在可见行上花工夫，视图本身不重建
+		if (frame !== undefined) {
+			const live = view.liveTodoLines.get(index);
+			if (live !== undefined) return animatedTodoLine(live, frame, view.width);
+		}
+		return view.lines[index] ?? " ".repeat(view.width);
+	};
 	const visible = indexes.map(lineAt);
 
 	const gutter = scrollbarColumn(rows, view.lines.length, top);
@@ -638,7 +712,7 @@ function contentWidth(terminalWidth: number): number {
 }
 
 /** 对话流里可以连成一块的内容类型：同类连续行紧凑排列，块与块之间留空行。 */
-type ResponseBlockKind = "text" | "thinking" | "tools" | "notice";
+type ResponseBlockKind = "text" | "thinking" | "tools" | "todo" | "notice";
 
 function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
 	if (typeof line === "string") return "text";
@@ -646,6 +720,7 @@ function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
 	if (line.kind === "tool") return line.isError === true ? "notice" : "tools";
 	if (line.kind === "toolGroup") return "tools";
 	if (line.kind === "thinkingBlock") return "thinking";
+	if (line.kind === "todo") return "todo";
 	return "notice";
 }
 
@@ -661,7 +736,8 @@ function needsBlockGap(previous: TranscriptLine, current: TranscriptLine): boole
 	const previousKind = responseBlockKind(previous);
 	const currentKind = responseBlockKind(current);
 	if (previousKind !== currentKind) return true;
-	return currentKind === "thinking" || currentKind === "notice";
+	// 思考、任务卡与失败、警告各自独立成块：即使前后同类也要分开，否则读起来会糊成一片
+	return currentKind === "thinking" || currentKind === "todo" || currentKind === "notice";
 }
 
 /** 失败行是否属于上一条工具调用。 */
@@ -681,6 +757,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 	const thinkingHeaders: { start: number; block: TranscriptThinking }[] = [];
 	const groupHeaders: { start: number; group: TranscriptToolGroup }[] = [];
 	const toolHeaders: { start: number; tool: TranscriptTool }[] = [];
+	const liveTodoLines = new Map<number, LiveTodoLine>();
 	let previousHadResponse = false;
 
 	if (notice !== undefined && notice.length > 0) {
@@ -742,6 +819,11 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 				}
 				continue;
 			}
+			if (line.kind === "todo") {
+				const cardStart = lines.length;
+				lines.push(...todoCardLines(line, width, liveTodoLines, cardStart));
+				continue;
+			}
 			// 三种提示各有自己的标记与颜色：问题要显眼，中性说明只求看得见
 			const marker = line.kind === "warning" ? "!" : line.kind === "info" ? "·" : ERROR_MARKER;
 			const color =
@@ -753,7 +835,124 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		previousHadResponse = turn.response.length > 0;
 	}
 
-	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders };
+	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveTodoLines };
+}
+
+/**
+ * 任务卡片的屏幕行。
+ *
+ * 头行计数是「完成 / 总数」，空表写成 cleared。进行中的条目在卡片 running 时把首行
+ * 登记进 liveTodoLines（渲染期换转圈与扫光），这里一律先放静态半圆行占位——两种形态
+ * 宽度一致，滚动与命中都不会因为换帧而错位。
+ */
+function todoCardLines(
+	card: TranscriptTodo,
+	width: number,
+	live: Map<number, LiveTodoLine>,
+	start: number,
+): readonly string[] {
+	const lines: string[] = [todoHeaderLine(card, width)];
+
+	const explanation = card.explanation?.trim() ?? "";
+	if (explanation.length > 0) {
+		lines.push(
+			...wrappedLines(explanation, TODO_ITEM_INDENT, width, `${TODO_EXPLANATION_COLOR}${ITALIC}`),
+		);
+	}
+
+	for (const item of card.items) {
+		if (item.status === "pending") {
+			lines.push(...wrappedLines(item.content, `${TODO_ITEM_INDENT}○ `, width, TODO_PENDING_COLOR));
+			continue;
+		}
+		if (item.status === "completed") {
+			lines.push(
+				...wrappedLines(item.content, `${TODO_ITEM_INDENT}● `, width, `${TODO_DONE_COLOR}${STRIKETHROUGH}`),
+			);
+			continue;
+		}
+		if (item.status === "failed") {
+			lines.push(
+				...wrappedLines(item.content, `${TODO_ITEM_INDENT}${ERROR_MARKER} `, width, `${TODO_FAILED_COLOR}${STRIKETHROUGH}`),
+			);
+			continue;
+		}
+
+		// 进行中：静态占位行先入列，running 时再登记渲染期的动画原料
+		const active = `${TODO_ACTIVE_COLOR}${BOLD}`;
+		const staticLines = wrappedLines(item.content, `${TODO_ITEM_INDENT}◐ `, width, active);
+		lines.push(...staticLines);
+		if (card.running === true) {
+			const budget = Math.max(0, width - displayWidth(`${TODO_ITEM_INDENT}◐ `));
+			const first = staticLines[0];
+			if (first !== undefined && item.content.length > 0) {
+				live.set(start + lines.length - staticLines.length, {
+					indent: TODO_ITEM_INDENT,
+					content: truncateToWidth(item.content, budget),
+				});
+			}
+		}
+	}
+
+	return lines;
+}
+
+/** 任务卡头行：标签与计数同列于工具行，标签亮一档、计数弱一档。 */
+function todoHeaderLine(card: TranscriptTodo, width: number): string {
+	const done = card.items.filter((item) => item.status === "completed").length;
+	const count = card.items.length === 0 ? "cleared" : `${done}/${card.items.length}`;
+	const prefix = `${RESPONSE_INDENT}${TOOL_MARKER} `;
+	const head = `${prefix}${TODO_HEADER_LABEL}`;
+	const budget = Math.max(0, width - displayWidth(head));
+	const tail = truncateToWidth(`  ${count}`, budget);
+	const padding = " ".repeat(Math.max(0, budget - displayWidth(tail)));
+	return `${TODO_HEADER_COLOR}${head}${RESET}${TODO_COUNT_COLOR}${tail}${RESET}${padding}`;
+}
+
+/** 渲染期按当前帧重建进行中任务行：盲文运行符 + 扫光正文。 */
+function animatedTodoLine(line: LiveTodoLine, frame: TodoAnimationFrame, width: number): string {
+	const budget = Math.max(0, width - displayWidth(`${line.indent}◐ `));
+	const content = truncateToWidth(line.content, budget);
+	const head = `${line.indent}${TODO_ACTIVE_COLOR}${BOLD}${frame.spinner} `;
+	const body = swept(content, frame.sweepPhase, THEME.accentDim, THEME.accentRgb);
+	const padding = " ".repeat(Math.max(0, budget - displayWidth(content)));
+	return `${head}${body}${padding}`;
+}
+
+/**
+ * 从工具调用参数解析任务卡片。
+ *
+ * tool_start 在参数校验之前发出，参数可能形状不对：任何一处不合预期都返回 undefined，
+ * 由调用方按普通工具行回退，让校验阶段的错误信息有行可挂。空白内容同样视为不合预期。
+ */
+export function todoCardFromArgs(args: Record<string, unknown>): TranscriptTodo | undefined {
+	const todos = args["todos"];
+	if (!Array.isArray(todos)) return undefined;
+
+	const items: TranscriptTodoItem[] = [];
+	for (const entry of todos) {
+		if (typeof entry !== "object" || entry === null) return undefined;
+		const content = (entry as Record<string, unknown>)["content"];
+		const status = (entry as Record<string, unknown>)["status"];
+		if (typeof content !== "string" || content.trim().length === 0) return undefined;
+		if (
+			status !== "pending" &&
+			status !== "in_progress" &&
+			status !== "completed" &&
+			status !== "failed"
+		) {
+			return undefined;
+		}
+		items.push({ content, status });
+	}
+
+	const explanation = args["explanation"];
+	if (explanation !== undefined && typeof explanation !== "string") return undefined;
+	return {
+		kind: "todo",
+		...(explanation === undefined || explanation.trim().length === 0 ? {} : { explanation }),
+		items,
+	};
 }
 
 /**

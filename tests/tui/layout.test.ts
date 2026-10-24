@@ -4060,3 +4060,92 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 });
+
+describe("任务卡片", () => {
+	it("tool_start 渲染卡片,运行期间进行中行是转圈与扫光,回合结束退为静态半圆", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: {
+					explanation: "开工",
+					todos: [
+						{ content: "写工具", status: "completed" },
+						{ content: "渲染卡片", status: "in_progress" },
+					],
+				},
+			});
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "todo",
+				isError: false,
+				durationMs: 1,
+				summary: "Task list updated: 1 of 2 done.",
+				content: "Task list updated: 1 of 2 done.",
+			});
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Tasks  1/2"));
+			assert.ok(text.includes("开工"));
+			assert.ok(text.includes("● 写工具"));
+
+			// 运行期间:盲文运行符替换半圆,正文是逐字符扫光
+			const runningLine = frameLines(output).find((line) => plain(line).includes("渲染卡片")) ?? "";
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(plain(runningLine)));
+			assert.ok((runningLine.match(/\x1b\[38;2;/g) ?? []).length > 1);
+
+			await agent.finish();
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("◐ 渲染卡片"));
+			assert.equal(text.includes("⠋"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("参数形状不对时退回普通工具行,校验错误能挂上", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "todo", args: { todos: "nope" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "todo",
+				isError: true,
+				durationMs: 1,
+				summary: "Arguments must be an object",
+				content: "Arguments must be an object, got string",
+			});
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("× Todo"));
+			assert.equal(text.includes("› Tasks"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+});

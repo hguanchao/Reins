@@ -214,3 +214,71 @@ describe("会话历史回填", () => {
 		assert.deepEqual(turns[0]?.response, [{ kind: "markdown", text: "continued" }]);
 	});
 });
+
+describe("会话历史回填任务卡片", () => {
+	it("todo 调用回填成静态卡片,成功结果不落行", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: "1",
+						name: "todo",
+						arguments: {
+							explanation: "开工",
+							todos: [{ content: "写工具", status: "in_progress" }],
+						},
+					},
+				],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "1",
+				toolName: "todo",
+				content: "Task list updated: 0 of 1 done.",
+				isError: false,
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages);
+
+		assert.deepEqual(turns[0]?.response, [
+			{
+				kind: "todo",
+				explanation: "开工",
+				items: [{ content: "写工具", status: "in_progress" }],
+			},
+		]);
+	});
+
+	it("畸形参数退回普通工具行,失败结果挂在该行上", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "go" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "2", name: "todo", arguments: { todos: "nope" } },
+				],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "2",
+				toolName: "todo",
+				content: "Arguments must be an object, got string",
+				isError: true,
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages);
+
+		assert.equal(turns[0]?.response.length, 1);
+		const line = turns[0]?.response[0];
+		assert.equal(typeof line === "object" && line !== null && line.kind === "tool", true);
+		if (typeof line === "object" && line !== null && line.kind === "tool") {
+			assert.equal(line.isError, true);
+			assert.equal(line.name, "Todo");
+		}
+	});
+});

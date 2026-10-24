@@ -3,18 +3,22 @@ import { describe, it } from "node:test";
 
 import {
 	appendToolLine,
+	buildTranscriptView,
 	collapseToolGroups,
 	renderTranscript,
+	renderTranscriptView,
 	scrollbarColumn,
 	scrollbarThumb,
 	scrollTopForRow,
 	thinkingHeaderAtRow,
+	todoCardFromArgs,
 	toolGroupHeaderAtRow,
 	toolHeaderAtRow,
 	transcriptMetrics,
 	type TranscriptLine,
 	type TranscriptThinking,
 	type TranscriptTool,
+	type TranscriptTodo,
 	type TranscriptToolGroup,
 	type TranscriptTurn,
 } from "../../src/tui/transcript.ts";
@@ -1374,5 +1378,134 @@ describe("滚动条列", () => {
 		]);
 
 		assert.equal(metrics.scrollLines, metrics.totalLines);
+	});
+});
+
+describe("任务卡片", () => {
+	const card: TranscriptTodo = {
+		kind: "todo",
+		explanation: "调整:先做渲染",
+		items: [
+			{ content: "写工具", status: "completed" },
+			{ content: "渲染卡片", status: "in_progress" },
+			{ content: "修路径", status: "failed" },
+			{ content: "补测试", status: "pending" },
+		],
+	};
+
+	it("四态符号、头行计数与说明行", () => {
+		const text = renderTranscript(40, 14, [{ prompt: "go", response: [card] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  › Tasks  1/4"));
+		assert.ok(text.includes("    调整:先做渲染"));
+		assert.ok(text.includes("    ● 写工具"));
+		assert.ok(text.includes("    ◐ 渲染卡片"));
+		assert.ok(text.includes("    × 修路径"));
+		assert.ok(text.includes("    ○ 补测试"));
+	});
+
+	it("完成与失败带删除线,说明行斜体,进行中加粗", () => {
+		const lines = renderTranscript(40, 14, [{ prompt: "go", response: [card] }], 0);
+		const find = (part: string): string => lines.find((line) => plain(line).includes(part)) ?? "";
+
+		assert.ok(find("● 写工具").includes(THEME.success));
+		assert.ok(find("● 写工具").includes("\x1b[9m"));
+		assert.ok(find("× 修路径").includes(THEME.error));
+		assert.ok(find("× 修路径").includes("\x1b[9m"));
+		assert.ok(find("◐ 渲染卡片").includes(THEME.accent));
+		assert.ok(find("◐ 渲染卡片").includes("\x1b[1m"));
+		assert.ok(find("调整:先做渲染").includes("\x1b[3m"));
+	});
+
+	it("空表渲染 cleared,不带条目", () => {
+		const empty: TranscriptTodo = { kind: "todo", items: [] };
+		const text = renderTranscript(40, 10, [{ prompt: "go", response: [empty] }], 0)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(text.includes("  › Tasks  cleared"));
+		assert.equal(text.includes("○"), false);
+	});
+
+	it("长条目折行并悬挂缩进到条目正文列", () => {
+		const long: TranscriptTodo = {
+			kind: "todo",
+			items: [{ content: "给工具与卡片补齐单元测试,覆盖嵌套数组与枚举边界", status: "pending" }],
+		};
+		const lines = renderTranscript(30, 10, [{ prompt: "go", response: [long] }], 0).map(plain);
+
+		const first = lines.findIndex((line) => line.includes("○ 给工具"));
+		assert.ok(first >= 0);
+		const continuation = lines[first + 1] ?? "";
+		assert.ok(continuation.trim().length > 0);
+		// 续行与首行正文对齐:缩进 4 列 + 标记与空格 2 列
+		assert.equal(continuation.slice(0, 6), "      ");
+	});
+
+	it("卡片与相邻内容之间留空行", () => {
+		const turn: TranscriptTurn = {
+			prompt: "go",
+			response: [
+				card,
+				{ kind: "tool", name: "Read", detail: "a.ts", group: "read", callId: "1" },
+			],
+		};
+		const text = renderTranscript(40, 16, [turn], 0).map(plain).join("\n");
+
+		const cardEnd = text.indexOf("○ 补测试");
+		const toolStart = text.indexOf("› Read");
+		assert.ok(cardEnd >= 0 && toolStart > cardEnd);
+		// 卡片末行与工具行之间隔着一个空行
+		assert.equal(text.slice(cardEnd, toolStart).split("\n").length, 3);
+	});
+
+	it("running 卡片的进行中行按帧重建为转圈与扫光,静态卡片不受帧影响", () => {
+		const running: TranscriptTodo = { ...card, running: true };
+		const view = buildTranscriptView(40, [{ prompt: "go", response: [running] }], undefined);
+		assert.ok(view.liveTodoLines.size === 1);
+
+		const staticText = renderTranscriptView(view, 16, 0).map(plain).join("\n");
+		assert.ok(staticText.includes("◐ 渲染卡片"));
+
+		const frame = { spinner: "⠋", sweepPhase: 0.5 };
+		const animatedLines = renderTranscriptView(view, 16, 0, frame);
+		const animatedText = animatedLines.map(plain).join("\n");
+		assert.ok(animatedText.includes("⠋ 渲染卡片"));
+		assert.equal(animatedText.includes("◐ 渲染卡片"), false);
+
+		const animatedLine = animatedLines.find((line) => plain(line).includes("渲染卡片")) ?? "";
+		// 扫光是逐字符 RGB 渐变,比静态色带出更多的前景色码
+		assert.ok((animatedLine.match(/\x1b\[38;2;/g) ?? []).length > 1);
+		assert.ok(animatedLine.includes("\x1b[1m"));
+
+		// 回合结束 running 置 false 后重建,即使带帧也只剩静态行
+		running.running = false;
+		const frozen = buildTranscriptView(40, [{ prompt: "go", response: [running] }], undefined);
+		assert.equal(frozen.liveTodoLines.size, 0);
+		assert.ok(renderTranscriptView(frozen, 16, 0, frame).map(plain).join("\n").includes("◐ 渲染卡片"));
+	});
+
+	it("todoCardFromArgs 接受合法参数,拒绝一切不合预期的形状", () => {
+		assert.deepEqual(
+			todoCardFromArgs({
+				explanation: " 调整  ",
+				todos: [{ content: "写工具", status: "in_progress" }],
+			}),
+			{ kind: "todo", explanation: " 调整  ", items: [{ content: "写工具", status: "in_progress" }] },
+		);
+		// 空白说明当作没有说明
+		assert.deepEqual(
+			todoCardFromArgs({ explanation: "   ", todos: [] }),
+			{ kind: "todo", items: [] },
+		);
+
+		assert.equal(todoCardFromArgs({ todos: "nope" }), undefined);
+		assert.equal(todoCardFromArgs({ todos: [{ content: "a" }] }), undefined);
+		assert.equal(todoCardFromArgs({ todos: [{ content: "a", status: "done" }] }), undefined);
+		assert.equal(todoCardFromArgs({ todos: [{ content: "   ", status: "pending" }] }), undefined);
+		assert.equal(todoCardFromArgs({ todos: [{}] }), undefined);
+		assert.equal(todoCardFromArgs({ explanation: 3, todos: [] }), undefined);
 	});
 });

@@ -37,7 +37,7 @@ import {
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
-import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoCardFromArgs, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TodoAnimationFrame, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 
 /**
  * 全屏启动。
@@ -655,13 +655,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 							commandLength,
 							queued,
 						});
-		const transcriptShown = openPage === undefined && (hasInput || activeWarning !== undefined);
-		const main =
-			openPage !== undefined
-				? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
-				: transcriptShown
-					? renderTranscriptView(view, mainHeight, scrollTop)
-					: renderMain(width, mainHeight, options.version);
+			const transcriptShown = openPage === undefined && (hasInput || activeWarning !== undefined);
+			// 运行中任务卡按当前帧重建转圈与扫光;没有动画行时这只是原样返回缓存行
+			const todoFrame: TodoAnimationFrame = { spinner: SPINNER_FRAMES[spinnerFrame] ?? "", sweepPhase };
+			const main =
+				openPage !== undefined
+					? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
+					: transcriptShown
+						? renderTranscriptView(view, mainHeight, scrollTop, todoFrame)
+						: renderMain(width, mainHeight, options.version);
 		const mainLines = [...main];
 		// 整屏自上而下：主区域、面板、页脚；终端比内容矮时只保留前几行
 		const lines = [...mainLines, ...menuLines, ...footer].slice(0, height);
@@ -1006,6 +1008,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "tool_start": {
 				closeThinking(active);
+				// 任务卡片直接按参数渲染:模型发来的列表就是界面要显示的内容。解析不了的
+				// 形状落回普通工具行,后面校验阶段的错误信息才有行可挂
+				if (event.name === "todo") {
+					const card = todoCardFromArgs(event.args);
+					if (card !== undefined) {
+						card.running = true;
+						appendLine(active, card);
+						break;
+					}
+				}
 				const described = describeToolCall(event.name, event.args, options.workspaceRoot);
 				const tool: TranscriptTool = {
 					kind: "tool",
@@ -1587,6 +1599,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (activeTurn !== active) return;
 				closeThinking(active);
 				closeText(active);
+				// 任务卡片退场:转圈与扫光只在回合运行期间存在,之后的进行中行是静态半圆
+				for (const line of active.lines) {
+					if (typeof line === "object" && line !== null && line.kind === "todo") line.running = false;
+				}
 				// 命令塌缩会把多条独立行并成一条组行，行数组可能整体变短，只能全量同步
 				collapseToolGroups(active.lines);
 				syncTurnFull(active);

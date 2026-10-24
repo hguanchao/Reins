@@ -1,6 +1,7 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
 import type { ApprovalMode } from "../config/config-file.ts";
+import { swept } from "./sweep.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -74,8 +75,7 @@ export interface RuntimeStatus {
 
 /** 扫光从强调色暗部过渡到白色。 */
 const SWEEP_BASE = THEME.accentDim;
-const SWEEP_HIGHLIGHT = 0xff;
-const SWEEP_RADIUS = 6;
+const SWEEP_HIGHLIGHT = { r: 0xff, g: 0xff, b: 0xff };
 /** 阶段计时、总计时与 token 数的静态颜色。 */
 const STATUS_META_COLOR = THEME.textSubtle;
 /** 输入框下方常驻信息行的颜色。 */
@@ -418,22 +418,8 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 			? `${toneColor}${visibleActivity}${RESET}`
 			: status.sweep === undefined
 				? `${ACCENT_COLOR}${visibleActivity}${RESET}`
-				: swept(visibleActivity, status.sweep);
+				: swept(visibleActivity, status.sweep, SWEEP_BASE, SWEEP_HIGHLIGHT);
 	return head + (rest.length > 0 ? `${STATUS_META_COLOR}${rest}${RESET}` : "");
-}
-
-function swept(text: string, sweep: number): string {
-	const center = -SWEEP_RADIUS + sweep * (text.length + SWEEP_RADIUS * 2);
-	let output = "";
-	for (let index = 0; index < text.length; index += 1) {
-		const distance = Math.abs(index - center);
-		const intensity = Math.max(0, 1 - distance / SWEEP_RADIUS);
-		const r = Math.round(SWEEP_BASE.r + (SWEEP_HIGHLIGHT - SWEEP_BASE.r) * intensity);
-		const g = Math.round(SWEEP_BASE.g + (SWEEP_HIGHLIGHT - SWEEP_BASE.g) * intensity);
-		const b = Math.round(SWEEP_BASE.b + (SWEEP_HIGHLIGHT - SWEEP_BASE.b) * intensity);
-		output += `\x1b[38;2;${r};${g};${b}m${text[index]}`;
-	}
-	return output + RESET;
 }
 
 /** 耗时不足一分钟保留一位小数秒；满一分钟后写成「1m」，有零头才带秒，如「1m1s」。 */
