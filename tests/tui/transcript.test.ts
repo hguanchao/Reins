@@ -1387,6 +1387,8 @@ describe("子代理组", () => {
 		task: string;
 		status: "running" | "done" | "failed";
 		durationMs?: number;
+		steps?: number;
+		totalTokens?: number;
 		failure?: string;
 	};
 	const group = (
