@@ -606,21 +606,25 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		return 1 + Math.min(currentTodo.items.length, TODO_PANEL_MAX_ITEMS);
 	};
 
-	/**
-	 * 输入行首行在终端里的 1 基行号。
-	 *
-	 * 光标定位与点击命中必须用同一份几何,否则页脚结构调整时两者会各错各的。
-	 */
 	/** 当前终端宽度;宽度变化是重建视图与重排面板的统一触发条件。 */
 	const terminalWidth = (): number => Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 
 	/** 页脚之外的主区域高度:对话流、整屏页与命中判定都用这一个数。 */
 	const mainAreaHeight = (): number => Math.max(0, terminalHeight(stdout) - footerHeight() - todoPanelHeight());
 
-	const inputTopRow = (mainHeight: number): number =>
-		compactFooter()
-			? mainHeight + menuHeight() + COMPACT_FOOTER_INPUT_ROW
-			: mainHeight + FULL_FOOTER_INPUT_ROW + queueHeight(queued.length);
+	/**
+	 * 输入行首行在终端里的 1 基行号。
+	 *
+	 * 光标定位与点击命中必须用同一份几何,否则页脚结构调整时两者会各错各的。
+	 * 常驻任务面板夹在主区域与页脚之间,它占的行数同样要算进来——漏掉它,光标就落到
+	 * 面板最后一行上,看起来像凭空多出一根竖线。
+	 */
+	const inputTopRow = (mainHeight: number): number => {
+		const panel = todoPanelHeight();
+		return compactFooter()
+			? mainHeight + panel + menuHeight() + COMPACT_FOOTER_INPUT_ROW
+			: mainHeight + panel + FULL_FOOTER_INPUT_ROW + queueHeight(queued.length);
+	};
 
 	const markTranscriptDirty = (): void => {
 		transcriptDirty = true;

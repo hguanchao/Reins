@@ -4396,3 +4396,82 @@ describe("常驻任务面板", () => {
 		assert.equal(await running, 0);
 	});
 });
+
+describe("常驻任务面板占位", () => {
+	it("面板出现后光标仍在输入行,不落到面板最后一行", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: {
+					todos: [
+						{ content: "统计 src 各目录的文件数与行数", status: "in_progress" },
+						{ content: "找出最大的三个文件", status: "pending" },
+						{ content: "汇总报告", status: "pending" },
+					],
+				},
+			});
+			t.mock.timers.tick(100);
+
+			const lines = frameLines(output).map(plain);
+			// 24 行终端:面板 4 行(头行 + 3 条目)占 15-18 行,输入行被顶到第 22 行。
+			// 输入行若只按「主区域高度 + 页脚偏移」算,会落到面板最后一条上,看起来像凭空一根竖线
+			const panelLast = lines.findLastIndex((line) => line.includes("汇总报告")) + 1;
+			const inputRow = lines.findIndex((line) => line.trimEnd() === " ›") + 1;
+			assert.equal(panelLast, 18);
+			assert.equal(inputRow, 22);
+			assert.ok(cursorAt(output, inputRow, 4));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("点击面板下方的输入框仍能把焦点收回来", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "c1",
+				name: "todo",
+				args: { todos: [{ content: "写工具", status: "in_progress" }] },
+			});
+			t.mock.timers.tick(100);
+
+			const lines = frameLines(output).map(plain);
+			const inputRow = lines.findIndex((line) => line.trimEnd() === " ›") + 1;
+			const panelRow = lines.findLastIndex((line) => line.includes("写工具")) + 1;
+
+			// 点面板那一行:面板不是输入框,焦点交出去,输入框变暗
+			input.emit("data", Buffer.from(`\x1b[<0;5;${panelRow}M`));
+			assert.equal(rawFrame(output).includes("\x1b[?25h"), false);
+
+			// 点回输入行:焦点恢复,光标重新出现
+			input.emit("data", Buffer.from(`\x1b[<0;5;${inputRow}M`));
+			assert.ok(cursorAt(output, inputRow, 4));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+});
