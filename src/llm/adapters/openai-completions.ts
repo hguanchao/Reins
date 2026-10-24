@@ -6,7 +6,12 @@ import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
-import { createLlmStream, joinUrl } from "./stream-runner.ts";
+import {
+	createLlmStream,
+	IMAGE_ATTACHMENT_NOTICE,
+	IMAGE_OMITTED_PLACEHOLDER,
+	joinUrl,
+} from "./stream-runner.ts";
 
 /**
  * OpenAI 的对话补全协议。
@@ -312,12 +317,12 @@ function toWireUserContent(
 				image_url: { url: `data:${block.mimeType};base64,${block.data}` },
 			});
 		} else {
-			parts.push({ type: "text", text: "(image omitted: model does not support images)" });
+			parts.push({ type: "text", text: IMAGE_OMITTED_PLACEHOLDER });
 		}
 	}
 
 	if (!parts.some((part) => part.type === "text")) {
-		parts.unshift({ type: "text", text: "(see attached image)" });
+		parts.unshift({ type: "text", text: IMAGE_ATTACHMENT_NOTICE });
 	}
 	// 没有图片时退回字符串，避免无谓地改变普通文本请求的形状
 	if (!parts.some((part) => part.type === "image_url")) {

@@ -6,7 +6,12 @@ import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
-import { createLlmStream, joinUrl } from "./stream-runner.ts";
+import {
+	createLlmStream,
+	IMAGE_ATTACHMENT_NOTICE,
+	IMAGE_OMITTED_PLACEHOLDER,
+	joinUrl,
+} from "./stream-runner.ts";
 
 /**
  * Anthropic 的 Messages 协议。
@@ -411,12 +416,12 @@ function toWireUserContent(message: LlmUserMessage, supportsImages: boolean): st
 						type: "image",
 						source: { type: "base64", media_type: block.mimeType, data: block.data },
 					}
-				: { type: "text", text: "(image omitted: model does not support images)" },
+				: { type: "text", text: IMAGE_OMITTED_PLACEHOLDER },
 		);
 	}
 
 	if (!blocks.some((block) => block.type === "text")) {
-		blocks.unshift({ type: "text", text: "(see attached image)" });
+		blocks.unshift({ type: "text", text: IMAGE_ATTACHMENT_NOTICE });
 	}
 	return blocks;
 }

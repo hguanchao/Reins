@@ -2,6 +2,15 @@ import type { LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
 import { EventStream } from "../event-stream.ts";
 
 /**
+ * 图片降级的两条占位文案，三家协议适配器共用。
+ *
+ * 模型不支持图片时正文里留一句说明，有图片时在正文前给一行提示：文案改这里，三个端点的
+ * 表现保持一致。
+ */
+export const IMAGE_OMITTED_PLACEHOLDER = "(image omitted: model does not support images)";
+export const IMAGE_ATTACHMENT_NOTICE = "(see attached image)";
+
+/**
  * 把「异步产出增量、最后给出结果」的过程包装成 LlmStream。
  *
  * 过程里抛出的任何异常都转成 stopReason 为 error 或 aborted 的结果。这是契约的一部分：

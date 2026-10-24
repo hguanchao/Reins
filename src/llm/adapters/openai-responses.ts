@@ -6,7 +6,12 @@ import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
-import { createLlmStream, joinUrl } from "./stream-runner.ts";
+import {
+	createLlmStream,
+	IMAGE_ATTACHMENT_NOTICE,
+	IMAGE_OMITTED_PLACEHOLDER,
+	joinUrl,
+} from "./stream-runner.ts";
 
 /**
  * OpenAI 的 Responses 协议。
@@ -452,12 +457,12 @@ function toUserContent(message: LlmUserMessage, supportsImages: boolean): readon
 						detail: "auto",
 						image_url: `data:${block.mimeType};base64,${block.data}`,
 					}
-				: { type: "input_text", text: "(image omitted: model does not support images)" },
+				: { type: "input_text", text: IMAGE_OMITTED_PLACEHOLDER },
 		);
 	}
 
 	if (!parts.some((part) => isInputText(part))) {
-		parts.unshift({ type: "input_text", text: "(see attached image)" });
+		parts.unshift({ type: "input_text", text: IMAGE_ATTACHMENT_NOTICE });
 	}
 	return parts;
 }
