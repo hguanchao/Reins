@@ -1,13 +1,13 @@
 import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
-import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
+import type { LlmEvent, LlmRequest, LlmResult } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
 import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
+import { ProtocolClient } from "./protocol-client.ts";
 import {
-	createLlmStream,
 	IMAGE_ATTACHMENT_NOTICE,
 	IMAGE_OMITTED_PLACEHOLDER,
 	joinUrl,
@@ -81,15 +81,8 @@ interface Terminal {
 	readonly reason: string | undefined;
 }
 
-export class OpenAiResponsesClient implements LlmClient {
+export class OpenAiResponsesClient extends ProtocolClient {
 	readonly api = "openai-responses";
-	readonly #provider: ProviderEntry;
-	readonly #model: ModelEntry;
-	readonly #policy: RetryPolicy;
-	readonly #proxy: string | undefined;
-	/** 流式读取的静默上限（毫秒）；undefined 表示不限 */
-	readonly #idleTimeoutMs: number | undefined;
-
 	constructor(
 		provider: ProviderEntry,
 		model: ModelEntry,
@@ -97,52 +90,36 @@ export class OpenAiResponsesClient implements LlmClient {
 		proxy?: string,
 		idleTimeoutMs?: number,
 	) {
-		this.#provider = provider;
-		this.#model = model;
-		this.#policy = policy;
-		this.#proxy = proxy;
-		this.#idleTimeoutMs = idleTimeoutMs;
+		super(provider, model, policy, proxy, idleTimeoutMs);
 	}
 
-	stream(request: LlmRequest): LlmStream {
-		const accumulator = new ContentAccumulator();
-		return createLlmStream(
-			request,
-			(emit) => this.#run(request, emit, accumulator),
-			() => {
-				accumulator.finishAll();
-				return accumulator.blocks();
-			},
-		);
-	}
-
-	async #run(
+	protected async runProtocol(
 		request: LlmRequest,
 		emit: (event: LlmEvent) => void,
 		accumulator: ContentAccumulator,
 	): Promise<LlmResult> {
 		// 密钥每次请求现取：command 形式的密钥可能是短期有效的，启动时取一次会在长会话里过期
-		const apiKey = await resolveApiKey(this.#provider.apiKey, request.signal);
+		const apiKey = await resolveApiKey(this.provider.apiKey, request.signal);
 		/** 已经出现但还没收到 output_item.done 的工具调用 */
 		const pendingTools = new Set<number>();
 		/** 流里先到的完整参数；output_item.done 可能省略 arguments */
 		const finalArguments = new Map<number, string>();
 		let terminal: Terminal | undefined;
 		let usage: LlmUsage | undefined;
-		let responseModel = this.#model.id;
+		let responseModel = this.model.id;
 
 		await postSse(
 			{
-				url: joinUrl(this.#model.baseUrl, "/responses"),
+				url: joinUrl(this.model.baseUrl, "/responses"),
 				headers: {
-					...this.#provider.headers,
-					...this.#model.headers,
+					...this.provider.headers,
+					...this.model.headers,
 					...(apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` }),
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
 				onRetry: request.onRetry,
-				proxy: this.#proxy,
+				proxy: this.proxy,
 				// 终止事件到手就说明这一轮发完了，之后连接怎么断都算正常结束
 				complete: () => terminal !== undefined,
 			},
@@ -226,8 +203,8 @@ export class OpenAiResponsesClient implements LlmClient {
 						return;
 				}
 			},
-			this.#policy,
-			this.#idleTimeoutMs,
+			this.policy,
+			this.idleTimeoutMs,
 		);
 
 		if (terminal === undefined) {
@@ -258,7 +235,7 @@ export class OpenAiResponsesClient implements LlmClient {
 	#buildBody(request: LlmRequest): Record<string, unknown> {
 		const body: Record<string, unknown> = {
 			model: request.model,
-			input: toInput(request.messages, this.#model.input.includes("image")),
+			input: toInput(request.messages, this.model.input.includes("image")),
 			stream: true,
 			// 会话由本程序保存；关闭服务端存储，避免两套历史各说各话
 			store: false,
@@ -277,16 +254,16 @@ export class OpenAiResponsesClient implements LlmClient {
 			body["max_output_tokens"] = Math.max(MIN_OUTPUT_TOKENS, request.maxTokens);
 		}
 
-		if (this.#model.reasoning) {
+		if (this.model.reasoning) {
 			if (request.effort !== undefined) {
 				body["reasoning"] = {
-					effort: providerEffortValue(request.effort, this.#model.thinkingLevelMap),
+					effort: providerEffortValue(request.effort, this.model.thinkingLevelMap),
 					summary: "auto",
 				};
 				// 无状态请求必须在下一轮把思考项的加密内容原样带回
 				body["include"] = ["reasoning.encrypted_content"];
 			} else {
-				const off = this.#model.thinkingLevelMap.off;
+				const off = this.model.thinkingLevelMap.off;
 				// 显式声明 off 不支持时不要发任何思考参数
 				if (off !== null) body["reasoning"] = { effort: off ?? "none" };
 			}

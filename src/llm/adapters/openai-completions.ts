@@ -1,13 +1,13 @@
 import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
-import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
+import type { LlmEvent, LlmRequest, LlmResult } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
 import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
+import { ProtocolClient } from "./protocol-client.ts";
 import {
-	createLlmStream,
 	IMAGE_ATTACHMENT_NOTICE,
 	IMAGE_OMITTED_PLACEHOLDER,
 	joinUrl,
@@ -92,15 +92,8 @@ interface StreamChunk {
 	readonly error?: { readonly message?: string; readonly type?: string } | null;
 }
 
-export class OpenAiCompletionsClient implements LlmClient {
+export class OpenAiCompletionsClient extends ProtocolClient {
 	readonly api = "openai-completions";
-	readonly #provider: ProviderEntry;
-	readonly #model: ModelEntry;
-	readonly #policy: RetryPolicy;
-	readonly #proxy: string | undefined;
-	/** 流式读取的静默上限（毫秒）；undefined 表示不限 */
-	readonly #idleTimeoutMs: number | undefined;
-
 	constructor(
 		provider: ProviderEntry,
 		model: ModelEntry,
@@ -108,50 +101,34 @@ export class OpenAiCompletionsClient implements LlmClient {
 		proxy?: string,
 		idleTimeoutMs?: number,
 	) {
-		this.#provider = provider;
-		this.#model = model;
-		this.#policy = policy;
-		this.#proxy = proxy;
-		this.#idleTimeoutMs = idleTimeoutMs;
+		super(provider, model, policy, proxy, idleTimeoutMs);
 	}
 
-	stream(request: LlmRequest): LlmStream {
-		const accumulator = new ContentAccumulator();
-		return createLlmStream(
-			request,
-			(emit) => this.#run(request, emit, accumulator),
-			() => {
-				accumulator.finishAll();
-				return accumulator.blocks();
-			},
-		);
-	}
-
-	async #run(
+	protected async runProtocol(
 		request: LlmRequest,
 		emit: (event: LlmEvent) => void,
 		accumulator: ContentAccumulator,
 	): Promise<LlmResult> {
 		// 密钥每次请求现取：command 形式的密钥可能是短期有效的，启动时取一次会在长会话里过期
-		const apiKey = await resolveApiKey(this.#provider.apiKey, request.signal);
+		const apiKey = await resolveApiKey(this.provider.apiKey, request.signal);
 		let finishReason: string | undefined;
 		let usage: LlmUsage | undefined;
-		let responseModel = this.#model.id;
+		let responseModel = this.model.id;
 		/** 是否见到了 [DONE] */
 		let done = false;
 
 		await postSse(
 			{
-				url: joinUrl(this.#model.baseUrl, "/chat/completions"),
+				url: joinUrl(this.model.baseUrl, "/chat/completions"),
 				headers: {
-					...this.#provider.headers,
-					...this.#model.headers,
+					...this.provider.headers,
+					...this.model.headers,
 					...(apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` }),
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
 				onRetry: request.onRetry,
-				proxy: this.#proxy,
+				proxy: this.proxy,
 				// 结束标记到手就说明这一轮的内容发完了，之后连接怎么断都算正常结束
 				complete: () => done || finishReason !== undefined,
 			},
@@ -184,8 +161,8 @@ export class OpenAiCompletionsClient implements LlmClient {
 				}
 				if (choice.delta != null) applyDelta(choice.delta, accumulator, emit);
 			},
-			this.#policy,
-			this.#idleTimeoutMs,
+			this.policy,
+			this.idleTimeoutMs,
 		);
 
 		if (finishReason === undefined && !done) {
@@ -212,7 +189,7 @@ export class OpenAiCompletionsClient implements LlmClient {
 	#buildBody(request: LlmRequest): Record<string, unknown> {
 		const body: Record<string, unknown> = {
 			model: request.model,
-			messages: toWireMessages(request, this.#model.input.includes("image")),
+			messages: toWireMessages(request, this.model.input.includes("image")),
 			stream: true,
 			// 不带这个字段时端点不会在流里给出用量
 			stream_options: { include_usage: true },
@@ -224,13 +201,13 @@ export class OpenAiCompletionsClient implements LlmClient {
 			}));
 		}
 		// 字段名由模型声明：新的 OpenAI 端点只认 max_completion_tokens
-		if (request.maxTokens !== undefined) body[this.#model.maxTokensField] = request.maxTokens;
+		if (request.maxTokens !== undefined) body[this.model.maxTokensField] = request.maxTokens;
 		// 只有声明支持的端点才发这个字段：严格校验未知字段的网关会因此直接报错
-		if (this.#provider.promptCacheKey && request.cacheKey !== undefined) {
+		if (this.provider.promptCacheKey && request.cacheKey !== undefined) {
 			body["prompt_cache_key"] = request.cacheKey;
 		}
 		if (request.effort !== undefined) {
-			body["reasoning_effort"] = providerEffortValue(request.effort, this.#model.thinkingLevelMap);
+			body["reasoning_effort"] = providerEffortValue(request.effort, this.model.thinkingLevelMap);
 		}
 		return body;
 	}

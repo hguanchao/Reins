@@ -1,13 +1,13 @@
 import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
-import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
+import type { LlmEvent, LlmRequest, LlmResult } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
 import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
+import { ProtocolClient } from "./protocol-client.ts";
 import {
-	createLlmStream,
 	IMAGE_ATTACHMENT_NOTICE,
 	IMAGE_OMITTED_PLACEHOLDER,
 	joinUrl,
@@ -78,14 +78,8 @@ interface WireUsage {
 	readonly cache_creation_input_tokens?: number;
 }
 
-export class AnthropicMessagesClient implements LlmClient {
+export class AnthropicMessagesClient extends ProtocolClient {
 	readonly api = "anthropic-messages";
-	readonly #provider: ProviderEntry;
-	readonly #model: ModelEntry;
-	readonly #policy: RetryPolicy;
-	readonly #proxy: string | undefined;
-	/** 流式读取的静默上限（毫秒）；undefined 表示不限 */
-	readonly #idleTimeoutMs: number | undefined;
 
 	constructor(
 		provider: ProviderEntry,
@@ -94,49 +88,33 @@ export class AnthropicMessagesClient implements LlmClient {
 		proxy?: string,
 		idleTimeoutMs?: number,
 	) {
-		this.#provider = provider;
-		this.#model = model;
-		this.#policy = policy;
-		this.#proxy = proxy;
-		this.#idleTimeoutMs = idleTimeoutMs;
+		super(provider, model, policy, proxy, idleTimeoutMs);
 	}
 
-	stream(request: LlmRequest): LlmStream {
-		const accumulator = new ContentAccumulator();
-		return createLlmStream(
-			request,
-			(emit) => this.#run(request, emit, accumulator),
-			() => {
-				accumulator.finishAll();
-				return accumulator.blocks();
-			},
-		);
-	}
-
-	async #run(
+	protected async runProtocol(
 		request: LlmRequest,
 		emit: (event: LlmEvent) => void,
 		accumulator: ContentAccumulator,
 	): Promise<LlmResult> {
 		// 密钥每次请求现取：command 形式的密钥可能是短期有效的，启动时取一次会在长会话里过期
-		const apiKey = await resolveApiKey(this.#provider.apiKey, request.signal);
+		const apiKey = await resolveApiKey(this.provider.apiKey, request.signal);
 		let stopReason: string | undefined;
 		let usage: Partial<TokenCounts> = {};
-		let responseModel = this.#model.id;
+		let responseModel = this.model.id;
 
 		await postSse(
 			{
-				url: joinUrl(this.#model.baseUrl, "/v1/messages"),
+				url: joinUrl(this.model.baseUrl, "/v1/messages"),
 				headers: {
 					"anthropic-version": DEFAULT_API_VERSION,
-					...this.#provider.headers,
-					...this.#model.headers,
+					...this.provider.headers,
+					...this.model.headers,
 					...(apiKey === undefined ? {} : { "x-api-key": apiKey }),
 				},
 				body: this.#buildBody(request),
 				signal: request.signal,
 				onRetry: request.onRetry,
-				proxy: this.#proxy,
+				proxy: this.proxy,
 				// 收尾事件里的结束原因到手就说明内容发完了，之后连接断开按正常结束处理
 				complete: () => stopReason !== undefined,
 			},
@@ -170,8 +148,8 @@ export class AnthropicMessagesClient implements LlmClient {
 				if (index === undefined) return;
 				applyEvent(event, index, accumulator, emit);
 			},
-			this.#policy,
-			this.#idleTimeoutMs,
+			this.policy,
+			this.idleTimeoutMs,
 		);
 
 		if (stopReason === undefined) {
@@ -201,14 +179,14 @@ export class AnthropicMessagesClient implements LlmClient {
 		if (request.maxTokens === undefined) {
 			// 这套协议要求必须给出输出上限，凭空选一个数字会让花费与截断行为变得不可预期
 			throw new Error(
-				`model ${this.#provider.id}/${this.#model.id} does not declare maxTokens, but this protocol requires an ` +
+				`model ${this.provider.id}/${this.model.id} does not declare maxTokens, but this protocol requires an ` +
 					"output limit; add it to the model in providers.json",
 			);
 		}
 
 		const body: Record<string, unknown> = {
 			model: request.model,
-			messages: withCacheBreakpoint(toWireMessages(request, this.#model.input.includes("image"))),
+			messages: withCacheBreakpoint(toWireMessages(request, this.model.input.includes("image"))),
 			max_tokens: request.maxTokens,
 			stream: true,
 		};
@@ -229,7 +207,7 @@ export class AnthropicMessagesClient implements LlmClient {
 			// 把 reasoning_effort 设为 off 即可，不做静默降级
 			body["thinking"] = {
 				type: "adaptive",
-				effort: providerEffortValue(request.effort, this.#model.thinkingLevelMap),
+				effort: providerEffortValue(request.effort, this.model.thinkingLevelMap),
 			};
 		}
 		return body;
