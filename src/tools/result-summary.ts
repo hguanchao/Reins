@@ -1,5 +1,7 @@
+import { readFooterRange } from "./builtin/read.ts";
 import { sanitizeDetail } from "./describe.ts";
 import { formatBytes } from "./format.ts";
+import { hasSpillFooter, stripSpillFooter } from "./spill.ts";
 
 export type ResultDetailKind = "text" | "file" | "diff";
 
@@ -49,13 +51,13 @@ function readDetail(content: string, details: unknown): ResultDetail | undefined
 
 	// 界面优先用 details 里的完整正文；result 被落盘时它只是预览加说明
 	const fullText = stringField(info, "text");
-	if (fullText === undefined && /\[the full result is \d+ characters;/.test(content)) {
+	if (fullText === undefined && hasSpillFooter(content)) {
 		return { text: sanitizeDetail(content), kind: "text" };
 	}
 
-	const footer = fullText === undefined ? /\[showing lines (\d+)-(\d+) of (\d+);/.exec(content) : null;
-	const startLine = numberField(info, "startLine") ?? (footer === null ? 1 : Number(footer[1]));
-	const endLine = numberField(info, "endLine") ?? (footer === null ? undefined : Number(footer[2]));
+	const range = fullText === undefined ? readFooterRange(content) : undefined;
+	const startLine = numberField(info, "startLine") ?? range?.start ?? 1;
+	const endLine = numberField(info, "endLine") ?? range?.end;
 	const lines = readLines(fullText ?? content, startLine, endLine);
 	if (lines.length === 0) return undefined;
 
@@ -91,7 +93,7 @@ function readLines(content: string, startLine: number, endLine: number | undefin
 		const count = endLine - startLine + 1;
 		if (count > 0) return content.split("\n").slice(0, count);
 	}
-	const body = (content.split("\n\n[")[0] ?? content).replace(/\n$/, "");
+	const body = stripSpillFooter(content);
 	return body.length === 0 ? [] : body.split("\n");
 }
 
@@ -252,11 +254,11 @@ function readMetric(details: unknown, content: string): string | undefined {
 }
 
 function readMetricFromContent(content: string): string | undefined {
-	const shown = /\[showing lines (\d+)-(\d+) of (\d+);/.exec(content);
-	if (shown !== null) return `${shown[1]}-${shown[2]} of ${shown[3]}`;
+	const range = readFooterRange(content);
+	if (range !== undefined) return `${range.start}-${range.end} of ${range.total}`;
 	if (/ is empty$/.test(content)) return "empty";
 
-	const body = (content.split("\n\n[")[0] ?? "").replace(/\n$/, "");
+	const body = stripSpillFooter(content);
 	if (body.length === 0) return undefined;
 	return lineLabel(body.split("\n").length);
 }
@@ -319,7 +321,7 @@ function countMetric(
 	}
 	if (emptyPattern.test(content)) return `no ${noun}`;
 
-	const body = content.split("\n\n[")[0] ?? "";
+	const body = stripSpillFooter(content);
 	const count = body.split("\n").filter((line) => line.length > 0).length;
 	if (count === 0) return undefined;
 	return countLabel(count, noun);

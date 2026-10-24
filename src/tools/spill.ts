@@ -8,6 +8,27 @@ import { join } from "node:path";
  * 字符既贵又没用——它读不完；直接丢掉更不行，结论可能就藏在里面。落盘之后它需要时可以按
  * 行自己读取。
  */
+
+/** 溢出尾注的固定前缀:界面的折叠行靠它识别「这条结果被截断过」。 */
+export const SPILL_FOOTER_PREFIX = "[the full result is ";
+
+/** 工具尾注的通用形态:空一行后接一个方括号开头的说明。各工具尾注都在这条规则之下。 */
+const FOOTER_MARK = "\n\n[";
+
+/**
+ * 剥掉结果尾注,返回纯预览正文。
+ *
+ * 尾注是工具与界面之间的文本契约(溢出路径、读取行区间、搜索命中上限都以方括号尾注交付),
+ * 剥法只写这一份:按「空一行 + 方括号」切断,前缀常量供逐工具精确判定。
+ */
+export function stripSpillFooter(content: string): string {
+	return (content.split(FOOTER_MARK)[0] ?? content).replace(/\n$/, "");
+}
+
+/** 结果是否带溢出尾注。 */
+export function hasSpillFooter(content: string): boolean {
+	return content.includes(`\n\n${SPILL_FOOTER_PREFIX}`);
+}
 export class ResultSpiller {
 	readonly #threshold: number;
 	readonly #directory: string;
@@ -26,9 +47,9 @@ export class ResultSpiller {
 		const preview = this.#preview(content);
 		if (path === undefined) {
 			// 落盘失败必须说出来：只给一段被截断的内容，模型会以为这就是全部
-			return `${preview}\n\n[the full result is ${content.length} characters; writing the spill file failed, so the rest cannot be retrieved]`;
+			return `${preview}\n\n${SPILL_FOOTER_PREFIX}${content.length} characters; writing the spill file failed, so the rest cannot be retrieved]`;
 		}
-		return `${preview}\n\n[the full result is ${content.length} characters; written to ${path}, read it back line by line]`;
+		return `${preview}\n\n${SPILL_FOOTER_PREFIX}${content.length} characters; written to ${path}, read it back line by line]`;
 	}
 
 	#preview(content: string): string {

@@ -14,6 +14,25 @@ import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary, type TextFile } from "
  * 误以为内容到此为止。
  */
 
+/** 截断尾注的固定前缀:界面摘要靠它识别「这条结果只给了一部分」并提取行区间。 */
+export const READ_FOOTER_PREFIX = "[showing lines ";
+
+/**
+ * 解析截断尾注里的行区间;不是截断结果时返回 undefined。
+ * 文案由本工具产出,消费方用同一个前缀解析:改文案只改这里。
+ */
+export function readFooterRange(content: string):
+	| { readonly start: number; readonly end: number; readonly total: number }
+	| undefined {
+	const match = /\[showing lines (\d+)-(\d+) of (\d+);/.exec(content);
+	if (match === null) return undefined;
+	return {
+		start: Number(match[1]),
+		end: Number(match[2]),
+		total: Number(match[3]),
+	};
+}
+
 const PARAMETERS = {
 	type: "object",
 	properties: {
@@ -81,7 +100,9 @@ export const readTool: ToolDefinition<ReadArgs> = {
 		const parts = [truncated.text];
 		if (file.encoding !== "utf8") parts.push(`[file encoding: ${file.encoding}]`);
 		if (lastLine < lines.length) {
-			parts.push(`[showing lines ${firstLine}-${lastLine} of ${lines.length}; continue with offset=${lastLine + 1}]`);
+			parts.push(
+				`${READ_FOOTER_PREFIX}${firstLine}-${lastLine} of ${lines.length}; continue with offset=${lastLine + 1}]`,
+			);
 		}
 
 			return {
