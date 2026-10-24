@@ -77,7 +77,8 @@ export class TurnDriver {
 				if (next === "end") break;
 			}
 		} finally {
-			await this.emit({ type: "run_end" });
+			// 监听者在收尾事件里抛错时不能顶替循环里抛出的原始异常
+			await this.emit({ type: "run_end" }).catch(() => {});
 		}
 	}
 
@@ -168,7 +169,19 @@ export class TurnDriver {
 	}
 
 	async #runTools(calls: readonly LlmToolCallBlock[], signal: AbortSignal): Promise<void> {
-		const outcomes = await Promise.all(calls.map((call) => this.#runTool(call, signal)));
+		// 并行执行,但不让单次调用的意外异常炸掉整批:助手消息已带着全部调用落进会话,
+		// 任何一条缺结果都会让后续请求被端点拒绝,所以异常也转成错误结果照常写回
+		const settled = await Promise.allSettled(calls.map((call) => this.#runTool(call, signal)));
+		const outcomes = settled.map((outcome, index) =>
+			outcome.status === "fulfilled"
+				? outcome.value
+				: {
+						callId: calls[index]?.id ?? "",
+						toolName: calls[index]?.name ?? "",
+						content: `Internal error while running the tool: ${describeError(outcome.reason)}`,
+						isError: true,
+					},
+		);
 		// 结果按模型给出的顺序写回：并行执行改变的是完成次序，不是对话里的次序
 		for (const outcome of outcomes) {
 			await this.#deps.session.append({
@@ -199,8 +212,9 @@ export class TurnDriver {
 				session: { id: this.#deps.session.id, path: this.#deps.session.path },
 				signal,
 				onUpdate: (text) => {
-					// 阶段性输出只是给界面看的，不参与对话内容，因此不阻塞执行
-					void this.emit({ type: "tool_update", callId: call.id, text });
+					// 阶段性输出只是给界面看的，不参与对话内容，因此不阻塞执行；
+					// 监听者自身出错也不往上抛,火后 Promise 的拒绝没人接会拖垮整个进程
+					void this.emit({ type: "tool_update", callId: call.id, text }).catch(() => {});
 				},
 			},
 		);
@@ -412,13 +426,14 @@ export class TurnDriver {
 			// 同一段会话用同一个标识：端点据此把请求路由到同一片提示词缓存
 			cacheKey: this.#deps.session.id,
 			onRetry: (attempt, reason) => {
-				// HTTP 层不等待监听者：重试提示只是给界面看的，不能拖慢退避
+				// HTTP 层不等待监听者：重试提示只是给界面看的，不能拖慢退避；
+				// 同样不能让监听者的异常变成无人处理的拒绝
 				void this.emit({
 					type: "retrying",
 					attempt,
 					maxAttempts: this.#deps.config.maxRetries,
 					reason,
-				});
+				}).catch(() => {});
 			},
 			signal,
 		};
@@ -436,4 +451,8 @@ interface ToolOutcome {
 	readonly toolName: string;
 	readonly content: string;
 	readonly isError: boolean;
+}
+
+function describeError(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }

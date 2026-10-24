@@ -109,26 +109,29 @@ export class Subagent {
 			}
 			context.onProgress(`step ${step}/${this.#deps.maxSteps}`);
 
-			const result = await this.#deps.client
-				.stream({
-					model: this.#deps.model.id,
-					system,
-					messages,
-					tools: declarations.map((tool) => ({
-						name: tool.name,
-						description: tool.description,
-						parameters: tool.parameters,
-					})),
-					maxTokens: this.#deps.model.maxTokens ?? this.#deps.config.maxTokens,
-					effort: clampEffort(
-						this.#deps.config.reasoningEffort,
-						this.#deps.model.reasoning,
-						this.#deps.model.thinkingLevelMap,
-					),
-					onRetry: (attempt, reason) => context.onProgress(`retrying (${attempt}): ${reason}`),
-					signal: context.signal,
-				})
-				.result();
+			const stream = this.#deps.client.stream({
+				model: this.#deps.model.id,
+				system,
+				messages,
+				tools: declarations.map((tool) => ({
+					name: tool.name,
+					description: tool.description,
+					parameters: tool.parameters,
+				})),
+				maxTokens: this.#deps.model.maxTokens ?? this.#deps.config.maxTokens,
+				effort: clampEffort(
+					this.#deps.config.reasoningEffort,
+					this.#deps.model.reasoning,
+					this.#deps.model.thinkingLevelMap,
+				),
+				onRetry: (attempt, reason) => context.onProgress(`retrying (${attempt}): ${reason}`),
+				signal: context.signal,
+			});
+			// 子代理只看最终结论,但增量仍要消费掉:流不迭代会把整轮输出无限堆在缓冲里
+			for await (const event of stream) {
+				void event;
+			}
+			const result = await stream.result();
 
 			if (result.usage !== undefined) {
 				await this.#deps.session.append({

@@ -21,12 +21,27 @@ export class SessionLock {
 	/** 取得锁。已被占用时抛错，错误信息里带上原持有者的信息。 */
 	static acquire(sessionFile: string): SessionLock {
 		const path = `${sessionFile}.lock`;
+		let handle: number | undefined;
 		try {
-			const handle = openSync(path, "wx");
+			handle = openSync(path, "wx");
 			writeSync(handle, `${process.pid} ${new Date().toISOString()}\n`);
 			closeSync(handle);
+			handle = undefined;
 			return new SessionLock(path);
 		} catch (error) {
+			// 写入或关闭失败时句柄要自己收掉,否则锁文件再也关不上,fd 也回不去
+			if (handle !== undefined) {
+				try {
+					closeSync(handle);
+				} catch {
+					// 关闭失败没有可做的:锁文件留在原地,由持有者检测逻辑兜底
+				}
+				try {
+					unlinkSync(path);
+				} catch {
+					// 同上,残留的半截锁文件交给下一次取锁时的报错去说明
+				}
+			}
 			if (!isAlreadyExists(error)) throw error;
 			throw new Error(
 				`Session file is locked: ${path} (held by ${describeHolder(path)}). ` +

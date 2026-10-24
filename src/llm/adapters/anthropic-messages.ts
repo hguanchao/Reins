@@ -182,7 +182,10 @@ export class AnthropicMessagesClient implements LlmClient {
 			content: accumulator.blocks(),
 			usage: toUsage(usage),
 			stopReason: stop,
-			errorMessage: undefined,
+			errorMessage:
+				stop === "error"
+					? `the endpoint stopped with an unrecognized finish reason: ${stopReason}`
+					: undefined,
 			model: responseModel,
 		};
 	}
@@ -309,12 +312,17 @@ function toUsage(counts: Partial<TokenCounts>): LlmUsage | undefined {
 
 function toStopReason(stopReason: string): LlmStopReason {
 	switch (stopReason) {
+		case "end_turn":
+		case "stop_sequence":
+			return "stop";
 		case "tool_use":
 			return "toolUse";
 		case "max_tokens":
 			return "length";
 		default:
-			return "stop";
+			// refusal、pause_turn 这类未收录的原因不当作正常完成:残缺的回复按错误交出去,
+			// 静默当 stop 会让被掐断的内容看起来像完整结论
+			return "error";
 	}
 }
 

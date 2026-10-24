@@ -263,3 +263,24 @@ describe("Anthropic Messages 的收尾判定", () => {
 		assert.equal(result.usage, undefined);
 	});
 });
+
+describe("Anthropic Messages 的未知结束原因", () => {
+	const START = { type: "message_start", message: { model: "m", usage: { input_tokens: 5 } } };
+
+	it("未收录的 stop_reason 按错误交出,并带原始值", async () => {
+		respondWith([
+			START,
+			{ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+			{ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } },
+			{ type: "content_block_stop", index: 0 },
+			{ type: "message_delta", delta: { stop_reason: "refusal" }, usage: { output_tokens: 2 } },
+			{ type: "message_stop" },
+		]);
+		const { result } = await run(
+			new AnthropicMessagesClient(provider(), model(["text"]), POLICY),
+			request(),
+		);
+		assert.equal(result.stopReason, "error");
+		assert.match(result.errorMessage ?? "", /refusal/);
+	});
+});

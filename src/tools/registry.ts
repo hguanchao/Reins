@@ -142,8 +142,14 @@ export class ToolRegistry {
 		}
 		const tool = registration.definition;
 
-		const prepared =
-			tool.prepareArguments === undefined ? request.args : tool.prepareArguments(request.args);
+		// prepareArguments 与 permissionScope 都可能来自插件,它们的异常不能让整轮工具执行
+		// 中断:助手消息已经带着调用落进会话,缺一条对应结果会让后续每轮请求都被端点拒绝
+		let prepared: Record<string, unknown>;
+		try {
+			prepared = tool.prepareArguments === undefined ? request.args : tool.prepareArguments(request.args);
+		} catch (cause) {
+			return error(`Tool argument preparation failed: ${describeError(cause)}`);
+		}
 		const validated = validateToolArguments(tool.parameters, prepared);
 		if (!validated.ok) {
 			// 把「收到了什么」一并回显，模型才能判断是自己写错了参数名还是写错了类型
@@ -152,10 +158,15 @@ export class ToolRegistry {
 
 		// 审批判定：校验之后、执行之前。放在校验之后的理由是模型把参数写错时应当直接告诉它，
 		// 而不是先弹一次确认再报参数错
-		const scope =
-			tool.permissionScope === undefined
-				? { key: tool.name, label: tool.name, short: tool.name }
-				: tool.permissionScope(validated.value, context.workspace);
+		let scope: PermissionScope | undefined;
+		try {
+			scope =
+				tool.permissionScope === undefined
+					? { key: tool.name, label: tool.name, short: tool.name }
+					: tool.permissionScope(validated.value, context.workspace);
+		} catch (cause) {
+			return error(`Failed to determine the permission scope, so the call was denied: ${describeError(cause)}`);
+		}
 
 		let gateOutcome: GateOutcome;
 		try {

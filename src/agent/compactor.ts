@@ -158,7 +158,10 @@ export class Compactor {
 				effort: undefined,
 				signal: controller.signal,
 			});
-
+			// 摘要只取最终结果,增量仍要消费掉:流不迭代会把整段输出无限堆在缓冲里
+			for await (const event of stream) {
+				void event;
+			}
 			const result = await stream.result();
 			if (result.stopReason === "error") {
 				return { ok: false, message: result.errorMessage ?? "Compaction request failed" };

@@ -165,6 +165,34 @@ describe("工具注册表", () => {
 		assert.match(outcome.content, /Tool execution failed: boom/);
 	});
 
+	it("插件提供的 prepareArguments 抛错转成错误结果,不中断调用", async () => {
+		const broken = {
+			...ECHO,
+			prepareArguments: (): Record<string, unknown> => {
+				throw new Error("plugin blew up");
+			},
+		};
+		const registry = new ToolRegistry(noSpill(), ALLOW);
+		registry.register(broken, "plugin");
+		const outcome = await registry.call({ callId: "c", name: "echo-tool", args: { text: "x" } }, context());
+		assert.equal(outcome.isError, true);
+		assert.match(outcome.content, /argument preparation failed: plugin blew up/);
+	});
+
+	it("permissionScope 抛错按拒绝返回错误结果", async () => {
+		const broken = {
+			...ECHO,
+			permissionScope: (): never => {
+				throw new Error("scope unavailable");
+			},
+		};
+		const registry = new ToolRegistry(noSpill(), ALLOW);
+		registry.register(broken, "plugin");
+		const outcome = await registry.call({ callId: "c", name: "echo-tool", args: { text: "x" } }, context());
+		assert.equal(outcome.isError, true);
+		assert.match(outcome.content, /permission scope.*scope unavailable/);
+	});
+
 	it("结果经防溢出器处理", async () => {
 		const spiller = new ResultSpiller(0, "");
 		// 短路掉真实的落盘行为，只看注册表有没有把结果交给它
