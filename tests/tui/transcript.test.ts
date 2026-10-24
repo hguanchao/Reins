@@ -1409,7 +1409,7 @@ describe("子代理组", () => {
 		assert.ok(text.includes("› Subagents  1 running · 1 done · 1 failed"));
 		// 总耗时挂在括号 metric 位
 		assert.ok(/\(\d+(m\d+s|\.\ds)\)/.test(text));
-		assert.equal(text.includes("Subagent1"), false);
+		assert.equal(text.includes("Subagent 1"), false);
 	});
 
 	it("展开显示四态清单:●完成/转圈运行/×失败/○待办", () => {
@@ -1426,9 +1426,9 @@ describe("子代理组", () => {
 		const text = view.lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
 
 		assert.ok(text.includes("◈ Subagents"));
-		assert.ok(text.includes("● Subagent1  梳理 tools 模块"));
-		assert.ok(text.includes("Subagent2  检查测试场景"));
-		assert.ok(text.includes("× Subagent3  upstream 500"));
+		assert.ok(text.includes("● Subagent 1  梳理 tools 模块"));
+		assert.ok(text.includes("Subagent 2  检查测试场景"));
+		assert.ok(text.includes("× Subagent 3  upstream 500"));
 		assert.ok(text.includes("14.3s") && text.includes("22.6s"));
 		assert.ok(text.includes("4 running") === false);
 	});
@@ -1440,7 +1440,7 @@ describe("子代理组", () => {
 		assert.equal(view.liveTodoLines.size, 1);
 
 		const animated = renderTranscriptView(view, 16, 0, { spinner: "⠋", sweepPhase: 0.5 });
-		const line = animated.find((row) => row.replace(/\x1b\[[0-9;]*m/g, "").includes("Subagent2")) ?? "";
+		const line = animated.find((row) => row.replace(/\x1b\[[0-9;]*m/g, "").includes("Subagent 2")) ?? "";
 		const plain = line.replace(/\x1b\[[0-9;]*m/g, "");
 		assert.ok(plain.includes("⠋"));
 		assert.ok((line.match(/\x1b\[38;2;/g) ?? []).length > 1);

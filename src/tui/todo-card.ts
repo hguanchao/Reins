@@ -42,7 +42,7 @@ export interface TranscriptTodo {
 export type LiveTodoLine =
 	| { readonly kind: "item"; readonly indent: string; readonly content: string }
 	| { readonly kind: "header"; readonly card: TranscriptTodo }
-	| { readonly kind: "subagent"; readonly indent: string; readonly content: string };
+	| { readonly kind: "subagent"; readonly indent: string; readonly label: string; readonly summary: string };
 
 /** 重建进行中任务行的当前帧：盲文运行符与扫光相位都由 100ms 刷新帧推进。 */
 export interface TodoAnimationFrame {
@@ -161,17 +161,17 @@ function todoHeaderLine(card: TranscriptTodo, width: number): string {
 	return `${TODO_HEADER_COLOR}${head}${THEME.reset}${TODO_COUNT_COLOR}${tail}${THEME.reset}${padding}`;
 }
 
-/** 渲染期按当前帧重建动画行：展开卡片是条目行，折叠卡片是头行。 */
+/** 渲染期按当前帧重建动画行：展开卡片是条目行，折叠卡片是头行，子代理清单是运行行。 */
 export function animatedTodoLine(live: LiveTodoLine, frame: TodoAnimationFrame, width: number): string {
-	return live.kind === "header"
-		? animatedTodoHeader(live.card, frame, width)
-		: animatedRunningLine(live.indent, live.content, frame, width);
+	if (live.kind === "header") return animatedTodoHeader(live.card, frame, width);
+	if (live.kind === "subagent") {
+		return animatedSubagentLine(live.indent, live.label, live.summary, frame, width);
+	}
+	return animatedRunningLine(live.indent, live.content, frame, width);
 }
 
 /**
- * 运行中条目的动画行:盲文运行符 + 扫光正文。
- *
- * 任务卡片与子代理组清单共用:两者的运行行都是「转圈 + 一句在做的事」。
+ * 任务卡片运行中条目的动画行:盲文运行符 + 扫光正文。
  */
 function animatedRunningLine(
 	indent: string,
@@ -185,6 +185,26 @@ function animatedRunningLine(
 	const body = swept(visible, frame.sweepPhase, THEME.accentDim, THEME.accentRgb);
 	const padding = " ".repeat(Math.max(0, budget - displayWidth(visible)));
 	return `${head}${body}${padding}`;
+}
+
+/**
+ * 子代理清单运行行的动画行:转圈与标签青色加粗(扫光只扫标签),摘要保持灰。
+ */
+function animatedSubagentLine(
+	indent: string,
+	label: string,
+	summary: string,
+	frame: TodoAnimationFrame,
+	width: number,
+): string {
+	const budget = Math.max(0, width - displayWidth(indent) - 2);
+	const labelPart = truncateToWidth(label, budget);
+	const summaryPart = truncateToWidth(summary, Math.max(0, budget - displayWidth(labelPart) - 2));
+	const head = `${indent}${THEME.accent}${BOLD}${frame.spinner} ${swept(labelPart, frame.sweepPhase, THEME.accentDim, THEME.accentRgb)}`;
+	const padding = " ".repeat(
+		Math.max(0, budget - displayWidth(labelPart) - displayWidth(summaryPart)),
+	);
+	return `${head}  ${THEME.textSecondary}${summaryPart}${THEME.reset}${padding}`;
 }
 
 /**

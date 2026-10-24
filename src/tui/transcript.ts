@@ -242,16 +242,15 @@ const SUBAGENT_ITEM_INDENT = `${RESPONSE_INDENT}  `;
 const SUBAGENT_TASK_WIDTH = 34;
 /** 待办与待派发子代理的标记:还没有可汇报的结局。 */
 const SUBAGENT_PENDING_MARKER = "○";
-/** 子代理组头与清单完成态的颜色:组头随工具组头,完成态用成功绿但不带删除线。 */
-const SUBAGENT_HEAD_COLOR = TOOL_GROUP_COLOR;
-const SUBAGENT_DONE_COLOR = THEME.success;
-/** 清单里运行中的行要转圈加扫光,渲染期重建;静态形态是青色加粗的占位行。 */
+/**
+ * 子代理的配色分工:组头标签与清单标签是青色(清单标签加粗),其余文字一律灰——
+ * 一屏里抢眼的只有「有几个代理、各自叫什么」。
+ */
+const SUBAGENT_HEAD_COLOR = THEME.accent;
 const SUBAGENT_RUNNING_COLOR = THEME.accent;
-/** 计数段与清单的失败、计数、分隔:与任务卡片同一档色。 */
-const SUBAGENT_FAILED_COLOR = THEME.error;
-const SUBAGENT_PENDING_COLOR = THEME.textSecondary;
-const SUBAGENT_COUNT_COLOR = THEME.textSubtle;
-/** 加粗:运行中的行是焦点。 */
+const SUBAGENT_TEXT_COLOR = THEME.textSecondary;
+const SUBAGENT_COUNT_COLOR = THEME.textSecondary;
+/** 加粗:清单标签是全行焦点。 */
 const SUBAGENT_BOLD = "\x1b[1m";
 const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
@@ -754,41 +753,41 @@ function subagentGroupLines(
 			live.set(memberStart, {
 				kind: "subagent",
 				indent: SUBAGENT_ITEM_INDENT,
-				content: truncateToWidth(`Subagent${index + 1}  ${member.task}`, Math.min(SUBAGENT_TASK_WIDTH + 14, budget)),
+				label: truncateToWidth(`Subagent ${index + 1}`, budget),
+				summary: truncateToWidth(member.task, Math.min(SUBAGENT_TASK_WIDTH, budget)),
 			});
 		}
 	});
 	return lines;
 }
 
-/** 组头一行:标签、计数段、括号耗时。计数顺序固定 running→done→failed。 */
+/** 组头一行:青色标签 + 灰色计数段与括号耗时。计数顺序固定 running→done→failed。 */
 function subagentGroupHead(group: TranscriptSubagentGroup, width: number): string {
 	const marker = group.expanded === true ? TOOL_GROUP_EXPANDED_MARKER : TOOL_MARKER;
 	const prefix = `${RESPONSE_INDENT}${marker} `;
-	// 计数段的 ANSI 码不占列,head 的显示宽度要按纯文本算
 	const counts = countSegments(group);
 	const elapsed =
 		group.durationMs !== undefined
 			? formatDuration(group.durationMs)
 			: formatDuration(Math.max(0, Date.now() - group.startedAt));
-	const head = `${prefix}${SUBAGENT_GROUP_LABEL}  ${counts}`;
-	const headWidth = displayWidth(head.replace(/\x1b\[[0-9;]*m/g, ""));
-	const budget = Math.max(0, width - headWidth);
-	const metric = truncateToWidth(` (${elapsed})`, budget);
-	const padding = " ".repeat(Math.max(0, budget - displayWidth(metric)));
-	return `${SUBAGENT_HEAD_COLOR}${head}${RESET}${SUBAGENT_COUNT_COLOR}${metric}${RESET}${padding}`;
+	const rest = `  ${counts} (${elapsed})`;
+	const restWidth = displayWidth(rest);
+	const label = truncateToWidth(SUBAGENT_GROUP_LABEL, Math.max(0, width - displayWidth(prefix) - restWidth));
+	const padding = " ".repeat(
+		Math.max(0, width - displayWidth(prefix) - displayWidth(label) - restWidth),
+	);
+	return `${prefix}${SUBAGENT_HEAD_COLOR}${label}${RESET}${SUBAGENT_COUNT_COLOR}${rest}${RESET}${padding}`;
 }
 
-/** 计数段:running 青、done 绿、failed 红,没有的段不显示。 */
+/** 计数段:全部灰色,只有组头标签是青;没有的段不显示。 */
 function countSegments(group: TranscriptSubagentGroup): string {
 	const counts = { running: 0, done: 0, failed: 0 };
 	for (const member of group.members) counts[member.status] += 1;
 	const parts: string[] = [];
-	if (counts.running > 0) parts.push(`${SUBAGENT_RUNNING_COLOR}${counts.running} running${RESET}`);
-	if (counts.done > 0) parts.push(`${SUBAGENT_DONE_COLOR}${counts.done} done${RESET}`);
-	if (counts.failed > 0) parts.push(`${SUBAGENT_FAILED_COLOR}${counts.failed} failed${RESET}`);
-	// 分隔点跟着组头同色,前后各一列空格
-	return parts.join(`${RESET} ${SUBAGENT_HEAD_COLOR}· ${SUBAGENT_HEAD_COLOR}`);
+	if (counts.running > 0) parts.push(`${counts.running} running`);
+	if (counts.done > 0) parts.push(`${counts.done} done`);
+	if (counts.failed > 0) parts.push(`${counts.failed} failed`);
+	return parts.join(" · ");
 }
 
 /** 组清单的一条:四态符号 + 任务摘要 + 右对齐耗时;失败行正文位是原因摘要。 */
@@ -798,7 +797,7 @@ function subagentMemberLines(
 	position: number,
 ): readonly string[] {
 	const indent = SUBAGENT_ITEM_INDENT;
-	const label = `Subagent${position}`;
+	const label = `Subagent ${position}`;
 	const body = member.status === "failed" ? (member.failure ?? member.task) : member.task;
 
 	// 耗时列右对齐钉在行尾;待办与运行中(耗时未定)没有
@@ -808,17 +807,26 @@ function subagentMemberLines(
 	const summary = truncateToWidth(body, Math.min(SUBAGENT_TASK_WIDTH, budget));
 	const gap = Math.max(1, budget - displayWidth(summary) + 2);
 
+	// 颜色分工:标签青加粗,符号与摘要、耗时都是灰
 	if (member.status === "running") {
 		// 静态占位与动画行同构(运行符 + 标签 + 摘要),重建时只是换了着色与转圈帧
-		return [`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}  ${summary}${RESET}${" ".repeat(gap)}`];
+		return [
+			`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}${" ".repeat(gap)}`,
+		];
 	}
 	if (member.status === "failed") {
-		return [`${indent}${SUBAGENT_FAILED_COLOR}× ${label}  ${summary}${RESET}${" ".repeat(gap)}${elapsed}`];
+		return [
+			`${indent}${SUBAGENT_TEXT_COLOR}× ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}${" ".repeat(gap)}${elapsed}`,
+		];
 	}
 	if (member.status === "done") {
-		return [`${indent}${SUBAGENT_DONE_COLOR}● ${label}  ${summary}${RESET}${" ".repeat(gap)}${elapsed}`];
+		return [
+			`${indent}${SUBAGENT_TEXT_COLOR}● ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}${" ".repeat(gap)}${elapsed}`,
+		];
 	}
-	return [`${indent}${SUBAGENT_PENDING_COLOR}${SUBAGENT_PENDING_MARKER} ${label}  ${summary}${RESET}`];
+	return [
+		`${indent}${SUBAGENT_TEXT_COLOR}${SUBAGENT_PENDING_MARKER} ${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}${label}${RESET}  ${SUBAGENT_TEXT_COLOR}${summary}${RESET}`,
+	];
 }
 
 function lineIndexAtRow(
