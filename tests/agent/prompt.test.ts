@@ -54,6 +54,20 @@ describe("系统提示词", () => {
 		assert.equal(withoutSearch?.includes("instead of their shell equivalents"), false);
 	});
 
+	it("注册了 todo 时生成任务表使用规则,未注册时不出现", () => {
+		const withTodo = buildPromptSections({
+			cwd: "/work",
+			tools: [tool("todo", "")],
+		}).rules;
+		assert.ok(withTodo?.includes("Plan multi-step work with todo"));
+
+		const withoutTodo = buildPromptSections({
+			cwd: "/work",
+			tools: [tool("read", ""), tool("bash", "")],
+		}).rules;
+		assert.equal(withoutTodo?.includes("Plan multi-step work with todo"), false);
+	});
+
 	it("没有工具时不生成使用规则", () => {
 		const sections = buildPromptSections({ cwd: "/work", tools: [] });
 

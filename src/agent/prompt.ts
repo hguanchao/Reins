@@ -107,6 +107,13 @@ function buildRules(tools: readonly ToolDeclaration[]): string {
 			rules.push(`Use ${alternatives.join(", ")} instead of their shell equivalents when they fit.`);
 		}
 	}
+	if (names.has("todo")) {
+		rules.push(
+			"Plan multi-step work with todo before starting; send the complete list, keep at most one task " +
+				"in_progress, mark tasks completed as soon as they are done, and mark a task failed only when " +
+				"it cannot be completed.",
+		);
+	}
 	if (names.has("read") || names.has("bash")) {
 		rules.push(
 			"When output says it was truncated, narrow the request; do not assume you saw the whole file or command output.",
