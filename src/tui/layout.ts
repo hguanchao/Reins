@@ -95,6 +95,11 @@ const EXIT_CONFIRM_WINDOW_MS = 2000;
 /** 运行时状态前的加载动画。 */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SPINNER_INTERVAL_MS = 100;
+/** SGR 鼠标协议:滚轮向上与向下的按钮码。 */
+const MOUSE_WHEEL_UP = 64;
+const MOUSE_WHEEL_DOWN = 65;
+/** 按钮码低两位是真实按键编号:0 是左键,掩出来为 0 才算点击。 */
+const MOUSE_BUTTON_MASK = 3;
 /** 完整页脚除输入行外的固定行数:空白间隔、状态行、上下边框与常驻信息行。 */
 const FULL_FOOTER_FIXED_LINES = 5;
 /** 紧凑页脚除输入行外的固定行数:上下边框与常驻信息行。 */
@@ -554,6 +559,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		effortMenu !== undefined ||
 		sessionMenu !== undefined ||
 		commandMenu !== undefined;
+	/** 抢输入焦点的面板:命令补全不抢(输入还在打字),模型/思考等级/会话面板是模态的。 */
+	const modalMenuOpen = (): boolean =>
+		modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined;
 	/** 整屏页与菜单一样把输入框让给内容：紧凑页脚、不画光标。 */
 	const compactFooter = (): boolean => menuOpen() || openPage !== undefined;
 	const inputLineCount = (): number => {
@@ -655,11 +663,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					? renderFooter(
 							width,
 							input,
-							focused &&
-								modelMenu === undefined &&
-								effortMenu === undefined &&
-								sessionMenu === undefined &&
-								openPage === undefined,
+							focused && !modalMenuOpen() && openPage === undefined,
 							undefined,
 							currentInfo(),
 							{ leadingGap: false, showStatus: false, cursor: inputCursor, commandLength },
@@ -1504,7 +1508,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	/** 输入变化后重算命令补全列表；只匹配斜杠后不含空格的命令名。 */
 	const updateCommandMenu = (): void => {
-		if (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined) return;
+		if (modalMenuOpen()) return;
 		// Esc 关掉之后不再自动弹出：输入一变会重置这个标记，那时才会重新计算
 		if (commandMenuDismissed) {
 			commandMenu = undefined;
@@ -1967,6 +1971,41 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		return true;
 	};
 
+	/**
+	 * 菜单面板的公共鼠标交互:悬停改选、滚轮翻动、点击选中并确认。
+	 *
+	 * 模型、思考等级、会话与命令补全四种面板共用这一套规则,差异全部收在
+	 * target 的回调里;新增面板不必再抄一遍交互。返回 true 表示这块数据已被面板消费。
+	 */
+	const handleMenuMouse = (events: readonly MouseInput[], target: MenuMouseTarget): boolean => {
+		for (const event of events) {
+			const motion = dragMotion(event.button);
+			const index = target.hitItem(event.row);
+			if (motion) {
+				if (index !== undefined && index !== target.cursor()) {
+					target.select(index);
+					render();
+					return true;
+				}
+				continue;
+			}
+			if (event.press && event.button === MOUSE_WHEEL_UP) {
+				target.move(-1);
+				return true;
+			}
+			if (event.press && event.button === MOUSE_WHEEL_DOWN) {
+				target.move(1);
+				return true;
+			}
+			if (event.press && (event.button & MOUSE_BUTTON_MASK) === 0 && index !== undefined) {
+				target.select(index);
+				target.confirm();
+				return true;
+			}
+		}
+		return false;
+	};
+
 	const onData = (chunk: Buffer): void => {
 		const text = decoder.write(chunk);
 		// 鼠标事件最多解析一次:同一条数据块会被多个面板分支检查,每次都跑一遍
@@ -2019,7 +2058,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					}
 					continue;
 				}
-				if (!event.press || (event.button & 3) !== 0) continue;
+				if (!event.press || (event.button & MOUSE_BUTTON_MASK) !== 0) continue;
 				if (action !== undefined) {
 					resolveApproval(action);
 					return;
@@ -2047,136 +2086,98 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 
-		if (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined) {
+		if (modalMenuOpen()) {
 			// 面板只接管选择相关的按键（上下、回车、Tab、Esc）与鼠标；其余按键放行给输入框。
 			// 文字一变面板就收掉（见 editInput 处）：面板由命令打开，输入不再是那条命令
 			// 面板上边框画在页脚区的第一行，页脚高 N 行时它就是 height-N+1（1 基）
-			const panelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1); 
-			for (const event of mouseOf()) {
-				const motion = dragMotion(event.button);
-				if (modelMenu !== undefined) {
-					const index = menuIndexAtRow(
-						event.row,
-						panelTop,
-						modelMenu.items.length,
-						modelMenu.scrollTop,
-						modelMenu.cursor,
-					);
-					if (motion) {
-						if (index !== undefined && index !== modelMenu.cursor) {
-							modelMenu.cursor = index;
+			const panelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1);
+			// 三种选择面板的鼠标交互是同一套,只有命中与选中后的同步不同
+			if (modelMenu !== undefined) {
+				const menu = modelMenu;
+				if (
+					handleMenuMouse(mouseOf(), {
+						hitItem: (row) =>
+							menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor),
+						cursor: () => menu.cursor,
+						select: (index) => {
+							menu.cursor = index;
 							keepMenuCursor();
-							render();
-							return;
-						}
-						continue;
-					}
-					if (event.press && event.button === 64) {
-						moveMenu(-1);
-						return;
-					}
-					if (event.press && event.button === 65) {
-						moveMenu(1);
-						return;
-					}
-					if (event.press && (event.button & 3) === 0 && index !== undefined) {
-						// 点击即选中并确认：面板上点哪一项就用哪一项
-						modelMenu.cursor = index;
-						keepMenuCursor();
-						confirmMenu();
-						return;
-					}
-				} else if (effortMenu !== undefined) {
-					const index = menuIndexAtRow(
-						event.row,
-						panelTop,
-						THINKING_LEVELS.length,
-						effortMenu.scrollTop,
-						effortMenu.cursor,
-					);
-					if (motion) {
-						if (index !== undefined && index !== effortMenu.cursor) {
-							effortMenu.cursor = index;
-							render();
-							return;
-						}
-						continue;
-					}
-					if (event.press && event.button === 64) {
-						moveEffortMenu(-1);
-						return;
-					}
-					if (event.press && event.button === 65) {
-						moveEffortMenu(1);
-						return;
-					}
-					if (event.press && (event.button & 3) === 0 && index !== undefined) {
-						// 点击即选中并确认：面板上点哪一档就用哪一档
-						effortMenu.cursor = index;
-						confirmEffortMenu();
-						return;
-					}
-				} else if (sessionMenu !== undefined) {
-					const index = menuIndexAtRow(
-						event.row,
-						panelTop,
-						sessionMenu.items.length,
-						sessionMenu.scrollTop,
-						sessionMenu.cursor,
-					);
-					if (motion) {
-						if (index !== undefined && index !== sessionMenu.cursor) {
-							sessionMenu.cursor = index;
+						},
+						move: moveMenu,
+						confirm: confirmMenu,
+					})
+				) {
+					return;
+				}
+			} else if (effortMenu !== undefined) {
+				const menu = effortMenu;
+				if (
+					handleMenuMouse(mouseOf(), {
+						hitItem: (row) =>
+							menuIndexAtRow(row, panelTop, THINKING_LEVELS.length, menu.scrollTop, menu.cursor),
+						cursor: () => menu.cursor,
+						// 思考等级只有五档,面板永远装得下,选中后不需要同步滚动窗口
+						select: (index) => {
+							menu.cursor = index;
+						},
+						move: moveEffortMenu,
+						confirm: confirmEffortMenu,
+					})
+				) {
+					return;
+				}
+			} else if (sessionMenu !== undefined) {
+				const menu = sessionMenu;
+				if (
+					handleMenuMouse(mouseOf(), {
+						hitItem: (row) =>
+							menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor),
+						cursor: () => menu.cursor,
+						select: (index) => {
+							menu.cursor = index;
 							keepSessionCursor();
-							render();
-							return;
-						}
-						continue;
-					}
-					if (event.press && event.button === 64) {
-						moveSessionMenu(-1);
-						return;
-					}
-					if (event.press && event.button === 65) {
-						moveSessionMenu(1);
-						return;
-					}
-					if (event.press && (event.button & 3) === 0 && index !== undefined) {
-						// 点击即选中并确认：面板上点哪个会话就切到哪个会话
-						sessionMenu.cursor = index;
-						keepSessionCursor();
-						confirmSessionMenu();
-						return;
-					}
+						},
+						move: moveSessionMenu,
+						confirm: confirmSessionMenu,
+					})
+				) {
+					return;
 				}
 			}
 
+			// 键盘同样只差回调:上下移动、回车确认、Tab 补全、Esc 收起
 			const key = menuKey(text);
-			const inModel = modelMenu !== undefined;
-			const inSession = sessionMenu !== undefined;
+			const panel =
+				modelMenu !== undefined
+					? { move: moveMenu, confirm: confirmMenu, complete: completeModelMenu, cancel: cancelMenu }
+					: sessionMenu !== undefined
+						? {
+								move: moveSessionMenu,
+								confirm: confirmSessionMenu,
+								complete: completeSessionMenu,
+								cancel: cancelSessionMenu,
+							}
+						: {
+								move: moveEffortMenu,
+								confirm: confirmEffortMenu,
+								complete: completeEffortMenu,
+								cancel: cancelEffortMenu,
+							};
 			if (key === "up" || key === "down") {
-				if (inModel) moveMenu(key === "up" ? -1 : 1);
-				else if (inSession) moveSessionMenu(key === "up" ? -1 : 1);
-				else moveEffortMenu(key === "up" ? -1 : 1);
+				panel.move(key === "up" ? -1 : 1);
 				return;
 			}
 			if (key === "enter") {
-				if (inModel) confirmMenu();
-				else if (inSession) confirmSessionMenu();
-				else confirmEffortMenu();
+				panel.confirm();
 				return;
 			}
 			if (key === "tab") {
 				// 最后一级面板没有更深的选择：Tab 只补进输入框，不代替回车执行
-				if (inModel) completeModelMenu();
-				else if (inSession) completeSessionMenu();
-				else completeEffortMenu();
+				panel.complete();
 				return;
 			}
 			if (key === "escape") {
-				if (inModel) cancelMenu();
-				else if (inSession) cancelSessionMenu();
-				else cancelEffortMenu();
+				panel.cancel();
 				return;
 			}
 			// 其余按键放行：打字的瞬间面板会随输入变化收掉（见下面的编辑处理）
@@ -2189,8 +2190,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const total = pageLines(openPage, width).length;
 			let steps = 0;
 			for (const event of mouseOf()) {
-				if (event.press && event.button === 64) steps -= 1;
-				else if (event.press && event.button === 65) steps += 1;
+				if (event.press && event.button === MOUSE_WHEEL_UP) steps -= 1;
+				else if (event.press && event.button === MOUSE_WHEEL_DOWN) steps += 1;
 			}
 			const key = menuKey(text);
 			if (key === "up") steps -= 1;
@@ -2242,10 +2243,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 
 		for (const event of mouseOf()) {
-			const left = (event.button & 3) === 0;
+			const left = (event.button & MOUSE_BUTTON_MASK) === 0;
 			const motion = event.button >= 32 && event.button < 64;
 			// 低两位是 3 表示没有按键：1003 模式下这类事件只是指针在移动，也就是悬停
-			const hover = motion && (event.button & 3) === 3;
+			const hover = motion && (event.button & MOUSE_BUTTON_MASK) === 3;
 
 			if (hover) {
 				const over = buttonShown && scrollButtonHit(bottomButton, event.row, event.column);
@@ -2256,9 +2257,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				continue;
 			}
 
-			if (event.press && event.button === 64) {
+			if (event.press && event.button === MOUSE_WHEEL_UP) {
 				wheelSteps -= 1;
-			} else if (event.press && event.button === 65) {
+			} else if (event.press && event.button === MOUSE_WHEEL_DOWN) {
 				wheelSteps += 1;
 			} else if (event.press && left && !motion) {
 				// 置底按钮盖在对话流上，命中就回到底部并恢复跟随，不再往下走双击与聚焦判断
@@ -2370,56 +2371,33 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (commandMenu !== undefined) {
 			// 命令补全面板不拦截文字输入，只接管上下键、Esc 与鼠标
 			const commandPanelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1);
-			for (const event of mouseOf()) {
-				const motion = dragMotion(event.button);
-				const index = menuIndexAtRow(
-					event.row,
-					commandPanelTop,
-					commandMenu.items.length,
-					commandMenu.scrollTop,
-					commandMenu.cursor,
-				);
-				if (motion) {
-					if (index !== undefined && index !== commandMenu.cursor) {
-						commandMenu.cursor = index;
-						commandMenu.scrollTop = keepVisible(
-							commandMenu.scrollTop,
-							commandMenu.cursor,
-							commandMenu.items.length,
-						);
-						render();
-						return;
-					}
-					continue;
-				}
-				if (event.press && event.button === 64) {
-					moveCommandMenu(-1);
-					return;
-				}
-				if (event.press && event.button === 65) {
-					moveCommandMenu(1);
-					return;
-				}
-				if (event.press && (event.button & 3) === 0 && index !== undefined) {
-					// 点击即选中并执行，与回车一致：有二级面板的命令点开面板，其余直接执行
-					commandMenu.cursor = index;
-					commandMenu.scrollTop = keepVisible(
-						commandMenu.scrollTop,
-						commandMenu.cursor,
-						commandMenu.items.length,
-					);
-					const selected = commandMenu.items[commandMenu.cursor];
-					if (selected === undefined) return;
-					if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(selected.name)) {
-						commandMenu = undefined;
-						commandMenuDismissed = true;
-						setStatus(`/${selected.name} is unavailable while a turn is running`);
-						render();
-						return;
-					}
-					executeCommand(selected);
-					return;
-				}
+			const menu = commandMenu;
+			if (
+				handleMenuMouse(mouseOf(), {
+					hitItem: (row) =>
+						menuIndexAtRow(row, commandPanelTop, menu.items.length, menu.scrollTop, menu.cursor),
+					cursor: () => menu.cursor,
+					select: (index) => {
+						menu.cursor = index;
+						menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, menu.items.length);
+					},
+					move: moveCommandMenu,
+					confirm: () => {
+						// 点击即选中并执行，与回车一致：有二级面板的命令点开面板，其余直接执行
+						const selected = menu.items[menu.cursor];
+						if (selected === undefined) return;
+						if (activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(selected.name)) {
+							commandMenu = undefined;
+							commandMenuDismissed = true;
+							setStatus(`/${selected.name} is unavailable while a turn is running`);
+							render();
+							return;
+						}
+						executeCommand(selected);
+					},
+				})
+			) {
+				return;
 			}
 
 			const key = menuKey(text);
@@ -2547,7 +2525,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 		// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
 		// 命令补全面板相反，跟着新输入继续过滤
-		if (edit.text !== previous && (modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined)) {
+		if (edit.text !== previous && (modalMenuOpen())) {
 			modelMenu = undefined;
 			effortMenu = undefined;
 			sessionMenu = undefined;
@@ -2712,7 +2690,17 @@ interface MouseInput {
  * 1003 模式还会上报没按键的纯移动（低两位为 3），那只是指针在挪，不能当成拖动去改选中项。
  */
 function dragMotion(button: number): boolean {
-	return button >= 32 && button < 64 && (button & 3) !== 3;
+	return button >= 32 && button < 64 && (button & MOUSE_BUTTON_MASK) !== 3;
+}
+
+/** 一个菜单面板交给公共鼠标处理器的交互面:命中、当前光标、选中同步、翻动与确认。 */
+interface MenuMouseTarget {
+	/** 终端行号命中的条目下标;命中不了(点到面板外或边框上)返回 undefined */
+	readonly hitItem: (row: number) => number | undefined;
+	readonly cursor: () => number;
+	readonly select: (index: number) => void;
+	readonly move: (delta: number) => void;
+	readonly confirm: () => void;
 }
 
 function mouseEvents(text: string): readonly MouseInput[] {
