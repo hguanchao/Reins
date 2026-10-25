@@ -69,6 +69,17 @@ export interface TranscriptTurn {
 	readonly response: readonly TranscriptLine[];
 }
 
+/**
+ * 模型提交的一份计划。
+ *
+ * 对话流里只画标题行，完整 Markdown 留在对象里供审批页使用。计划作为工具参数进入会话，
+ * 历史回放时能从同一份调用重建，不需要额外的文件。
+ */
+export interface TranscriptPlan {
+	readonly kind: "plan";
+	readonly text: string;
+}
+
 /** 对话流里的一行：字符串就是正文，对象形式用于需要区别样式或折叠的行。 */
 export type TranscriptLine =
 	| string
@@ -78,6 +89,7 @@ export type TranscriptLine =
 	| TranscriptToolGroup
 	| TranscriptSubagentGroup
 	| TranscriptTodo
+	| TranscriptPlan
 	| TranscriptMarkdown;
 
 /** 运行中的子代理清单行：渲染期按当前帧重建转圈与扫光。 */
@@ -263,6 +275,11 @@ const SUBAGENT_COUNT_COLOR = THEME.textSecondary;
 const SUBAGENT_FAILED_COLOR = THEME.error;
 /** 加粗:清单标签是全行焦点。 */
 const SUBAGENT_BOLD = "\x1b[1m";
+/** 计划卡：标记与标签用强调色，标题回到正文色，提示保持弱化。 */
+const PLAN_MARKER_COLOR = THEME.accent;
+const PLAN_TITLE_COLOR = THEME.textPrimary;
+const PLAN_HINT_COLOR = THEME.textSubtle;
+const PLAN_CARD_HINT = "  ·  double-click to view";
 const PROMPT_MAX_LINES = 3;
 const HEADER_GAP_LINES = 1;
 /** 右侧固定预留一列空隙和一列滚动条。 */
@@ -311,6 +328,8 @@ export interface TranscriptView {
 	readonly liveLines: ReadonlyMap<number, LiveSubagentLine>;
 	/** 每张收尾任务卡的头行在 lines 里的起点，双击收起/展开使用 */
 	readonly todoHeaders: readonly { readonly start: number; readonly card: TranscriptTodo }[];
+	/** 每张计划卡的头行在 lines 里的起点，双击打开审批页 */
+	readonly planHeaders: readonly { readonly start: number; readonly plan: TranscriptPlan }[];
 	/** 每个子代理组头在 lines 里的起点，双击收起/展开使用 */
 	readonly subagentHeaders: readonly {
 		readonly start: number;
@@ -438,16 +457,26 @@ export function attachToolResult(
 	details?: unknown,
 ): void {
 	tool.result = content;
+	const jobId = backgroundJobId(details);
 	const metric =
-		name === "bash" && durationMs !== undefined
-			? formatDuration(durationMs)
-			: resultMetric(name, details, content);
+		jobId !== undefined
+			? `background ${jobId}`
+			: name === "bash" && durationMs !== undefined
+				? formatDuration(durationMs)
+				: resultMetric(name, details, content);
 	if (metric !== undefined) tool.metric = metric;
 	const detail = resultDetail(name, content, details, tool.detail);
 	if (detail !== undefined) {
 		tool.fullDetail = detail.text;
 		tool.detailKind = detail.kind;
 	}
+}
+
+/** bash 的后台结果在 details 里带 jobId；折叠行据此显示作业编号。 */
+function backgroundJobId(details: unknown): string | undefined {
+	if (typeof details !== "object" || details === null) return undefined;
+	const value = (details as { readonly jobId?: unknown }).jobId;
+	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 /**
@@ -738,6 +767,18 @@ export function todoHeaderInView(
 	return view.todoHeaders.find((header) => header.start === lineIndex)?.card;
 }
 
+/** 命中计划卡；双击打开完整计划。 */
+export function planHeaderInView(
+	view: TranscriptView,
+	height: number,
+	scrollTop: number,
+	row: number,
+): TranscriptPlan | undefined {
+	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
+	if (lineIndex === undefined) return undefined;
+	return view.planHeaders.find((header) => header.start === lineIndex)?.plan;
+}
+
 /** 命中子代理组头；双击在收起与展开之间切换。 */
 export function subagentGroupHeaderInView(
 	view: TranscriptView,
@@ -977,7 +1018,7 @@ function contentWidth(terminalWidth: number): number {
 }
 
 /** 对话流里可以连成一块的内容类型：同类连续行紧凑排列，块与块之间留空行。 */
-type ResponseBlockKind = "text" | "thinking" | "tools" | "todo" | "notice";
+type ResponseBlockKind = "text" | "thinking" | "tools" | "todo" | "plan" | "notice";
 
 function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
 	if (typeof line === "string") return "text";
@@ -986,6 +1027,7 @@ function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
 	if (line.kind === "toolGroup") return "tools";
 	if (line.kind === "thinkingBlock") return "thinking";
 	if (line.kind === "todo") return "todo";
+	if (line.kind === "plan") return "plan";
 	// 子代理组与普通工具块同类:它是这一轮调用的过程,不该像警告那样自成一块
 	if (line.kind === "subagentGroup") return "tools";
 	return "notice";
@@ -1003,8 +1045,13 @@ function needsBlockGap(previous: TranscriptLine, current: TranscriptLine): boole
 	const previousKind = responseBlockKind(previous);
 	const currentKind = responseBlockKind(current);
 	if (previousKind !== currentKind) return true;
-	// 思考、任务卡与失败、警告各自独立成块：即使前后同类也要分开，否则读起来会糊成一片
-	return currentKind === "thinking" || currentKind === "todo" || currentKind === "notice";
+	// 思考、任务卡、计划卡与失败、警告各自独立成块：即使前后同类也要分开
+	return (
+		currentKind === "thinking" ||
+		currentKind === "todo" ||
+		currentKind === "plan" ||
+		currentKind === "notice"
+	);
 }
 
 /** 失败行是否属于上一条工具调用。 */
@@ -1026,6 +1073,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 	const toolHeaders: { start: number; tool: TranscriptTool }[] = [];
 	const liveLines = new Map<number, LiveSubagentLine>();
 	const todoHeaders: { start: number; card: TranscriptTodo }[] = [];
+	const planHeaders: { start: number; plan: TranscriptPlan }[] = [];
 	const subagentHeaders: { start: number; group: TranscriptSubagentGroup }[] = [];
 	const subagentFailureRows: { start: number; group: TranscriptSubagentGroup; callId: string }[] = [];
 	let previousHadResponse = false;
@@ -1095,6 +1143,12 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 				lines.push(...todoCardLines(line, width));
 				continue;
 			}
+			if (line.kind === "plan") {
+				const cardStart = lines.length;
+				planHeaders.push({ start: cardStart, plan: line });
+				lines.push(planCardLine(line, width));
+				continue;
+			}
 			if (line.kind === "subagentGroup") {
 				const groupStart = lines.length;
 				subagentHeaders.push({ start: groupStart, group: line });
@@ -1117,9 +1171,59 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		previousHadResponse = turn.response.length > 0;
 	}
 
-	return { width, lines, prompts, thinkingHeaders, groupHeaders, toolHeaders, liveLines, todoHeaders, subagentHeaders, subagentFailureRows };
+	return {
+		width,
+		lines,
+		prompts,
+		thinkingHeaders,
+		groupHeaders,
+		toolHeaders,
+		liveLines,
+		todoHeaders,
+		planHeaders,
+		subagentHeaders,
+		subagentFailureRows,
+	};
 }
 
+
+/**
+ * 计划卡：只占一行，完整正文留给审批页。
+ *
+ * 标题取计划里第一个非空标题行；窄终端先丢掉右侧提示，再截断标题，标记本身始终保留。
+ */
+function planCardLine(plan: TranscriptPlan, width: number): string {
+	const prefix = truncateToWidth(`${RESPONSE_INDENT}◇ Plan`, width);
+	const title = planTitle(plan.text);
+	const available = Math.max(0, width - displayWidth(prefix) - 2);
+	const shownTitle = truncateToWidth(title, available);
+	const hintFits =
+		displayWidth(prefix) + 2 + displayWidth(shownTitle) + displayWidth(PLAN_CARD_HINT) <= width;
+
+	let used = displayWidth(prefix);
+	let line = `${PLAN_MARKER_COLOR}${prefix}${RESET}`;
+	if (shownTitle.length > 0) {
+		line += `${PLAN_TITLE_COLOR}  ${shownTitle}${RESET}`;
+		used += 2 + displayWidth(shownTitle);
+	}
+	if (hintFits) {
+		line += `${PLAN_HINT_COLOR}${PLAN_CARD_HINT}${RESET}`;
+		used += displayWidth(PLAN_CARD_HINT);
+	}
+	return `${line}${" ".repeat(Math.max(0, width - used))}`;
+}
+
+/** 计划标题：第一个非空、非代码围栏的行，去掉 Markdown 标题记号。 */
+function planTitle(text: string): string {
+	for (const row of text.split("\n")) {
+		const line = sanitizeLine(row).trim();
+		if (line.length === 0 || line.startsWith("```")) continue;
+		const heading = line.replace(/^#{1,6}\s+/, "").replace(/\s+#+$/, "");
+		const chars = Array.from(heading);
+		return chars.length > 72 ? `${chars.slice(0, 71).join("")}…` : heading;
+	}
+	return "";
+}
 
 /**
  * 思考区块的屏幕行。

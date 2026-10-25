@@ -1,6 +1,8 @@
 import type { AnyToolDefinition } from "../contract.ts";
+import { createJobOutputTool, createKillJobTool, type JobManager } from "../jobs.ts";
 import { createBashTool } from "./bash.ts";
 import { editTool } from "./edit.ts";
+import { presentPlanTool } from "./plan.ts";
 import { readTool } from "./read.ts";
 import { todoTool } from "./todo.ts";
 import { writeTool } from "./write.ts";
@@ -13,9 +15,19 @@ import { writeTool } from "./write.ts";
  * 检索之类的便利手段）随包分发在插件里，可以被替换。
  */
 export function createCoreTools(
-	options: { readonly shellPath?: string } = {},
+	options: { readonly shellPath?: string; readonly jobs?: JobManager } = {},
 ): readonly AnyToolDefinition[] {
-	return [readTool, writeTool, editTool, createBashTool(options.shellPath), todoTool];
+	return [
+		readTool,
+		writeTool,
+		editTool,
+		createBashTool(options.shellPath, options.jobs),
+		todoTool,
+		presentPlanTool,
+		...(options.jobs === undefined
+			? []
+			: [createJobOutputTool(options.jobs), createKillJobTool(options.jobs)]),
+	];
 }
 
-export { createBashTool, editTool, readTool, todoTool, writeTool };
+export { createBashTool, editTool, presentPlanTool, readTool, todoTool, writeTool };

@@ -140,6 +140,26 @@ export class ToolRegistry {
 		return copy;
 	}
 
+	/**
+	 * 复制一份注册表，只保留指定工具。
+	 *
+	 * 用于 Plan 模式这类需要收窄能力的场景：白名单之外的工具既不声明给模型，也无法经
+	 * 注册表执行。顺序沿用原注册表，保证提示词里的工具清单稳定。
+	 */
+	only(...names: readonly string[]): ToolRegistry {
+		for (const name of names) {
+			if (!this.#tools.has(name)) {
+				throw new Error(`Cannot keep an unknown tool: ${name}`);
+			}
+		}
+		const wanted = new Set(names);
+		const copy = new ToolRegistry(this.#spiller, this.#gate);
+		for (const [name, item] of this.#tools) {
+			if (wanted.has(name)) copy.#tools.set(name, item);
+		}
+		return copy;
+	}
+
 	get(name: string): AnyToolDefinition | undefined {
 		return this.#tools.get(name)?.definition;
 	}

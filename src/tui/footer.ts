@@ -54,6 +54,8 @@ export interface FooterInfo {
 	 * 省略时不画徽标——配置读不出来时没有可信的审批方式，显示任何一档都会误导。
 	 */
 	readonly approval?: ApprovalMode;
+	/** 是否处于 Plan 模式；为 true 时在审批徽标左侧再画一个 PLAN */
+	readonly planMode?: boolean;
 }
 
 /** 运行时状态：加载符号、状态文字、阶段计时、总计时与本轮 token 已用。 */
@@ -324,6 +326,10 @@ const APPROVAL_BADGE_COLORS: Readonly<Record<ApprovalMode, string>> = {
 	auto: THEME.warning,
 	yolo: THEME.error,
 };
+/** Plan 是工作方式而不是权限档位，用路径蓝与审批徽标分开。 */
+const PLAN_BADGE_COLOR = THEME.path;
+/** 两个徽标之间的距离；与正文到徽标的间隔一致。 */
+const BADGE_INNER_GAP = 2;
 
 /** 信息行右端的呼吸空间：状态行与对话流都避开最右两列（一列间距加一列滚动条），徽标右缘对齐同一条竖线。 */
 const INFO_RIGHT_MARGIN = 2;
@@ -335,24 +341,40 @@ const BADGE_GAP = 2;
  *
  * 按「项目·分支 | 模型·思考强度 | 上下文 | 缓存命中率」分组；分支不存在时整段省略，
  * 上下文上限未声明时只写已用量。整行统一用暗色，避免和对话流正文抢注意力；审批徽标按模式
- * 着色，固定钉在行尾，一眼可辨当前放行到哪一档（Shift+Tab 切换）。
+ * 着色，固定钉在行尾，一眼可辨当前放行到哪一档（Shift+Tab 切换）。Plan 模式在审批徽标
+ * 左侧多一个 PLAN，两者正交：PLAN 管能不能改，审批管改的时候问不问。
  *
  * 终端变窄时按优先级整项舍弃正文，而不是从右侧硬截：先丢项目位置，再丢模型，再丢缓存，
  * 最后只保留上下文并截断。上下文是判断何时该压缩的依据，缓存命中率反映本回合的 token
  * 复用，这两项比位置与模型更值得留在窄屏上。徽标占的列从正文可用宽度里先扣掉，正文
- * 放不下时整段让位给徽标；只有连徽标本身都摆不进行尾时才隐藏——行尾是固定锚点，
- * 宁可暂时看不到正文，也不能让整行折行打乱页脚排版。
+ * 放不下时整段让位给徽标；Plan 模式下窄到放不下两个徽标时先舍审批徽标，PLAN 是当前
+ * 工作方式的唯一提示，不能先消失。
  */
 function infoLine(width: number, info: FooterInfo | undefined): string {
 	if (info === undefined) return "";
 
-	const badge = info.approval === undefined ? "" : info.approval.toUpperCase();
-	// 徽标右缘停在 width - INFO_RIGHT_MARGIN；起点至少留出一列，否则整行会超出宽度
-	const badgeColumn = width - INFO_RIGHT_MARGIN - badge.length;
-	const showBadge = badge.length > 0 && badgeColumn >= 1;
+	const badges: { readonly text: string; readonly color: string }[] = [];
+	if (info.planMode === true) badges.push({ text: "PLAN", color: PLAN_BADGE_COLOR });
+	if (info.approval !== undefined) {
+		badges.push({ text: info.approval.toUpperCase(), color: APPROVAL_BADGE_COLORS[info.approval] });
+	}
+
+	// 窄屏先舍审批徽标，再舍 PLAN；两个都放不下时整段让位给正文
+	let shown = badges;
+	let badgeWidth = badgesWidth(shown);
+	if (badgeWidth > 0 && width - INFO_RIGHT_MARGIN - badgeWidth < 1 && shown.length > 1) {
+		shown = shown.filter((badge) => badge.text === "PLAN");
+		badgeWidth = badgesWidth(shown);
+	}
+	const showBadges = shown.length > 0 && width - INFO_RIGHT_MARGIN - badgeWidth >= 1;
+	if (!showBadges) {
+		shown = [];
+		badgeWidth = 0;
+	}
+	const badgeColumn = width - INFO_RIGHT_MARGIN - badgeWidth;
 	const available = Math.max(
 		0,
-		width - INFO_RIGHT_MARGIN - (showBadge ? badge.length + BADGE_GAP : 0),
+		width - INFO_RIGHT_MARGIN - (showBadges ? badgeWidth + BADGE_GAP : 0),
 	);
 
 	const location =
@@ -379,10 +401,19 @@ function infoLine(width: number, info: FooterInfo | undefined): string {
 	if (text === "" && available > 0) text = truncateToWidth(context, available).trimEnd();
 
 	const body = text === "" ? "" : `${INFO_COLOR}${text}${RESET}`;
-	if (!showBadge || info.approval === undefined) return body;
+	if (!showBadges) return body;
 
 	const gap = Math.max(1, badgeColumn - displayWidth(text));
-	return `${body}${" ".repeat(gap)}${APPROVAL_BADGE_COLORS[info.approval]}${badge}${RESET}`;
+	const styled = shown
+		.map((badge) => `${badge.color}${badge.text}${RESET}`)
+		.join(" ".repeat(BADGE_INNER_GAP));
+	return `${body}${" ".repeat(gap)}${styled}`;
+}
+
+/** 徽标组的总显示宽度，含组内间隔。 */
+function badgesWidth(badges: readonly { readonly text: string }[]): number {
+	return badges.reduce((sum, badge) => sum + displayWidth(badge.text), 0) +
+		Math.max(0, badges.length - 1) * BADGE_INNER_GAP;
 }
 
 function statusLine(width: number, status: RuntimeStatus | undefined): string {

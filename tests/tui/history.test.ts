@@ -38,6 +38,54 @@ describe("会话历史回填", () => {
 		assert.deepEqual(turns[1]?.response, [{ kind: "markdown", text: "done" }]);
 	});
 
+	it("present_plan 回填为计划卡，并带出最近一份计划", () => {
+		const messages: LlmMessage[] = [
+			{ role: "user", content: "plan it" },
+			{
+				role: "assistant",
+				content: [
+					{ type: "text", text: "Here is the plan." },
+					{ type: "toolCall", id: "p1", name: "present_plan", arguments: { plan: "# Add Plan mode\n\n1. Do it." } },
+				],
+			},
+			{
+				role: "toolResult",
+				toolCallId: "p1",
+				toolName: "present_plan",
+				content: "Plan submitted for review.",
+				isError: false,
+			},
+		];
+
+		const history = buildTranscriptHistory(messages);
+		const plan = { kind: "plan" as const, text: "# Add Plan mode\n\n1. Do it." };
+
+		assert.deepEqual(history.turns[0]?.response, [
+			{ kind: "markdown", text: "Here is the plan." },
+			plan,
+		]);
+		assert.deepEqual(history.plan, plan);
+	});
+
+	it("空 present_plan 不产生计划卡", () => {
+		const history = buildTranscriptHistory([
+			{
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "p1", name: "present_plan", arguments: { plan: "  " } },
+				],
+			},
+		]);
+
+		assert.equal(history.plan, undefined);
+		assert.equal(
+			history.turns[0]?.response.some(
+				(line) => typeof line === "object" && line !== null && line.kind === "plan",
+			),
+			false,
+		);
+	});
+
 	it("工具成功不落行，失败保留一行", () => {
 		const messages: LlmMessage[] = [
 			{

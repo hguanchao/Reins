@@ -105,6 +105,18 @@ describe("工具注册表", () => {
 		assert.throws(() => registry.without("missing"), /unknown tool/);
 	});
 
+	it("白名单只保留指定工具，顺序沿用原表且原表不变", () => {
+		const registry = registryWith(ALLOW);
+		const extra: ToolDefinition = { ...ECHO, name: "echo-2" };
+		const withExtra = registry.withExtraTool(extra);
+		const reduced = withExtra.only("echo-2");
+
+		assert.deepEqual(reduced.list().map((tool) => tool.name), ["echo-2"]);
+		assert.equal(reduced.get("echo-tool"), undefined);
+		assert.equal(withExtra.get("echo-tool")?.name, "echo-tool");
+		assert.throws(() => reduced.only("missing"), /unknown tool/);
+	});
+
 	it("未知工具给出可用清单", async () => {
 		const outcome = await registryWith(ALLOW).call({ callId: "c", name: "nope", args: {} }, context());
 		assert.equal(outcome.isError, true);

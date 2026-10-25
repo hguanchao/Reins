@@ -27,6 +27,11 @@ import {
 	type SessionMenuItem,
 	type SessionMenuState,
 } from "./session-menu.ts";
+import type {
+	CheckpointEntry,
+	CheckpointPreview,
+	CheckpointRestoreResult,
+} from "../checkpoint/checkpoints.ts";
 import {
 	commandMenuHeight,
 	renderCommandMenu,
@@ -35,9 +40,28 @@ import {
 } from "./command-menu.ts";
 import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
+import {
+	CHECKPOINT_ACTION_HEIGHT,
+	checkpointListActions,
+	checkpointListLines,
+	checkpointPreviewActions,
+	checkpointPreviewLines,
+} from "./checkpoint-pages.ts";
+import {
+	JOB_ACTION_HEIGHT,
+	jobListActions,
+	jobListLines,
+	jobOutputActions,
+	jobOutputLines,
+	type JobEvent,
+	type JobView,
+} from "./job-pages.ts";
+import { planActionLines, planReviewLines, PLAN_ACTION_HEIGHT } from "./plan-review.ts";
+import { displayWidth, truncateToWidth } from "./text.ts";
+import { THEME } from "./theme.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
 import type { AnimationFrame } from "./sweep.ts";
-import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, subagentFailureRowInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, planHeaderInView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, subagentFailureRowInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptPlan, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 import { todoCardFinished, todoCardFromArgs, todoPanelLines, TODO_PANEL_MAX_ITEMS, type TranscriptTodo } from "./todo-card.ts";
 
 /**
@@ -213,6 +237,8 @@ export interface SessionSwitchResult {
 	readonly history: readonly TranscriptTurn[];
 	/** 新会话最后一张任务表；没有时常驻面板随之收起 */
 	readonly todo?: TranscriptTodo;
+	/** 新会话最近一份计划；没有时 /view-plan 提示还没有计划 */
+	readonly plan?: TranscriptPlan;
 	readonly warnings: readonly string[];
 }
 
@@ -243,6 +269,43 @@ export interface ApprovalModeSource {
 	readonly select: (mode: ApprovalMode) => void;
 }
 
+/**
+ * Plan 模式的数据来源。
+ *
+ * 与审批模式正交：宿主只负责只读闸门，界面负责命令、徽标与审批页。切换只在本次运行内
+ * 有效，不写配置文件。
+ */
+export interface PlanModeSource {
+	/** 当前是否处于 Plan 模式；徽标逐帧读取 */
+	readonly current: () => boolean;
+	/** 开启或关闭 Plan 模式；失败时抛错，由界面显示原因 */
+	readonly select: (enabled: boolean) => void;
+}
+
+/**
+ * 检查点与撤销的数据来源。
+ *
+ * 列表是同步的（索引已在内存），预览与恢复会跑 git，所以返回 Promise。界面只负责
+ * 展示与确认，真正的快照与恢复由宿主服务完成。
+ */
+export interface CheckpointSource {
+	readonly available: () => boolean;
+	readonly error: () => string | undefined;
+	readonly list: () => readonly CheckpointEntry[];
+	readonly latestUndoable: () => Promise<CheckpointPreview | undefined>;
+	readonly preview: (id: string) => Promise<CheckpointPreview>;
+	readonly restore: (id: string) => Promise<CheckpointRestoreResult>;
+}
+
+/** 后台作业的界面数据源；由宿主的 JobManager 提供。 */
+export interface JobSource {
+	readonly list: () => readonly JobView[];
+	readonly output: (id: string) => string;
+	readonly kill: (id: string) => unknown;
+	readonly subscribe: (listener: (event: JobEvent) => void) => () => void;
+	readonly shutdown: () => void;
+}
+
 /** 插件与宿主注册的斜杠命令；由装配处桥接到 PluginHost。 */
 export interface PluginCommandSource {
 	/** 当前可用的命令；每次重算补全时重新取，不在界面创建时拍成快照 */
@@ -265,8 +328,16 @@ export interface AgentRuntime {
 	readonly refreshInfo: () => void;
 }
 
-/** 整屏页的三种内容；三者共用同一套排版与滚动。 */
-type PageKind = "help" | "skills" | "mcps";
+/** 整屏页的内容；帮助、技能、MCP、计划、检查点与后台作业共用同一套滚动。 */
+type PageKind =
+	| "help"
+	| "skills"
+	| "mcps"
+	| "plan"
+	| "checkpoints"
+	| "checkpoint"
+	| "jobs"
+	| "job";
 
 /**
  * `/skills` 页的内容。
@@ -294,6 +365,12 @@ export interface TuiOptions {
 	readonly approval?: ApprovalBroker;
 	/** 审批模式的数据来源；不提供时 Shift+Tab 无效、页脚也不显示徽标 */
 	readonly approvalMode?: ApprovalModeSource;
+	/** Plan 模式的数据来源；不提供时 /plan 不可用、页脚也不显示 PLAN */
+	readonly planMode?: PlanModeSource;
+	/** 检查点与撤销；不提供时 /undo 与 /checkpoints 不可用 */
+	readonly checkpoints?: CheckpointSource;
+	/** 后台作业；不提供时 /jobs 不可用，bash 的 background 也会被拒绝 */
+	readonly jobs?: JobSource;
 	/** /model 菜单的数据来源；不提供时 /model 按普通输入处理 */
 	readonly modelMenu?: ModelMenuSource;
 	/** /effort 菜单的数据来源；不提供时 /effort 不可用 */
@@ -312,6 +389,8 @@ export interface TuiOptions {
 	readonly history?: readonly TranscriptTurn[];
 	/** 历史里最后一张任务表；续聊时让常驻面板立即有内容 */
 	readonly historyTodo?: TranscriptTodo;
+	/** 历史里最近一份计划；续聊时 /view-plan 可以立即打开 */
+	readonly historyPlan?: TranscriptPlan;
 	/** 工作根：用来判断命令开头的工作根 cd 是否多余，省略时原样显示 */
 	readonly workspaceRoot?: string;
 	readonly stdin?: TuiInput;
@@ -328,6 +407,11 @@ function shortReason(reason: string): string {
 	const first = reason.split("\n", 1)[0] ?? "";
 	const clean = first.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
 	return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
+}
+
+/** 批准计划后交给模型的用户消息：整份计划重新进入上下文，不依赖摘要里是否留下了它。 */
+function implementationPrompt(plan: string): string {
+	return `Implement this plan:\n\n${plan.trim()}\n\nRe-read the files you need before changing them.`;
 }
 
 /** 组里是否还有子代理在跑；并行派发时用它决定状态行还要不要继续等待。 */
@@ -386,6 +470,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			enabled: options.agent?.compact !== undefined,
 		},
 		{
+			name: "plan",
+			description:
+				options.planMode === undefined
+					? "Plan mode is unavailable in this session"
+					: "Plan read-only, then approve before implementing",
+			enabled: options.planMode !== undefined,
+		},
+		{
 			name: "session",
 			description:
 				options.sessionMenu === undefined
@@ -397,6 +489,35 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			name: "help",
 			description: "Show the commands and keys",
 			enabled: true,
+		},
+		{
+			name: "undo",
+			description:
+				options.checkpoints?.available() === true
+					? "Restore files to before the latest turn"
+					: "Checkpoints are unavailable in this workspace",
+			enabled: options.checkpoints?.available() === true,
+		},
+		{
+			name: "checkpoints",
+			description:
+				options.checkpoints?.available() === true
+					? "Browse and restore checkpoints"
+					: "Checkpoints are unavailable in this workspace",
+			enabled: options.checkpoints?.available() === true,
+		},
+		{
+			name: "view-plan",
+			description: "Reopen the latest plan",
+			enabled: true,
+		},
+		{
+			name: "jobs",
+			description:
+				options.jobs === undefined
+					? "Background jobs are unavailable"
+					: "Show background jobs and their output",
+			enabled: options.jobs !== undefined,
 		},
 		{
 			name: "skills",
@@ -432,6 +553,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	/** 页面内容；宽度变了才重排，滚动与重绘都复用同一份。 */
 	const pageLines = (kind: PageKind, width: number): readonly string[] => {
+		// 检查点与作业都有光标/实时状态：不缓存，避免画出上一帧
+		if (
+			kind === "checkpoints" ||
+			kind === "checkpoint" ||
+			kind === "jobs" ||
+			kind === "job"
+		) {
+			return buildPage(kind, width);
+		}
 		if (pageCache?.kind === kind && pageCache.width === width) return pageCache.lines;
 		const lines = buildPage(kind, width);
 		pageCache = { kind, width, lines };
@@ -445,7 +575,90 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			if (source === undefined) return skillsPageLines(width, [], []);
 			return skillsPageLines(width, source.list(), source.directories);
 		}
+		if (kind === "plan") {
+			return planReview === undefined ? [] : planReviewLines(planReview, width);
+		}
+		if (kind === "checkpoints") {
+			return checkpointListLines(checkpointList, width, checkpointCursor, checkpointLoading);
+		}
+		if (kind === "checkpoint") {
+			return checkpointPreview === undefined
+				? checkpointListLines([], width, 0)
+				: checkpointPreviewLines(checkpointPreview, width);
+		}
+		if (kind === "jobs") {
+			const jobs = options.jobs?.list() ?? [];
+			jobCursor = Math.min(jobCursor, Math.max(0, jobs.length - 1));
+			return jobListLines(jobs, width, jobCursor);
+		}
+		if (kind === "job") {
+			const job = options.jobs?.list().find((candidate) => candidate.id === jobDetailId);
+			if (job === undefined) {
+				return [
+					`${THEME.accent}Reins — jobs${RESET}`,
+					"",
+					`${THEME.textSubtle}  This job is no longer available.${RESET}`,
+				];
+			}
+			return jobOutputLines(job, options.jobs?.output(job.id) ?? "", width);
+		}
 		return mcpsPageLines(width, options.mcpServers?.() ?? []);
+	};
+
+	/** 打开计划审批页；计划同时成为 /view-plan 的最近一份。 */
+	const openPlanReview = (plan: TranscriptPlan): void => {
+		planReview = plan;
+		latestPlan = plan;
+		// 审批页是整屏模态：自动打开时先收掉可能在回合期间留下的菜单
+		commandMenu = undefined;
+		modelMenu = undefined;
+		effortMenu = undefined;
+		sessionMenu = undefined;
+		showPage("plan");
+	};
+
+	/** 关闭审批页但保留最近一份计划，之后仍可用 /view-plan 打开。 */
+	const closePlanReview = (): void => {
+		if (openPage === "plan") openPage = undefined;
+		planReview = undefined;
+		pageScrollTop = 0;
+	};
+
+	/** 计划页的可见内容：正文按可用高度滚动，动作条永远停在底部。 */
+	const planPageLines = (width: number, height: number): readonly string[] => {
+		const actions = planActionLines(width);
+		const contentHeight = Math.max(0, height - actions.length);
+		return [
+			...renderPage(pageLines("plan", width), contentHeight, pageScrollTop),
+			...actions,
+		].slice(0, height);
+	};
+
+	/** 检查点列表/确认页：正文可滚动，动作条固定在底部。 */
+	const checkpointPageLines = (width: number, height: number): readonly string[] => {
+		const actions =
+			openPage === "checkpoints"
+				? checkpointListActions(width)
+				: checkpointPreviewActions(width, checkpointPreview?.entry.kind ?? "turn");
+		const contentHeight = Math.max(0, height - actions.length);
+		return [
+			...renderPage(pageLines(openPage ?? "checkpoints", width), contentHeight, pageScrollTop),
+			...actions,
+		].slice(0, height);
+	};
+
+	/** 后台作业列表/输出页：与检查点页相同的固定动作条。 */
+	const jobPageLines = (width: number, height: number): readonly string[] => {
+		const selected = options.jobs?.list().find((job) => job.id === jobDetailId);
+		const actions =
+			openPage === "jobs"
+				? jobListActions(width)
+				: jobOutputActions(width, selected?.status ?? "done");
+		const contentHeight = Math.max(0, height - actions.length);
+		return [
+			...renderPage(pageLines(openPage ?? "jobs", width), contentHeight, pageScrollTop),
+			...actions,
+		].slice(0, height);
 	};
 
 	let input = "";
@@ -549,11 +762,36 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	let openPage: PageKind | undefined;
 	/** 整屏页从顶部滚过的行数。 */
 	let pageScrollTop = 0;
+	/** 当前正在审批页里展示的计划；为空时计划页没有内容。 */
+	let planReview: TranscriptPlan | undefined;
+	/** 最近一份计划；/view-plan 与计划卡都从这里打开。 */
+	let latestPlan: TranscriptPlan | undefined = options.historyPlan;
+	/** 本轮刚提交、等回合结束后自动打开审批页的计划。 */
+	let pendingPlan: TranscriptPlan | undefined;
+	/** 检查点列表的数据快照；打开页面时取一次，翻动选择不重新扫索引。 */
+	let checkpointList: readonly CheckpointEntry[] = [];
+	let checkpointCursor = 0;
+	/** 当前确认页要恢复的检查点；为空时确认页显示空态。 */
+	let checkpointPreview: CheckpointPreview | undefined;
+	/** 确认页取消后回到列表，而不是直接回对话流。 */
+	let checkpointReturnToList = false;
+	/** 防止连续 Enter 同时发起多个预览请求。 */
+	let checkpointLoading = false;
+	/** 恢复期间拒绝新输入，避免在工作区变化时开始下一轮。 */
+	let restoringCheckpoint = false;
+	/** 后台作业页的光标与当前输出页。 */
+	let jobCursor = 0;
+	let jobDetailId: string | undefined;
+	/** 作业页与检查点页一样把动作条固定在底部。 */
+	let jobReturnToList = false;
 	/** 排好版的页面内容；宽度不变就复用，滚动与重绘都不必重排。 */
 	let pageCache:
 		| { readonly kind: PageKind; readonly width: number; readonly lines: readonly string[] }
 		| undefined;
 	let spinnerTimer: ReturnType<typeof setInterval> | undefined;
+	/** 只在有作业运行时启动：空闲回合也要更新 Jobs bar 的耗时。 */
+	let jobTimer: ReturnType<typeof setInterval> | undefined;
+	let unsubscribeJobs: () => void = () => {};
 	let statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 	let exitArmed = false;
 	let exitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -570,8 +808,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const currentInfo = (): FooterInfo => {
 		const info = typeof options.info === "function" ? options.info() : options.info;
 		const mode = options.approvalMode?.current();
-		return mode === undefined ? info : { ...info, approval: mode };
+		const withPlan =
+			options.planMode?.current() === true ? { ...info, planMode: true } : info;
+		return mode === undefined ? withPlan : { ...withPlan, approval: mode };
 	};
+
+	/** 当前是否处于 Plan 模式；只读闸门在宿主，界面只负责显示与命令。 */
+	const planning = (): boolean => options.planMode?.current() === true;
 
 	/** 一轮结束的提醒。auto 只在终端失焦时响铃；desktop 在 macOS/Linux 调系统通知。 */
 	const notify = (message: string): void => {
@@ -627,6 +870,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const todoPanelHeight = (): number => {
 		if (
 			openPage !== undefined ||
+			planning() ||
 			currentTodo === undefined ||
 			currentTodo.items.length === 0 ||
 			todoCardFinished(currentTodo)
@@ -641,7 +885,49 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const terminalWidth = (): number => Math.max(1, stdout.columns ?? DEFAULT_COLUMNS);
 
 	/** 页脚之外的主区域高度:对话流、整屏页与命中判定都用这一个数。 */
-	const mainAreaHeight = (): number => Math.max(0, terminalHeight(stdout) - footerHeight() - todoPanelHeight());
+	const runningJobs = (): readonly JobView[] =>
+		options.jobs?.list().filter((job) => job.status === "running") ?? [];
+	/** Jobs bar 只占一行；模态页与菜单打开时让位给内容。 */
+	const jobBarHeight = (): number =>
+		runningJobs().length > 0 &&
+		openPage === undefined &&
+		approvalPrompt === undefined &&
+		!menuOpen()
+			? 1
+			: 0;
+
+	/** 页脚上方的一行作业状态；有多个时只展示最新一条，完整列表在 /jobs。 */
+	const jobBarLine = (width: number): string => {
+		const all = options.jobs?.list() ?? [];
+		const running = all.filter((job) => job.status === "running");
+		const newest = running[0];
+		if (newest === undefined) return "";
+		const finished = all.length - running.length;
+		const prefix = " ◎ Jobs";
+		const count = `${running.length} running${finished === 0 ? "" : ` · ${finished} finished`}`;
+		const detail = `${newest.command} · ${formatDuration(Date.now() - newest.startedAt)} · ${newest.id}`;
+		const hint = "/jobs";
+		const prefixWidth = displayWidth(prefix);
+		const countWidth = displayWidth(count);
+		const headWidth = prefixWidth + 2 + countWidth;
+		const detailWidth = 2 + displayWidth(detail);
+		const hintWidth = 2 + displayWidth(hint);
+		const head = `${THEME.accent}${prefix}${RESET}  ${THEME.textSecondary}${count}${RESET}`;
+
+		if (headWidth + detailWidth + hintWidth <= width) {
+			const gap = " ".repeat(width - headWidth - detailWidth - hintWidth);
+			return `${head}  ${THEME.textSubtle}${detail}${RESET}${gap}  ${THEME.textSubtle}${hint}${RESET}`;
+		}
+		if (headWidth + hintWidth <= width) {
+			const gap = " ".repeat(width - headWidth - hintWidth);
+			return `${head}${gap}  ${THEME.textSubtle}${hint}${RESET}`;
+		}
+		const plain = truncateToWidth(`${prefix}  ${count}`, width);
+		return `${THEME.textSecondary}${plain}${" ".repeat(Math.max(0, width - displayWidth(plain)))}${RESET}`;
+	};
+
+	const mainAreaHeight = (): number =>
+		Math.max(0, terminalHeight(stdout) - footerHeight() - todoPanelHeight() - jobBarHeight());
 
 	/**
 	 * 输入行首行在终端里的 1 基行号。
@@ -654,7 +940,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const panel = todoPanelHeight();
 		return compactFooter()
 			? mainHeight + panel + menuHeight() + COMPACT_FOOTER_INPUT_ROW
-			: mainHeight + panel + FULL_FOOTER_INPUT_ROW + queueHeight(queued.length);
+			: mainHeight +
+					panel +
+					jobBarHeight() +
+					FULL_FOOTER_INPUT_ROW +
+					queueHeight(queued.length);
 	};
 
 	const markTranscriptDirty = (): void => {
@@ -681,7 +971,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const render = (): void => {
 		const width = terminalWidth();
 		const height = terminalHeight(stdout);
-		const mainHeight = Math.max(0, height - footerHeight() - todoPanelHeight());
+		const mainHeight = Math.max(
+			0,
+			height - footerHeight() - todoPanelHeight() - jobBarHeight(),
+		);
 		const view = currentTranscript(width);
 		const metrics = measureTranscriptView(view, mainHeight);
 		const maxScroll = Math.max(0, metrics.scrollLines - mainHeight);
@@ -747,19 +1040,33 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			// 运行中的行按当前帧重建转圈与扫光；没有动画行时这只是原样返回缓存行
 			const animation: AnimationFrame = { spinner: SPINNER_FRAMES[spinnerFrame] ?? "", sweepPhase };
 			const main =
-				openPage !== undefined
-					? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
-					: transcriptShown
-						? renderTranscriptView(view, mainHeight, scrollTop, animation)
-						: renderMain(width, mainHeight, options.version);
+				openPage === "plan"
+					? planPageLines(width, mainHeight)
+					: openPage === "checkpoints" || openPage === "checkpoint"
+						? checkpointPageLines(width, mainHeight)
+						: openPage === "jobs" || openPage === "job"
+							? jobPageLines(width, mainHeight)
+							: openPage !== undefined
+								? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
+								: transcriptShown
+									? renderTranscriptView(view, mainHeight, scrollTop, animation)
+									: renderMain(width, mainHeight, options.version);
 		const mainLines = [...main];
-		// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示
+		// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示;Plan 模式隐藏旧任务表
 		const panelLines =
-			openPage === undefined && currentTodo !== undefined
+			openPage === undefined && !planning() && currentTodo !== undefined
 				? [...todoPanelLines(currentTodo, width, animation)]
 				: [];
-		// 整屏自上而下：主区域、任务面板、选择面板、页脚；终端比内容矮时只保留前几行
-		const lines = [...mainLines, ...panelLines, ...menuLines, ...footer].slice(0, height);
+		// 后台作业只占一行，放在任务面板与页脚之间；没有运行中作业时不占高度
+		const jobBar = jobBarHeight() > 0 ? [jobBarLine(width)] : [];
+		// 整屏自上而下：主区域、任务面板、Jobs bar、选择面板、页脚
+		const lines = [
+			...mainLines,
+			...panelLines,
+			...jobBar,
+			...menuLines,
+			...footer,
+		].slice(0, height);
 		const inputRow = inputTopRow(mainHeight) + inputLines.row;
 		// 选择面板只盖在输入框上方，输入行仍然可见可编辑，光标照常显示；
 		// 只有整屏页与审批面板会夺走焦点
@@ -822,6 +1129,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	): boolean => {
 		if (row > mainHeight || column >= width - 1) return false;
 		const view = currentTranscript(width);
+
+		const plan = planHeaderInView(view, mainHeight, scrollTop, row);
+		if (plan !== undefined) {
+			// 审批卡还在等回答时不开第二个模态页，先让使用者处理当前审批
+			if (approvalPrompt === undefined) {
+				lastClick = undefined;
+				openPlanReview(plan);
+				render();
+			}
+			return true;
+		}
 
 		const block = thinkingHeaderInView(view, mainHeight, scrollTop, row);
 		if (block !== undefined) {
@@ -920,6 +1238,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			clearInterval(spinnerTimer);
 			spinnerTimer = undefined;
 		}
+		if (jobTimer !== undefined) {
+			clearInterval(jobTimer);
+			jobTimer = undefined;
+		}
+		unsubscribeJobs();
+		options.jobs?.shutdown();
 		if (statusClearTimer !== undefined) {
 			clearTimeout(statusClearTimer);
 			statusClearTimer = undefined;
@@ -966,7 +1290,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				cleanup();
 				return;
 			}
-			openPage = undefined;
+			if (openPage === "plan") closePlanReview();
+			else if (openPage === "checkpoints" || openPage === "checkpoint") closeCheckpointPage();
+			else if (openPage === "jobs" || openPage === "job") closeJobPage();
+			else openPage = undefined;
 			armExit();
 			render();
 			return;
@@ -1134,6 +1461,27 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/**
+	 * 计划提交：对话流只放一张计划卡，完整正文留给审批页。
+	 *
+	 * 空计划不建卡，让它落回普通工具行，工具返回的错误才有地方显示。有效计划在回合结束时
+	 * 自动打开审批页；latest 同时更新，供 /view-plan 重新打开。
+	 */
+	const handlePlanStart = (
+		active: ActiveTurn,
+		event: Extract<AgentEvent, { type: "tool_start" }>,
+	): boolean => {
+		if (event.name !== "present_plan" || !planning()) return false;
+		const text = event.args["plan"];
+		if (typeof text !== "string" || text.trim().length === 0) return false;
+
+		const plan: TranscriptPlan = { kind: "plan", text };
+		appendLine(active, plan);
+		latestPlan = plan;
+		pendingPlan = plan;
+		return true;
+	};
+
+	/**
 	 * 任务卡片按生命周期分流：未收尾的进常驻面板，已收尾的落回对话流并清空面板。
 	 * 解析不了的形状返回 false 落回普通工具行，后面校验阶段的错误信息才有行可挂。
 	 */
@@ -1141,7 +1489,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		active: ActiveTurn,
 		event: Extract<AgentEvent, { type: "tool_start" }>,
 	): boolean => {
-		if (event.name !== "todo") return false;
+		// Plan 模式下任务工具不在工具清单里；幻觉调用应落回普通错误行，不更新任务面板
+		if (event.name !== "todo" || planning()) return false;
 		const card = todoCardFromArgs(event.args);
 		if (card === undefined) return false;
 
@@ -1182,7 +1531,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		active: ActiveTurn,
 		event: Extract<AgentEvent, { type: "tool_start" }>,
 	): boolean => {
-		if (event.name !== "subagent") return false;
+		if (event.name !== "subagent" || planning()) return false;
 		const task = typeof event.args["task"] === "string" ? event.args["task"] : "";
 		const last = active.lines.at(-1);
 		if (typeof last === "object" && last !== null && last.kind === "subagentGroup") {
@@ -1299,6 +1648,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				break;
 			case "tool_start": {
 				closeThinking(active);
+				if (handlePlanStart(active, event)) {
+					setStatus(WAITING_FOR_MODEL);
+					break;
+				}
 				if (handleTodoCardStart(active, event)) {
 					// 任务表不产生模型等待：这一行已经交给面板处理，状态只需离开响应阶段
 					setStatus(RUNNING_TOOL);
@@ -1329,6 +1682,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				setStatus(isSubagentCall(active.lines, event.callId) ? WAITING_FOR_SUBAGENT : RUNNING_TOOL);
 				break;
 			case "tool_end":
+				// 有效计划没有普通工具行可挂结果；无效调用仍按失败行处理
+				if (
+					event.name === "present_plan" &&
+					findTopLevelToolByCallId(active.lines, event.callId) === undefined
+				) {
+					setStatus(WAITING_FOR_MODEL);
+					break;
+				}
 				if (handleSubagentEnd(active, event)) {
 					markTranscriptDirty();
 					// 并行派发时还有一个在跑就继续等它，不能提前回到模型等待
@@ -1710,8 +2071,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		for (const turn of result.history) {
 			turns.push({ prompt: turn.prompt, response: [...turn.response] });
 		}
-		// 任务表属于会话:随历史一起换成新会话的最后一张卡
+		// 任务表与计划都属于会话:随历史一起换成新会话的内容
 		currentTodo = result.todo;
+		latestPlan = result.plan;
+		pendingPlan = undefined;
+		if (openPage === "plan") closePlanReview();
+		else planReview = undefined;
+		closeCheckpointPage();
 		markTranscriptDirty();
 		initialScroll = false;
 		scrollTop = 0;
@@ -1915,6 +2281,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				syncApprovalPrompt();
 				if (finished) return;
 				disarm();
+				const completedPlan = active.outcome === "done" ? pendingPlan : undefined;
+				pendingPlan = undefined;
+				if (completedPlan !== undefined) openPlanReview(completedPlan);
 				options.agent?.refreshInfo();
 				statusElapsedMs = Date.now() - active.startedAt;
 				statusTokens = active.tokensUsed;
@@ -1931,10 +2300,17 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (active.outcome !== "aborted") {
 					notify(active.outcome === "done" ? "Turn complete" : "Turn failed");
 				}
-				// 排队消息接上：中止是使用者的明确意图，默认不替他续发；只有 Esc 请求过立即发送才例外
+				// 排队消息接上：中止是使用者的明确意图，默认不替他续发；只有 Esc 请求过立即发送才例外。
+				// 计划审批页打开时先暂停队列，否则排队消息会越过审批直接进入下一轮。
 				const sendQueued = sendQueuedAfterAbort;
 				sendQueuedAfterAbort = false;
-				if ((active.outcome !== "aborted" || sendQueued) && queued.length > 0) drainQueue();
+				if (
+					completedPlan === undefined &&
+					(active.outcome !== "aborted" || sendQueued) &&
+					queued.length > 0
+				) {
+					drainQueue();
+				}
 			});
 	};
 
@@ -1994,6 +2370,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			effort: () => executeEffortCommand(args),
 			session: () => executeSessionCommand(args),
 			compact: () => executeCompactCommand(),
+			plan: () => executePlanCommand(args),
+			"view-plan": () => executeViewPlanCommand(),
+			undo: () => executeUndoCommand(),
+			checkpoints: () => executeCheckpointsCommand(),
+			jobs: () => executeJobsCommand(),
 			help: () => showPage("help"),
 			skills: () => showPage("skills"),
 			mcps: () => showPage("mcps"),
@@ -2003,6 +2384,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			// 整屏页期间输入框不接受按键，命令名一律不留在输入框里
 			if (command.name === "help" || command.name === "skills" || command.name === "mcps") setInput("");
 			handler();
+			render();
+			return;
+		}
+
+		// 插件命令可能有任意副作用，Plan 模式下一律不执行
+		if (planning()) {
+			setInput("");
+			resetStatusMeta();
+			setStatus("Plugin commands are unavailable in Plan mode", "notice");
+			scheduleStatusClear();
 			render();
 			return;
 		}
@@ -2110,6 +2501,326 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		startRun("/compact", compact);
 	};
 
+	/**
+	 * /plan:开关只读规划。
+	 *
+	 * 带任务时开启并直接规划那一轮；不带参数时切换开关。一轮进行中不允许切换，
+	 * 否则提示词与工具清单会在同一轮里前后不一致。
+	 */
+	const executePlanCommand = (args: string): void => {
+		const source = options.planMode;
+		setInput("");
+		if (source === undefined) {
+			resetStatusMeta();
+			setStatus("Plan mode is unavailable in this session", "notice");
+			return;
+		}
+		if (activeTurn !== undefined) {
+			resetStatusMeta();
+			setStatus("/plan is unavailable while a turn is running", "notice");
+			return;
+		}
+
+		const task = args.trim();
+		const enabled = task.length > 0 || !source.current();
+		try {
+			if (source.current() !== enabled) source.select(enabled);
+		} catch (error) {
+			resetStatusMeta();
+			setStatus(
+				`Failed to switch Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+			scheduleStatusClear();
+			return;
+		}
+
+		if (task.length > 0) {
+			launch(task);
+			return;
+		}
+		// 模式本身由徽标表达；状态行留给这一轮真正的运行状态
+		clearStatus();
+	};
+
+	/** /view-plan:重新打开最近一份计划；没有计划时只给提示。 */
+	const executeViewPlanCommand = (): void => {
+		setInput("");
+		if (latestPlan === undefined) {
+			resetStatusMeta();
+			setStatus("No plan yet. Use /plan to write one.", "notice");
+			scheduleStatusClear();
+			return;
+		}
+		openPlanReview(latestPlan);
+	};
+
+	/** 关闭检查点列表/确认页，清掉临时数据。 */
+	const closeCheckpointPage = (): void => {
+		if (openPage === "checkpoints" || openPage === "checkpoint") openPage = undefined;
+		checkpointPreview = undefined;
+		checkpointList = [];
+		checkpointCursor = 0;
+		checkpointLoading = false;
+		checkpointReturnToList = false;
+		pageScrollTop = 0;
+	};
+
+	/** 打开检查点列表；索引已在内存里，不需要异步等待。 */
+	const openCheckpointList = (): void => {
+		const source = options.checkpoints;
+		if (source === undefined || !source.available()) {
+			resetStatusMeta();
+			setStatus(source?.error() ?? "Checkpoints are unavailable in this workspace", "notice");
+			scheduleStatusClear();
+			return;
+		}
+		checkpointList = source.list();
+		checkpointCursor = 0;
+		checkpointPreview = undefined;
+		checkpointReturnToList = false;
+		checkpointLoading = false;
+		showPage("checkpoints");
+	};
+
+	/** 选中列表项后读取实际差异，再打开确认页。 */
+	const loadCheckpointPreview = (entry: CheckpointEntry): void => {
+		const source = options.checkpoints;
+		if (source === undefined || !source.available() || checkpointLoading) return;
+		checkpointLoading = true;
+		render();
+		void source
+			.preview(entry.id)
+			.then((preview) => {
+				checkpointLoading = false;
+				if (finished) return;
+				if (openPage !== "checkpoints") {
+					render();
+					return;
+				}
+				if (preview.changes.length === 0) {
+					openPage = undefined;
+					resetStatusMeta();
+					setStatus("No file changes to restore", "notice");
+					scheduleStatusClear();
+					render();
+					return;
+				}
+				checkpointPreview = preview;
+				checkpointReturnToList = true;
+				showPage("checkpoint");
+				render();
+			})
+			.catch((error) => {
+				checkpointLoading = false;
+				if (finished) return;
+				if (openPage !== "checkpoints") {
+					render();
+					return;
+				}
+				openPage = undefined;
+				resetStatusMeta();
+				appendCommandTurn("/checkpoints", [
+					{
+						kind: "error",
+						text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+					},
+				]);
+				setStatus(ERROR_STATUS, "error");
+				scheduleStatusClear();
+				render();
+			});
+	};
+
+	/** /undo:取最近一个与当前工作区有差异的回合检查点。 */
+	const executeUndoCommand = (): void => {
+		setInput("");
+		const source = options.checkpoints;
+		if (source === undefined || !source.available()) {
+			resetStatusMeta();
+			setStatus(source?.error() ?? "Checkpoints are unavailable in this workspace", "notice");
+			scheduleStatusClear();
+			return;
+		}
+		if (checkpointLoading || restoringCheckpoint) return;
+
+		checkpointLoading = true;
+		resetStatusMeta();
+		setStatus("Reading checkpoints...", "notice");
+		void source
+			.latestUndoable()
+			.then((preview) => {
+				checkpointLoading = false;
+				if (finished) return;
+				clearStatus();
+				if (preview === undefined) {
+					setStatus("No file changes to undo", "notice");
+					scheduleStatusClear();
+					render();
+					return;
+				}
+				checkpointPreview = preview;
+				checkpointReturnToList = false;
+				showPage("checkpoint");
+				render();
+			})
+			.catch((error) => {
+				checkpointLoading = false;
+				if (finished) return;
+				resetStatusMeta();
+				setStatus(
+					`Undo unavailable: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+				scheduleStatusClear();
+				render();
+			});
+	};
+
+	/** /checkpoints:浏览全部检查点。 */
+	const executeCheckpointsCommand = (): void => {
+		setInput("");
+		openCheckpointList();
+	};
+
+	/**
+	 * 恢复当前确认页里的检查点。
+	 *
+	 * 先关页面再恢复：恢复要跑 git，状态行是唯一能显示进度的地方；失败时通过对话流
+	 * 的错误行留下原因，不把用户困在一个没有反馈的页面里。
+	 */
+	const restoreCheckpoint = (): void => {
+		const preview = checkpointPreview;
+		const source = options.checkpoints;
+		if (
+			preview === undefined ||
+			preview.changes.length === 0 ||
+			source === undefined ||
+			restoringCheckpoint
+		) {
+			return;
+		}
+		if (options.jobs?.list().some((job) => job.status === "running") === true) {
+			// 后台作业可能正在写同一批文件；先让它停下来，否则恢复出来的工作区不是任何一个稳定状态
+			closeCheckpointPage();
+			resetStatusMeta();
+			setStatus("Stop background jobs before restoring files", "notice");
+			scheduleStatusClear();
+			render();
+			return;
+		}
+
+		restoringCheckpoint = true;
+		checkpointPreview = undefined;
+		checkpointList = [];
+		checkpointCursor = 0;
+		checkpointLoading = false;
+		checkpointReturnToList = false;
+		openPage = undefined;
+		pageScrollTop = 0;
+		setInput("");
+		resetStatusMeta();
+		setStatus("Restoring checkpoint...", "notice");
+		render();
+
+		void source
+			.restore(preview.entry.id)
+			.then((result) => {
+				restoringCheckpoint = false;
+				if (finished) return;
+				const verb = result.entry.kind === "safety" ? "Restored" : "Undid";
+				const removed = result.removed > 0 ? `, ${result.removed} removed` : "";
+				appendCommandTurn("/undo", [
+					{
+						kind: "info",
+						text: `${verb} ${result.entry.label} · ${result.restored} restored${removed}`,
+					},
+				]);
+				clearStatus();
+				render();
+			})
+			.catch((error) => {
+				restoringCheckpoint = false;
+				if (finished) return;
+				appendCommandTurn("/undo", [
+					{
+						kind: "error",
+						text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+					},
+				]);
+				setStatus(ERROR_STATUS, "error");
+				scheduleStatusClear();
+				render();
+			});
+	};
+
+	/** 让检查点列表的光标始终落在可见区内。 */
+	const ensureCheckpointVisible = (): void => {
+		const rows = Math.max(1, mainAreaHeight() - CHECKPOINT_ACTION_HEIGHT);
+		const row = (checkpointLoading ? 3 : 2) + checkpointCursor;
+		if (row < pageScrollTop) pageScrollTop = row;
+		else if (row >= pageScrollTop + rows) pageScrollTop = row - rows + 1;
+	};
+
+	/** /jobs:打开后台作业列表。 */
+	const openJobsPage = (): void => {
+		if (options.jobs === undefined) {
+			resetStatusMeta();
+			setStatus("Background jobs are unavailable in this session", "notice");
+			scheduleStatusClear();
+			return;
+		}
+		jobCursor = 0;
+		jobDetailId = undefined;
+		jobReturnToList = false;
+		showPage("jobs");
+	};
+
+	const executeJobsCommand = (): void => {
+		setInput("");
+		openJobsPage();
+	};
+
+	/** 关闭作业列表/输出页。 */
+	const closeJobPage = (): void => {
+		if (openPage === "jobs" || openPage === "job") openPage = undefined;
+		jobDetailId = undefined;
+		jobCursor = 0;
+		jobReturnToList = false;
+		pageScrollTop = 0;
+	};
+
+	const jobsOf = (): readonly JobView[] => options.jobs?.list() ?? [];
+
+	const selectedJob = (): JobView | undefined => {
+		const jobs = jobsOf();
+		if (jobs.length === 0) return undefined;
+		jobCursor = Math.min(jobCursor, jobs.length - 1);
+		return jobs[jobCursor];
+	};
+
+	const openJobDetail = (job: JobView): void => {
+		jobDetailId = job.id;
+		jobReturnToList = true;
+		showPage("job");
+		render();
+	};
+
+	const killSelectedJob = (): void => {
+		const job = selectedJob();
+		if (job === undefined) return;
+		options.jobs?.kill(job.id);
+		render();
+	};
+
+	/** 让作业列表的光标始终可见。 */
+	const ensureJobVisible = (): void => {
+		const rows = Math.max(1, mainAreaHeight() - JOB_ACTION_HEIGHT);
+		const row = 2 + jobCursor;
+		if (row < pageScrollTop) pageScrollTop = row;
+		else if (row >= pageScrollTop + rows) pageScrollTop = row - rows + 1;
+	};
+
 	/** 取输入开头的命令名(不含斜杠);不是命令时返回空串。 */
 	const commandNameOf = (message: string): string =>
 		message.startsWith("/") ? (message.slice(1).split(/\s/, 1)[0] ?? "") : "";
@@ -2175,6 +2886,97 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/**
+	 * 批准计划：退出 Plan 模式，并把整份计划作为新提示交给模型。
+	 *
+	 * 只发一句「开始实现」不够稳：压缩或重启后模型可能只记得计划摘要。完整计划随用户消息
+	 * 重新进入上下文，实现阶段以它为准。
+	 */
+	const approvePlan = (): void => {
+		const plan = planReview ?? latestPlan;
+		if (plan === undefined) {
+			closePlanReview();
+			render();
+			return;
+		}
+
+		const agent = options.agent;
+		closePlanReview();
+		if (agent === undefined) {
+			resetStatusMeta();
+			setStatus(AGENT_UNAVAILABLE, "notice");
+			scheduleStatusClear();
+			render();
+			return;
+		}
+
+		try {
+			if (planning()) options.planMode?.select(false);
+		} catch (error) {
+			resetStatusMeta();
+			setStatus(
+				`Failed to leave Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+			scheduleStatusClear();
+			render();
+			return;
+		}
+		setInput("");
+		launch(implementationPrompt(plan.text));
+	};
+
+	/** 要求修改：关闭审批页，保持或开启 Plan 模式，回到输入框写修改意见。 */
+	const revisePlan = (): void => {
+		closePlanReview();
+		if (!planning()) {
+			if (options.planMode === undefined) {
+				resetStatusMeta();
+				setStatus("Plan mode is unavailable in this session", "notice");
+				scheduleStatusClear();
+				render();
+				return;
+			}
+			try {
+				options.planMode.select(true);
+			} catch (error) {
+				resetStatusMeta();
+				setStatus(
+					`Failed to enter Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+					"error",
+				);
+				scheduleStatusClear();
+				render();
+				return;
+			}
+		}
+
+		if (input.length === 0) setInput("Revise the plan: ");
+		clearStatus();
+		render();
+	};
+
+	/** 退出计划：关闭审批页并离开 Plan 模式，计划本身仍可用 /view-plan 回看。 */
+	const leavePlan = (): void => {
+		const wasPlanning = planning();
+		closePlanReview();
+		try {
+			if (wasPlanning) options.planMode?.select(false);
+		} catch (error) {
+			resetStatusMeta();
+			setStatus(
+				`Failed to leave Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+				"error",
+			);
+			scheduleStatusClear();
+			render();
+			return;
+		}
+
+		clearStatus();
+		render();
+	};
+
+	/**
 	 * 一轮结束后取队首再发一轮。
 	 *
 	 * 只有正常收尾才续发：被中止说明使用者要停下来，队列留着等他决定，不能替他继续。
@@ -2187,6 +2989,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	/** 回车发送：把输入交给真实 TurnDriver，事件驱动对话流与状态行。 */
 	const submit = (): boolean => {
+		if (restoringCheckpoint) {
+			// 工作区正在恢复，此时开新回合会让模型看到一半旧、一半新的文件
+			setStatus("Restoring checkpoint...", "notice");
+			scheduleStatusClear();
+			render();
+			return false;
+		}
 		if (input.length === 0) {
 			// 输入框空着而队列里还有东西：回车把队首发出去，中止之后靠它恢复队列
 			if (activeTurn !== undefined || queued.length === 0) return false;
@@ -2536,8 +3345,125 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 
 		if (openPage !== undefined) {
+			const key = menuKey(text);
+			// 计划审批页先处理自己的三个动作，其余按键仍走通用的翻页规则
+			if (openPage === "plan") {
+				if (text === "a") {
+					approvePlan();
+					return;
+				}
+				if (text === "r") {
+					revisePlan();
+					return;
+				}
+				if (text === "q") {
+					leavePlan();
+					return;
+				}
+			}
+			if (openPage === "checkpoints") {
+				if (key === "up" || key === "down") {
+					if (checkpointList.length > 0) {
+						checkpointCursor = Math.min(
+							checkpointList.length - 1,
+							Math.max(0, checkpointCursor + (key === "up" ? -1 : 1)),
+						);
+						ensureCheckpointVisible();
+						render();
+					}
+					return;
+				}
+				if (key === "enter") {
+					const entry = checkpointList[checkpointCursor];
+					if (entry !== undefined) loadCheckpointPreview(entry);
+					return;
+				}
+				if (key === "escape") {
+					closeCheckpointPage();
+					render();
+					return;
+				}
+			}
+			if (openPage === "checkpoint") {
+				if (text === "u") {
+					restoreCheckpoint();
+					return;
+				}
+				if (key === "escape") {
+					if (checkpointReturnToList) {
+						openPage = "checkpoints";
+						checkpointPreview = undefined;
+						pageScrollTop = 0;
+						ensureCheckpointVisible();
+						render();
+					} else {
+						closeCheckpointPage();
+						render();
+					}
+					return;
+				}
+			}
+			if (openPage === "jobs") {
+				if (key === "up" || key === "down") {
+					const jobs = jobsOf();
+					if (jobs.length > 0) {
+						jobCursor = Math.min(
+							jobs.length - 1,
+							Math.max(0, jobCursor + (key === "up" ? -1 : 1)),
+						);
+						ensureJobVisible();
+						render();
+					}
+					return;
+				}
+				if (key === "enter") {
+					const job = selectedJob();
+					if (job !== undefined) openJobDetail(job);
+					return;
+				}
+				if (text === "k") {
+					killSelectedJob();
+					return;
+				}
+				if (key === "escape") {
+					closeJobPage();
+					render();
+					return;
+				}
+			}
+			if (openPage === "job") {
+				if (text === "k") {
+					const job = jobsOf().find((candidate) => candidate.id === jobDetailId);
+					if (job !== undefined) {
+						options.jobs?.kill(job.id);
+						render();
+					}
+					return;
+				}
+				if (key === "escape") {
+					if (jobReturnToList) {
+						openPage = "jobs";
+						jobDetailId = undefined;
+						pageScrollTop = 0;
+						ensureJobVisible();
+						render();
+					} else {
+						closeJobPage();
+						render();
+					}
+					return;
+				}
+			}
 			// 整屏页是模态的：上下键与滚轮翻页，Esc 返回，其它按键忽略
-			const rows = mainAreaHeight();
+			const actionHeight =
+				openPage === "plan"
+					? PLAN_ACTION_HEIGHT
+					: openPage === "checkpoints" || openPage === "checkpoint"
+						? CHECKPOINT_ACTION_HEIGHT
+						: openPage === "jobs" || openPage === "job"
+							? JOB_ACTION_HEIGHT
+							: 0;
+			const rows = Math.max(1, mainAreaHeight() - actionHeight);
 			const width = terminalWidth();
 			const total = pageLines(openPage, width).length;
 			let steps = 0;
@@ -2545,7 +3471,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (event.press && event.button === MOUSE_WHEEL_UP) steps -= 1;
 				else if (event.press && event.button === MOUSE_WHEEL_DOWN) steps += 1;
 			}
-			const key = menuKey(text);
 			if (key === "up") steps -= 1;
 			if (key === "down") steps += 1;
 			const scroll = scrollKey(text);
@@ -2553,7 +3478,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			if (scroll === "pageDown") steps += rows;
 
 			if (key === "escape") {
-				openPage = undefined;
+				if (openPage === "plan") closePlanReview();
+				else openPage = undefined;
 				render();
 				return;
 			}
@@ -2571,7 +3497,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 		const width = terminalWidth();
 		const height = terminalHeight(stdout);
-		const mainHeight = Math.max(0, height - footerHeight() - todoPanelHeight());
+		const mainHeight = Math.max(
+			0,
+			height - footerHeight() - todoPanelHeight() - jobBarHeight(),
+		);
 		const beforeScroll = scrollTop;
 		const withoutMouse = stripMouseEvents(text);
 		let focusChanged = false;
@@ -2861,6 +3790,40 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			render();
 		}
 	};
+
+	const appendJobNote = (job: JobView): void => {
+		const elapsed = formatDuration((job.endedAt ?? Date.now()) - job.startedAt);
+		const code =
+			job.exitCode !== undefined && job.exitCode !== null ? ` · exit ${job.exitCode}` : "";
+		const verb = job.status === "done" ? "finished" : job.status === "killed" ? "killed" : "failed";
+		appendCommandTurn("/jobs", [
+			{
+				kind: job.status === "failed" ? "error" : "info",
+				text: `Job ${job.id} ${verb} · ${job.command}${code} · ${elapsed}`,
+			},
+		]);
+	};
+
+	/** 有作业运行时每 500ms 重绘一次，空闲时也更新 Jobs bar 的耗时。 */
+	const ensureJobTimer = (): void => {
+		if (runningJobs().length === 0) {
+			if (jobTimer !== undefined) {
+				clearInterval(jobTimer);
+				jobTimer = undefined;
+			}
+			return;
+		}
+		if (jobTimer !== undefined) return;
+		jobTimer = setInterval(() => render(), 500);
+	};
+
+	unsubscribeJobs =
+		options.jobs?.subscribe((event) => {
+			if (event.type === "finished") appendJobNote(event.job);
+			ensureJobTimer();
+			render();
+		}) ?? (() => {});
+	ensureJobTimer();
 
 	const onInterrupt = (): void => {
 		cleanup();

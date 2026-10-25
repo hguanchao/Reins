@@ -6,6 +6,7 @@ import { TurnDriver } from "../agent/driver.ts";
 import type { PromptSkill } from "../agent/prompt.ts";
 import { Compactor, compactionWindow, estimateTokens } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
+import { CheckpointService } from "../checkpoint/checkpoints.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import {
 	defaultInstructionSources,
@@ -51,6 +52,7 @@ import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/dis
 import { createSandbox } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
+import { JobManager } from "../tools/jobs.ts";
 import { createCoreTools } from "../tools/builtin/index.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
@@ -60,8 +62,10 @@ import { findProjectResources, recordTrust, resolveTrust } from "../workspace/tr
 import {
 	runTui,
 	type ApprovalModeSource,
+	type CheckpointSource,
 	type EffortMenuSource,
 	type ModelMenuSource,
+	type PlanModeSource,
 	type SessionMenuSource,
 } from "../tui/layout.ts";
 import { buildTranscriptHistory } from "../tui/history.ts";
@@ -217,11 +221,13 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	});
 	/** MCP 连接清单由插件装载时交过来；插件缺席时保持 undefined，/mcps 也随之不可用。 */
 	let mcpStatus: McpStatusSource | undefined;
+	const jobs = new JobManager({ shellPath: config.shellPath });
 	const pipeline = await assemblePipeline({
 		config,
 		workRoot,
 		policy,
 		gate,
+		jobs,
 		onMcpStatus: (source) => {
 			mcpStatus = source;
 		},
@@ -252,6 +258,40 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	// 当前会话会被 /session 菜单替换；后续所有装配都读这个可变引用
 	let activeSession: Session = session;
 	startup.mark("session");
+
+	let pendingUndoNotice: string | undefined;
+	/** 撤销提醒只交给下一轮：driver 建好并同步提示词时取一次。 */
+	const takeUndoNotice = (): string | undefined => {
+		const notice = pendingUndoNotice;
+		pendingUndoNotice = undefined;
+		return notice;
+	};
+	let checkpoints = new CheckpointService({
+		workRoot,
+		sessionId: activeSession.id,
+		onUndo: (message) => {
+			pendingUndoNotice = message;
+		},
+	});
+	await checkpoints.init();
+	const checkpointSource: CheckpointSource = {
+		available: () => checkpoints.available,
+		error: () => checkpoints.lastError,
+		list: () => checkpoints.list(),
+		latestUndoable: async () => {
+			await checkpoints.init();
+			return checkpoints.latestUndoable();
+		},
+		preview: async (id) => {
+			await checkpoints.init();
+			return checkpoints.preview(id);
+		},
+		restore: async (id) => {
+			await checkpoints.init();
+			return checkpoints.restore(id);
+		},
+	};
+	startup.mark("checkpoints");
 
 	let sessionPersisted =
 		options.resume !== undefined || (loaded.ok && activeSession.path !== null);
@@ -335,8 +375,17 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 					selection: current,
 					compactor,
 					contextTokens: lastContextTokens(activeSession.entries()),
+					planMode: policy.planMode,
 				},
-				{ registry, session: activeSession, workspace, sandbox, skills, instructions },
+				{
+					registry,
+					session: activeSession,
+					workspace,
+					sandbox,
+					skills,
+					instructions,
+					undoNotice: takeUndoNotice,
+				},
 				onEvent,
 			),
 		};
@@ -351,8 +400,21 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		const reloaded = reloadConfigIfChanged();
 		if (reloaded !== undefined) await onEvent({ type: "notice", message: reloaded });
 
-		const { driver } = createCurrentDriver(onEvent);
-		await driver.run(prompt, signal);
+		if (!checkpoints.available) await checkpoints.init();
+		const checkpoint = await checkpoints.captureTurn();
+		if (checkpoint === undefined && checkpoints.available && checkpoints.lastError !== undefined) {
+			await onEvent({
+				type: "notice",
+				message: `Checkpoint unavailable: ${checkpoints.lastError}`,
+			});
+		}
+
+		try {
+			const { driver } = createCurrentDriver(onEvent);
+			await driver.run(prompt, signal);
+		} finally {
+			await checkpoints.finalizeTurn(checkpoint?.id);
+		}
 	};
 
 	/**
@@ -404,6 +466,14 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			policy.setMode(next);
 		},
 	} satisfies ApprovalModeSource;
+
+	// Plan 与审批正交：它只改本进程的只读闸门，不改配置文件，也不动审批档位。
+	const planMode = {
+		current: () => policy.planMode,
+		select: (enabled: boolean) => {
+			policy.setPlanMode(enabled);
+		},
+	} satisfies PlanModeSource;
 
 	const warning = loaded.ok ? undefined : `Warning: ${loaded.error.message}`;
 	const ready = loaded.ok;
@@ -463,11 +533,23 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 						});
 						activeSession = switched.session;
 						sessionPersisted = activeSession.path !== null;
+						// Plan 与检查点都是会话级状态：切到另一个会话就回到普通模式并换索引
+						policy.setPlanMode(false);
+						pendingUndoNotice = undefined;
+						checkpoints = new CheckpointService({
+							workRoot,
+							sessionId: activeSession.id,
+							onUndo: (message) => {
+								pendingUndoNotice = message;
+							},
+						});
+						void checkpoints.init();
 						refreshInfo();
 						return {
 							changed: true,
 							history: switched.history,
 							todo: switched.todo,
+							plan: switched.plan,
 							warnings: [],
 						};
 					},
@@ -485,12 +567,16 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
 			approvalMode,
+			planMode,
+			checkpoints: checkpointSource,
+			jobs,
 			modelMenu,
 			effortMenu,
 			pluginCommands,
 			notify: activeConfig.ui.notify,
 			history: history.turns,
 			historyTodo: history.todo,
+			historyPlan: history.plan,
 			workspaceRoot: workRoot,
 		});
 		if (sessionPersisted) writeStdout(`${resumeCommand(activeSession.id)}\n`);
@@ -499,6 +585,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		writeStderr(`reins: ${error instanceof Error ? error.message : String(error)}\n`);
 		return 1;
 	} finally {
+		jobs.shutdown();
 		await activeSession.close();
 	}
 }
@@ -990,6 +1077,15 @@ function createCompactor(
 	});
 }
 
+/** Plan 模式下模型能看到的全部工具：只读探索加计划提交，没有 shell、编辑或子代理。 */
+const PLAN_TOOL_NAMES = ["read", "ls", "find", "grep", "present_plan"] as const;
+
+/** 按白名单收窄注册表；随包工具可能被配置禁用，缺失的名字直接跳过。 */
+function planToolRegistry(registry: ToolRegistry): ToolRegistry {
+	const names = PLAN_TOOL_NAMES.filter((name) => registry.get(name) !== undefined);
+	return registry.only(...names);
+}
+
 /** 一次运行的驱动。交互模式每次提交都要新建一个：它的生命周期就是一轮对话。 */
 function createDriverFor(
 	context: {
@@ -997,6 +1093,7 @@ function createDriverFor(
 		readonly selection: ModelSelection;
 		readonly compactor: Compactor | undefined;
 		readonly contextTokens?: number;
+		readonly planMode?: boolean;
 	},
 	shared: {
 		readonly registry: ToolRegistry;
@@ -1007,25 +1104,35 @@ function createDriverFor(
 		readonly skills?: () => readonly PromptSkill[];
 		/** 用户级与项目级规则；每轮重新读，改完 AGENTS.md 下一轮就生效 */
 		readonly instructions?: () => readonly PromptInstruction[];
+		/** 撤销后的一次性提示；由装配处保证只取一次 */
+		readonly undoNotice?: () => string | undefined;
 	},
 	onEvent: AgentEventListener,
 ): TurnDriver {
 	// 主对话与子代理共用同一个客户端：它们只是同一个端点的两次请求，客户端本身没有连接状态
 	const client = createClient(context.config, context.selection.provider, context.selection.model);
-	const tools = shared.registry.withExtraTool(
-		createSubagentTool({
-			provider: context.selection.provider,
-			model: context.selection.model,
-			config: context.config,
-			client,
-			// 子代理不再派子代理，也不需要主对话的任务表：任务表只在主面板与主对话里显示
-			tools: shared.registry.without("todo"),
-			session: shared.session,
-			maxSteps: context.config.maxTurns ?? DEFAULT_SUBAGENT_STEPS,
-			contextWindow: context.selection.model.contextWindow ?? context.config.contextWindow,
-			instructions: shared.instructions,
-		}),
-	);
+	const available =
+		context.planMode === true
+			? planToolRegistry(shared.registry)
+			: shared.registry.without("present_plan");
+	// 子代理能改文件也能跑命令，Plan 模式下不挂载；普通模式仍按原样交给它自己的注册表
+	const tools =
+		context.planMode === true
+			? available
+			: available.withExtraTool(
+					createSubagentTool({
+						provider: context.selection.provider,
+						model: context.selection.model,
+						config: context.config,
+						client,
+						// 子代理不再派子代理，也不需要主对话的任务表：任务表只在主面板与主对话里显示
+						tools: available.without("todo"),
+						session: shared.session,
+						maxSteps: context.config.maxTurns ?? DEFAULT_SUBAGENT_STEPS,
+						contextWindow: context.selection.model.contextWindow ?? context.config.contextWindow,
+						instructions: shared.instructions,
+					}),
+				);
 
 	return new TurnDriver({
 		provider: context.selection.provider,
@@ -1039,6 +1146,8 @@ function createDriverFor(
 		onEvent,
 		...(shared.skills === undefined ? {} : { skills: shared.skills }),
 		...(shared.instructions === undefined ? {} : { instructions: shared.instructions }),
+		...(shared.undoNotice === undefined ? {} : { undoNotice: shared.undoNotice }),
+		...(context.planMode === true ? { planMode: true } : {}),
 		...(context.compactor === undefined ? {} : { compactor: context.compactor }),
 		...(context.contextTokens === undefined ? {} : { contextTokens: context.contextTokens }),
 	});
@@ -1081,12 +1190,15 @@ async function assemblePipeline(options: {
 	readonly workRoot: string;
 	readonly policy: PermissionPolicy;
 	readonly gate: PermissionGate;
+	readonly jobs?: JobManager;
 	readonly onMcpStatus?: (source: McpStatusSource) => void;
 	readonly onStage?: (stage: string) => void;
 }): Promise<{ readonly registry: ToolRegistry; readonly host: PluginHost; readonly sandbox: SandboxView } | null> {
 	const { config, workRoot, policy, gate } = options;
 	const registry = new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), gate);
-	for (const tool of createCoreTools({ shellPath: config.shellPath })) registry.register(tool, "core");
+	for (const tool of createCoreTools({ shellPath: config.shellPath, jobs: options.jobs })) {
+		registry.register(tool, "core");
+	}
 
 	const host = new PluginHost(registry, policy);
 	const failures = await host.load(

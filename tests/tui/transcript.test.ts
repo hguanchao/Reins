@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 
 import {
 	appendToolLine,
+	attachToolResult,
 	buildTranscriptView,
 	collapseToolGroups,
+	planHeaderInView,
 	renderTranscript,
 	renderTranscriptView,
 	scrollbarColumn,
@@ -17,6 +19,7 @@ import {
 	toolHeaderAtRow,
 	transcriptMetrics,
 	type TranscriptLine,
+	type TranscriptPlan,
 	type TranscriptThinking,
 	type TranscriptSubagentGroup,
 	type TranscriptTool,
@@ -145,6 +148,59 @@ describe("思考区块", () => {
 
 		assert.equal(thinkingHeaderAtRow(40, 12, [turn], 0, row), block);
 		assert.equal(thinkingHeaderAtRow(40, 12, [turn], 0, row + 1), undefined);
+	});
+});
+
+describe("计划卡", () => {
+	const plan: TranscriptPlan = {
+		kind: "plan",
+		text: "# Add Plan mode\n\n## Steps\n\n1. Add the gate.\n2. Add the review page.",
+	};
+
+	it("只显示标题与打开提示，完整正文留在计划对象里", () => {
+		const turn: TranscriptTurn = { prompt: "hi", response: [plan] };
+		const lines = renderTranscript(60, 12, [turn], 0);
+		const card = lines.find((line) => plain(line).includes("◇ Plan")) ?? "";
+
+		assert.ok(plain(card).includes("Add Plan mode"));
+		assert.ok(plain(card).includes("double-click to view"));
+		assert.equal(plain(card).includes("Add the gate"), false);
+		assert.ok(card.includes(THEME.accent));
+		assert.ok(card.includes(THEME.textPrimary));
+		// 每行仍然精确铺满终端宽度
+		assert.equal(displayWidth(plain(card)), 60);
+	});
+
+	it("窄屏先丢掉提示，标题截断但标记保留", () => {
+		const turn: TranscriptTurn = { prompt: "hi", response: [plan] };
+		const lines = renderTranscript(24, 12, [turn], 0);
+		const card = lines.find((line) => plain(line).includes("◇ Plan")) ?? "";
+
+		assert.equal(plain(card).includes("double-click"), false);
+		assert.ok(plain(card).includes("◇ Plan"));
+		assert.ok(plain(card).includes("Add"));
+		assert.equal(displayWidth(plain(card)), 24);
+	});
+
+	it("极窄终端下计划卡也不越过行宽", () => {
+		const turn: TranscriptTurn = { prompt: "hi", response: [plan] };
+		for (const width of [3, 5, 8, 10]) {
+			const lines = renderTranscript(width, 12, [turn], 0);
+			for (const line of lines) {
+				assert.equal(displayWidth(plain(line)), width, `宽度 ${width} 下行宽不精确`);
+			}
+		}
+	});
+
+	it("双击头行命中计划，卡下面的内容不命中", () => {
+		const turn: TranscriptTurn = { prompt: "hi", response: [plan] };
+		const view = buildTranscriptView(60, [turn]);
+		const row = renderTranscript(60, 12, [turn], 0)
+			.map(plain)
+			.findIndex((line) => line.includes("◇ Plan")) + 1;
+
+		assert.equal(planHeaderInView(view, 12, 0, row), plan);
+		assert.equal(planHeaderInView(view, 12, 0, row + 1), undefined);
 	});
 });
 
@@ -387,6 +443,20 @@ describe("工具调用行", () => {
 
 		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, expandedRow), tool);
 		assert.equal(toolHeaderAtRow(60, 10, [turn], 0, bodyRow), undefined);
+	});
+
+	it("bash 后台结果在折叠行标出 job 编号", () => {
+		const tool: TranscriptTool = { kind: "tool", name: "Bash", detail: "npm run dev", callId: "c1" };
+		attachToolResult(tool, "bash", "Started background job j1", undefined, {
+			jobId: "j1",
+			background: true,
+		});
+		const line = renderTranscript(80, 12, [{ prompt: "hi", response: [tool] }], 0)
+			.map(plain)
+			.find((candidate) => candidate.includes("Bash"));
+
+		assert.equal(tool.metric, "background j1");
+		assert.ok(line?.includes("(background j1)"));
 	});
 
 	it("结果指标显示在折叠行末尾，没有参数时跟在名称后面", () => {

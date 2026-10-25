@@ -133,6 +133,26 @@ describe("页脚输入框", () => {
 		assert.ok(line.startsWith("📁 Reins · 🌿 main | 🤖 gpt-5.6-luna · 🧠 max | 📊 100K / 1M | ⚡ 98%"));
 	});
 
+	it("Plan 与审批徽标并列，窄屏优先保留 PLAN", () => {
+		const wide = plain(
+			renderFooter(80, "", true, undefined, { ...SESSION_INFO, approval: "ask", planMode: true })[5] ?? "",
+		);
+		assert.ok(wide.includes("PLAN"));
+		assert.ok(wide.endsWith("PLAN  ASK"));
+
+		// 10 列只放得下 PLAN：审批徽标先让位，不能把 PLAN 一起挤掉
+		const narrow = plain(
+			renderFooter(10, "", true, undefined, { ...SESSION_INFO, approval: "ask", planMode: true })[5] ?? "",
+		);
+		assert.ok(narrow.endsWith("PLAN"));
+		assert.equal(narrow.includes("ASK"), false);
+
+		const tooNarrow = plain(
+			renderFooter(6, "", true, undefined, { ...SESSION_INFO, approval: "ask", planMode: true })[5] ?? "",
+		);
+		assert.equal(tooNarrow.includes("PLAN"), false);
+	});
+
 	it("窄到放不下徽标时整档让位，不折行", () => {
 		// 宽度不足以在行尾（避开最右两列）摆下 4 列的 YOLO 与至少一列间隔
 		const line = plain(renderFooter(6, "", true, undefined, { ...SESSION_INFO, approval: "yolo" })[5] ?? "");

@@ -123,7 +123,7 @@ function makeTools(executed: { calls: string[] } = { calls: [] }) {
 	};
 }
 
-function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor; contextTokens?: number; requests?: LlmRequest[]; onRequest?: (request: LlmRequest) => void; instructions?: () => readonly PromptInstruction[] }): TurnDriver {
+function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; session: MemorySession; tools: ReturnType<typeof makeTools>; compactor?: Compactor; contextTokens?: number; requests?: LlmRequest[]; onRequest?: (request: LlmRequest) => void; instructions?: () => readonly PromptInstruction[]; planMode?: boolean; undoNotice?: () => string | undefined }): TurnDriver {
 	const queue = [...turns];
 	const client: LlmClient = {
 		api: "fake",
@@ -170,6 +170,8 @@ function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; s
 		compactor: hooks.compactor,
 		...(hooks.contextTokens === undefined ? {} : { contextTokens: hooks.contextTokens }),
 		...(hooks.instructions === undefined ? {} : { instructions: hooks.instructions }),
+		...(hooks.planMode === true ? { planMode: true } : {}),
+		...(hooks.undoNotice === undefined ? {} : { undoNotice: hooks.undoNotice }),
 		onEvent: async (event) => {
 			hooks.events.push(event);
 		},
@@ -236,6 +238,41 @@ describe("回合驱动", () => {
 				(event) => event.type === "retrying" && event.attempt === 2 && event.reason === "temporary failure",
 			),
 		);
+	});
+
+	it("Plan 模式用只读 preamble 构造请求", async () => {
+		const hooks = {
+			events: [] as AgentEvent[],
+			session: new MemorySession(),
+			tools: makeTools(),
+			requests: [] as LlmRequest[],
+			planMode: true,
+		};
+		await depsOf([{ content: [{ type: "text", text: "planned" }], usage: STOP }], hooks).run("plan it", SIGNAL);
+
+		const system = hooks.requests[0]?.system ?? "";
+		assert.ok(system.includes("You are in Plan mode"));
+		assert.equal(system.includes("Do not stop at a plan"), false);
+	});
+
+	it("撤销提醒只进入下一轮提示词", async () => {
+		let notice: string | undefined = "The working tree was rolled back.";
+		const hooks = {
+			events: [] as AgentEvent[],
+			session: new MemorySession(),
+			tools: makeTools(),
+			requests: [] as LlmRequest[],
+			undoNotice: () => {
+				const current = notice;
+				notice = undefined;
+				return current;
+			},
+		};
+		await depsOf([{ content: [{ type: "text", text: "ok" }], usage: STOP }], hooks).run("next", SIGNAL);
+
+		const system = hooks.requests[0]?.system ?? "";
+		assert.ok(system.includes("Working tree update:"));
+		assert.ok(system.includes("rolled back"));
 	});
 
 	it("带图片的输入原样写进会话并进入下一次请求", async () => {

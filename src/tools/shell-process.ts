@@ -1,0 +1,258 @@
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { accessSync } from "node:fs";
+import { join } from "node:path";
+
+import stripAnsi from "strip-ansi";
+
+/**
+ * shell 进程的公共部分。
+ *
+ * 前台 bash 与后台作业共享同一套 shell 选择、输出收集与进程树终止规则；两边各写一遍，
+ * 迟早在 Windows 的进程组或编码上分叉。这里只负责起进程与收输出，工具语义留在 bash。
+ */
+
+export interface Shell {
+	readonly command: string;
+	readonly args: (command: string) => string[];
+	/** 额外注入的环境变量；使用者自己的环境优先 */
+	readonly env: Readonly<Record<string, string>>;
+}
+
+/** resolveShell 的输入来源；抽出来是为了在非 Windows 上也能测试 Windows 的分支。 */
+export interface ShellLookup {
+	readonly platform: NodeJS.Platform;
+	readonly env: NodeJS.ProcessEnv;
+	readonly exists: (path: string) => boolean;
+	/** 返回 PATH 上所有同名可执行文件，按查找顺序排列 */
+	readonly which: (name: string) => readonly string[];
+}
+
+/** 累积输出的上限。超出部分拿不回来，但必须告诉调用方，否则它会以为这就是全部。 */
+export const MAX_CAPTURED_BYTES = 5 * 1024 * 1024;
+
+/**
+ * 选 shell。
+ *
+ * Windows 上工具叫 bash，就必须真的跑 bash：cmd.exe 不理解 `pwd`、`/c/...` 这类写法，
+ * 也不保证 UTF-8 输出。优先常见的 Git Bash 安装位置，再查 PATH；WSL 的 bash 采用另一套
+ * 路径规则，不能和这里给模型的 POSIX 提示混用，因此跳过。找不到就明确报错，不静默退回 cmd。
+ */
+export function resolveShell(lookup: ShellLookup = systemLookup(), shellPath?: string): Shell {
+	if (shellPath !== undefined) {
+		if (!lookup.exists(shellPath)) {
+			throw new Error(
+				`Configured shellPath not found: ${shellPath}; set shellPath or shell_path in config.toml`,
+			);
+		}
+		return bashShell(shellPath);
+	}
+
+	if (lookup.platform !== "win32") {
+		return {
+			command: lookup.env["SHELL"] ?? "/bin/sh",
+			args: (command) => ["-c", command],
+			env: {},
+		};
+	}
+
+	for (const candidate of gitBashCandidates(lookup.env)) {
+		if (lookup.exists(candidate)) return bashShell(candidate);
+	}
+
+	for (const candidate of lookup.which("bash.exe")) {
+		if (!isWslBash(candidate)) return bashShell(candidate);
+	}
+
+	throw new Error(
+		"No bash found. On Windows Reins runs commands with Git Bash; install Git for Windows, make " +
+			"sure bash.exe is on PATH, or set shellPath or shell_path in config.toml. WSL bash is not used.",
+	);
+}
+
+function bashShell(command: string): Shell {
+	return {
+		command,
+		args: (input) => ["-c", input],
+		// 系统代码页输出（中文 Windows 上是 GBK）到 UTF-8 解码会变成乱码；先给解释器一个
+		// UTF-8 默认值，使用者自己设置的同名变量仍然优先
+		env: { PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8:surrogateescape" },
+	};
+}
+
+function gitBashCandidates(env: NodeJS.ProcessEnv): readonly string[] {
+	const roots = [
+		env["ProgramFiles"],
+		env["ProgramFiles(x86)"],
+		env["LOCALAPPDATA"] === undefined ? undefined : join(env["LOCALAPPDATA"], "Programs"),
+	];
+	return roots
+		.filter((root): root is string => root !== undefined && root.length > 0)
+		.map((root) => join(root, "Git", "bin", "bash.exe"));
+}
+
+function isWslBash(path: string): boolean {
+	const normalized = path.toLowerCase().replaceAll("/", "\\");
+	return (
+		/\\windows\\(?:system32|sysnative)\\bash\.exe$/.test(normalized) ||
+		/\\windowsapps\\bash\.exe$/.test(normalized)
+	);
+}
+
+function systemLookup(): ShellLookup {
+	return {
+		platform: process.platform,
+		env: process.env,
+		exists: (path) => {
+			try {
+				accessSync(path);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		which: findOnPath,
+	};
+}
+
+function findOnPath(name: string): readonly string[] {
+	const finder = process.platform === "win32" ? "where.exe" : "which";
+	try {
+		const result = spawnSync(finder, [name], { encoding: "utf8", timeout: 5000, windowsHide: true });
+		if (result.status !== 0 || typeof result.stdout !== "string") return [];
+		return result.stdout
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0);
+	} catch {
+		return [];
+	}
+}
+
+export interface ShellExit {
+	readonly started: boolean;
+	readonly code: number | null;
+	readonly reason: string;
+}
+
+export interface ShellProcess {
+	readonly child: ChildProcess;
+	/** 当前累计输出；作业运行中也可以读取快照 */
+	output(): { readonly text: string; readonly overflowed: boolean };
+	/** 只问是否溢出，不拼接整段输出；Jobs bar 每帧都会读它。 */
+	overflowed(): boolean;
+	wait(): Promise<ShellExit>;
+	kill(): void;
+}
+
+export interface StartShellProcessInput {
+	readonly shell: Shell;
+	readonly command: string;
+	readonly cwd: string;
+	readonly env: NodeJS.ProcessEnv;
+	readonly maxBytes?: number;
+}
+
+/** 启动一个 shell 进程；调用方负责超时与中止，kill 会连同子进程一起结束。 */
+export function startShellProcess(input: StartShellProcessInput): ShellProcess {
+	const child = spawn(input.shell.command, input.shell.args(input.command), {
+		cwd: input.cwd,
+		env: input.env,
+		// 自成进程组，超时或中止时才能把命令带出来的子进程一起结束
+		detached: process.platform !== "win32",
+		stdio: ["ignore", "pipe", "pipe"],
+		windowsHide: true,
+	});
+	const collector = new OutputCollector(child, input.maxBytes ?? MAX_CAPTURED_BYTES);
+	return {
+		child,
+		output: () => ({ text: collector.text(), overflowed: collector.overflowed }),
+		overflowed: () => collector.overflowed,
+		wait: () => waitForExit(child),
+		kill: () => killTree(child),
+	};
+}
+
+/**
+ * 收集合并后的输出。
+ *
+ * 标准输出与标准错误合在一起：对使用者的判断来说，命令「报了什么」比「从哪个流报的」更重要，
+ * 分两段显示反而要来回对照。超过上限后停止累积，只记下发生过溢出。
+ */
+class OutputCollector {
+	readonly #chunks: Buffer[] = [];
+	readonly #maxBytes: number;
+	#kept = 0;
+	#overflowed = false;
+
+	constructor(child: ChildProcess, maxBytes: number) {
+		this.#maxBytes = maxBytes;
+		child.stdout?.on("data", (chunk: Buffer) => this.#accept(chunk));
+		child.stderr?.on("data", (chunk: Buffer) => this.#accept(chunk));
+	}
+
+	get overflowed(): boolean {
+		return this.#overflowed;
+	}
+
+	text(): string {
+		return sanitizeOutput(Buffer.concat(this.#chunks).toString("utf8"));
+	}
+
+	#accept(chunk: Buffer): void {
+		if (this.#kept >= this.#maxBytes) {
+			this.#overflowed = true;
+			return;
+		}
+		const remaining = this.#maxBytes - this.#kept;
+		const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+		if (chunk.length > remaining) this.#overflowed = true;
+		this.#chunks.push(slice);
+		this.#kept += slice.length;
+	}
+}
+
+/**
+ * 清掉终端转义序列与控制字符。
+ *
+ * 命令输出会进入模型上下文：颜色码与光标控制对模型没有意义，二进制控制字符还可能破坏
+ * 界面与统计。制表、换行、回车保留，它们是正文的一部分。
+ */
+function sanitizeOutput(text: string): string {
+	return stripAnsi(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "");
+}
+
+function waitForExit(child: ChildProcess): Promise<ShellExit> {
+	return new Promise((resolve) => {
+		child.on("error", (error) => {
+			resolve({ started: false, code: null, reason: error.message });
+		});
+		child.on("close", (code) => {
+			resolve({ started: true, code, reason: "" });
+		});
+	});
+}
+
+/** 连同命令带出来的子进程一起结束。只杀直接子进程会留下孤儿进程继续占着端口或文件。 */
+function killTree(child: ChildProcess): void {
+	if (child.pid === undefined) return;
+	if (process.platform === "win32") {
+		// 用 System32 下的绝对路径，避免 PATH 上有同名程序时杀错东西
+		const taskkill = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "taskkill.exe");
+		try {
+			const killer = spawn(taskkill, ["/pid", String(child.pid), "/T", "/F"], {
+				stdio: "ignore",
+				windowsHide: true,
+			});
+			// spawn 失败只会发 error 事件；不消费就会变成未捕获异常
+			killer.on("error", () => child.kill());
+		} catch {
+			child.kill();
+		}
+		return;
+	}
+	try {
+		process.kill(-child.pid, "SIGKILL");
+	} catch {
+		child.kill("SIGKILL");
+	}
+}

@@ -45,6 +45,10 @@ export interface DriverDeps {
 	readonly skills?: () => readonly PromptSkill[];
 	/** 用户级与项目级规则；每轮重新读，改完 AGENTS.md 下一轮就生效 */
 	readonly instructions?: () => readonly PromptInstruction[];
+	/** Plan 模式：提示词换成只读规划版本；工具清单由装配处收窄 */
+	readonly planMode?: boolean;
+	/** 撤销后的一次性提醒；装配处保证只在下一轮取一次 */
+	readonly undoNotice?: () => string | undefined;
 	/** 上下文压缩。没有它（上限未知或未配置）就不压缩，请求照原样发出去 */
 	readonly compactor?: Compactor;
 	/** 本次运行开始时已知的上下文规模；续聊或每轮新建驱动时由装配处从会话记录里带来 */
@@ -371,11 +375,14 @@ export class TurnDriver {
 		const session = this.#deps.session;
 		const state = session.state();
 
+		const undoNotice = this.#deps.undoNotice?.();
 		const desiredSections = buildPromptSections({
 			cwd: this.#deps.workspace.root,
 			tools: this.#deps.tools.list(),
 			skills: this.#deps.skills?.(),
 			instructions: this.#deps.instructions?.(),
+			...(this.#deps.planMode === true ? { planMode: true } : {}),
+			...(undoNotice === undefined || undoNotice.length === 0 ? {} : { undoNotice }),
 		});
 		const sectionChanges: Record<string, string | null> = {};
 		for (const [name, body] of Object.entries(desiredSections)) {

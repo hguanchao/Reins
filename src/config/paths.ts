@@ -42,6 +42,16 @@ export function pluginsDir(): string {
 }
 
 /**
+ * 检查点目录。
+ *
+ * 放在配置目录下，按项目与会话分目录；里面是独立的 shadow git 仓库，不碰工作区自己的
+ * `.git`。检查点属于这个项目的本地历史，不应该混进工作区文件。
+ */
+export function checkpointsDir(): string {
+	return join(configDir(), "checkpoints");
+}
+
+/**
  * 技能目录。
  *
  * 与插件同理放在配置目录下：技能是使用者攒下来的工作方式，不该跟着某个项目走。每个技能

@@ -113,6 +113,31 @@ describe("审批判定", () => {
 		});
 	});
 
+	it("Plan 模式只放行只读工具，yolo 与会话放行都不能绕过", () => {
+		const policy = new PermissionPolicy("yolo");
+		policy.allowForSession("bash", { key: "git status", label: "git status" });
+		policy.setPlanMode(true);
+
+		assert.equal(policy.planMode, true);
+		assert.deepEqual(policy.decide("read", READ_ONLY, {}), { kind: "allow" });
+		assert.deepEqual(policy.decide("present_plan", READ_ONLY, {}), { kind: "allow" });
+		assert.equal(policy.decide("bash", WRITES, {}, "core", "git status").kind, "deny");
+		assert.equal(policy.decide("todo", READ_ONLY, {}).kind, "deny");
+		assert.equal(policy.decide("plugin-read", READ_ONLY, {}, "plugin").kind, "deny");
+
+		policy.setPlanMode(false);
+		assert.equal(policy.planMode, false);
+		assert.deepEqual(policy.decide("bash", WRITES, {}, "core", "git status"), { kind: "allow" });
+	});
+
+	it("present_plan 只在 Plan 模式可用", () => {
+		const policy = new PermissionPolicy("ask");
+		assert.deepEqual(policy.decide("present_plan", READ_ONLY, {}), {
+			kind: "deny",
+			reason: "present_plan is only available in Plan mode",
+		});
+	});
+
 	it("计数", () => {
 		const policy = new PermissionPolicy("ask");
 		assert.equal(policy.ruleCount(), 0);

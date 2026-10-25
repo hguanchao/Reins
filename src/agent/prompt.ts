@@ -11,7 +11,15 @@ import type { PromptInstruction } from "./instructions.ts";
  */
 
 /** 渲染顺序。提示词的结构固定，顺序不随注册顺序变化，否则每次请求的缓存前缀都不一样。 */
-const SECTION_ORDER: readonly string[] = ["preamble", "tools", "skills", "instructions", "rules", "cwd"];
+const SECTION_ORDER: readonly string[] = [
+	"preamble",
+	"tools",
+	"skills",
+	"instructions",
+	"checkpoint",
+	"rules",
+	"cwd",
+];
 
 const PREAMBLE = `You are Reins, a coding agent running in the user's terminal. You work inside a workspace: inspect it, change files, run commands, and report the result.
 
@@ -31,6 +39,33 @@ How to communicate:
 - Answer in the user's language. Be concise and direct; skip pleasantries and filler.
 - Lead with the outcome: what changed, how it was verified, and what remains.
 - Refer to files by path, with line numbers when they help. Do not refer to "above", "below", or an earlier message.`;
+
+/**
+ * Plan 模式的提示词。
+ *
+ * 普通 preamble 要求「不要停在计划上」，这里必须整段替换而不是追加，否则同一份提示词里
+ * 会同时出现「继续实现」和「不要实现」两条相反指令。Plan 模式的产出是计划本身，工具清单
+ * 已由注册表白名单收窄；这里负责把「怎么探索、问到什么程度、何时提交」说清楚。
+ */
+const PLAN_PREAMBLE = `You are Reins, a coding agent running in the user's terminal. You are in Plan mode: you research and design, but you do not implement.
+
+How to plan:
+- Inspect the workspace with the available read-only tools. Resolve questions from the code and existing configuration instead of asking.
+- Do not edit files, run shell commands, delegate to subagents, or update a task list. Those capabilities are unavailable in Plan mode.
+- If a decision genuinely cannot be discovered, ask the user one focused question and stop. For low-impact gaps, choose the conservative option and state it as an assumption.
+- When the plan is decision-complete, call present_plan with the full plan in Markdown. Do not implement after submitting it.
+- If the user asks for execution while you are in Plan mode, do not start; tell them to approve the plan or leave Plan mode.
+
+A decision-complete plan has:
+- A short summary of the problem and the chosen approach.
+- The files or subsystems to change and what each change accomplishes.
+- Ordered implementation steps, naming existing utilities to reuse where they matter.
+- Verification: the commands or checks that prove the result works.
+- Assumptions: decisions the implementer cannot infer from the repository.
+
+How to communicate:
+- Answer in the user's language. Be concise and direct.
+- Refer to files by path. Do not write a plan file; the plan is submitted through present_plan.`;
 
 const TOOLS_HEADING = "You can use these tools:";
 const SKILLS_HEADING = "Skills you can use:";
@@ -112,6 +147,12 @@ function buildRules(tools: readonly ToolDeclaration[]): string {
 			rules.push(`Use ${alternatives.join(", ")} instead of their shell equivalents when they fit.`);
 		}
 	}
+	if (names.has("present_plan")) {
+		rules.push(
+			"Use present_plan once, after exploration, when the plan is decision-complete. Submit the " +
+				"whole plan rather than a summary, then stop and wait for the user's decision.",
+		);
+	}
 	if (names.has("todo")) {
 		rules.push(
 			"Use todo for work with three or more distinct steps; skip it for a single read, edit, command, " +
@@ -146,14 +187,21 @@ export interface PromptInput {
 	readonly skills?: readonly PromptSkill[];
 	/** 用户级与项目级规则文件（AGENTS.md）；为空时不写这一节 */
 	readonly instructions?: readonly PromptInstruction[];
+	/** Plan 模式：整段替换 preamble，并让模型只产出计划 */
+	readonly planMode?: boolean;
+	/** 撤销后的一次性提醒：工作区已回滚，旧工具结果不再代表磁盘现状 */
+	readonly undoNotice?: string;
 }
 
 /** 生成当前应当生效的分段。只有内容变化时才需要写进会话。 */
 export function buildPromptSections(input: PromptInput): Record<string, string> {
 	const rules = buildRules(input.tools);
 	const sections: Record<string, string> = {
-		preamble: PREAMBLE,
-		cwd: `Workspace root: ${input.cwd}\nRelative paths and shell commands resolve from this directory.`,
+		preamble: input.planMode === true ? PLAN_PREAMBLE : PREAMBLE,
+		cwd:
+			input.planMode === true
+				? `Workspace root: ${input.cwd}\nRelative paths resolve from this directory. Shell commands are unavailable in Plan mode.`
+				: `Workspace root: ${input.cwd}\nRelative paths and shell commands resolve from this directory.`,
 	};
 	if (rules.length > 0) sections["rules"] = `${RULES_HEADING}\n${rules}`;
 	if (input.tools.length > 0) {
@@ -181,6 +229,9 @@ export function buildPromptSections(input: PromptInput): Record<string, string> 
 			...instructions.map((entry) => `## ${entry.label}\n${entry.text}`),
 			INSTRUCTIONS_FOOTNOTE,
 		].join("\n\n");
+	}
+	if (input.undoNotice !== undefined && input.undoNotice.length > 0) {
+		sections["checkpoint"] = `Working tree update:\n${input.undoNotice}`;
 	}
 	return sections;
 }

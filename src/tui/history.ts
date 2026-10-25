@@ -14,6 +14,7 @@ import {
 	findToolByCallId,
 	findTopLevelToolByCallId,
 	type TranscriptLine,
+	type TranscriptPlan,
 	type TranscriptTurn,
 } from "./transcript.ts";
 
@@ -36,6 +37,8 @@ export interface TranscriptHistory {
 	readonly turns: readonly TranscriptTurn[];
 	/** 最后一张未收尾的任务表；续聊时用它恢复常驻面板 */
 	readonly todo?: TranscriptTodo;
+	/** 最近一份计划；重启或切会话后仍能从 /view-plan 打开 */
+	readonly plan?: TranscriptPlan;
 }
 
 export function buildTranscriptHistory(
@@ -45,6 +48,7 @@ export function buildTranscriptHistory(
 	const turns: MutableTurn[] = [];
 	let current: MutableTurn | undefined;
 	let lastTodo: TranscriptTodo | undefined;
+	let lastPlan: TranscriptPlan | undefined;
 
 	const ensureTurn = (prompt: string): MutableTurn => {
 		if (current === undefined) {
@@ -77,6 +81,16 @@ export function buildTranscriptHistory(
 							lastTodo = card;
 							// 收尾的列表是历史，回到对话流；未收尾的留给常驻面板
 							if (todoCardFinished(card)) currentTurn().response.push(card);
+							continue;
+						}
+					}
+					// 计划正文在工具参数里；成功结果没有对应的普通工具行，历史只还原计划卡
+					if (call.name === "present_plan") {
+						const text = planTextFromArgs(call.arguments);
+						if (text !== undefined) {
+							const plan: TranscriptPlan = { kind: "plan", text };
+							currentTurn().response.push(plan);
+							lastPlan = plan;
 							continue;
 						}
 					}
@@ -143,7 +157,17 @@ export function buildTranscriptHistory(
 		lastTodo !== undefined && lastTodo.items.length > 0 && !todoCardFinished(lastTodo)
 			? lastTodo
 			: undefined;
-	return { turns, ...(todo === undefined ? {} : { todo }) };
+	return {
+		turns,
+		...(todo === undefined ? {} : { todo }),
+		...(lastPlan === undefined ? {} : { plan: lastPlan }),
+	};
+}
+
+/** present_plan 的参数只有一份完整计划；空计划不产生卡片。 */
+function planTextFromArgs(args: Record<string, unknown>): string | undefined {
+	const text = args["plan"];
+	return typeof text === "string" && text.trim().length > 0 ? text : undefined;
 }
 
 function firstLine(content: string): string {

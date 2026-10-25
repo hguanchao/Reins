@@ -35,6 +35,13 @@ export type PermissionDecision =
 export class PermissionPolicy {
 	/** 审批方式可在会话内切换（Shift+Tab），所以可变；判定每次读当前值，切换即时生效。 */
 	#mode: ApprovalMode;
+	/**
+	 * Plan 模式：只读规划阶段。
+	 *
+	 * 它与审批方式正交——审批决定「改动时问不问」，Plan 决定「能不能改」。开启后所有
+	 * 会改状态的工具都被拒绝，yolo 也不能绕过。
+	 */
+	#planMode = false;
 	readonly #rules: PermissionRule[] = [];
 	/** 本会话内使用者明确放行的范围；只存在于当前进程，退出即失效 */
 	readonly #sessionAllowed = new Set<string>();
@@ -58,6 +65,16 @@ export class PermissionPolicy {
 		this.#mode = mode;
 	}
 
+	/** 当前是否处于 Plan 模式；界面徽标与提示词逐轮读取。 */
+	get planMode(): boolean {
+		return this.#planMode;
+	}
+
+	/** 切换 Plan 模式。只影响本进程，不写配置文件。 */
+	setPlanMode(enabled: boolean): void {
+		this.#planMode = enabled;
+	}
+
 	/** 追加一条加严规则。装载插件期间由宿主调用。 */
 	addRule(rule: PermissionRule): void {
 		this.#rules.push(rule);
@@ -75,10 +92,10 @@ export class PermissionPolicy {
 	/**
 	 * 判定一次工具调用。
 	 *
-	 * 顺序：规则 → 会话放行 → 只读工具 → 审批方式。规则排在最前，因为它们表达的是「明令
-	 * 禁止」，不该被审批方式绕过；会话放行是使用者在本会话里明确说过的「总是允许」，排在
-	 * 插件规则之后即明令加严仍然优先；只读工具直接放行，是因为每读一个文件都问一次只会
-	 * 让人养成无脑同意的习惯，等到真正危险的那次也一样会同意。
+	 * 顺序：规则 → Plan 模式 → 会话放行 → 只读工具 → 审批方式。规则排在最前，因为它们表达
+	 * 的是「明令禁止」，不该被审批方式绕过；Plan 模式排在会话放行之前，保证「本会话总是
+	 * 允许」与 yolo 都不能把写操作带进规划阶段；只读工具直接放行，是因为每读一个文件都问
+	 * 一次只会让人养成无脑同意的习惯，等到真正危险的那次也一样会同意。
 	 *
 	 * 只读标注只对核心工具生效：插件可以自己声明这个字段，若据此直接放行，插件就等于
 	 * 给自己开了免审批通道。
@@ -93,6 +110,28 @@ export class PermissionPolicy {
 		for (const rule of this.#rules) {
 			if (!rule.matches(tool, args)) continue;
 			return { kind: rule.decision, reason: rule.reason };
+		}
+
+		if (this.#planMode) {
+			// todo 虽然是只读工具，但它描述的是执行进度；规划阶段由计划本身承载步骤
+			if (tool === "todo") {
+				return {
+					kind: "deny",
+					reason: "todo is unavailable in Plan mode; put the steps in the plan instead",
+				};
+			}
+			if (annotations.readOnly && source !== "plugin") return { kind: "allow" };
+			return {
+				kind: "deny",
+				reason:
+					"Plan mode is read-only; finish the plan and call present_plan, " +
+					"or leave Plan mode before changing anything",
+			};
+		}
+
+		// present_plan 只属于规划阶段；正常模式的工具清单里不会有它，这里再兜一层
+		if (tool === "present_plan") {
+			return { kind: "deny", reason: "present_plan is only available in Plan mode" };
 		}
 
 		// 使用者的会话放行排在插件规则之后：明令加严的规则仍然优先

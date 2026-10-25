@@ -1,18 +1,19 @@
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { accessSync } from "node:fs";
-import { join } from "node:path";
-
-import stripAnsi from "strip-ansi";
-
+import type { JobManager } from "../jobs.ts";
 import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
+import { MAX_CAPTURED_BYTES, resolveShell, startShellProcess } from "../shell-process.ts";
 import { DEFAULT_LIMITS, truncateTail } from "../truncate.ts";
+
+export { resolveShell } from "../shell-process.ts";
 
 /**
  * 执行 shell 命令。
  *
  * 这是四个核心工具里唯一具备任意执行能力的，所以命令先经沙箱包装再交给 shell——沙箱不需要
  * 替换这个工具本身，它只需要在这里加一层外壳。
+ *
+ * background 为 true 时不在本轮等待：进程交给宿主的 JobManager，工具立刻返回 job id；
+ * 前台命令仍保持原来的超时、中止与输出截断。
  */
 
 const PARAMETERS = {
@@ -22,7 +23,14 @@ const PARAMETERS = {
 		timeout: {
 			type: "integer",
 			minimum: 1,
-			description: "Timeout in seconds. Defaults to 600; the command and its child processes are killed when it expires.",
+			description:
+				"Timeout in seconds. Foreground commands default to 600; background commands run without a timeout when omitted.",
+		},
+		background: {
+			type: "boolean",
+			description:
+				"Run the command as a background job and return its job id immediately. Use job_output to read " +
+				"its output or kill_job to stop it.",
 		},
 	},
 	required: ["command"],
@@ -31,6 +39,7 @@ const PARAMETERS = {
 type BashArgs = {
 	readonly command: string;
 	readonly timeout?: number;
+	readonly background?: boolean;
 };
 
 /**
@@ -41,10 +50,7 @@ type BashArgs = {
  */
 const DEFAULT_TIMEOUT_SECONDS = 600;
 
-/** 累积输出的上限。超出部分拿不回来，但必须告诉模型，否则它会以为这就是全部。 */
-const MAX_CAPTURED_BYTES = 5 * 1024 * 1024;
-
-export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
+export function createBashTool(shellPath?: string, jobs?: JobManager): ToolDefinition<BashArgs> {
 	return {
 		name: "bash",
 		summary: "Run a shell command in the workspace root (Git Bash on Windows)",
@@ -53,7 +59,8 @@ export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
 			"relative to the root and do not prefix commands with cd. Prefer one simple command per call, and use the " +
 			`dedicated file and search tools when they fit. Output is truncated from the end beyond ` +
 			`${DEFAULT_LIMITS.maxLines} lines or ${DEFAULT_LIMITS.maxBytes / 1024} KB; a non-zero exit code marks the ` +
-			"call as failed. " +
+			"call as failed. Set background to true for long-running commands; otherwise the call waits for the " +
+			"command to finish. " +
 			(process.platform === "win32"
 				? "On Windows the shell is Git Bash: use POSIX syntax and /c/... paths, not cmd.exe syntax. "
 				: "") +
@@ -68,11 +75,40 @@ export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
 		},
 
 		async execute({ args, workspace, sandbox, session, signal }): Promise<ToolResult> {
-			const shell = resolveShell(undefined, shellPath);
-			const wrapped = sandbox.wrapCommand(args.command);
-			const timeoutMs = (args.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
+			if (args.background === true) {
+				if (jobs === undefined) {
+					return {
+						content: "Background jobs are unavailable in this mode; run the command without background.",
+						isError: true,
+					};
+				}
+				try {
+					const job = jobs.start({
+						command: args.command,
+						workspace,
+						sandbox,
+						session,
+						...(args.timeout === undefined ? {} : { timeoutSeconds: args.timeout }),
+					});
+					return {
+						content:
+							`Started background job ${job.id}: ${args.command}\n` +
+							`Use job_output with id "${job.id}" to read output, or kill_job to stop it.`,
+						details: { jobId: job.id, background: true },
+					};
+				} catch (error) {
+					return {
+						content: `Failed to start background job: ${error instanceof Error ? error.message : String(error)}`,
+						isError: true,
+					};
+				}
+			}
 
-			const child = spawn(shell.command, shell.args(wrapped), {
+			const shell = resolveShell(undefined, shellPath);
+			const timeoutMs = (args.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
+			const shellProcess = startShellProcess({
+				shell,
+				command: sandbox.wrapCommand(args.command),
 				cwd: workspace.root,
 				env: {
 					// shell 的默认值先铺，使用者自己的环境优先
@@ -81,26 +117,20 @@ export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
 					REINS_SESSION_ID: session.id,
 					...(session.path === null ? {} : { REINS_SESSION_FILE: session.path }),
 				},
-				// 自成进程组，超时或中止时才能把命令带出来的子进程一起结束
-				detached: process.platform !== "win32",
-				stdio: ["ignore", "pipe", "pipe"],
-				windowsHide: true,
 			});
-
-			const collected = new OutputCollector(child);
 			const stop = { timedOut: false, aborted: false };
 
 			const timer = setTimeout(() => {
 				stop.timedOut = true;
-				killTree(child);
+				shellProcess.kill();
 			}, timeoutMs);
 			const onAbort = (): void => {
 				stop.aborted = true;
-				killTree(child);
+				shellProcess.kill();
 			};
 			signal.addEventListener("abort", onAbort, { once: true });
 
-			const exited = await waitForExit(child);
+			const exited = await shellProcess.wait();
 			clearTimeout(timer);
 			signal.removeEventListener("abort", onAbort);
 
@@ -108,9 +138,10 @@ export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
 				return { content: `Failed to start ${shell.command}: ${exited.reason}`, isError: true };
 			}
 
+			const output = shellProcess.output();
 			return buildResult({
-				output: collected.text(),
-				overflowed: collected.overflowed,
+				output: output.text,
+				overflowed: output.overflowed,
 				exitCode: exited.code,
 				timedOut: stop.timedOut,
 				aborted: stop.aborted,
@@ -181,209 +212,6 @@ function tokenizeCommand(command: string): readonly string[] | undefined {
 	if (escaped || quote !== undefined) return undefined;
 	if (current.length > 0) tokens.push(current);
 	return tokens;
-}
-
-interface Shell {
-	readonly command: string;
-	readonly args: (command: string) => string[];
-	/** 额外注入的环境变量；使用者自己的环境优先 */
-	readonly env: Readonly<Record<string, string>>;
-}
-
-/** resolveShell 的输入来源；抽出来是为了在非 Windows 上也能测试 Windows 的分支。 */
-interface ShellLookup {
-	readonly platform: NodeJS.Platform;
-	readonly env: NodeJS.ProcessEnv;
-	readonly exists: (path: string) => boolean;
-	/** 返回 PATH 上所有同名可执行文件，按查找顺序排列 */
-	readonly which: (name: string) => readonly string[];
-}
-
-/**
- * 选 shell。
- *
- * Windows 上工具叫 bash，就必须真的跑 bash：cmd.exe 不理解 `pwd`、`/c/...` 这类写法，
- * 也不保证 UTF-8 输出。优先常见的 Git Bash 安装位置，再查 PATH；WSL 的 bash 采用另一套
- * 路径规则，不能和这里给模型的 POSIX 提示混用，因此跳过。找不到就明确报错，不静默退回 cmd。
- */
-export function resolveShell(lookup: ShellLookup = systemLookup(), shellPath?: string): Shell {
-	if (shellPath !== undefined) {
-		if (!lookup.exists(shellPath)) {
-			throw new Error(
-				`Configured shellPath not found: ${shellPath}; set shellPath or shell_path in config.toml`,
-			);
-		}
-		return bashShell(shellPath);
-	}
-
-	if (lookup.platform !== "win32") {
-		return {
-			command: lookup.env["SHELL"] ?? "/bin/sh",
-			args: (command) => ["-c", command],
-			env: {},
-		};
-	}
-
-	for (const candidate of gitBashCandidates(lookup.env)) {
-		if (lookup.exists(candidate)) return bashShell(candidate);
-	}
-
-	for (const candidate of lookup.which("bash.exe")) {
-		if (!isWslBash(candidate)) return bashShell(candidate);
-	}
-
-	throw new Error(
-		"No bash found. On Windows Reins runs commands with Git Bash; install Git for Windows, make sure " +
-			"bash.exe is on PATH, or set shellPath or shell_path in config.toml. WSL bash is not used.",
-	);
-}
-
-function bashShell(command: string): Shell {
-	return {
-		command,
-		args: (input) => ["-c", input],
-		// 系统代码页输出（中文 Windows 上是 GBK）到 UTF-8 解码会变成乱码；先给解释器一个
-		// UTF-8 默认值，使用者自己设置的同名变量仍然优先
-		env: { PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8:surrogateescape" },
-	};
-}
-
-function gitBashCandidates(env: NodeJS.ProcessEnv): readonly string[] {
-	const roots = [
-		env["ProgramFiles"],
-		env["ProgramFiles(x86)"],
-		env["LOCALAPPDATA"] === undefined ? undefined : join(env["LOCALAPPDATA"], "Programs"),
-	];
-	return roots
-		.filter((root): root is string => root !== undefined && root.length > 0)
-		.map((root) => join(root, "Git", "bin", "bash.exe"));
-}
-
-function isWslBash(path: string): boolean {
-	const normalized = path.toLowerCase().replaceAll("/", "\\");
-	return (
-		/\\windows\\(?:system32|sysnative)\\bash\.exe$/.test(normalized) ||
-		/\\windowsapps\\bash\.exe$/.test(normalized)
-	);
-}
-
-function systemLookup(): ShellLookup {
-	return {
-		platform: process.platform,
-		env: process.env,
-		exists: (path) => {
-			try {
-				accessSync(path);
-				return true;
-			} catch {
-				return false;
-			}
-		},
-		which: findOnPath,
-	};
-}
-
-function findOnPath(name: string): readonly string[] {
-	const finder = process.platform === "win32" ? "where.exe" : "which";
-	try {
-		const result = spawnSync(finder, [name], { encoding: "utf8", timeout: 5000, windowsHide: true });
-		if (result.status !== 0 || typeof result.stdout !== "string") return [];
-		return result.stdout
-			.split(/\r?\n/)
-			.map((line) => line.trim())
-			.filter((line) => line.length > 0);
-	} catch {
-		return [];
-	}
-}
-
-/**
- * 收集合并后的输出。
- *
- * 标准输出与标准错误合在一起：对使用者的判断来说，命令「报了什么」比「从哪个流报的」更重要，
- * 分两段显示反而要来回对照。超过上限后停止累积，只记下发生过溢出。
- */
-class OutputCollector {
-	readonly #chunks: Buffer[] = [];
-	#kept = 0;
-	#overflowed = false;
-
-	constructor(child: ChildProcess) {
-		child.stdout?.on("data", (chunk: Buffer) => this.#accept(chunk));
-		child.stderr?.on("data", (chunk: Buffer) => this.#accept(chunk));
-	}
-
-	get overflowed(): boolean {
-		return this.#overflowed;
-	}
-
-	text(): string {
-		return sanitizeOutput(Buffer.concat(this.#chunks).toString("utf8"));
-	}
-
-	#accept(chunk: Buffer): void {
-		if (this.#kept >= MAX_CAPTURED_BYTES) {
-			this.#overflowed = true;
-			return;
-		}
-		const remaining = MAX_CAPTURED_BYTES - this.#kept;
-		const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
-		if (chunk.length > remaining) this.#overflowed = true;
-		this.#chunks.push(slice);
-		this.#kept += slice.length;
-	}
-}
-
-/**
- * 清掉终端转义序列与控制字符。
- *
- * 命令输出会进入模型上下文：颜色码与光标控制对模型没有意义，二进制控制字符还可能破坏
- * 界面与统计。制表、换行、回车保留，它们是正文的一部分。
- */
-function sanitizeOutput(text: string): string {
-	return stripAnsi(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "");
-}
-
-interface ExitOutcome {
-	readonly started: boolean;
-	readonly code: number | null;
-	readonly reason: string;
-}
-
-function waitForExit(child: ChildProcess): Promise<ExitOutcome> {
-	return new Promise((resolve) => {
-		child.on("error", (error) => {
-			resolve({ started: false, code: null, reason: error.message });
-		});
-		child.on("close", (code) => {
-			resolve({ started: true, code, reason: "" });
-		});
-	});
-}
-
-/** 连同命令带出来的子进程一起结束。只杀直接子进程会留下孤儿进程继续占着端口或文件。 */
-function killTree(child: ChildProcess): void {
-	if (child.pid === undefined) return;
-	if (process.platform === "win32") {
-		// 用 System32 下的绝对路径，避免 PATH 上有同名程序时杀错东西
-		const taskkill = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "taskkill.exe");
-		try {
-			const killer = spawn(taskkill, ["/pid", String(child.pid), "/T", "/F"], {
-				stdio: "ignore",
-				windowsHide: true,
-			});
-			// spawn 失败只会发 error 事件；不消费就会变成未捕获异常
-			killer.on("error", () => child.kill());
-		} catch {
-			child.kill();
-		}
-		return;
-	}
-	try {
-		process.kill(-child.pid, "SIGKILL");
-	} catch {
-		child.kill("SIGKILL");
-	}
 }
 
 function buildResult(input: {

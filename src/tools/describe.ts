@@ -98,6 +98,7 @@ function toolGroupKind(tool: string): ToolGroupKind | undefined {
 /** 内置工具里缩写不适合直接展示的，换成完整名称；工具本名仍保持原样。 */
 const DISPLAY_NAMES: Readonly<Record<string, string>> = {
 	ls: "List",
+	present_plan: "Present plan",
 };
 
 /** 工具展示名的唯一入口：审批面板、对话流、历史回填与 print-mode 都从这里取名。 */

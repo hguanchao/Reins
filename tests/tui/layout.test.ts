@@ -5,7 +5,8 @@ import { describe, it } from "node:test";
 import type { AgentEvent, AgentEventListener } from "../../src/agent/events.ts";
 import { ApprovalBroker } from "../../src/permission/approval.ts";
 import type { ApprovalAnswer } from "../../src/permission/policy.ts";
-import { runTui, type AgentRuntime } from "../../src/tui/layout.ts";
+import { runTui, type AgentRuntime, type JobSource } from "../../src/tui/layout.ts";
+import type { JobEvent, JobView } from "../../src/tui/job-pages.ts";
 import { THEME } from "../../src/tui/theme.ts";
 
 class FakeInput extends EventEmitter {
@@ -1680,7 +1681,7 @@ describe("全屏布局", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
-		// 七条命令的面板占九行，默认 12 行终端会把主区域挤没，警告就看不见了
+		// 命令已经超过一屏：只显示前八条，默认 12 行终端会把主区域挤没，警告就看不见了
 		output.rows = 20;
 		const running = runTui({
 			version: "1.2.3",
@@ -1702,7 +1703,7 @@ describe("全屏布局", () => {
 			assert.ok(text.includes("/compact"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 7 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 12 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);
@@ -3868,12 +3869,13 @@ describe("全屏布局", () => {
 		});
 
 		try {
-			input.emit("data", Buffer.from("/"));
+			// 内置命令已经占满一屏，先过滤出插件命令再看补全
+			input.emit("data", Buffer.from("/re"));
 			let text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("/reload"));
 			assert.ok(text.includes("Reload external plugins"));
 
-			input.emit("data", Buffer.from("reload now\r"));
+			input.emit("data", Buffer.from("load now\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 
 			text = frameLines(output).map(plain).join("\n");
@@ -4707,5 +4709,598 @@ describe("常驻任务面板占位", () => {
 		}
 
 		assert.equal(await running, 0);
+	});
+});
+
+describe("Plan 模式", () => {
+	it("提交计划后自动打开审批页，批准后带着完整计划实现", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		let planMode = false;
+		const agent = createFakeAgent();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			planMode: {
+				current: () => planMode,
+				select: (enabled) => {
+					planMode = enabled;
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/plan\r"));
+			assert.equal(planMode, true);
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("PLAN"));
+
+			input.emit("data", Buffer.from("plan it\r"));
+			assert.deepEqual(agent.prompts, ["plan it"]);
+
+			agent.emit({
+				type: "tool_start",
+				callId: "p1",
+				name: "present_plan",
+				args: { plan: "# Add Plan mode\n\n## Steps\n\n1. Add the gate." },
+			});
+			agent.emit({
+				type: "tool_end",
+				callId: "p1",
+				name: "present_plan",
+				isError: false,
+				durationMs: 1,
+				summary: "Plan submitted for review.",
+			});
+			await agent.finish();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — plan"));
+			assert.ok(text.includes("Add Plan mode"));
+			assert.ok(text.includes("approve & implement"));
+
+			input.emit("data", Buffer.from("a"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			assert.equal(planMode, false);
+			assert.equal(agent.prompts.length, 2);
+			assert.ok(agent.prompts[1]?.startsWith("Implement this plan:"));
+			assert.ok(agent.prompts[1]?.includes("Add the gate."));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Implement this plan:"));
+			assert.equal(text.includes("Reins — plan"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("历史计划可以重新打开，双击计划卡与 q 退出都生效", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		let planMode = false;
+		const plan = {
+			kind: "plan" as const,
+			text: "# Saved plan\n\n## Steps\n\n1. Keep it.",
+		};
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			planMode: {
+				current: () => planMode,
+				select: (enabled) => {
+					planMode = enabled;
+				},
+			},
+			history: [{ prompt: "old", response: [plan] }],
+			historyPlan: plan,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/plan\r"));
+			assert.equal(planMode, true);
+			input.emit("data", Buffer.from("/view-plan\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — plan"));
+			assert.ok(text.includes("Saved plan"));
+
+			// Esc 只关页面，Plan 模式仍然开着
+			input.emit("data", Buffer.from("\x1b"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(planMode, true);
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Reins — plan"), false);
+
+			// 双击计划卡重新打开
+			const row =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("◇ Plan")) + 1;
+			assert.ok(row > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — plan"));
+
+			// q 退出 Plan 模式
+			input.emit("data", Buffer.from("q"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(planMode, false);
+			assert.equal(plain(frameLines(output).join("\n")).includes("Reins — plan"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Plan 模式下插件命令不执行", async () => {
+		let called = false;
+		let planMode = true;
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			planMode: {
+				current: () => planMode,
+				select: (enabled) => {
+					planMode = enabled;
+				},
+			},
+			pluginCommands: {
+				list: () => [{ name: "reload", description: "Reload plugins", enabled: true }],
+				run: async () => {
+					called = true;
+					return ["reloaded"];
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/reload\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			assert.equal(called, false);
+			assert.ok(
+				plain(frameLines(output).join("\n")).includes("Plugin commands are unavailable in Plan mode"),
+			);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+});
+
+describe("Plan 模式交互补充", () => {
+	it("要求修改时关闭页面、保持 Plan 模式并预填输入", async () => {
+		let planMode = false;
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		const plan = { kind: "plan" as const, text: "# Saved plan\n\n1. Keep it." };
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			planMode: {
+				current: () => planMode,
+				select: (enabled) => {
+					planMode = enabled;
+				},
+			},
+			history: [{ prompt: "old", response: [plan] }],
+			historyPlan: plan,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/view-plan\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — plan"));
+
+			input.emit("data", Buffer.from("r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			assert.equal(planMode, true);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Reins — plan"), false);
+			assert.ok(text.includes("Revise the plan:"));
+			assert.ok(text.includes("PLAN"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Plan 模式隐藏旧任务表，退出后恢复", async () => {
+		let planMode = false;
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			planMode: {
+				current: () => planMode,
+				select: (enabled) => {
+					planMode = enabled;
+				},
+			},
+			historyTodo: {
+				kind: "todo",
+				items: [{ content: "写工具", status: "in_progress" }],
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			assert.ok(frameLines(output).map(plain).join("\n").includes("写工具"));
+
+			input.emit("data", Buffer.from("/plan\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(planMode, true);
+			assert.equal(frameLines(output).map(plain).join("\n").includes("写工具"), false);
+
+			input.emit("data", Buffer.from("/plan\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(planMode, false);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("写工具"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+});
+
+describe("检查点与撤销集成", () => {
+	function source(available = true): {
+		source: import("../../src/tui/layout.ts").CheckpointSource;
+		readonly restored: string[];
+	} {
+		const entry = {
+			id: "t2",
+			turn: 2,
+			createdAt: Date.now() - 60_000,
+			kind: "turn" as const,
+			label: "Turn 2",
+			changes: 1,
+		};
+		const preview = {
+			entry,
+			changes: [{ path: "src/a.ts", status: "modified" as const }],
+		};
+		const restored: string[] = [];
+		return {
+			restored,
+			source: {
+				available: () => available,
+				error: () => (available ? undefined : "Checkpoints need a Git repository"),
+				list: () => (available ? [entry] : []),
+				latestUndoable: async () => (available ? preview : undefined),
+				preview: async () => preview,
+				restore: async () => {
+					restored.push(entry.id);
+					return { entry, restored: 1, removed: 0, safety: { ...entry, id: "s1", kind: "safety", label: "Before undo of Turn 2" } };
+				},
+			},
+		};
+	}
+
+	it("/checkpoints 打开列表、预览并恢复", async () => {
+		const fake = source();
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			checkpoints: fake.source,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/checkpoints\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — checkpoints"));
+			assert.ok(text.includes("Turn 2"));
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — undo"));
+			assert.ok(text.includes("M  src/a.ts"));
+			assert.ok(text.includes("will be restored"));
+
+			input.emit("data", Buffer.from("u"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(fake.restored, ["t2"]);
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› /undo"));
+			assert.ok(text.includes("Undid Turn 2"));
+			assert.equal(text.includes("Reins — undo"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("/undo 直接预览最近变更并恢复", async () => {
+		const fake = source();
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			checkpoints: fake.source,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/undo\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — undo"));
+
+			input.emit("data", Buffer.from("u"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(fake.restored, ["t2"]);
+			assert.ok(plain(frameLines(output).join("\n")).includes("Undid Turn 2"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("列表预览后 Esc 取消回列表", async () => {
+		const fake = source();
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			checkpoints: fake.source,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/checkpoints\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — undo"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — checkpoints"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(plain(frameLines(output).join("\n")).includes("Reins — checkpoints"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("检查点不可用时命令给出原因，不打开页面", async () => {
+		const fake = source(false);
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			checkpoints: fake.source,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/undo\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			const text = plain(frameLines(output).join("\n"));
+			assert.ok(text.includes("Checkpoints need a Git repository"));
+			assert.equal(text.includes("Reins — undo"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+});
+
+describe("后台作业集成", () => {
+	function fakeJobs(initial: readonly JobView[] = []): {
+		readonly source: JobSource;
+		readonly jobs: () => readonly JobView[];
+		finish(id: string, status: "done" | "failed" | "killed"): void;
+	} {
+		let jobs = [...initial];
+		const listeners = new Set<(event: JobEvent) => void>();
+		const emit = (event: JobEvent): void => {
+			for (const listener of listeners) listener(event);
+		};
+		const output = new Map<string, string>([["j1", "line one\nline two\n"]]);
+		return {
+			source: {
+				list: () => jobs,
+				output: (id) => output.get(id) ?? "",
+				kill: (id) => {
+					const job = jobs.find((candidate) => candidate.id === id);
+					if (job === undefined || job.status !== "running") return;
+					const endedAt = Date.now();
+					jobs = jobs.map((candidate) =>
+						candidate.id === id ? { ...candidate, status: "killed", endedAt } : candidate,
+					);
+					emit({ type: "finished", job: jobs.find((candidate) => candidate.id === id)! });
+				},
+				subscribe: (listener) => {
+					listeners.add(listener);
+					return () => listeners.delete(listener);
+				},
+				shutdown: () => undefined,
+			},
+			jobs: () => jobs,
+			finish: (id, status) => {
+				const endedAt = Date.now();
+				jobs = jobs.map((job) =>
+					job.id === id ? { ...job, status, endedAt, exitCode: status === "done" ? 0 : 1 } : job,
+				);
+				emit({ type: "finished", job: jobs.find((job) => job.id === id)! });
+			},
+		};
+	}
+
+	const running: JobView = {
+		id: "j1",
+		command: "npm run dev",
+		status: "running",
+		startedAt: Date.now() - 42_000,
+		sessionId: "s",
+	};
+
+	it("运行中作业在页脚上方显示 Jobs bar", async () => {
+		const fake = fakeJobs([running]);
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const runningTui = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			jobs: fake.source,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("◎ Jobs"));
+			assert.ok(text.includes("1 running"));
+			assert.ok(text.includes("npm run dev"));
+			assert.ok(text.includes("/jobs"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await runningTui, 0);
+	});
+
+	it("/jobs 打开列表，Enter 看输出，k 终止", async () => {
+		const fake = fakeJobs([running]);
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const runningTui = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			jobs: fake.source,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/jobs\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — jobs"));
+			assert.ok(text.includes("▸ j1"));
+			assert.ok(text.includes("npm run dev"));
+			assert.ok(text.includes("Enter view output"));
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — jobs · j1"));
+			assert.ok(text.includes("line one"));
+			assert.ok(text.includes("k kill"));
+
+			input.emit("data", Buffer.from("k"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("killed"));
+
+			// 从输出页回到列表，再关掉页面才能看到对话流里的完成说明
+			input.emit("data", Buffer.from("\x1b"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — jobs"));
+			assert.equal(text.includes("Reins — jobs · j1"), false);
+
+			input.emit("data", Buffer.from("\x1b"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Job j1 killed"));
+			assert.equal(text.includes("Reins — jobs"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await runningTui, 0);
+	});
+
+	it("作业完成追加说明，Jobs bar 随运行数消失", async () => {
+		const fake = fakeJobs([running]);
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const runningTui = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			jobs: fake.source,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			fake.finish("j1", "done");
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Job j1 finished"));
+			assert.ok(text.includes("npm run dev"));
+			assert.equal(text.includes("◎ Jobs"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await runningTui, 0);
 	});
 });

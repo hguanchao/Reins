@@ -71,6 +71,42 @@ describe("系统提示词", () => {
 		assert.equal(withoutTodo?.includes("Use todo"), false);
 	});
 
+	it("Plan 模式整段替换 preamble，并说明提交计划的时机", () => {
+		const sections = buildPromptSections({
+			cwd: "/work",
+			tools: [tool("read", ""), tool("present_plan", "")],
+			planMode: true,
+		});
+		const preamble = sections["preamble"] ?? "";
+
+		assert.ok(preamble.includes("You are in Plan mode"));
+		assert.ok(preamble.includes("call present_plan"));
+		assert.equal(preamble.includes("Do not stop at a plan"), false);
+		assert.ok(sections["rules"]?.includes("Use present_plan once"));
+		assert.ok(sections["tools"]?.includes("- present_plan"));
+		assert.ok(sections["cwd"]?.includes("Shell commands are unavailable in Plan mode"));
+	});
+
+	it("Plan 模式的工具清单不会凭空出现 bash 或编辑规则", () => {
+		const sections = buildPromptSections({
+			cwd: "/work",
+			tools: [tool("read", ""), tool("present_plan", "")],
+			planMode: true,
+		});
+		assert.equal(sections["rules"]?.includes("Commands run in the workspace root"), false);
+		assert.ok(sections["rules"]?.includes("Inspect files with read"));
+	});
+
+	it("撤销提醒作为独立分段，只在提供时出现", () => {
+		const notice = "The working tree was rolled back; re-read files before acting.";
+		const withNotice = buildPromptSections({ cwd: "/work", tools: [], undoNotice: notice });
+		assert.equal(withNotice["checkpoint"], `Working tree update:\n${notice}`);
+		assert.ok(renderSystemPrompt(withNotice).includes(notice));
+
+		const without = buildPromptSections({ cwd: "/work", tools: [] });
+		assert.equal(without["checkpoint"], undefined);
+	});
+
 	it("用户与项目规则作为独立分段,空列表不写", () => {
 		const sections = buildPromptSections({
 			cwd: "/work",
