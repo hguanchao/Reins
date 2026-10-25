@@ -1,4 +1,4 @@
-import { offsetToLineColumn, type LineColumn } from "../config-error.ts";
+import { offsetToLineColumn, type LineColumn } from "../error.ts";
 import type { ConfigSource } from "../reader.ts";
 import {
 	isConfigTable,

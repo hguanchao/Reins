@@ -1,12 +1,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { resolveToolPath } from "../tool-path.ts";
+import { resolveToolPath } from "../path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
-import { formatEditDiff, type AppliedEdit } from "./edit-diff.ts";
-import { withFileMutation } from "./file-mutation-queue.ts";
-import { decodeTextFile, encodeTextFile } from "./text-file.ts";
+import { formatEditDiff, type AppliedEdit } from "./diff.ts";
+import { withFileMutation } from "./mutation-queue.ts";
+import { decodeTextFile, encodeTextFile } from "../text-file.ts";
 
 /**
  * 精确修改文件。

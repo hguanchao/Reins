@@ -1,4 +1,4 @@
-import type { LineColumn } from "../config-error.ts";
+import type { LineColumn } from "../error.ts";
 import type { ConfigSource } from "../reader.ts";
 import { isConfigTable, tableValue, type ConfigPath, type ConfigValue } from "../value.ts";
 import { JsonParser, jsonPathKey } from "./parser.ts";

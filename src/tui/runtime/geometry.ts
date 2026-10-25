@@ -1,4 +1,4 @@
-import { inputView, queueHeight } from "../footer.ts";
+import { inputView, queueHeight } from "../view/footer.ts";
 import { APPROVAL_PANEL_HEIGHT } from "../panel/approval-panel.ts";
 import { commandMenuHeight } from "../panel/command-menu.ts";
 import { effortMenuHeight } from "../panel/effort-menu.ts";
@@ -6,8 +6,8 @@ import { fileMenuHeight } from "../panel/file-menu.ts";
 import { modelMenuHeight } from "../panel/model-menu.ts";
 import { sessionMenuHeight } from "../panel/session-menu.ts";
 import { DEFAULT_COLUMNS, terminalHeight } from "../terminal.ts";
-import { todoCardFinished, TODO_PANEL_MAX_ITEMS } from "../todo-card.ts";
-import type { JobView } from "../job-pages.ts";
+import { todoCardFinished, TODO_PANEL_MAX_ITEMS } from "../view/todo-card.ts";
+import type { JobView } from "../page/job.ts";
 import type { TuiOptions } from "../options.ts";
 import {
 	COMPACT_FOOTER_FIXED_LINES,

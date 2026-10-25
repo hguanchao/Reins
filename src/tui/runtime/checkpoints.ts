@@ -1,7 +1,7 @@
 import { describeError } from "../../describe-error.ts";
-import type { CheckpointEntry } from "../../checkpoint/checkpoints.ts";
-import { CHECKPOINT_ACTION_HEIGHT } from "../checkpoint-pages.ts";
-import { ERROR_STATUS } from "../status.ts";
+import type { CheckpointEntry } from "../../checkpoint/service.ts";
+import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
+import { ERROR_STATUS } from "../render/status.ts";
 import { showPage } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 

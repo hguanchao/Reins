@@ -5,9 +5,9 @@ import {
 	type Config,
 	type McpServerConfig,
 	type SandboxMode,
-} from "./config-file.ts";
-import { ConfigFile } from "./config-file.ts";
-import { ConfigError } from "./config-error.ts";
+} from "./file.ts";
+import { ConfigFile } from "./file.ts";
+import { ConfigError } from "./error.ts";
 import type { ProvidersConfig, ProviderEntry } from "./providers-file.ts";
 
 /**

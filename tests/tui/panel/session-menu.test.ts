@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { displayWidth } from "../../../src/tui/text.ts";
+import { displayWidth } from "../../../src/tui/render/text.ts";
 import {
 	renderSessionMenu,
 	sessionMenuHeight,

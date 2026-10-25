@@ -1,4 +1,4 @@
-import type { McpServerConfig } from "../config/config-file.ts";
+import type { McpServerConfig } from "../config/file.ts";
 import type { Plugin } from "./host.ts";
 import { createMcpPlugin, type McpStatusSource } from "./mcp-plugin/index.ts";
 import sandboxPlugin from "./sandbox-plugin/index.ts";

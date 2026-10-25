@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { describeError } from "../describe-error.ts";
 
 import { estimateTokens } from "../agent/compactor.ts";
-import type { Config } from "../config/config-file.ts";
+import type { Config } from "../config/file.ts";
 import { ModelCatalog } from "../config/model-catalog.ts";
 import type { ProvidersConfig } from "../config/providers-file.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
@@ -12,7 +12,7 @@ import { clampEffort } from "../llm/effort.ts";
 import type { ApprovalReviewer } from "../permission/policy.ts";
 import type { Session } from "../session/session.ts";
 import { cacheHitRate, lastContextTokens, sumUsage } from "../session/usage.ts";
-import type { FooterInfo } from "../tui/footer.ts";
+import type { FooterInfo } from "../tui/view/footer.ts";
 import type { EffortMenuSource, ModelMenuSource } from "../tui/options.ts";
 import { currentBranch } from "../workspace/git.ts";
 import { createReviewer } from "./pipeline.ts";

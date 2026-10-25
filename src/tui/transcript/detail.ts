@@ -1,8 +1,8 @@
-import type { ResultDetailKind } from "../../tools/result-detail.ts";
+import type { ResultDetailKind } from "../../tools/result/detail.ts";
 import { highlightCode, type SyntaxSegment } from "../../tools/syntax.ts";
-import { characterWidth, displayWidth, truncateToWidth, wrapText } from "../text.ts";
-import { THEME } from "../theme.ts";
-import { syntaxColor } from "../syntax-style.ts";
+import { characterWidth, displayWidth, truncateToWidth, wrapText } from "../render/text.ts";
+import { THEME } from "../render/theme.ts";
+import { syntaxColor } from "../render/syntax-style.ts";
 import {
 	DETAIL_BAND_MAX_LINES,
 	DETAIL_BAND_LEFT,

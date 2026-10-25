@@ -6,7 +6,7 @@ import {
 	renderApprovalPanel,
 } from "../../../src/tui/panel/approval-panel.ts";
 import { ACCENT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
-import { THEME } from "../../../src/tui/theme.ts";
+import { THEME } from "../../../src/tui/render/theme.ts";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");

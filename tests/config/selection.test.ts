@@ -3,8 +3,8 @@ import { describe, it } from "node:test";
 
 import { computeCost, parseProviders } from "../../src/config/providers-file.ts";
 import { resolveSelection } from "../../src/config/selection.ts";
-import { parseConfig } from "../../src/config/config-file.ts";
-import { ConfigError } from "../../src/config/config-error.ts";
+import { parseConfig } from "../../src/config/file.ts";
+import { ConfigError } from "../../src/config/error.ts";
 
 const FULL = `{
 	"providers": {

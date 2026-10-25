@@ -3,7 +3,7 @@ import type { SessionReadView } from "../session/port.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
 import type { ToolDefinition, ToolResult } from "./contract.ts";
 import { formatDuration } from "./format.ts";
-import { MAX_CAPTURED_BYTES, resolveShell, startShellProcess, type ShellProcess } from "./shell-process.ts";
+import { MAX_CAPTURED_BYTES, resolveShell, startShellProcess, type ShellProcess } from "./shell.ts";
 import type { JsonSchema } from "./schema.ts";
 import { DEFAULT_LIMITS, truncateTail } from "./truncate.ts";
 

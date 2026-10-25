@@ -1,7 +1,7 @@
 import { describeToolCall, displayToolName, sanitizeDetail } from "../../tools/describe.ts";
 import { formatDuration } from "../../tools/format.ts";
 import type { AgentEvent } from "../../agent/events.ts";
-import { todoCardFinished, todoCardFromArgs } from "../todo-card.ts";
+import { todoCardFinished, todoCardFromArgs } from "../view/todo-card.ts";
 import type {
 	TranscriptLine,
 	TranscriptPlan,
@@ -28,7 +28,7 @@ import {
 	WRITING_RESPONSE,
 	WRITING_TOOL_CALL,
 	shortReason,
-} from "../status.ts";
+} from "../render/status.ts";
 import type { ActiveTurn, TuiHost, TuiState } from "./types.ts";
 
 /**

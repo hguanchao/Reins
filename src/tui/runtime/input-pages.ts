@@ -1,9 +1,9 @@
-import { CHECKPOINT_ACTION_HEIGHT } from "../checkpoint-pages.ts";
+import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
 import { MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, menuKey, scrollKey } from "../input.ts";
 import type { MouseInput } from "../input.ts";
-import { JOB_ACTION_HEIGHT } from "../job-pages.ts";
-import { PLAN_ACTION_HEIGHT } from "../plan-review.ts";
-import { SANDBOX_ACTION_HEIGHT } from "../sandbox-page.ts";
+import { JOB_ACTION_HEIGHT } from "../page/job.ts";
+import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
+import { SANDBOX_ACTION_HEIGHT } from "../page/sandbox.ts";
 import type { InputDeps } from "./input.ts";
 import type { TuiHost } from "./types.ts";
 

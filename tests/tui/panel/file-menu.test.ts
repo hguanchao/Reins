@@ -8,7 +8,7 @@ import {
 	formatFileReference,
 	renderFileMenu,
 } from "../../../src/tui/panel/file-menu.ts";
-import { displayWidth } from "../../../src/tui/text.ts";
+import { displayWidth } from "../../../src/tui/render/text.ts";
 
 const FILES = [
 	"src/tui/layout.ts",

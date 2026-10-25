@@ -2,13 +2,13 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { Buffer } from "node:buffer";
 import { dirname } from "node:path";
 
-import { resolveToolPath } from "../tool-path.ts";
+import { resolveToolPath } from "../path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
-import { formatEditDiff } from "./edit-diff.ts";
-import { withFileMutation } from "./file-mutation-queue.ts";
-import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "./text-file.ts";
+import { formatEditDiff } from "./diff.ts";
+import { withFileMutation } from "./mutation-queue.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "../text-file.ts";
 
 /** 创建或覆盖文件。父目录不存在时一并建出来，省掉一次单独的建目录往返。 */
 

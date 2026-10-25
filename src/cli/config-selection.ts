@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 
-import { ConfigError } from "../config/config-error.ts";
-import { ConfigFile, type Config } from "../config/config-file.ts";
+import { ConfigError } from "../config/error.ts";
+import { ConfigFile, type Config } from "../config/file.ts";
 import { mergeConfigs, mergeProviders } from "../config/merge.ts";
 import { loadProviders, type ProvidersConfig } from "../config/providers-file.ts";
 import {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
-import { parseConfig } from "../../src/config/config-file.ts";
+import { parseConfig } from "../../src/config/file.ts";
 import { initializeConfigFiles } from "../../src/config/initialize.ts";
 import { parseProviders } from "../../src/config/providers-file.ts";
 

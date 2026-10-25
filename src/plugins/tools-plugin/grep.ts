@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 
-import { resolveToolPath } from "../../tools/tool-path.ts";
+import { resolveToolPath } from "../../tools/path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
-import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "../../tools/builtin/text-file.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "../../tools/text-file.ts";
 import { MAX_LINE_LENGTH, truncateLine } from "../../tools/truncate.ts";
 import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "../../workspace/walk.ts";
 

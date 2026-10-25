@@ -1,4 +1,4 @@
-import { ConfigError, type LineColumn } from "./config-error.ts";
+import { ConfigError, type LineColumn } from "./error.ts";
 import { isConfigTable, type ConfigPath, type ConfigTable, type ConfigValue } from "./value.ts";
 
 /**

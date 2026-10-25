@@ -1,6 +1,6 @@
-import type { SandboxMode } from "../config/config-file.ts";
-import { Sandbox, type SandboxBackend, type SandboxView } from "../sandbox/policy.ts";
-import { verifyCommandIsolation } from "../sandbox/verify.ts";
+import type { SandboxMode } from "../config/file.ts";
+import { Sandbox, type SandboxBackend, type SandboxView } from "./policy.ts";
+import { verifyCommandIsolation } from "./verify.ts";
 
 /**
  * 沙箱当前的实际情况。

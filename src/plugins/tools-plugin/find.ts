@@ -1,4 +1,4 @@
-import { resolveToolPath } from "../../tools/tool-path.ts";
+import { resolveToolPath } from "../../tools/path.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
 import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "../../workspace/walk.ts";

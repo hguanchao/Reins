@@ -1,16 +1,16 @@
 import { sanitizeLine } from "../../tools/describe.ts";
-import { highlightImageMarkers } from "../image-attachments.ts";
-import { renderMarkdown } from "../markdown.ts";
+import { highlightImageMarkers } from "../../image/attachment.ts";
+import { renderMarkdown } from "../render/markdown.ts";
 import {
 	characterWidth,
 	displayWidth,
 	truncateToWidth,
 	wrapText,
 	wrappedLines,
-} from "../text.ts";
-import { THEME } from "../theme.ts";
-import { todoCardLines } from "../todo-card.ts";
-import type { AnimationFrame } from "../sweep.ts";
+} from "../render/text.ts";
+import { THEME } from "../render/theme.ts";
+import { todoCardLines } from "../view/todo-card.ts";
+import type { AnimationFrame } from "../render/sweep.ts";
 import {
 	lineIndexAtRow,
 	scrollState,

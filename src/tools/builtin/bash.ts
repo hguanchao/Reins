@@ -2,10 +2,10 @@ import { describeError } from "../../describe-error.ts";
 import type { JobManager } from "../jobs.ts";
 import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
-import { MAX_CAPTURED_BYTES, resolveShell, startShellProcess } from "../shell-process.ts";
+import { MAX_CAPTURED_BYTES, resolveShell, startShellProcess } from "../shell.ts";
 import { DEFAULT_LIMITS, truncateTail } from "../truncate.ts";
 
-export { resolveShell } from "../shell-process.ts";
+export { resolveShell } from "../shell.ts";
 
 /**
  * 执行 shell 命令。

@@ -1,4 +1,4 @@
-import type { SandboxMode } from "../config/config-file.ts";
+import type { SandboxMode } from "../config/file.ts";
 import { isPathInside, resolveRealPath } from "../workspace/boundary.ts";
 
 /**

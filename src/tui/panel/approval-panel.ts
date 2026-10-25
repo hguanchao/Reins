@@ -7,8 +7,8 @@ import {
 	PANEL_BG,
 	RESET,
 } from "./menu-panel.ts";
-import { displayWidth, truncateToWidth } from "../text.ts";
-import { THEME } from "../theme.ts";
+import { displayWidth, truncateToWidth } from "../render/text.ts";
+import { THEME } from "../render/theme.ts";
 
 /**
  * 工具审批面板。

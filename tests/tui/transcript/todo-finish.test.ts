@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { TranscriptTodo } from "../../../src/tui/todo-card.ts";
+import type { TranscriptTodo } from "../../../src/tui/view/todo-card.ts";
 import { describe, it } from "node:test";
 
 import { buildTranscriptView, renderTranscript, todoHeaderInView, toggleLastExpandable } from "../../../src/tui/transcript.ts";

@@ -1,13 +1,13 @@
-import { THINKING_LEVELS, type ThinkingLevel } from "../../config/config-file.ts";
+import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
 import { keepVisible } from "../panel/menu-panel.ts";
 import { findCommand } from "../commands.ts";
 import type { ModelMenuItem } from "../panel/model-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
-import { errorLine } from "../status.ts";
+import { errorLine } from "../render/status.ts";
 import { describeError } from "../../describe-error.ts";
 import type { TranscriptLine } from "../transcript.ts";
 import { filterFiles, findAtToken, formatFileReference } from "../panel/file-menu.ts";
-import { isImagePath } from "../image-attachments.ts";
+import { isImagePath } from "../../image/attachment.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { modalMenuOpen } from "./geometry.ts";
 import type { TuiHost } from "./types.ts";

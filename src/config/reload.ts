@@ -1,4 +1,4 @@
-import type { Config } from "./config-file.ts";
+import type { Config } from "./file.ts";
 
 /**
  * 配置热更新的分界线。

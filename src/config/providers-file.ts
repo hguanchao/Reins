@@ -1,10 +1,10 @@
-import { ConfigError } from "./config-error.ts";
+import { ConfigError } from "./error.ts";
 import {
 	readTextFile,
 	THINKING_LEVELS,
 	wrapParseErrors,
 	type ThinkingLevel,
-} from "./config-file.ts";
+} from "./file.ts";
 import { JsonDocument } from "./json/index.ts";
 import { providersFilePath } from "./paths.ts";
 import {

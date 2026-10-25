@@ -1,6 +1,6 @@
-import { JOB_ACTION_HEIGHT } from "../job-pages.ts";
-import { jobElapsed } from "../job-pages.ts";
-import type { JobView } from "../job-pages.ts";
+import { JOB_ACTION_HEIGHT } from "../page/job.ts";
+import { jobElapsed } from "../page/job.ts";
+import type { JobView } from "../page/job.ts";
 import { showPage } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 

@@ -1,4 +1,4 @@
-import { THEME } from "../theme.ts";
+import { THEME } from "../render/theme.ts";
 
 /** 用户提示背景，与菜单面板使用同一档浮起表面。 */
 export const PROMPT_BG = THEME.surface;

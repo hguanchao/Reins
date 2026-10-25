@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { FakeInput, FakeOutput, createFakeAgent, LEAVE, FOOTER_INFO, exitTui, lastFrame, frameLines, cursorAt, plain } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
-import { THEME } from "../../../src/tui/theme.ts";
+import { THEME } from "../../../src/tui/render/theme.ts";
 
 describe("滚动与输入", () => {
 	it("回复在提示下方增长并保持提示吸顶", (t) => {

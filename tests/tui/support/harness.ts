@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 
 import type { AgentEvent, AgentEventListener } from "../../../src/agent/events.ts";
 import type { AgentRuntime } from "../../../src/tui/options.ts";
-import type { ImageAttachment, ImageSource } from "../../../src/tui/image-attachments.ts";
+import type { ImageAttachment, ImageSource } from "../../../src/image/attachment.ts";
 
 /**
  * 全屏界面测试的公共脚手架。

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { jsonPathKey, JsonParser, type JsonObject } from "../../../src/config/json/parser.ts";
-import type { LineColumn } from "../../../src/config/config-error.ts";
-import { ConfigError } from "../../../src/config/config-error.ts";
+import type { LineColumn } from "../../../src/config/error.ts";
+import { ConfigError } from "../../../src/config/error.ts";
 function parse(source: string): { value: unknown; locations: Map<string, LineColumn> } {
 	try {
 		return new JsonParser(source).parse() as { value: unknown; locations: Map<string, LineColumn> };

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ConfigFile, parseConfig } from "../../src/config/config-file.ts";
+import { ConfigFile, parseConfig } from "../../src/config/file.ts";
 import { mergeConfigs, mergeProviders } from "../../src/config/merge.ts";
-import { ConfigError } from "../../src/config/config-error.ts";
+import { ConfigError } from "../../src/config/error.ts";
 import type { ProvidersConfig } from "../../src/config/providers-file.ts";
 
 const BASE = `provider = "a"\nmodel = "m1"\n`;

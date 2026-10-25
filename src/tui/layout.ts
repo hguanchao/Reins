@@ -103,7 +103,7 @@ import {
 import { submit } from "./runtime/submit.ts";
 import { togglingTranscriptAt } from "./runtime/view.ts";
 import type { ActiveTurn, TuiHost } from "./runtime/types.ts";
-import type { ImageAttachment } from "./image-attachments.ts";
+import type { ImageAttachment } from "../image/attachment.ts";
 import { measureTranscriptView, scrollTopForRow as scrollTopForRowImpl, type TranscriptMetrics } from "./transcript.ts";
 import type { TranscriptLine } from "./transcript.ts";
 

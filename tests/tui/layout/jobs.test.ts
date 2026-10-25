@@ -4,8 +4,8 @@ import { describe, it } from "node:test";
 import { FakeInput, FakeOutput, FOOTER_INFO, exitTui, frameLines, plain } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
 import type { JobSource } from "../../../src/tui/options.ts";
-import type { JobEvent } from "../../../src/tui/job-pages.ts";
-import type { JobView } from "../../../src/tui/job-pages.ts";
+import type { JobEvent } from "../../../src/tui/page/job.ts";
+import type { JobView } from "../../../src/tui/page/job.ts";
 
 describe("后台作业", () => {
 	function fakeJobs(initial: readonly JobView[] = []): {

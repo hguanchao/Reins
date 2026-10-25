@@ -1,6 +1,6 @@
 import type { ToolGroupKind } from "../../tools/describe.ts";
-import type { ResultDetailKind } from "../../tools/result-detail.ts";
-import type { TranscriptTodo } from "../todo-card.ts";
+import type { ResultDetailKind } from "../../tools/result/detail.ts";
+import type { TranscriptTodo } from "../view/todo-card.ts";
 
 /** 子代理的一次运行的终态:组清单与单个调用行都从这里渲染。 */
 export interface SubagentRunView {

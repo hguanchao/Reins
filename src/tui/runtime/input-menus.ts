@@ -1,4 +1,4 @@
-import { THINKING_LEVELS } from "../../config/config-file.ts";
+import { THINKING_LEVELS } from "../../config/file.ts";
 import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, dragMotion, menuIndexAtRow, menuKey } from "../input.ts";
 import type { MenuMouseTarget, MouseInput } from "../input.ts";
 import { menuPanelTop } from "./approval.ts";

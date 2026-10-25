@@ -5,7 +5,7 @@ import type { PromptSkill } from "../agent/prompt.ts";
 import { Compactor, compactionWindow } from "../agent/compactor.ts";
 import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
 import type { PromptInstruction } from "../agent/instructions.ts";
-import type { Config } from "../config/config-file.ts";
+import type { Config } from "../config/file.ts";
 import { pluginsDir, spillDir } from "../config/paths.ts";
 import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";

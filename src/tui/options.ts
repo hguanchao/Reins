@@ -3,20 +3,20 @@ import type {
 	CheckpointEntry,
 	CheckpointPreview,
 	CheckpointRestoreResult,
-} from "../checkpoint/checkpoints.ts";
-import type { ApprovalMode, NotifyMode, ThinkingLevel } from "../config/config-file.ts";
+} from "../checkpoint/service.ts";
+import type { ApprovalMode, NotifyMode, ThinkingLevel } from "../config/file.ts";
 import type { ApprovalBroker } from "../permission/approval.ts";
 import type { SandboxInfo } from "../sandbox/setup.ts";
 import type { CommandMenuItem } from "./panel/command-menu.ts";
 import type { FileSource } from "./panel/file-menu.ts";
-import type { FooterInfo } from "./footer.ts";
-import type { ImageAttachment, ImageSource } from "./image-attachments.ts";
-import type { JobEvent, JobView } from "./job-pages.ts";
+import type { FooterInfo } from "./view/footer.ts";
+import type { ImageAttachment, ImageSource } from "../image/attachment.ts";
+import type { JobEvent, JobView } from "./page/job.ts";
 import type { ModelMenuItem } from "./panel/model-menu.ts";
-import type { PageEntry, SkillPageEntry } from "./pages.ts";
+import type { PageEntry, SkillPageEntry } from "./page/frame.ts";
 import type { SessionMenuItem } from "./panel/session-menu.ts";
 import type { TranscriptPlan, TranscriptTurn } from "./transcript.ts";
-import type { TranscriptTodo } from "./todo-card.ts";
+import type { TranscriptTodo } from "./view/todo-card.ts";
 
 /** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
 export interface TuiInput {

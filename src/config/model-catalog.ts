@@ -1,4 +1,4 @@
-import type { Config } from "./config-file.ts";
+import type { Config } from "./file.ts";
 import type { ModelEntry, ProviderEntry, ProvidersConfig } from "./providers-file.ts";
 import type { ModelSelection } from "./selection.ts";
 

@@ -1,4 +1,4 @@
-import type { ApprovalMode } from "../config/config-file.ts";
+import type { ApprovalMode } from "../config/file.ts";
 import type { GateOutcome, GateRequest, PermissionScope, ToolAnnotations } from "../tools/contract.ts";
 
 /**

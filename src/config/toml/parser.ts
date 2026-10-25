@@ -1,4 +1,4 @@
-import { ConfigError, offsetToLineColumn } from "../config-error.ts";
+import { ConfigError, offsetToLineColumn } from "../error.ts";
 import {
 	hasTableKey,
 	isConfigTable,

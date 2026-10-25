@@ -1,9 +1,9 @@
-import { THINKING_LEVELS } from "../../config/config-file.ts";
+import { THINKING_LEVELS } from "../../config/file.ts";
 import { describeError } from "../../describe-error.ts";
 import type { CommandMenuItem } from "../panel/command-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
 import type { SessionSwitchResult } from "../options.ts";
-import { CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE, implementationPrompt } from "../status.ts";
+import { CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE, implementationPrompt } from "../render/status.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { closePlanReview, openPlanReview, showPage } from "./pages.ts";
 import {

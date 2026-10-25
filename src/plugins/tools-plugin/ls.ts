@@ -1,6 +1,6 @@
 import { readdirSync, statSync } from "node:fs";
 
-import { resolveToolPath } from "../../tools/tool-path.ts";
+import { resolveToolPath } from "../../tools/path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { displayWidth } from "../../../src/tui/text.ts";
-import { THEME } from "../../../src/tui/theme.ts";
+import { displayWidth } from "../../../src/tui/render/text.ts";
+import { THEME } from "../../../src/tui/render/theme.ts";
 import { attachToolResult, renderTranscript, toolHeaderAtRow } from "../../../src/tui/transcript.ts";
 import type { TranscriptLine, TranscriptTool, TranscriptTurn } from "../../../src/tui/transcript.ts";
 

@@ -1,4 +1,4 @@
-import type { ThinkingLevel } from "../config/config-file.ts";
+import type { ThinkingLevel } from "../config/file.ts";
 import type { ThinkingLevelMap } from "../config/providers-file.ts";
 
 /**

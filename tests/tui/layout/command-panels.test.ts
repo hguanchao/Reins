@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { FakeInput, FakeOutput, createFakeAgent, LEAVE, FOCUS, CURSOR_SUFFIX, FOOTER_INFO, WARNING, MODEL_ITEMS, SESSION_ITEMS, FORKED_SESSION_ITEMS, pressCtrlC, exitTui, rawFrame, frameLines, plain } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
-import { THEME } from "../../../src/tui/theme.ts";
+import { THEME } from "../../../src/tui/render/theme.ts";
 
 describe("命令补全与选择面板", () => {
 	it("输入命中命令时输入框里的命令着色，参数不着色", async () => {

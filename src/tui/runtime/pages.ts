@@ -1,21 +1,21 @@
-import type { CheckpointEntry } from "../../checkpoint/checkpoints.ts";
+import type { CheckpointEntry } from "../../checkpoint/service.ts";
 import {
 	mcpsPageLines,
 	skillsPageLines,
 	helpPageLines,
 	framedPage,
 	renderPage,
-} from "../pages.ts";
+} from "../page/frame.ts";
 import {
 	checkpointListActions,
 	checkpointListLines,
 	checkpointPreviewActions,
 	checkpointPreviewLines,
-} from "../checkpoint-pages.ts";
-import { jobListActions, jobListLines, jobOutputActions, jobOutputLines } from "../job-pages.ts";
-import { planActionLines, planReviewLines } from "../plan-review.ts";
-import { sandboxActionLines, sandboxPageLines } from "../sandbox-page.ts";
-import { THEME } from "../theme.ts";
+} from "../page/checkpoint.ts";
+import { jobListActions, jobListLines, jobOutputActions, jobOutputLines } from "../page/job.ts";
+import { planActionLines, planReviewLines } from "../page/plan.ts";
+import { sandboxActionLines, sandboxPageLines } from "../page/sandbox.ts";
+import { THEME } from "../render/theme.ts";
 import { RESET } from "../panel/menu-panel.ts";
 import type { PageKind } from "../options.ts";
 import type { TranscriptPlan } from "../transcript.ts";

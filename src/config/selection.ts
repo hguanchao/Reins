@@ -1,5 +1,5 @@
-import { ConfigError } from "./config-error.ts";
-import type { Config } from "./config-file.ts";
+import { ConfigError } from "./error.ts";
+import type { Config } from "./file.ts";
 import type { ModelEntry, ProvidersConfig, ProviderEntry } from "./providers-file.ts";
 
 /**

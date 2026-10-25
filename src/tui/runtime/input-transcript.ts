@@ -1,10 +1,10 @@
 import { TURN_SAFE_COMMANDS } from "../commands.ts";
-import { inputView } from "../footer.ts";
-import { imageMarker } from "../image-attachments.ts";
+import { inputView } from "../view/footer.ts";
+import { imageMarker } from "../../image/attachment.ts";
 import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuIndexAtRow, menuKey, moveInputVertical, queuedEditKey, scrollKey, stripMouseEvents } from "../input.ts";
 import type { MouseInput } from "../input.ts";
-import { scrollButtonHit, scrollButtonPlacement } from "../scroll-button.ts";
-import { ABORTING } from "../status.ts";
+import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
+import { ABORTING } from "../render/status.ts";
 import { FOCUS_IN, FOCUS_OUT } from "../terminal.ts";
 import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "../transcript.ts";
 import { menuPanelTop } from "./approval.ts";

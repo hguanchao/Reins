@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { TomlParser } from "../../../src/config/toml/parser.ts";
 import { serializeKey, serializeValue } from "../../../src/config/toml/serialize.ts";
-import { ConfigError } from "../../../src/config/config-error.ts";
+import { ConfigError } from "../../../src/config/error.ts";
 
 function parse(source: string) {
 	try {

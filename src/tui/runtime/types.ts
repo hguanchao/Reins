@@ -1,9 +1,9 @@
 import type { AgentEventListener } from "../../agent/events.ts";
-import type { CheckpointEntry, CheckpointPreview } from "../../checkpoint/checkpoints.ts";
+import type { CheckpointEntry, CheckpointPreview } from "../../checkpoint/service.ts";
 import type { ApprovalPrompt } from "../../permission/approval.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
-import type { ImageAttachment, PendingImage } from "../image-attachments.ts";
-import type { JobView } from "../job-pages.ts";
+import type { ImageAttachment, PendingImage } from "../../image/attachment.ts";
+import type { JobView } from "../page/job.ts";
 import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "../options.ts";
 import type { CommandMenuState, CommandMenuItem } from "../panel/command-menu.ts";
 import type { EffortMenuState } from "../panel/effort-menu.ts";
@@ -18,7 +18,7 @@ import type {
 	TranscriptTurn,
 	TranscriptView,
 } from "../transcript.ts";
-import type { TranscriptTodo } from "../todo-card.ts";
+import type { TranscriptTodo } from "../view/todo-card.ts";
 
 /** 对话流里的一条真实回合；response 可变，流式文本和工具行持续追加。 */
 export interface LiveTurn extends TranscriptTurn {

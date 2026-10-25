@@ -1,12 +1,12 @@
 import { describeError } from "../describe-error.ts";
-import { CheckpointService } from "../checkpoint/checkpoints.ts";
+import { CheckpointService } from "../checkpoint/service.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import {
 	defaultInstructionSources,
 	readInstructions,
 	type PromptInstruction,
 } from "../agent/instructions.ts";
-import type { ApprovalMode, Config } from "../config/config-file.ts";
+import type { ApprovalMode, Config } from "../config/file.ts";
 import { ModelCatalog } from "../config/model-catalog.ts";
 import {
 	configFilePath,
@@ -21,8 +21,8 @@ import { ApprovalBroker } from "../permission/approval.ts";
 import type { McpStatusSource } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
-import { imageBlock, type ImageAttachment } from "../tui/image-attachments.ts";
-import { buildTranscriptHistory } from "../tui/history.ts";
+import { imageBlock, type ImageAttachment } from "../image/attachment.ts";
+import { buildTranscriptHistory } from "../tui/transcript/history.ts";
 import { runTui } from "../tui/layout.ts";
 import type {
 	ApprovalModeSource,
@@ -40,7 +40,7 @@ import {
 	loadSelection,
 	readConfigQuietly,
 } from "./config-selection.ts";
-import { createImageSource } from "./image-reader.ts";
+import { createImageSource } from "../image/source.ts";
 import { initializeConfig } from "./initialize-config.ts";
 import { writeStderr, writeStdout } from "./output.ts";
 import { assemblePipeline, createCompactor, createDriverFor } from "./pipeline.ts";

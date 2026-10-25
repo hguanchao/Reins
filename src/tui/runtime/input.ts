@@ -1,4 +1,4 @@
-import { APPROVAL_MODES } from "../../config/config-file.ts";
+import { APPROVAL_MODES } from "../../config/file.ts";
 import { describeError } from "../../describe-error.ts";
 import { mouseEvents, shiftTabKey, type MouseInput } from "../input.ts";
 import { CTRL_C } from "../terminal.ts";

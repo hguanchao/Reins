@@ -1,9 +1,9 @@
 import { StringDecoder } from "node:string_decoder";
 
-import { inputView } from "../footer.ts";
+import { inputView } from "../view/footer.ts";
 import { createBuiltinCommands } from "../commands.ts";
 import type { TuiOptions } from "../options.ts";
-import { APPROVAL_MODES } from "../../config/config-file.ts";
+import { APPROVAL_MODES } from "../../config/file.ts";
 import type { TuiState } from "./types.ts";
 
 /** 按启动选项造出初始状态；历史与任务表由调用方先行灌入。 */

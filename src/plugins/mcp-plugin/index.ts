@@ -1,5 +1,5 @@
 import { describeError } from "../../describe-error.ts";
-import type { McpServerConfig } from "../../config/config-file.ts";
+import type { McpServerConfig } from "../../config/file.ts";
 import type { AnyToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { Plugin, PluginApi } from "../host.ts";
 import { CONTROL_TIMEOUT_MS, DEFAULT_CALL_TIMEOUT_MS, McpClient, type McpToolInfo } from "./client.ts";

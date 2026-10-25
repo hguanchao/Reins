@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, lastFrame, frameLines, plain } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
-import { THEME } from "../../../src/tui/theme.ts";
+import { THEME } from "../../../src/tui/render/theme.ts";
 
 describe("工具行渲染", () => {
 	it("每行按自己的坐标写，滚动条列在内容之后单独重画", (t) => {

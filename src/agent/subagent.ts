@@ -1,4 +1,4 @@
-import type { Config } from "../config/config-file.ts";
+import type { Config } from "../config/file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient, LlmResult } from "../llm/client.ts";
 import { requestOptions, requestTools, TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";

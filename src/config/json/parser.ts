@@ -1,4 +1,4 @@
-import { ConfigError, offsetToLineColumn, type LineColumn } from "../config-error.ts";
+import { ConfigError, offsetToLineColumn, type LineColumn } from "../error.ts";
 import { setTableValue, type ConfigTable, type ConfigValue } from "../value.ts";
 
 /** JSON 与 TOML 共用同一套值模型。 */

@@ -6,8 +6,8 @@ import {
 	fitToWidth,
 	truncateToWidth,
 	wrappedLines,
-} from "../text.ts";
-import { THEME } from "../theme.ts";
+} from "../render/text.ts";
+import { THEME } from "../render/theme.ts";
 import {
 	bandBlankLine,
 	bandedWrappedLines,

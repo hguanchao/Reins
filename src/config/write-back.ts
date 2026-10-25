@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { describeError } from "../describe-error.ts";
-import { ConfigError } from "./config-error.ts";
+import { ConfigError } from "./error.ts";
 import { configFilePath } from "./paths.ts";
 import { TomlDocument } from "./toml/index.ts";
 import type { ConfigValue } from "./value.ts";
