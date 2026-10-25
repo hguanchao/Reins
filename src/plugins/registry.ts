@@ -44,4 +44,4 @@ export function bundledPlugins(context: BundledPluginContext): readonly Plugin[]
 }
 
 export { sandboxPlugin, sessionPlugin, toolsPlugin };
-export type { McpStatus, McpStatusSource } from "./mcp-plugin/index.ts";
+export type { McpStatusSource } from "./mcp-plugin/index.ts";
