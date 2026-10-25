@@ -1,5 +1,6 @@
 import type { ApprovalMode } from "../config/config-file.ts";
 import { formatCompactTokens, formatDuration } from "../tools/format.ts";
+import { highlightImageMarkers } from "./image-attachments.ts";
 import { swept } from "./sweep.ts";
 import { characterWidth, displayWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
@@ -314,10 +315,11 @@ function oneLine(text: string): string {
  */
 function commandText(line: InputLine): string {
 	const end = line.commandEnd ?? 0;
-	if (end <= 0) return line.text;
+	if (end <= 0) return highlightImageMarkers(line.text, THEME.image, RESET);
 	const chars = Array.from(line.text);
 	if (end >= chars.length) return `${FOCUS_COLOR}${line.text}${RESET}`;
-	return `${FOCUS_COLOR}${chars.slice(0, end).join("")}${RESET}${chars.slice(end).join("")}`;
+	const rest = chars.slice(end).join("");
+	return `${FOCUS_COLOR}${chars.slice(0, end).join("")}${RESET}${highlightImageMarkers(rest, THEME.image, RESET)}`;
 }
 
 /** 审批徽标的配色按风险分级：逐次询问是安全默认，自动审查是「谨慎放行」，完全放行最刺眼。 */

@@ -77,6 +77,16 @@ describe("页脚输入框", () => {
 		assert.ok(line.endsWith(" 当前"));
 	});
 
+	it("输入框里的图片标记用引用蓝高亮", () => {
+		const lines = renderFooter(60, "[image: a.png] 这是什么", true);
+		const line = lines[3] ?? "";
+
+		assert.equal(plain(line), " › [image: a.png] 这是什么");
+		assert.ok(line.includes(`${THEME.image}[image: a.png]`));
+		// 标记之后恢复默认前景色，正文不会被染蓝
+		assert.ok(line.endsWith(" 这是什么"));
+	});
+
 	it("没命中命令时不加任何颜色", () => {
 		const lines = renderFooter(40, "/mod", true, undefined, undefined, { commandLength: 0 });
 		const line = lines[3] ?? "";

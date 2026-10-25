@@ -39,6 +39,8 @@ export interface LlmImageBlock {
 	readonly data: string;
 	/** 如 image/png、image/jpeg、image/gif、image/webp */
 	readonly mimeType: string;
+	/** 附件文件名；只用于界面与历史显示，不进入请求体 */
+	readonly name?: string;
 }
 
 /** 用户消息能携带的内容。文本与图片可以混排。 */

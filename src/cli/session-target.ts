@@ -37,6 +37,20 @@ export function resumeCommand(id: string): string {
 }
 
 /**
+ * 从会话的当前末尾分叉出一个新会话。
+ *
+ * 只复制对话路径，不碰工作区文件；原会话保持原样，两个会话之后各写各的。
+ */
+export function forkSession(source: Session, workRoot: string, store: SessionStore): Session {
+	return Session.fork(source, {
+		id: randomBytes(8).toString("hex"),
+		cwd: workRoot,
+		file: sessionFilePath(workRoot),
+		store,
+	});
+}
+
+/**
  * 会话文件路径。
  *
  * 文件名里带创建时间，便于按时间找人；后缀是短随机串，避免同一秒内启动两次时撞名。

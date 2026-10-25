@@ -1,4 +1,4 @@
-import { displayWidth, fitToWidth } from "./text.ts";
+import { displayWidth, fitToWidth, truncateToWidth } from "./text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
@@ -7,6 +7,7 @@ import {
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
+	SUBTLE_COLOR,
 	TEXT_COLOR,
 	bottomBorder,
 	keepVisible,
@@ -29,6 +30,8 @@ export interface SessionMenuItem {
 	/** 最近活动时间的人话表示，例如 "2 hours ago"；空串表示不显示 */
 	readonly time: string;
 	readonly current: boolean;
+	/** 分叉来源的标题；有值时标题显示成「↳ Fork of …」 */
+	readonly forkedFrom?: string;
 }
 
 export interface SessionMenuState {
@@ -53,11 +56,15 @@ const CURRENT_WIDTH = 7;
 /** 标题少于这么多列就不显示，把宽度还给标识与时间。 */
 const MIN_TITLE_WIDTH = 8;
 
-export function sessionMenuHeight(itemCount: number): number {
-	return menuHeight(itemCount);
+export function sessionMenuHeight(itemCount: number, forkAvailable = false): number {
+	return menuHeight(itemCount) + (forkAvailable ? 1 : 0);
 }
 
-export function renderSessionMenu(width: number, state: SessionMenuState): readonly string[] {
+export function renderSessionMenu(
+	width: number,
+	state: SessionMenuState,
+	forkAvailable = false,
+): readonly string[] {
 	const items = state.items;
 	const visibleCount = Math.min(items.length, SESSION_MENU_MAX_VISIBLE);
 	const top = keepVisible(state.scrollTop, state.cursor, items.length);
@@ -71,7 +78,14 @@ export function renderSessionMenu(width: number, state: SessionMenuState): reado
 	}
 
 	lines.push(bottomBorder(width));
+	if (forkAvailable) lines.push(actionHint(width));
 	return lines;
+}
+
+/** 面板底部的一行动作提示；分叉不可用时只说切换与关闭。 */
+function actionHint(width: number): string {
+	const text = truncateToWidth("  Enter switch   f fork at end   Esc close", width);
+	return `${PANEL_BG}${SUBTLE_COLOR}${text}${" ".repeat(Math.max(0, width - displayWidth(text)))}${RESET}`;
 }
 
 interface Columns {
@@ -86,7 +100,7 @@ interface Columns {
 
 function layoutColumns(width: number, items: readonly SessionMenuItem[]): Columns {
 	const longestId = Math.max(1, ...items.map((item) => displayWidth(item.id)));
-	const longestTitle = Math.max(0, ...items.map((item) => displayWidth(item.title)));
+	const longestTitle = Math.max(0, ...items.map((item) => displayWidth(titleOf(item))));
 	const longestTime = Math.max(0, ...items.map((item) => displayWidth(item.time)));
 
 	// 标识是唯一能指向具体会话的信息，最后才动它；终端窄到放不下时只能截
@@ -115,6 +129,11 @@ function layoutColumns(width: number, items: readonly SessionMenuItem[]): Column
 	return { idWidth, titleWidth: 0, timeWidth: 0, showCurrent: false };
 }
 
+/** 列表里显示的标题：分叉会话把来源带在标题里，不用再占一行。 */
+function titleOf(item: SessionMenuItem): string {
+	return item.forkedFrom === undefined ? item.title : `↳ Fork of ${item.forkedFrom}`;
+}
+
 function row(width: number, item: SessionMenuItem, selected: boolean, columns: Columns): string {
 	const primaryColor = selected ? SELECTED_TEXT_COLOR : TEXT_COLOR;
 	const boldOff = selected ? BOLD_OFF : "";
@@ -122,7 +141,7 @@ function row(width: number, item: SessionMenuItem, selected: boolean, columns: C
 
 	// 每段补齐到列宽，各列起点才对得齐；只有 current 在行尾，不需要补
 	const idText = padEnd(item.id, columns.idWidth);
-	const titleText = columns.titleWidth > 0 ? padEnd(fitToWidth(item.title, columns.titleWidth), columns.titleWidth) : "";
+	const titleText = columns.titleWidth > 0 ? padEnd(fitToWidth(titleOf(item), columns.titleWidth), columns.titleWidth) : "";
 	const timeText = columns.timeWidth > 0 ? padEnd(fitToWidth(item.time, columns.timeWidth), columns.timeWidth) : "";
 	const currentText = item.current && columns.showCurrent ? "current" : "";
 

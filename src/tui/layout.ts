@@ -57,6 +57,28 @@ import {
 	type JobView,
 } from "./job-pages.ts";
 import { planActionLines, planReviewLines, PLAN_ACTION_HEIGHT } from "./plan-review.ts";
+import { sandboxActionLines, sandboxPageLines, SANDBOX_ACTION_HEIGHT } from "./sandbox-page.ts";
+import {
+	attachmentSetError,
+	imageLimitError,
+	imageMarker,
+	imagesInPrompt,
+	isImagePath,
+	uniqueImageName,
+	type ImageAttachment,
+	type ImageSource,
+	type PendingImage,
+} from "./image-attachments.ts";
+import {
+	fileMenuHeight,
+	filterFiles,
+	findAtToken,
+	formatFileReference,
+	renderFileMenu,
+	type FileMenuState,
+	type FileSource,
+} from "./file-menu.ts";
+import type { SandboxInfo } from "../sandbox/setup.ts";
 import { displayWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
@@ -177,6 +199,12 @@ interface LiveTurn extends TranscriptTurn {
 	response: TranscriptLine[];
 }
 
+/** 排队的一条消息：文字与图片一起排队，出队时仍是一次完整输入。 */
+interface QueuedPrompt {
+	readonly text: string;
+	readonly images: readonly ImageAttachment[];
+}
+
 /** 一轮正在进行的对话。 */
 interface ActiveTurn {
 	readonly turn: LiveTurn;
@@ -240,6 +268,11 @@ export interface SessionSwitchResult {
 	/** 新会话最近一份计划；没有时 /view-plan 提示还没有计划 */
 	readonly plan?: TranscriptPlan;
 	readonly warnings: readonly string[];
+	/** 分叉时说明来源与复制量；普通切换没有这一项 */
+	readonly fork?: {
+		readonly sourceId: string;
+		readonly copied: number;
+	};
 }
 
 export interface SessionMenuSource {
@@ -247,6 +280,8 @@ export interface SessionMenuSource {
 	readonly list: () => readonly SessionMenuItem[];
 	/** 切换会话；失败时抛错，由界面显示原因 */
 	readonly select: (id: string) => SessionSwitchResult;
+	/** 从选中会话的当前末尾分叉并切过去；不提供时 /fork 与菜单里的 f 不可用 */
+	readonly fork?: (id: string) => SessionSwitchResult;
 }
 
 export interface EffortMenuSource {
@@ -319,6 +354,7 @@ export interface AgentRuntime {
 	/** 跑一轮对话，事件驱动界面；signal 用于 Ctrl+C 中止。 */
 	readonly runTurn: (
 		prompt: string,
+		images: readonly ImageAttachment[],
 		onEvent: AgentEventListener,
 		signal: AbortSignal,
 	) => Promise<void>;
@@ -328,11 +364,12 @@ export interface AgentRuntime {
 	readonly refreshInfo: () => void;
 }
 
-/** 整屏页的内容；帮助、技能、MCP、计划、检查点与后台作业共用同一套滚动。 */
+/** 整屏页的内容；帮助、技能、MCP、沙箱、计划、检查点与后台作业共用同一套滚动。 */
 type PageKind =
 	| "help"
 	| "skills"
 	| "mcps"
+	| "sandbox"
 	| "plan"
 	| "checkpoints"
 	| "checkpoint"
@@ -351,12 +388,31 @@ export interface SkillsPageSource {
 	readonly directories: readonly string[];
 }
 
+/**
+ * `/sandbox` 页的数据来源。
+ *
+ * warning 与配置警告分开保存：配置警告会在 /model 修复后消失，而平台缺少命令隔离这件事
+ * 不会因为换模型而改变，启动说明要一直留到本次界面退出。
+ */
+export interface SandboxPageSource {
+	readonly info: SandboxInfo;
+	readonly warning?: string;
+}
+
 export interface TuiOptions {
 	readonly version: string;
 	/** 输入框下方常驻信息：项目、分支、模型、思考强度、上下文与缓存命中率 */
 	readonly info: FooterInfo | (() => FooterInfo);
 	/** 配置有问题时在主区域显示的一行警告；配置正常时不传 */
 	readonly warning?: string;
+	/** 沙箱模式与平台限制；不提供时 /sandbox 不可用 */
+	readonly sandbox?: SandboxPageSource;
+	/** 图片读取；不提供时剪贴板、拖入与 @ 选图片都不可用 */
+	readonly images?: ImageSource;
+	/** 当前模型是否声明了图片输入；没有声明时附加图片给出提示 */
+	readonly imagesSupported?: () => boolean;
+	/** @ 文件补全的数据来源；不提供时 @ 按普通文本处理 */
+	readonly files?: FileSource;
 	/** 配置不可用时为 false：界面照常显示，但不接受提交 */
 	readonly ready?: boolean;
 	/** 真实对话入口；不提供时无法提交普通提示 */
@@ -409,6 +465,14 @@ function shortReason(reason: string): string {
 	return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
 }
 
+/** 附件读取失败时的单行原因；错误体常带换行，状态行只放得下第一行。 */
+function errorLine(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	const first = message.split("\n", 1)[0] ?? "";
+	const clean = first.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
+	return clean.length > 80 ? `${clean.slice(0, 79)}…` : clean;
+}
+
 /** 批准计划后交给模型的用户消息：整份计划重新进入上下文，不依赖摘要里是否留下了它。 */
 function implementationPrompt(plan: string): string {
 	return `Implement this plan:\n\n${plan.trim()}\n\nRe-read the files you need before changing them.`;
@@ -443,6 +507,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const stdout: TuiOutput = options.stdout ?? process.stdout;
 	let ready = options.ready ?? true;
 	let activeWarning = options.warning;
+	/** 平台限制的启动说明不属于可修复的配置问题，模型切换后仍然保留。 */
+	const sandboxNotice = options.sandbox?.warning;
+	const noticeText = (): string | undefined => {
+		if (sandboxNotice === undefined || sandboxNotice.length === 0) return activeWarning;
+		if (activeWarning === undefined || activeWarning.length === 0) return sandboxNotice;
+		return `${sandboxNotice}\n\n${activeWarning}`;
+	};
 	// 命令补全列表：配置不可用时仍然显示，但标成不可执行
 	const builtinCommands: readonly CommandMenuItem[] = [
 		{
@@ -486,6 +557,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			enabled: options.sessionMenu !== undefined,
 		},
 		{
+			name: "fork",
+			description:
+				options.sessionMenu?.fork === undefined
+					? "Session forking is unavailable"
+					: "Fork the current session at its current point",
+			enabled: options.sessionMenu?.fork !== undefined,
+		},
+		{
 			name: "help",
 			description: "Show the commands and keys",
 			enabled: true,
@@ -505,6 +584,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					? "Browse and restore checkpoints"
 					: "Checkpoints are unavailable in this workspace",
 			enabled: options.checkpoints?.available() === true,
+		},
+		{
+			name: "sandbox",
+			description:
+				options.sandbox === undefined
+					? "Sandbox details are unavailable in this session"
+					: "Show sandbox mode and platform limits",
+			enabled: options.sandbox !== undefined,
 		},
 		{
 			name: "view-plan",
@@ -574,6 +661,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			const source = options.skills;
 			if (source === undefined) return skillsPageLines(width, [], []);
 			return skillsPageLines(width, source.list(), source.directories);
+		}
+		if (kind === "sandbox") {
+			const source = options.sandbox;
+			return source === undefined ? [] : sandboxPageLines(source.info, width);
 		}
 		if (kind === "plan") {
 			return planReview === undefined ? [] : planReviewLines(planReview, width);
@@ -661,15 +752,35 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		].slice(0, height);
 	};
 
+	/** 沙箱说明页：内容只读，动作条固定为关闭提示。 */
+	const sandboxPageFrame = (width: number, height: number): readonly string[] => {
+		const actions = sandboxActionLines(width);
+		const contentHeight = Math.max(0, height - actions.length);
+		return [
+			...renderPage(pageLines("sandbox", width), contentHeight, pageScrollTop),
+			...actions,
+		].slice(0, height);
+	};
+
 	let input = "";
 	let inputCursor = 0;
+	/** 当前输入里的图片标记与数据；发送、清空或切会话时清掉。 */
+	let pendingImages: PendingImage[] = [];
+	/** 读图期间不接受第二张，避免标记插入顺序与提示错乱。 */
+	let imageLoading = false;
+	/** 清空图片时递增：上一张图晚到的读取结果不再落进新输入。 */
+	let attachmentEpoch = 0;
+	const clearAttachments = (): void => {
+		pendingImages = [];
+		attachmentEpoch += 1;
+	};
 	/**
 	 * 排队中的消息，按发送顺序。
 	 *
 	 * 一轮进行中提交的内容放这里，本轮收尾后再逐条各发一轮。它们不进会话文件：排队消息还没
 	 * 发生过，写进会话会让重放出现模型从未见过的用户消息。
 	 */
-	const queued: string[] = [];
+	const queued: QueuedPrompt[] = [];
 	/**
 	 * 下一次中止是否要把队首立刻发出去。
 	 *
@@ -758,6 +869,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	 * 回到第一项，接着按回车会执行错的命令。
 	 */
 	let commandMenuDismissed = false;
+	let fileMenu: FileMenuState | undefined;
+	/** 与命令补全同一套规则：Esc 主动收起后，输入不变就不再弹回来。 */
+	let fileMenuDismissed = false;
+	/** 当前 @ 片段对应的文件索引；同一次补全期间复用，换片段或关面板时丢弃。 */
+	let fileFiles: readonly string[] | undefined;
+	let fileIndexStart: number | undefined;
 	/** 占据主区域的整屏页；打开期间视口只跟着它自己的滚动。 */
 	let openPage: PageKind | undefined;
 	/** 整屏页从顶部滚过的行数。 */
@@ -835,16 +952,22 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				: effortMenu !== undefined
 					? effortMenuHeight()
 					: sessionMenu !== undefined
-						? sessionMenuHeight(sessionMenu.items.length)
+						? sessionMenuHeight(
+								sessionMenu.items.length,
+								options.sessionMenu?.fork !== undefined,
+							)
 						: commandMenu !== undefined
 							? commandMenuHeight(commandMenu.items.length)
-							: 0;
+							: fileMenu !== undefined
+								? fileMenuHeight(fileMenu.items.length)
+								: 0;
 	const menuOpen = (): boolean =>
 		approvalPrompt !== undefined ||
 		modelMenu !== undefined ||
 		effortMenu !== undefined ||
 		sessionMenu !== undefined ||
-		commandMenu !== undefined;
+		commandMenu !== undefined ||
+		fileMenu !== undefined;
 	/** 抢输入焦点的面板:命令补全不抢(输入还在打字),模型/思考等级/会话面板是模态的。 */
 	const modalMenuOpen = (): boolean =>
 		modelMenu !== undefined || effortMenu !== undefined || sessionMenu !== undefined;
@@ -954,15 +1077,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 
 	/** 宽度、警告或内容变化时重建；其余帧直接复用。 */
 	const currentTranscript = (width: number): TranscriptView => {
+		const notice = noticeText();
 		if (
 			transcriptView === undefined ||
 			transcriptDirty ||
 			transcriptViewWidth !== width ||
-			transcriptViewNotice !== activeWarning
+			transcriptViewNotice !== notice
 		) {
-			transcriptView = buildTranscriptView(width, turns, activeWarning);
+			transcriptView = buildTranscriptView(width, turns, notice);
 			transcriptViewWidth = width;
-			transcriptViewNotice = activeWarning;
+			transcriptViewNotice = notice;
 			transcriptDirty = false;
 		}
 		return transcriptView;
@@ -1009,10 +1133,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					: effortMenu !== undefined
 						? renderEffortMenu(width, effortMenu)
 						: sessionMenu !== undefined
-							? renderSessionMenu(width, sessionMenu)
+							? renderSessionMenu(
+									width,
+									sessionMenu,
+									options.sessionMenu?.fork !== undefined,
+								)
 							: commandMenu !== undefined
 								? renderCommandMenu(width, commandMenu)
-								: [];
+								: fileMenu !== undefined
+									? renderFileMenu(width, fileMenu)
+									: [];
 		const inputLines = inputView(input, width, inputCursor);
 		// 输入以已注册的命令开头时把命令本身着色，参数保持正文色
 		const typedCommand = commandNameOf(input);
@@ -1034,9 +1164,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 					: renderFooter(width, input, focused, status, currentInfo(), {
 							cursor: inputCursor,
 							commandLength,
-							queued,
+							queued: queued.map((item) => item.text),
 						});
-			const transcriptShown = openPage === undefined && (hasInput || activeWarning !== undefined);
+			const transcriptShown = openPage === undefined && (hasInput || noticeText() !== undefined);
 			// 运行中的行按当前帧重建转圈与扫光；没有动画行时这只是原样返回缓存行
 			const animation: AnimationFrame = { spinner: SPINNER_FRAMES[spinnerFrame] ?? "", sweepPhase };
 			const main =
@@ -1046,11 +1176,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						? checkpointPageLines(width, mainHeight)
 						: openPage === "jobs" || openPage === "job"
 							? jobPageLines(width, mainHeight)
-							: openPage !== undefined
-								? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
-								: transcriptShown
-									? renderTranscriptView(view, mainHeight, scrollTop, animation)
-									: renderMain(width, mainHeight, options.version);
+							: openPage === "sandbox"
+								? sandboxPageFrame(width, mainHeight)
+								: openPage !== undefined
+									? renderPage(pageLines(openPage, width), mainHeight, pageScrollTop)
+									: transcriptShown
+										? renderTranscriptView(view, mainHeight, scrollTop, animation)
+										: renderMain(width, mainHeight, options.version);
 		const mainLines = [...main];
 		// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示;Plan 模式隐藏旧任务表
 		const panelLines =
@@ -2047,18 +2179,24 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/** 切换后整段对话流都要换掉；旧会话的写入器同时释放。 */
-	const switchSession = (id: string): void => {
+	const switchSession = (id: string, action: "select" | "fork" = "select"): void => {
 		const source = options.sessionMenu;
 		if (source === undefined) return;
 
+		const forking = action === "fork";
 		let result: SessionSwitchResult;
 		try {
-			result = source.select(id);
+			const run = forking ? source.fork : source.select;
+			if (run === undefined) throw new Error("Session forking is unavailable");
+			result = run(id);
 		} catch (error) {
 			follow = true;
 			const message = error instanceof Error ? error.message : String(error);
-			appendCommandTurn("/session", [
-				{ kind: "error", text: `Error: Failed to switch session: ${message}` },
+			appendCommandTurn(forking ? "/fork" : "/session", [
+				{
+					kind: "error",
+					text: `Error: Failed to ${forking ? "fork" : "switch"} session: ${message}`,
+				},
 			]);
 			return;
 		}
@@ -2087,6 +2225,20 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		clearStatus();
 		// 排队消息是发给旧会话的，换会话后没有意义
 		queued.length = 0;
+		fileMenu = undefined;
+		fileFiles = undefined;
+		fileIndexStart = undefined;
+		clearAttachments();
+		if (forking) {
+			const origin = result.fork?.sourceId ?? id;
+			const copied = result.fork?.copied ?? 0;
+			appendCommandTurn("/fork", [
+				`Forked from ${origin} · ${copied} ${copied === 1 ? "entry" : "entries"} copied`,
+				"Workspace unchanged · checkpoints start fresh within the fork.",
+				...result.warnings,
+			]);
+			return;
+		}
 		appendCommandTurn("/session", [`Switched to session ${id}.`, ...result.warnings]);
 	};
 
@@ -2106,6 +2258,23 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return;
 		}
 		switchSession(item.id);
+	};
+
+	/** 会话菜单里按 f：从选中会话的末尾分叉，并切到新会话。 */
+	const forkSelectedSession = (): void => {
+		if (sessionMenu === undefined) return;
+
+		const item = sessionMenu.items[sessionMenu.cursor];
+		sessionMenu = undefined;
+		commandMenu = undefined;
+		modelMenu = undefined;
+		effortMenu = undefined;
+		setInput("");
+		if (item === undefined) {
+			render();
+			return;
+		}
+		switchSession(item.id, "fork");
 	};
 
 	/** Tab 在最后一级面板只补全，不切换；要切换仍按回车。 */
@@ -2195,6 +2364,79 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		render();
 	};
 
+	/** 收起 @ 面板；dismissed 表示使用者主动按了 Esc，输入不变就不再弹回来。 */
+	const closeFileMenu = (dismissed = false): void => {
+		fileMenu = undefined;
+		fileFiles = undefined;
+		fileIndexStart = undefined;
+		if (dismissed) fileMenuDismissed = true;
+	};
+
+	/**
+	 * 按光标所在的 @ 片段刷新文件面板。
+	 *
+	 * 每次从一个片段重新打开时重扫文件清单（使用者可能刚让模型建了新文件）；同一次补全里
+	 * 只过滤缓存，避免每敲一个字都遍历一遍工作区。
+	 */
+	const updateFileMenu = (): void => {
+		const source = options.files;
+		if (source === undefined) {
+			closeFileMenu();
+			return;
+		}
+		if (modalMenuOpen() || commandMenu !== undefined || input.startsWith("/")) {
+			closeFileMenu();
+			return;
+		}
+		if (fileMenuDismissed) {
+			fileMenu = undefined;
+			return;
+		}
+
+		const token = findAtToken(input, inputCursor);
+		if (token === undefined) {
+			closeFileMenu();
+			return;
+		}
+
+		if (fileFiles === undefined || fileIndexStart !== token.start) {
+			fileIndexStart = token.start;
+			try {
+				fileFiles = source.list().filter((path) => !/[\u0000-\u001f\u007f]/.test(path));
+			} catch (error) {
+				fileFiles = [];
+				setStatus(`Could not list files: ${errorLine(error)}`, "error");
+				scheduleStatusClear();
+			}
+		}
+
+		const items = filterFiles(fileFiles, token.query);
+		if (items.length === 0) {
+			// 索引留着：继续输入出现匹配时不必再扫一遍
+			fileMenu = undefined;
+			return;
+		}
+
+		const previous = fileMenu?.items[fileMenu.cursor];
+		const kept = previous === undefined ? -1 : items.indexOf(previous);
+		const cursor = kept >= 0 ? kept : 0;
+		fileMenu = { items, token, cursor, scrollTop: keepVisible(0, cursor, items.length) };
+	};
+
+	const moveFileMenu = (delta: number): void => {
+		if (fileMenu === undefined) return;
+		fileMenu.cursor = Math.min(
+			fileMenu.items.length - 1,
+			Math.max(0, fileMenu.cursor + delta),
+		);
+		fileMenu.scrollTop = keepVisible(
+			fileMenu.scrollTop,
+			fileMenu.cursor,
+			fileMenu.items.length,
+		);
+		render();
+	};
+
 	/**
 	 * 启动一次由事件驱动的运行。
 	 *
@@ -2203,9 +2445,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	 */
 	const startRun = (
 		prompt: string,
+		images: readonly ImageAttachment[],
 		run: (onEvent: AgentEventListener, signal: AbortSignal) => Promise<void>,
 	): void => {
-		const turn: LiveTurn = { prompt, response: [] };
+		const shown = prompt.trim();
+		const turn: LiveTurn = {
+			prompt: shown.length > 0 ? shown : images.length > 0 ? "[image]" : "",
+			response: [],
+		};
 		turns.push(turn);
 		markTranscriptDirty();
 		const active: ActiveTurn = {
@@ -2369,11 +2616,15 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			model: () => executeModelCommand(args),
 			effort: () => executeEffortCommand(args),
 			session: () => executeSessionCommand(args),
+			fork: () => executeForkCommand(),
 			compact: () => executeCompactCommand(),
 			plan: () => executePlanCommand(args),
 			"view-plan": () => executeViewPlanCommand(),
 			undo: () => executeUndoCommand(),
 			checkpoints: () => executeCheckpointsCommand(),
+			sandbox: () => {
+				if (options.sandbox !== undefined) showPage("sandbox");
+			},
 			jobs: () => executeJobsCommand(),
 			help: () => showPage("help"),
 			skills: () => showPage("skills"),
@@ -2382,7 +2633,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const handler = handlers[command.name];
 		if (handler !== undefined) {
 			// 整屏页期间输入框不接受按键，命令名一律不留在输入框里
-			if (command.name === "help" || command.name === "skills" || command.name === "mcps") setInput("");
+			if (
+				command.name === "help" ||
+				command.name === "skills" ||
+				command.name === "mcps" ||
+				command.name === "sandbox"
+			) {
+				setInput("");
+			}
 			handler();
 			render();
 			return;
@@ -2489,6 +2747,176 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		switchSession(target);
 	};
 
+	/** /fork:从当前会话的当前末尾分叉，并切换到新会话。 */
+	const executeForkCommand = (): void => {
+		const source = options.sessionMenu;
+		setInput("");
+		if (source === undefined || source.fork === undefined) {
+			resetStatusMeta();
+			setStatus("Session forking is unavailable in this session", "notice");
+			return;
+		}
+
+		let items: readonly SessionMenuItem[];
+		try {
+			items = source.list();
+		} catch (error) {
+			follow = true;
+			const message = error instanceof Error ? error.message : String(error);
+			appendCommandTurn("/fork", [{ kind: "error", text: `Error: Failed to list sessions: ${message}` }]);
+			return;
+		}
+		const current = items.find((item) => item.current);
+		if (current === undefined) {
+			follow = true;
+			appendCommandTurn("/fork", [
+				{ kind: "error", text: "Error: The current session is not in the session list." },
+			]);
+			return;
+		}
+		switchSession(current.id, "fork");
+	};
+
+	/** 把一张图插成正文标记；名称重复时加序号，发送时靠标记找回数据。 */
+	const insertImageMarker = (image: ImageAttachment, at: number): void => {
+		// 标记已被删掉的图片不再占名额；顺便把失效数据清掉
+		pendingImages = pendingImages.filter((item) => input.includes(item.token));
+		const used = new Set(pendingImages.map((item) => item.image.name));
+		const name = uniqueImageName(image.name, used);
+		const stored: ImageAttachment = { ...image, name };
+		const error = imageLimitError(
+			pendingImages.map((item) => item.image),
+			stored,
+		);
+		if (error !== undefined) {
+			setStatus(error, "warning");
+			scheduleStatusClear();
+			render();
+			return;
+		}
+
+		const position = Math.min(Math.max(0, at), input.length);
+		const before = input.slice(0, position);
+		const after = input.slice(position);
+		const lead = before.length > 0 && !/\s$/.test(before) ? " " : "";
+		// 末尾也补一个空格：连续输入文字或再插一张图时不会和标记粘在一起
+		const trail = after.length === 0 || !/^\s/.test(after) ? " " : "";
+		const token = imageMarker(name);
+		const insertion = `${lead}${token}${trail}`;
+		setInput(`${before}${insertion}${after}`, position + insertion.length);
+		pendingImages.push({ token, image: stored });
+		closeFileMenu();
+
+		if (options.imagesSupported?.() === false) {
+			setStatus(
+				`Attached ${name}; this model does not declare image input, so it will receive a placeholder`,
+				"warning",
+			);
+		} else {
+			setStatus(`Attached ${name}`, "notice");
+		}
+		scheduleStatusClear();
+		render();
+	};
+
+	/**
+	 * 读图后再把标记插进输入框。
+	 *
+	 * 位置在开始读取时确定；读完之前禁止发送，避免出现「标记在、图片没跟上」的半轮消息。
+	 */
+	const readAndInsertImage = (
+		read: () => Promise<ImageAttachment>,
+		status: string,
+		at: number,
+	): void => {
+		if (imageLoading) {
+			setStatus("Still reading an image; try again in a moment", "notice");
+			scheduleStatusClear();
+			render();
+			return;
+		}
+		const epoch = attachmentEpoch;
+		const position = Math.min(Math.max(0, at), input.length);
+		imageLoading = true;
+		setStatus(status);
+		render();
+		void read()
+			.then((image) => {
+				if (epoch === attachmentEpoch) insertImageMarker(image, position);
+			})
+			.catch((error: unknown) => {
+				if (epoch !== attachmentEpoch) return;
+				setStatus(`Image: ${errorLine(error)}`, "error");
+				scheduleStatusClear();
+			})
+			.finally(() => {
+				imageLoading = false;
+				render();
+			});
+	};
+
+	const attachImagePath = (path: string, at = inputCursor): void => {
+		const source = options.images;
+		if (source === undefined) return;
+		readAndInsertImage(() => source.read(path), "Reading image...", at);
+	};
+
+	const attachClipboardImage = (at = inputCursor): void => {
+		const source = options.images;
+		if (source === undefined) {
+			setStatus("Image input is unavailable in this session", "notice");
+			scheduleStatusClear();
+			render();
+			return;
+		}
+		readAndInsertImage(() => source.clipboard(), "Reading clipboard image...", at);
+	};
+
+	/** 选中 @ 项：文本文件写回 `@相对路径`；图片读进来后在原位置插入正文标记。 */
+	const insertFileReference = (): void => {
+		const menu = fileMenu;
+		if (menu === undefined) return;
+		const path = menu.items[menu.cursor];
+		if (path === undefined) return;
+		const token = menu.token;
+
+		if (isImagePath(path) && options.images !== undefined) {
+			// 先把 @片段去掉，图片读完后在同一位置插入标记
+			const next = input.slice(0, token.start) + input.slice(token.end);
+			setInput(next, token.start);
+			closeFileMenu();
+			updateCommandMenu();
+			attachImagePath(path, token.start);
+			return;
+		}
+
+		const reference = formatFileReference(path);
+		const next = input.slice(0, token.start) + reference + " " + input.slice(token.end);
+		const cursor = token.start + reference.length + 1;
+		setInput(next, cursor);
+		closeFileMenu();
+		updateCommandMenu();
+		render();
+	};
+
+	/**
+	 * 拖入图片时终端会粘贴一段路径。只有整段内容就是一个现有图片文件才有动作，
+	 * 夹着说明文字或换行的粘贴仍然按普通文本处理。
+	 */
+	const draggedImagePath = (chunk: string): string | undefined => {
+		const source = options.images;
+		if (source === undefined) return undefined;
+		const trimmed = chunk.trim();
+		let candidate = trimmed;
+		if (trimmed.startsWith(PASTE_START)) {
+			if (!trimmed.endsWith(PASTE_END)) return undefined;
+			candidate = trimmed.slice(PASTE_START.length, -PASTE_END.length);
+		}
+		if (candidate.length === 0 || candidate.length > 4096) return undefined;
+		if (/[\r\n\x1b]/.test(candidate)) return undefined;
+		return source.detect(candidate);
+	};
+
 	/** /compact:立即压缩一轮上下文。 */
 	const executeCompactCommand = (): void => {
 		const compact = options.agent?.compact;
@@ -2498,7 +2926,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			setStatus(CONFIGURATION_REQUIRED, "notice");
 			return;
 		}
-		startRun("/compact", compact);
+		startRun("/compact", [], compact);
 	};
 
 	/**
@@ -2858,12 +3286,14 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				historyIndex = -1;
 				setInput(historyDraft);
 				updateCommandMenu();
+				updateFileMenu();
 				render();
 				return true;
 			}
 		}
 		setInput(inputHistory[historyIndex] ?? "");
 		updateCommandMenu();
+		updateFileMenu();
 		render();
 		return true;
 	};
@@ -2873,7 +3303,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	 *
 	 * 提交与出队都走这里：排队消息出队后与使用者当场提交是同一件事，差别只在谁触发的。
 	 */
-	const launch = (prompt: string): void => {
+	const launch = (prompt: string, images: readonly ImageAttachment[] = []): void => {
 		const agent = options.agent;
 		if (agent === undefined) {
 			commandMenu = undefined;
@@ -2882,7 +3312,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			render();
 			return;
 		}
-		startRun(prompt, (onEvent, signal) => agent.runTurn(prompt, onEvent, signal));
+		startRun(prompt, images, (onEvent, signal) => agent.runTurn(prompt, images, onEvent, signal));
 	};
 
 	/**
@@ -2984,7 +3414,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const drainQueue = (): void => {
 		const next = queued.shift();
 		if (next === undefined) return;
-		launch(next);
+		launch(next.text, next.images);
 	};
 
 	/** 回车发送：把输入交给真实 TurnDriver，事件驱动对话流与状态行。 */
@@ -2992,6 +3422,13 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		if (restoringCheckpoint) {
 			// 工作区正在恢复，此时开新回合会让模型看到一半旧、一半新的文件
 			setStatus("Restoring checkpoint...", "notice");
+			scheduleStatusClear();
+			render();
+			return false;
+		}
+		if (imageLoading) {
+			// 标记还没落进输入框，此时发送会得到一轮文字与图片对不上的消息
+			setStatus("Still reading an image; try again in a moment", "notice");
 			scheduleStatusClear();
 			render();
 			return false;
@@ -3026,17 +3463,26 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 
 		rememberInput(message);
+		const images = imagesInPrompt(message, pendingImages);
+		const attachmentError = attachmentSetError(images);
+		if (attachmentError !== undefined) {
+			setStatus(attachmentError, "warning");
+			scheduleStatusClear();
+			render();
+			return false;
+		}
 		// 一轮进行中不再丢输入：排进队列，本轮收尾后自动发送
 		if (activeTurn !== undefined) {
+			clearAttachments();
 			commandMenu = undefined;
 			setInput("");
-			queued.push(message);
+			queued.push({ text: message, images });
 			render();
 			return true;
 		}
 
 		if (!ready) {
-			// 配置没读成功时不进入对话：保留输入内容，只把原因放到运行时状态行
+			// 配置没读成功时不进入对话：保留输入与图片标记，只把原因放到运行时状态行
 			commandMenu = undefined;
 			resetStatusMeta();
 			setStatus(CONFIGURATION_REQUIRED, "notice");
@@ -3044,8 +3490,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			return false;
 		}
 
+		clearAttachments();
 		setInput("");
-		launch(message);
+		launch(message, images);
 		return true;
 	};
 
@@ -3304,6 +3751,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				) {
 					return;
 				}
+				if (text === "f") {
+					forkSelectedSession();
+					return;
+				}
 			}
 
 			// 键盘同样只差回调:上下移动、回车确认、Tab 补全、Esc 收起
@@ -3462,7 +3913,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 						? CHECKPOINT_ACTION_HEIGHT
 						: openPage === "jobs" || openPage === "job"
 							? JOB_ACTION_HEIGHT
-							: 0;
+							: openPage === "sandbox"
+								? SANDBOX_ACTION_HEIGHT
+								: 0;
 			const rows = Math.max(1, mainAreaHeight() - actionHeight);
 			const width = terminalWidth();
 			const total = pageLines(openPage, width).length;
@@ -3676,6 +4129,42 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			}
 		}
 
+		if (fileMenu !== undefined) {
+			// 文件补全和命令补全一样不抢输入焦点，只接管选择相关的按键与鼠标
+			const menu = fileMenu;
+			const filePanelTop = Math.max(1, terminalHeight(stdout) - footerHeight() + 1);
+			if (
+				handleMenuMouse(mouseOf(), {
+					hitItem: (row) =>
+						menuIndexAtRow(row, filePanelTop, menu.items.length, menu.scrollTop, menu.cursor),
+					cursor: () => menu.cursor,
+					select: (index) => {
+						menu.cursor = index;
+						menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, menu.items.length);
+					},
+					move: moveFileMenu,
+					confirm: insertFileReference,
+				})
+			) {
+				return;
+			}
+
+			const key = menuKey(text);
+			if (key === "up" || key === "down") {
+				moveFileMenu(key === "up" ? -1 : 1);
+				return;
+			}
+			if (key === "tab" || key === "enter") {
+				insertFileReference();
+				return;
+			}
+			if (key === "escape") {
+				closeFileMenu(true);
+				render();
+				return;
+			}
+		}
+
 		// 输入框失焦后，回车只负责把焦点抢回来：这一下不提交，避免误发已经打好的内容。
 		// 只认单独的换行块，粘贴进来的多行内容不会被当成聚焦键吞掉。
 		if (!focused && (withoutMouse === "\r" || withoutMouse === "\n")) {
@@ -3683,6 +4172,22 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			render();
 			return;
 		}
+		// Ctrl+V / Alt+V 读剪贴板里的图片；终端自己处理的文本粘贴不会走到这里
+		const clipboardKey =
+			withoutMouse === "\x16" || withoutMouse === "\x1bv" || withoutMouse === "\x1bV";
+		if (clipboardKey && !pasting) {
+			attachClipboardImage(inputCursor);
+			return;
+		}
+		// 拖入终端只会得到一段路径文本：整段就是一个现有图片时插成正文标记，不填进输入框
+		if (commandMenu === undefined && !pasting) {
+			const dragged = draggedImagePath(text);
+			if (dragged !== undefined) {
+				attachImagePath(dragged, inputCursor);
+				return;
+			}
+		}
+
 		const previous = input;
 		const previousCursor = inputCursor;
 		if (text === "\x05" && commandMenu === undefined) {
@@ -3735,8 +4240,16 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			if (queueKey === "recall") {
 				const recalled = queued.pop();
 				if (recalled !== undefined) {
-					setInput(input.length === 0 ? recalled : `${recalled}\n${input}`);
+					// 队列里的正文已经带着标记，把对应图片数据接回来，删除标记仍能取消那张图
+					for (const image of recalled.images) {
+						const token = imageMarker(image.name);
+						if (!pendingImages.some((item) => item.token === token)) {
+							pendingImages.push({ token, image });
+						}
+					}
+					setInput(input.length === 0 ? recalled.text : `${recalled.text}\n${input}`);
 					updateCommandMenu();
+					updateFileMenu();
 					render();
 					return;
 				}
@@ -3767,6 +4280,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			historyIndex = -1;
 			// 输入变了，之前用 Esc 关掉补全面板的决定就作废：新内容该有自己的补全
 			commandMenuDismissed = false;
+			fileMenuDismissed = false;
 		}
 		// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
 		// 命令补全面板相反，跟着新输入继续过滤
@@ -3777,6 +4291,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}
 		setInput(edit.text, edit.cursor);
 		updateCommandMenu();
+		updateFileMenu();
 		// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流；
 		// 斜杠命令同样不是对话内容，补全面板与帮助页都盖在启动画面上
 		if (input.length > 0 && !input.startsWith("/") && ready) hasInput = true;

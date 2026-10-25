@@ -49,14 +49,17 @@ import {
 	sumUsage,
 } from "../session/usage.ts";
 import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
-import { createSandbox } from "../sandbox/setup.ts";
+import { createSandbox, type SandboxInfo } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
+import { imageBlock, type ImageAttachment } from "../tui/image-attachments.ts";
+import { createImageSource } from "./image-reader.ts";
 import type { TrustDecision } from "../workspace/trust.ts";
 import { JobManager } from "../tools/jobs.ts";
 import { createCoreTools } from "../tools/builtin/index.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
+import { fileEntries } from "../workspace/walk.ts";
 import { currentBranch } from "../workspace/git.ts";
 import { findProjectResources, recordTrust, resolveTrust } from "../workspace/trust.ts";
 import {
@@ -72,7 +75,7 @@ import { buildTranscriptHistory } from "../tui/history.ts";
 import type { FooterInfo } from "../tui/footer.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { runPrintMode } from "./print-mode.ts";
-import { createSession, resumeCommand, resumeSession } from "./session-target.ts";
+import { createSession, forkSession, resumeCommand, resumeSession } from "./session-target.ts";
 import { openSessionForSwitch } from "./session-switch.ts";
 import { createStartupTimer } from "./startup-timer.ts";
 import { readVersion } from "../version.ts";
@@ -234,7 +237,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 		onStage: (stage) => startup.mark(stage),
 	});
 	if (pipeline === null) return 1;
-	const { registry, host, sandbox } = pipeline;
+	const { registry, host, sandbox, sandboxInfo, sandboxWarnings } = pipeline;
 
 	const workspace = new WorkspaceBoundary(workRoot);
 	startup.mark("sandbox");
@@ -322,6 +325,34 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	};
 
 	/**
+	 * 把一个已经打开的会话接成当前会话。
+	 *
+	 * 旧会话先释放写入器，之后条目才只落到新会话里。Plan 与检查点都是会话级状态，换会话
+	 * 就回到普通模式并换索引；待撤销提醒属于旧会话的下一轮，也一并清掉。
+	 */
+	const adoptSession = (next: Session): void => {
+		const previous = activeSession;
+		void previous.close().catch((error: unknown) => {
+			writeStderr(
+				`reins: could not close the previous session: ${error instanceof Error ? error.message : String(error)}\n`,
+			);
+		});
+		activeSession = next;
+		sessionPersisted = next.path !== null;
+		policy.setPlanMode(false);
+		pendingUndoNotice = undefined;
+		checkpoints = new CheckpointService({
+			workRoot,
+			sessionId: next.id,
+			onUndo: (message) => {
+				pendingUndoNotice = message;
+			},
+		});
+		void checkpoints.init();
+		refreshInfo();
+	};
+
+	/**
 	 * 配置变了就重读一次。
 	 *
 	 * 只应用每轮重新读取的那部分，其余明确说「要重启」——配置项一半生效、一半不生效，
@@ -394,6 +425,7 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 	/** 一轮真实对话。模型/思考等级都从当前目录读取，切换后下一轮立即生效。 */
 	const runTurn = async (
 		prompt: string,
+		images: readonly ImageAttachment[],
 		onEvent: AgentEventListener,
 		signal: AbortSignal,
 	): Promise<void> => {
@@ -411,7 +443,14 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 
 		try {
 			const { driver } = createCurrentDriver(onEvent);
-			await driver.run(prompt, signal);
+			const content =
+				images.length === 0
+					? prompt
+					: [
+							...(prompt.length > 0 ? [{ type: "text" as const, text: prompt }] : []),
+							...images.map(imageBlock),
+						];
+			await driver.run(content, signal);
 		} finally {
 			await checkpoints.finalizeTurn(checkpoint?.id);
 		}
@@ -512,45 +551,66 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			: {
 					list: () => {
 						const active = activeSession.id;
-						return store.list(sessionsDir(workRoot)).map((listing) => ({
-							id: listing.id,
-							title: sessionTitle(listing.title),
-							time: sessionAge(listing.updatedAt),
-							current: listing.id === active,
-						}));
+						const listings = store.list(sessionsDir(workRoot));
+						const byId = new Map(listings.map((listing) => [listing.id, listing]));
+						return listings.map((listing) => {
+							const origin = listing.forkedFrom;
+							const originTitle =
+								origin === undefined
+									? undefined
+									: byId.get(origin.session)?.title ?? origin.session.slice(0, 8);
+							return {
+								id: listing.id,
+								title: sessionTitle(listing.title),
+								time: sessionAge(listing.updatedAt),
+								current: listing.id === active,
+								...(originTitle === undefined
+									? {}
+									: { forkedFrom: sessionTitle(originTitle) }),
+							};
+						});
 					},
 					select: (id) => {
-						const previous = activeSession;
-						if (id === previous.id) return { changed: false, history: [], warnings: [] };
+						if (id === activeSession.id) return { changed: false, history: [], warnings: [] };
 
 						const switched = openSessionForSwitch(workRoot, id, store);
-
-						// 旧会话先释放写入器，之后条目才只落到新会话里
-						void previous.close().catch((error: unknown) => {
-							writeStderr(
-								`reins: could not close the previous session: ${error instanceof Error ? error.message : String(error)}\n`,
-							);
-						});
-						activeSession = switched.session;
-						sessionPersisted = activeSession.path !== null;
-						// Plan 与检查点都是会话级状态：切到另一个会话就回到普通模式并换索引
-						policy.setPlanMode(false);
-						pendingUndoNotice = undefined;
-						checkpoints = new CheckpointService({
-							workRoot,
-							sessionId: activeSession.id,
-							onUndo: (message) => {
-								pendingUndoNotice = message;
-							},
-						});
-						void checkpoints.init();
-						refreshInfo();
+						adoptSession(switched.session);
 						return {
 							changed: true,
 							history: switched.history,
 							todo: switched.todo,
 							plan: switched.plan,
 							warnings: [],
+						};
+					},
+					fork: (id) => {
+						// 分叉只复制对话路径：源会话无论是当前还是历史会话，都从它的当前叶子开始
+						let forked: Session;
+						if (id === activeSession.id) {
+							forked = forkSession(activeSession, workRoot, store);
+						} else {
+							const listing = store.list(sessionsDir(workRoot)).find((item) => item.id === id);
+							if (listing === undefined) {
+								throw new Error(`Session ${id} not found in ${sessionsDir(workRoot)}`);
+							}
+							const source = Session.open(listing.file, store);
+							try {
+								forked = forkSession(source, workRoot, store);
+							} finally {
+								void source.close().catch(() => {});
+							}
+						}
+
+						const copied = forked.entryCount;
+						const forkedHistory = buildTranscriptHistory(forked.state().messages, workRoot);
+						adoptSession(forked);
+						return {
+							changed: true,
+							history: forkedHistory.turns,
+							...(forkedHistory.todo === undefined ? {} : { todo: forkedHistory.todo }),
+							...(forkedHistory.plan === undefined ? {} : { plan: forkedHistory.plan }),
+							warnings: [],
+							fork: { sourceId: id, copied },
 						};
 					},
 				};
@@ -570,6 +630,16 @@ async function runTuiMode(options: CliOptions): Promise<number> {
 			planMode,
 			checkpoints: checkpointSource,
 			jobs,
+			sandbox: {
+				info: sandboxInfo,
+				...(sandboxWarnings.length === 0 ? {} : { warning: sandboxWarnings.join("\n\n") }),
+			},
+			images: createImageSource(workRoot),
+			imagesSupported: () => catalog.selection?.model.input.includes("image") ?? false,
+			files: {
+				list: () =>
+					[...fileEntries(workRoot, MAX_FILE_COMPLETION_FILES)].map((entry) => entry.relative),
+			},
 			modelMenu,
 			effortMenu,
 			pluginCommands,
@@ -780,8 +850,9 @@ async function runPrint(options: CliOptions): Promise<number> {
 	});
 	const pipeline = await assemblePipeline({ config, workRoot, policy, gate });
 	if (pipeline === null) return 1;
-	const { registry, sandbox } = pipeline;
+	const { registry, sandbox, sandboxWarnings } = pipeline;
 	const host = pipeline.host;
+	for (const warning of sandboxWarnings) writeStderr(`${warning}\n`);
 
 	const session = createSessionFor(workRoot, host.sessionStore());
 	const compactor = createCompactor(config, selection);
@@ -1009,10 +1080,12 @@ function readConfigQuietly(options: CliOptions, workRoot: string, trusted: boole
 		: userConfig.config;
 }
 
-function createSandboxFor(config: Config, workRoot: string, host: PluginHost): SandboxView {
-	const setup = createSandbox(config.sandbox, workRoot, host.backends());
-	for (const warning of setup.warnings) writeStderr(`${warning}\n`);
-	return setup.sandbox;
+function createSandboxFor(
+	config: Config,
+	workRoot: string,
+	host: PluginHost,
+): { readonly sandbox: SandboxView; readonly info: SandboxInfo; readonly warnings: readonly string[] } {
+	return createSandbox(config.sandbox, workRoot, host.backends());
 }
 
 /**
@@ -1079,6 +1152,9 @@ function createCompactor(
 
 /** Plan 模式下模型能看到的全部工具：只读探索加计划提交，没有 shell、编辑或子代理。 */
 const PLAN_TOOL_NAMES = ["read", "ls", "find", "grep", "present_plan"] as const;
+
+/** @ 补全一次最多索引的文件数；只影响补全，不影响 find/grep 自己的遍历上限。 */
+const MAX_FILE_COMPLETION_FILES = 20_000;
 
 /** 按白名单收窄注册表；随包工具可能被配置禁用，缺失的名字直接跳过。 */
 function planToolRegistry(registry: ToolRegistry): ToolRegistry {
@@ -1193,7 +1269,13 @@ async function assemblePipeline(options: {
 	readonly jobs?: JobManager;
 	readonly onMcpStatus?: (source: McpStatusSource) => void;
 	readonly onStage?: (stage: string) => void;
-}): Promise<{ readonly registry: ToolRegistry; readonly host: PluginHost; readonly sandbox: SandboxView } | null> {
+}): Promise<{
+	readonly registry: ToolRegistry;
+	readonly host: PluginHost;
+	readonly sandbox: SandboxView;
+	readonly sandboxInfo: SandboxInfo;
+	readonly sandboxWarnings: readonly string[];
+} | null> {
 	const { config, workRoot, policy, gate } = options;
 	const registry = new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), gate);
 	for (const tool of createCoreTools({ shellPath: config.shellPath, jobs: options.jobs })) {
@@ -1218,10 +1300,10 @@ async function assemblePipeline(options: {
 	options.onStage?.("external");
 
 	try {
-		const sandbox = createSandboxFor(config, workRoot, host);
+		const { sandbox, info, warnings } = createSandboxFor(config, workRoot, host);
 		// 沙箱缺席时把哪些 MCP server 因此裸奔说出来:不说,使用者只会以为它们被拦着
 		warnUnsandboxedMcpServers(config);
-		return { registry, host, sandbox };
+		return { registry, host, sandbox, sandboxInfo: info, sandboxWarnings: warnings };
 	} catch (error) {
 		writeStderr(`${error instanceof Error ? error.message : String(error)}\n`);
 		return null;

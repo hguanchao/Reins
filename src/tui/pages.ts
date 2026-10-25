@@ -1,6 +1,6 @@
 import type { CommandMenuItem } from "./command-menu.ts";
 import { padEnd } from "./menu-panel.ts";
-import { characterWidth, displayWidth, fitToWidth } from "./text.ts";
+import { displayWidth, fitToWidth, wrapWords } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -51,9 +51,11 @@ const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Ctrl+Home/End", description: "Jump to the oldest or latest output" },
 	{ name: "Ctrl+E", description: "Expand or collapse the latest thinking or tool group" },
 	{ name: "Ctrl+O", description: "Show or hide the latest successful tool result" },
+	{ name: "Ctrl/Alt+V", description: "Insert an image from the clipboard as [image: name]" },
 	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar" },
 	{ name: "Double-click", description: "Expand or collapse thinking, tool groups, and tool details" },
 	{ name: "y / a / n", description: "Allow once, always allow, or deny an approval" },
+	{ name: "@", description: "Complete a workspace file path; an image becomes an inline marker" },
 ];
 
 const HELP_TITLE = "Reins — help";
@@ -167,7 +169,7 @@ function sectionPageLines(
 	}
 	if (footnotes.length > 0) lines.push("");
 	for (const footnote of footnotes) {
-		lines.push(...wrapText(footnote, columns).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
+		lines.push(...wrapWords(footnote, columns).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
 	}
 	return lines;
 }
@@ -194,7 +196,7 @@ function sectionLines(section: PageSection, width: number): readonly string[] {
 	const lines: string[] = ["", `${SECTION_COLOR}${fitToWidth(section.title, width)}${RESET}`];
 	if (section.entries.length === 0) {
 		if (section.empty !== undefined) {
-			lines.push(...wrapText(section.empty, width).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
+			lines.push(...wrapWords(section.empty, width).map((line) => `${DESCRIPTION_COLOR}${line}${RESET}`));
 		}
 		return lines;
 	}
@@ -246,7 +248,7 @@ function cardLines(entry: PageEntry, width: number): readonly string[] {
 	const lines = [`${indent}${NAME_COLOR}${head}${RESET}`];
 
 	if (!inlineNote && note.length > 0) {
-		for (const line of wrapText(note, bodyWidth)) {
+		for (const line of wrapWords(note, bodyWidth)) {
 			lines.push(`${bodyIndent}${NOTE_COLOR}${line}${RESET}`);
 		}
 	}
@@ -254,12 +256,12 @@ function cardLines(entry: PageEntry, width: number): readonly string[] {
 	if (entry.description.length > 0) {
 		const [lead, ...rest] = splitFirstSentence(entry.description);
 		// 首句用亮色单独折行；剩余部分换回说明色。首句自己超宽时照常折行，只是整段都是亮色
-		for (const line of wrapText(lead, bodyWidth)) {
+		for (const line of wrapWords(lead, bodyWidth)) {
 			lines.push(`${bodyIndent}${NAME_COLOR}${line}${RESET}`);
 		}
 		const remainder = rest.join(" ");
 		if (remainder.length > 0) {
-			for (const line of wrapText(remainder, bodyWidth)) {
+			for (const line of wrapWords(remainder, bodyWidth)) {
 				lines.push(`${bodyIndent}${DESCRIPTION_COLOR}${line}${RESET}`);
 			}
 		}
@@ -291,7 +293,7 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 	const noteLines =
 		entry.note === undefined
 			? []
-			: wrapText(entry.note, Math.max(1, width - displayWidth(ENTRY_INDENT))).map(
+			: wrapWords(entry.note, Math.max(1, width - displayWidth(ENTRY_INDENT))).map(
 					(line) => `${ENTRY_INDENT}${NOTE_COLOR}${line}${RESET}`,
 				);
 
@@ -299,14 +301,14 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 		const indent = ENTRY_INDENT.slice(0, width);
 		return [
 			`${NAME_COLOR}${head}${RESET}`,
-			...wrapText(entry.description, Math.max(1, width - displayWidth(indent))).map(
+			...wrapWords(entry.description, Math.max(1, width - displayWidth(indent))).map(
 				(line) => `${indent}${DESCRIPTION_COLOR}${line}${RESET}`,
 			),
 			...noteLines,
 		];
 	}
 
-	const wrapped = wrapText(entry.description, width - headWidth);
+	const wrapped = wrapWords(entry.description, width - headWidth);
 	const indent = " ".repeat(headWidth);
 	return [
 		...wrapped.map((line, index) =>
@@ -316,50 +318,4 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 		),
 		...noteLines,
 	];
-}
-
-/**
- * 按显示宽度折行。
- *
- * 优先在空格处断开，避免把英文单词切成两半；单个词本身就超过一行（以及中文这类没有空格
- * 分隔的文字）退回逐字符折行，宽字符不会被切成半个。
- */
-function wrapText(text: string, limit: number): readonly string[] {
-	if (limit <= 0) return [""];
-
-	const lines: string[] = [];
-	let line = "";
-	let used = 0;
-	const push = (): void => {
-		lines.push(line);
-		line = "";
-		used = 0;
-	};
-
-	for (const word of text.split(" ")) {
-		const wordWidth = displayWidth(word);
-		const gap = line.length === 0 ? 0 : 1;
-		if (used + gap + wordWidth <= limit) {
-			line = line.length === 0 ? word : `${line} ${word}`;
-			used += gap + wordWidth;
-			continue;
-		}
-
-		if (line.length > 0) push();
-		if (wordWidth <= limit) {
-			line = word;
-			used = wordWidth;
-			continue;
-		}
-
-		for (const char of word) {
-			const charWidth = characterWidth(char);
-			if (used + charWidth > limit && line.length > 0) push();
-			line += char;
-			used += charWidth;
-		}
-	}
-
-	lines.push(line);
-	return lines;
 }

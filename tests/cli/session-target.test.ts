@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { createSession, resumeCommand, resumeSession } from "../../src/cli/session-target.ts";
+import { createSession, forkSession, resumeCommand, resumeSession } from "../../src/cli/session-target.ts";
+import { sessionsDir } from "../../src/config/paths.ts";
 import { JsonlSessionStore } from "../../src/plugins/session-plugin/jsonl-store.ts";
 
 /** 会话目录由 REINS_HOME 决定；每个用例用自己的临时目录，结束后恢复并删除。 */
@@ -47,6 +48,43 @@ describe("会话接续", () => {
 		await withHome(async (workRoot) => {
 			const store = new JsonlSessionStore();
 			assert.throws(() => resumeSession(workRoot, "missing", store), /not found/);
+		});
+	});
+
+	it("从当前末尾分叉：复制对话路径、记录来源、原会话不受影响", async () => {
+		await withHome(async (workRoot) => {
+			const store = new JsonlSessionStore();
+			const source = createSession(workRoot, store);
+			await source.append({ type: "message", message: { role: "user", content: "first" } });
+			await source.append({ type: "message", message: { role: "user", content: "second" } });
+			const leaf = source.leafId;
+
+			const forked = forkSession(source, workRoot, store);
+			assert.notEqual(forked.id, source.id);
+			assert.equal(forked.entryCount, 2);
+			assert.equal(forked.leafId, leaf);
+
+			const listing = store
+				.list(sessionsDir(workRoot))
+				.find((item) => item.id === forked.id);
+			assert.deepEqual(listing?.forkedFrom, { session: source.id, entry: leaf });
+
+			// 两个会话之后各写各的
+			await forked.append({ type: "message", message: { role: "user", content: "fork work" } });
+			assert.equal(source.entryCount, 2);
+			assert.equal(forked.entryCount, 3);
+
+			await forked.close();
+			await source.close();
+		});
+	});
+
+	it("空会话没有分叉点", async () => {
+		await withHome(async (workRoot) => {
+			const store = new JsonlSessionStore();
+			const source = createSession(workRoot, store);
+			assert.throws(() => forkSession(source, workRoot, store), /no entries to fork from/);
+			await source.close();
 		});
 	});
 });

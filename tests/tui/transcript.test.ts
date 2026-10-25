@@ -1639,3 +1639,17 @@ describe("子代理组", () => {
 		assert.equal(g.expanded, false);
 	});
 });
+
+describe("用户提示块", () => {
+	it("图片标记用引用蓝高亮，背景与正文颜色保持", () => {
+		const turn: TranscriptTurn = { prompt: "[image: a.png] 这是什么", response: [] };
+		const line =
+			renderTranscript(60, 10, [turn], 0).find((item) =>
+				plain(item).includes("[image: a.png]"),
+			) ?? "";
+
+		assert.ok(line.includes(`${THEME.image}[image: a.png]${MESSAGE_TEXT}`));
+		assert.ok(line.startsWith(PROMPT_BG));
+		assert.ok(line.includes(`${MESSAGE_TEXT} 这是什么`));
+	});
+});

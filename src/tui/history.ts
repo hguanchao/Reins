@@ -1,10 +1,12 @@
 import {
 	assistantText,
 	assistantToolCalls,
+	userImages,
 	userText,
 	type LlmMessage,
 } from "../llm/messages.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
+import { imageMarker } from "./image-attachments.ts";
 import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "./todo-card.ts";
 import {
 	appendToolLine,
@@ -63,7 +65,12 @@ export function buildTranscriptHistory(
 			case "user": {
 				const text = userText(message);
 				if (text.startsWith(SUMMARY_PREFIX)) continue;
-				current = { prompt: text.length > 0 ? text : "[image]", response: [] };
+				// 新消息的正文已经带标记；旧会话里没有标记的图片补在提示块末尾，不另起回复行
+				const markers = userImages(message)
+					.map((image) => imageMarker(image.name))
+					.filter((marker) => !text.includes(marker));
+				const prompt = [text, ...markers].filter((part) => part.length > 0).join(" ");
+				current = { prompt: prompt.length > 0 ? prompt : "[image]", response: [] };
 				turns.push(current);
 				break;
 			}

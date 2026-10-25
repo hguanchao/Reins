@@ -6,6 +6,7 @@ import type { AgentEvent, AgentEventListener } from "../../src/agent/events.ts";
 import { ApprovalBroker } from "../../src/permission/approval.ts";
 import type { ApprovalAnswer } from "../../src/permission/policy.ts";
 import { runTui, type AgentRuntime, type JobSource } from "../../src/tui/layout.ts";
+import type { ImageAttachment, ImageSource } from "../../src/tui/image-attachments.ts";
 import type { JobEvent, JobView } from "../../src/tui/job-pages.ts";
 import { THEME } from "../../src/tui/theme.ts";
 
@@ -46,6 +47,8 @@ interface FakeAgent {
 	readonly runtime: AgentRuntime;
 	/** 已经交给 runTurn 的提示，按发送顺序 */
 	readonly prompts: string[];
+	/** 每次发送携带的图片，与 prompts 一一对应 */
+	readonly images: (readonly ImageAttachment[])[];
 	emit(event: AgentEvent): void;
 	finish(): Promise<void>;
 }
@@ -59,17 +62,20 @@ function createFakeAgent(onRefresh: () => void = () => {}): FakeAgent {
 		  }
 		| undefined;
 	const prompts: string[] = [];
+	const images: (readonly ImageAttachment[])[] = [];
 
 	return {
 		runtime: {
-			runTurn: (prompt, onEvent) =>
+			runTurn: (prompt, attached, onEvent) =>
 				new Promise<void>((resolve) => {
 					prompts.push(prompt);
+					images.push(attached);
 					current = { listener: onEvent, resolve };
 				}),
 			refreshInfo: onRefresh,
 		},
 		prompts,
+		images,
 		emit: (event) => {
 			void current?.listener(event);
 		},
@@ -116,6 +122,34 @@ const SESSION_ITEMS = [
 	{ id: "0123456789abcdef", title: "Fix the login flow", time: "2 hours ago", current: true },
 	{ id: "fedcba9876543210", title: "Write the release notes", time: "3 days ago", current: false },
 ];
+const FORKED_SESSION_ITEMS = [
+	...SESSION_ITEMS,
+	{
+		id: "aaaabbbbccccdddd",
+		title: "Fix the login flow",
+		time: "just now",
+		current: false,
+		forkedFrom: "Fix the login flow",
+	},
+];
+const IMAGE_ATTACHMENT: ImageAttachment = {
+	name: "screenshot.png",
+	mimeType: "image/png",
+	data: "aGVsbG8=",
+	bytes: 842 * 1024,
+};
+
+function fakeImageSource(overrides: Partial<ImageSource> = {}): ImageSource {
+	return {
+		read: async (path) => ({
+			...IMAGE_ATTACHMENT,
+			name: path.split(/[\\/]/).at(-1) ?? "image.png",
+		}),
+		detect: (text) => (text === "drag.png" ? "drag.png" : undefined),
+		clipboard: async () => IMAGE_ATTACHMENT,
+		...overrides,
+	};
+}
 
 function pressCtrlC(input: FakeInput): void {
 	input.emit("data", Buffer.from([3]));
@@ -1538,8 +1572,151 @@ describe("全屏布局", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("会话切换失败时报告错误，保留当前对话", async () => {
+	it("/session 菜单标出分叉来源", async () => {
 		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 100;
+		output.rows = 20;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => FORKED_SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+				fork: () => ({ changed: false, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session\r"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("↳ Fork of Fix the login flow"));
+			assert.ok(text.includes("f fork at end"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("/fork 从当前会话末尾分叉并显示复制量", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const forks: string[] = [];
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+				fork: (id) => {
+					forks.push(id);
+					return {
+						changed: true,
+						history: [{ prompt: "old work", response: ["old answer"] }],
+						warnings: [],
+						fork: { sourceId: id, copied: 4 },
+					};
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/fork\r"));
+
+			assert.deepEqual(forks, ["0123456789abcdef"]);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Forked from 0123456789abcdef · 4 entries copied"));
+			assert.ok(text.includes("Workspace unchanged"));
+			assert.ok(text.includes("old work"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("会话菜单按 f 从选中的会话分叉", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const forks: string[] = [];
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+				fork: (id) => {
+					forks.push(id);
+					return {
+						changed: true,
+						history: [],
+						warnings: [],
+						fork: { sourceId: id, copied: 2 },
+					};
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session\r"));
+			// 光标从当前会话移到下一条，再按 f
+			input.emit("data", Buffer.from("\x1b[B"));
+			input.emit("data", Buffer.from("f"));
+
+			assert.deepEqual(forks, ["fedcba9876543210"]);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Forked from fedcba9876543210 · 2 entries copied"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("分叉失败时报告错误，保留当前对话", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+				fork: () => {
+					throw new Error("This session has no entries to fork from");
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/fork\r"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Failed to fork session"));
+			assert.ok(text.includes("no entries to fork from"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("会话切换失败时报告错误，保留当前对话", async () => {		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
 		output.rows = 20;
@@ -1703,7 +1880,7 @@ describe("全屏布局", () => {
 			assert.ok(text.includes("/compact"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 12 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 14 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);
@@ -3870,12 +4047,12 @@ describe("全屏布局", () => {
 
 		try {
 			// 内置命令已经占满一屏，先过滤出插件命令再看补全
-			input.emit("data", Buffer.from("/re"));
+			input.emit("data", Buffer.from("/reload"));
 			let text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("/reload"));
 			assert.ok(text.includes("Reload external plugins"));
 
-			input.emit("data", Buffer.from("load now\r"));
+			input.emit("data", Buffer.from(" now\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 
 			text = frameLines(output).map(plain).join("\n");
@@ -4010,6 +4187,410 @@ describe("全屏布局", () => {
 		}
 
 		assert.equal(await running, 0);
+	});
+
+	it("沙箱限制在启动区提示，/sandbox 打开说明页", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 100;
+		output.rows = 24;
+		const warning =
+			"Sandbox mode is workspace but this platform (win32) has no usable command isolation: " +
+			"path checks still apply, and shell commands are refused.";
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sandbox: {
+				info: {
+					mode: "workspace",
+					platform: "win32",
+					confinesCommands: false,
+				},
+				warning,
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			let text = frameLines(output)
+				.map(plain)
+				.join("\n");
+			assert.ok(text.includes("no usable command isolation"));
+
+			input.emit("data", Buffer.from("/sandbox\r"));
+			const page = frameLines(output).map(plain);
+			text = page.join("\n");
+			assert.equal(page[0]?.trimEnd(), "Reins — sandbox");
+			assert.ok(text.includes("Command isolation"));
+			assert.ok(text.includes("unavailable"));
+			assert.ok(text.includes("Shell commands are refused"));
+			assert.ok(text.includes("Esc close"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			text = frameLines(output)
+				.map(plain)
+				.join("\n");
+			assert.equal(text.includes("Reins — sandbox"), false);
+			// 平台限制不是可修复的配置问题：页面关掉后启动说明仍在
+			assert.ok(text.includes("no usable command isolation"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Ctrl+V 把剪贴板图片插成正文标记，发送时随消息带上图片", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			images: fakeImageSource(),
+			imagesSupported: () => true,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x16"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("[image: screenshot.png]"));
+			assert.equal(text.includes("[img]"), false);
+
+			input.emit("data", Buffer.from("这个间距为什么不对\r"));
+			assert.deepEqual(agent.prompts, ["[image: screenshot.png] 这个间距为什么不对"]);
+			assert.equal(agent.images[0]?.[0]?.name, "screenshot.png");
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("[image: screenshot.png] 这个间距为什么不对"));
+			await agent.finish();
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("图片标记可以单独发送，模型能力缺失时提示", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			images: fakeImageSource(),
+			imagesSupported: () => false,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x16"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("does not declare image input"));
+
+			input.emit("data", Buffer.from("\r"));
+			assert.deepEqual(agent.prompts, ["[image: screenshot.png]"]);
+			assert.equal(agent.images[0]?.[0]?.name, "screenshot.png");
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("[image: screenshot.png]"));
+
+			await agent.finish();
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("删掉正文里的图片标记后，这张图不再发送", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			images: fakeImageSource(),
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x16"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			const marker = `[image: ${IMAGE_ATTACHMENT.name}] `;
+			input.emit("data", Buffer.from("\x7f".repeat(marker.length)));
+			input.emit("data", Buffer.from("hi\r"));
+
+			assert.deepEqual(agent.prompts, ["hi"]);
+			assert.equal(agent.images[0]?.length, 0);
+
+			await agent.finish();
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("读图期间回车不会发出缺少图片的半轮消息", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		let release!: (image: ImageAttachment) => void;
+		const pending = new Promise<ImageAttachment>((resolve) => {
+			release = resolve;
+		});
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			images: fakeImageSource({ clipboard: () => pending }),
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x16"));
+			input.emit("data", Buffer.from("\r"));
+			assert.deepEqual(agent.prompts, []);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Still reading an image"));
+
+			release(IMAGE_ATTACHMENT);
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			input.emit("data", Buffer.from("\r"));
+			assert.deepEqual(agent.prompts, ["[image: screenshot.png]"]);
+			assert.equal(agent.images[0]?.length, 1);
+			await agent.finish();
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("拖入图片路径插入正文标记，不把路径留在输入框", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			images: fakeImageSource(),
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("drag.png"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const lines = frameLines(output).map(plain);
+			const text = lines.join("\n");
+			assert.ok(text.includes("[image: drag.png]"));
+			assert.equal(text.includes("[img]"), false);
+			// 路径本身没有作为文字留在输入框里
+			assert.equal(lines.some((line) => line === " › drag.png"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("@ 打开文件补全，Tab 插入相对路径", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			files: { list: () => ["src/tui/layout.ts", "src/tui/text.ts", "README.md"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("看一下 @src/tu"));
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("src/tui/layout.ts"));
+			assert.ok(text.includes("src/tui/text.ts"));
+			assert.equal(text.includes("README.md"), false);
+
+			// 文件名更短的 text.ts 排在前面，Tab 选中它并补全整段 @片段
+			input.emit("data", Buffer.from("\t"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("看一下 @src/tui/text.ts"));
+			assert.equal(text.includes("src/tui/layout.ts"), false);
+			assert.equal(agent.prompts.length, 0);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("@ 面板里回车只插入路径，不发送", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			files: { list: () => ["src/tui/layout.ts"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("看看 @lay"));
+			input.emit("data", Buffer.from("\r"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("看看 @src/tui/layout.ts"));
+			assert.equal(agent.prompts.length, 0);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("@ 选中图片时插入正文标记，不把路径留在提示词里", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			images: fakeImageSource(),
+			files: { list: () => ["shots/screen.png", "src/a.ts"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("看看 @scr"));
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const lines = frameLines(output).map(plain);
+			const text = lines.join("\n");
+			assert.ok(text.includes("[image: screen.png]"));
+			assert.equal(text.includes("[img]"), false);
+			assert.equal(text.includes("@scr"), false);
+
+			input.emit("data", Buffer.from("\r"));
+			assert.deepEqual(agent.prompts, ["看看 [image: screen.png]"]);
+			assert.equal(agent.images[0]?.[0]?.name, "screen.png");
+			await agent.finish();
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("@ 每次重新打开都重扫文件，Esc 后输入变化才再弹", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		let scans = 0;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			files: {
+				list: () => {
+					scans += 1;
+					return ["README.md"];
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("@"));
+			assert.equal(scans, 1);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("README.md"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			assert.equal(
+				frameLines(output).map(plain).join("\n").includes("README.md"),
+				false,
+			);
+
+			// Esc 之后同一段输入不弹；继续输入才重新打开并重扫
+			input.emit("data", Buffer.from("r"));
+			assert.equal(scans, 2);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("README.md"));
+
+			// 结束当前片段后重新输入 @，又扫一次
+			input.emit("data", Buffer.from(" "));
+			input.emit("data", Buffer.from("@"));
+			assert.equal(scans, 3);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("邮箱里的 @ 不弹文件补全", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			files: { list: () => ["README.md"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("name@example.com"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("README.md"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("斜杠命令参数里的 @ 不弹文件补全", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			files: { list: () => ["README.md"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/plan @rea"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("README.md"), false);
+		} finally {
+			exitTui(input);
+		}
 	});
 
 	it("/skills 每次打开都重扫，改完技能重新打开就能看到", async () => {

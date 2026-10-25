@@ -58,6 +58,52 @@ export function wrapText(text: string, limit: number): string[] {
 	return lines;
 }
 
+/**
+ * 按显示宽度折行，优先在空格处断开。
+ *
+ * 说明性文字用这一版：英文单词被切成两半读起来很别扭。单个词本身超过一行、以及中文这类
+ * 没有空格的文本，退回逐字符折行，保证宽字符不会被切成半个。
+ */
+export function wrapWords(text: string, limit: number): string[] {
+	if (limit <= 0) return [""];
+
+	const lines: string[] = [];
+	let line = "";
+	let used = 0;
+	const push = (): void => {
+		lines.push(line);
+		line = "";
+		used = 0;
+	};
+
+	for (const word of text.split(" ")) {
+		const wordWidth = displayWidth(word);
+		const gap = line.length === 0 ? 0 : 1;
+		if (used + gap + wordWidth <= limit) {
+			line = line.length === 0 ? word : `${line} ${word}`;
+			used += gap + wordWidth;
+			continue;
+		}
+
+		if (line.length > 0) push();
+		if (wordWidth <= limit) {
+			line = word;
+			used = wordWidth;
+			continue;
+		}
+
+		for (const char of word) {
+			const charWidth = characterWidth(char);
+			if (used + charWidth > limit && line.length > 0) push();
+			line += char;
+			used += charWidth;
+		}
+	}
+
+	lines.push(line);
+	return lines;
+}
+
 /** 截到指定宽度；放不下时末尾补省略号，保证结果不超过宽度。 */
 export function fitToWidth(text: string, width: number): string {
 	if (width <= 0) return "";

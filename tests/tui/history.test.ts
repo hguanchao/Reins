@@ -496,4 +496,28 @@ describe("会话历史回填子代理组", () => {
 		const kinds = turns[0]?.response.map((line) => (line as { kind?: string }).kind);
 		assert.deepEqual(kinds, ["tool", "subagentGroup"]);
 	});
+
+	it("图片标记在用户消息块里显示，纯图片消息仍算一个回合", () => {
+		const messages: LlmMessage[] = [
+			{
+				role: "user",
+				content: [
+					{ type: "text", text: "看一下这个间距 [image: screenshot.png]" },
+					{ type: "image", data: "aGVsbG8=", mimeType: "image/png", name: "screenshot.png" },
+				],
+			},
+			{ role: "assistant", content: [{ type: "text", text: "我先看截图。" }] },
+			{
+				role: "user",
+				content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }],
+			},
+		];
+
+		const turns = buildTranscriptHistory(messages).turns;
+		// 正文已有标记时不重复补；旧会话没有标记时补在提示块末尾，而不是另起回复行
+		assert.equal(turns[0]?.prompt, "看一下这个间距 [image: screenshot.png]");
+		assert.deepEqual(turns[0]?.response, [{ kind: "markdown", text: "我先看截图。" }]);
+		assert.equal(turns[1]?.prompt, "[image: image]");
+		assert.deepEqual(turns[1]?.response, []);
+	});
 });

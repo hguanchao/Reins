@@ -1,6 +1,7 @@
 import { sanitizeLine, type ToolGroupKind } from "../tools/describe.ts";
 import { formatCompactTokens, formatDuration } from "../tools/format.ts";
 import { resultDetail, resultMetric, type ResultDetailKind } from "../tools/result-summary.ts";
+import { highlightImageMarkers } from "./image-attachments.ts";
 import { highlightCode, type SyntaxSegment } from "../tools/syntax.ts";
 import { renderMarkdown } from "./markdown.ts";
 import { swept, type AnimationFrame } from "./sweep.ts";
@@ -1835,7 +1836,8 @@ function promptBlock(prompt: string, width: number): readonly string[] {
 		const usedPrefixWidth = displayWidth(prefix);
 		const text = truncateToWidth(line, Math.max(0, width - usedPrefixWidth));
 		const padding = " ".repeat(Math.max(0, width - usedPrefixWidth - displayWidth(text)));
-		return `${PROMPT_BG}${MESSAGE_TEXT_COLOR}${prefix}${text}${padding}${RESET}`;
+		const styled = highlightImageMarkers(text, THEME.image, MESSAGE_TEXT_COLOR);
+		return `${PROMPT_BG}${MESSAGE_TEXT_COLOR}${prefix}${styled}${padding}${RESET}`;
 	});
 	const empty = `${PROMPT_BG}${" ".repeat(width)}${RESET}`;
 	return [empty, ...content, empty];

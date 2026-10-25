@@ -3,6 +3,30 @@ import { Sandbox, type SandboxBackend, type SandboxView } from "../sandbox/polic
 import { verifyCommandIsolation } from "../sandbox/verify.ts";
 
 /**
+ * 沙箱当前的实际情况。
+ *
+ * 界面需要的只是「现在处于什么模式、这台机器能做到哪一步」，而不是拿 Sandbox 的私有状态。
+ * 平台名与后端标识都原样给出，显示成什么由界面决定。
+ */
+export interface SandboxInfo {
+	readonly mode: SandboxMode;
+	/** 取自 process.platform，界面自己转成可读的平台名 */
+	readonly platform: string;
+	/** 真正可用的命令隔离手段；模式为 off 或本平台没有时为空 */
+	readonly backend?: string;
+	/** 命令能否被约束；off 表示不需要约束，没有后端时为 false */
+	readonly confinesCommands: boolean;
+}
+
+export interface SandboxSetup {
+	readonly sandbox: SandboxView;
+	/** 需要在使用前告知使用者的事项 */
+	readonly warnings: readonly string[];
+	/** 模式与平台能力的只读快照，供 /sandbox 页展示 */
+	readonly info: SandboxInfo;
+}
+
+/**
  * 按配置与可用的平台手段装配沙箱。
  *
  * 三件事在这里定下来：
@@ -12,12 +36,6 @@ import { verifyCommandIsolation } from "../sandbox/verify.ts";
  *     使用者得到的是「部分保护 + 明确的限制」，不是「以为有保护其实没有」。
  * 三、一旦声称有隔离手段，就先真的试一次。声称了却不管用比不声称更危险。
  */
-export interface SandboxSetup {
-	readonly sandbox: SandboxView;
-	/** 需要在使用前告知使用者的事项 */
-	readonly warnings: readonly string[];
-}
-
 export function createSandbox(
 	mode: SandboxMode,
 	root: string,
@@ -25,11 +43,18 @@ export function createSandbox(
 ): SandboxSetup {
 	const backend = backends.find((item) => item.available);
 	const sandbox = new Sandbox({ mode, root }, backend);
-	if (mode === "off") return { sandbox, warnings: [] };
+	const info: SandboxInfo = {
+		mode,
+		platform: process.platform,
+		confinesCommands: sandbox.confinesCommands,
+		...(mode === "off" || backend === undefined ? {} : { backend: backend.id }),
+	};
+	if (mode === "off") return { sandbox, warnings: [], info };
 
 	if (backend === undefined) {
 		return {
 			sandbox,
+			info,
 			warnings: [
 				`Sandbox mode is ${mode} but this platform (${process.platform}) has no usable command isolation: ` +
 					"path checks still apply, and shell commands are refused. " +
@@ -40,5 +65,5 @@ export function createSandbox(
 
 	// 只有在「以为有隔离」的时候才需要核对；核对不过就停下，不要带着虚假的保护继续跑
 	verifyCommandIsolation(sandbox, root);
-	return { sandbox, warnings: [] };
+	return { sandbox, warnings: [], info };
 }
