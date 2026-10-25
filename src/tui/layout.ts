@@ -104,7 +104,7 @@ import { submit } from "./runtime/submit.ts";
 import { togglingTranscriptAt } from "./runtime/view.ts";
 import type { ActiveTurn, TuiHost } from "./runtime/types.ts";
 import type { ImageAttachment } from "./image-attachments.ts";
-import { measureTranscriptView, scrollTopForRow as scrollTopForRowImpl } from "./transcript.ts";
+import { measureTranscriptView, scrollTopForRow as scrollTopForRowImpl, type TranscriptMetrics } from "./transcript.ts";
 import type { TranscriptLine } from "./transcript.ts";
 
 /**
@@ -281,7 +281,7 @@ function maxScroll(host: TuiHost): number {
 	return Math.max(0, metrics.scrollLines - mainHeight);
 }
 
-function measure(host: TuiHost, width: number, mainHeight: number): import("./transcript.ts").TranscriptMetrics {
+function measure(host: TuiHost, width: number, mainHeight: number): TranscriptMetrics {
 	return measureTranscriptView(host.currentTranscript(width), mainHeight);
 }
 
