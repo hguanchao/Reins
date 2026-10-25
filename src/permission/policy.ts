@@ -1,5 +1,5 @@
 import type { ApprovalMode } from "../config/config-file.ts";
-import type { PermissionScope, ToolAnnotations } from "../tools/contract.ts";
+import type { GateOutcome, GateRequest, PermissionScope, ToolAnnotations } from "../tools/contract.ts";
 
 /**
  * 审批判定。
@@ -182,23 +182,6 @@ export interface ReviewOutcome {
 /** 审查模型。抽成接口是为了让判定的落实可以单独测，不必先接一个真模型。 */
 export interface ApprovalReviewer {
 	review(tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ReviewOutcome>;
-}
-
-export interface GateRequest {
-	readonly tool: string;
-	readonly annotations: ToolAnnotations;
-	readonly args: Record<string, unknown>;
-	/** 工具来源：只读标注只在核心与随包插件上可信 */
-	readonly source: "core" | "bundled" | "plugin";
-	/** 本会话可记住的放行范围；undefined 表示这次调用只能逐次批准 */
-	readonly scope: PermissionScope | undefined;
-	readonly signal: AbortSignal;
-}
-
-export interface GateOutcome {
-	readonly allowed: boolean;
-	/** 拒绝的理由；放行时为空。它会被写进工具结果，让模型知道为什么没做成。 */
-	readonly reason: string;
 }
 
 export interface GateOptions {

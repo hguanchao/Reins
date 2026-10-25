@@ -2,7 +2,13 @@ import { describeError } from "../describe-error.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionReadView } from "../session/port.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
-import type { AnyToolDefinition, PermissionScope, ToolAnnotations, ToolResult } from "./contract.ts";
+import type {
+	AnyToolDefinition,
+	GateOutcome,
+	GateRequest,
+	PermissionScope,
+	ToolResult,
+} from "./contract.ts";
 import { validateToolArguments } from "./schema.ts";
 import type { ResultSpiller } from "./spill.ts";
 
@@ -41,23 +47,6 @@ export interface ToolCallOutcome {
  */
 export interface ToolGate {
 	check(request: GateRequest): Promise<GateOutcome>;
-}
-
-export interface GateRequest {
-	readonly tool: string;
-	readonly annotations: ToolAnnotations;
-	readonly args: Record<string, unknown>;
-	/** 工具来源：审批层据此决定只读标注是否可信 */
-	readonly source: ToolSource;
-	/** 本会话可记住的放行范围；undefined 表示这次调用只能逐次批准 */
-	readonly scope: PermissionScope | undefined;
-	readonly signal: AbortSignal;
-}
-
-export interface GateOutcome {
-	readonly allowed: boolean;
-	/** 拒绝的理由，会写进工具结果让模型知道为什么没做成 */
-	readonly reason: string;
 }
 
 /** 一次调用需要的运行环境，由装配处提供。 */

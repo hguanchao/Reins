@@ -89,3 +89,26 @@ export interface ToolDefinition<P = Record<string, unknown>> extends ToolDeclara
 
 /** 注册表保存工具时用的类型。 */
 export type AnyToolDefinition = ToolDefinition<Record<string, unknown>>;
+
+/**
+ * 审批判定需要的信息。
+ *
+ * 注册表与权限层共用这一份契约：两处各写一遍时，字段很容易在改动后悄悄对不上，而审批请求
+ * 正是安全检查的输入，口径必须唯一。
+ */
+export interface GateRequest {
+	readonly tool: string;
+	readonly annotations: ToolAnnotations;
+	readonly args: Record<string, unknown>;
+	/** 工具来源：审批层据此决定只读标注是否可信 */
+	readonly source: "core" | "bundled" | "plugin";
+	/** 本会话可记住的放行范围；undefined 表示这次调用只能逐次批准 */
+	readonly scope: PermissionScope | undefined;
+	readonly signal: AbortSignal;
+}
+
+export interface GateOutcome {
+	readonly allowed: boolean;
+	/** 拒绝的理由，会写进工具结果让模型知道为什么没做成；放行时为空。 */
+	readonly reason: string;
+}

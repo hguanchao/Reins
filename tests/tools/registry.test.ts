@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ToolRegistry, type GateRequest, type ToolGate, type ToolRunContext } from "../../src/tools/registry.ts";
+import { ToolRegistry, type ToolGate, type ToolRunContext } from "../../src/tools/registry.ts";
+import type { GateRequest } from "../../src/tools/contract.ts";
 import { ResultSpiller } from "../../src/tools/spill.ts";
 import type { JsonSchema } from "../../src/tools/schema.ts";
 import type { ToolDefinition, ToolResult } from "../../src/tools/contract.ts";
