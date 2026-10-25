@@ -1,4 +1,5 @@
 import type { CheckpointEntry, CheckpointPreview } from "../../checkpoint/service.ts";
+import { actionLines, pageTitle, subtleLine } from "./chrome.ts";
 import { displayWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
@@ -16,7 +17,6 @@ const LIST_TITLE = "Reins — checkpoints";
 const UNDO_TITLE = "Reins — undo";
 const RESTORE_TITLE = "Reins — restore";
 const RESET = THEME.reset;
-const META_COLOR = THEME.textSecondary;
 const TIME_COLOR = THEME.textSubtle;
 const SAFETY_COLOR = THEME.syntaxKeyword;
 const SELECTED_COLOR = THEME.accent;
@@ -29,7 +29,7 @@ export function checkpointListLines(
 	busy = false,
 ): readonly string[] {
 	const columns = Math.max(0, width);
-	const lines = [coloredTitle(LIST_TITLE, columns), " ".repeat(columns)];
+	const lines = [pageTitle(LIST_TITLE, columns), " ".repeat(columns)];
 	if (busy) lines.push(subtleLine("Reading checkpoint…", columns));
 	if (entries.length === 0) {
 		lines.push(subtleLine("No checkpoints yet.", columns));
@@ -50,7 +50,7 @@ export function checkpointPreviewLines(preview: CheckpointPreview, width: number
 	const entry = preview.entry;
 	const title = entry.kind === "safety" ? RESTORE_TITLE : UNDO_TITLE;
 	const count = preview.changes.length;
-	const lines = [coloredTitle(title, columns), " ".repeat(columns)];
+	const lines = [pageTitle(title, columns), " ".repeat(columns)];
 	const meta = [
 		entry.label,
 		checkpointAge(entry.createdAt),
@@ -90,10 +90,6 @@ export function checkpointPreviewLines(preview: CheckpointPreview, width: number
 	lines.push(noteLine("Current files, including manual edits, will be overwritten.", THEME.warning, columns));
 	lines.push(noteLine("A safety checkpoint will be kept before restoring.", THEME.textSecondary, columns));
 	return lines;
-}
-
-function subtleLine(text: string, width: number): string {
-	return noteLine(text, THEME.textSubtle, width);
 }
 
 function noteLine(text: string, color: string, width: number): string {
@@ -138,27 +134,6 @@ function checkpointRow(entry: CheckpointEntry, width: number, selected: boolean)
 	);
 	const labelPart = `${labelColor}${shownLeft}${RESET}`;
 	return `${labelPart}${padding}${shownTime.length === 0 ? "" : `${TIME_COLOR}${shownTime}${RESET}`}`;
-}
-
-function actionLines(
-	width: number,
-	keys: readonly (readonly [string, string, string])[],
-): readonly string[] {
-	const columns = Math.max(0, width);
-	const rule = `${THEME.border}${"─".repeat(columns)}${RESET}`;
-	if (columns === 0) return ["", ""];
-	const text = keys
-		.map(([key, label, color]) => `${color}${key}${RESET} ${META_COLOR}${label}${RESET}`)
-		.join("  ");
-	const plain = keys.map(([key, label]) => `${key} ${label}`).join("  ");
-	const visible = displayWidth(plain) <= columns ? text : truncateToWidth(plain, columns);
-	const used = displayWidth(plain) <= columns ? displayWidth(plain) : displayWidth(visible);
-	return [rule, `${visible}${" ".repeat(Math.max(0, columns - used))}`];
-}
-
-function coloredTitle(title: string, width: number): string {
-	const visible = truncateToWidth(title, width);
-	return `${THEME.accent}${visible}${RESET}${" ".repeat(Math.max(0, width - displayWidth(visible)))}`;
 }
 
 /** 检查点时间的短描述；只用相对时间，不要求同步时区。 */

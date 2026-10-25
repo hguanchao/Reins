@@ -30,7 +30,7 @@ export function menuHeight(itemCount: number): number {
 }
 
 /** 上边框右侧的数量；数量变化时只伸缩左侧长横线。 */
-export function topBorder(width: number, count: number): string {
+function topBorder(width: number, count: number): string {
 	const label = ` ${count} `;
 	const labelWidth = displayWidth(label);
 	const tail = Math.min(TAIL_DASHES, Math.max(0, width - labelWidth));
@@ -38,7 +38,7 @@ export function topBorder(width: number, count: number): string {
 	return `${BORDER_COLOR}${"─".repeat(left)}${SUBTLE_COLOR}${label}${BORDER_COLOR}${"─".repeat(tail)}${RESET}`;
 }
 
-export function bottomBorder(width: number): string {
+function bottomBorder(width: number): string {
 	return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
 }
 
@@ -50,6 +50,40 @@ export function keepVisible(scrollTop: number, cursor: number, itemCount: number
 	if (cursor < top) top = cursor;
 	if (cursor >= top + visible) top = cursor - visible + 1;
 	return top;
+}
+
+/** 面板列表的公共状态；各面板的条目状态都至少含这两个字段。 */
+interface MenuListState {
+	cursor: number;
+	scrollTop: number;
+}
+
+/**
+ * 画出「上边框 + 可见条目 + 下边框」的完整面板。
+ *
+ * 五个选择面板的滚动窗口、可见行裁剪与边框顺序完全一致，只有列宽计算与单行排版不同，
+ * 那两处由调用方传入。只写一份，面板之间才不会在边界条件上慢慢分叉。
+ */
+export function menuListLines<T, L>(
+	width: number,
+	items: readonly T[],
+	state: MenuListState,
+	layout: (width: number, items: readonly T[]) => L,
+	row: (width: number, item: T, selected: boolean, layout: L) => string,
+): readonly string[] {
+	const visibleCount = Math.min(items.length, MENU_MAX_VISIBLE);
+	const top = keepVisible(state.scrollTop, state.cursor, items.length);
+	const columns = layout(width, items);
+	const lines: string[] = [topBorder(width, items.length)];
+
+	for (let offset = 0; offset < visibleCount; offset += 1) {
+		const item = items[top + offset];
+		if (item === undefined) break;
+		lines.push(row(width, item, top + offset === state.cursor, columns));
+	}
+
+	lines.push(bottomBorder(width));
+	return lines;
 }
 
 export function padEnd(text: string, width: number): string {

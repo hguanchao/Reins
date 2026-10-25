@@ -8,12 +8,10 @@ import {
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-	bottomBorder,
-	keepVisible,
 	menuHeight,
+	menuListLines,
 	padEnd,
 	padStart,
-	topBorder,
 } from "./menu-panel.ts";
 
 /**
@@ -51,20 +49,7 @@ export function modelMenuHeight(itemCount: number): number {
 }
 
 export function renderModelMenu(width: number, state: ModelMenuState): readonly string[] {
-	const items = state.items;
-	const visibleCount = Math.min(items.length, MODEL_MENU_MAX_VISIBLE);
-	const top = keepVisible(state.scrollTop, state.cursor, items.length);
-	const layout = layoutColumns(width, items);
-	const lines: string[] = [topBorder(width, items.length)];
-
-	for (let offset = 0; offset < visibleCount; offset += 1) {
-		const item = items[top + offset];
-		if (item === undefined) break;
-		lines.push(row(width, item, top + offset === state.cursor, layout));
-	}
-
-	lines.push(bottomBorder(width));
-	return lines;
+	return menuListLines(width, state.items, state, layoutColumns, row);
 }
 
 interface Columns {

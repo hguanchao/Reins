@@ -21,7 +21,7 @@ export interface PageEntry {
 	readonly note?: string;
 }
 
-export interface PageSection {
+interface PageSection {
 	readonly title: string;
 	readonly entries: readonly PageEntry[];
 	/** 一条都没有时顶替条目显示的一句话 */

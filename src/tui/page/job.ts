@@ -1,4 +1,6 @@
 import { formatDuration } from "../../shared/format.ts";
+import type { JobStatus, JobView } from "../../tools/jobs.ts";
+import { actionLines, pageTitle, subtleLine } from "./chrome.ts";
 import { displayWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
@@ -9,24 +11,8 @@ import { THEME } from "../render/theme.ts";
  * 底部动作条，滚轮/PageUp/PageDown 只滚正文。
  */
 
-export type JobStatus = "running" | "done" | "failed" | "killed";
-
-export interface JobView {
-	readonly id: string;
-	readonly command: string;
-	readonly status: JobStatus;
-	readonly startedAt: number;
-	readonly endedAt?: number;
-	readonly exitCode?: number | null;
-	readonly timedOut?: boolean;
-	readonly overflowed?: boolean;
-	readonly sessionId: string;
-}
-
-export interface JobEvent {
-	readonly type: "started" | "finished";
-	readonly job: JobView;
-}
+// 作业的数据形状由 JobManager 决定，界面只读同一份声明；这里转出去供页面与选项层引用
+export type { JobEvent, JobStatus, JobView } from "../../tools/jobs.ts";
 
 export const JOB_ACTION_HEIGHT = 2;
 
@@ -44,7 +30,7 @@ const MAX_OUTPUT_LINES = 2000;
 
 export function jobListLines(jobs: readonly JobView[], width: number, cursor: number): readonly string[] {
 	const columns = Math.max(0, width);
-	const lines = [title(LIST_TITLE, columns), " ".repeat(columns)];
+	const lines = [pageTitle(LIST_TITLE, columns), " ".repeat(columns)];
 	if (jobs.length === 0) {
 		lines.push(subtleLine("No background jobs yet.", columns));
 		lines.push(subtleLine("Long commands started with background: true appear here.", columns));
@@ -59,7 +45,7 @@ export function jobListLines(jobs: readonly JobView[], width: number, cursor: nu
 export function jobOutputLines(job: JobView, output: string, width: number): readonly string[] {
 	const columns = Math.max(0, width);
 	const lines = [
-		title(`${OUTPUT_TITLE}${job.id}`, columns),
+		pageTitle(`${OUTPUT_TITLE}${job.id}`, columns),
 		" ".repeat(columns),
 		`${RUNNING_COLOR}  ${truncateToWidth(job.command, Math.max(0, columns - 2))}${RESET}`,
 		`${META_COLOR}  ${truncateToWidth(jobSummary(job), Math.max(0, columns - 2))}${RESET}`,
@@ -169,31 +155,6 @@ function jobSummary(job: JobView): string {
 	if (job.exitCode !== undefined && job.exitCode !== null) parts.push(`exit ${job.exitCode}`);
 	if (job.timedOut === true) parts.push("timed out");
 	return parts.join(" · ");
-}
-
-function actionLines(
-	width: number,
-	keys: readonly (readonly [string, string, string])[],
-): readonly string[] {
-	const columns = Math.max(0, width);
-	const rule = `${THEME.border}${"─".repeat(columns)}${RESET}`;
-	if (columns === 0) return ["", ""];
-	const text = keys
-		.map(([key, label, color]) => `${color}${key}${RESET} ${META_COLOR}${label}${RESET}`)
-		.join("  ");
-	const plain = keys.map(([key, label]) => `${key} ${label}`).join("  ");
-	const visible = displayWidth(plain) <= columns ? text : truncateToWidth(plain, columns);
-	const used = displayWidth(plain) <= columns ? displayWidth(plain) : displayWidth(visible);
-	return [rule, `${visible}${" ".repeat(Math.max(0, columns - used))}`];
-}
-
-function title(text: string, width: number): string {
-	const shown = truncateToWidth(text, width);
-	return `${THEME.accent}${shown}${RESET}${" ".repeat(Math.max(0, width - displayWidth(shown)))}`;
-}
-
-function subtleLine(text: string, width: number): string {
-	return `${SUBTLE_COLOR}  ${truncateToWidth(text, Math.max(0, width - 2))}${RESET}`;
 }
 
 /**

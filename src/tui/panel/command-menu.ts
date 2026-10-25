@@ -2,17 +2,15 @@ import {
 	ACCENT_COLOR,
 	BOLD_OFF,
 	DISABLED_COLOR,
-	MENU_MAX_VISIBLE,
+
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-	bottomBorder,
-	keepVisible,
 	menuHeight,
+	menuListLines,
 	padEnd,
-	topBorder,
 } from "./menu-panel.ts";
 import { displayWidth } from "../render/text.ts";
 
@@ -37,31 +35,18 @@ export interface CommandMenuState {
 	scrollTop: number;
 }
 
-const COMMAND_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
 const PREFIX_WIDTH = 3;
 /** 命令名与说明之间的间距。 */
 const GAP = "    ";
 const GAP_WIDTH = displayWidth(GAP);
+
 export function commandMenuHeight(itemCount: number): number {
 	return menuHeight(itemCount);
 }
 
 export function renderCommandMenu(width: number, state: CommandMenuState): readonly string[] {
-	const items = state.items;
-	const visibleCount = Math.min(items.length, COMMAND_MENU_MAX_VISIBLE);
-	const top = keepVisible(state.scrollTop, state.cursor, items.length);
-	const layout = layoutColumns(width, items);
-	const lines: string[] = [topBorder(width, items.length)];
-
-	for (let offset = 0; offset < visibleCount; offset += 1) {
-		const item = items[top + offset];
-		if (item === undefined) break;
-		lines.push(row(width, item, top + offset === state.cursor, layout));
-	}
-
-	lines.push(bottomBorder(width));
-	return lines;
+	return menuListLines(width, state.items, state, layoutColumns, row);
 }
 
 interface Columns {

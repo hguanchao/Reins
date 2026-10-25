@@ -3,18 +3,15 @@ import { displayWidth } from "../render/text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
-	MENU_MAX_VISIBLE,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-	bottomBorder,
-	keepVisible,
 	menuHeight,
+	menuListLines,
 	padEnd,
 	padStart,
-	topBorder,
 } from "./menu-panel.ts";
 
 /**
@@ -50,8 +47,6 @@ export function effortMenuHeight(): number {
 }
 
 export function renderEffortMenu(width: number, state: EffortMenuState): readonly string[] {
-	const visibleCount = Math.min(THINKING_LEVELS.length, MENU_MAX_VISIBLE);
-	const top = keepVisible(state.scrollTop, state.cursor, THINKING_LEVELS.length);
 	const levelWidth = Math.max(...THINKING_LEVELS.map(displayWidth));
 	const currentWidth =
 		width >= PREFIX_WIDTH + levelWidth + GAP + CURRENT_WIDTH ? CURRENT_WIDTH : 0;
@@ -59,26 +54,23 @@ export function renderEffortMenu(width: number, state: EffortMenuState): readonl
 		currentWidth > 0
 			? Math.max(0, width - PREFIX_WIDTH - levelWidth - GAP - GAP - currentWidth)
 			: Math.max(0, width - PREFIX_WIDTH - levelWidth - GAP);
-	const lines: string[] = [topBorder(width, THINKING_LEVELS.length)];
 
-	for (let offset = 0; offset < visibleCount; offset += 1) {
-		const level = THINKING_LEVELS[top + offset];
-		if (level === undefined) break;
-		lines.push(
+	return menuListLines(
+		width,
+		THINKING_LEVELS,
+		state,
+		() => ({ levelWidth, currentWidth, descriptionWidth }),
+		(_columns, level, selected, layout) =>
 			row(
 				width,
 				level,
-				top + offset === state.cursor,
+				selected,
 				level === state.current,
-				levelWidth,
-				descriptionWidth >= 4 ? descriptionWidth : 0,
-				currentWidth,
+				layout.levelWidth,
+				layout.descriptionWidth >= 4 ? layout.descriptionWidth : 0,
+				layout.currentWidth,
 			),
-		);
-	}
-
-	lines.push(bottomBorder(width));
-	return lines;
+	);
 }
 
 function row(

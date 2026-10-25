@@ -2,17 +2,15 @@ import { isImagePath } from "../image.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
-	MENU_MAX_VISIBLE,
+
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	SUBTLE_COLOR,
 	TEXT_COLOR,
-	bottomBorder,
-	keepVisible,
 	menuHeight,
-	topBorder,
+	menuListLines,
 } from "./menu-panel.ts";
 import { characterWidth, displayWidth, fitToWidth } from "../render/text.ts";
 
@@ -29,7 +27,7 @@ export interface FileSource {
 }
 
 /** 光标所在的 `@` 路径片段。 */
-export interface AtToken {
+interface AtToken {
 	/** `@` 的下标 */
 	readonly start: number;
 	/** 片段结束位置（下一个空白前） */
@@ -45,7 +43,6 @@ export interface FileMenuState {
 	scrollTop: number;
 }
 
-const FILE_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 const MAX_RESULTS = 200;
 const PREFIX_WIDTH = 3;
 const IMAGE_BADGE = "  [image]";
@@ -127,19 +124,9 @@ export function formatFileReference(path: string): string {
 }
 
 export function renderFileMenu(width: number, state: FileMenuState): readonly string[] {
-	const columns = Math.max(0, width);
-	const items = state.items;
-	const visibleCount = Math.min(items.length, FILE_MENU_MAX_VISIBLE);
-	const top = keepVisible(state.scrollTop, state.cursor, items.length);
-	const lines: string[] = [topBorder(columns, items.length)];
-
-	for (let offset = 0; offset < visibleCount; offset += 1) {
-		const item = items[top + offset];
-		if (item === undefined) break;
-		lines.push(row(columns, item, top + offset === state.cursor));
-	}
-	lines.push(bottomBorder(columns));
-	return lines;
+	return menuListLines(Math.max(0, width), state.items, state, () => undefined, (columns, path, selected) =>
+		row(columns, path, selected),
+	);
 }
 
 function row(width: number, path: string, selected: boolean): string {

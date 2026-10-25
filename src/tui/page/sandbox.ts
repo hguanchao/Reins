@@ -1,4 +1,5 @@
 import type { SandboxInfo } from "../../sandbox/setup.ts";
+import { actionLines, pageTitle } from "./chrome.ts";
 import { displayWidth, truncateToWidth, wrapWords } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
@@ -21,7 +22,7 @@ const RESET = THEME.reset;
 export function sandboxPageLines(info: SandboxInfo, width: number): readonly string[] {
 	const columns = Math.max(0, width);
 	const lines = [
-		coloredTitle(TITLE, columns),
+		pageTitle(TITLE, columns),
 		" ".repeat(columns),
 		`${THEME.textSubtle}${truncateToWidth(SECTION, columns)}${RESET}`,
 		row("Mode", info.mode, info.mode === "off" ? THEME.textPrimary : THEME.warning, columns),
@@ -64,15 +65,7 @@ export function sandboxPageLines(info: SandboxInfo, width: number): readonly str
 }
 
 export function sandboxActionLines(width: number): readonly string[] {
-	const columns = Math.max(0, width);
-	const rule = `${THEME.border}${"─".repeat(columns)}${RESET}`;
-	if (columns === 0) return ["", ""];
-	const plain = "Esc close";
-	const shown = displayWidth(plain) <= columns ? plain : truncateToWidth(plain, columns);
-	const text = shown === plain
-		? `${THEME.textSubtle}Esc${RESET} ${THEME.textSecondary}close${RESET}`
-		: shown;
-	return [rule, `${text}${" ".repeat(Math.max(0, columns - displayWidth(shown)))}`];
+	return actionLines(width, [["Esc", "close", THEME.textSubtle]]);
 }
 
 function row(label: string, value: string, color: string, width: number): string {
@@ -129,9 +122,4 @@ function missingBackendExplanation(platform: string): string {
 		);
 	}
 	return `No command isolation backend is available for ${platformName(platform)} in this build.`;
-}
-
-function coloredTitle(title: string, width: number): string {
-	const visible = truncateToWidth(title, width);
-	return `${THEME.accent}${visible}${RESET}${" ".repeat(Math.max(0, width - displayWidth(visible)))}`;
 }

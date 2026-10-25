@@ -2,18 +2,16 @@ import { displayWidth, fitToWidth, truncateToWidth } from "../render/text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
-	MENU_MAX_VISIBLE,
+
+	menuListLines,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	SUBTLE_COLOR,
 	TEXT_COLOR,
-	bottomBorder,
-	keepVisible,
 	menuHeight,
 	padEnd,
-	topBorder,
 } from "./menu-panel.ts";
 
 /**
@@ -40,7 +38,6 @@ export interface SessionMenuState {
 	scrollTop: number;
 }
 
-const SESSION_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
 
 /** " › " 的显示宽度；未选中行用等宽空格占位。 */
 const PREFIX_WIDTH = 3;
@@ -65,19 +62,9 @@ export function renderSessionMenu(
 	state: SessionMenuState,
 	forkAvailable = false,
 ): readonly string[] {
-	const items = state.items;
-	const visibleCount = Math.min(items.length, SESSION_MENU_MAX_VISIBLE);
-	const top = keepVisible(state.scrollTop, state.cursor, items.length);
-	const layout = layoutColumns(width, items);
-	const lines: string[] = [topBorder(width, items.length)];
-
-	for (let offset = 0; offset < visibleCount; offset += 1) {
-		const item = items[top + offset];
-		if (item === undefined) break;
-		lines.push(row(width, item, top + offset === state.cursor, layout));
-	}
-
-	lines.push(bottomBorder(width));
+	const lines = [
+		...menuListLines(width, state.items, state, layoutColumns, row),
+	];
 	if (forkAvailable) lines.push(actionHint(width));
 	return lines;
 }
