@@ -144,7 +144,7 @@ function signatureOf(block: { readonly signature?: string }): { readonly signatu
 	return block.signature === undefined ? {} : { signature: block.signature };
 }
 
-export interface ParsedToolArguments {
+interface ParsedToolArguments {
 	readonly arguments: Record<string, unknown>;
 	readonly argumentsError?: string;
 }

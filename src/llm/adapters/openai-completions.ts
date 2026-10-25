@@ -1,16 +1,12 @@
-import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
 import type { LlmEvent, LlmRequest, LlmResult } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
-import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
-import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
 import { ProtocolClient } from "./protocol-client.ts";
 import {
 	IMAGE_ATTACHMENT_NOTICE,
 	IMAGE_OMITTED_PLACEHOLDER,
-	joinUrl,
 } from "./stream-runner.ts";
 
 /**
@@ -94,15 +90,6 @@ interface StreamChunk {
 
 export class OpenAiCompletionsClient extends ProtocolClient {
 	readonly api = "openai-completions";
-	constructor(
-		provider: ProviderEntry,
-		model: ModelEntry,
-		policy: RetryPolicy,
-		proxy?: string,
-		idleTimeoutMs?: number,
-	) {
-		super(provider, model, policy, proxy, idleTimeoutMs);
-	}
 
 	protected async runProtocol(
 		request: LlmRequest,
@@ -117,21 +104,11 @@ export class OpenAiCompletionsClient extends ProtocolClient {
 		/** 是否见到了 [DONE] */
 		let done = false;
 
-		await postSse(
-			{
-				url: joinUrl(this.model.baseUrl, "/chat/completions"),
-				headers: {
-					...this.provider.headers,
-					...this.model.headers,
-					...(apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` }),
-				},
-				body: this.#buildBody(request),
-				signal: request.signal,
-				onRetry: request.onRetry,
-				proxy: this.proxy,
-				// 结束标记到手就说明这一轮的内容发完了，之后连接怎么断都算正常结束
-				complete: () => done || finishReason !== undefined,
-			},
+		await this.postStream(
+			request,
+			"/chat/completions",
+			apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` },
+			() => done || finishReason !== undefined,
 			(data) => {
 				if (data === "[DONE]") {
 					done = true;
@@ -161,8 +138,6 @@ export class OpenAiCompletionsClient extends ProtocolClient {
 				}
 				if (choice.delta != null) applyDelta(choice.delta, accumulator, emit);
 			},
-			this.policy,
-			this.idleTimeoutMs,
 		);
 
 		if (finishReason === undefined && !done) {
@@ -186,7 +161,7 @@ export class OpenAiCompletionsClient extends ProtocolClient {
 		};
 	}
 
-	#buildBody(request: LlmRequest): Record<string, unknown> {
+	buildBody(request: LlmRequest): Record<string, unknown> {
 		const body: Record<string, unknown> = {
 			model: request.model,
 			messages: toWireMessages(request, this.model.input.includes("image")),

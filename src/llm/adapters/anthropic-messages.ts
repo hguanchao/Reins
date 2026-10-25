@@ -1,16 +1,12 @@
-import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
 import type { LlmEvent, LlmRequest, LlmResult } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
-import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
-import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
 import { ProtocolClient } from "./protocol-client.ts";
 import {
 	IMAGE_ATTACHMENT_NOTICE,
 	IMAGE_OMITTED_PLACEHOLDER,
-	joinUrl,
 } from "./stream-runner.ts";
 
 /**
@@ -81,15 +77,6 @@ interface WireUsage {
 export class AnthropicMessagesClient extends ProtocolClient {
 	readonly api = "anthropic-messages";
 
-	constructor(
-		provider: ProviderEntry,
-		model: ModelEntry,
-		policy: RetryPolicy,
-		proxy?: string,
-		idleTimeoutMs?: number,
-	) {
-		super(provider, model, policy, proxy, idleTimeoutMs);
-	}
 
 	protected async runProtocol(
 		request: LlmRequest,
@@ -102,22 +89,11 @@ export class AnthropicMessagesClient extends ProtocolClient {
 		let usage: Partial<TokenCounts> = {};
 		let responseModel = this.model.id;
 
-		await postSse(
-			{
-				url: joinUrl(this.model.baseUrl, "/v1/messages"),
-				headers: {
-					"anthropic-version": DEFAULT_API_VERSION,
-					...this.provider.headers,
-					...this.model.headers,
-					...(apiKey === undefined ? {} : { "x-api-key": apiKey }),
-				},
-				body: this.#buildBody(request),
-				signal: request.signal,
-				onRetry: request.onRetry,
-				proxy: this.proxy,
-				// 收尾事件里的结束原因到手就说明内容发完了，之后连接断开按正常结束处理
-				complete: () => stopReason !== undefined,
-			},
+		await this.postStream(
+			request,
+			"/v1/messages",
+			{ "anthropic-version": DEFAULT_API_VERSION, ...(apiKey === undefined ? {} : { "x-api-key": apiKey }) },
+			() => stopReason !== undefined,
 			(data) => {
 				let event: StreamEvent;
 				try {
@@ -148,8 +124,6 @@ export class AnthropicMessagesClient extends ProtocolClient {
 				if (index === undefined) return;
 				applyEvent(event, index, accumulator, emit);
 			},
-			this.policy,
-			this.idleTimeoutMs,
 		);
 
 		if (stopReason === undefined) {
@@ -175,7 +149,7 @@ export class AnthropicMessagesClient extends ProtocolClient {
 		};
 	}
 
-	#buildBody(request: LlmRequest): Record<string, unknown> {
+	buildBody(request: LlmRequest): Record<string, unknown> {
 		if (request.maxTokens === undefined) {
 			// 这套协议要求必须给出输出上限，凭空选一个数字会让花费与截断行为变得不可预期
 			throw new Error(

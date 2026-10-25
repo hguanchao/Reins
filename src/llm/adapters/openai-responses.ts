@@ -1,16 +1,12 @@
-import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
 import type { LlmEvent, LlmRequest, LlmResult } from "../client.ts";
 import { resolveApiKey } from "../api-keys.ts";
 import { providerEffortValue } from "../effort.ts";
-import { postSse } from "../http.ts";
 import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
-import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
 import { ProtocolClient } from "./protocol-client.ts";
 import {
 	IMAGE_ATTACHMENT_NOTICE,
 	IMAGE_OMITTED_PLACEHOLDER,
-	joinUrl,
 } from "./stream-runner.ts";
 
 /**
@@ -176,15 +172,6 @@ function handleResponseEvent(
 
 export class OpenAiResponsesClient extends ProtocolClient {
 	readonly api = "openai-responses";
-	constructor(
-		provider: ProviderEntry,
-		model: ModelEntry,
-		policy: RetryPolicy,
-		proxy?: string,
-		idleTimeoutMs?: number,
-	) {
-		super(provider, model, policy, proxy, idleTimeoutMs);
-	}
 
 	protected async runProtocol(
 		request: LlmRequest,
@@ -203,21 +190,11 @@ export class OpenAiResponsesClient extends ProtocolClient {
 			responseModel: this.model.id,
 		};
 
-		await postSse(
-			{
-				url: joinUrl(this.model.baseUrl, "/responses"),
-				headers: {
-					...this.provider.headers,
-					...this.model.headers,
-					...(apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` }),
-				},
-				body: this.#buildBody(request),
-				signal: request.signal,
-				onRetry: request.onRetry,
-				proxy: this.proxy,
-				// 终止事件到手就说明这一轮发完了，之后连接怎么断都算正常结束
-				complete: () => session.terminal !== undefined,
-			},
+		await this.postStream(
+			request,
+			"/responses",
+			apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` },
+			() => session.terminal !== undefined,
 			(data) => {
 				let event: StreamEvent;
 				try {
@@ -228,8 +205,6 @@ export class OpenAiResponsesClient extends ProtocolClient {
 				}
 				handleResponseEvent(event, session, accumulator, emit);
 			},
-			this.policy,
-			this.idleTimeoutMs,
 		);
 
 		if (session.terminal === undefined) {
@@ -257,7 +232,7 @@ export class OpenAiResponsesClient extends ProtocolClient {
 		};
 	}
 
-	#buildBody(request: LlmRequest): Record<string, unknown> {
+	buildBody(request: LlmRequest): Record<string, unknown> {
 		const body: Record<string, unknown> = {
 			model: request.model,
 			input: toInput(request.messages, this.model.input.includes("image")),

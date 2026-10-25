@@ -1,8 +1,9 @@
 import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
 import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
+import { postSse } from "../http.ts";
 import type { RetryPolicy } from "../retry.ts";
 import { ContentAccumulator } from "./content-accumulator.ts";
-import { createLlmStream } from "./stream-runner.ts";
+import { createLlmStream, joinUrl } from "./stream-runner.ts";
 
 /**
  * 三家协议适配器的公共骨架。
@@ -65,6 +66,38 @@ export abstract class ProtocolClient implements LlmClient {
 	protected get idleTimeoutMs(): number | undefined {
 		return this.#idleTimeoutMs;
 	}
+
+	/**
+	 * 发一次流式 POST。
+	 *
+	 * 三个子类只有路径、鉴权头与结束判据不同，其余（地址拼接、通用头、重试策略、静默上限）
+	 * 全在这里。密钥头由调用方现取后传入，因为 command 形式的密钥可能短期有效。
+	 */
+	protected async postStream(
+		request: LlmRequest,
+		path: string,
+		authHeaders: Readonly<Record<string, string>>,
+		complete: () => boolean,
+		onData: (data: string) => void,
+	): Promise<void> {
+		await postSse(
+			{
+				url: joinUrl(this.model.baseUrl, path),
+				headers: { ...this.provider.headers, ...this.model.headers, ...authHeaders },
+				body: this.buildBody(request),
+				signal: request.signal,
+				onRetry: request.onRetry,
+				proxy: this.proxy,
+				complete,
+			},
+			onData,
+			this.policy,
+			this.idleTimeoutMs,
+		);
+	}
+
+	/** 按协议拼请求体；各子类的协议字段不同。 */
+	protected abstract buildBody(request: LlmRequest): Record<string, unknown>;
 
 	protected abstract runProtocol(
 		request: LlmRequest,
