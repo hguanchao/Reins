@@ -5,7 +5,8 @@ import { describe, it } from "node:test";
 import type { AgentEvent, AgentEventListener } from "../../src/agent/events.ts";
 import { ApprovalBroker } from "../../src/permission/approval.ts";
 import type { ApprovalAnswer } from "../../src/permission/policy.ts";
-import { runTui, type AgentRuntime, type JobSource } from "../../src/tui/layout.ts";
+import { runTui } from "../../src/tui/layout.ts";
+import type { AgentRuntime, JobSource } from "../../src/tui/options.ts";
 import type { ImageAttachment, ImageSource } from "../../src/tui/image-attachments.ts";
 import type { JobEvent, JobView } from "../../src/tui/job-pages.ts";
 import { THEME } from "../../src/tui/theme.ts";
@@ -5560,7 +5561,7 @@ describe("Plan 模式交互补充", () => {
 
 describe("检查点与撤销集成", () => {
 	function source(available = true): {
-		source: import("../../src/tui/layout.ts").CheckpointSource;
+		source: import("../../src/tui/options.ts").CheckpointSource;
 		readonly restored: string[];
 	} {
 		const entry = {

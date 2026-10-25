@@ -1,10 +1,10 @@
-import { spawn } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
+import { describeError } from "../describe-error.ts";
 
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
 import { inputView, queueHeight, renderFooter, type FooterInfo } from "./footer.ts";
-import { APPROVAL_MODES, THINKING_LEVELS, type ApprovalMode, type NotifyMode, type ThinkingLevel } from "../config/config-file.ts";
-import type { ApprovalBroker, ApprovalPrompt } from "../permission/approval.ts";
+import { APPROVAL_MODES, THINKING_LEVELS, type ThinkingLevel } from "../config/config-file.ts";
+import type { ApprovalPrompt } from "../permission/approval.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { formatDuration } from "../tools/format.ts";
@@ -27,19 +27,21 @@ import {
 	type SessionMenuItem,
 	type SessionMenuState,
 } from "./session-menu.ts";
-import type {
-	CheckpointEntry,
-	CheckpointPreview,
-	CheckpointRestoreResult,
-} from "../checkpoint/checkpoints.ts";
+import type { CheckpointEntry, CheckpointPreview } from "../checkpoint/checkpoints.ts";
 import {
 	commandMenuHeight,
 	renderCommandMenu,
 	type CommandMenuItem,
 	type CommandMenuState,
 } from "./command-menu.ts";
-import { keepVisible, MENU_MAX_VISIBLE } from "./menu-panel.ts";
-import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines, type PageEntry, type SkillPageEntry } from "./pages.ts";
+import { keepVisible } from "./menu-panel.ts";
+import {
+	framedPage,
+	helpPageLines,
+	mcpsPageLines,
+	renderPage,
+	skillsPageLines,
+} from "./pages.ts";
 import {
 	CHECKPOINT_ACTION_HEIGHT,
 	checkpointListActions,
@@ -53,7 +55,8 @@ import {
 	jobListLines,
 	jobOutputActions,
 	jobOutputLines,
-	type JobEvent,
+	jobElapsed,
+	renderJobBarLine,
 	type JobView,
 } from "./job-pages.ts";
 import { planActionLines, planReviewLines, PLAN_ACTION_HEIGHT } from "./plan-review.ts";
@@ -66,7 +69,6 @@ import {
 	isImagePath,
 	uniqueImageName,
 	type ImageAttachment,
-	type ImageSource,
 	type PendingImage,
 } from "./image-attachments.ts";
 import {
@@ -76,15 +78,86 @@ import {
 	formatFileReference,
 	renderFileMenu,
 	type FileMenuState,
-	type FileSource,
 } from "./file-menu.ts";
-import type { SandboxInfo } from "../sandbox/setup.ts";
-import { displayWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
 import type { AnimationFrame } from "./sweep.ts";
-import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, measureTranscriptView, planHeaderInView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, subagentFailureRowInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptPlan, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
+import { appendToolLine, attachToolFailure, attachToolResult, buildTranscriptView, collapseToolGroups, findToolByCallId, findTopLevelToolByCallId, hasRunningSubagent, isSubagentCall, measureTranscriptView, planHeaderInView, renderTranscriptView, scrollbarColumn, scrollTopForRow, thinkingHeaderInView, todoHeaderInView, subagentGroupHeaderInView, subagentFailureRowInView, toggleLastExpandable, toggleLastToolResult, toolGroupHeaderInView, toolHeaderInView, type TranscriptLine, type TranscriptMarkdown, type TranscriptPlan, type TranscriptThinking, type TranscriptTool, type TranscriptTurn, type TranscriptView } from "./transcript.ts";
 import { todoCardFinished, todoCardFromArgs, todoPanelLines, TODO_PANEL_MAX_ITEMS, type TranscriptTodo } from "./todo-card.ts";
+import {
+	commandArgs,
+	commandNameOf,
+	createBuiltinCommands,
+	findCommand,
+	mergeCommands,
+	TURN_SAFE_COMMANDS,
+} from "./commands.ts";
+import {
+	approvalKey,
+	dragMotion,
+	editInput,
+	historyKey,
+	menuIndexAtRow,
+	menuKey,
+	mouseEvents,
+	moveInputVertical,
+	MOUSE_BUTTON_MASK,
+	MOUSE_WHEEL_DOWN,
+	MOUSE_WHEEL_UP,
+	PASTE_END,
+	PASTE_START,
+	queuedEditKey,
+	scrollKey,
+	shiftTabKey,
+	stripMouseEvents,
+	type MenuMouseTarget,
+	type MouseInput,
+} from "./input.ts";
+import type { PageKind, SessionSwitchResult, TuiInput, TuiOptions, TuiOutput } from "./options.ts";
+import {
+	ABORTING,
+	AGENT_UNAVAILABLE,
+	COMPACTING_CONTEXT,
+	CONFIGURATION_REQUIRED,
+	ERROR_STATUS,
+	INTERRUPTED,
+	RUNNING_TOOL,
+	SESSION_UNAVAILABLE,
+	THINKING,
+	WAITING_FOR_MODEL,
+	WAITING_FOR_SUBAGENT,
+	WRITING_RESPONSE,
+	WRITING_TOOL_CALL,
+	errorLine,
+	implementationPrompt,
+	shortReason,
+} from "./status.ts";
+import {
+	BEGIN_SYNCHRONIZED_UPDATE,
+	CTRL_C,
+	CURSOR_BLINKING_BAR,
+	CURSOR_DEFAULT,
+	DEFAULT_COLUMNS,
+	DISABLE_BRACKETED_PASTE,
+	DISABLE_FOCUS_REPORTING,
+	DISABLE_MOUSE,
+	ENABLE_BRACKETED_PASTE,
+	ENABLE_FOCUS_REPORTING,
+	ENABLE_MOUSE,
+	END_SYNCHRONIZED_UPDATE,
+	ENTER_ALTERNATE_SCREEN,
+	ERASE_BELOW,
+	ERASE_LINE,
+	FOCUS_IN,
+	FOCUS_OUT,
+	HIDE_CURSOR,
+	LEAVE_ALTERNATE_SCREEN,
+	RESET,
+	SHOW_CURSOR,
+	desktopNotify,
+	moveCursor,
+	terminalHeight,
+} from "./terminal.ts";
 
 /**
  * 全屏启动。
@@ -97,56 +170,11 @@ import { todoCardFinished, todoCardFromArgs, todoPanelLines, TODO_PANEL_MAX_ITEM
  * 连按两次才退出。
  */
 
-const ENTER_ALTERNATE_SCREEN = "\x1b[?1049h";
-const LEAVE_ALTERNATE_SCREEN = "\x1b[?1049l";
-const HIDE_CURSOR = "\x1b[?25l";
-const SHOW_CURSOR = "\x1b[?25h";
-/** 终端光标形状：5 是闪烁竖线，0 是恢复终端默认。 */
-const CURSOR_BLINKING_BAR = "\x1b[5 q";
-const CURSOR_DEFAULT = "\x1b[0 q";
-/** 打开/关闭终端的焦点上报；关闭后终端不会再往输入里塞焦点事件。 */
-const ENABLE_FOCUS_REPORTING = "\x1b[?1004h";
-const DISABLE_FOCUS_REPORTING = "\x1b[?1004l";
-const FOCUS_IN = "\x1b[I";
-const FOCUS_OUT = "\x1b[O";
-/**
- * 按钮事件上报加 SGR 坐标。
- *
- * 1002 只上报按住键的拖动，1003 连指针的空移动也上报——悬停高亮靠的是后者。两个都开：不认
- * 1003 的终端退回只有拖动上报，点击与拖动照常可用，只是没有悬停。代价是鼠标每动一下都有
- * 数据进来，所以悬停只在状态真的变化时才重绘。
- */
-const ENABLE_MOUSE = "\x1b[?1002h\x1b[?1003h\x1b[?1006h";
-const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1003l\x1b[?1002l";
-/** 粘贴多行内容时不把换行当成提交。 */
-const ENABLE_BRACKETED_PASTE = "\x1b[?2004h";
-const DISABLE_BRACKETED_PASTE = "\x1b[?2004l";
-/**
- * DEC 2026 同步输出：整帧写完才一次性呈现。
- *
- * 每帧重绘整屏，如果终端边解析边刷新，滚动和转圈时就会看到半帧旧内容、半帧新内容。
- * 不支持的终端会忽略这两个序列，行为与现在一致。
- */
-const BEGIN_SYNCHRONIZED_UPDATE = "\x1b[?2026h";
-const END_SYNCHRONIZED_UPDATE = "\x1b[?2026l";
-const RESET = "\x1b[0m";
-/** 擦掉光标所在行；逐行覆盖前先擦，页脚这类不补满宽度的行才不会留下上一帧的尾巴。 */
-const ERASE_LINE = "\x1b[K";
-const ERASE_BELOW = "\x1b[J";
-const DEFAULT_COLUMNS = 80;
-const DEFAULT_ROWS = 24;
-/** Ctrl+C 在原始模式下以控制字符到达，不会触发 SIGINT，必须自己识别。 */
-const CTRL_C = "\x03";
 /** 第一次 Ctrl+C 之后等待第二次的时间；超过就回到未确认状态。 */
 const EXIT_CONFIRM_WINDOW_MS = 2000;
 /** 运行时状态前的加载动画。 */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 const SPINNER_INTERVAL_MS = 100;
-/** SGR 鼠标协议:滚轮向上与向下的按钮码。 */
-const MOUSE_WHEEL_UP = 64;
-const MOUSE_WHEEL_DOWN = 65;
-/** 按钮码低两位是真实按键编号:0 是左键,掩出来为 0 才算点击。 */
-const MOUSE_BUTTON_MASK = 3;
 /** 完整页脚除输入行外的固定行数:空白间隔、状态行、上下边框与常驻信息行。 */
 const FULL_FOOTER_FIXED_LINES = 5;
 /** 紧凑页脚除输入行外的固定行数:上下边框与常驻信息行。 */
@@ -161,35 +189,6 @@ const SWEEP_STEP = 0.08;
 const WHEEL_STEP = 3;
 /** 同一位置两次按下在这个窗口内算双击。 */
 const DOUBLE_CLICK_MS = 400;
-
-/** 等待模型回复：请求已发出，还没有任何增量到达。 */
-const WAITING_FOR_MODEL = "Waiting for model...";
-/** 等待子代理：任务已经派出，结果还没回来。 */
-const WAITING_FOR_SUBAGENT = "Waiting for subagent...";
-const THINKING = "Thinking...";
-const WRITING_RESPONSE = "Writing response...";
-/** 模型正在生成工具调用参数，工具尚未开始执行。 */
-const WRITING_TOOL_CALL = "Writing tool call...";
-const RUNNING_TOOL = "Running tool...";
-const COMPACTING_CONTEXT = "Compacting context...";
-/** 配置不可用时按下回车给出的提示；不启动对话，避免看起来已经正常工作。 */
-const CONFIGURATION_REQUIRED = "Configuration required";
-const AGENT_UNAVAILABLE = "Agent unavailable";
-const SESSION_UNAVAILABLE = "Session storage is unavailable";
-/** 使用者按下中断之后的状态。主动停下不是错误，用中性措辞，不染错误色。 */
-const ABORTING = "Stopping...";
-/** 对话流里的中断标记：说明这一轮的回答在这里被截断了。 */
-const INTERRUPTED = "Interrupted";
-const ERROR_STATUS = "Error";
-
-/**
- * 一轮进行中也能执行的命令。
- *
- * 它们只影响界面（帮助页、选择面板）或下一轮，不碰正在跑的那一轮：模型与思考等级在
- * startRun 时就已交给客户端，改的是下一轮。/compact 会另起一轮，插件命令由插件自己决定，
- * 都等这一轮结束。
- */
-const TURN_SAFE_COMMANDS: ReadonlySet<string> = new Set(["help", "model", "effort"]);
 
 /** 一轮结束后状态行停留的时间。 */
 const STATUS_CLEAR_MS = 1500;
@@ -223,279 +222,6 @@ interface ActiveTurn {
 	outcome: "done" | "error" | "aborted";
 }
 
-/** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
-export interface TuiInput {
-	readonly isTTY?: boolean;
-	setRawMode?(mode: boolean): unknown;
-	resume(): unknown;
-	pause(): unknown;
-	on(event: "data", listener: (chunk: Buffer) => void): unknown;
-	off(event: "data", listener: (chunk: Buffer) => void): unknown;
-}
-
-export interface TuiOutput {
-	readonly isTTY?: boolean;
-	columns?: number;
-	rows?: number;
-	write(chunk: string): unknown;
-	on(event: "resize", listener: () => void): unknown;
-	off(event: "resize", listener: () => void): unknown;
-}
-
-export interface ModelSwitchResult {
-	/** 需要显示在对话流里的说明 */
-	readonly warnings: readonly string[];
-	/** 选择并写回配置后，界面是否可以正常提交 */
-	readonly ready: boolean;
-	/** 新的启动警告；undefined 表示清除 */
-	readonly warning: string | undefined;
-}
-
-export interface ModelMenuSource {
-	/** 当前可选的模型；每次打开菜单时重新取，current 标记才会跟着切换更新 */
-	readonly list: () => readonly ModelMenuItem[];
-	/** 确认选择；返回需要显示在对话流里的说明与新的受限状态 */
-	readonly select: (item: ModelMenuItem) => ModelSwitchResult;
-}
-
-/** 切换会话的结果：对话流要整体换掉，而不是在末尾追加。 */
-export interface SessionSwitchResult {
-	/** false 表示选中的就是当前会话，界面不需要重放历史 */
-	readonly changed: boolean;
-	readonly history: readonly TranscriptTurn[];
-	/** 新会话最后一张任务表；没有时常驻面板随之收起 */
-	readonly todo?: TranscriptTodo;
-	/** 新会话最近一份计划；没有时 /view-plan 提示还没有计划 */
-	readonly plan?: TranscriptPlan;
-	readonly warnings: readonly string[];
-	/** 分叉时说明来源与复制量；普通切换没有这一项 */
-	readonly fork?: {
-		readonly sourceId: string;
-		readonly copied: number;
-	};
-}
-
-export interface SessionMenuSource {
-	/** 当前项目的全部会话，按最近活动从新到旧；每次打开菜单时重新取 */
-	readonly list: () => readonly SessionMenuItem[];
-	/** 切换会话；失败时抛错，由界面显示原因 */
-	readonly select: (id: string) => SessionSwitchResult;
-	/** 从选中会话的当前末尾分叉并切过去；不提供时 /fork 与菜单里的 f 不可用 */
-	readonly fork?: (id: string) => SessionSwitchResult;
-}
-
-export interface EffortMenuSource {
-	/** 当前配置里的思考等级；切换后重新读取 */
-	readonly current: () => ThinkingLevel;
-	/** 确认选择；失败时抛错，由界面显示原因 */
-	readonly select: (level: ThinkingLevel) => void;
-}
-
-/**
- * 审批模式的数据来源。
- *
- * 只提供「读当前档位」和「落到下一档」两件事，循环顺序与按键都由界面决定：宿主只管策略，
- * 界面管交互，二者各自单一职责。切换只在本次运行内有效，不回写配置。
- */
-export interface ApprovalModeSource {
-	/** 当前审批方式；徽标逐帧读取，不拍快照 */
-	readonly current: () => ApprovalMode;
-	/** 切到指定档位；失败时抛错，由界面显示原因 */
-	readonly select: (mode: ApprovalMode) => void;
-}
-
-/**
- * Plan 模式的数据来源。
- *
- * 与审批模式正交：宿主只负责只读闸门，界面负责命令、徽标与审批页。切换只在本次运行内
- * 有效，不写配置文件。
- */
-export interface PlanModeSource {
-	/** 当前是否处于 Plan 模式；徽标逐帧读取 */
-	readonly current: () => boolean;
-	/** 开启或关闭 Plan 模式；失败时抛错，由界面显示原因 */
-	readonly select: (enabled: boolean) => void;
-}
-
-/**
- * 检查点与撤销的数据来源。
- *
- * 列表是同步的（索引已在内存），预览与恢复会跑 git，所以返回 Promise。界面只负责
- * 展示与确认，真正的快照与恢复由宿主服务完成。
- */
-export interface CheckpointSource {
-	readonly available: () => boolean;
-	readonly error: () => string | undefined;
-	readonly list: () => readonly CheckpointEntry[];
-	readonly latestUndoable: () => Promise<CheckpointPreview | undefined>;
-	readonly preview: (id: string) => Promise<CheckpointPreview>;
-	readonly restore: (id: string) => Promise<CheckpointRestoreResult>;
-}
-
-/** 后台作业的界面数据源；由宿主的 JobManager 提供。 */
-export interface JobSource {
-	readonly list: () => readonly JobView[];
-	readonly output: (id: string) => string;
-	readonly kill: (id: string) => unknown;
-	readonly subscribe: (listener: (event: JobEvent) => void) => () => void;
-	readonly shutdown: () => void;
-}
-
-/** 插件与宿主注册的斜杠命令；由装配处桥接到 PluginHost。 */
-export interface PluginCommandSource {
-	/** 当前可用的命令；每次重算补全时重新取，不在界面创建时拍成快照 */
-	readonly list: () => readonly CommandMenuItem[];
-	/** 执行命令并返回要显示在对话流里的输出行；失败时抛错 */
-	readonly run: (name: string, args: string) => Promise<readonly string[]>;
-}
-
-/** 真实对话入口；由启动装配提供。 */
-export interface AgentRuntime {
-	/** 跑一轮对话，事件驱动界面；signal 用于 Ctrl+C 中止。 */
-	readonly runTurn: (
-		prompt: string,
-		images: readonly ImageAttachment[],
-		onEvent: AgentEventListener,
-		signal: AbortSignal,
-	) => Promise<void>;
-	/** 立即压缩上下文；不提供时 /compact 不可用。事件与普通对话共用一套。 */
-	readonly compact?: (onEvent: AgentEventListener, signal: AbortSignal) => Promise<void>;
-	/** 会话记下新的用量或压缩后刷新页脚统计。 */
-	readonly refreshInfo: () => void;
-}
-
-/** 整屏页的内容；帮助、技能、MCP、沙箱、计划、检查点与后台作业共用同一套滚动。 */
-type PageKind =
-	| "help"
-	| "skills"
-	| "mcps"
-	| "sandbox"
-	| "plan"
-	| "checkpoints"
-	| "checkpoint"
-	| "jobs"
-	| "job";
-
-/**
- * `/skills` 页的内容。
- *
- * 清单按需读取：每次打开页面都重扫一遍，改完 SKILL.md 重新打开就能看到。提示词那一份也是
- * 每轮重读的，两者取的是同一个来源，不会一个看得到、另一个看不到。
- */
-export interface SkillsPageSource {
-	readonly list: () => readonly SkillPageEntry[];
-	/** 实际扫过的目录，脚注逐条列出 */
-	readonly directories: readonly string[];
-}
-
-/**
- * `/sandbox` 页的数据来源。
- *
- * warning 与配置警告分开保存：配置警告会在 /model 修复后消失，而平台缺少命令隔离这件事
- * 不会因为换模型而改变，启动说明要一直留到本次界面退出。
- */
-export interface SandboxPageSource {
-	readonly info: SandboxInfo;
-	readonly warning?: string;
-}
-
-export interface TuiOptions {
-	readonly version: string;
-	/** 输入框下方常驻信息：项目、分支、模型、思考强度、上下文与缓存命中率 */
-	readonly info: FooterInfo | (() => FooterInfo);
-	/** 配置有问题时在主区域显示的一行警告；配置正常时不传 */
-	readonly warning?: string;
-	/** 沙箱模式与平台限制；不提供时 /sandbox 不可用 */
-	readonly sandbox?: SandboxPageSource;
-	/** 图片读取；不提供时剪贴板、拖入与 @ 选图片都不可用 */
-	readonly images?: ImageSource;
-	/** 当前模型是否声明了图片输入；没有声明时附加图片给出提示 */
-	readonly imagesSupported?: () => boolean;
-	/** @ 文件补全的数据来源；不提供时 @ 按普通文本处理 */
-	readonly files?: FileSource;
-	/** 配置不可用时为 false：界面照常显示，但不接受提交 */
-	readonly ready?: boolean;
-	/** 真实对话入口；不提供时无法提交普通提示 */
-	readonly agent?: AgentRuntime;
-	/** 工具审批桥接；不提供时不会弹出审批面板 */
-	readonly approval?: ApprovalBroker;
-	/** 审批模式的数据来源；不提供时 Shift+Tab 无效、页脚也不显示徽标 */
-	readonly approvalMode?: ApprovalModeSource;
-	/** Plan 模式的数据来源；不提供时 /plan 不可用、页脚也不显示 PLAN */
-	readonly planMode?: PlanModeSource;
-	/** 检查点与撤销；不提供时 /undo 与 /checkpoints 不可用 */
-	readonly checkpoints?: CheckpointSource;
-	/** 后台作业；不提供时 /jobs 不可用，bash 的 background 也会被拒绝 */
-	readonly jobs?: JobSource;
-	/** /model 菜单的数据来源；不提供时 /model 按普通输入处理 */
-	readonly modelMenu?: ModelMenuSource;
-	/** /effort 菜单的数据来源；不提供时 /effort 不可用 */
-	readonly effortMenu?: EffortMenuSource;
-	/** 插件与宿主注册的斜杠命令；不提供时只有内置命令 */
-	readonly pluginCommands?: PluginCommandSource;
-	/** /skills 的数据来源；不提供时该命令不可用 */
-	readonly skills?: SkillsPageSource;
-	/** /mcps 的数据来源；不提供时该命令不可用（MCP 插件缺席就是这种情况） */
-	readonly mcpServers?: () => readonly PageEntry[];
-	/** /session 菜单的数据来源；不提供时该命令不可用（没有会话存储时就是这种情况） */
-	readonly sessionMenu?: SessionMenuSource;
-	/** 一轮结束时的提醒方式；默认 auto（失焦时响铃） */
-	readonly notify?: NotifyMode;
-	/** 启动时回填的历史对话；续聊时使用 */
-	readonly history?: readonly TranscriptTurn[];
-	/** 历史里最后一张任务表；续聊时让常驻面板立即有内容 */
-	readonly historyTodo?: TranscriptTodo;
-	/** 历史里最近一份计划；续聊时 /view-plan 可以立即打开 */
-	readonly historyPlan?: TranscriptPlan;
-	/** 工作根：用来判断命令开头的工作根 cd 是否多余，省略时原样显示 */
-	readonly workspaceRoot?: string;
-	readonly stdin?: TuiInput;
-	readonly stdout?: TuiOutput;
-}
-
-/**
- * 重试原因压成一行短提示。
- *
- * 状态行只有一行：控制字符会弄乱排版，过长的原因（端点常把整段错误体塞进消息里）会把
- * 计时与用量挤掉。
- */
-function shortReason(reason: string): string {
-	const first = reason.split("\n", 1)[0] ?? "";
-	const clean = first.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
-	return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
-}
-
-/** 附件读取失败时的单行原因；错误体常带换行，状态行只放得下第一行。 */
-function errorLine(error: unknown): string {
-	const message = error instanceof Error ? error.message : String(error);
-	const first = message.split("\n", 1)[0] ?? "";
-	const clean = first.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
-	return clean.length > 80 ? `${clean.slice(0, 79)}…` : clean;
-}
-
-/** 批准计划后交给模型的用户消息：整份计划重新进入上下文，不依赖摘要里是否留下了它。 */
-function implementationPrompt(plan: string): string {
-	return `Implement this plan:\n\n${plan.trim()}\n\nRe-read the files you need before changing them.`;
-}
-
-/** 组里是否还有子代理在跑；并行派发时用它决定状态行还要不要继续等待。 */
-function hasRunningSubagent(lines: readonly TranscriptLine[]): boolean {
-	for (const line of lines) {
-		if (typeof line !== "object" || line === null || line.kind !== "subagentGroup") continue;
-		if (line.members.some((member) => member.status === "running")) return true;
-	}
-	return false;
-}
-
-/** 这次进度更新是否来自子代理；子代理的进度不该把状态改写回「运行工具」。 */
-function isSubagentCall(lines: readonly TranscriptLine[], callId: string): boolean {
-	for (const line of lines) {
-		if (typeof line !== "object" || line === null || line.kind !== "subagentGroup") continue;
-		if (line.members.some((member) => member.callId === callId)) return true;
-	}
-	return false;
-}
-
 /**
  * 在备用屏里显示界面，直到使用者连按两次 Ctrl+C。
  *
@@ -515,121 +241,11 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		return `${sandboxNotice}\n\n${activeWarning}`;
 	};
 	// 命令补全列表：配置不可用时仍然显示，但标成不可执行
-	const builtinCommands: readonly CommandMenuItem[] = [
-		{
-			name: "model",
-			description:
-				options.modelMenu === undefined
-					? "Requires a valid configuration"
-					: "Choose the model for this session",
-			enabled: options.modelMenu !== undefined,
-		},
-		{
-			name: "effort",
-			description:
-				options.effortMenu === undefined
-					? "Requires a valid configuration"
-					: "Choose the reasoning effort for this session",
-			enabled: options.effortMenu !== undefined,
-		},
-		{
-			name: "compact",
-			description:
-				options.agent?.compact === undefined
-					? "Requires a valid configuration"
-					: "Compress the conversation context into a summary now",
-			enabled: options.agent?.compact !== undefined,
-		},
-		{
-			name: "plan",
-			description:
-				options.planMode === undefined
-					? "Plan mode is unavailable in this session"
-					: "Plan read-only, then approve before implementing",
-			enabled: options.planMode !== undefined,
-		},
-		{
-			name: "session",
-			description:
-				options.sessionMenu === undefined
-					? "Session storage is unavailable"
-					: "Switch to another session in this project",
-			enabled: options.sessionMenu !== undefined,
-		},
-		{
-			name: "fork",
-			description:
-				options.sessionMenu?.fork === undefined
-					? "Session forking is unavailable"
-					: "Fork the current session at its current point",
-			enabled: options.sessionMenu?.fork !== undefined,
-		},
-		{
-			name: "help",
-			description: "Show the commands and keys",
-			enabled: true,
-		},
-		{
-			name: "undo",
-			description:
-				options.checkpoints?.available() === true
-					? "Restore files to before the latest turn"
-					: "Checkpoints are unavailable in this workspace",
-			enabled: options.checkpoints?.available() === true,
-		},
-		{
-			name: "checkpoints",
-			description:
-				options.checkpoints?.available() === true
-					? "Browse and restore checkpoints"
-					: "Checkpoints are unavailable in this workspace",
-			enabled: options.checkpoints?.available() === true,
-		},
-		{
-			name: "sandbox",
-			description:
-				options.sandbox === undefined
-					? "Sandbox details are unavailable in this session"
-					: "Show sandbox mode and platform limits",
-			enabled: options.sandbox !== undefined,
-		},
-		{
-			name: "view-plan",
-			description: "Reopen the latest plan",
-			enabled: true,
-		},
-		{
-			name: "jobs",
-			description:
-				options.jobs === undefined
-					? "Background jobs are unavailable"
-					: "Show background jobs and their output",
-			enabled: options.jobs !== undefined,
-		},
-		{
-			name: "skills",
-			description:
-				options.skills === undefined
-					? "Unavailable in this session"
-					: "List the skills found on disk",
-			enabled: options.skills !== undefined,
-		},
-		{
-			name: "mcps",
-			description:
-				options.mcpServers === undefined
-					? "No MCP plugin in this session"
-					: "List MCP server connections and their tools",
-			enabled: options.mcpServers !== undefined,
-		},
-	];
+	const builtinCommands = createBuiltinCommands(options);
 
 	/** 内置命令 + 当前插件命令；同名时内置优先，插件不能顶掉 /model 这类入口。 */
-	const commands = (): readonly CommandMenuItem[] => {
-		const plugin = options.pluginCommands?.list() ?? [];
-		const names = new Set(builtinCommands.map((command) => command.name));
-		return [...builtinCommands, ...plugin.filter((command) => !names.has(command.name))];
-	};
+	const commands = (): readonly CommandMenuItem[] =>
+		mergeCommands(builtinCommands, options.pluginCommands?.list() ?? []);
 
 	/** 打开一整页：滚动位置回到顶部，下次绘制按当前宽度重排。 */
 	const showPage = (kind: PageKind): void => {
@@ -716,14 +332,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/** 计划页的可见内容：正文按可用高度滚动，动作条永远停在底部。 */
-	const planPageLines = (width: number, height: number): readonly string[] => {
-		const actions = planActionLines(width);
-		const contentHeight = Math.max(0, height - actions.length);
-		return [
-			...renderPage(pageLines("plan", width), contentHeight, pageScrollTop),
-			...actions,
-		].slice(0, height);
-	};
+	const planPageLines = (width: number, height: number): readonly string[] =>
+		framedPage(pageLines("plan", width), planActionLines(width), height, pageScrollTop);
 
 	/** 检查点列表/确认页：正文可滚动，动作条固定在底部。 */
 	const checkpointPageLines = (width: number, height: number): readonly string[] => {
@@ -731,11 +341,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			openPage === "checkpoints"
 				? checkpointListActions(width)
 				: checkpointPreviewActions(width, checkpointPreview?.entry.kind ?? "turn");
-		const contentHeight = Math.max(0, height - actions.length);
-		return [
-			...renderPage(pageLines(openPage ?? "checkpoints", width), contentHeight, pageScrollTop),
-			...actions,
-		].slice(0, height);
+		return framedPage(pageLines(openPage ?? "checkpoints", width), actions, height, pageScrollTop);
 	};
 
 	/** 后台作业列表/输出页：与检查点页相同的固定动作条。 */
@@ -745,22 +351,12 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			openPage === "jobs"
 				? jobListActions(width)
 				: jobOutputActions(width, selected?.status ?? "done");
-		const contentHeight = Math.max(0, height - actions.length);
-		return [
-			...renderPage(pageLines(openPage ?? "jobs", width), contentHeight, pageScrollTop),
-			...actions,
-		].slice(0, height);
+		return framedPage(pageLines(openPage ?? "jobs", width), actions, height, pageScrollTop);
 	};
 
 	/** 沙箱说明页：内容只读，动作条固定为关闭提示。 */
-	const sandboxPageFrame = (width: number, height: number): readonly string[] => {
-		const actions = sandboxActionLines(width);
-		const contentHeight = Math.max(0, height - actions.length);
-		return [
-			...renderPage(pageLines("sandbox", width), contentHeight, pageScrollTop),
-			...actions,
-		].slice(0, height);
-	};
+	const sandboxPageFrame = (width: number, height: number): readonly string[] =>
+		framedPage(pageLines("sandbox", width), sandboxActionLines(width), height, pageScrollTop);
 
 	let input = "";
 	let inputCursor = 0;
@@ -1020,34 +616,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			: 0;
 
 	/** 页脚上方的一行作业状态；有多个时只展示最新一条，完整列表在 /jobs。 */
-	const jobBarLine = (width: number): string => {
-		const all = options.jobs?.list() ?? [];
-		const running = all.filter((job) => job.status === "running");
-		const newest = running[0];
-		if (newest === undefined) return "";
-		const finished = all.length - running.length;
-		const prefix = " ◎ Jobs";
-		const count = `${running.length} running${finished === 0 ? "" : ` · ${finished} finished`}`;
-		const detail = `${newest.command} · ${formatDuration(Date.now() - newest.startedAt)} · ${newest.id}`;
-		const hint = "/jobs";
-		const prefixWidth = displayWidth(prefix);
-		const countWidth = displayWidth(count);
-		const headWidth = prefixWidth + 2 + countWidth;
-		const detailWidth = 2 + displayWidth(detail);
-		const hintWidth = 2 + displayWidth(hint);
-		const head = `${THEME.accent}${prefix}${RESET}  ${THEME.textSecondary}${count}${RESET}`;
-
-		if (headWidth + detailWidth + hintWidth <= width) {
-			const gap = " ".repeat(width - headWidth - detailWidth - hintWidth);
-			return `${head}  ${THEME.textSubtle}${detail}${RESET}${gap}  ${THEME.textSubtle}${hint}${RESET}`;
-		}
-		if (headWidth + hintWidth <= width) {
-			const gap = " ".repeat(width - headWidth - hintWidth);
-			return `${head}${gap}  ${THEME.textSubtle}${hint}${RESET}`;
-		}
-		const plain = truncateToWidth(`${prefix}  ${count}`, width);
-		return `${THEME.textSecondary}${plain}${" ".repeat(Math.max(0, width - displayWidth(plain)))}${RESET}`;
-	};
+	const jobBarLine = (width: number): string =>
+		renderJobBarLine(options.jobs?.list() ?? [], width);
 
 	const mainAreaHeight = (): number =>
 		Math.max(0, terminalHeight(stdout) - footerHeight() - todoPanelHeight() - jobBarHeight());
@@ -2004,7 +1574,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			response = [
 				{
 					kind: "error",
-					text: `Error: Failed to switch model: ${error instanceof Error ? error.message : String(error)}`,
+					text: `Error: Failed to switch model: ${describeError(error)}`,
 				},
 			];
 		}
@@ -2091,7 +1661,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			response = [
 				{
 					kind: "error",
-					text: `Error: Failed to set effort: ${error instanceof Error ? error.message : String(error)}`,
+					text: `Error: Failed to set effort: ${describeError(error)}`,
 				},
 			];
 		}
@@ -2149,7 +1719,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		} catch (error) {
 			setInput("");
 			follow = true;
-			const message = error instanceof Error ? error.message : String(error);
+			const message = describeError(error);
 			appendCommandTurn("/session", [
 				{ kind: "error", text: `Error: Failed to list sessions: ${message}` },
 			]);
@@ -2191,7 +1761,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			result = run(id);
 		} catch (error) {
 			follow = true;
-			const message = error instanceof Error ? error.message : String(error);
+			const message = describeError(error);
 			appendCommandTurn(forking ? "/fork" : "/session", [
 				{
 					kind: "error",
@@ -2488,7 +2058,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (finished || activeTurn !== active) return;
 				closeThinking(active);
 				appendLine(active, {
-					text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+					text: `Error: ${describeError(error)}`,
 					kind: "error",
 				});
 				active.outcome = "error";
@@ -2596,7 +2166,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			.catch((error) => {
 				if (finished) return;
 				turn.response.push({
-					text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+					text: `Error: ${describeError(error)}`,
 					kind: "error",
 				});
 				markTranscriptDirty();
@@ -2762,7 +2332,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			items = source.list();
 		} catch (error) {
 			follow = true;
-			const message = error instanceof Error ? error.message : String(error);
+			const message = describeError(error);
 			appendCommandTurn("/fork", [{ kind: "error", text: `Error: Failed to list sessions: ${message}` }]);
 			return;
 		}
@@ -2956,7 +2526,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		} catch (error) {
 			resetStatusMeta();
 			setStatus(
-				`Failed to switch Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to switch Plan mode: ${describeError(error)}`,
 				"error",
 			);
 			scheduleStatusClear();
@@ -3051,7 +2621,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				appendCommandTurn("/checkpoints", [
 					{
 						kind: "error",
-						text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+						text: `Error: ${describeError(error)}`,
 					},
 				]);
 				setStatus(ERROR_STATUS, "error");
@@ -3097,7 +2667,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				if (finished) return;
 				resetStatusMeta();
 				setStatus(
-					`Undo unavailable: ${error instanceof Error ? error.message : String(error)}`,
+					`Undo unavailable: ${describeError(error)}`,
 					"error",
 				);
 				scheduleStatusClear();
@@ -3173,7 +2743,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				appendCommandTurn("/undo", [
 					{
 						kind: "error",
-						text: `Error: ${error instanceof Error ? error.message : String(error)}`,
+						text: `Error: ${describeError(error)}`,
 					},
 				]);
 				setStatus(ERROR_STATUS, "error");
@@ -3250,19 +2820,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	/** 取输入开头的命令名(不含斜杠);不是命令时返回空串。 */
-	const commandNameOf = (message: string): string =>
-		message.startsWith("/") ? (message.slice(1).split(/\s/, 1)[0] ?? "") : "";
-
-	/** 按命令名查找；命令名之后的文字是参数。 */
-	const findCommand = (message: string): CommandMenuItem | undefined => {
-		if (!message.startsWith("/")) return undefined;
-		return commands().find((item) => item.name === commandNameOf(message));
-	};
-
-	const commandArgs = (message: string, name: string): string => {
-		return message.slice(name.length + 1).trim();
-	};
-
 	const rememberInput = (value: string): void => {
 		const text = value.trim();
 		if (text.length === 0) return;
@@ -3344,7 +2901,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		} catch (error) {
 			resetStatusMeta();
 			setStatus(
-				`Failed to leave Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to leave Plan mode: ${describeError(error)}`,
 				"error",
 			);
 			scheduleStatusClear();
@@ -3371,7 +2928,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			} catch (error) {
 				resetStatusMeta();
 				setStatus(
-					`Failed to enter Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+					`Failed to enter Plan mode: ${describeError(error)}`,
 					"error",
 				);
 				scheduleStatusClear();
@@ -3394,7 +2951,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		} catch (error) {
 			resetStatusMeta();
 			setStatus(
-				`Failed to leave Plan mode: ${error instanceof Error ? error.message : String(error)}`,
+				`Failed to leave Plan mode: ${describeError(error)}`,
 				"error",
 			);
 			scheduleStatusClear();
@@ -3445,7 +3002,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		const selected = commandMenu?.items[commandMenu.cursor];
 		// 只有一个斜杠、又没有选中项：还不算命令，也不该当成提问发给模型
 		if (message === "/" && selected === undefined) return false;
-		const command = selected ?? findCommand(message);
+		const command = selected ?? findCommand(message, commands());
 		if (message.startsWith("/") && command !== undefined) {
 			// 一轮进行中只放行不碰对话的命令；其余要等这一轮结束，但得说清为什么没执行。
 			// 补全面板此刻占着状态行的位置，先收起它，提示才看得见
@@ -3556,7 +3113,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				source.select(next);
 			} catch (error) {
 				setStatus(
-					`Failed to switch approval: ${error instanceof Error ? error.message : String(error)}`,
+					`Failed to switch approval: ${describeError(error)}`,
 					"error",
 				);
 				scheduleStatusClear();
@@ -4307,7 +3864,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	};
 
 	const appendJobNote = (job: JobView): void => {
-		const elapsed = formatDuration((job.endedAt ?? Date.now()) - job.startedAt);
+		const elapsed = jobElapsed(job);
 		const code =
 			job.exitCode !== undefined && job.exitCode !== null ? ` · exit ${job.exitCode}` : "";
 		const verb = job.status === "done" ? "finished" : job.status === "killed" ? "killed" : "failed";
@@ -4371,334 +3928,3 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	return done;
 }
 
-/**
- * 桌面通知。
- *
- * 只覆盖有标准命令的 macOS 与 Linux；Windows 上由调用方退回终端响铃，不依赖额外的运行时。
- */
-function desktopNotify(message: string): void {
-	const title = "Reins";
-	const child =
-		process.platform === "darwin"
-			? spawn(
-					"osascript",
-					["-e", `display notification ${JSON.stringify(message)} with title ${JSON.stringify(title)}`],
-					{ stdio: "ignore", windowsHide: true },
-				)
-			: spawn("notify-send", [title, message], { stdio: "ignore", windowsHide: true });
-	// 系统没有对应命令时静默忽略：通知不该影响对话本身
-	child.on("error", () => {});
-	// 通知只是旁路提示,不能让事件循环为了它多等一拍
-	child.unref();
-}
-
-function terminalHeight(output: TuiOutput): number {
-	return Math.max(1, output.rows ?? DEFAULT_ROWS);
-}
-
-type ApprovalKey = ApprovalAnswer | "left" | "right" | "enter" | "escape";
-
-/** 审批按键：左右移动、回车确认；y/a/n 仍可直接执行，Esc 拒绝。 */
-function approvalKey(text: string, canAlways: boolean): ApprovalKey | undefined {
-	if (text.includes("\x1b[D") || text.includes("\x1bOD")) return "left";
-	if (text.includes("\x1b[C") || text.includes("\x1bOC")) return "right";
-	if (text.includes("\r") || text.includes("\n")) return "enter";
-	if (text === "\x1b") return "escape";
-
-	const lower = text.toLowerCase();
-	if (lower.includes("y")) return "once";
-	if (canAlways && lower.includes("a")) return "always";
-	if (lower.includes("n")) return "deny";
-	return undefined;
-}
-
-/**
- * Shift+Tab 的转义序列。
- *
- * 终端有三种说法：`\x1b[Z`（xterm 一系，含 Windows Terminal）、带修饰键列的
- * `\x1b[1;2Z`、以及 kitty CSI-u 协议下的 `\x1b[9;2u`（9 是制表符码位，2 表示按下
- * Shift）。只认整段精确匹配：粘贴内容被括在成对的粘贴标记里，永远不会恰好等于一个
- * 裸序列；输入里零散的 `[Z` 之类文字也因此不会被当成切换。
- */
-function shiftTabKey(text: string): boolean {
-	return text === "\x1b[Z" || text === "\x1b[1;2Z" || text === "\x1b[9;2u";
-}
-
-/** 菜单打开时只认这四个键；普通字符与鼠标事件一律忽略。 */
-function menuKey(text: string): "up" | "down" | "enter" | "tab" | "escape" | undefined {
-	if (text.includes("\x1b[A") || text.includes("\x1bOA")) return "up";
-	if (text.includes("\x1b[B") || text.includes("\x1bOB")) return "down";
-	if (text.includes("\r") || text.includes("\n")) return "enter";
-	// 只认单独的制表符：粘贴的内容里可能带 \t，不能把整块粘贴当成一次确认
-	if (text === "\t") return "tab";
-	if (text === "\x1b") return "escape";
-	return undefined;
-}
-
-/** 输入历史只认完整的方向键序列，避免把粘贴内容里的序列当成翻历史。 */
-function historyKey(text: string): -1 | 1 | undefined {
-	if (text === "\x1b[A" || text === "\x1bOA") return -1;
-	if (text === "\x1b[B" || text === "\x1bOB") return 1;
-	return undefined;
-}
-
-/**
- * 撤回或丢弃排队消息的按键：Alt+Up 取回队尾，Alt+Down 直接丢弃。
- *
- * 只认单独到达的序列：方向键本身要给输入历史和光标用，必须靠修饰键把它们分开。
- */
-function queuedEditKey(text: string): "recall" | "discard" | undefined {
-	if (text === "\x1b[1;3A" || text === "\x1b[1;9A") return "recall";
-	if (text === "\x1b[1;3B" || text === "\x1b[1;9B") return "discard";
-	return undefined;
-}
-
-/** 对话流滚动键；不与输入行的 Home/End 抢按键。 */
-function scrollKey(text: string): "pageUp" | "pageDown" | "top" | undefined {
-	if (text === "\x1b[5~") return "pageUp";
-	if (text === "\x1b[6~") return "pageDown";
-	if (text === "\x1b[1;5H") return "top";
-	return undefined;
-}
-
-function moveCursor(row: number, column: number): string {
-	return `\x1b[${row};${column}H`;
-}
-
-/** 去掉 SGR 鼠标事件，避免它们被当成普通输入。 */
-function stripMouseEvents(text: string): string {
-	return text.replace(/\x1b\[<[0-9;]+[Mm]/g, "");
-}
-
-interface MouseInput {
-	readonly button: number;
-	readonly column: number;
-	readonly row: number;
-	/** SGR 的 M 表示按下，m 表示松开 */
-	readonly press: boolean;
-}
-
-/**
- * 按住键拖动的移动事件。
- *
- * 1003 模式还会上报没按键的纯移动（低两位为 3），那只是指针在挪，不能当成拖动去改选中项。
- */
-function dragMotion(button: number): boolean {
-	return button >= 32 && button < 64 && (button & MOUSE_BUTTON_MASK) !== 3;
-}
-
-/** 一个菜单面板交给公共鼠标处理器的交互面:命中、当前光标、选中同步、翻动与确认。 */
-interface MenuMouseTarget {
-	/** 终端行号命中的条目下标;命中不了(点到面板外或边框上)返回 undefined */
-	readonly hitItem: (row: number) => number | undefined;
-	readonly cursor: () => number;
-	readonly select: (index: number) => void;
-	readonly move: (delta: number) => void;
-	readonly confirm: () => void;
-}
-
-function mouseEvents(text: string): readonly MouseInput[] {
-	const events: MouseInput[] = [];
-	for (const match of text.matchAll(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/g)) {
-		events.push({
-			button: Number(match[1]),
-			column: Number(match[2]),
-			row: Number(match[3]),
-			press: match[4] === "M",
-		});
-	}
-	return events;
-}
-
-/**
- * 菜单面板的屏幕行对应哪个条目。
- *
- * row 是终端上报的 1 基行号；panelTop 是面板上边框所在的 1 基行号。条目从上边框下一行
- * 开始，所以偏移量是 row - panelTop - 1。
- */
-function menuIndexAtRow(
-	row: number,
-	panelTop: number,
-	itemCount: number,
-	scrollTop: number,
-	cursor: number,
-): number | undefined {
-	const visible = Math.min(Math.max(0, itemCount), MENU_MAX_VISIBLE);
-	if (visible === 0) return undefined;
-	const offset = row - panelTop - 1;
-	if (offset < 0 || offset >= visible) return undefined;
-	const index = keepVisible(scrollTop, cursor, itemCount) + offset;
-	return index < itemCount ? index : undefined;
-}
-
-type InputEdit = {
-	readonly text: string;
-	readonly cursor: number;
-	readonly submit: boolean;
-	readonly pasting: boolean;
-	readonly handled: boolean;
-};
-
-const PASTE_START = "\x1b[200~";
-const PASTE_END = "\x1b[201~";
-
-/**
- * 把终端读到的一段字符并进输入框。
- *
- * 支持光标移动、行内 Home/End、删除、bracketed paste 多行粘贴；历史上下键由调用方处理。
- * 转义序列通常在一次读取里完整到达，未识别的序列整段丢弃，不能当成文字填进去。
- */
-function editInput(
-	current: string,
-	currentCursor: number,
-	chunk: string,
-	pasting: boolean,
-): InputEdit {
-	let text = current;
-	let cursor = Math.min(Math.max(0, currentCursor), current.length);
-	let submit = false;
-	let isPasting = pasting;
-	let handled = false;
-
-	const insert = (value: string): void => {
-		if (value.length === 0) return;
-		text = text.slice(0, cursor) + value + text.slice(cursor);
-		cursor += value.length;
-		handled = true;
-	};
-	const insertPaste = (value: string): void => {
-		insert(value.replace(/\r\n?/g, "\n").replace(/\t/g, "    "));
-	};
-
-	const applyKey = (sequence: string): void => {
-		if (sequence === "\x1b[D" || sequence === "\x1bOD") {
-			cursor = previousIndex(text, cursor);
-		} else if (sequence === "\x1b[C" || sequence === "\x1bOC") {
-			cursor = nextIndex(text, cursor);
-		} else if (
-			sequence === "\x1b[H" ||
-			sequence === "\x1bOH" ||
-			sequence === "\x1b[1~" ||
-			sequence === "\x1b[7~"
-		) {
-			cursor = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-		} else if (
-			sequence === "\x1b[F" ||
-			sequence === "\x1bOF" ||
-			sequence === "\x1b[4~" ||
-			sequence === "\x1b[8~"
-		) {
-			const end = text.indexOf("\n", cursor);
-			cursor = end < 0 ? text.length : end;
-		} else if (sequence === "\x1b[3~") {
-			const end = nextIndex(text, cursor);
-			if (end > cursor) text = text.slice(0, cursor) + text.slice(end);
-			handled = true;
-		} else {
-			return;
-		}
-		handled = true;
-	};
-
-	const normal = (value: string): void => {
-		for (let index = 0; index < value.length; index += 1) {
-			const char = value[index] ?? "";
-			if (char === "\x1b") {
-				const rest = value.slice(index);
-				const match = /^\x1b(?:\[[0-9;?]*[A-Za-z~]|O[A-Za-z])/.exec(rest);
-				if (match !== null) {
-					applyKey(match[0]);
-					index += match[0].length - 1;
-				}
-				continue;
-			}
-			if (char === "\r" || char === "\n") {
-				submit = true;
-				return;
-			}
-			if (char === "\x7f" || char === "\b") {
-				if (cursor > 0) {
-					const start = previousIndex(text, cursor);
-					text = text.slice(0, start) + text.slice(cursor);
-					cursor = start;
-					handled = true;
-				}
-				continue;
-			}
-			if (char >= " ") {
-				insert(char);
-			}
-		}
-	};
-
-	let index = 0;
-	while (index < chunk.length && !submit) {
-		if (isPasting) {
-			const end = chunk.indexOf(PASTE_END, index);
-			if (end < 0) {
-				insertPaste(chunk.slice(index));
-				index = chunk.length;
-				break;
-			}
-			insertPaste(chunk.slice(index, end));
-			isPasting = false;
-			index = end + PASTE_END.length;
-			continue;
-		}
-
-		const start = chunk.indexOf(PASTE_START, index);
-		const stop = start < 0 ? chunk.length : start;
-		normal(chunk.slice(index, stop));
-		if (submit || start < 0) break;
-
-		const end = chunk.indexOf(PASTE_END, start + PASTE_START.length);
-		if (end < 0) {
-			insertPaste(chunk.slice(start + PASTE_START.length));
-			isPasting = true;
-			index = chunk.length;
-			break;
-		}
-		insertPaste(chunk.slice(start + PASTE_START.length, end));
-		index = end + PASTE_END.length;
-	}
-
-	return { text, cursor, submit, pasting: isPasting, handled };
-}
-
-function previousIndex(text: string, index: number): number {
-	if (index <= 0) return 0;
-	const code = text.charCodeAt(index - 1);
-	if (code >= 0xdc00 && code <= 0xdfff) {
-		const high = text.charCodeAt(index - 2);
-		if (high >= 0xd800 && high <= 0xdbff) return index - 2;
-	}
-	return index - 1;
-}
-
-function nextIndex(text: string, index: number): number {
-	if (index >= text.length) return text.length;
-	const code = text.charCodeAt(index);
-	if (code >= 0xd800 && code <= 0xdbff) {
-		const low = text.charCodeAt(index + 1);
-		if (low >= 0xdc00 && low <= 0xdfff) return index + 2;
-	}
-	return index + 1;
-}
-
-/** 多行输入里上下移动光标；单行输入交给历史。 */
-function moveInputVertical(text: string, cursor: number, delta: number): number | undefined {
-	const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-	const column = cursor - lineStart;
-	if (delta < 0) {
-		if (lineStart === 0) return undefined;
-		const previousEnd = lineStart - 1;
-		const previousStart = text.lastIndexOf("\n", Math.max(0, previousEnd - 1)) + 1;
-		return previousStart + Math.min(column, previousEnd - previousStart);
-	}
-	const lineEnd = text.indexOf("\n", cursor);
-	if (lineEnd < 0) return undefined;
-	const nextStart = lineEnd + 1;
-	const nextEnd = text.indexOf("\n", nextStart);
-	const end = nextEnd < 0 ? text.length : nextEnd;
-	return nextStart + Math.min(column, end - nextStart);
-}

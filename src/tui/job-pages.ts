@@ -151,8 +151,12 @@ function statusColor(status: JobStatus): string {
 	}
 }
 
+export function jobElapsed(job: JobView): string {
+	return formatDuration((job.endedAt ?? Date.now()) - job.startedAt);
+}
+
 function jobDetail(job: JobView): string {
-	const elapsed = formatDuration((job.endedAt ?? Date.now()) - job.startedAt);
+	const elapsed = jobElapsed(job);
 	if (job.status === "running") return elapsed;
 	if (job.timedOut === true) return `timeout · ${elapsed}`;
 	if (job.exitCode !== undefined && job.exitCode !== null) return `exit ${job.exitCode} · ${elapsed}`;
@@ -160,7 +164,7 @@ function jobDetail(job: JobView): string {
 }
 
 function jobSummary(job: JobView): string {
-	const elapsed = formatDuration((job.endedAt ?? Date.now()) - job.startedAt);
+	const elapsed = jobElapsed(job);
 	const parts = [job.status, elapsed];
 	if (job.exitCode !== undefined && job.exitCode !== null) parts.push(`exit ${job.exitCode}`);
 	if (job.timedOut === true) parts.push("timed out");
@@ -190,4 +194,37 @@ function title(text: string, width: number): string {
 
 function subtleLine(text: string, width: number): string {
 	return `${SUBTLE_COLOR}  ${truncateToWidth(text, Math.max(0, width - 2))}${RESET}`;
+}
+
+/**
+ * 页脚上方的一行作业状态；有多个时只展示最新一条，完整列表在 /jobs。
+ *
+ * running 行由界面按当前时间重算耗时，所以这里接收已经筛好的作业清单而不是数据源。
+ */
+export function renderJobBarLine(jobs: readonly JobView[], width: number): string {
+	const running = jobs.filter((job) => job.status === "running");
+	const newest = running[0];
+	if (newest === undefined) return "";
+	const finished = jobs.length - running.length;
+	const prefix = " ◎ Jobs";
+	const count = `${running.length} running${finished === 0 ? "" : ` · ${finished} finished`}`;
+	const detail = `${newest.command} · ${jobElapsed(newest)} · ${newest.id}`;
+	const hint = "/jobs";
+	const prefixWidth = displayWidth(prefix);
+	const countWidth = displayWidth(count);
+	const headWidth = prefixWidth + 2 + countWidth;
+	const detailWidth = 2 + displayWidth(detail);
+	const hintWidth = 2 + displayWidth(hint);
+	const head = `${THEME.accent}${prefix}${RESET}  ${META_COLOR}${count}${RESET}`;
+
+	if (headWidth + detailWidth + hintWidth <= width) {
+		const gap = " ".repeat(width - headWidth - detailWidth - hintWidth);
+		return `${head}  ${SUBTLE_COLOR}${detail}${RESET}${gap}  ${SUBTLE_COLOR}${hint}${RESET}`;
+	}
+	if (headWidth + hintWidth <= width) {
+		const gap = " ".repeat(width - headWidth - hintWidth);
+		return `${head}${gap}  ${SUBTLE_COLOR}${hint}${RESET}`;
+	}
+	const plain = truncateToWidth(`${prefix}  ${count}`, width);
+	return `${META_COLOR}${plain}${" ".repeat(Math.max(0, width - displayWidth(plain)))}${RESET}`;
 }

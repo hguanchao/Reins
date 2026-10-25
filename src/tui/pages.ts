@@ -192,6 +192,23 @@ export function renderPage(
 	return Array.from({ length: rows }, (_, index) => lines[top + index] ?? "");
 }
 
+/**
+ * 带固定动作条的整屏页：正文按剩余高度滚动，动作条始终停在底部。
+ *
+ * 计划、检查点、作业与沙箱页共用同一套几何。高度分配只在这里算一次，动作条变化时
+ * 各页不会各自偏移。
+ */
+export function framedPage(
+	content: readonly string[],
+	actions: readonly string[],
+	height: number,
+	scrollTop: number,
+): readonly string[] {
+	const rows = Math.max(0, height);
+	const contentHeight = Math.max(0, rows - actions.length);
+	return [...renderPage(content, contentHeight, scrollTop), ...actions].slice(0, rows);
+}
+
 function sectionLines(section: PageSection, width: number): readonly string[] {
 	const lines: string[] = ["", `${SECTION_COLOR}${fitToWidth(section.title, width)}${RESET}`];
 	if (section.entries.length === 0) {
