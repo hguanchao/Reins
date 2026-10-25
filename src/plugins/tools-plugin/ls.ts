@@ -4,7 +4,7 @@ import { resolveToolPath } from "../../tools/tool-path.ts";
 import { describeError } from "../../describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
 import type { JsonSchema } from "../../tools/schema.ts";
-import { walk, type WalkEntry } from "./walk.ts";
+import { walk, type WalkEntry } from "../../workspace/walk.ts";
 
 /**
  * 列出一棵目录树。

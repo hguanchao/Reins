@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 
-import { fileEntries, walk } from "../../../src/plugins/tools-plugin/walk.ts";
+import { fileEntries, walk } from "../../src/workspace/walk.ts";
 
 function hasGit(): boolean {
 	try {
