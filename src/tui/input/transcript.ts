@@ -1,17 +1,15 @@
 import { TURN_SAFE_COMMANDS } from "../commands.ts";
 import { inputView } from "../view/footer.ts";
 import { imageMarker } from "../image.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuIndexAtRow, menuKey, moveInputVertical, queuedEditKey, scrollKey, stripMouseEvents } from "./keys.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripMouseEvents } from "./keys.ts";
 import type { MouseInput } from "./keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
 import { ABORTING } from "../render/status.ts";
 import { FOCUS_IN, FOCUS_OUT } from "../terminal.ts";
-import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "../transcript.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
-import { DOUBLE_CLICK_MS, WHEEL_STEP } from "../runtime/constants.ts";
-import { markTranscriptDirty } from "../runtime/transcript-state.ts";
-import type { InputDeps } from "./dispatch.ts";
-import { handleMenuMouse } from "./menus.ts";
+import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "./scroll.ts";
+import type { InputDeps } from "./deps.ts";
+import { handleMenuMouse, inlineMenuTarget } from "./menus.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 export function handleTranscriptInput(
@@ -75,15 +73,8 @@ export function handleTranscriptInput(
 				return;
 			}
 
-			const now = Date.now();
-			const doubleClick =
-				state.lastClick !== undefined &&
-				now - state.lastClick.at <= DOUBLE_CLICK_MS &&
-				state.lastClick.row === event.row &&
-				state.lastClick.column === event.column;
-			state.lastClick = { at: now, row: event.row, column: event.column };
-
 			// 双击思考标题、工具组、任务卡或子代理组，展开或收起
+			const doubleClick = trackClick(state, event);
 			if (doubleClick && host.toggleTranscriptAt(event.row, event.column, mainHeight, width)) {
 				return;
 			}
@@ -122,16 +113,8 @@ export function handleTranscriptInput(
 		}
 	}
 
-	if (wheelSteps !== 0) {
-		const limit = host.maxScroll();
-		state.scrollTop = Math.min(limit, Math.max(0, state.scrollTop + wheelSteps * WHEEL_STEP));
-		state.follow = state.scrollTop >= limit;
-	}
-	if (dragRow !== undefined) {
-		const limit = host.maxScroll();
-		state.scrollTop = scrollTopForRow(dragRow, mainHeight, limit);
-		state.follow = state.scrollTop >= limit;
-	}
+	applyWheelScroll(host, state, wheelSteps);
+	if (dragRow !== undefined) applyDragScroll(host, state, dragRow, mainHeight);
 	const scrollChanged = state.scrollTop !== beforeScroll;
 
 	if (state.commandMenu !== undefined) {
@@ -141,16 +124,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				{
-					hitItem: (row) =>
-						menuIndexAtRow(row, commandPanelTop, menu.items.length, menu.scrollTop, menu.cursor),
-					cursor: () => menu.cursor,
-					select: (index) => {
-						menu.cursor = index;
-						menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
-					},
-					move: (delta) => host.moveCommandMenu(delta),
-					confirm: () => {
+				inlineMenuTarget(menu, commandPanelTop, (delta) => host.moveCommandMenu(delta), () => {
 						// 点击即选中并执行，与回车一致：有二级面板的命令点开面板，其余直接执行
 						const chosen = menu.items[menu.cursor];
 						if (chosen === undefined) return;
@@ -161,9 +135,8 @@ export function handleTranscriptInput(
 							deps.render();
 							return;
 						}
-						host.executeCommand(chosen);
-					},
-				},
+					host.executeCommand(chosen);
+				}),
 				deps.render,
 			)
 		) {
@@ -211,17 +184,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				{
-					hitItem: (row) =>
-						menuIndexAtRow(row, filePanelTop, menu.items.length, menu.scrollTop, menu.cursor),
-					cursor: () => menu.cursor,
-					select: (index) => {
-						menu.cursor = index;
-						menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
-					},
-					move: (delta) => host.moveFileMenu(delta),
-					confirm: insert,
-				},
+				inlineMenuTarget(menu, filePanelTop, (delta) => host.moveFileMenu(delta), insert),
 				deps.render,
 			)
 		) {
@@ -268,39 +231,14 @@ export function handleTranscriptInput(
 
 	const previous = state.input;
 	const previousCursor = state.inputCursor;
-	if (text === "\x05" && state.commandMenu === undefined) {
-		if (toggleLastExpandable(state.turns)) {
-			markTranscriptDirty(state);
-			state.follow = false;
-			deps.render();
-		}
-		return;
-	}
-	if (text === "\x0f" && state.commandMenu === undefined) {
-		if (toggleLastToolResult(state.turns)) {
-			markTranscriptDirty(state);
-			state.follow = false;
-			deps.render();
-		}
-		return;
-	}
-	const scroll = scrollKey(text);
-	if (scroll !== undefined) {
-		const limit = host.maxScroll();
-		if (scroll === "pageUp") {
-			state.scrollTop = Math.max(0, state.scrollTop - mainHeight);
-			state.follow = false;
-		} else if (scroll === "pageDown") {
-			state.scrollTop = Math.min(limit, state.scrollTop + mainHeight);
-			state.follow = state.scrollTop >= limit;
-		} else {
-			state.scrollTop = 0;
-			state.follow = false;
-		}
+	if (state.commandMenu === undefined && handleToggleKey(state, text)) {
 		deps.render();
 		return;
 	}
-
+	if (handleScrollKey(host, state, text, mainHeight)) {
+		deps.render();
+		return;
+	}
 	// 排队消息的三个操作：Esc 中止并立即发队首，Alt+Up 撤回队尾，Alt+Down 丢弃队尾
 	if (state.commandMenu === undefined) {
 		if (withoutMouse === "\x1b" && state.activeTurn !== undefined && state.queued.length > 0) {

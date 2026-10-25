@@ -2,7 +2,7 @@ import { THINKING_LEVELS } from "../../config/file.ts";
 import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, dragMotion, menuIndexAtRow, menuKey } from "./keys.ts";
 import type { MenuMouseTarget, MouseInput } from "./keys.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
-import type { InputDeps } from "./dispatch.ts";
+import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 export function handleMenuMouse(
@@ -38,6 +38,95 @@ export function handleMenuMouse(
 	return false;
 }
 
+/** 行内补全面板（命令、文件）的鼠标目标：光标直接落在菜单状态上，翻动与确认交给宿主。 */
+interface InlineMenuState {
+	readonly items: readonly unknown[];
+	cursor: number;
+	scrollTop: number;
+}
+
+export function inlineMenuTarget(
+	menu: InlineMenuState,
+	panelTop: number,
+	move: (delta: number) => void,
+	confirm: () => void,
+): MenuMouseTarget {
+	return {
+		hitItem: (row) => menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor),
+		cursor: () => menu.cursor,
+		select: (index) => {
+			menu.cursor = index;
+			menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
+		},
+		move,
+		confirm,
+	};
+}
+
+/** 一个模态菜单的鼠标与键盘回调；三种面板只有这些动作不同。 */
+interface ModalMenuActions {
+	readonly items: readonly unknown[];
+	readonly cursor: () => number;
+	readonly scrollTop: () => number;
+	readonly select: (index: number) => void;
+	readonly move: (delta: number) => void;
+	readonly confirm: () => void;
+	readonly complete: () => void;
+	readonly cancel: () => void;
+}
+
+/** 当前打开的是哪个模态菜单；三者互斥，返回 undefined 表示没有。 */
+function activeModalMenu(host: TuiHost): ModalMenuActions | undefined {
+	const state = host.state;
+	if (state.modelMenu !== undefined) {
+		const menu = state.modelMenu;
+		return {
+			items: menu.items,
+			cursor: () => menu.cursor,
+			scrollTop: () => menu.scrollTop,
+			select: (index) => {
+				menu.cursor = index;
+				menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
+			},
+			move: (delta) => host.moveMenu(delta),
+			confirm: () => host.confirmMenu(),
+			complete: () => host.completeModelMenu(),
+			cancel: () => host.cancelMenu(),
+		};
+	}
+	if (state.effortMenu !== undefined) {
+		const menu = state.effortMenu;
+		return {
+			items: THINKING_LEVELS,
+			cursor: () => menu.cursor,
+			scrollTop: () => menu.scrollTop,
+			select: (index) => {
+				menu.cursor = index;
+			},
+			move: (delta) => host.moveEffortMenu(delta),
+			confirm: () => host.confirmEffortMenu(),
+			complete: () => host.completeEffortMenu(),
+			cancel: () => host.cancelEffortMenu(),
+		};
+	}
+	if (state.sessionMenu !== undefined) {
+		const menu = state.sessionMenu;
+		return {
+			items: menu.items,
+			cursor: () => menu.cursor,
+			scrollTop: () => menu.scrollTop,
+			select: (index) => {
+				menu.cursor = index;
+			},
+			move: (delta) => host.moveSessionMenu(delta),
+			confirm: () => host.confirmSessionMenu(),
+			complete: () => host.completeSessionMenu(),
+			cancel: () => host.cancelSessionMenu(),
+		};
+	}
+	return undefined;
+}
+
 /** 模态选择面板：只接管选择相关按键，其余放行给输入框。 */
 export function handleModalMenuInput(
 	host: TuiHost,
@@ -45,95 +134,35 @@ export function handleModalMenuInput(
 	text: string,
 	mouseOf: () => readonly MouseInput[],
 ): boolean {
-	const state = host.state;
-	const panelTop = menuPanelTop(state, host.options);
-	if (state.modelMenu !== undefined) {
-		const menu = state.modelMenu;
-		if (
-			handleMenuMouse(
-				mouseOf(),
-				{
-					hitItem: (row) => menuIndexAtRow(row, panelTop, THINKING_LEVELS.length, menu.scrollTop, menu.cursor),
-					cursor: () => menu.cursor,
-					select: (index) => {
-						menu.cursor = index;
-						menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
-					},
-					move: (delta) => host.moveMenu(delta),
-					confirm: () => host.confirmMenu(),
-				},
-				deps.render,
-			)
-		) {
-			return true;
-		}
-	} else if (state.effortMenu !== undefined) {
-		const menu = state.effortMenu;
-		if (
-			handleMenuMouse(
-				mouseOf(),
-				{
-					hitItem: (row) => menuIndexAtRow(row, panelTop, THINKING_LEVELS.length, menu.scrollTop, menu.cursor),
-					cursor: () => menu.cursor,
-					select: (index) => {
-						menu.cursor = index;
-					},
-					move: (delta) => host.moveEffortMenu(delta),
-					confirm: () => host.confirmEffortMenu(),
-				},
-				deps.render,
-			)
-		) {
-			return true;
-		}
-	} else if (state.sessionMenu !== undefined) {
-		const menu = state.sessionMenu;
-		if (
-			handleMenuMouse(
-				mouseOf(),
-				{
-					hitItem: (row) => menuIndexAtRow(row, panelTop, THINKING_LEVELS.length, menu.scrollTop, menu.cursor),
-					cursor: () => menu.cursor,
-					select: (index) => {
-						menu.cursor = index;
-					},
-					move: (delta) => host.moveSessionMenu(delta),
-					confirm: () => host.confirmSessionMenu(),
-				},
-				deps.render,
-			)
-		) {
-			return true;
-		}
-		if (text === "f") {
-			host.forkSelectedSession();
-			return true;
-		}
+	const panel = activeModalMenu(host);
+	if (panel === undefined) return false;
+
+	// 面板画在页脚区的第一行，命中判定只在这块窗口内有效
+	const panelTop = menuPanelTop(host.state, host.options);
+	if (
+		handleMenuMouse(
+			mouseOf(),
+			{
+				hitItem: (row) =>
+					menuIndexAtRow(row, panelTop, panel.items.length, panel.scrollTop(), panel.cursor()),
+				cursor: panel.cursor,
+				select: panel.select,
+				move: panel.move,
+				confirm: panel.confirm,
+			},
+			deps.render,
+		)
+	) {
+		return true;
 	}
 
-	// 键盘同样只差回调:上下移动、回车确认、Tab 补全、Esc 收起
+	// 会话面板多一个 f：从选中项分叉
+	if (host.state.sessionMenu !== undefined && text === "f") {
+		host.forkSelectedSession();
+		return true;
+	}
+
 	const key = menuKey(text);
-	const panel =
-		state.modelMenu !== undefined
-			? {
-					move: host.moveMenu,
-					confirm: host.confirmMenu,
-					complete: host.completeModelMenu,
-					cancel: host.cancelMenu,
-				}
-			: state.sessionMenu !== undefined
-				? {
-						move: host.moveSessionMenu,
-						confirm: host.confirmSessionMenu,
-						complete: host.completeSessionMenu,
-						cancel: host.cancelSessionMenu,
-					}
-				: {
-						move: host.moveEffortMenu,
-						confirm: host.confirmEffortMenu,
-						complete: host.completeEffortMenu,
-						cancel: host.cancelEffortMenu,
-					};
 	if (key === "up" || key === "down") {
 		panel.move(key === "up" ? -1 : 1);
 		return true;

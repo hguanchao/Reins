@@ -4,7 +4,7 @@ import type { MouseInput } from "./keys.ts";
 import { JOB_ACTION_HEIGHT } from "../page/job.ts";
 import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
 import { SANDBOX_ACTION_HEIGHT } from "../page/sandbox.ts";
-import type { InputDeps } from "./dispatch.ts";
+import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 export function handlePageInput(

@@ -7,13 +7,10 @@ import { handleApprovalInput } from "./approval.ts";
 import { handleModalMenuInput } from "./menus.ts";
 import { handlePageInput } from "./pages.ts";
 import { handleTranscriptInput } from "./transcript.ts";
+import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
-/** 一次输入分发需要的环境。 */
-export interface InputDeps {
-	readonly render: () => void;
-	readonly onCtrlC: () => void;
-}
+export type { InputDeps } from "./deps.ts";
 
 /**
  * 按键与鼠标分发。
