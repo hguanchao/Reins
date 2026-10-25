@@ -1,11 +1,11 @@
 import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
-import { MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, menuKey, scrollKey } from "../input.ts";
-import type { MouseInput } from "../input.ts";
+import { MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, menuKey, scrollKey } from "./keys.ts";
+import type { MouseInput } from "./keys.ts";
 import { JOB_ACTION_HEIGHT } from "../page/job.ts";
 import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
 import { SANDBOX_ACTION_HEIGHT } from "../page/sandbox.ts";
-import type { InputDeps } from "./input.ts";
-import type { TuiHost } from "./types.ts";
+import type { InputDeps } from "./dispatch.ts";
+import type { TuiHost } from "../runtime/types.ts";
 
 export function handlePageInput(
 	host: TuiHost,

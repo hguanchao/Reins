@@ -1,5 +1,5 @@
 import type { ResultDetailKind } from "../../tools/result/detail.ts";
-import { highlightCode, type SyntaxSegment } from "../../tools/syntax.ts";
+import { highlightCode, type SyntaxSegment } from "../render/syntax.ts";
 import { characterWidth, displayWidth, truncateToWidth, wrapText } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { syntaxColor } from "../render/syntax-style.ts";

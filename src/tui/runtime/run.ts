@@ -3,7 +3,7 @@ import type { AgentEventListener } from "../../agent/events.ts";
 import { collapseToolGroups, measureTranscriptView } from "../transcript.ts";
 import { desktopNotify } from "../terminal.ts";
 import { ERROR_STATUS, WAITING_FOR_MODEL } from "../render/status.ts";
-import type { ImageAttachment } from "../../image/attachment.ts";
+import type { ImageAttachment } from "../image.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { closeThinking, closeText, createEventTarget, freezeSubagentGroups } from "./turn.ts";
 import { startSpinner, stopSpinner } from "./status.ts";

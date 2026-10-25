@@ -1,5 +1,5 @@
 import type { ToolGroupKind } from "../../tools/describe.ts";
-import { formatDuration } from "../../tools/format.ts";
+import { formatDuration } from "../../format.ts";
 import { resultDetail } from "../../tools/result/detail.ts";
 import { resultMetric } from "../../tools/result/metric.ts";
 import { COMMAND_GROUP_MIN } from "./style.ts";

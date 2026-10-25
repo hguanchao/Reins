@@ -20,7 +20,7 @@ import {
 	isImagePath,
 	type ImageAttachment,
 	type ImageSource,
-} from "./attachment.ts";
+} from "../tui/image.ts";
 
 /**
  * 读取图片附件。

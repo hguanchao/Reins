@@ -1,13 +1,13 @@
 import { APPROVAL_MODES } from "../../config/file.ts";
 import { describeError } from "../../describe-error.ts";
-import { mouseEvents, shiftTabKey, type MouseInput } from "../input.ts";
+import { mouseEvents, shiftTabKey, type MouseInput } from "./keys.ts";
 import { CTRL_C } from "../terminal.ts";
-import { PASTE_START } from "../input.ts";
-import { handleApprovalInput } from "./input-approval.ts";
-import { handleModalMenuInput } from "./input-menus.ts";
-import { handlePageInput } from "./input-pages.ts";
-import { handleTranscriptInput } from "./input-transcript.ts";
-import type { TuiHost } from "./types.ts";
+import { PASTE_START } from "./keys.ts";
+import { handleApprovalInput } from "./approval.ts";
+import { handleModalMenuInput } from "./menus.ts";
+import { handlePageInput } from "./pages.ts";
+import { handleTranscriptInput } from "./transcript.ts";
+import type { TuiHost } from "../runtime/types.ts";
 
 /** 一次输入分发需要的环境。 */
 export interface InputDeps {

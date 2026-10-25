@@ -1,9 +1,9 @@
 import { THINKING_LEVELS } from "../../config/file.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, dragMotion, menuIndexAtRow, menuKey } from "../input.ts";
-import type { MenuMouseTarget, MouseInput } from "../input.ts";
-import { menuPanelTop } from "./approval.ts";
-import type { InputDeps } from "./input.ts";
-import type { TuiHost } from "./types.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, dragMotion, menuIndexAtRow, menuKey } from "./keys.ts";
+import type { MenuMouseTarget, MouseInput } from "./keys.ts";
+import { menuPanelTop } from "../runtime/approval.ts";
+import type { InputDeps } from "./dispatch.ts";
+import type { TuiHost } from "../runtime/types.ts";
 
 export function handleMenuMouse(
 	events: readonly MouseInput[],

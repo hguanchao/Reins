@@ -1,4 +1,4 @@
-import { isImagePath } from "../../image/attachment.ts";
+import { isImagePath } from "../image.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,

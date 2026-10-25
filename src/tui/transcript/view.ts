@@ -1,5 +1,5 @@
 import { sanitizeLine } from "../../tools/describe.ts";
-import { highlightImageMarkers } from "../../image/attachment.ts";
+import { highlightImageMarkers } from "../image.ts";
 import { renderMarkdown } from "../render/markdown.ts";
 import {
 	characterWidth,

@@ -10,7 +10,7 @@ import {
 import { mergeCommands } from "./commands.ts";
 import type { TuiOptions } from "./options.ts";
 import { createState } from "./runtime/state.ts";
-import { createInputHandler } from "./runtime/input.ts";
+import { createInputHandler } from "./input/dispatch.ts";
 import { render } from "./runtime/render.ts";
 import { onCtrlC } from "./runtime/ctrl-c.ts";
 import { cleanup } from "./runtime/lifecycle.ts";
@@ -67,8 +67,8 @@ import {
 	imagesOf,
 	insertImageMarker,
 	readAndInsertImage,
-} from "./runtime/attachments.ts";
-import { recallHistory, rememberInput } from "./runtime/history.ts";
+} from "./input/attachments.ts";
+import { recallHistory, rememberInput } from "./input/history.ts";
 import {
 	approvePlan,
 	executeCommand,
@@ -103,15 +103,15 @@ import {
 import { submit } from "./runtime/submit.ts";
 import { togglingTranscriptAt } from "./runtime/view.ts";
 import type { ActiveTurn, TuiHost } from "./runtime/types.ts";
-import type { ImageAttachment } from "../image/attachment.ts";
+import type { ImageAttachment } from "./image.ts";
 import { measureTranscriptView, scrollTopForRow as scrollTopForRowImpl, type TranscriptMetrics } from "./transcript.ts";
 import type { TranscriptLine } from "./transcript.ts";
 
 /**
  * 全屏界面入口。
  *
- * 只做装配：建状态、把各域模块绑成一份 host 契约、挂终端事件。各域实现分别在 runtime
- * 下的独立文件里，互相不直接调用，需要协作时经过 host。
+ * 只做装配：建状态、把各域模块绑成一份 host 契约、挂终端事件。各域实现分别在 runtime/
+ * 与 input/ 下的独立文件里，互相不直接调用，需要协作时经过 host。
  */
 export async function runTui(options: TuiOptions): Promise<number> {
 	const state = createState(options);

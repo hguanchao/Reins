@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatDuration } from "../../src/tools/format.ts";
+import { formatDuration } from "../src/format.ts";
 
 describe("耗时格式", () => {
 	it("秒起步保留一位小数,不出现毫秒", () => {

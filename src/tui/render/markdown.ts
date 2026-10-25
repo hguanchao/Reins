@@ -1,7 +1,7 @@
 import { lexer, type Token, type Tokens } from "marked";
 
 import { sanitizeDetail, sanitizeLine } from "../../tools/describe.ts";
-import { highlightCode, type SyntaxLines } from "../../tools/syntax.ts";
+import { highlightCode, type SyntaxLines } from "./syntax.ts";
 import { syntaxColor } from "./syntax-style.ts";
 import { characterWidth, displayWidth, fitToWidth, truncateToWidth } from "./text.ts";
 import { THEME } from "./theme.ts";

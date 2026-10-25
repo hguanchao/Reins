@@ -21,7 +21,7 @@ import { ApprovalBroker } from "../permission/approval.ts";
 import type { McpStatusSource } from "../plugins/registry.ts";
 import { Session } from "../session/session.ts";
 import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
-import { imageBlock, type ImageAttachment } from "../image/attachment.ts";
+import { imageBlock, type ImageAttachment } from "../tui/image.ts";
 import { buildTranscriptHistory } from "../tui/transcript/history.ts";
 import { runTui } from "../tui/layout.ts";
 import type {
@@ -34,19 +34,19 @@ import { JobManager } from "../tools/jobs.ts";
 import { fileEntries } from "../workspace/walk.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { readVersion } from "../version.ts";
-import { sessionAge } from "./session-age.ts";
+import { sessionAge } from "./session/age.ts";
 import {
 	configFileStamp,
 	loadSelection,
 	readConfigQuietly,
 } from "./config-selection.ts";
-import { createImageSource } from "../image/source.ts";
+import { createImageSource } from "./image-reader.ts";
 import { initializeConfig } from "./initialize-config.ts";
 import { writeStderr, writeStdout } from "./output.ts";
 import { assemblePipeline, createCompactor, createDriverFor } from "./pipeline.ts";
-import { createSessionFor, sessionTitle } from "./session-factory.ts";
-import { createSession, forkSession, resumeCommand, resumeSession } from "./session-target.ts";
-import { openSessionForSwitch } from "./session-switch.ts";
+import { createSessionFor, sessionTitle } from "./session/factory.ts";
+import { createSession, forkSession, resumeCommand, resumeSession } from "./session/target.ts";
+import { openSessionForSwitch } from "./session/switch.ts";
 import { createStartupTimer } from "./startup-timer.ts";
 import {
 	abbreviateHome,

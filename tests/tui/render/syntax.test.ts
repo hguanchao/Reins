@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { highlightCode, languageForPath } from "../../src/tools/syntax.ts";
+import { highlightCode, languageForPath } from "../../../src/tui/render/syntax.ts";
 
 describe("语言推断", () => {
 	it("按扩展名认出常见语言", () => {

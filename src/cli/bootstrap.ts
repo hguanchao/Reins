@@ -17,7 +17,7 @@ import {
 	createReviewer,
 } from "./pipeline.ts";
 import { runPrintMode } from "./print-mode.ts";
-import { createSessionFor } from "./session-factory.ts";
+import { createSessionFor } from "./session/factory.ts";
 import { runTuiMode } from "./tui-mode.ts";
 
 /**

@@ -1,5 +1,5 @@
 import { sanitizeLine } from "../../tools/describe.ts";
-import { formatCompactTokens, formatDuration } from "../../tools/format.ts";
+import { formatCompactTokens, formatDuration } from "../../format.ts";
 import { displayWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { swept, type AnimationFrame } from "../render/sweep.ts";

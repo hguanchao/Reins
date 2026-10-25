@@ -14,7 +14,7 @@ import {
 	isImagePath,
 	uniqueImageName,
 	type ImageAttachment,
-} from "../../src/image/attachment.ts";
+} from "../../src/tui/image.ts";
 
 function image(overrides: Partial<ImageAttachment> = {}): ImageAttachment {
 	return {

@@ -2,7 +2,7 @@ import type { AgentEventListener } from "../../agent/events.ts";
 import type { CheckpointEntry, CheckpointPreview } from "../../checkpoint/service.ts";
 import type { ApprovalPrompt } from "../../permission/approval.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
-import type { ImageAttachment, PendingImage } from "../../image/attachment.ts";
+import type { ImageAttachment, PendingImage } from "../image.ts";
 import type { JobView } from "../page/job.ts";
 import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "../options.ts";
 import type { CommandMenuState, CommandMenuItem } from "../panel/command-menu.ts";

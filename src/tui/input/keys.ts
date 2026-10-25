@@ -1,5 +1,5 @@
-import { MENU_MAX_VISIBLE, keepVisible } from "./panel/menu-panel.ts";
-import type { ApprovalAnswer } from "../permission/policy.ts";
+import { MENU_MAX_VISIBLE, keepVisible } from "../panel/menu-panel.ts";
+import type { ApprovalAnswer } from "../../permission/policy.ts";
 
 /**
  * 终端输入解析与单行/多行编辑器。

@@ -7,7 +7,7 @@ import { errorLine } from "../render/status.ts";
 import { describeError } from "../../describe-error.ts";
 import type { TranscriptLine } from "../transcript.ts";
 import { filterFiles, findAtToken, formatFileReference } from "../panel/file-menu.ts";
-import { isImagePath } from "../../image/attachment.ts";
+import { isImagePath } from "../image.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { modalMenuOpen } from "./geometry.ts";
 import type { TuiHost } from "./types.ts";

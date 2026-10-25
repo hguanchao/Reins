@@ -1,4 +1,4 @@
-import type { SyntaxToken } from "../../tools/syntax.ts";
+import type { SyntaxToken } from "./syntax.ts";
 import { THEME } from "./theme.ts";
 
 /** 语法角色到颜色；无角色表示普通正文。 */

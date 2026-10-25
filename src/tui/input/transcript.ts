@@ -1,18 +1,18 @@
 import { TURN_SAFE_COMMANDS } from "../commands.ts";
 import { inputView } from "../view/footer.ts";
-import { imageMarker } from "../../image/attachment.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuIndexAtRow, menuKey, moveInputVertical, queuedEditKey, scrollKey, stripMouseEvents } from "../input.ts";
-import type { MouseInput } from "../input.ts";
+import { imageMarker } from "../image.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuIndexAtRow, menuKey, moveInputVertical, queuedEditKey, scrollKey, stripMouseEvents } from "./keys.ts";
+import type { MouseInput } from "./keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
 import { ABORTING } from "../render/status.ts";
 import { FOCUS_IN, FOCUS_OUT } from "../terminal.ts";
 import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "../transcript.ts";
-import { menuPanelTop } from "./approval.ts";
-import { DOUBLE_CLICK_MS, WHEEL_STEP } from "./constants.ts";
-import { markTranscriptDirty } from "./transcript-state.ts";
-import type { InputDeps } from "./input.ts";
-import { handleMenuMouse } from "./input-menus.ts";
-import type { TuiHost } from "./types.ts";
+import { menuPanelTop } from "../runtime/approval.ts";
+import { DOUBLE_CLICK_MS, WHEEL_STEP } from "../runtime/constants.ts";
+import { markTranscriptDirty } from "../runtime/transcript-state.ts";
+import type { InputDeps } from "./dispatch.ts";
+import { handleMenuMouse } from "./menus.ts";
+import type { TuiHost } from "../runtime/types.ts";
 
 export function handleTranscriptInput(
 	host: TuiHost,

@@ -1,5 +1,5 @@
 import { readFooterRange } from "../builtin/read.ts";
-import { formatBytes } from "../format.ts";
+import { formatBytes } from "../../format.ts";
 import { booleanField, numberField, record, stringField } from "./fields.ts";
 import { stripSpillFooter } from "../spill.ts";
 

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { createSession, forkSession, resumeCommand, resumeSession } from "../../src/cli/session-target.ts";
-import { sessionsDir } from "../../src/config/paths.ts";
-import { JsonlSessionStore } from "../../src/plugins/session-plugin/jsonl-store.ts";
+import { createSession, forkSession, resumeCommand, resumeSession } from "../../../src/cli/session/target.ts";
+import { sessionsDir } from "../../../src/config/paths.ts";
+import { JsonlSessionStore } from "../../../src/plugins/session-plugin/jsonl-store.ts";
 
 /** 会话目录由 REINS_HOME 决定；每个用例用自己的临时目录，结束后恢复并删除。 */
 async function withHome(run: (workRoot: string) => Promise<void>): Promise<void> {

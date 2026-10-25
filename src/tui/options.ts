@@ -10,7 +10,7 @@ import type { SandboxInfo } from "../sandbox/setup.ts";
 import type { CommandMenuItem } from "./panel/command-menu.ts";
 import type { FileSource } from "./panel/file-menu.ts";
 import type { FooterInfo } from "./view/footer.ts";
-import type { ImageAttachment, ImageSource } from "../image/attachment.ts";
+import type { ImageAttachment, ImageSource } from "./image.ts";
 import type { JobEvent, JobView } from "./page/job.ts";
 import type { ModelMenuItem } from "./panel/model-menu.ts";
 import type { PageEntry, SkillPageEntry } from "./page/frame.ts";

@@ -2,7 +2,7 @@ import { findCommand } from "../commands.ts";
 import { TURN_SAFE_COMMANDS } from "../commands.ts";
 import { commandArgs } from "../commands.ts";
 import { CONFIGURATION_REQUIRED } from "../render/status.ts";
-import { attachmentLimit, clearAttachments, imagesOf } from "./attachments.ts";
+import { attachmentLimit, clearAttachments, imagesOf } from "../input/attachments.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { drainQueue } from "./run.ts";
 import { executeCommand } from "./commands.ts";

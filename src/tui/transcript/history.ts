@@ -6,7 +6,7 @@ import {
 	type LlmMessage,
 } from "../../llm/messages.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../../tools/describe.ts";
-import { imageMarker } from "../../image/attachment.ts";
+import { imageMarker } from "../image.ts";
 import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "../view/todo-card.ts";
 import {
 	appendToolLine,

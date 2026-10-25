@@ -1,11 +1,11 @@
-import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, approvalKey, dragMotion, scrollKey } from "../input.ts";
-import type { MouseInput } from "../input.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, approvalKey, dragMotion, scrollKey } from "./keys.ts";
+import type { MouseInput } from "./keys.ts";
 import { approvalActionAt } from "../panel/approval-panel.ts";
 import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "../transcript.ts";
-import { DOUBLE_CLICK_MS, WHEEL_STEP } from "./constants.ts";
-import { markTranscriptDirty } from "./transcript-state.ts";
-import type { InputDeps } from "./input.ts";
-import type { TuiHost } from "./types.ts";
+import { DOUBLE_CLICK_MS, WHEEL_STEP } from "../runtime/constants.ts";
+import { markTranscriptDirty } from "../runtime/transcript-state.ts";
+import type { InputDeps } from "./dispatch.ts";
+import type { TuiHost } from "../runtime/types.ts";
 
 export function handleApprovalInput(
 	host: TuiHost,

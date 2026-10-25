@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { sessionAge } from "../../src/cli/session-age.ts";
+import { sessionAge } from "../../../src/cli/session/age.ts";
 
 const NOW = Date.parse("2026-10-22T12:00:00.000Z");
 const ago = (ms: number): string => sessionAge(new Date(NOW - ms).toISOString(), NOW);
