@@ -1,3 +1,4 @@
+import { describeError } from "../../describe-error.ts";
 import type { LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
 import { EventStream } from "../event-stream.ts";
 
@@ -50,7 +51,7 @@ function failedResult(
 		content,
 		usage: undefined,
 		stopReason: request.signal.aborted ? "aborted" : "error",
-		errorMessage: error instanceof Error ? error.message : String(error),
+		errorMessage: describeError(error),
 		model: request.model,
 	};
 }

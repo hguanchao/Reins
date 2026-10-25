@@ -1,3 +1,4 @@
+import { describeError } from "../describe-error.ts";
 import type { TurnDriver } from "../agent/driver.ts";
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
 import { describeToolCall, displayToolName } from "../tools/describe.ts";
@@ -83,7 +84,7 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 	try {
 		await deps.createDriver(listener).run(deps.prompt, controller.signal);
 	} catch (error) {
-		deps.stderr(`\n× Error: ${error instanceof Error ? error.message : String(error)}\n`);
+		deps.stderr(`\n× Error: ${describeError(error)}\n`);
 		return 1;
 	} finally {
 		process.removeListener("SIGINT", onInterrupt);

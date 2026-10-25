@@ -1,3 +1,4 @@
+import { describeError } from "../../describe-error.ts";
 import type { LlmContentBlock, LlmToolCallBlock } from "../messages.ts";
 
 /**
@@ -156,7 +157,7 @@ export function parseToolArguments(json: string): ParsedToolArguments {
 	try {
 		parsed = JSON.parse(json);
 	} catch (error) {
-		const reason = error instanceof Error ? error.message : String(error);
+		const reason = describeError(error);
 		return { arguments: {}, argumentsError: `tool arguments are not valid JSON: ${reason}` };
 	}
 

@@ -1,5 +1,6 @@
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { describeError } from "../../describe-error.ts";
 
 import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../session/port.ts";
 import { userText } from "../../llm/messages.ts";
@@ -148,7 +149,7 @@ class JsonlWriter implements SessionWriter {
 	#fail(error: unknown): never {
 		this.#lock?.release();
 		this.#lock = null;
-		this.#failure = error instanceof Error ? error.message : String(error);
+		this.#failure = describeError(error);
 		throw new Error(`Cannot write the session file: ${this.#failure}`);
 	}
 
@@ -272,7 +273,7 @@ function readText(file: string): string {
 	try {
 		return readFileSync(file, "utf8");
 	} catch (error) {
-		throw new Error(`Cannot read the session file: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`Cannot read the session file: ${describeError(error)}`);
 	}
 }
 

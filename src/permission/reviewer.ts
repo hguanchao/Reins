@@ -1,3 +1,4 @@
+import { describeError } from "../describe-error.ts";
 import type { LlmClient } from "../llm/client.ts";
 import { assistantText } from "../llm/messages.ts";
 import type { ApprovalReviewer, ReviewOutcome } from "./policy.ts";
@@ -87,7 +88,7 @@ export class ModelReviewer implements ApprovalReviewer {
 			}
 			text = assistantText({ role: "assistant", content: result.content });
 		} catch (error) {
-			return reject(`Review did not finish: ${error instanceof Error ? error.message : String(error)}`);
+			return reject(`Review did not finish: ${describeError(error)}`);
 		}
 
 		return parseVerdict(text);

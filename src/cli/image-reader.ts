@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { describeError } from "../describe-error.ts";
 import {
 	closeSync,
 	existsSync,
@@ -52,7 +53,7 @@ export async function readImageFile(workRoot: string, input: string): Promise<Im
 		size = stat.size;
 	} catch (error) {
 		if (error instanceof Error && error.message === `${path} is not a file`) throw error;
-		throw new Error(`Could not read image ${path}: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(`Could not read image ${path}: ${describeError(error)}`);
 	}
 	if (size === 0) throw new Error(`Image ${path} is empty`);
 	if (size > MAX_IMAGE_BYTES) {

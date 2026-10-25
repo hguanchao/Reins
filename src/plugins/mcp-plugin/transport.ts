@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { describeError } from "../../describe-error.ts";
 import { createParser } from "eventsource-parser";
 
 /**
@@ -243,7 +244,7 @@ export function createSseTransport(options: RemoteTransportOptions): McpTranspor
 			options.onClose("The server closed the event stream");
 		} catch (error) {
 			queue.close();
-			options.onClose(error instanceof Error ? error.message : String(error));
+			options.onClose(describeError(error));
 		}
 	})();
 

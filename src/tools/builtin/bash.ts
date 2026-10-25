@@ -1,3 +1,4 @@
+import { describeError } from "../../describe-error.ts";
 import type { JobManager } from "../jobs.ts";
 import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
@@ -98,7 +99,7 @@ export function createBashTool(shellPath?: string, jobs?: JobManager): ToolDefin
 					};
 				} catch (error) {
 					return {
-						content: `Failed to start background job: ${error instanceof Error ? error.message : String(error)}`,
+						content: `Failed to start background job: ${describeError(error)}`,
 						isError: true,
 					};
 				}

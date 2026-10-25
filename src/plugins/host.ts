@@ -1,3 +1,4 @@
+import { describeError } from "../describe-error.ts";
 import type { PermissionPolicy, PermissionRule } from "../permission/policy.ts";
 import type { SandboxBackend } from "../sandbox/policy.ts";
 import type { SessionStore } from "../session/store.ts";
@@ -154,7 +155,7 @@ export class PluginHost {
 				pending.stale = true;
 				failures.push({
 					plugin: plugin.name,
-					message: error instanceof Error ? error.message : String(error),
+					message: describeError(error),
 				});
 			}
 		}
