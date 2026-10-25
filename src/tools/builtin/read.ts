@@ -15,7 +15,7 @@ import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary, type TextFile } from "
  */
 
 /** 截断尾注的固定前缀:界面摘要靠它识别「这条结果只给了一部分」并提取行区间。 */
-export const READ_FOOTER_PREFIX = "[showing lines ";
+const READ_FOOTER_PREFIX = "[showing lines ";
 
 /**
  * 解析截断尾注里的行区间;不是截断结果时返回 undefined。

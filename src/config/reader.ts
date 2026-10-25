@@ -17,7 +17,8 @@ export function describePath(path: ConfigPath): string {
 	return path.join(".");
 }
 
-function locate(source: ConfigSource, path: ConfigPath): { line?: number; column?: number } {
+/** 错误定位参数：文档能给出位置就带上，给不出就留空。 */
+export function locate(source: ConfigSource, path: ConfigPath): { line?: number; column?: number } {
 	return source.locationOf(path) ?? {};
 }
 

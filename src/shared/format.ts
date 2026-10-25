@@ -59,3 +59,15 @@ function trimDecimal(value: number): string {
 	const rounded = Math.round(value * 10) / 10;
 	return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
 }
+
+/**
+ * 取第一行并截到上限，超出补省略号。
+ *
+ * 会话标题、工具摘要这类「一句话说明」都只需要首行：整段正文可能是多行日志，界面上放不下。
+ * 上限按码位而不是 UTF-16 单元计算，中文与 emoji 不会被从中间劈开。
+ */
+export function firstLine(text: string, limit: number): string {
+	const line = text.split("\n", 1)[0] ?? "";
+	const chars = Array.from(line);
+	return chars.length > limit ? `${chars.slice(0, limit).join("")}…` : line;
+}

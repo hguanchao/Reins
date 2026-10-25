@@ -1,4 +1,4 @@
-import type { ToolGroupKind } from "../../tools/describe.ts";
+import { describeToolCall, type ToolDescription, type ToolGroupKind } from "../../tools/describe.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { resultDetail } from "../../tools/result/detail.ts";
 import { resultMetric } from "../../tools/result/metric.ts";
@@ -18,6 +18,29 @@ import type { TranscriptLine, TranscriptTool, TranscriptTurn } from "./types.ts"
  * 返回 true 表示把上一条普通工具行换成了组对象；调用方如果维护了另一份行数组，需要整段
  * 同步一次，不能只追加新增行。
  */
+/** 把一条工具调用的描述变成对话流行；可选的展开字段缺省时不写入。 */
+export function toolLineOf(described: ToolDescription, callId: string): TranscriptTool {
+	return {
+		kind: "tool",
+		name: described.name,
+		detail: described.detail,
+		...(described.fullDetail === undefined ? {} : { fullDetail: described.fullDetail }),
+		...(described.linkTarget === undefined ? {} : { linkTarget: described.linkTarget }),
+		group: described.group,
+		callId,
+	};
+}
+
+/** 描述一次工具调用并转成对话流行；实时与历史两条路径共用，形状不会走样。 */
+export function describeToolLine(
+	name: string,
+	args: Record<string, unknown>,
+	callId: string,
+	workspaceRoot?: string,
+): TranscriptTool {
+	return toolLineOf(describeToolCall(name, args, workspaceRoot), callId);
+}
+
 export function appendToolLine(
 	lines: TranscriptLine[],
 	tool: TranscriptTool,

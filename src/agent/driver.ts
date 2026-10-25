@@ -1,5 +1,6 @@
 import { requestOptions, requestTools, TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";
 import { describeError } from "../shared/describe-error.ts";
+import { firstLine } from "../shared/format.ts";
 import type { Config } from "../config/file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient, LlmResult } from "../llm/client.ts";
@@ -21,6 +22,9 @@ import type { AgentEvent, AgentEventListener } from "./events.ts";
 import type { PromptInstruction } from "./instructions.ts";
 import { buildPromptSections, renderSystemPrompt, toSessionTools, type PromptSkill } from "./prompt.ts";
 
+/** 工具结果摘要的首行上限；完整结果另存，摘要只用于界面一行显示。 */
+const SUMMARY_LIMIT = 200;
+
 /**
  * 回合驱动。
  *
@@ -31,7 +35,7 @@ import { buildPromptSections, renderSystemPrompt, toSessionTools, type PromptSki
  * 每轮回报的用量记进会话（它不进上下文，只用于统计），上下文接近上限时先压缩再发请求。
  */
 
-export interface DriverDeps {
+interface DriverDeps {
 	readonly provider: ProviderEntry;
 	readonly model: ModelEntry;
 	readonly config: Config;
@@ -230,7 +234,7 @@ export class TurnDriver {
 			name: call.name,
 			isError: outcome.isError,
 			durationMs: outcome.durationMs,
-			summary: firstLine(outcome.content),
+			summary: firstLine(outcome.content, SUMMARY_LIMIT),
 			content: outcome.content,
 			...(outcome.details === undefined ? {} : { details: outcome.details }),
 		});
@@ -359,7 +363,7 @@ export class TurnDriver {
 				name: call.name,
 				isError: true,
 				durationMs: 0,
-				summary: firstLine(content),
+				summary: firstLine(content, SUMMARY_LIMIT),
 				content,
 			});
 		}
@@ -441,11 +445,6 @@ export class TurnDriver {
 	}
 }
 
-/** 取首行作为摘要。整段结果可能很长，而界面上要的只是「它到底做成了没有、为什么没做成」。 */
-function firstLine(content: string): string {
-	const line = content.split("\n", 1)[0] ?? "";
-	return line.length > 200 ? `${line.slice(0, 200)}…` : line;
-}
 
 interface ToolOutcome {
 	readonly callId: string;

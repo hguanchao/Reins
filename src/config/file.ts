@@ -5,6 +5,8 @@ import { ConfigError } from "./error.ts";
 import { configFilePath } from "./paths.ts";
 import {
 	assertNoUnknownKeys,
+	describePath,
+	locate,
 	readBoolean,
 	readEnum,
 	readInteger,
@@ -40,10 +42,10 @@ export const SANDBOX_MODES: readonly SandboxMode[] = ["off", "workspace", "read-
 
 export type NotifyMode = "auto" | "bell" | "desktop" | "off";
 
-export const NOTIFY_MODES: readonly NotifyMode[] = ["auto", "bell", "desktop", "off"];
+const NOTIFY_MODES: readonly NotifyMode[] = ["auto", "bell", "desktop", "off"];
 
 /** MCP server 的接入形态：stdio 起本地进程，http 与 sse 连远程端点。 */
-export type McpServerType = "stdio" | "http" | "sse";
+type McpServerType = "stdio" | "http" | "sse";
 
 /** type 字段的合法取值,解析校验与提示共用这一份清单。 */
 const MCP_SERVER_TYPES = ["stdio", "http", "sse"] as const satisfies readonly McpServerType[];
@@ -62,18 +64,18 @@ export interface McpServerConfig {
 	readonly disabled: boolean;
 }
 
-export interface PluginsConfig {
+interface PluginsConfig {
 	readonly disabled: readonly string[];
 	/** 已信任的工作区根，由 --trust 与信任页回写 */
 	readonly trusted: readonly string[];
 }
 
-export interface UiConfig {
+interface UiConfig {
 	readonly notify: NotifyMode;
 }
 
 /** 上下文压缩的触发与保留策略。 */
-export interface CompactionConfig {
+interface CompactionConfig {
 	/** 上下文用到窗口的这个比例就压缩，0 到 1 之间（不含 0） */
 	readonly compactAt: number;
 	/** 压缩后保留最近这一比例的原文，0 到 1 之间 */
@@ -323,17 +325,6 @@ export function wrapParseErrors<T>(file: string, action: () => T): T {
 		if (error instanceof ConfigError) throw error.withFile(file);
 		throw error;
 	}
-}
-
-function describePath(path: readonly string[]): string {
-	return path.join(".");
-}
-
-function locate(
-	document: TomlDocument,
-	path: readonly string[],
-): { line?: number; column?: number } {
-	return document.locationOf(path) ?? {};
 }
 
 function readUi(document: TomlDocument): UiConfig {

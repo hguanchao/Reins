@@ -1,6 +1,7 @@
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describeError } from "../../shared/describe-error.ts";
+import { firstLine } from "../../shared/format.ts";
 
 import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../session/port.ts";
 import { userText } from "../../llm/messages.ts";
@@ -71,7 +72,7 @@ export class JsonlSessionStore implements SessionStore {
 				entryCount: parsed.entries.length,
 				title:
 					userTurn?.type === "message" && userTurn.message.role === "user"
-						? firstLine(userText(userTurn.message))
+						? firstLine(userText(userTurn.message).trim(), 60)
 						: undefined,
 				forkedFrom: header?.forkedFrom,
 			});
@@ -285,7 +286,3 @@ function modifiedAt(file: string): string {
 	}
 }
 
-function firstLine(text: string): string {
-	const line = text.split("\n", 1)[0]?.trim() ?? "";
-	return line.length > 60 ? `${line.slice(0, 60)}…` : line;
-}

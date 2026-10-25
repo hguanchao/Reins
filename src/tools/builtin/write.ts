@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { Buffer } from "node:buffer";
 import { dirname } from "node:path";
 
-import { resolveToolPath } from "../path.ts";
+import { resolveToolPath, writeScope } from "../path.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
@@ -37,12 +37,7 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 	parameters: PARAMETERS,
 	annotations: { readOnly: false, destructive: true, openWorld: false },
 
-	/** 本会话内按具体文件路径记住 */
-	permissionScope(args, workspace) {
-		const resolved = workspace.resolve(args.path);
-		const label = workspace.display(resolved.absolute);
-		return { key: resolved.absolute, label, short: label };
-	},
+	permissionScope: (args, workspace) => writeScope(workspace, args.path),
 
 	async execute({ args, workspace, sandbox }): Promise<ToolResult> {
 		const { absolute, display: displayPath } = resolveToolPath(workspace, sandbox, args.path, "write");

@@ -5,7 +5,8 @@ import {
 	userText,
 	type LlmMessage,
 } from "../../llm/messages.ts";
-import { describeToolCall, displayToolName, sanitizeDetail } from "../../tools/describe.ts";
+import { firstLine } from "../../shared/format.ts";
+import { displayToolName, sanitizeDetail } from "../../tools/describe.ts";
 import { imageMarker } from "../image.ts";
 import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "../view/todo-card.ts";
 import {
@@ -13,6 +14,7 @@ import {
 	attachToolFailure,
 	attachToolResult,
 	collapseToolGroups,
+	describeToolLine,
 	findToolByCallId,
 	findTopLevelToolByCallId,
 	type TranscriptLine,
@@ -28,14 +30,15 @@ import {
  * 已收尾的任务卡属于历史，回填进对话流；最后一张未收尾的卡单独带出，交给常驻面板。
  */
 
-const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
+/** 历史工具行的首行上限；过长时截断加省略号。 */
 const MAX_LINE = 200;
+const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
 
 interface MutableTurn extends TranscriptTurn {
 	response: TranscriptLine[];
 }
 
-export interface TranscriptHistory {
+interface TranscriptHistory {
 	readonly turns: readonly TranscriptTurn[];
 	/** 最后一张未收尾的任务表；续聊时用它恢复常驻面板 */
 	readonly todo?: TranscriptTodo;
@@ -106,22 +109,9 @@ export function buildTranscriptHistory(
 						appendSubagentMember(currentTurn().response, call.id, subagentTaskOf(call.arguments));
 						continue;
 					}
-					const described = describeToolCall(call.name, call.arguments, workspaceRoot);
 					appendToolLine(
 						currentTurn().response,
-						{
-							kind: "tool",
-							name: described.name,
-							detail: described.detail,
-							...(described.fullDetail === undefined
-								? {}
-								: { fullDetail: described.fullDetail }),
-							...(described.linkTarget === undefined
-								? {}
-								: { linkTarget: described.linkTarget }),
-							group: described.group,
-							callId: call.id,
-						},
+						describeToolLine(call.name, call.arguments, call.id, workspaceRoot),
 						false,
 					);
 				}
@@ -149,7 +139,7 @@ export function buildTranscriptHistory(
 				turn.response.push({
 					kind: "tool",
 					name: displayToolName(message.toolName),
-					detail: firstLine(message.content),
+					detail: firstLine(message.content, MAX_LINE),
 					isError: true,
 				});
 				break;
@@ -177,10 +167,6 @@ function planTextFromArgs(args: Record<string, unknown>): string | undefined {
 	return typeof text === "string" && text.trim().length > 0 ? text : undefined;
 }
 
-function firstLine(content: string): string {
-	const line = content.split("\n", 1)[0] ?? "";
-	return line.length > MAX_LINE ? `${line.slice(0, MAX_LINE)}…` : line;
-}
 
 /** 派发参数里的任务描述;形状不对就给一句占位,清单行总得有字。 */
 function subagentTaskOf(args: Record<string, unknown>): string {

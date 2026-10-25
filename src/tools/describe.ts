@@ -2,6 +2,7 @@ import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
+import { firstLine } from "../shared/format.ts";
 import { expandHome, toAbsolutePath } from "../workspace/root.ts";
 import { commandCore } from "./command-summary.ts";
 
@@ -282,8 +283,3 @@ function text(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function firstLine(text: string, limit: number): string {
-	const line = text.split("\n", 1)[0] ?? "";
-	const chars = Array.from(line);
-	return chars.length > limit ? `${chars.slice(0, limit).join("")}…` : line;
-}
