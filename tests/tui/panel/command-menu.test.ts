@@ -5,13 +5,13 @@ import {
 	commandMenuHeight,
 	renderCommandMenu,
 	type CommandMenuItem,
-} from "../../src/tui/command-menu.ts";
+} from "../../../src/tui/panel/command-menu.ts";
 import {
 	DISABLED_COLOR,
 	MENU_MAX_VISIBLE,
 	PANEL_BG,
 	SELECTED_TEXT_COLOR,
-} from "../../src/tui/menu-panel.ts";
+} from "../../../src/tui/panel/menu-panel.ts";
 
 const ITEMS: readonly CommandMenuItem[] = [
 	{ name: "model", description: "Switch the current model", enabled: true },

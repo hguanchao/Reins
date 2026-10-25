@@ -7,14 +7,14 @@ import type {
 import type { ApprovalMode, NotifyMode, ThinkingLevel } from "../config/config-file.ts";
 import type { ApprovalBroker } from "../permission/approval.ts";
 import type { SandboxInfo } from "../sandbox/setup.ts";
-import type { CommandMenuItem } from "./command-menu.ts";
-import type { FileSource } from "./file-menu.ts";
+import type { CommandMenuItem } from "./panel/command-menu.ts";
+import type { FileSource } from "./panel/file-menu.ts";
 import type { FooterInfo } from "./footer.ts";
 import type { ImageAttachment, ImageSource } from "./image-attachments.ts";
 import type { JobEvent, JobView } from "./job-pages.ts";
-import type { ModelMenuItem } from "./model-menu.ts";
+import type { ModelMenuItem } from "./panel/model-menu.ts";
 import type { PageEntry, SkillPageEntry } from "./pages.ts";
-import type { SessionMenuItem } from "./session-menu.ts";
+import type { SessionMenuItem } from "./panel/session-menu.ts";
 import type { TranscriptPlan, TranscriptTurn } from "./transcript.ts";
 import type { TranscriptTodo } from "./todo-card.ts";
 

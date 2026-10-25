@@ -1,4 +1,4 @@
-import { MENU_MAX_VISIBLE, keepVisible } from "./menu-panel.ts";
+import { MENU_MAX_VISIBLE, keepVisible } from "./panel/menu-panel.ts";
 import type { ApprovalAnswer } from "../permission/policy.ts";
 
 /**

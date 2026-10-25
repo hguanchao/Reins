@@ -14,7 +14,7 @@ import {
 	padEnd,
 	topBorder,
 } from "./menu-panel.ts";
-import { displayWidth } from "./text.ts";
+import { displayWidth } from "../text.ts";
 
 /**
  * 斜杠命令补全面板。

@@ -1,4 +1,4 @@
-import type { CommandMenuItem } from "./command-menu.ts";
+import type { CommandMenuItem } from "./panel/command-menu.ts";
 import type { TuiOptions } from "./options.ts";
 
 /**

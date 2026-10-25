@@ -1,4 +1,4 @@
-import { isImagePath } from "./image-attachments.ts";
+import { isImagePath } from "../image-attachments.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
@@ -14,7 +14,7 @@ import {
 	menuHeight,
 	topBorder,
 } from "./menu-panel.ts";
-import { characterWidth, displayWidth, fitToWidth } from "./text.ts";
+import { characterWidth, displayWidth, fitToWidth } from "../text.ts";
 
 /**
  * 输入框里的 `@` 文件补全。

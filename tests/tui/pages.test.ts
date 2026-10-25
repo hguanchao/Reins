@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { eastAsianWidth } from "get-east-asian-width";
 
-import type { CommandMenuItem } from "../../src/tui/command-menu.ts";
+import type { CommandMenuItem } from "../../src/tui/panel/command-menu.ts";
 import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines } from "../../src/tui/pages.ts";
 import { THEME } from "../../src/tui/theme.ts";
 

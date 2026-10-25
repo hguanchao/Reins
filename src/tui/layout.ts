@@ -9,32 +9,32 @@ import type { ApprovalAnswer } from "../permission/policy.ts";
 import { describeToolCall, displayToolName, sanitizeDetail } from "../tools/describe.ts";
 import { formatDuration } from "../tools/format.ts";
 import { renderMain } from "./main.ts";
-import { APPROVAL_PANEL_HEIGHT, approvalActionAt, renderApprovalPanel } from "./approval-panel.ts";
+import { APPROVAL_PANEL_HEIGHT, approvalActionAt, renderApprovalPanel } from "./panel/approval-panel.ts";
 import {
 	modelMenuHeight,
 	renderModelMenu,
 	type ModelMenuItem,
 	type ModelMenuState,
-} from "./model-menu.ts";
+} from "./panel/model-menu.ts";
 import {
 	effortMenuHeight,
 	renderEffortMenu,
 	type EffortMenuState,
-} from "./effort-menu.ts";
+} from "./panel/effort-menu.ts";
 import {
 	sessionMenuHeight,
 	renderSessionMenu,
 	type SessionMenuItem,
 	type SessionMenuState,
-} from "./session-menu.ts";
+} from "./panel/session-menu.ts";
 import type { CheckpointEntry, CheckpointPreview } from "../checkpoint/checkpoints.ts";
 import {
 	commandMenuHeight,
 	renderCommandMenu,
 	type CommandMenuItem,
 	type CommandMenuState,
-} from "./command-menu.ts";
-import { keepVisible } from "./menu-panel.ts";
+} from "./panel/command-menu.ts";
+import { keepVisible } from "./panel/menu-panel.ts";
 import {
 	framedPage,
 	helpPageLines,
@@ -78,7 +78,7 @@ import {
 	formatFileReference,
 	renderFileMenu,
 	type FileMenuState,
-} from "./file-menu.ts";
+} from "./panel/file-menu.ts";
 import { THEME } from "./theme.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "./scroll-button.ts";
 import type { AnimationFrame } from "./sweep.ts";

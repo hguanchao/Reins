@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { effortMenuHeight, renderEffortMenu } from "../../src/tui/effort-menu.ts";
-import { PANEL_BG, SELECTED_TEXT_COLOR, TEXT_COLOR } from "../../src/tui/menu-panel.ts";
+import { effortMenuHeight, renderEffortMenu } from "../../../src/tui/panel/effort-menu.ts";
+import { PANEL_BG, SELECTED_TEXT_COLOR, TEXT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");

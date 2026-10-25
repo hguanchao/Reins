@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { displayWidth } from "../../src/tui/text.ts";
+import { displayWidth } from "../../../src/tui/text.ts";
 import {
 	renderSessionMenu,
 	sessionMenuHeight,
 	type SessionMenuItem,
-} from "../../src/tui/session-menu.ts";
+} from "../../../src/tui/panel/session-menu.ts";
 
 const ITEMS: readonly SessionMenuItem[] = [
 	{ id: "0123456789abcdef", title: "Fix the login flow", time: "2 hours ago", current: true },

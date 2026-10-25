@@ -1,5 +1,5 @@
-import type { CommandMenuItem } from "./command-menu.ts";
-import { padEnd } from "./menu-panel.ts";
+import type { CommandMenuItem } from "./panel/command-menu.ts";
+import { padEnd } from "./panel/menu-panel.ts";
 import { displayWidth, fitToWidth, wrapWords } from "./text.ts";
 import { THEME } from "./theme.ts";
 

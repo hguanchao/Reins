@@ -1,4 +1,4 @@
-import { displayWidth } from "./text.ts";
+import { displayWidth } from "../text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,

@@ -7,8 +7,8 @@ import {
 	findAtToken,
 	formatFileReference,
 	renderFileMenu,
-} from "../../src/tui/file-menu.ts";
-import { displayWidth } from "../../src/tui/text.ts";
+} from "../../../src/tui/panel/file-menu.ts";
+import { displayWidth } from "../../../src/tui/text.ts";
 
 const FILES = [
 	"src/tui/layout.ts",

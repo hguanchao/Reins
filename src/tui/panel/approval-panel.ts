@@ -1,14 +1,14 @@
-import type { ApprovalPrompt } from "../permission/approval.ts";
-import type { ApprovalAnswer } from "../permission/policy.ts";
-import { displayToolName } from "../tools/describe.ts";
+import type { ApprovalPrompt } from "../../permission/approval.ts";
+import type { ApprovalAnswer } from "../../permission/policy.ts";
+import { displayToolName } from "../../tools/describe.ts";
 import {
 	ACCENT_COLOR,
 	BORDER_COLOR,
 	PANEL_BG,
 	RESET,
 } from "./menu-panel.ts";
-import { displayWidth, truncateToWidth } from "./text.ts";
-import { THEME } from "./theme.ts";
+import { displayWidth, truncateToWidth } from "../text.ts";
+import { THEME } from "../theme.ts";
 
 /**
  * 工具审批面板。
