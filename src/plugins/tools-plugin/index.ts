@@ -10,9 +10,9 @@ import { lsTool } from "./ls.ts";
  * 出来，去掉之后产品依然完整，所以按插件的标准分发；也正因为如此，想换成更快的实现（比如
  * 接上专门的检索工具）时替换掉这个插件就够了，不必动宿主。
  */
-export const name = "tools-plugin";
+const name = "tools-plugin";
 
-export function setup(api: PluginApi): void {
+function setup(api: PluginApi): void {
 	api.registerTool(lsTool);
 	api.registerTool(findTool);
 	api.registerTool(grepTool);

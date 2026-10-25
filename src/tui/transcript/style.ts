@@ -49,9 +49,9 @@ export const TOOL_RESULT_PREVIEW_LINES = 20;
  */
 export const DETAIL_BAND_MAX_LINES = 60;
 /** 思考标题的标记：单列火花，与工具行的 ›、失败行的 × 区分。 */
-export const THINKING_MARKER = "✻";
+const THINKING_MARKER = "✻";
 /** 展开后的菱形标记：工具组头和思考块共用。 */
-export const EXPANDED_DIAMOND = "◈";
+const EXPANDED_DIAMOND = "◈";
 /** 思考标题的缩进；正文缩进到与 Think…/Thought… 的首字对齐。 */
 export const THINKING_PREFIX = `${RESPONSE_INDENT}${THINKING_MARKER} `;
 export const THINKING_EXPANDED_PREFIX = `${RESPONSE_INDENT}${EXPANDED_DIAMOND} `;

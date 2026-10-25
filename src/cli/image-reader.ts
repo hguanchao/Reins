@@ -139,7 +139,7 @@ export function resolveImagePath(workRoot: string, input: string): string {
 }
 
 /** 读系统剪贴板里的图片。 */
-export async function readClipboardImage(): Promise<ImageAttachment> {
+async function readClipboardImage(): Promise<ImageAttachment> {
 	if (process.platform === "win32") return readWindowsClipboard();
 	if (process.platform === "darwin") return readDarwinClipboard();
 	return readLinuxClipboard();

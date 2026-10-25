@@ -51,7 +51,7 @@ interface Pending {
  */
 export const MAX_WALK_ENTRIES = 100_000;
 
-export interface WalkOptions {
+interface WalkOptions {
 	/** 最多产出多少条，达到上限即停止 */
 	readonly maxEntries: number;
 }

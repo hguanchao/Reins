@@ -12,7 +12,7 @@ import type { Plugin, PluginFailure, PluginHost } from "./host.ts";
  * 一次就能生效，既不需要重新编译，也不需要打包。
  */
 
-export interface ExternalPluginSource {
+interface ExternalPluginSource {
 	/** 插件标识，取自文件名 */
 	readonly name: string;
 	readonly file: string;

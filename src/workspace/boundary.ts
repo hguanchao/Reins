@@ -18,7 +18,7 @@ export function isPathInside(root: string, absolute: string): boolean {
 	return relativePath !== ".." && !relativePath.startsWith(`..${sep}`);
 }
 
-export interface ResolvedPath {
+interface ResolvedPath {
 	/** 归一化后的绝对路径 */
 	readonly absolute: string;
 	/** 是否落在工作根内 */

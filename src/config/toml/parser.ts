@@ -29,7 +29,7 @@ export interface TomlSection {
 	readonly isArrayOfTables: boolean;
 }
 
-export interface TomlParseResult {
+interface TomlParseResult {
 	readonly root: ConfigTable;
 	readonly assignments: readonly TomlAssignment[];
 	readonly sections: readonly TomlSection[];

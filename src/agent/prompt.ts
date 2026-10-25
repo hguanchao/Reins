@@ -180,7 +180,7 @@ export interface PromptSkill {
 	readonly path: string;
 }
 
-export interface PromptInput {
+interface PromptInput {
 	readonly cwd: string;
 	readonly tools: readonly ToolDeclaration[];
 	/** 可用的技能；为空时不写这一节，省下每一轮的那几行 */

@@ -10,7 +10,7 @@ import { join } from "node:path";
  */
 
 /** 溢出尾注的固定前缀:界面的折叠行靠它识别「这条结果被截断过」。 */
-export const SPILL_FOOTER_PREFIX = "[the full result is ";
+const SPILL_FOOTER_PREFIX = "[the full result is ";
 
 /** 工具尾注的通用形态:空一行后接一个方括号开头的说明。各工具尾注都在这条规则之下。 */
 const FOOTER_MARK = "\n\n[";

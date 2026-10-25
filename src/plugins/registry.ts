@@ -13,7 +13,7 @@ import toolsPlugin from "./tools-plugin/index.ts";
  * 反过来一次都没有。
  */
 
-export interface BundledPluginContext {
+interface BundledPluginContext {
 	/** 工作目录：要起外部进程的插件在这里动手 */
 	readonly cwd: string;
 	/** 本程序自己的版本，握手时用得上 */

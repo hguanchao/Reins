@@ -20,7 +20,7 @@ import {
  * 检查点失败不阻断当前回合，界面只提示原因。
  */
 
-export type CheckpointKind = "turn" | "safety";
+type CheckpointKind = "turn" | "safety";
 
 export interface CheckpointEntry {
 	readonly id: string;
@@ -32,7 +32,7 @@ export interface CheckpointEntry {
 	readonly changes?: number;
 }
 
-export interface CheckpointChange extends SnapshotChange {
+interface CheckpointChange extends SnapshotChange {
 	readonly status: ChangeStatus;
 }
 
@@ -48,7 +48,7 @@ export interface CheckpointRestoreResult {
 	readonly safety: CheckpointEntry;
 }
 
-export class CheckpointError extends Error {}
+class CheckpointError extends Error {}
 
 interface StoredEntry {
 	readonly id: string;
@@ -67,7 +67,7 @@ interface StoredState {
 	readonly entries: StoredEntry[];
 }
 
-export interface CheckpointServiceOptions {
+interface CheckpointServiceOptions {
 	readonly workRoot: string;
 	readonly sessionId: string;
 	/** 测试或多环境隔离用；默认放在 ~/.reins/checkpoints */

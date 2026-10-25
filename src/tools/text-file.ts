@@ -11,7 +11,7 @@ import { Buffer } from "node:buffer";
  * 的行尾还原。
  */
 
-export type TextEncoding = "utf8" | "utf16le" | "utf16be";
+type TextEncoding = "utf8" | "utf16le" | "utf16be";
 
 export interface TextFile {
 	/** 正文，已去掉字节顺序标记，换行统一为 LF */
@@ -39,7 +39,7 @@ export function encodeTextFile(file: TextFile, text: string): Buffer {
 }
 
 /** 把 CRLF 归一为 LF。单独的 CR 不动：它不是本项目的写入方式，改了反而动到不该动的内容。 */
-export function normalizeEol(text: string): string {
+function normalizeEol(text: string): string {
 	return text.replaceAll("\r\n", "\n");
 }
 

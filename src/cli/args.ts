@@ -7,7 +7,7 @@ export class UsageError extends Error {
 }
 
 /** CLI 有两种运行方式：启动全屏界面，或一次提问把答案写到标准输出。 */
-export type CliCommand = "tui" | "print" | "help" | "version";
+type CliCommand = "tui" | "print" | "help" | "version";
 
 export interface CliOptions {
 	readonly command: CliCommand;

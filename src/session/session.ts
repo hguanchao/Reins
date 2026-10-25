@@ -23,7 +23,7 @@ import { leavesOf, pathTo } from "./tree.ts";
  * 字节都不动。
  */
 
-export interface SessionOptions {
+interface SessionOptions {
 	readonly id: string;
 	readonly cwd: string;
 	/** 落盘位置；null 表示只在内存里 */

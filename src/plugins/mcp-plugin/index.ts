@@ -25,7 +25,7 @@ import {
  */
 
 /** 一个 server 当前的状态，交给界面排版用。 */
-export interface McpStatus {
+interface McpStatus {
 	readonly name: string;
 	/** connecting / connected / unreachable / disabled */
 	readonly status: string;
@@ -35,7 +35,7 @@ export interface McpStatus {
 
 export type McpStatusSource = () => readonly McpStatus[];
 
-export interface McpPluginOptions {
+interface McpPluginOptions {
 	/** 工作目录：stdio 型的 server 在这里起子进程 */
 	readonly cwd: string;
 	/** 本程序自己的版本，握手里报给服务端 */

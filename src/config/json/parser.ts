@@ -2,10 +2,10 @@ import { ConfigError, offsetToLineColumn, type LineColumn } from "../error.ts";
 import { setTableValue, type ConfigTable, type ConfigValue } from "../value.ts";
 
 /** JSON 与 TOML 共用同一套值模型。 */
-export type JsonValue = ConfigValue;
+type JsonValue = ConfigValue;
 export type JsonObject = ConfigTable;
 
-export interface JsonParseResult {
+interface JsonParseResult {
 	readonly value: JsonValue;
 	/** 每个键与数组元素在原文中的位置；键是路径的 JSON 编码 */
 	readonly locations: ReadonlyMap<string, LineColumn>;

@@ -32,7 +32,7 @@ When in doubt, deny. A second look costs far less than an irreversible change.
 Output one JSON object and nothing else:
 {"allow": true or false, "reason": "one sentence explaining why"}`;
 
-export interface ReviewerOptions {
+interface ReviewerOptions {
 	readonly client: LlmClient;
 	/** provider 内的模型 id */
 	readonly model: string;

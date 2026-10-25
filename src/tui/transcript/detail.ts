@@ -14,7 +14,7 @@ import {
 import type { TranscriptTool } from "./types.ts";
 
 /** 一段带颜色的文本；着色只到这一段为止，渲染完要回到调用方给的颜色。 */
-export interface ColoredSegment {
+interface ColoredSegment {
 	readonly text: string;
 	readonly color: string;
 }
@@ -87,7 +87,7 @@ export function expandTabs(text: string): string {
  *
  * bandStart 是色带起点，内容在带内留一列内边距后开始。
  */
-export function detailBodyLines(
+function detailBodyLines(
 	line: string,
 	kind: ResultDetailKind,
 	width: number,
@@ -163,7 +163,7 @@ export function detailBodyLines(
  *
  * fileName 是折叠行里的文件名：语言只按扩展名判断，去掉目录不影响结论。
  */
-export function diffSyntax(
+function diffSyntax(
 	rows: readonly string[],
 	fileName: string,
 ): readonly (readonly SyntaxSegment[] | undefined)[] | undefined {
@@ -206,7 +206,7 @@ export function diffSyntax(
  * 带行号的正文按行号后的内容列重建整段代码再解析，行号与省略行不进入源码：跨行结构
  * 只有整段解析才能判对。行号宽度由预览层决定，这里只按「数字 + 两个空格」剥离。
  */
-export function fileSyntax(
+function fileSyntax(
 	rows: readonly string[],
 	fileName: string,
 ): readonly (readonly SyntaxSegment[] | undefined)[] | undefined {
@@ -236,7 +236,7 @@ export function bandBlankLine(width: number, bandStart: number): string {
 }
 
 /** 带行号的行换行时，续行缩进到行号之后的内容列。 */
-export function hangingLines(
+function hangingLines(
 	gutter: string,
 	marker: string,
 	segments: readonly ColoredSegment[],
@@ -314,7 +314,7 @@ export function bandedWrappedLines(
 }
 
 /** 详情行的颜色：diff 的增、删分别着色，省略行弱化，文件内容用次要文字色。 */
-export function detailColor(kind: ResultDetailKind, line: string): string {
+function detailColor(kind: ResultDetailKind, line: string): string {
 	if (kind === "diff") {
 		// 带行号的 diff 形如 `12 + added` / `12 - removed`
 		const marker = /^\s*\d+ ([-+]) /.exec(line);

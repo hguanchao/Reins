@@ -9,7 +9,7 @@ import type { ModelSelection } from "./selection.ts";
  * 辅助模型是否可用。切换只改这份目录里的当前选型，不写配置文件。
  */
 
-export interface ModelOption {
+interface ModelOption {
 	readonly provider: string;
 	readonly model: string;
 	readonly name: string;
@@ -17,7 +17,7 @@ export interface ModelOption {
 	readonly current: boolean;
 }
 
-export interface ModelSwitchOutcome {
+interface ModelSwitchOutcome {
 	readonly selection: ModelSelection;
 	/** 目标 provider 缺少 compact_model / review_model 时的说明 */
 	readonly warnings: readonly string[];

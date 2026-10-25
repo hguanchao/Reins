@@ -24,7 +24,7 @@ export interface PermissionRule {
 	matches(tool: string, args: Record<string, unknown>): boolean;
 }
 
-export type PermissionDecision =
+type PermissionDecision =
 	| { readonly kind: "allow" }
 	| { readonly kind: "deny"; readonly reason: string }
 	/** 交给使用者确认 */
@@ -184,7 +184,7 @@ export interface ApprovalReviewer {
 	review(tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<ReviewOutcome>;
 }
 
-export interface GateOptions {
+interface GateOptions {
 	readonly policy: PermissionPolicy;
 	/** 非交互模式下没有可询问的对象，此时为 undefined */
 	readonly confirmer?: Confirmer;

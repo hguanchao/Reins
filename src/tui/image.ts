@@ -40,7 +40,7 @@ export const MAX_IMAGE_COUNT = 4;
 /** 单张上限；与常见视觉模型的请求体限制保持同一量级。 */
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 /** 一次发送的图片总量上限。 */
-export const MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
 
 /** 扩展名是否属于支持的图片格式；内容是否真是图片由读取器再核对文件头。 */
 export function isImagePath(path: string): boolean {

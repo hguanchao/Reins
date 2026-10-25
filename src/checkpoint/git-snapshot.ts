@@ -12,7 +12,7 @@ export interface SnapshotChange {
 	readonly status: ChangeStatus;
 }
 
-export interface Snapshot {
+interface Snapshot {
 	readonly tree: string;
 	readonly commit: string;
 }

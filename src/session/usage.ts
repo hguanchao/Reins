@@ -11,7 +11,7 @@ import type { SessionEntry } from "./port.ts";
  * 「一次请求占了多少窗口」也归在这里：压缩判断与界面显示问的是同一个问题，口径必须一致。
  */
 
-export interface UsageTotals {
+interface UsageTotals {
 	/** 记录到的请求次数 */
 	readonly requests: number;
 	/** 其中用于压缩上下文的次数 */

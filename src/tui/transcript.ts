@@ -10,6 +10,7 @@ export {
 	attachToolFailure,
 	attachToolResult,
 	collapseToolGroups,
+	describeToolLine,
 	findToolByCallId,
 	findTopLevelToolByCallId,
 	hasRunningSubagent,

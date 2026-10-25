@@ -37,7 +37,7 @@ function streamIdleTimeoutMs(config: Config): number | undefined {
 	return config.streamIdleTimeout > 0 ? config.streamIdleTimeout * 1000 : undefined;
 }
 
-export function createClient(
+function createClient(
 	config: Config,
 	provider: ProviderEntry,
 	model: ModelEntry,

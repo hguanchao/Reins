@@ -87,7 +87,7 @@ const PROVIDERS_TEMPLATE = `{
 }
 `;
 
-export interface InitializeConfigOptions {
+interface InitializeConfigOptions {
 	/** 是否允许创建默认位置的 config.toml */
 	readonly config: boolean;
 	/** 是否允许创建默认位置的 providers.json */

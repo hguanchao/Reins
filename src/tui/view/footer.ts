@@ -16,14 +16,14 @@ import { THEME } from "../render/theme.ts";
  * 应落在第几列。边框与提示符随焦点切换颜色，正文保持默认颜色。
  */
 
-export interface InputLine {
+interface InputLine {
 	readonly prefix: string;
 	readonly text: string;
 	/** text 开头属于命令的字符数；0 表示这一行没有命令 */
 	readonly commandEnd?: number;
 }
 
-export interface InputView {
+interface InputView {
 	/** 可见的提示符；窗口太窄时会被截断 */
 	readonly prefix: string;
 	/** 光标所在输入行的可见文字 */
@@ -60,7 +60,7 @@ export interface FooterInfo {
 }
 
 /** 运行时状态：加载符号、状态文字、阶段计时、总计时与本轮 token 已用。 */
-export interface RuntimeStatus {
+interface RuntimeStatus {
 	readonly symbol: string;
 	readonly text: string;
 	readonly phaseMs?: number;
@@ -109,7 +109,7 @@ export function queueHeight(count: number): number {
 }
 
 /** 页脚布局开关；默认是完整的六行。 */
-export interface FooterLayout {
+interface FooterLayout {
 	/** 状态行上方是否留一行与对话流分隔；菜单面板已经承担分隔时可以关掉 */
 	readonly leadingGap?: boolean;
 	/** 是否显示运行时状态行 */

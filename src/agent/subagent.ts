@@ -95,9 +95,9 @@ export interface SubagentContext {
 }
 
 /** done 是它自己说完了；其余几种都意味着这件事没有做完，汇报里必须说清楚。 */
-export type SubagentStopReason = "done" | "steps" | "context" | "error" | "aborted";
+type SubagentStopReason = "done" | "steps" | "context" | "error" | "aborted";
 
-export interface SubagentOutcome {
+interface SubagentOutcome {
 	readonly report: string;
 	readonly steps: number;
 	readonly stopReason: SubagentStopReason;

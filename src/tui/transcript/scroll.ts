@@ -88,7 +88,7 @@ function headerIndexes(prompt: PromptRange, count: number): readonly number[] {
 	return Array.from({ length: count }, (_, index) => start + index);
 }
 
-export function pinnedPrompt(prompts: readonly PromptRange[], top: number): PromptRange | undefined {
+function pinnedPrompt(prompts: readonly PromptRange[], top: number): PromptRange | undefined {
 	let found: PromptRange | undefined;
 	for (const prompt of prompts) {
 		if (prompt.start <= top) found = prompt;

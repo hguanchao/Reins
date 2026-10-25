@@ -23,7 +23,7 @@ const LIVE_FIELDS: ReadonlySet<keyof Config> = new Set<keyof Config>([
 	"compaction",
 ]);
 
-export interface ConfigDiff {
+interface ConfigDiff {
 	/** 改完立刻就能生效的项 */
 	readonly live: readonly (keyof Config)[];
 	/** 要重启才能生效的项 */

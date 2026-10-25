@@ -7,14 +7,14 @@
  * 默认关闭，只在 REINS_DEBUG_STARTUP 有值时输出——每次启动都多打几行，很快就会没人看。
  */
 
-export interface StartupTimer {
+interface StartupTimer {
 	/** 记下这一阶段到此结束；名字说明这一步做了什么 */
 	mark(stage: string): void;
 	/** 把各阶段耗时写出去；没启用时什么也不做 */
 	report(): void;
 }
 
-export interface StartupTimerOptions {
+interface StartupTimerOptions {
 	readonly env: Record<string, string | undefined>;
 	readonly write: (line: string) => void;
 	/** 取当前时间，单位毫秒；测试时替换成可控的假时钟 */

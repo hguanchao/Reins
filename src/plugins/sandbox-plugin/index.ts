@@ -11,9 +11,9 @@ import { SeatbeltBackend } from "./backends/seatbelt.ts";
  *
  * 没有对应实现是正常状态：这时模式只要不是 off，命令就会被拒绝执行，而不是退回到不隔离。
  */
-export const name = "sandbox-plugin";
+const name = "sandbox-plugin";
 
-export function setup(api: PluginApi): void {
+function setup(api: PluginApi): void {
 	api.registerSandboxBackend(new SeatbeltBackend());
 	api.registerSandboxBackend(new BubblewrapBackend());
 }

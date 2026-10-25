@@ -21,7 +21,7 @@ import { writeStderr } from "./output.ts";
  * 交互与非交互两种启动方式共用同一条校验。返回错误而不是直接退出，让两种模式各自决定
  * 怎么处理：全屏界面把错误留在主区域继续显示，非交互模式没有可展示错误的地方，直接退出。
  */
-export type SelectionResult =
+type SelectionResult =
 	| {
 			readonly ok: true;
 			/** 工作区是否已取得信任：项目级技能要靠它决定扫不扫 */

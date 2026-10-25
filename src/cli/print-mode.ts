@@ -13,7 +13,7 @@ import { formatDuration } from "../shared/format.ts";
  * 退出码按结果给：出错或中止为 1，正常结束为 0。脚本据此判断成败，比去 grep 输出可靠。
  */
 
-export interface PrintModeDeps {
+interface PrintModeDeps {
 	readonly prompt: string;
 	/** 装配处交进来的构造方式：事件监听由本模式提供，驱动本身由装配处组装 */
 	readonly createDriver: (onEvent: AgentEventListener) => Pick<TurnDriver, "run">;

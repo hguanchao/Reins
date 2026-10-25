@@ -7,7 +7,7 @@ import { describeFailure } from "./failure.ts";
 import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "./retry.ts";
 
 /** 服务端返回非成功状态。带上响应体片段，否则只能看到一行状态码。 */
-export class LlmHttpError extends Error {
+class LlmHttpError extends Error {
 	readonly status: number;
 	/** 服务端要求等多久再来（Retry-After）；没给就是 undefined */
 	readonly retryAfterMs: number | undefined;
@@ -20,7 +20,7 @@ export class LlmHttpError extends Error {
 	}
 }
 
-export interface SseRequest {
+interface SseRequest {
 	readonly url: string;
 	readonly headers: Readonly<Record<string, string>>;
 	readonly body: unknown;

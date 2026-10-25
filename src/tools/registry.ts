@@ -24,13 +24,13 @@ import type { ResultSpiller } from "./spill.ts";
 
 export type ToolSource = "core" | "bundled" | "plugin";
 
-export interface ToolCallRequest {
+interface ToolCallRequest {
 	readonly callId: string;
 	readonly name: string;
 	readonly args: Record<string, unknown>;
 }
 
-export interface ToolCallOutcome {
+interface ToolCallOutcome {
 	/** 交给模型的内容，超出阈值时已经处理过 */
 	readonly content: string;
 	readonly isError: boolean;

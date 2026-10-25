@@ -5,7 +5,7 @@ import type { TranscriptTodo } from "../../tui/view/todo-card.ts";
 import type { TranscriptPlan, TranscriptTurn } from "../../tui/transcript.ts";
 import { resumeSession } from "./target.ts";
 
-export interface SwitchedSession {
+interface SwitchedSession {
 	readonly session: Session;
 	readonly history: readonly TranscriptTurn[];
 	/** 目标会话最后一张任务表；没有时面板保持收起 */

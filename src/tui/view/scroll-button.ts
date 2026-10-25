@@ -16,7 +16,7 @@ const HIT_SLOP = 1;
 const IDLE_COLOR = THEME.textSubtle;
 const HOVER_COLOR = THEME.accent;
 
-export interface ScrollButtonPlacement {
+interface ScrollButtonPlacement {
 	/** 1 基屏幕行 */
 	readonly row: number;
 	/** 1 基起始列 */

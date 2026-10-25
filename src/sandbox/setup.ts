@@ -18,7 +18,7 @@ export interface SandboxInfo {
 	readonly confinesCommands: boolean;
 }
 
-export interface SandboxSetup {
+interface SandboxSetup {
 	readonly sandbox: SandboxView;
 	/** 需要在使用前告知使用者的事项 */
 	readonly warnings: readonly string[];

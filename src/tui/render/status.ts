@@ -19,7 +19,6 @@ export const RUNNING_TOOL = "Running tool...";
 export const COMPACTING_CONTEXT = "Compacting context...";
 /** 配置不可用时按下回车给出的提示；不启动对话，避免看起来已经正常工作。 */
 export const CONFIGURATION_REQUIRED = "Configuration required";
-export const AGENT_UNAVAILABLE = "Agent unavailable";
 export const SESSION_UNAVAILABLE = "Session storage is unavailable";
 /** 使用者按下中断之后的状态。主动停下不是错误，用中性措辞，不染错误色。 */
 export const ABORTING = "Stopping...";

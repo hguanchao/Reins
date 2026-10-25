@@ -46,7 +46,7 @@ export const RESET = "\x1b[0m";
 export const ERASE_LINE = "\x1b[K";
 export const ERASE_BELOW = "\x1b[J";
 export const DEFAULT_COLUMNS = 80;
-export const DEFAULT_ROWS = 24;
+const DEFAULT_ROWS = 24;
 /** Ctrl+C 在原始模式下以控制字符到达，不会触发 SIGINT，必须自己识别。 */
 export const CTRL_C = "\x03";
 

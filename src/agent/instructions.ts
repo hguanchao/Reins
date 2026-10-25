@@ -16,7 +16,7 @@ import { projectInstructionFiles, userInstructionFiles } from "../config/paths.t
 export const MAX_INSTRUCTION_BYTES = 32 * 1024;
 
 /** 一条待读取的规则来源；label 只用于提示词里标明出处。 */
-export interface InstructionSource {
+interface InstructionSource {
 	readonly label: string;
 	readonly path: string;
 }

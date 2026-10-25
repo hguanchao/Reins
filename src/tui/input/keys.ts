@@ -14,7 +14,7 @@ export const MOUSE_WHEEL_DOWN = 65;
 /** 按钮码低两位是真实按键编号:0 是左键,掩出来为 0 才算点击。 */
 export const MOUSE_BUTTON_MASK = 3;
 
-export type ApprovalKey = ApprovalAnswer | "left" | "right" | "enter" | "escape";
+type ApprovalKey = ApprovalAnswer | "left" | "right" | "enter" | "escape";
 
 /** 审批按键：左右移动、回车确认；y/a/n 仍可直接执行，Esc 拒绝。 */
 export function approvalKey(text: string, canAlways: boolean): ApprovalKey | undefined {
@@ -145,7 +145,7 @@ export function menuIndexAtRow(
 	return index < itemCount ? index : undefined;
 }
 
-export interface InputEdit {
+interface InputEdit {
 	readonly text: string;
 	readonly cursor: number;
 	readonly submit: boolean;

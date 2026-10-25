@@ -14,7 +14,7 @@ import { THEME } from "../render/theme.ts";
 /** 任务条目的状态;failed 表示这一步无法完成，与完成、进行中、待办并列。 */
 type TranscriptTodoStatus = "pending" | "in_progress" | "completed" | "failed";
 
-export interface TranscriptTodoItem {
+interface TranscriptTodoItem {
 	readonly content: string;
 	readonly status: TranscriptTodoStatus;
 }

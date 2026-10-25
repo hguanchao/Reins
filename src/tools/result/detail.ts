@@ -5,7 +5,7 @@ import { hasSpillFooter, stripSpillFooter } from "../spill.ts";
 
 export type ResultDetailKind = "text" | "file" | "diff";
 
-export interface ResultDetail {
+interface ResultDetail {
 	readonly text: string;
 	readonly kind: ResultDetailKind;
 }

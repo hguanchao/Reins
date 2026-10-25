@@ -51,7 +51,7 @@ Rules:
 
 const SUMMARY_INSTRUCTION = "Compress the conversation above into a handover summary.";
 
-export interface CompactorDeps {
+interface CompactorDeps {
 	readonly client: LlmClient;
 	readonly provider: string;
 	readonly model: ModelEntry;

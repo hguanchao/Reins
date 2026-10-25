@@ -33,9 +33,9 @@ import type { LlmUsage } from "../llm/messages.ts";
 export type ThinkingLevelMap = Readonly<Partial<Record<ThinkingLevel, string | null>>>;
 
 /** 模型能接收的输入形态。 */
-export type ModelModality = "text" | "image";
+type ModelModality = "text" | "image";
 
-export const MODEL_MODALITIES: readonly ModelModality[] = ["text", "image"];
+const MODEL_MODALITIES: readonly ModelModality[] = ["text", "image"];
 
 /**
  * 单价，美元每百万 token。

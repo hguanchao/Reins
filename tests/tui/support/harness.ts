@@ -43,7 +43,7 @@ export class FakeOutput extends EventEmitter {
 	}
 }
 
-export interface FakeAgent {
+interface FakeAgent {
 	readonly runtime: AgentRuntime;
 	/** 已经交给 runTurn 的提示，按发送顺序 */
 	readonly prompts: string[];
@@ -174,10 +174,10 @@ export function lastFrame(output: FakeOutput): string {
 }
 
 /** 内容行都定位到第 1 列；滚动条列的重画跟在所有内容行之后，不属于某一行。 */
-export const ROW_START = /\x1b\[\d+;1H/;
-export const COLUMN_HOME = /\x1b\[\d+;\d+H/;
+const ROW_START = /\x1b\[\d+;1H/;
+const COLUMN_HOME = /\x1b\[\d+;\d+H/;
 /** 每行写入前先复位颜色并擦掉整行，解析画面时把它当作行前缀去掉。 */
-export const ROW_ERASE = /\x1b\[0m\x1b\[K/g;
+const ROW_ERASE = /\x1b\[0m\x1b\[K/g;
 
 export function frameLines(output: FakeOutput): string[] {
 	const frame = lastFrame(output).replace(ROW_ERASE, "");
