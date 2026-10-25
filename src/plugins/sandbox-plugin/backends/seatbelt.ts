@@ -1,4 +1,4 @@
-import { quoteForShell } from "./shell-quote.ts";
+import { quoteForShell } from "../../../sandbox/shell-quote.ts";
 
 import type { SandboxBackend, SandboxPolicy } from "../../../sandbox/policy.ts";
 

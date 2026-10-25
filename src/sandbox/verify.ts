@@ -3,6 +3,7 @@ import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import type { SandboxView } from "./policy.ts";
+import { quoteForShell } from "./shell-quote.ts";
 
 /** 一次探针的执行时限:挂住的沙箱说明配置有问题,等更久没有意义。 */
 const PROBE_TIMEOUT_MS = 10_000;
@@ -43,15 +44,4 @@ export function verifyCommandIsolation(sandbox: SandboxView, root: string): void
 				"Check the sandbox setting in config.toml and the isolation backend for this platform.",
 		);
 	}
-}
-
-/**
- * 按当前平台的 shell 规则给路径加引号。
- *
- * 隔离后端只在 macOS 与 Linux 上存在，但这个自检本身要在任何平台上都跑得对：它是可以被
- * 单独验证的逻辑，引号配错会让「拦住了」和「路径写歪了」看起来一模一样。
- */
-function quoteForShell(text: string): string {
-	if (process.platform === "win32") return `"${text.replaceAll('"', '""')}"`;
-	return `'${text.replaceAll("'", "'\\''")}'`;
 }
