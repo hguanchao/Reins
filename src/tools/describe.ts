@@ -1,7 +1,6 @@
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
-
-import stripAnsi from "strip-ansi";
+import { stripVTControlCharacters } from "node:util";
 
 import { expandHome, toAbsolutePath } from "../workspace/root.ts";
 import { commandCore } from "./command-summary.ts";
@@ -274,7 +273,7 @@ export function sanitizeDetail(text: string): string {
 
 /** 摘要只占一行：换行与制表折成空格，转义序列不能带进终端。 */
 export function sanitizeLine(value: string): string {
-	return stripAnsi(value)
+	return stripVTControlCharacters(value)
 		.replace(/[\r\n\t]+/g, " ")
 		.replace(/[\u0000-\u001f\u007f]/g, "");
 }

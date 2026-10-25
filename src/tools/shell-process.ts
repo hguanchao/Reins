@@ -1,8 +1,7 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { accessSync } from "node:fs";
 import { join } from "node:path";
-
-import stripAnsi from "strip-ansi";
+import { stripVTControlCharacters } from "node:util";
 
 /**
  * shell 进程的公共部分。
@@ -218,7 +217,7 @@ class OutputCollector {
  * 界面与统计。制表、换行、回车保留，它们是正文的一部分。
  */
 function sanitizeOutput(text: string): string {
-	return stripAnsi(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "");
+	return stripVTControlCharacters(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "");
 }
 
 function waitForExit(child: ChildProcess): Promise<ShellExit> {
