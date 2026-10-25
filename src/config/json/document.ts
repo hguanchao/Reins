@@ -1,6 +1,6 @@
 import type { LineColumn } from "../config-error.ts";
 import type { ConfigSource } from "../reader.ts";
-import { isConfigTable, type ConfigPath, type ConfigValue } from "../value.ts";
+import { isConfigTable, tableValue, type ConfigPath, type ConfigValue } from "../value.ts";
 import { JsonParser, jsonPathKey } from "./parser.ts";
 
 /**
@@ -34,7 +34,7 @@ export class JsonDocument implements ConfigSource {
 				continue;
 			}
 			if (!isConfigTable(current) || typeof part !== "string") return undefined;
-			current = current[part];
+			current = tableValue(current, part);
 		}
 		return current;
 	}

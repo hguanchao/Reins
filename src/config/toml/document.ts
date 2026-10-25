@@ -1,10 +1,14 @@
 import { offsetToLineColumn, type LineColumn } from "../config-error.ts";
 import type { ConfigSource } from "../reader.ts";
-import { isConfigTable, type ConfigPath, type ConfigTable, type ConfigValue } from "../value.ts";
+import {
+	isConfigTable,
+	tableValue,
+	type ConfigPath,
+	type ConfigTable,
+	type ConfigValue,
+} from "../value.ts";
 import { TomlParser, type TomlAssignment, type TomlSection } from "./parser.ts";
 import { serializeKey, serializeValue } from "./serialize.ts";
-
-export type TomlLocation = LineColumn;
 
 function samePath(left: readonly string[] | null, right: ConfigPath): boolean {
 	if (left === null) return right.length === 0;
@@ -44,13 +48,13 @@ export class TomlDocument implements ConfigSource {
 		for (const part of path) {
 			if (current === undefined || !isConfigTable(current)) return undefined;
 			// TOML 的键都是字符串，路径里出现数字只可能来自 JSON，这里统一按字符串取
-			current = current[String(part)];
+			current = tableValue(current, String(part));
 		}
 		return current;
 	}
 
 	/** 键在原文中的位置，用于把校验错误指到具体行列。 */
-	locationOf(path: ConfigPath): TomlLocation | undefined {
+	locationOf(path: ConfigPath): LineColumn | undefined {
 		const assignment = this.#assignments.find((item) => samePath(item.path, path));
 		if (assignment !== undefined) return offsetToLineColumn(this.#source, assignment.pathStart);
 

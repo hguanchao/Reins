@@ -22,3 +22,32 @@ export function isConfigTable(value: ConfigValue): value is ConfigTable {
 export function isConfigArray(value: ConfigValue): value is ConfigValue[] {
 	return Array.isArray(value);
 }
+
+/**
+ * 读表里的自有键。
+ *
+ * 配置文件里的键名可以由使用者任意指定，`__proto__`、`constructor` 这类名字会命中原型链。
+ * 只认自有属性，既能避免把继承值误当成配置，也能让解析器安全地支持这些键名。
+ */
+export function tableValue(table: ConfigTable, key: string): ConfigValue | undefined {
+	return Object.hasOwn(table, key) ? table[key] : undefined;
+}
+
+export function hasTableKey(table: ConfigTable, key: string): boolean {
+	return Object.hasOwn(table, key);
+}
+
+/**
+ * 写入表的自有键。
+ *
+ * 不能直接用 `table[key] = value`：当 key 是 `__proto__` 时，赋值会改掉对象的原型而不是
+ * 新增一个键。定义成普通数据属性后，键名只影响表的内容，不影响对象行为。
+ */
+export function setTableValue(table: ConfigTable, key: string, value: ConfigValue): void {
+	Object.defineProperty(table, key, {
+		value,
+		enumerable: true,
+		writable: true,
+		configurable: true,
+	});
+}

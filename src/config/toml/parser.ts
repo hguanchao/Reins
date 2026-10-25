@@ -1,5 +1,12 @@
 import { ConfigError, offsetToLineColumn } from "../config-error.ts";
-import { isConfigTable, type ConfigTable, type ConfigValue } from "../value.ts";
+import {
+	hasTableKey,
+	isConfigTable,
+	setTableValue,
+	tableValue,
+	type ConfigTable,
+	type ConfigValue,
+} from "../value.ts";
 
 /** 一条赋值在原文中的位置。回写单个键时只替换 [valueStart, valueEnd) 这一段。 */
 export interface TomlAssignment {
@@ -177,10 +184,10 @@ export class TomlParser {
 		for (let index = 0; index < path.length; index += 1) {
 			const key = path[index];
 			const where = path.slice(0, index + 1).join(".");
-			const existing = table[key];
+			const existing = tableValue(table, key);
 			if (existing === undefined) {
 				const created: ConfigTable = {};
-				table[key] = created;
+				setTableValue(table, key, created);
 				this.#tableStates.set(created, traversal === "header" ? "implicit" : "dotted");
 				table = created;
 				continue;
@@ -222,13 +229,13 @@ export class TomlParser {
 	): ConfigTable {
 		const parent = this.#descend(root, path.slice(0, -1), start, "header");
 		const last = path[path.length - 1];
-		const existing = parent[last];
+		const existing = tableValue(parent, last);
 
 		if (isArrayOfTables) {
 			if (existing === undefined) {
 				const created: ConfigTable = {};
 				const array = [created];
-				parent[last] = array;
+				setTableValue(parent, last, array);
 				this.#tableStates.set(array, "table-array");
 				this.#tableStates.set(created, "explicit");
 				return created;
@@ -244,7 +251,7 @@ export class TomlParser {
 
 		if (existing === undefined) {
 			const created: ConfigTable = {};
-			parent[last] = created;
+			setTableValue(parent, last, created);
 			this.#tableStates.set(created, "explicit");
 			return created;
 		}
@@ -262,10 +269,10 @@ export class TomlParser {
 	#assign(table: ConfigTable, path: readonly string[], value: ConfigValue, start: number): void {
 		const target = this.#descend(table, path.slice(0, -1), start, "dotted");
 		const last = path[path.length - 1];
-		if (target[last] !== undefined) {
+		if (hasTableKey(target, last)) {
 			throw this.#errorAt(`Duplicate key ${path.join(".")}`, start);
 		}
-		target[last] = value;
+		setTableValue(target, last, value);
 	}
 
 	#parseKeyPath(): string[] {

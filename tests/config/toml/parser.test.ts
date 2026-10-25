@@ -115,6 +115,14 @@ describe("TOML 解析", () => {
 			return true;
 		});
 	});
+
+	it("__proto__ 是普通键，不改写原型", () => {
+		const { root } = parse(`__proto__.polluted = 1`);
+		assert.equal(Object.getPrototypeOf(root), Object.prototype);
+		assert.equal(Object.hasOwn(root, "__proto__"), true);
+		assert.deepEqual(root["__proto__"], { polluted: 1 });
+		assert.equal(({} as Record<string, unknown>).polluted, undefined);
+	});
 });
 
 describe("TOML 序列化", () => {

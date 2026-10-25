@@ -95,4 +95,12 @@ describe("JSON 解析", () => {
 	it("裸控制字符报错", () => {
 		expectError(`{"a": "a\tb"}`, "Raw control character");
 	});
+
+	it("__proto__ 是普通键，不改写原型", () => {
+		const { value } = parse(`{"__proto__": {"polluted": 2}}`);
+		assert.equal(Object.getPrototypeOf(value), Object.prototype);
+		assert.equal(Object.hasOwn(value as object, "__proto__"), true);
+		assert.deepEqual((value as JsonObject)["__proto__"], { polluted: 2 });
+		assert.equal(({} as Record<string, unknown>).polluted, undefined);
+	});
 });

@@ -1,7 +1,7 @@
 import { ConfigError, offsetToLineColumn, type LineColumn } from "../config-error.ts";
-import type { ConfigTable, ConfigValue } from "../value.ts";
+import { setTableValue, type ConfigTable, type ConfigValue } from "../value.ts";
 
-/** JSON 与 TOML 共用同一套值模型，见 config/value.ts。 */
+/** JSON 与 TOML 共用同一套值模型。 */
 export type JsonValue = ConfigValue;
 export type JsonObject = ConfigTable;
 
@@ -80,7 +80,7 @@ export class JsonParser {
 			this.#skipTrivia();
 
 			this.#locations.set(jsonPathKey([...path, key]), offsetToLineColumn(this.#source, keyStart));
-			result[key] = this.#parseValue([...path, key]);
+			setTableValue(result, key, this.#parseValue([...path, key]));
 
 			this.#skipTrivia();
 			const char = this.#peek();
