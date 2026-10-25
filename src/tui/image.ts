@@ -1,7 +1,7 @@
 import { extname } from "node:path";
 
 import type { LlmImageBlock } from "../llm/messages.ts";
-import { formatBytes } from "../format.ts";
+import { formatBytes } from "../shared/format.ts";
 
 /**
  * 输入框里的图片附件。

@@ -1,4 +1,4 @@
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import { initializeConfigFiles } from "../config/initialize.ts";
 import type { CliOptions } from "./args.ts";
 import { writeStderr } from "./output.ts";

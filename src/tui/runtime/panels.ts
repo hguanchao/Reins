@@ -4,7 +4,7 @@ import { findCommand } from "../commands.ts";
 import type { ModelMenuItem } from "../panel/model-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
 import { errorLine } from "../render/status.ts";
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { TranscriptLine } from "../transcript.ts";
 import { filterFiles, findAtToken, formatFileReference } from "../panel/file-menu.ts";
 import { isImagePath } from "../image.ts";

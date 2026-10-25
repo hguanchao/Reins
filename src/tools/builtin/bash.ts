@@ -1,4 +1,4 @@
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { JobManager } from "../jobs.ts";
 import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";

@@ -3,7 +3,7 @@ import { Buffer } from "node:buffer";
 import { dirname } from "node:path";
 
 import { resolveToolPath } from "../path.ts";
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { formatEditDiff } from "./diff.ts";

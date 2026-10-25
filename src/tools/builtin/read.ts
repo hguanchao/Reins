@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 
 import { resolveToolPath } from "../path.ts";
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { DEFAULT_LIMITS, splitLines, truncateHead } from "../truncate.ts";

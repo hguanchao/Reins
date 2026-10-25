@@ -1,5 +1,5 @@
 import { THINKING_LEVELS } from "../../config/file.ts";
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { CommandMenuItem } from "../panel/command-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
 import type { SessionSwitchResult } from "../options.ts";

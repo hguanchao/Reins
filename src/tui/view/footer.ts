@@ -1,5 +1,5 @@
 import type { ApprovalMode } from "../../config/file.ts";
-import { formatCompactTokens, formatDuration } from "../../format.ts";
+import { formatCompactTokens, formatDuration } from "../../shared/format.ts";
 import { highlightImageMarkers } from "../image.ts";
 import { swept } from "../render/sweep.ts";
 import { characterWidth, displayWidth, truncateToWidth } from "../render/text.ts";

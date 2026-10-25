@@ -1,4 +1,4 @@
-import { formatDuration } from "../../format.ts";
+import { formatDuration } from "../../shared/format.ts";
 import { displayWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 

@@ -1,8 +1,8 @@
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import type { TurnDriver } from "../agent/driver.ts";
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
 import { describeToolCall, displayToolName } from "../tools/describe.ts";
-import { formatDuration } from "../format.ts";
+import { formatDuration } from "../shared/format.ts";
 
 /**
  * 非交互模式。

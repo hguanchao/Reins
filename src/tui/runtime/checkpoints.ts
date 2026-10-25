@@ -1,4 +1,4 @@
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { CheckpointEntry } from "../../checkpoint/service.ts";
 import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
 import { ERROR_STATUS } from "../render/status.ts";

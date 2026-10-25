@@ -1,4 +1,4 @@
-import { formatDuration } from "../../format.ts";
+import { formatDuration } from "../../shared/format.ts";
 import { swept, type AnimationFrame } from "../render/sweep.ts";
 import { displayWidth, fitToWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";

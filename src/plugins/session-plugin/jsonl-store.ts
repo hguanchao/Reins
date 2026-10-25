@@ -1,6 +1,6 @@
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 
 import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../session/port.ts";
 import { userText } from "../../llm/messages.ts";

@@ -1,5 +1,5 @@
 import { APPROVAL_MODES } from "../../config/file.ts";
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import { mouseEvents, shiftTabKey, type MouseInput } from "./keys.ts";
 import { CTRL_C } from "../terminal.ts";
 import { PASTE_START } from "./keys.ts";

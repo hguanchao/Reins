@@ -1,4 +1,4 @@
-import { formatDuration } from "../../format.ts";
+import { formatDuration } from "../../shared/format.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { STATUS_CLEAR_MS, SWEEP_STEP } from "./constants.ts";
 import type { TuiState, ActiveTurn } from "./types.ts";

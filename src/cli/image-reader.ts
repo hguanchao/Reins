@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import {
 	closeSync,
 	existsSync,

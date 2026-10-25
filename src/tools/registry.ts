@@ -1,4 +1,4 @@
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionReadView } from "../session/port.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";

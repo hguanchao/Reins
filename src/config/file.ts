@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import { ConfigError } from "./error.ts";
 import { configFilePath } from "./paths.ts";
 import {

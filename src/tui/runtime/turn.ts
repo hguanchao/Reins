@@ -1,5 +1,5 @@
 import { describeToolCall, displayToolName, sanitizeDetail } from "../../tools/describe.ts";
-import { formatDuration } from "../../format.ts";
+import { formatDuration } from "../../shared/format.ts";
 import type { AgentEvent } from "../../agent/events.ts";
 import { todoCardFinished, todoCardFromArgs } from "../view/todo-card.ts";
 import type {

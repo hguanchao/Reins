@@ -3,7 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { describe, it } from "node:test";
 
 import { postSse } from "../../src/llm/http.ts";
-import { readVersion } from "../../src/version.ts";
+import { readVersion } from "../../src/shared/version.ts";
 
 /** 起一个本地 SSE 端点，抓取这次请求的 User-Agent。 */
 async function captureUserAgent(headers?: Record<string, string>): Promise<string | undefined> {

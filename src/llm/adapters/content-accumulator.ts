@@ -1,4 +1,4 @@
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { LlmContentBlock, LlmToolCallBlock } from "../messages.ts";
 
 /**

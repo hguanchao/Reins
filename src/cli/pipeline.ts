@@ -1,4 +1,4 @@
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import { TurnDriver } from "../agent/driver.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import type { PromptSkill } from "../agent/prompt.ts";
@@ -24,7 +24,7 @@ import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
-import { readVersion } from "../version.ts";
+import { readVersion } from "../shared/version.ts";
 import { disabledPlugins, warnUnsandboxedMcpServers } from "./config-selection.ts";
 import { writeStderr } from "./output.ts";
 

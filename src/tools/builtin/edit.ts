@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
 import { resolveToolPath } from "../path.ts";
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { formatEditDiff, type AppliedEdit } from "./diff.ts";

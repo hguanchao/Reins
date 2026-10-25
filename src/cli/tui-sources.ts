@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 
 import { estimateTokens } from "../agent/compactor.ts";
 import type { Config } from "../config/file.ts";

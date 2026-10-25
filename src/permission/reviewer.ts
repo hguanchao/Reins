@@ -1,4 +1,4 @@
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import type { LlmClient } from "../llm/client.ts";
 import { assistantText } from "../llm/messages.ts";
 import type { ApprovalReviewer, ReviewOutcome } from "./policy.ts";

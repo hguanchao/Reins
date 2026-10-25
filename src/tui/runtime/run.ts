@@ -1,4 +1,4 @@
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { AgentEventListener } from "../../agent/events.ts";
 import { collapseToolGroups, measureTranscriptView } from "../transcript.ts";
 import { desktopNotify } from "../terminal.ts";

@@ -1,4 +1,4 @@
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import type { PermissionPolicy, PermissionRule } from "../permission/policy.ts";
 import type { SandboxBackend } from "../sandbox/policy.ts";
 import type { SessionStore } from "../session/store.ts";

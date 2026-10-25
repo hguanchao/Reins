@@ -1,5 +1,5 @@
 import { sanitizeLine } from "../../tools/describe.ts";
-import { formatDuration } from "../../format.ts";
+import { formatDuration } from "../../shared/format.ts";
 import {
 	coloredLine,
 	displayWidth,

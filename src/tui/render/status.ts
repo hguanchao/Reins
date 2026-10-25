@@ -1,4 +1,4 @@
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 
 /**
  * 状态行文案与短提示格式化。

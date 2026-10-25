@@ -1,4 +1,4 @@
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import { CheckpointService } from "../checkpoint/service.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import {
@@ -33,7 +33,7 @@ import type {
 import { JobManager } from "../tools/jobs.ts";
 import { fileEntries } from "../workspace/walk.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
-import { readVersion } from "../version.ts";
+import { readVersion } from "../shared/version.ts";
 import { sessionAge } from "./session/age.ts";
 import {
 	configFileStamp,

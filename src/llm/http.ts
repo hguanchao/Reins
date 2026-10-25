@@ -1,8 +1,8 @@
 import { createParser } from "eventsource-parser";
 import { ProxyAgent } from "undici";
 
-import { describeError } from "../describe-error.ts";
-import { readVersion } from "../version.ts";
+import { describeError } from "../shared/describe-error.ts";
+import { readVersion } from "../shared/version.ts";
 import { describeFailure } from "./failure.ts";
 import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "./retry.ts";
 

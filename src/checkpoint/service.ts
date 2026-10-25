@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describeError } from "../describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 
 import { checkpointsDir } from "../config/paths.ts";
 import {

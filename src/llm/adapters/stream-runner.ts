@@ -1,4 +1,4 @@
-import { describeError } from "../../describe-error.ts";
+import { describeError } from "../../shared/describe-error.ts";
 import type { LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
 import { EventStream } from "../event-stream.ts";
 
