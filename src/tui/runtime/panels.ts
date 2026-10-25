@@ -1,6 +1,5 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
 import { keepVisible } from "../panel/menu-panel.ts";
-import { findCommand } from "../commands.ts";
 import type { ModelMenuItem } from "../panel/model-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
 import { errorLine } from "../render/status.ts";
@@ -19,25 +18,25 @@ import type { TuiHost } from "./types.ts";
  * 开关、移动、确认与取消都按面板分开写，公共的滚动窗口规则在 panel 目录里。
  */
 
-/** 让光标始终落在可见窗口内；窗口最多 8 行。 */
-function keepMenuCursor(host: TuiHost): void {
-	const menu = host.state.modelMenu;
-	if (menu === undefined) return;
-	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, menu.items.length);
+/** 把光标移动 delta 并保证它落在可见窗口内；窗口最多 8 行。 */
+function moveCursor(menu: { cursor: number; scrollTop: number }, delta: number, count: number): void {
+	menu.cursor = Math.min(count - 1, Math.max(0, menu.cursor + delta));
+	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, count);
 }
 
-function keepSessionCursor(host: TuiHost): void {
-	const menu = host.state.sessionMenu;
-	if (menu === undefined) return;
-	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, menu.items.length);
+/** 收起全部模态面板；各面板的确认与取消都先走这一步。 */
+function closeAllMenus(host: TuiHost): void {
+	host.state.modelMenu = undefined;
+	host.state.effortMenu = undefined;
+	host.state.sessionMenu = undefined;
+	host.state.commandMenu = undefined;
 }
 
 export function openModelMenu(host: TuiHost): void {
 	const source = host.options.modelMenu;
 	if (source === undefined) return;
 
-	host.state.commandMenu = undefined;
-	host.state.effortMenu = undefined;
+	closeAllMenus(host);
 	const items = source.list();
 	if (items.length === 0) {
 		host.setInput("");
@@ -50,15 +49,14 @@ export function openModelMenu(host: TuiHost): void {
 
 	const current = items.findIndex((item) => item.current);
 	host.state.modelMenu = { items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
-	keepMenuCursor(host);
+	
 	host.render();
 }
 
 export function moveMenu(host: TuiHost, delta: number): void {
 	const menu = host.state.modelMenu;
 	if (menu === undefined) return;
-	menu.cursor = Math.min(menu.items.length - 1, Math.max(0, menu.cursor + delta));
-	keepMenuCursor(host);
+	moveCursor(menu, delta, menu.items.length);
 	host.render();
 }
 
@@ -92,9 +90,7 @@ export function confirmMenu(host: TuiHost): void {
 	if (menu === undefined) return;
 
 	const item = menu.items[menu.cursor];
-	host.state.modelMenu = undefined;
-	host.state.effortMenu = undefined;
-	host.state.commandMenu = undefined;
+	closeAllMenus(host);
 	host.setInput("");
 
 	if (item !== undefined) selectModel(host, item);
@@ -107,9 +103,7 @@ export function completeModelMenu(host: TuiHost): void {
 	const item = menu?.items[menu.cursor];
 	if (item === undefined) return;
 
-	host.state.modelMenu = undefined;
-	host.state.effortMenu = undefined;
-	host.state.commandMenu = undefined;
+	closeAllMenus(host);
 	host.setInput(`/model ${item.provider}/${item.model}`);
 	// 补进输入框之后使用者要按回车确认，焦点必须在输入框上，否则那一下只会被当成抢焦点
 	host.state.focused = true;
@@ -117,9 +111,7 @@ export function completeModelMenu(host: TuiHost): void {
 }
 
 export function cancelMenu(host: TuiHost): void {
-	host.state.modelMenu = undefined;
-	host.state.effortMenu = undefined;
-	host.state.commandMenu = undefined;
+	closeAllMenus(host);
 	host.setInput("");
 	host.render();
 }
@@ -130,8 +122,7 @@ export function openEffortMenu(host: TuiHost): void {
 
 	const current = source.current();
 	const cursor = Math.max(0, THINKING_LEVELS.indexOf(current));
-	host.state.commandMenu = undefined;
-	host.state.modelMenu = undefined;
+	closeAllMenus(host);
 	host.state.effortMenu = {
 		current,
 		cursor,
@@ -143,8 +134,7 @@ export function openEffortMenu(host: TuiHost): void {
 export function moveEffortMenu(host: TuiHost, delta: number): void {
 	const menu = host.state.effortMenu;
 	if (menu === undefined) return;
-	menu.cursor = Math.min(THINKING_LEVELS.length - 1, Math.max(0, menu.cursor + delta));
-	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, THINKING_LEVELS.length);
+	moveCursor(menu, delta, THINKING_LEVELS.length);
 	host.render();
 }
 
@@ -175,7 +165,7 @@ export function confirmEffortMenu(host: TuiHost): void {
 	if (menu === undefined) return;
 
 	const level = THINKING_LEVELS[menu.cursor];
-	host.state.effortMenu = undefined;
+	closeAllMenus(host);
 	host.setInput("");
 
 	if (level !== undefined) selectEffort(host, level);
@@ -188,15 +178,14 @@ export function completeEffortMenu(host: TuiHost): void {
 	const level = menu === undefined ? undefined : THINKING_LEVELS[menu.cursor];
 	if (level === undefined) return;
 
-	host.state.effortMenu = undefined;
+	closeAllMenus(host);
 	host.setInput(`/effort ${level}`);
 	host.state.focused = true;
 	host.render();
 }
 
 export function cancelEffortMenu(host: TuiHost): void {
-	host.state.effortMenu = undefined;
-	host.state.modelMenu = undefined;
+	closeAllMenus(host);
 	host.setInput("");
 	host.render();
 }
@@ -205,9 +194,7 @@ export function openSessionMenu(host: TuiHost): void {
 	const source = host.options.sessionMenu;
 	if (source === undefined) return;
 
-	host.state.commandMenu = undefined;
-	host.state.modelMenu = undefined;
-	host.state.effortMenu = undefined;
+	closeAllMenus(host);
 	let items: readonly SessionMenuItem[];
 	try {
 		items = source.list();
@@ -229,15 +216,14 @@ export function openSessionMenu(host: TuiHost): void {
 
 	const current = items.findIndex((item) => item.current);
 	host.state.sessionMenu = { items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
-	keepSessionCursor(host);
+	
 	host.render();
 }
 
 export function moveSessionMenu(host: TuiHost, delta: number): void {
 	const menu = host.state.sessionMenu;
 	if (menu === undefined) return;
-	menu.cursor = Math.min(menu.items.length - 1, Math.max(0, menu.cursor + delta));
-	keepSessionCursor(host);
+	moveCursor(menu, delta, menu.items.length);
 	host.render();
 }
 
@@ -246,10 +232,7 @@ export function confirmSessionMenu(host: TuiHost): void {
 	if (menu === undefined) return;
 
 	const item = menu.items[menu.cursor];
-	host.state.sessionMenu = undefined;
-	host.state.commandMenu = undefined;
-	host.state.modelMenu = undefined;
-	host.state.effortMenu = undefined;
+	closeAllMenus(host);
 	host.setInput("");
 
 	// 选中的就是当前会话：关掉面板即可，不必重放一遍历史
@@ -266,10 +249,7 @@ export function forkSelectedSession(host: TuiHost): void {
 	if (menu === undefined) return;
 
 	const item = menu.items[menu.cursor];
-	host.state.sessionMenu = undefined;
-	host.state.commandMenu = undefined;
-	host.state.modelMenu = undefined;
-	host.state.effortMenu = undefined;
+	closeAllMenus(host);
 	host.setInput("");
 	if (item === undefined) {
 		host.render();
@@ -284,17 +264,14 @@ export function completeSessionMenu(host: TuiHost): void {
 	const item = menu?.items[menu.cursor];
 	if (item === undefined) return;
 
-	host.state.sessionMenu = undefined;
-	host.state.commandMenu = undefined;
-	host.state.modelMenu = undefined;
-	host.state.effortMenu = undefined;
+	closeAllMenus(host);
 	host.setInput(`/session ${item.id}`);
 	host.state.focused = true;
 	host.render();
 }
 
 export function cancelSessionMenu(host: TuiHost): void {
-	host.state.sessionMenu = undefined;
+	closeAllMenus(host);
 	host.setInput("");
 	host.render();
 }
@@ -356,8 +333,7 @@ export function updateCommandMenu(host: TuiHost): void {
 export function moveCommandMenu(host: TuiHost, delta: number): void {
 	const menu = host.state.commandMenu;
 	if (menu === undefined) return;
-	menu.cursor = Math.min(menu.items.length - 1, Math.max(0, menu.cursor + delta));
-	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, menu.items.length);
+	moveCursor(menu, delta, menu.items.length);
 	host.render();
 }
 
@@ -424,8 +400,7 @@ export function updateFileMenu(host: TuiHost): void {
 export function moveFileMenu(host: TuiHost, delta: number): void {
 	const menu = host.state.fileMenu;
 	if (menu === undefined) return;
-	menu.cursor = Math.min(menu.items.length - 1, Math.max(0, menu.cursor + delta));
-	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, menu.items.length);
+	moveCursor(menu, delta, menu.items.length);
 	host.render();
 }
 
@@ -463,7 +438,3 @@ export function insertFileReference(
 	host.render();
 }
 
-/** 命令名与具体处理器：从补全面板执行时按名字分派。 */
-export function findCommandForInput(host: TuiHost, message: string): ReturnType<typeof findCommand> {
-	return findCommand(message, host.commands());
-}

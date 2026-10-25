@@ -1,7 +1,7 @@
 import { JOB_ACTION_HEIGHT } from "../page/job.ts";
 import { jobElapsed } from "../page/job.ts";
 import type { JobView } from "../page/job.ts";
-import { showPage } from "./pages.ts";
+import { ensureCursorVisible, showPage } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 
 /** 后台作业页与作业说明。 */
@@ -58,9 +58,7 @@ export function killSelectedJob(host: TuiHost): void {
 export function ensureJobVisible(host: TuiHost): void {
 	const state = host.state;
 	const rows = Math.max(1, host.mainAreaHeight() - JOB_ACTION_HEIGHT);
-	const row = 2 + state.jobCursor;
-	if (row < state.pageScrollTop) state.pageScrollTop = row;
-	else if (row >= state.pageScrollTop + rows) state.pageScrollTop = row - rows + 1;
+	ensureCursorVisible(state, 2 + state.jobCursor, rows);
 }
 
 /** 作业结束时在对话流里补一条说明。 */

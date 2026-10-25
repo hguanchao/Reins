@@ -33,7 +33,7 @@ export interface JobEvent {
 	readonly job: JobView;
 }
 
-export interface JobStartInput {
+interface JobStartInput {
 	readonly command: string;
 	readonly workspace: WorkspaceBoundary;
 	readonly sandbox: SandboxView;
@@ -50,7 +50,7 @@ interface ActiveJob {
 	resolveDone: () => void;
 }
 
-export interface JobManagerOptions {
+interface JobManagerOptions {
 	readonly shellPath?: string;
 }
 

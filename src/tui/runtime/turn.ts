@@ -1,17 +1,13 @@
-import { describeToolCall, displayToolName, sanitizeDetail } from "../../tools/describe.ts";
+import { displayToolName, sanitizeDetail } from "../../tools/describe.ts";
 import { formatDuration } from "../../shared/format.ts";
 import type { AgentEvent } from "../../agent/events.ts";
 import { todoCardFinished, todoCardFromArgs } from "../view/todo-card.ts";
-import type {
-	TranscriptLine,
-	TranscriptPlan,
-	TranscriptThinking,
-	TranscriptTool,
-} from "../transcript.ts";
+import type { TranscriptLine, TranscriptPlan, TranscriptThinking } from "../transcript.ts";
 import {
 	appendToolLine,
 	attachToolFailure,
 	attachToolResult,
+	describeToolLine,
 	findToolByCallId,
 	findTopLevelToolByCallId,
 	hasRunningSubagent,
@@ -42,7 +38,7 @@ export function closeText(active: ActiveTurn): void {
 	active.textBlock = undefined;
 }
 
-export function appendAssistantText(host: TuiHost, active: ActiveTurn, delta: string): void {
+function appendAssistantText(host: TuiHost, active: ActiveTurn, delta: string): void {
 	let block = active.textBlock;
 	if (block === undefined) {
 		block = { kind: "markdown", text: "" };
@@ -270,20 +266,11 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 					host.setStatus(WAITING_FOR_SUBAGENT);
 					break;
 				}
-				const described = describeToolCall(event.name, event.args, host.options.workspaceRoot);
-				const tool: TranscriptTool = {
-					kind: "tool",
-					name: described.name,
-					detail: described.detail,
-					...(described.fullDetail === undefined ? {} : { fullDetail: described.fullDetail }),
-					...(described.linkTarget === undefined ? {} : { linkTarget: described.linkTarget }),
-					group: described.group,
-					callId: event.callId,
-				};
+				const tool = describeToolLine(event.name, event.args, event.callId, host.options.workspaceRoot);
 				closeText(active);
 				if (appendToolLine(active.lines, tool, true)) host.syncTurnFull(active);
 				else host.syncTurn(active);
-				host.setStatus(`Running ${described.name}...`);
+				host.setStatus(`Running ${tool.name}...`);
 				break;
 			}
 			case "tool_update":

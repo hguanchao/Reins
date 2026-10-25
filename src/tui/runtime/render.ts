@@ -168,7 +168,7 @@ function menuLinesOf(host: TuiHost, width: number, _metrics: unknown): readonly 
 }
 
 /** 页脚常驻信息。 */
-export function currentInfo(host: TuiHost): FooterInfo {
+function currentInfo(host: TuiHost): FooterInfo {
 	const info = typeof host.options.info === "function" ? host.options.info() : host.options.info;
 	const mode = host.options.approvalMode?.current();
 	const withPlan = host.options.planMode?.current() === true ? { ...info, planMode: true } : info;

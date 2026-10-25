@@ -26,7 +26,7 @@ export interface LiveTurn extends TranscriptTurn {
 }
 
 /** 排队的一条消息：文字与图片一起排队，出队时仍是一次完整输入。 */
-export interface QueuedPrompt {
+interface QueuedPrompt {
 	readonly text: string;
 	readonly images: readonly ImageAttachment[];
 }

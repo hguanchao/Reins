@@ -107,7 +107,7 @@ export function todoPanelHeight(state: TuiState, options: TuiOptions): number {
 }
 
 /** 正在运行的作业；页脚上方的 Jobs bar 与计时器都只认它们。 */
-export function runningJobs(options: TuiOptions): readonly JobView[] {
+function runningJobs(options: TuiOptions): readonly JobView[] {
 	return options.jobs?.list().filter((job) => job.status === "running") ?? [];
 }
 

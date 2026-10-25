@@ -37,7 +37,7 @@ export interface TuiOutput {
 	off(event: "resize", listener: () => void): unknown;
 }
 
-export interface ModelSwitchResult {
+interface ModelSwitchResult {
 	/** 需要显示在对话流里的说明 */
 	readonly warnings: readonly string[];
 	/** 选择并写回配置后，界面是否可以正常提交 */
@@ -137,7 +137,7 @@ export interface JobSource {
 }
 
 /** 插件与宿主注册的斜杠命令；由装配处桥接到 PluginHost。 */
-export interface PluginCommandSource {
+interface PluginCommandSource {
 	/** 当前可用的命令；每次重算补全时重新取，不在界面创建时拍成快照 */
 	readonly list: () => readonly CommandMenuItem[];
 	/** 执行命令并返回要显示在对话流里的输出行；失败时抛错 */
@@ -177,7 +177,7 @@ export type PageKind =
  * 清单按需读取：每次打开页面都重扫一遍，改完 SKILL.md 重新打开就能看到。提示词那一份也是
  * 每轮重读的，两者取的是同一个来源，不会一个看得到、另一个看不到。
  */
-export interface SkillsPageSource {
+interface SkillsPageSource {
 	readonly list: () => readonly SkillPageEntry[];
 	/** 实际扫过的目录，脚注逐条列出 */
 	readonly directories: readonly string[];
@@ -189,7 +189,7 @@ export interface SkillsPageSource {
  * warning 与配置警告分开保存：配置警告会在 /model 修复后消失，而平台缺少命令隔离这件事
  * 不会因为换模型而改变，启动说明要一直留到本次界面退出。
  */
-export interface SandboxPageSource {
+interface SandboxPageSource {
 	readonly info: SandboxInfo;
 	readonly warning?: string;
 }

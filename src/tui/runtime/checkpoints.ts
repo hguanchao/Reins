@@ -2,7 +2,7 @@ import { describeError } from "../../shared/describe-error.ts";
 import type { CheckpointEntry } from "../../checkpoint/service.ts";
 import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
 import { ERROR_STATUS } from "../render/status.ts";
-import { showPage } from "./pages.ts";
+import { ensureCursorVisible, showPage } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
@@ -195,7 +195,6 @@ export function restoreCheckpoint(host: TuiHost): void {
 export function ensureCheckpointVisible(host: TuiHost): void {
 	const state = host.state;
 	const rows = Math.max(1, host.mainAreaHeight() - CHECKPOINT_ACTION_HEIGHT);
-	const row = (state.checkpointLoading ? 3 : 2) + state.checkpointCursor;
-	if (row < state.pageScrollTop) state.pageScrollTop = row;
-	else if (row >= state.pageScrollTop + rows) state.pageScrollTop = row - rows + 1;
+	// 读盘期间列表上方多一行提示，光标整体下移一格
+	ensureCursorVisible(state, (state.checkpointLoading ? 3 : 2) + state.checkpointCursor, rows);
 }

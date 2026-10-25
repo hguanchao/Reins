@@ -135,10 +135,16 @@ export function framedPageFor(
 	return renderPage(content, height, scroll);
 }
 
-/** 让列表光标始终可见。 */
-export function ensureVisible(state: TuiState, row: number, rows: number): void {
+
+export type { CheckpointEntry };
+
+/**
+ * 让列表页的光标始终落在可见区内。
+ *
+ * `row` 是光标在页面正文里的行号，`rows` 是可滚动区域的高度（已扣掉动作条）。上下越界时
+ * 只挪到刚好可见，滚动位置不会跳动。
+ */
+export function ensureCursorVisible(state: TuiState, row: number, rows: number): void {
 	if (row < state.pageScrollTop) state.pageScrollTop = row;
 	else if (row >= state.pageScrollTop + rows) state.pageScrollTop = row - rows + 1;
 }
-
-export type { CheckpointEntry };
