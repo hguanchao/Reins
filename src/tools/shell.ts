@@ -130,6 +130,8 @@ function findOnPath(name: string): readonly string[] {
 export interface ShellExit {
 	readonly started: boolean;
 	readonly code: number | null;
+	/** 被信号终止时的信号名；正常退出为 null。code 为 null 时靠它区分「被杀」与「没有退出码」 */
+	readonly signal: string | null;
 	readonly reason: string;
 }
 
@@ -223,10 +225,12 @@ function sanitizeOutput(text: string): string {
 function waitForExit(child: ChildProcess): Promise<ShellExit> {
 	return new Promise((resolve) => {
 		child.on("error", (error) => {
-			resolve({ started: false, code: null, reason: error.message });
+			resolve({ started: false, code: null, signal: null, reason: error.message });
 		});
-		child.on("close", (code) => {
-			resolve({ started: true, code, reason: "" });
+		// close 的第二个参数是终止信号：被 kill -9、SIGSEGV 或 OOM killer 结束时 code 为 null，
+		// 只看 code 会把「被杀」当成「正常结束」。
+		child.on("close", (code, signal) => {
+			resolve({ started: true, code, signal: signal ?? null, reason: "" });
 		});
 	});
 }

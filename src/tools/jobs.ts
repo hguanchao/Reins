@@ -23,6 +23,8 @@ export interface JobView {
 	readonly startedAt: number;
 	readonly endedAt?: number;
 	readonly exitCode?: number | null;
+	/** 被信号终止时的信号名 */
+	readonly signal?: string | null;
 	readonly timedOut?: boolean;
 	readonly overflowed?: boolean;
 	readonly sessionId: string;
@@ -46,6 +48,8 @@ interface ActiveJob {
 	readonly process: ShellProcess;
 	timedOut: boolean;
 	killRequested: boolean;
+	/** 进程已经退出、wait 的回调已跑过；用于区分「真在跑」与「刚退出还没收尾」 */
+	exited: boolean;
 	readonly done: Promise<void>;
 	resolveDone: () => void;
 }
@@ -98,6 +102,7 @@ export class JobManager {
 			process: shellProcess,
 			timedOut: false,
 			killRequested: false,
+			exited: false,
 			done,
 			resolveDone,
 		};
@@ -115,9 +120,12 @@ export class JobManager {
 
 		void shellProcess.wait().then((exit) => {
 			if (timer !== undefined) clearTimeout(timer);
+			job.exited = true;
+			// 被信号杀死时 code 为 null：只看 code 会把「被杀」记成 done
+			const failedByExit = exit.signal !== null || (exit.code !== null && exit.code !== 0);
 			const status: JobStatus = job.killRequested
 				? "killed"
-				: job.timedOut || !exit.started || (exit.code !== null && exit.code !== 0)
+				: job.timedOut || !exit.started || failedByExit
 					? "failed"
 					: "done";
 			job.info = {
@@ -125,6 +133,7 @@ export class JobManager {
 				status,
 				endedAt: Date.now(),
 				exitCode: exit.code,
+				signal: exit.signal,
 				...(job.timedOut ? { timedOut: true } : {}),
 			};
 			job.resolveDone();
@@ -155,7 +164,9 @@ export class JobManager {
 	kill(id: string): JobView | undefined {
 		const job = this.#jobs.get(id);
 		if (job === undefined) return undefined;
-		if (job.info.status === "running") {
+		// 只有进程确实还在跑才记成「被终止」：子进程可能已经退出、只是 wait 的回调还没跑，
+		// 那种情况下它其实成功了，不该显示成 killed。
+		if (job.info.status === "running" && !job.exited) {
 			job.killRequested = true;
 			job.process.kill();
 		}
@@ -265,7 +276,7 @@ export function createJobOutputTool(jobs: JobManager): ToolDefinition<JobOutputA
 			if (job.exitCode !== undefined && job.exitCode !== null) {
 				notes.push(`[exit code ${job.exitCode}]`);
 			}
-			if (job.overflowed === true) notes.push("[earlier output was dropped after the buffer filled]");
+			if (job.overflowed === true) notes.push("[later output was dropped after the buffer filled]");
 
 			const body =
 				output.length === 0

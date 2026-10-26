@@ -20,9 +20,17 @@ const FOOTER_MARK = "\n\n[";
  *
  * 尾注是工具与界面之间的文本契约(溢出路径、读取行区间、搜索命中上限都以方括号尾注交付),
  * 剥法只写这一份:按「空一行 + 方括号」切断,前缀常量供逐工具精确判定。
+ *
+ * 只在最后一个「空行 + 方括号」处切断：正文里自带 `\n\n[` 的情况很常见（Markdown 链接、
+ * 脚注、数组字面量），从第一个位置切会把大半内容丢掉。
  */
 export function stripSpillFooter(content: string): string {
-	return (content.split(FOOTER_MARK)[0] ?? content).replace(/\n$/, "");
+	const index = content.lastIndexOf(FOOTER_MARK);
+	if (index <= 0) return content.replace(/\n$/, "");
+	// 切断点之后必须像一条尾注：以 `[` 开头、且这一段不含空行
+	const footer = content.slice(index + FOOTER_MARK.length);
+	if (footer.includes("\n\n")) return content.replace(/\n$/, "");
+	return (content.slice(0, index) || content).replace(/\n$/, "");
 }
 
 /** 结果是否带溢出尾注。 */
@@ -53,11 +61,15 @@ export class ResultSpiller {
 	}
 
 	#preview(content: string): string {
-		// 头尾各留一半：命令输出常常开头是过程、结尾是结论，中间才是最不重要的部分
+		// 头尾各留一半：命令输出常常开头是过程、结尾是结论，中间才是最不重要的部分。
+		// 切点按码位算：按 UTF-16 码元切会把 emoji 之类的代理对劈开，预览里出现半个字符。
+		const chars = Array.from(content);
 		const head = Math.floor(this.#threshold / 2);
 		const tail = this.#threshold - head;
-		const omitted = content.length - head - tail;
-		return `${content.slice(0, head)}\n\n… (${omitted} characters omitted in the middle) …\n\n${content.slice(content.length - tail)}`;
+		const omitted = Math.max(0, chars.length - head - tail);
+		const headText = chars.slice(0, head).join("");
+		const tailText = chars.slice(chars.length - tail).join("");
+		return `${headText}\n\n… (${omitted} characters omitted in the middle) …\n\n${tailText}`;
 	}
 
 	#write(toolName: string, content: string): string | undefined {
@@ -69,8 +81,9 @@ export class ResultSpiller {
 			`reins-${safeName}-${process.pid}-${Date.now()}-${this.#counter}.log`,
 		);
 		try {
-			mkdirSync(this.#directory, { recursive: true });
-			writeFileSync(path, content, "utf8");
+			// 目录与文件只给当前用户：落盘内容可能含工作区外的密钥或命令环境输出
+			mkdirSync(this.#directory, { recursive: true, mode: 0o700 });
+			writeFileSync(path, content, { encoding: "utf8", mode: 0o600 });
 			return path;
 		} catch {
 			return undefined;

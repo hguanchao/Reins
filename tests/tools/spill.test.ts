@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
-import { ResultSpiller } from "../../src/tools/spill.ts";
+import { ResultSpiller, stripSpillFooter } from "../../src/tools/spill.ts";
 
 describe("结果落盘", () => {
 	const directory = join(tmpdir(), `reins-spill-${Date.now()}`);
@@ -45,5 +45,34 @@ describe("结果落盘", () => {
 		const spiller = new ResultSpiller(5, directory);
 		const result = spiller.spill("mcp:tool/x", "yyyyyyy");
 		assert.match(result, /reins-mcp_tool_x-/);
+	});
+
+	it("预览切点不落在代理对中间", () => {
+		const spiller = new ResultSpiller(11, directory);
+		const result = spiller.spill("emoji", "😀".repeat(10));
+		// 按 UTF-16 码元切会把 emoji 劈开，预览里留下半个字符
+		assert.equal(result.includes("\uFFFD"), false);
+		for (const char of result) {
+			assert.ok(char.length <= 2, `unexpected code unit length for ${char}`);
+		}
+	});
+
+	it("落盘文件只有当前用户可读", { skip: process.platform === "win32" }, () => {
+		const spiller = new ResultSpiller(5, directory);
+		const result = spiller.spill("secret", "zzzzzzz");
+		const path = /written to ([^,]+), read it back/.exec(result)?.[1];
+		assert.ok(path !== undefined);
+		assert.equal(statSync(path).mode & 0o777, 0o600);
+	});
+});
+
+describe("尾注剥离", () => {
+	it("只在最后一段尾注处切断，正文自带的空行方括号不会被当成尾注", () => {
+		const content = "see\n\n[link] and more text\n\n[the full result is 100 characters; written to /tmp/x]";
+		assert.equal(stripSpillFooter(content), "see\n\n[link] and more text");
+	});
+
+	it("没有尾注时原样返回", () => {
+		assert.equal(stripSpillFooter("plain text\n"), "plain text");
 	});
 });

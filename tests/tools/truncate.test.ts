@@ -75,4 +75,24 @@ describe("工具输出截断", () => {
 		assert.ok(truncated.endsWith(`(the line is ${long.length} characters long)`));
 		assert.equal(truncateLine("short"), "short");
 	});
+
+	it("truncateTail:唯一一行就超上限时保留它的尾部，而不是返回空", () => {
+		// 返回空文本会让模型以为命令没有任何输出，而它明明输出了几十 KB
+		const result = truncateTail("x".repeat(60000), { maxLines: 10, maxBytes: 100 });
+		assert.equal(result.text.length, 100);
+		assert.equal(result.truncated, true);
+		assert.equal(result.totalLines, 1);
+	});
+
+	it("truncateTail:尾部切点不落在代理对中间", () => {
+		const result = truncateTail(`${"a".repeat(50)}😀😀😀`, { maxLines: 10, maxBytes: 9 });
+		assert.ok(Buffer.byteLength(result.text, "utf8") <= 9);
+		assert.doesNotMatch(result.text, /^[\udc00-\udfff]/);
+	});
+
+	it("limitLineBytes:切点不落在代理对中间", () => {
+		const limited = limitLineBytes("😀😀😀", 5);
+		assert.ok(Buffer.byteLength(limited, "utf8") <= 5);
+		assert.doesNotMatch(limited, /[\ud800-\udbff]$/);
+	});
 });
