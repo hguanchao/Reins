@@ -293,3 +293,31 @@ describe("审批落实", () => {
 		assert.match(outcome.reason, /cannot be remembered/);
 	});
 });
+
+describe("Plan 模式与插件规则", () => {
+	it("Plan 模式下 ask 规则不能让写操作变成「可批准」", () => {
+		// 规则说 ask 时，使用者点一次同意就能在规划阶段写文件，而 Plan 的语义是「能不能改」
+		const policy = new PermissionPolicy("ask");
+		policy.addRule(rule("ask", (tool) => tool === "write"));
+		policy.setPlanMode(true);
+
+		assert.deepEqual(policy.decide("write", WRITES, {}), {
+			kind: "deny",
+			reason: "Plan mode is read-only; finish the plan and call present_plan, or leave Plan mode",
+		});
+	});
+
+	it("Plan 模式下 deny 规则仍是终局", () => {
+		const policy = new PermissionPolicy("ask");
+		policy.addRule(rule("deny", (tool) => tool === "write", "blocked"));
+		policy.setPlanMode(true);
+
+		assert.deepEqual(policy.decide("write", WRITES, {}), { kind: "deny", reason: "blocked" });
+	});
+
+	it("非 Plan 模式下 ask 规则照常询问", () => {
+		const policy = new PermissionPolicy("ask");
+		policy.addRule(rule("ask", (tool) => tool === "write"));
+		assert.deepEqual(policy.decide("write", WRITES, {}), { kind: "ask", reason: "blocked by rule" });
+	});
+});

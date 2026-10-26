@@ -13,7 +13,8 @@ import type { TuiHost, TuiState } from "./types.ts";
 
 /** 同步当前待审批请求；返回界面是否需要重绘。 */
 export function syncApprovalPrompt(host: TuiHost): boolean {
-	const next = host.options.approval?.pending();
+	const source = host.options.approval;
+	const next = source?.pending();
 	const state = host.state;
 	const changed =
 		next === undefined
@@ -27,13 +28,18 @@ export function syncApprovalPrompt(host: TuiHost): boolean {
 		state.approvalSelection = "once";
 	}
 	state.approvalPrompt = next;
+	// 记下这份请求的标识：交回结论时要带上它，避免把按键记到另一个从未展示过的请求上
+	state.approvalPromptId = next === undefined ? undefined : source?.pendingId();
 	return changed;
 }
 
 /** 把结论交回权限门；下一个排队请求若存在会立即顶上来，并重置为默认允许一次。 */
 export function resolveApproval(host: TuiHost, answer: ApprovalAnswer): void {
-	host.options.approval?.resolve(answer);
+	// 带上界面上显示的那一份请求的标识：并行调用中一个被中止、另一个顶上来时，
+	// 这一帧还画着旧请求，此时按下的键不能被记到使用者从未见过的新请求上。
+	host.options.approval?.resolve(answer, host.state.approvalPromptId);
 	host.state.approvalPrompt = undefined;
+	host.state.approvalPromptId = undefined;
 	syncApprovalPrompt(host);
 	host.render();
 }

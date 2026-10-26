@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
-import { sessionsDir } from "../../config/paths.ts";
+import { sessionDirectories, sessionsDir } from "../../config/paths.ts";
 import { Session } from "../../session/session.ts";
-import type { SessionStore } from "../../session/store.ts";
+import type { SessionListing, SessionStore } from "../../session/store.ts";
 
 /**
  * 新建一个会话。
@@ -23,12 +23,29 @@ export function createSession(workRoot: string, store: SessionStore | undefined)
  * 按标识接续一个既有会话。
  *
  * 标识写在会话文件头部，文件名只是创建时的快照，不能从标识反推出路径，所以先查清单。
+ * 目录名规则改过一次，旧会话留在旧目录里：候选目录按优先级逐个查，升级之后历史仍然找得到。
  */
 export function resumeSession(workRoot: string, id: string, store: SessionStore): Session {
-	const directory = sessionsDir(workRoot);
-	const listing = store.list(directory).find((item) => item.id === id);
-	if (listing === undefined) throw new Error(`Session ${id} not found in ${directory}`);
-	return Session.open(listing.file, store);
+	const directories = sessionDirectories(workRoot);
+	for (const directory of directories) {
+		const listing = store.list(directory).find((item) => item.id === id);
+		if (listing !== undefined) return Session.open(listing.file, store);
+	}
+	throw new Error(`Session ${id} not found in ${directories.join(" or ")}`);
+}
+
+/** 列出这个工作区的全部会话；新旧目录的会话合并成一份清单。 */
+export function listSessions(workRoot: string, store: SessionStore): readonly SessionListing[] {
+	const seen = new Set<string>();
+	const listings: SessionListing[] = [];
+	for (const directory of sessionDirectories(workRoot)) {
+		for (const listing of store.list(directory)) {
+			if (seen.has(listing.id)) continue;
+			seen.add(listing.id);
+			listings.push(listing);
+		}
+	}
+	return listings.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 /** 退出全屏界面后留在主屏上的命令，使用者也据此回到同一个会话。 */

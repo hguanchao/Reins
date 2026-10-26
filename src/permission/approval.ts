@@ -12,6 +12,8 @@ import type { ApprovalAnswer, ApprovalRequest } from "./policy.ts";
 export type ApprovalPrompt = ApprovalRequest;
 
 interface Pending {
+	/** 请求标识：界面回传结论时带上它，确认回答的是哪一个请求 */
+	readonly id: number;
 	readonly prompt: ApprovalPrompt;
 	readonly resolve: (answer: ApprovalAnswer) => void;
 }
@@ -19,11 +21,13 @@ interface Pending {
 export class ApprovalBroker {
 	#active: Pending | undefined;
 	readonly #queue: Pending[] = [];
+	#nextId = 0;
 
 	/** 交给 PermissionGate 的 confirmer；箭头函数保证可以脱离实例传递。 */
 	request = (request: ApprovalPrompt): Promise<ApprovalAnswer> => {
 		return new Promise<ApprovalAnswer>((resolve) => {
-			const entry: Pending = { prompt: request, resolve };
+			this.#nextId += 1;
+			const entry: Pending = { id: this.#nextId, prompt: request, resolve };
 			if (this.#active === undefined) this.#active = entry;
 			else this.#queue.push(entry);
 		});
@@ -34,10 +38,19 @@ export class ApprovalBroker {
 		return this.#active?.prompt;
 	}
 
-	/** 交回一个结论，并把下一个等待中的请求提升为当前请求。 */
-	resolve(answer: ApprovalAnswer): void {
+	/** 当前请求的标识；界面把它随结论一起交回。 */
+	pendingId(): number | undefined {
+		return this.#active?.id;
+	}	/**
+	 * 交回一个结论，并把下一个等待中的请求提升为当前请求。
+	 *
+	 * 带上请求标识时先核对：并行调用中一个被中止、另一个顶上来时，界面那一帧还画着旧请求，
+	 * 此时按下的键不能被记到使用者从未见过的新请求上。
+	 */
+	resolve(answer: ApprovalAnswer, id?: number): void {
 		const active = this.#active;
 		if (active === undefined) return;
+		if (id !== undefined && id !== active.id) return;
 		active.resolve(answer);
 		this.#active = this.#queue.shift();
 	}

@@ -109,6 +109,15 @@ export class PermissionPolicy {
 	): PermissionDecision {
 		for (const rule of this.#rules) {
 			if (!rule.matches(tool, args)) continue;
+			// 规则只能加严。Plan 模式下「询问」不该成为绕开只读闸门的路：规则说 ask，
+			// 使用者点一次同意就能在规划阶段写文件，而 Plan 的语义是「能不能改」，
+			// 与审批方式正交。deny 仍然是终局，直接返回。
+			if (rule.decision === "ask" && this.#planMode) {
+				return {
+					kind: "deny",
+					reason: "Plan mode is read-only; finish the plan and call present_plan, or leave Plan mode",
+				};
+			}
 			return { kind: rule.decision, reason: rule.reason };
 		}
 

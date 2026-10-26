@@ -12,7 +12,6 @@ import {
 	configFilePath,
 	projectConfigFilePath,
 	providersFilePath,
-	sessionsDir,
 } from "../config/paths.ts";
 import { applyLiveConfig, diffConfig } from "../config/reload.ts";
 import { lastContextTokens } from "../session/usage.ts";
@@ -45,7 +44,7 @@ import { initializeConfig } from "./initialize-config.ts";
 import { writeStderr, writeStdout } from "./output.ts";
 import { assemblePipeline, createCompactor, createDriverFor } from "./pipeline.ts";
 import { createSessionFor, sessionTitle } from "./session/factory.ts";
-import { createSession, forkSession, resumeCommand, resumeSession } from "./session/target.ts";
+import { createSession, forkSession, listSessions, resumeCommand, resumeSession } from "./session/target.ts";
 import { openSessionForSwitch } from "./session/switch.ts";
 import { createStartupTimer } from "./startup-timer.ts";
 import {
@@ -477,7 +476,8 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			: {
 					list: () => {
 						const active = activeSession.id;
-						const listings = store.list(sessionsDir(workRoot));
+						// 旧版目录里的会话一并列出：目录名规则改过一次，升级后历史不该看起来消失了
+						const listings = listSessions(workRoot, store);
 						const byId = new Map(listings.map((listing) => [listing.id, listing]));
 						return listings.map((listing) => {
 							const origin = listing.forkedFrom;
@@ -515,9 +515,9 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 						if (id === activeSession.id) {
 							forked = forkSession(activeSession, workRoot, store);
 						} else {
-							const listing = store.list(sessionsDir(workRoot)).find((item) => item.id === id);
+							const listing = listSessions(workRoot, store).find((item) => item.id === id);
 							if (listing === undefined) {
-								throw new Error(`Session ${id} not found in ${sessionsDir(workRoot)}`);
+								throw new Error(`Session ${id} not found for ${workRoot}`);
 							}
 							const source = Session.open(listing.file, store);
 							try {

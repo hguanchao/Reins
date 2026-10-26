@@ -51,3 +51,35 @@ describe("审批桥接", () => {
 		assert.equal(await answer, "always");
 	});
 });
+
+describe("审批请求归属", () => {
+	it("带上请求标识时只接受当前请求的结论", async () => {
+		const broker = new ApprovalBroker();
+		const answer = broker.request({ tool: "bash", risk: "", detail: "first" });
+
+		const id = broker.pendingId();
+		assert.ok(id !== undefined);
+		// 旧标识不该能回答新请求
+		broker.resolve("once", id + 1);
+		assert.equal(broker.pendingId(), id, "标识不符时不应推进队列");
+		broker.resolve("deny", id);
+		assert.equal(await answer, "deny");
+	});
+
+	it("不带标识时按当前请求处理，兼容旧调用", async () => {
+		const broker = new ApprovalBroker();
+		const answer = broker.request({ tool: "bash", risk: "", detail: "x" });
+		broker.resolve("once");
+		assert.equal(await answer, "once");
+	});
+
+	it("排队请求的标识各不相同", () => {
+		const broker = new ApprovalBroker();
+		void broker.request({ tool: "bash", risk: "", detail: "a" });
+		void broker.request({ tool: "bash", risk: "", detail: "b" });
+		const first = broker.pendingId();
+		broker.resolve("once");
+		const second = broker.pendingId();
+		assert.notEqual(first, second);
+	});
+});

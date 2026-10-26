@@ -1,8 +1,9 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { accessSync, constants, existsSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { resolveShell, type Shell } from "../tools/shell.ts";
 import { isPathInside } from "../workspace/boundary.ts";
 import type { SandboxView } from "./policy.ts";
 import { quoteForShell } from "./shell-quote.ts";
@@ -38,19 +39,20 @@ export function verifyCommandIsolation(sandbox: SandboxView, root: string): void
 		);
 	}
 
-	// 第二步：工作区之外必须写不进去。找不到合适的探针位置时跳过——例如工作区就是根目录，
-	// 那种情况下「工作区之外」并不存在，拦不住也无从验证。
+	// 第二步：工作区之外必须写不进去。找不到合适的探针位置时说明为什么没法验证——
+	// 静默通过等于声称隔离生效，而实际一次都没试过。
 	const probePath = isolationProbePath(root);
-	if (probePath === undefined) return;
+	if (probePath === undefined) {
+		throw new Error(
+			"Cannot verify command isolation: no writable location outside the workspace and outside " +
+				"the temp directories was found. Without a probe, isolation that looks on but does " +
+				"nothing cannot be ruled out. Set sandbox to off in config.toml, or run from a workspace " +
+				"outside the temp directories.",
+		);
+	}
 
 	const wrapped = sandbox.wrapCommand(`echo probe > ${quoteForShell(probePath)}`);
-	let commandSucceeded = true;
-	try {
-		execSync(wrapped, { stdio: "ignore", timeout: PROBE_TIMEOUT_MS });
-	} catch {
-		// 被拒绝正是期望的结果
-		commandSucceeded = false;
-	}
+	const commandSucceeded = runProbe(wrapped);
 
 	const leaked = existsSync(probePath);
 	try {
@@ -70,8 +72,31 @@ export function verifyCommandIsolation(sandbox: SandboxView, root: string): void
 
 /** 命令是否跑完并成功退出；超时、起不来、非零退出都算失败。 */
 function runsToCompletion(command: string): boolean {
+	return runProbe(command);
+}
+
+/**
+ * 用项目自己的 shell 跑一段探针命令。
+ *
+ * 不能直接用 execSync 的默认 shell：Windows 上那是 cmd.exe，而包装后的命令是 POSIX 语法
+ * （单引号引用、`>` 重定向在两种 shell 里含义也不同）。用错 shell 会让每条探针都失败，
+ * 「失败」于是被误读成「隔离生效」。
+ */
+function runProbe(command: string): boolean {
+	let shell: Shell;
 	try {
-		execSync(command, { stdio: "ignore", timeout: PROBE_TIMEOUT_MS });
+		shell = resolveShell();
+	} catch {
+		// 连 shell 都没有：无法验证，按失败处理，由调用方报出来
+		return false;
+	}
+	try {
+		execFileSync(shell.command, shell.args(command), {
+			stdio: "ignore",
+			timeout: PROBE_TIMEOUT_MS,
+			env: { ...process.env, ...shell.env },
+			windowsHide: true,
+		});
 		return true;
 	} catch {
 		return false;
@@ -100,7 +125,9 @@ function isolationProbePath(root: string): string | undefined {
 		if (isPathInside(root, directory)) continue;
 		if (writableTempDirs.has(directory)) continue;
 		if (!isWritableDirectory(directory)) continue;
-		return join(directory, `.reins-isolation-probe-${process.pid}`);
+		// 探针命令由 shell 执行：Windows 上的反斜杠路径在 Git Bash 里会被当成转义，
+		// 写不进去，于是「命令失败」被误读成「隔离生效」。统一换成 POSIX 分隔符。
+		return join(directory, `.reins-isolation-probe-${process.pid}`).replaceAll("\\", "/");
 	}
 	return undefined;
 }

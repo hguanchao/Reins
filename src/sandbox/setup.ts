@@ -1,4 +1,5 @@
 import type { SandboxMode } from "../config/file.ts";
+import { describeError } from "../shared/describe-error.ts";
 import { Sandbox, type SandboxBackend, type SandboxView } from "./policy.ts";
 import { verifyCommandIsolation } from "./verify.ts";
 
@@ -41,20 +42,44 @@ export function createSandbox(
 	root: string,
 	backends: readonly SandboxBackend[],
 ): SandboxSetup {
-	const backend = backends.find((item) => item.available);
-	const sandbox = new Sandbox({ mode, root }, backend);
-	const info: SandboxInfo = {
-		mode,
-		platform: process.platform,
-		confinesCommands: sandbox.confinesCommands,
-		...(mode === "off" || backend === undefined ? {} : { backend: backend.id }),
-	};
-	if (mode === "off") return { sandbox, warnings: [], info };
-
-	if (backend === undefined) {
+	if (mode === "off") {
+		const sandbox = new Sandbox({ mode, root }, undefined);
 		return {
 			sandbox,
-			info,
+			warnings: [],
+			info: { mode, platform: process.platform, confinesCommands: sandbox.confinesCommands },
+		};
+	}
+
+	// 逐个尝试可用后端：前一个自检不过不等于这台机器没有隔离能力。只试第一个会让
+	// 「声称可用但起不来」的后端挡住后面真正能用的那个。
+	const candidates = backends.filter((item) => item.available);
+	const failures: string[] = [];
+	for (const backend of candidates) {
+		const sandbox = new Sandbox({ mode, root }, backend);
+		try {
+			verifyCommandIsolation(sandbox, root);
+		} catch (error) {
+			failures.push(`${backend.id}: ${describeError(error)}`);
+			continue;
+		}
+		return {
+			sandbox,
+			warnings: [],
+			info: {
+				mode,
+				platform: process.platform,
+				confinesCommands: sandbox.confinesCommands,
+				backend: backend.id,
+			},
+		};
+	}
+
+	if (candidates.length === 0) {
+		const sandbox = new Sandbox({ mode, root }, undefined);
+		return {
+			sandbox,
+			info: { mode, platform: process.platform, confinesCommands: sandbox.confinesCommands },
 			warnings: [
 				`Sandbox mode is ${mode} but this platform (${process.platform}) has no usable command isolation: ` +
 					"path checks still apply, and shell commands are refused. " +
@@ -63,7 +88,11 @@ export function createSandbox(
 		};
 	}
 
-	// 只有在「以为有隔离」的时候才需要核对；核对不过就停下，不要带着虚假的保护继续跑
-	verifyCommandIsolation(sandbox, root);
-	return { sandbox, warnings: [], info };
+	// 所有候选都没通过自检：把每一个的失败原因都说出来，否则使用者只知道「起不来」，
+	// 不知道该修哪个后端
+	throw new Error(
+		`Command isolation is not working with any available backend. ` +
+			`Continuing with isolation that looks on but does nothing is more dangerous, so stopping here. ` +
+			`Backends tried:\n${failures.map((line) => `  ${line}`).join("\n")}`,
+	);
 }

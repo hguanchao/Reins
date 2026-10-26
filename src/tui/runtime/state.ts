@@ -53,6 +53,7 @@ export function createState(options: TuiOptions): TuiState {
 		sweepPhase: 0,
 		activeTurn: undefined,
 		approvalPrompt: undefined,
+		approvalPromptId: undefined,
 		approvalSelection: "once",
 		modelMenu: undefined,
 		effortMenu: undefined,

@@ -93,7 +93,34 @@ describe("沙箱装配", () => {
 	it("后端声称可用却拦不住时拒绝启动", () => {
 		const root = workspaceRoot();
 		try {
-			assert.throws(() => createSandbox("workspace", root, [leakyBackend]), /isolation is not working/);
+			assert.throws(
+				() => createSandbox("workspace", root, [leakyBackend]),
+				/isolation is not working/,
+			);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("前一个后端自检不过时改用下一个可用的", () => {
+		// 只试第一个会让「声称可用但起不来」的后端挡住真正能用的那个
+		const root = workspaceRoot();
+		try {
+			const setup = createSandbox("workspace", root, [brokenBackend, refusingBackend]);
+			assert.equal(setup.info.backend, "probe-refuse");
+			assert.deepEqual(setup.warnings, []);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("所有后端都不过自检时把每个失败原因都说出来", () => {
+		const root = workspaceRoot();
+		try {
+			assert.throws(
+				() => createSandbox("workspace", root, [brokenBackend, leakyBackend]),
+				/probe-broken[\s\S]*leaky/,
+			);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

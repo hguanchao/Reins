@@ -125,6 +125,8 @@ export interface TuiState {
 	// —— 运行与审批 ——
 	activeTurn: ActiveTurn | undefined;
 	approvalPrompt: ApprovalPrompt | undefined;
+	/** 界面上这份审批请求的标识；交回结论时带上，防止回答落到另一个请求上 */
+	approvalPromptId: number | undefined;
 	/** 动作行当前高亮的选项；默认允许一次，直接回车就是放行 */
 	approvalSelection: ApprovalAnswer;
 

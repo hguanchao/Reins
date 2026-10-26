@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -103,15 +104,53 @@ const INSTRUCTION_FILE_NAMES = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"] 
  * 会话文件所在目录。
  *
  * 按工作根分目录，同一个目录下的会话聚在一起，换目录工作时各自看到自己的历史。
+ *
+ * 目录名由「可读前缀 + 路径哈希」组成。只用前缀是有损的：`E:\work\my-project` 与
+ * `E:\work\my\project` 都会变成 `E--work-my-project`，两个项目的会话混在一起，
+ * `--resume` 可能打开另一个项目的会话。加上哈希之后不同路径必然不同目录。
  */
 export function sessionsDir(workRoot: string): string {
 	return join(configDir(), "sessions", encodeWorkRoot(workRoot));
 }
 
-/** 把工作根编码成合法的目录名：去掉分隔符与盘符冒号，保留可读的部分。 */
+/** 路径哈希的长度：16 个十六进制字符，碰撞概率可以忽略。 */
+const WORK_ROOT_HASH_LENGTH = 16;
+
+/**
+ * 会话目录的候选清单，按优先级排列。
+ *
+ * 第一项是当前编码，其余是历史编码：目录名规则改过一次，旧会话还留在旧目录里。
+ * 读取时两处都要看，否则升级之后使用者会以为自己的历史全丢了。
+ */
+export function sessionDirectories(workRoot: string): readonly string[] {
+	const base = join(configDir(), "sessions");
+	const directories = [join(base, encodeWorkRoot(workRoot))];
+	const legacy = legacyWorkRoot(workRoot);
+	if (legacy !== undefined) directories.push(join(base, legacy));
+	return directories;
+}
+
+/**
+ * 把工作根编码成目录名。
+ *
+ * 保留一段可读前缀便于人工排查；前缀本身有损，唯一性由后面的哈希保证。Windows 上大小写
+ * 不敏感，先把路径折成小写再算哈希，`E:\Foo` 与 `e:\foo` 才会落到同一个目录。
+ */
 function encodeWorkRoot(workRoot: string): string {
 	const normalized = workRoot.replaceAll(/[/\\:]/g, "-");
-	return normalized.startsWith("-") ? normalized.slice(1) : normalized;
+	const readable = normalized.startsWith("-") ? normalized.slice(1) : normalized;
+	const key = process.platform === "win32" ? workRoot.toLowerCase() : workRoot;
+	const hash = createHash("sha256").update(key).digest("hex").slice(0, WORK_ROOT_HASH_LENGTH);
+	// 目录名不宜过长：只保留末尾 40 个字符，项目名通常在那里
+	const prefix = readable.length > 40 ? readable.slice(-40) : readable;
+	return `${prefix}-${hash}`;
+}
+
+/** 旧版编码（只有可读前缀、没有哈希）；当前编码与它相同时返回 undefined，避免重复。 */
+function legacyWorkRoot(workRoot: string): string | undefined {
+	const normalized = workRoot.replaceAll(/[/\\:]/g, "-");
+	const legacy = normalized.startsWith("-") ? normalized.slice(1) : normalized;
+	return legacy === encodeWorkRoot(workRoot) ? undefined : legacy;
 }
 
 /**
