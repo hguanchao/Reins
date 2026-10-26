@@ -26,6 +26,9 @@ export function startRun(
 	run: (onEvent: AgentEventListener, signal: AbortSignal) => Promise<void>,
 ): void {
 	const { state, options } = host;
+	// 同时只允许一轮：两个驱动并行会交叉写同一个会话，而且旧 run 的收尾会因为
+	// activeTurn 已被覆盖而整段跳过（清审批、折叠工具组、队列续发都不会发生）。
+	if (state.activeTurn !== undefined) return;
 	const shown = prompt.trim();
 	const turn: LiveTurn = {
 		prompt: shown.length > 0 ? shown : images.length > 0 ? "[image]" : "",

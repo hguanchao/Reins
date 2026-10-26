@@ -15,6 +15,12 @@ export function setStatus(
 	text: string,
 	tone?: "warning" | "error" | "notice",
 ): void {
+	// 新状态作废之前登记的自动清除：那个计时器属于上一条提示，让它继续跑会在 1.5 秒后
+	// 把正在显示的运行状态清掉（回合中途附加图片后紧接着跑工具就会这样）。
+	if (state.statusClearTimer !== undefined) {
+		clearTimeout(state.statusClearTimer);
+		state.statusClearTimer = undefined;
+	}
 	state.statusText = text;
 	state.statusTone = tone;
 	state.statusPhaseMs = 0;

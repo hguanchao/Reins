@@ -326,6 +326,17 @@ export function approvePlan(host: TuiHost): void {
 		return;
 	}
 
+	// 一轮还在跑时不能再起一轮：历史里的计划卡随时可以双击打开，否则第二个驱动会与
+	// 正在跑的那个同时写同一个会话，旧 turn 的流式内容还会被写进新 turn。
+	if (host.state.activeTurn !== undefined) {
+		closePlanReview(host.state);
+		host.resetStatusMeta();
+		host.setStatus("A turn is still running; wait for it to finish before approving the plan", "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
+
 	const agent = host.options.agent;
 	closePlanReview(host.state);
 	if (agent === undefined) {
@@ -352,6 +363,14 @@ export function approvePlan(host: TuiHost): void {
 /** 要求修改：关闭审批页，保持或开启 Plan 模式，回到输入框写修改意见。 */
 export function revisePlan(host: TuiHost): void {
 	closePlanReview(host.state);
+	// 与 /plan 同一条约束：提示词与工具清单会在同一轮里前后不一致，不能中途改
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus("Plan mode cannot change while a turn is running", "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
 	if (!host.planning()) {
 		if (host.options.planMode === undefined) {
 			host.resetStatusMeta();
@@ -378,6 +397,15 @@ export function revisePlan(host: TuiHost): void {
 
 /** 退出计划：关闭审批页并离开 Plan 模式，计划本身仍可用 /view-plan 回看。 */
 export function leavePlan(host: TuiHost): void {
+	// 同 /plan：一轮进行中切换会让这一轮后续的工具立刻越过只读闸门
+	if (host.state.activeTurn !== undefined) {
+		closePlanReview(host.state);
+		host.resetStatusMeta();
+		host.setStatus("Plan mode cannot change while a turn is running", "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
 	const wasPlanning = host.planning();
 	closePlanReview(host.state);
 	try {
@@ -399,6 +427,19 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	if (source === undefined) return;
 
 	const forking = action === "fork";
+	// 一轮进行中不能换会话：宿主会关掉旧会话的写入器，正在跑的驱动下一次追加就失败，
+	// 而新会话已经把旧 turn 移出了界面状态——本轮回复会无声地丢掉。
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus(
+			`${forking ? "/fork" : "/session"} is unavailable while a turn is running`,
+			"notice",
+		);
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
+
 	let result: SessionSwitchResult;
 	try {
 		const run = forking ? source.fork : source.select;

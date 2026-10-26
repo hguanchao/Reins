@@ -92,15 +92,18 @@ export function readAndInsertImage(
 	host.render();
 	void read()
 		.then((image) => {
+			// 退出后不要再动界面：备用屏已经离开，此刻写入会画在 shell 上
+			if (state.finished) return;
 			if (epoch === state.attachmentEpoch) insertImageMarker(host, image, position);
 		})
 		.catch((error: unknown) => {
-			if (epoch !== state.attachmentEpoch) return;
+			if (state.finished || epoch !== state.attachmentEpoch) return;
 			host.setStatus(`Image: ${errorLine(error)}`, "error");
 			host.scheduleStatusClear();
 		})
 		.finally(() => {
 			state.imageLoading = false;
+			if (state.finished) return;
 			host.render();
 		});
 }

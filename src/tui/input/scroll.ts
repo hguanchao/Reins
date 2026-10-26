@@ -75,6 +75,13 @@ export function handleScrollKey(
 		state.follow = false;
 		return true;
 	}
+	// Ctrl+End：跳到最新。帮助页承诺了它，终端发出的序列是 CSI 1;5F
+	if (text === "\x1b[1;5F") {
+		const limit = host.maxScroll();
+		state.scrollTop = limit;
+		state.follow = true;
+		return true;
+	}
 	return false;
 }
 

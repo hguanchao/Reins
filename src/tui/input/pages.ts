@@ -146,6 +146,11 @@ export function handlePageInput(
 		deps.render();
 		return;
 	}
+	if (scroll === "bottom") {
+		state.pageScrollTop = Math.max(0, total - rows);
+		deps.render();
+		return;
+	}
 	if (steps !== 0) {
 		state.pageScrollTop = Math.min(Math.max(0, state.pageScrollTop + steps), Math.max(0, total - rows));
 		deps.render();

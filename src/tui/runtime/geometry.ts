@@ -103,7 +103,11 @@ export function todoPanelHeight(state: TuiState, options: TuiOptions): number {
 		return 0;
 	}
 	if (todo.collapsed === true) return 1;
-	return 1 + Math.min(todo.items.length, TODO_PANEL_MAX_ITEMS);
+	// 条目超上限时面板多出一行「… N more」，高度必须把它算进去，否则主区域多占一行、
+	// 光标落到面板上、页脚最后一行被裁掉。
+	const shown = Math.min(todo.items.length, TODO_PANEL_MAX_ITEMS);
+	const overflow = todo.items.length > TODO_PANEL_MAX_ITEMS ? 1 : 0;
+	return 1 + shown + overflow;
 }
 
 /** 正在运行的作业；页脚上方的 Jobs bar 与计时器都只认它们。 */

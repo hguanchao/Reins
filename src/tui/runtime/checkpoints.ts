@@ -107,6 +107,12 @@ export function executeUndo(host: TuiHost): void {
 		.then((preview) => {
 			state.checkpointLoading = false;
 			if (state.finished) return;
+			// 读检查点要跑 git，期间使用者可能已经提交了新的一轮。这时再打开整屏页会把
+			// 正在流式输出的回合整个盖住，状态行也会被清掉。
+			if (state.activeTurn !== undefined) {
+				host.render();
+				return;
+			}
 			host.clearStatus();
 			if (preview === undefined) {
 				host.setStatus("No file changes to undo", "notice");
@@ -147,6 +153,15 @@ export function restoreCheckpoint(host: TuiHost): void {
 		closeCheckpointPage(host);
 		host.resetStatusMeta();
 		host.setStatus("Stop background jobs before restoring files", "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
+	if (state.activeTurn !== undefined) {
+		// 回合正在改文件：此刻恢复只会把工作区停在「半个回合」的状态
+		closeCheckpointPage(host);
+		host.resetStatusMeta();
+		host.setStatus("Wait for the running turn to finish before restoring files", "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
