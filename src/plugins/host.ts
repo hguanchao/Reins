@@ -185,14 +185,27 @@ export class PluginHost {
 				if (this.#commands.has(command.name) || pending.commands.some((item) => item.name === command.name)) {
 					throw new Error(`Command /${command.name} is already registered`);
 				}
+				if (!pending.open) {
+					// 与 registerTool 同一规则：装载结束后再注册也要生效，不能静默丢掉
+					this.#commands.set(command.name, command);
+					return;
+				}
 				pending.commands.push(command);
 			},
 			registerSandboxBackend: (backend) => {
 				assertLive();
+				if (!pending.open) {
+					this.#backends.push(backend);
+					return;
+				}
 				pending.backends.push(backend);
 			},
 			registerPermissionRule: (rule) => {
 				assertLive();
+				if (!pending.open) {
+					this.#policy.addRule(rule);
+					return;
+				}
 				pending.rules.push(rule);
 			},
 			registerSessionStore: (store) => {
@@ -200,12 +213,24 @@ export class PluginHost {
 				if (this.#sessionStore !== undefined || pending.store !== undefined) {
 					throw new Error("A session store is already registered; only one is allowed");
 				}
+				if (!pending.open) {
+					this.#sessionStore = store;
+					return;
+				}
 				pending.store = store;
 			},
 		};
 	}
 
 	#commit(pending: Pending, source: ToolSource): void {
+		// 先整体预检再逐个提交：中途抛错会让插件处于半装载状态（前面几个工具已经进注册表，
+		// 后面的没有），而使用者只看到一句「装载失败」。预检把所有会失败的条件先跑一遍。
+		const existing = new Set(this.#tools.list().map((tool) => tool.name));
+		for (const tool of pending.tools) {
+			if (existing.has(tool.name)) throw new Error(`Tool ${tool.name} is already registered`);
+			existing.add(tool.name);
+		}
+
 		// 工具先提交：它的重名检查会抛错，抛在这里仍算在该插件名下
 		for (const tool of pending.tools) this.#tools.register(tool, source);
 		for (const backend of pending.backends) this.#backends.push(backend);

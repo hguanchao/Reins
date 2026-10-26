@@ -160,4 +160,34 @@ describe("插件宿主", () => {
 		api!.registerTool(toolNamed("late_tool"));
 		assert.ok(registry.get("late_tool") !== undefined);
 	});
+
+	it("装载完成后补注册的命令也要生效，而不是被静默丢弃", async () => {
+		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
+		const host = new PluginHost(registry, new PermissionPolicy("ask"));
+		let api: PluginApi | undefined;
+		await host.loadExternal([
+			pluginOf("lazy", (given) => {
+				api = given;
+			}),
+		]);
+		api!.registerCommand({ name: "late", description: "", run: async () => undefined });
+		assert.deepEqual(host.commands().map((command) => command.name), ["late"]);
+	});
+
+	it("装载中途撞上重名时，整批注册项都不落地", async () => {
+		// 半装载状态最难排查：报的是装载失败，模型却能看见前面几个工具
+		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
+		registry.register(toolNamed("taken"), "bundled");
+		const host = new PluginHost(registry, new PermissionPolicy("ask"));
+
+		const failures = await host.load([
+			pluginOf("partial", (api) => {
+				api.registerTool(toolNamed("first_ok"));
+				api.registerTool(toolNamed("taken"));
+			}),
+		]);
+
+		assert.equal(failures.length, 1);
+		assert.equal(registry.get("first_ok"), undefined);
+	});
 });

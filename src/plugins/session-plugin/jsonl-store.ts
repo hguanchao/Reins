@@ -4,7 +4,6 @@ import { describeError } from "../../shared/describe-error.ts";
 import { firstLine } from "../../shared/format.ts";
 
 import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../session/port.ts";
-import { userText } from "../../llm/messages.ts";
 import type {
 	SessionCreateOptions,
 	SessionFile,
@@ -26,6 +25,29 @@ import { SessionLock } from "./lock.ts";
  */
 
 const FILE_SUFFIX = ".jsonl";
+
+/**
+ * 从可能残缺的用户消息里取正文。
+ *
+ * 会话文件是纯文本，可能被手工编辑或写到一半。取标题这一步不该因为 content 不是字符串、
+ * 也不是数组就抛错——那会让整个会话列表消失。
+ */
+function safeUserText(message: unknown): string {
+	if (typeof message !== "object" || message === null) return "";
+	const content = (message as { readonly content?: unknown }).content;
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	return content
+		.filter(
+			(block): block is { readonly type: string; readonly text: string } =>
+				typeof block === "object" &&
+				block !== null &&
+				(block as { type?: unknown }).type === "text" &&
+				typeof (block as { text?: unknown }).text === "string",
+		)
+		.map((block) => block.text)
+		.join("\n\n");
+}
 
 export class JsonlSessionStore implements SessionStore {
 	create(options: SessionCreateOptions): SessionWriter {
@@ -60,7 +82,14 @@ export class JsonlSessionStore implements SessionStore {
 		for (const name of names) {
 			if (!name.endsWith(FILE_SUFFIX)) continue;
 			const file = join(dir, name);
-			const parsed = parseSessionText(readText(file));
+			// 单个文件读不动或内容残缺时跳过它：一个坏文件不该让整个目录的会话都列不出来，
+			// 那会让 /session、/fork 与 --resume 一起失效。
+			let parsed: ReturnType<typeof parseSessionText>;
+			try {
+				parsed = parseSessionText(readText(file));
+			} catch {
+				continue;
+			}
 			const header = parsed.header;
 			const userTurn = parsed.entries.find(
 				(entry) => entry.type === "message" && entry.message.role === "user",
@@ -72,7 +101,7 @@ export class JsonlSessionStore implements SessionStore {
 				entryCount: parsed.entries.length,
 				title:
 					userTurn?.type === "message" && userTurn.message.role === "user"
-						? firstLine(userText(userTurn.message).trim(), 60)
+						? firstLine(safeUserText(userTurn.message), 60)
 						: undefined,
 				forkedFrom: header?.forkedFrom,
 			});

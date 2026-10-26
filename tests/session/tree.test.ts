@@ -28,6 +28,12 @@ describe("条目树", () => {
 		assert.throws(() => pathTo(ENTRIES, "zzz"), /Session has no entry zzz/);
 	});
 
+	it("parentId 成环时报错，不会无限向上走", () => {
+		// 会话文件可能被手工编辑或写到一半；成环时若继续走，界面会整个卡死
+		const cyclic = [entry("a", "c"), entry("b", "a"), entry("c", "b")];
+		assert.throws(() => pathTo(cyclic, "b"), /parent cycle/);
+	});
+
 	it("叶子：被别人引用的不算", () => {
 		assert.deepEqual(leavesOf(ENTRIES).map((entry) => entry.id), ["c", "d"]);
 	});

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { describe, it } from "node:test";
 
-import { fileEntries, walk } from "../../src/workspace/walk.ts";
+import { fileEntries, globToRegExp, walk } from "../../src/workspace/walk.ts";
 
 function hasGit(): boolean {
 	try {
@@ -159,5 +159,28 @@ describe("目录遍历", () => {
 			const paths = [...fileEntries(root, 100)].map((entry) => entry.relative);
 			assert.ok(paths.includes("real/inside.txt"));
 		});
+	});
+});
+
+describe("通配模式", () => {
+	it("**/ 匹配零级或多级目录", () => {
+		const pattern = globToRegExp("src/**/index.ts");
+		assert.equal(pattern.test("src/index.ts"), true);
+		assert.equal(pattern.test("src/a/index.ts"), true);
+		assert.equal(pattern.test("src/a/b/index.ts"), true);
+	});
+
+	it("** 不会把相邻字符连起来误匹配", () => {
+		const pattern = globToRegExp("a/**/b");
+		// 旧实现生成 ^a/.*b$，会把 a/xb 也算命中
+		assert.equal(pattern.test("a/b"), true);
+		assert.equal(pattern.test("a/x/b"), true);
+		assert.equal(pattern.test("a/xb"), false);
+	});
+
+	it("* 不跨目录", () => {
+		const pattern = globToRegExp("*.ts");
+		assert.equal(pattern.test("a.ts"), true);
+		assert.equal(pattern.test("dir/a.ts"), false);
 	});
 });

@@ -14,8 +14,12 @@ export function pathTo(entries: readonly SessionEntry[], id: string): readonly S
 	if (!byId.has(id)) throw new Error(`Session has no entry ${id}`);
 
 	const path: SessionEntry[] = [];
+	const visited = new Set<string>();
 	let current = byId.get(id);
 	while (current !== undefined) {
+		// 文件可能被手工编辑或写到一半：parentId 成环时不能无限向上走，界面会整个卡死
+		if (visited.has(current.id)) throw new Error(`Session has a parent cycle at entry ${current.id}`);
+		visited.add(current.id);
 		path.unshift(current);
 		const parentId = current.parentId;
 		current = parentId === null ? undefined : byId.get(parentId);

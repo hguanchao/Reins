@@ -112,7 +112,18 @@ export class Session implements SessionPort {
 			file: options.file,
 			forkedFrom,
 		});
-		for (const entry of path) writer.write(entry);
+		try {
+			for (const entry of path) writer.write(entry);
+		} catch (error) {
+			// 写失败要把写入器收掉：不收会留下锁文件，新会话文件也停在半截，
+			// 之后谁都用不了这份分叉。
+			try {
+				writer.end();
+			} catch {
+				// 收尾失败不掩盖真正的原因
+			}
+			throw error;
+		}
 
 		return new Session({
 			id: options.id,

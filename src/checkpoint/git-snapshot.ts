@@ -1,9 +1,20 @@
 import { execFile } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
+
+/**
+ * 两个路径是否指向同一个位置。
+ *
+ * Windows 的文件系统不区分大小写，而 realpathSync 不保证把大小写规范化成磁盘上的写法：
+ * 从 `e:\projects\reins` 启动时 git 报的是 `E:/Projects/Reins`，直接比字符串会判成不同目录。
+ */
+function samePath(left: string, right: string): boolean {
+	if (process.platform === "win32") return left.toLowerCase() === right.toLowerCase();
+	return left === right;
+}
 
 export type ChangeStatus = "added" | "modified" | "deleted";
 
@@ -35,6 +46,15 @@ export class GitSnapshotStore {
 	readonly #configFile: string;
 	#ready = false;
 	#error: string | undefined;
+	/**
+	 * 最近一次操作的错误。
+	 *
+	 * 与 #error 分开：#error 是「这个工作区永远做不了检查点」（不是 git 仓库、根不对），
+	 * 一旦确定就不再重试；这里的错误是单次失败，下一次操作应当重新尝试。
+	 */
+	#lastError: string | undefined;
+	/** shadow index 与 ref 的写操作串行化：并发 capture/changes 会争抢同一个 index.lock。 */
+	#queue: Promise<unknown> = Promise.resolve();
 
 	constructor(workRoot: string, storageRoot: string) {
 		this.workRoot = realpathSync(workRoot);
@@ -45,7 +65,7 @@ export class GitSnapshotStore {
 	}
 
 	get error(): string | undefined {
-		return this.#error;
+		return this.#error ?? this.#lastError;
 	}
 
 	get ready(): boolean {
@@ -64,7 +84,7 @@ export class GitSnapshotStore {
 			} catch {
 				throw new Error("Checkpoints need a Git repository at the workspace root");
 			}
-			if (realpathSync(top) !== this.workRoot) {
+			if (!samePath(realpathSync(top), this.workRoot)) {
 				throw new Error(
 					"Checkpoints need the workspace root to be the root of a Git repository",
 				);
@@ -102,19 +122,21 @@ export class GitSnapshotStore {
 	async capture(id: string, label: string): Promise<Snapshot | undefined> {
 		if (!(await this.init())) return undefined;
 		try {
-			const tree = await this.#writeTree();
+			const tree = await this.#serialized(() => this.#writeTree());
 			const commit = (await this.#git(["commit-tree", tree, "-m", label])).trim();
 			await this.#git(["update-ref", `refs/reins/${id}`, commit]);
 			return { tree, commit };
 		} catch (error) {
-			this.#error = messageOf(error);
+			// 不记成永久错误：瞬时原因（index.lock 争用、临时权限问题）消失后应该能自愈，
+			// 记下来会让本进程余下的检查点全部失效。
+			this.#lastError = messageOf(error);
 			return undefined;
 		}
 	}
 
 	/** 目标快照与当前工作区的差异；当前状态也会刷新 shadow index。 */
 	async changes(target: string): Promise<readonly SnapshotChange[]> {
-		const current = await this.#writeTree();
+		const current = await this.#serialized(() => this.#writeTree());
 		return this.#diff(target, current);
 	}
 
@@ -127,7 +149,7 @@ export class GitSnapshotStore {
 	async restore(
 		target: string,
 	): Promise<{ readonly restored: number; readonly removed: number }> {
-		const current = await this.#writeTree();
+		const current = await this.#serialized(() => this.#writeTree());
 		const changes = await this.#diff(target, current);
 		const added = changes.filter((change) => change.status === "added");
 		const restorePaths = changes
@@ -163,6 +185,16 @@ export class GitSnapshotStore {
 	async #writeTree(): Promise<string> {
 		await this.#git(["add", "-A"]);
 		return (await this.#git(["write-tree"])).trim();
+	}
+
+	/** 把一次 shadow 仓库的写操作排到队尾；前一个失败不影响后一个继续。 */
+	async #serialized<T>(action: () => Promise<T>): Promise<T> {
+		const run = this.#queue.then(action, action);
+		this.#queue = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		return run;
 	}
 
 	async #diff(target: string, current: string): Promise<readonly SnapshotChange[]> {
@@ -211,8 +243,14 @@ export class GitSnapshotStore {
 	}
 
 	#baseEnv(): NodeJS.ProcessEnv {
+		const env: NodeJS.ProcessEnv = { ...process.env };
+		// 父进程可能带着自己的 index/对象库指向（git hook、IDE 集成、其它工具都会设）。
+		// 不清掉它们，shadow 仓库的 add 会写进使用者的真实仓库。
+		for (const key of ["GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_DIR", "GIT_WORK_TREE"]) {
+			delete env[key];
+		}
 		return {
-			...process.env,
+			...env,
 			GIT_CONFIG_GLOBAL: this.#configFile,
 			GIT_CONFIG_NOSYSTEM: "1",
 			GIT_TERMINAL_PROMPT: "0",
@@ -241,7 +279,9 @@ function changeStatus(code: string): ChangeStatus | undefined {
 function workspacePath(workRoot: string, path: string): string {
 	const absolute = resolve(workRoot, path);
 	const inside = relative(workRoot, absolute);
-	if (inside.length === 0 || inside.startsWith("..") || isAbsolute(inside)) {
+	// 只比较 ".." 或 "../" 前缀：名字本身以 .. 开头的文件（如 "..cache/f.txt"）是合法的，
+	// 用 startsWith("..") 会把它们一起拒绝掉。
+	if (inside.length === 0 || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
 		throw new Error(`Snapshot path escapes the workspace: ${path}`);
 	}
 	return absolute;

@@ -146,6 +146,9 @@ function ignoreLayerOf(
  * 否则 `ls reference/` 这种「点名一个被忽略的目录」会得到空结果。
  */
 function ancestorLayers(root: string): readonly AncestorLayer[] {
+	// 遍历起点本身就是仓库根时，仓库根之外的 .gitignore 一律不作数：再往上的规则属于别的项目。
+	if (existsSync(join(root, VCS_DIRECTORY))) return [];
+
 	const layers: AncestorLayer[] = [];
 	let directory = dirname(root);
 	let prefix = basename(root);
@@ -278,6 +281,9 @@ function fileEntry(root: string, relativePath: string): WalkEntry | undefined {
  *
  * `**` 跨目录，`*` 不跨目录，`?` 匹配单个字符。只支持这三个是刻意的：更复杂的模式（字符组、
  * 花括号展开）用的人少，而实现它们的边界情形不少，写错的匹配比少支持的匹配难排查得多。
+ *
+ * `**` 单独成段时要匹配「零或多级目录」，所以 `a/**\/b` 必须同时匹配 `a/b` 与 `a/x/b`。
+ * 直接换成 `.*` 再吃掉斜杠会得到 `a/.*b`，连 `a/xb` 都能匹配上。
  */
 export function globToRegExp(pattern: string): RegExp {
 	let source = "";
@@ -285,10 +291,14 @@ export function globToRegExp(pattern: string): RegExp {
 		const char = pattern[index];
 		if (char === "*") {
 			if (pattern[index + 1] === "*") {
-				source += ".*";
 				index += 1;
-				// 吃掉 ** 后面紧跟的分隔符，这样 `**/*.ts` 也能匹配到根目录下的文件
-				if (pattern[index + 1] === "/") index += 1;
+				if (pattern[index + 1] === "/") {
+					// `**/` 整段：可以一级目录都没有
+					source += "(?:[^/]*/)*";
+					index += 1;
+				} else {
+					source += ".*";
+				}
 				continue;
 			}
 			source += "[^/]*";
