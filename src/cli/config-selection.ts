@@ -116,6 +116,11 @@ async function loadEffectiveConfig(
 	const protectedResources = [...projectResources.files, ...projectResources.skillDirectories];
 
 	if (options.configPath !== undefined) {
+		// 指定了配置文件就不再叠加工作区配置，但信任参数不该被无声吞掉：
+		// 使用者以为它生效了，实际没有任何影响。
+		if (options.trust !== undefined) {
+			writeStderr("--trust and --no-trust have no effect together with --config\n");
+		}
 		return {
 			config: userConfig.config,
 			providersConfig: userProviders,
@@ -156,7 +161,7 @@ async function loadEffectiveConfig(
 	const projectConfigPath = projectConfigFilePath(workRoot);
 	const projectProvidersPath = projectProvidersFilePath(workRoot);
 	const config = resources.includes(projectConfigPath)
-		? mergeConfigs(userConfig, ConfigFile.load(projectConfigPath))
+		? mergeConfigs(userConfig, ConfigFile.loadProject(projectConfigPath))
 		: userConfig.config;
 	const providersConfig = resources.includes(projectProvidersPath)
 		? mergeProviders(userProviders, loadProviders(projectProvidersPath))
@@ -216,6 +221,6 @@ export function readConfigQuietly(options: CliOptions, workRoot: string, trusted
 	const projectPath = projectConfigFilePath(workRoot);
 	const resources = findProjectResources(workRoot);
 	return resources.files.includes(projectPath)
-		? mergeConfigs(userConfig, ConfigFile.load(projectPath))
+		? mergeConfigs(userConfig, ConfigFile.loadProject(projectPath))
 		: userConfig.config;
 }

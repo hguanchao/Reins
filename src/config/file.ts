@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describeError } from "../shared/describe-error.ts";
 import { ConfigError } from "./error.ts";
+import { aliasOf } from "./keys.ts";
 import { configFilePath } from "./paths.ts";
 import {
 	assertNoUnknownKeys,
@@ -173,34 +174,6 @@ const MCP_SERVER_KEYS: readonly string[] = [
  * 配置读取一律先找主名称、再找别名；两个都写且值不同就报错。表名（mcp_servers）与
  * MCP 条目里的字段也按同一张表处理。
  */
-const KEY_ALIASES: Readonly<Record<string, string>> = {
-	reasoning_effort: "reasoningEffort",
-	context_window: "contextWindow",
-	max_tokens: "maxTokens",
-	max_retries: "maxRetries",
-	stream_idle_timeout: "streamIdleTimeout",
-	http_proxy: "httpProxy",
-	shell_path: "shellPath",
-	compact_model: "compactModel",
-	review_model: "reviewModel",
-	max_turns: "maxTurns",
-	spill_threshold: "spillThreshold",
-	compact_at: "compactAt",
-	keep_recent: "keepRecent",
-	summary_timeout: "summaryTimeout",
-	mcp_servers: "mcpServers",
-};
-
-const ALIAS_LOOKUP = new Map<string, string>(
-	Object.entries(KEY_ALIASES).flatMap(([snake, camel]) => [
-		[snake, camel],
-		[camel, snake],
-	]),
-);
-
-function aliasOf(key: string): string | undefined {
-	return ALIAS_LOOKUP.get(key);
-}
 
 function aliasPath(path: readonly string[]): readonly string[] | undefined {
 	const key = path[path.length - 1];
@@ -242,11 +215,21 @@ export class ConfigFile {
 	}
 
 	static parse(source: string, file: string): ConfigFile {
-		return parseConfigFile(source, file);
+		return parseConfigFile(source, file, false);
 	}
 
 	static load(file: string = configFilePath()): ConfigFile {
-		return parseConfigFile(readTextFile(file), file);
+		return parseConfigFile(readTextFile(file), file, false);
+	}
+
+	/**
+	 * 读项目级配置。
+	 *
+	 * 项目配置只覆盖它写了的项，其余沿用用户配置，所以不要求它自带 provider/model：
+	 * 一份只想改压缩阈值的项目配置不该被迫抄一遍完整的模型选择，抄了反而会盖掉使用者的选择。
+	 */
+	static loadProject(file: string): ConfigFile {
+		return parseConfigFile(readTextFile(file), file, true);
 	}
 
 	/** 该键在原文里是否被显式写过；别名也算。 */
@@ -267,7 +250,7 @@ export function parseConfig(source: string, file: string): Config {
 	return ConfigFile.parse(source, file).config;
 }
 
-function parseConfigFile(source: string, file: string): ConfigFile {
+function parseConfigFile(source: string, file: string, partial: boolean): ConfigFile {
 	// 解析与校验两阶段的错误都要带上文件路径：缺了它使用者只能看到「第 3 行」，不知道是哪个文件
 	return wrapParseErrors(file, () => {
 		const document = new TomlDocument(source);
@@ -276,12 +259,16 @@ function parseConfigFile(source: string, file: string): ConfigFile {
 
 		const provider = readString(document, ["provider"]);
 		const model = readString(document, ["model"]);
-		if (provider === undefined) throw new ConfigError("Missing provider");
-		if (model === undefined) throw new ConfigError("Missing model");
+		// 项目配置允许只写要覆盖的项。占位空串不会外泄：合并时按「原文里写没写这个键」取值，
+		// 没写的项一律沿用用户配置。
+		if (!partial) {
+			if (provider === undefined) throw new ConfigError("Missing provider");
+			if (model === undefined) throw new ConfigError("Missing model");
+		}
 
 		const config: Config = {
-			provider,
-			model,
+			provider: provider ?? "",
+			model: model ?? "",
 			reasoningEffort:
 				readEnumField(document, ["reasoning_effort"], THINKING_LEVELS) ?? DEFAULT_REASONING_EFFORT,
 			contextWindow: readIntegerField(document, ["context_window"], 1),

@@ -52,4 +52,49 @@ describe("写回模型选择", () => {
 		assert.match(text, /provider = "p"/);
 		assert.match(text, /# keep/);
 	});
+
+	it("配置里写的是 camelCase 时改原键，而不是再补一条 snake_case", () => {
+		const file = join(directory, "camel.toml");
+		writeFileSync(file, 'provider = "p"\nmodel = "m"\nreasoningEffort = "low"\n', "utf8");
+
+		updateUserConfigValue(["reasoning_effort"], () => "high", file);
+
+		const text = readFileSync(file, "utf8");
+		assert.match(text, /reasoningEffort = "high"/);
+		// 补出第二条会让下次读取报「两个都写且不一致」，整份配置失效
+		assert.doesNotMatch(text, /reasoning_effort/);
+	});
+
+	it("带 BOM 的配置也能写回，且 BOM 保留", () => {
+		const file = join(directory, "bom.toml");
+		writeFileSync(file, `\uFEFFprovider = "p"\nmodel = "m"\n`, "utf8");
+
+		updateUserConfigValue(["provider"], () => "q", file);
+
+		const text = readFileSync(file, "utf8");
+		assert.equal(text.startsWith("\uFEFF"), true);
+		assert.match(text, /provider = "q"/);
+	});
+
+	it("文件末尾没有换行时插入新键不会拼坏行", () => {
+		const file = join(directory, "no-newline.toml");
+		// 手改过的配置常删掉最后一行换行
+		writeFileSync(file, 'provider = "p"\nmodel = "m"', "utf8");
+
+		updateUserConfigValue(["reasoning_effort"], () => "high", file);
+
+		const text = readFileSync(file, "utf8");
+		assert.match(text, /model = "m"\nreasoning_effort = "high"/);
+	});
+
+	it("父表以点号键存在时不再补表头", () => {
+		const file = join(directory, "dotted.toml");
+		writeFileSync(file, 'provider = "p"\nmodel = "m"\nplugins.disabled = []\n', "utf8");
+
+		updateUserConfigValue(["plugins", "disabled"], () => ["a"], file);
+
+		const text = readFileSync(file, "utf8");
+		assert.doesNotMatch(text, /\[plugins\]/);
+		assert.match(text, /plugins\.disabled = \[/);
+	});
 });

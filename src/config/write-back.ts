@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { describeError } from "../shared/describe-error.ts";
@@ -55,8 +55,13 @@ export function updateModelSelection(
 /** 读出原文、执行修改、再一次性写回；任何一步失败都不落盘。 */
 function mutateUserConfig(file: string, mutate: (document: TomlDocument) => void): void {
 	let document: TomlDocument;
+	let hasBom = false;
 	try {
-		document = new TomlDocument(existsSync(file) ? readFileSync(file, "utf8") : "");
+		const source = existsSync(file) ? readFileSync(file, "utf8") : "";
+		// 读路径会剥 BOM，写路径必须也剥：否则解析器在第一个字符就报 Missing key name，
+		// 而这份文件明明能正常启动。
+		hasBom = source.startsWith("\uFEFF");
+		document = new TomlDocument(hasBom ? source.slice(1) : source);
 	} catch (error) {
 		throw new ConfigError(`Cannot read config: ${describeError(error)}`, { file });
 	}
@@ -64,7 +69,16 @@ function mutateUserConfig(file: string, mutate: (document: TomlDocument) => void
 	try {
 		mkdirSync(dirname(file), { recursive: true });
 		mutate(document);
-		writeFileSync(file, document.source, "utf8");
+		// 先写临时文件再改名：writeFileSync 会先截断，写一半失败就毁掉了使用者唯一的一份配置。
+		const content = hasBom ? `\uFEFF${document.source}` : document.source;
+		const temporary = `${file}.${process.pid}.tmp`;
+		try {
+			writeFileSync(temporary, content, "utf8");
+			renameSync(temporary, file);
+		} catch (error) {
+			rmSync(temporary, { force: true });
+			throw error;
+		}
 	} catch (error) {
 		throw new ConfigError(`Cannot write config: ${describeError(error)}`, { file });
 	}
