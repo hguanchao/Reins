@@ -297,7 +297,9 @@ function finishItem(
 	switch (item.type) {
 		case "reasoning": {
 			const text = joinText(item.summary, "\n\n") || joinText(item.content, "\n\n");
-			if (text.length > 0) accumulator.setThinkingText(index, text);
+			// 先建块再记签名：没有摘要文本的 reasoning 项（summary 为空数组是合法的）也要
+			// 留下一个块，否则签名与 encrypted_content 无处可挂，下一轮就少了一项。
+			accumulator.setThinkingText(index, text);
 			// 整项原样保存：下一轮要连同 id 与加密内容一起回传
 			accumulator.setThinkingSignature(index, JSON.stringify(item));
 			return;
@@ -380,7 +382,7 @@ function toInput(messages: readonly LlmMessage[], supportsImages: boolean): read
 							},
 							reasoning: false,
 						});
-					} else {
+					} else if (block.type === "toolCall") {
 						const { callId, itemId } = splitToolCallId(block.id);
 						items.push({
 							item: {
@@ -393,6 +395,7 @@ function toInput(messages: readonly LlmMessage[], supportsImages: boolean): read
 							reasoning: false,
 						});
 					}
+					// redactedThinking 只在 Anthropic 协议里有意义，这套协议不回放
 				}
 				if (items.some((entry) => !entry.reasoning)) {
 					for (const entry of items) input.push(entry.item);

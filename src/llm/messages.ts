@@ -31,7 +31,23 @@ export interface LlmToolCallBlock {
 	readonly argumentsError?: string;
 }
 
-export type LlmContentBlock = LlmTextBlock | LlmThinkingBlock | LlmToolCallBlock;
+/**
+ * 被安全策略加密的思考块。
+ *
+ * Anthropic 在命中安全过滤时把思考内容整体加密后返回；带思考的多轮工具调用里必须把它
+ * 原样回传，否则后续请求会被拒或丢失思考上下文。内容对我们是不可读的，只能原样搬运。
+ */
+export interface LlmRedactedThinkingBlock {
+	readonly type: "redactedThinking";
+	/** 端点给出的加密数据 */
+	readonly data: string;
+}
+
+export type LlmContentBlock =
+	| LlmTextBlock
+	| LlmThinkingBlock
+	| LlmToolCallBlock
+	| LlmRedactedThinkingBlock;
 
 /** 用户消息里的图片。数据是 base64，不带 data URL 前缀。 */
 export interface LlmImageBlock {

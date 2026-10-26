@@ -85,6 +85,15 @@ export class ContentAccumulator {
 	}
 
 	/**
+	 * 记下一个被加密的思考块。
+	 *
+	 * 这种块没有增量、也没有文本：内容整体加密后一次给出，必须原样回传才能让后续请求成立。
+	 */
+	setRedactedThinking(index: number, data: string): void {
+		this.#blocks[index] = { type: "redactedThinking", data };
+	}
+
+	/**
 	 * 收尾一个块。工具参数的 JSON 在这里解析成对象。
 	 *
 	 * `json` 是协议在块结束时给出的完整参数。给了就以它为准：中途的分片可能缺失或乱序，

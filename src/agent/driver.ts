@@ -118,23 +118,39 @@ export class TurnDriver {
 	async #runTurn(signal: AbortSignal): Promise<"continue" | "end"> {
 		await this.emit({ type: "turn_start" });
 
-		const stream = this.#deps.client.stream(this.#buildRequest(signal));
-		for await (const event of stream) {
-			if (event.type === "text_delta") await this.emit({ type: "text_delta", text: event.text });
-			else if (event.type === "reasoning_delta") {
-				await this.emit({ type: "reasoning_delta", text: event.text });
-			} else if (event.type === "tool_call_start") {
-				// 参数还在流里，工具没开始跑；界面据此把「响应」与「调用工具」分开
-				await this.emit({ type: "writing_tool_call", name: event.name });
+		// 监听者抛错时要能中止这次请求：给它一个自己的中止器，与调用方的 signal 串联。
+		const stop = new AbortController();
+		const onOuterAbort = (): void => stop.abort();
+		signal.addEventListener("abort", onOuterAbort, { once: true });
+		const stream = this.#deps.client.stream(this.#buildRequest(stop.signal));
+		try {
+			for await (const event of stream) {
+				if (event.type === "text_delta") await this.emit({ type: "text_delta", text: event.text });
+				else if (event.type === "reasoning_delta") {
+					await this.emit({ type: "reasoning_delta", text: event.text });
+				} else if (event.type === "tool_call_start") {
+					// 参数还在流里，工具没开始跑；界面据此把「响应」与「调用工具」分开
+					await this.emit({ type: "writing_tool_call", name: event.name });
+				}
 			}
+		} catch (error) {
+			// 监听者抛错时请求还在后台消费响应体：不中止就会一直读到结束，事件全堆在缓冲区里，
+			// 这一轮的助手消息也写不进会话。
+			stop.abort();
+			throw error;
+		} finally {
+			signal.removeEventListener("abort", onOuterAbort);
 		}
 
 		const result = await stream.result();
 		await this.emit({ type: "turn_end", stopReason: result.stopReason });
 
-		// 规模与用量都以提供方回报为准：这是唯一能反映真实上下文大小的数字
+		// 规模与用量都以提供方回报为准：这是唯一能反映真实上下文大小的数字。
+		// 但只信非零值：有的网关回 {input:0, output:0} 或只给 output，把 0 当成实测值会让
+		// 压缩阈值永远算不过，自动压缩从此不再触发。
 		if (result.usage !== undefined) {
-			this.#contextTokens = contextTokens(result.usage);
+			const total = contextTokens(result.usage);
+			if (total > 0) this.#contextTokens = total;
 			await this.#deps.session.append({
 				type: "usage",
 				provider: this.#deps.provider.id,
@@ -156,6 +172,10 @@ export class TurnDriver {
 			return "end";
 		}
 		if (result.stopReason === "error") {
+			// 请求失败多半就是因为上下文超限。此时若继续沿用上一次成功的规模，压缩判定会一直
+			// 认为「还没超」，于是原样重发、再次被拒——会话卡死在同一个错误上。清掉实测值，
+			// 下一轮退回按消息估算，压缩才有机会触发。
+			this.#contextTokens = undefined;
 			await this.#recordCutOff(result, result.errorMessage ?? "unknown error");
 			await this.emit({ type: "error", message: result.errorMessage ?? "unknown error" });
 			return "end";
@@ -165,7 +185,17 @@ export class TurnDriver {
 		await this.#deps.session.append({ type: "message", message: assistant });
 
 		const calls = assistantToolCalls(assistant);
-		if (calls.length === 0) return "end";
+		if (calls.length === 0) {
+			// 没有工具调用时被长度截断：正文只写了一半。不告诉使用者，半截回答看起来和
+			// 完整回答一模一样。
+			if (result.stopReason === "length") {
+				await this.emit({
+					type: "notice",
+					message: "The response hit the output limit and was cut off; the last message is incomplete.",
+				});
+			}
+			return "end";
+		}
 
 		if (result.stopReason === "length") {
 			// 输出被长度上限截断时，流式的参数可能只是前半截。拿去做执行是危险的：
@@ -209,7 +239,24 @@ export class TurnDriver {
 
 	async #runTool(call: LlmToolCallBlock, signal: AbortSignal): Promise<ToolOutcome> {
 		if (call.argumentsError !== undefined) {
-			// 参数不是合法 JSON 时不能拿空对象去执行：那等于替使用者猜了一个调用
+			// 参数不是合法 JSON 时不能拿空对象去执行：那等于替使用者猜了一个调用。
+			// 但调用行仍要发出去：不发的话界面上只会看到这一轮突然停下，使用者无从判断
+			// 是模型说完了还是调用失败了。
+			await this.emit({
+				type: "tool_start",
+				callId: call.id,
+				name: call.name,
+				args: {},
+			});
+			await this.emit({
+				type: "tool_end",
+				callId: call.id,
+				name: call.name,
+				isError: true,
+				durationMs: 0,
+				summary: call.argumentsError,
+				content: call.argumentsError,
+			});
 			return { callId: call.id, toolName: call.name, content: call.argumentsError, isError: true };
 		}
 
@@ -272,6 +319,22 @@ export class TurnDriver {
 				});
 			}
 			return;
+		}
+		// 只摘要掉一条、而它本身就是超大的单条消息（粘贴的长文、关闭 spill 后的巨型工具
+		// 结果）时，压缩几乎不会缩小上下文，下一轮还会再触发、再摘一次摘要本身。
+		// 这种情况如实说明，不再浪费一次摘要请求。
+		if (!forced && cut === 1 && tokensBefore > 0) {
+			const first = state.messages[0];
+			const onlyMessage = first === undefined ? 0 : estimateTokens([first]);
+			if (onlyMessage > compactor.keepBudget) {
+				await this.emit({
+					type: "compaction_skipped",
+					message:
+						"A single message is larger than the keep budget, so compacting cannot shrink the context. " +
+						"Remove that message or start a new session.",
+				});
+				return;
+			}
 		}
 
 		await this.emit({ type: "compaction_start", messages: cut, tokensBefore });

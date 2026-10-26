@@ -21,6 +21,9 @@ const COMPACT_RATIO = 0.8;
 /** 压缩后保留最近这一比例的上下文原文，更早的部分交给摘要。 */
 const KEEP_RATIO = 0.25;
 
+/** 被摘要的前缀最多占窗口的这个比例：剩下的留给摘要输出与系统提示。 */
+const PREFIX_RATIO = 0.5;
+
 /**
  * 规划压缩时使用的窗口。
  *
@@ -102,14 +105,22 @@ export class Compactor {
 		return tokens >= this.#deps.contextWindow * (this.#deps.compactAt ?? COMPACT_RATIO);
 	}
 
+	/** 压缩后要保留的上下文额度（token）。 */
+	get keepBudget(): number {
+		return this.#deps.contextWindow * (this.#deps.keepRecent ?? KEEP_RATIO);
+	}
+
 	/**
 	 * 要摘要掉前面多少条消息；0 表示没有可压缩的部分。
 	 *
 	 * 从后往前凑到保留额度为止，因此最近的内容一定是原文。边界不能落在工具结果上：它对应的
 	 * 那次调用如果被摘要掉，端点会因为「没有对应调用的工具结果」拒绝整个请求。
+	 *
+	 * 两个方向都要有上限。只限尾部不够：切到小窗口模型后，被摘要的那一大段会超出摘要请求
+	 * 自己的上下文，摘要必然失败，而下一轮又会重试同一段。
 	 */
 	plan(messages: readonly LlmMessage[]): number {
-		const budget = this.#deps.contextWindow * (this.#deps.keepRecent ?? KEEP_RATIO);
+		const budget = this.keepBudget;
 		let keep = 0;
 		let total = 0;
 		for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -120,6 +131,21 @@ export class Compactor {
 
 		let cut = messages.length - keep;
 		while (cut > 0 && messages[cut].role === "toolResult") cut -= 1;
+		if (cut === 0) return 0;
+
+		// 前缀也要挤进摘要请求的窗口：留一半给摘要输出与系统提示，超出就从尾部回收几条，
+		// 直到被摘要的部分装得下（至少要留下一条，否则就没有可压的了）。
+		const prefixBudget = this.#deps.contextWindow * PREFIX_RATIO;
+		let prefixTokens = 0;
+		for (let index = 0; index < cut; index += 1) prefixTokens += estimateMessageTokens(messages[index]);
+		while (cut > 1 && prefixTokens > prefixBudget) {
+			cut -= 1;
+			prefixTokens -= estimateMessageTokens(messages[cut]);
+			while (cut > 1 && messages[cut].role === "toolResult") {
+				cut -= 1;
+				prefixTokens -= estimateMessageTokens(messages[cut]);
+			}
+		}
 		return cut;
 	}
 
@@ -212,6 +238,7 @@ function estimateMessageTokens(message: LlmMessage): number {
 			let total = MESSAGE_OVERHEAD_TOKENS;
 			for (const block of message.content) {
 				if (block.type === "toolCall") total += roughTokens(`${block.name}${JSON.stringify(block.arguments)}`);
+				else if (block.type === "redactedThinking") total += roughTokens(block.data);
 				else total += roughTokens(block.text);
 			}
 			return total;

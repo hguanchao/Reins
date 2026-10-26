@@ -102,6 +102,19 @@ describe("压缩计划", () => {
 
 		assert.ok(large < small, `keep 0.5 应保留更多：cut ${large} < ${small}`);
 	});
+
+	it("被摘要的前缀也受窗口约束：切到小窗口模型后不会整段超限", () => {
+		// 只约束尾部不够：前缀若超出摘要请求自己的窗口，摘要必然失败，下一轮又重试同一段
+		const messages = Array.from({ length: 20 }, (_, index) =>
+			userMessage(`m${index} ${"x".repeat(400)}`),
+		);
+		const cut = compactor({ contextWindow: 1000, keepRecent: 0.25 }).plan(messages);
+
+		const prefixTokens = estimateTokens(messages.slice(0, cut));
+		// 前缀最多占窗口的一半（另一半留给摘要输出与系统提示）
+		assert.ok(prefixTokens <= 500, `prefix tokens ${prefixTokens} 超过窗口一半`);
+		assert.ok(cut >= 1, "至少要留下一条可摘要的消息");
+	});
 });
 
 describe("压缩阈值", () => {

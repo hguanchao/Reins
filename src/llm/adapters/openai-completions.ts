@@ -103,6 +103,8 @@ export class OpenAiCompletionsClient extends ProtocolClient {
 		let responseModel = this.model.id;
 		/** 是否见到了 [DONE] */
 		let done = false;
+		/** 端点不给 tool_call.index 时按出现顺序分配的计数器 */
+		const nextImplicitIndex = { value: 0 };
 
 		await this.postStream(
 			request,
@@ -136,7 +138,7 @@ export class OpenAiCompletionsClient extends ProtocolClient {
 				if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
 					finishReason = choice.finish_reason;
 				}
-				if (choice.delta != null) applyDelta(choice.delta, accumulator, emit);
+				if (choice.delta != null) applyDelta(choice.delta, accumulator, emit, nextImplicitIndex);
 			},
 		);
 
@@ -192,6 +194,7 @@ function applyDelta(
 	delta: StreamDelta,
 	accumulator: ContentAccumulator,
 	emit: (event: LlmEvent) => void,
+	nextImplicitIndex: { value: number },
 ): void {
 	const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.reasoning_text;
 	if (typeof reasoning === "string" && reasoning.length > 0) {
@@ -205,7 +208,15 @@ function applyDelta(
 	}
 
 	for (const call of delta.tool_calls ?? []) {
-		const index = TOOL_CALL_BASE + (call.index ?? 0);
+		// 兼容端点可能不给 index：那时不能一律用 0，否则同一分片里的第二个调用会覆盖第一个
+		// 的 id 与名称，两段参数还拼进同一个缓冲区，最终两个调用一起丢。按出现顺序分配。
+		let index: number;
+		if (typeof call.index === "number") {
+			index = TOOL_CALL_BASE + call.index;
+		} else {
+			index = TOOL_CALL_BASE + nextImplicitIndex.value;
+			nextImplicitIndex.value += 1;
+		}
 		if (accumulator.startToolCall(index, call.id ?? "", call.function?.name ?? "")) {
 			emit({
 				type: "tool_call_start",

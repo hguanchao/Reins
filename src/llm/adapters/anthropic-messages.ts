@@ -28,6 +28,8 @@ interface WireBlock {
 	readonly text?: string;
 	readonly thinking?: string;
 	readonly signature?: string;
+	/** redacted_thinking 块的加密内容 */
+	readonly data?: string;
 	readonly id?: string;
 	readonly name?: string;
 	readonly input?: unknown;
@@ -201,6 +203,11 @@ function applyEvent(
 				if (accumulator.startToolCall(index, block.id ?? "", block.name ?? "")) {
 					emit({ type: "tool_call_start", index, id: block.id ?? "", name: block.name ?? "" });
 				}
+				return;
+			}
+			// 被加密的思考块没有增量，内容整体在这里给出：必须原样保存，下一轮要带回去
+			if (block?.type === "redacted_thinking") {
+				accumulator.setRedactedThinking(index, block.data ?? "");
 				return;
 			}
 			// 文本与思考块在首个增量到来时自动建出来，这里不必处理
@@ -393,6 +400,10 @@ function toWireAssistant(content: readonly LlmContentBlock[]): WireBlock[] {
 				break;
 			case "toolCall":
 				blocks.push({ type: "tool_use", id: block.id, name: block.name, input: block.arguments });
+				break;
+			case "redactedThinking":
+				// 加密思考块原样回传：它是协议要求的一部分，内容本身不可读也不需要读
+				blocks.push({ type: "redacted_thinking", data: block.data });
 				break;
 		}
 	}

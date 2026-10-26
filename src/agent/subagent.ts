@@ -95,7 +95,7 @@ export interface SubagentContext {
 }
 
 /** done 是它自己说完了；其余几种都意味着这件事没有做完，汇报里必须说清楚。 */
-type SubagentStopReason = "done" | "steps" | "context" | "error" | "aborted";
+type SubagentStopReason = "done" | "steps" | "context" | "error" | "aborted" | "truncated" | "empty";
 
 interface SubagentOutcome {
 	readonly report: string;
@@ -162,13 +162,35 @@ export class Subagent {
 
 			const calls = assistantToolCalls(assistant);
 			if (calls.length === 0) {
+				// 输出被长度上限截断时，这段汇报只是半截。把它当成完整结论交回去，父模型会
+				// 据此继续改代码——所以必须标成失败，而不是「done」。
+				if (result.stopReason === "length") {
+					return this.#finish(
+						{
+							report: text.length > 0 ? text : "The subagent produced no report.",
+							steps: step,
+							stopReason: "truncated",
+						},
+						startedAt,
+						lastActivity,
+						totalTokens,
+					);
+				}
 				// 不再要工具就是要交活了。一句话都没说时不能当成做完了
+				if (text.length === 0) {
+					return this.#finish(
+						{
+							report: "The subagent produced no report.",
+							steps: step,
+							stopReason: "empty",
+						},
+						startedAt,
+						lastActivity,
+						totalTokens,
+					);
+				}
 				return this.#finish(
-					{
-						report: text.length > 0 ? text : "The subagent produced no report.",
-						steps: step,
-						stopReason: "done",
-					},
+					{ report: text, steps: step, stopReason: "done" },
 					startedAt,
 					lastActivity,
 					totalTokens,
