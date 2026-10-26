@@ -80,3 +80,22 @@ describe("工具参数校验", () => {
 		assert.match(result.ok === false ? result.message : "", /unknown key anything/);
 	});
 });
+
+describe("参数校验的原型链防护", () => {
+	const schema = {
+		type: "object" as const,
+		properties: { path: { type: "string" as const } },
+		required: ["path"],
+	};
+
+	it("constructor、toString 之类的键仍算未知键", () => {
+		// properties[key] 会取到 Object.prototype 上的成员，那些键会被误认为「已声明」
+		assert.equal(validateToolArguments(schema, { path: "a", constructor: 123 }).ok, false);
+		assert.equal(validateToolArguments(schema, { path: "a", toString: 1 }).ok, false);
+		assert.equal(validateToolArguments(schema, { path: "a", hasOwnProperty: 1 }).ok, false);
+	});
+
+	it("声明过的键照常通过", () => {
+		assert.equal(validateToolArguments(schema, { path: "a" }).ok, true);
+	});
+});

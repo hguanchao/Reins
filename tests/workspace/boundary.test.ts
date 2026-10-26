@@ -56,6 +56,50 @@ describe("真实路径解析", () => {
 			rmSync(directory, { recursive: true, force: true });
 		}
 	});
+
+	it("悬空符号链接解析到目标位置，而不是链接自身", (t) => {
+		const directory = mkdtempSync(join(tmpdir(), "reins-boundary-"));
+		try {
+			const root = join(directory, "root");
+			const outside = join(directory, "outside");
+			mkdirSync(root);
+			mkdirSync(outside);
+			const target = join(outside, "not-created-yet.txt");
+			const link = join(root, "dangling");
+			try {
+				symlinkSync(target, link, "file");
+			} catch {
+				t.skip("symlinks are not available in this environment");
+				return;
+			}
+
+			const resolved = resolveRealPath(link);
+			// 若返回 root/dangling，沙箱会认为「字面路径在根内」而放行，写操作就会跟随链接落到根外
+			assert.equal(isPathInside(realpathSync(root), resolved), false);
+			assert.equal(resolved.endsWith("not-created-yet.txt"), true);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("悬空链接指向根内时仍判为根内", (t) => {
+		const directory = mkdtempSync(join(tmpdir(), "reins-boundary-"));
+		try {
+			const root = join(directory, "root");
+			mkdirSync(root);
+			const link = join(root, "inner");
+			try {
+				symlinkSync(join(root, "missing.txt"), link, "file");
+			} catch {
+				t.skip("symlinks are not available in this environment");
+				return;
+			}
+
+			assert.equal(isPathInside(realpathSync(root), resolveRealPath(link)), true);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("工作区路径边界", () => {

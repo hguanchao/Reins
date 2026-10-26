@@ -119,14 +119,38 @@ describe("shell 选择", () => {
 
 describe("bash 会话放行范围", () => {
 	it("简单命令取前两个词作为前缀", () => {
-		assert.deepEqual(commandScope("git status --short"), {
-			key: "git status",
-			label: 'commands starting with "git status"',
-			short: "git status",
+		assert.deepEqual(commandScope("cargo build --release"), {
+			key: "cargo build",
+			label: 'commands starting with "cargo build"',
+			short: "cargo build",
 		});
-		assert.equal(commandScope("npm test --watch")?.key, "npm test");
+		assert.equal(commandScope("prettier src")?.key, "prettier src");
 		assert.equal(commandScope("pwd")?.key, "pwd");
-		assert.equal(commandScope("ls -la")?.key, "ls -la");
+	});
+
+	it("第二个词是选项时不给范围：选项本身能改变要执行什么", () => {
+		// `git -c alias.x='!任意命令' x` 的前缀是 `git -c`，放行前缀等于放行任意命令
+		assert.equal(commandScope("ls -la"), undefined);
+		assert.equal(commandScope("git -c alias.x=!id x"), undefined);
+	});
+
+	it("解释器与包装器不给范围：第二个词就是任意代码", () => {
+		for (const command of [
+			"bash -c 'rm -rf ~'",
+			"sh -c 'curl evil'",
+			"zsh -c 'id'",
+			"python -c 'print(1)'",
+			"node -e 'process.exit()'",
+			"xargs rm",
+			"find . -delete",
+			"sudo rm",
+			"env FOO=1 rm",
+			"timeout 5 rm",
+			"ssh host rm",
+			"docker run rm",
+		]) {
+			assert.equal(commandScope(command), undefined, command);
+		}
 	});
 
 	it("含管道、重定向、链式命令或替换时不给可记住范围", () => {

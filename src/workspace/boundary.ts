@@ -1,5 +1,5 @@
-import { realpathSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { toAbsolutePath } from "./root.ts";
 
@@ -30,8 +30,21 @@ interface ResolvedPath {
  *
  * 写文件时目标往往还不存在，直接 realpath 会失败。此时必须解析父目录：一个指向根外的目录
  * 链接就能让「字面路径在根内」的判定失效。解析失败（权限、链接环等）一律向上抛，按拒绝处理。
+ *
+ * 悬空符号链接要单独处理：目标不存在时 realpath 同样报 ENOENT，若当成「普通缺失文件」把
+ * 名字原样拼回去，写操作会跟随链接落到根外。这里改用 lstat 识别最后一段，并用 readlink
+ * 把目标解析出来（目标本身还可能不存在，所以递归解析）。
  */
 export function resolveRealPath(path: string): string {
+	return resolveRealPathWithDepth(path, 0);
+}
+
+/** 链接链的解析深度上限：成环时不能无限递归。 */
+const MAX_LINK_DEPTH = 32;
+
+function resolveRealPathWithDepth(path: string, depth: number): string {
+	if (depth > MAX_LINK_DEPTH) throw new Error(`Too many levels of symbolic links: ${path}`);
+
 	const missing: string[] = [];
 	let current = path;
 	for (;;) {
@@ -40,11 +53,33 @@ export function resolveRealPath(path: string): string {
 			return missing.length === 0 ? real : join(real, ...missing.reverse());
 		} catch (error) {
 			if (!isNotFound(error)) throw error;
+			const linkTarget = danglingLinkTarget(current);
+			if (linkTarget !== undefined) {
+				// 悬空链接：按它指向的位置继续解析，最终拼回尚未创建的部分
+				const resolved = resolveRealPathWithDepth(linkTarget, depth + 1);
+				return missing.length === 0 ? resolved : join(resolved, ...missing.reverse());
+			}
 			const parent = dirname(current);
 			if (parent === current) return path;
 			missing.push(basename(current));
 			current = parent;
 		}
+	}
+}
+
+/**
+ * 若该路径本身是悬空符号链接，返回它指向的绝对路径；否则返回 undefined。
+ *
+ * realpath 对悬空链接报 ENOENT，与「文件不存在」无法区分，必须靠 lstat 再判断一次。
+ */
+function danglingLinkTarget(path: string): string | undefined {
+	try {
+		if (!lstatSync(path).isSymbolicLink()) return undefined;
+		return resolve(dirname(path), readlinkSync(path));
+	} catch {
+		// lstat 失败说明确实不存在，或者没有权限；两种都按「不是链接」处理，
+		// 交给上层继续按缺失路径解析（权限问题会在 realpath 那一步抛出）。
+		return undefined;
 	}
 }
 

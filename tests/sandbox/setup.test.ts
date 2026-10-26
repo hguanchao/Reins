@@ -13,9 +13,20 @@ const unavailable: SandboxBackend = {
 	wrap: (command) => command,
 };
 
-/** 自检期望被拒绝：包装后的命令直接失败，探针文件不会出现。 */
+/**
+ * 自检期望被拒绝：普通命令照常跑（冒烟命令要成功），但往工作区外写会被拦住。
+ *
+ * 真实后端就是这样：沙箱本身能跑命令，只是不许写工作区之外。
+ */
 const refusingBackend: SandboxBackend = {
 	id: "probe-refuse",
+	available: true,
+	wrap: (command) => (command.startsWith("echo probe >") ? "exit 1" : command),
+};
+
+/** 连命令都跑不起来的后端：必须当场报错，不能让每条命令都伪装成普通失败。 */
+const brokenBackend: SandboxBackend = {
+	id: "probe-broken",
 	available: true,
 	wrap: () => "exit 1",
 };
@@ -83,6 +94,18 @@ describe("沙箱装配", () => {
 		const root = workspaceRoot();
 		try {
 			assert.throws(() => createSandbox("workspace", root, [leakyBackend]), /isolation is not working/);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("后端连命令都跑不起来时当场报错，而不是让每条命令都失败", () => {
+		const root = workspaceRoot();
+		try {
+			assert.throws(
+				() => createSandbox("workspace", root, [brokenBackend]),
+				/cannot run commands at all/,
+			);
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

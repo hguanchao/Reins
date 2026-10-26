@@ -144,6 +144,7 @@ export function createBashTool(shellPath?: string, jobs?: JobManager): ToolDefin
 				output: output.text,
 				overflowed: output.overflowed,
 				exitCode: exited.code,
+				signal: exited.signal,
 				timedOut: stop.timedOut,
 				aborted: stop.aborted,
 				timeoutMs,
@@ -153,15 +154,78 @@ export function createBashTool(shellPath?: string, jobs?: JobManager): ToolDefin
 }
 
 /**
+ * 解释器与命令包装器：这些命令的第二个词本身就能指定「执行任意东西」，按前缀放行等于
+ * 放行一切。
+ *
+ * `bash -c '...'`、`python -c '...'`、`node -e '...'` 的载荷完全在引号里，前缀永远相同；
+ * `xargs rm`、`find . -delete` 同理——真正危险的部分落在前缀之外。这类命令一律不给
+ * 「总是允许」，只能逐次确认。
+ */
+const INTERPRETER_COMMANDS: ReadonlySet<string> = new Set([
+	"bash",
+	"sh",
+	"zsh",
+	"dash",
+	"ksh",
+	"fish",
+	"cmd",
+	"powershell",
+	"pwsh",
+	"python",
+	"python3",
+	"node",
+	"deno",
+	"bun",
+	"perl",
+	"ruby",
+	"php",
+	"lua",
+	"osascript",
+	"eval",
+	"exec",
+	"source",
+	"xargs",
+	"find",
+	"env",
+	"nice",
+	"time",
+	"sudo",
+	"doas",
+	"su",
+	"nohup",
+	"timeout",
+	"watch",
+	"ssh",
+	"scp",
+	"rsync",
+	"docker",
+	"podman",
+	"kubectl",
+	"helm",
+	"npx",
+	"pnpx",
+	"bunx",
+]);
+
+/**
  * bash 的会话放行范围：命令前缀（最多两个词）。
  *
- * 含 shell 操作符的命令不提供“总是允许”：一个前缀保存之后，链式命令会跟着被放行。前缀
- * 取前两个词，让 `git status`、`npm test` 这类常见组合能覆盖同族参数，又不至于宽到整个
- * 解释器。
+ * 含 shell 操作符的命令不提供“总是允许”：一个前缀保存之后，链式命令会跟着被放行。
+ *
+ * 只有「普通命令 + 非选项参数」才提供前缀。两条排除各有理由：
+ * 解释器与包装器的第二个词就是任意代码（见 INTERPRETER_COMMANDS）；第二个词是选项时，
+ * 选项本身常常能改变要执行什么（`git -c alias.x='!...' x` 就是任意命令），前缀便不再
+ * 描述实际行为。
  */
 export function commandScope(command: string): PermissionScope | undefined {
 	const tokens = tokenizeCommand(command);
 	if (tokens === undefined || tokens.length === 0) return undefined;
+
+	const head = (tokens[0] ?? "").toLowerCase();
+	if (INTERPRETER_COMMANDS.has(head)) return undefined;
+
+	const second = tokens[1];
+	if (second !== undefined && second.startsWith("-")) return undefined;
 
 	const prefix = tokens.slice(0, 2).join(" ");
 	return { key: prefix, label: `commands starting with "${prefix}"`, short: prefix };
@@ -219,6 +283,7 @@ function buildResult(input: {
 	readonly output: string;
 	readonly overflowed: boolean;
 	readonly exitCode: number | null;
+	readonly signal: string | null;
 	readonly timedOut: boolean;
 	readonly aborted: boolean;
 	readonly timeoutMs: number;
@@ -235,7 +300,8 @@ function buildResult(input: {
 	}
 
 	if (input.overflowed) {
-		parts.push(`[output exceeded ${MAX_CAPTURED_BYTES} bytes; earlier parts were dropped]`);
+		// 累积到上限后就不再收：丢掉的是后面的输出，不是前面的
+		parts.push(`[output exceeded ${MAX_CAPTURED_BYTES} bytes; later parts were dropped]`);
 	}
 	if (input.timedOut) {
 		parts.push(`[command did not finish within ${input.timeoutMs / 1000} seconds; killed with its child processes]`);
@@ -243,14 +309,26 @@ function buildResult(input: {
 	if (input.aborted) {
 		parts.push("[aborted]");
 	}
-	if (input.exitCode !== null && input.exitCode !== 0) {
+	// 被信号杀死时 code 为 null：不单独报出来，这次失败会看起来像成功
+	if (input.signal !== null) {
+		parts.push(`[command was killed by ${input.signal}]`);
+	} else if (input.exitCode !== null && input.exitCode !== 0) {
 		parts.push(`[command exited with code ${input.exitCode}]`);
 	}
 
-	const failed = input.timedOut || input.aborted || (input.exitCode !== null && input.exitCode !== 0);
+	const failed =
+		input.timedOut ||
+		input.aborted ||
+		input.signal !== null ||
+		(input.exitCode !== null && input.exitCode !== 0);
 	return {
 		content: parts.join("\n"),
 		isError: failed,
-		details: { exitCode: input.exitCode, timedOut: input.timedOut, aborted: input.aborted },
+		details: {
+			exitCode: input.exitCode,
+			signal: input.signal,
+			timedOut: input.timedOut,
+			aborted: input.aborted,
+		},
 	};
 }

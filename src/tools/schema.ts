@@ -110,7 +110,9 @@ function check(schema: JsonSchema, value: unknown, path: string, problems: strin
 			const properties = schema.properties;
 			if (properties === undefined) return;
 			for (const [key, item] of Object.entries(record)) {
-				const property = properties[key];
+				// 只认自有属性：properties[key] 会取到 Object.prototype 上的 constructor、
+				// toString 之类，那些键会被当成「已声明」，未知键校验就失效了。
+				const property = Object.hasOwn(properties, key) ? properties[key] : undefined;
 				if (property === undefined) {
 					// 多余的键一律报错：多半是模型把参数名写错了，静默忽略会让它以为设置生效了
 					problems.push(`${path} has an unknown key ${key}; valid keys: ${Object.keys(properties).join(", ")}`);

@@ -26,15 +26,28 @@ export class BubblewrapBackend implements SandboxBackend {
 	wrap(command: string, policy: SandboxPolicy): string | undefined {
 		if (!this.available) return undefined;
 
-		const args = ["bwrap", "--die-with-parent", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc"];
+		// 每个参数都要做 shell 引用：整条 argv 最终是交给外层 shell 解析的一段文本，
+		// 工作区路径里只要有空格或元字符，不引用就会参数错位，甚至在外层 shell 里
+		// 先被执行（那时沙箱还没建立）。
+		const args = [
+			"bwrap",
+			"--die-with-parent",
+			"--ro-bind",
+			"/",
+			"/",
+			"--dev",
+			"/dev",
+			"--proc",
+			"/proc",
+		];
 		if (policy.mode === "workspace") {
-			args.push("--bind", policy.root, policy.root);
-			// 临时目录单开一层内存盘：编译与测试几乎都要用它，而写进真实的 /tmp
-			// 就绕过了「只许改工作区」这条规则
+			// tmpfs 必须先挂：工作区可能就在 /tmp 下，后挂的 tmpfs 会把工作区挂载遮蔽掉，
+			// 沙箱里看到的是空目录，写入静默丢失。
 			args.push("--tmpfs", "/tmp");
+			args.push("--bind", policy.root, policy.root);
 		}
-		args.push("/bin/sh", "-c", quoteForShell(command));
-		return args.join(" ");
+		args.push("/bin/sh", "-c", command);
+		return args.map(quoteForShell).join(" ");
 	}
 }
 

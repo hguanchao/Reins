@@ -100,23 +100,28 @@ function reject(reason: string): ReviewOutcome {
 }
 
 function truncate(text: string): string {
-	return text.length > MAX_ARGUMENT_CHARS ? `${text.slice(0, MAX_ARGUMENT_CHARS)}…` : text;
+	if (text.length <= MAX_ARGUMENT_CHARS) return text;
+	// 必须明说被截断：否则把危险内容放在截断点之后的参数，在审查者眼里是一段无害前缀。
+	return `${text.slice(0, MAX_ARGUMENT_CHARS)}\n…[arguments truncated at ${MAX_ARGUMENT_CHARS} characters; the rest is not shown]`;
 }
 
 /**
  * 解析审查结论。
  *
- * 模型有时会把 JSON 包在说明文字或代码围栏里，所以先整体解析，不成再取第一对花括号之间的
- * 内容。两条路都走不通就按拒绝处理。
+ * 模型有时会把 JSON 包在说明文字或代码围栏里，所以先整体解析，不成再找围栏里的 JSON。
+ *
+ * 兜底那一步只认**围栏**，不认「第一对花括号」：审查提示把工具参数原样喂给模型，而参数
+ * 由被审查的内容控制。若从整段回复里抓第一对花括号，一句拒绝说明里引用的
+ * `{"allow": true}` 就会被当成结论，把拒绝读成允许。围栏是模型主动圈出结论的标记，
+ * 参数里的花括号不会带它。
  */
 export function parseVerdict(text: string): ReviewOutcome {
 	const direct = tryParse(text.trim());
 	if (direct !== undefined) return direct;
 
-	const start = text.indexOf("{");
-	const end = text.lastIndexOf("}");
-	if (start !== -1 && end > start) {
-		const inner = tryParse(text.slice(start, end + 1));
+	const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
+	if (fenced !== null) {
+		const inner = tryParse((fenced[1] ?? "").trim());
 		if (inner !== undefined) return inner;
 	}
 
