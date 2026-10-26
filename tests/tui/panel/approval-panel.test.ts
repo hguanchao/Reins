@@ -7,6 +7,7 @@ import {
 } from "../../../src/tui/panel/approval-panel.ts";
 import { ACCENT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
 import { THEME } from "../../../src/tui/render/theme.ts";
+import { displayWidth } from "../../../src/tui/render/text.ts";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");
@@ -144,5 +145,41 @@ describe("审批面板", () => {
 		assert.ok(rows[4]?.includes("[n] deny"));
 		assert.equal(rows[4]?.includes("› [a]"), false);
 		assert.equal(rows[4]?.includes("› [n]"), false);
+	});
+});
+
+describe("审批面板的内容净化", () => {
+	it("参数里的转义序列不会进入终端", () => {
+		// 模型给出的命令可以带 ESC 序列：不清掉就能在用户按下确认前清屏、移动光标，
+		// 让面板显示的与实际执行的不是同一条命令
+		const lines = renderApprovalPanel(60, {
+			tool: "bash",
+			risk: "destructive",
+			detail: "echo safe\u001b[2K\u001b[1Grm -rf /",
+		});
+		const joined = lines.join("");
+		assert.equal(joined.includes("\u001b[2K"), false);
+		assert.equal(joined.includes("\u001b[1G"), false);
+	});
+
+	it("OSC 序列同样被清掉", () => {
+		const lines = renderApprovalPanel(60, {
+			tool: "bash",
+			risk: "destructive",
+			detail: "a\u001b]52;c;ZXZpbA==\u0007b",
+		});
+		assert.equal(lines.join("").includes("\u001b]52"), false);
+	});
+
+	it("超长工具名不会让整行溢出面板宽度", () => {
+		const width = 40;
+		const lines = renderApprovalPanel(width, {
+			tool: "mcp_server__a_very_long_tool_name_that_goes_on_and_on",
+			risk: "destructive",
+			detail: "x",
+		});
+		for (const line of lines) {
+			assert.ok(displayWidth(plain(line)) <= width, `line wider than ${width}: ${plain(line)}`);
+		}
 	});
 });

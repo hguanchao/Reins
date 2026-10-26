@@ -1,6 +1,6 @@
 import { sanitizeLine } from "../../tools/describe.ts";
 import { formatCompactTokens, formatDuration } from "../../shared/format.ts";
-import { displayWidth, truncateToWidth } from "../render/text.ts";
+import { displayWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { swept, type AnimationFrame } from "../render/sweep.ts";
 import { bandBlankLine, bandedWrappedLines } from "./detail.ts";
@@ -90,12 +90,13 @@ function subagentGroupHead(group: TranscriptSubagentGroup, width: number): strin
 		group.durationMs !== undefined && group.totalTokens !== undefined
 			? ` · ⇣${formatCompactTokens(group.totalTokens)}`
 			: "";
-	const rest = `  ${counts} (${elapsed}${tokens})`;
-	const restWidth = displayWidth(rest);
-	const label = truncateToWidth(SUBAGENT_GROUP_LABEL, Math.max(0, width - displayWidth(prefix) - restWidth));
-	const padding = " ".repeat(
-		Math.max(0, width - displayWidth(prefix) - displayWidth(label) - restWidth),
-	);
+	// 窄终端上先丢 token、再丢耗时，最后截断标签:整行不能超过内容宽度，否则终端自动折行错位。
+	const full = `  ${counts} (${elapsed}${tokens})`;
+	const brief = `  ${counts}`;
+	const available = Math.max(0, width - displayWidth(prefix));
+	const rest = displayWidth(full) <= available ? full : displayWidth(brief) <= available ? brief : "";
+	const label = truncateToWidth(SUBAGENT_GROUP_LABEL, Math.max(0, available - displayWidth(rest)));
+	const padding = " ".repeat(Math.max(0, available - displayWidth(label) - displayWidth(rest)));
 	return `${prefix}${SUBAGENT_HEAD_COLOR}${label}${RESET}${SUBAGENT_COUNT_COLOR}${rest}${RESET}${padding}`;
 }
 
@@ -118,8 +119,19 @@ function subagentMemberLines(
 ): readonly string[] {
 	const indent = SUBAGENT_ITEM_INDENT;
 	const label = `Subagent${position}`;
-	// 失败行也显示任务名:原因不占清单行,双击展开看
-	const summary = truncateToWidth(member.task, SUBAGENT_TASK_WIDTH);
+	// 统计段:步数与耗时都进同一括号,段内 · 分隔(通用工具套规则)
+	const stats: string[] = [];
+	if (member.steps !== undefined) stats.push(`${member.steps} steps`);
+	if (member.durationMs !== undefined) stats.push(formatDuration(member.durationMs));
+	const fullMetric = stats.length === 0 ? "" : ` (${stats.join(" · ")})`;
+	// 摘要与统计都要挤进一行：先按可用宽度收缩摘要，仍放不下就整段丢掉统计。
+	// 只保证「至少一个空格」的间隔会让整行超出内容宽度，终端折行后整屏错位。
+	const available = Math.max(0, width - displayWidth(indent) - 2);
+	const metricWidth = displayWidth(fullMetric);
+	const summaryBudget = Math.min(SUBAGENT_TASK_WIDTH, Math.max(0, available - metricWidth - 2));
+	const summary = truncateToWidth(sanitizeForDisplay(member.task), summaryBudget);
+	const metric = displayWidth(summary) + metricWidth + 2 <= available ? fullMetric : "";
+	const gap = Math.max(0, available - displayWidth(summary) - displayWidth(metric));
 
 	if (member.status === "running") {
 		// 静态占位与动画行同构(运行符 + 标签 + 摘要),重建时整行换扫光与转圈帧
@@ -127,15 +139,6 @@ function subagentMemberLines(
 			`${indent}${SUBAGENT_RUNNING_COLOR}${SUBAGENT_BOLD}◐ ${label}  ${summary}${RESET}`,
 		];
 	}
-	// 统计段:步数与耗时都进同一括号,段内 · 分隔(通用工具套规则)
-	const stats: string[] = [];
-	if (member.steps !== undefined) stats.push(`${member.steps} steps`);
-	if (member.durationMs !== undefined) stats.push(formatDuration(member.durationMs));
-	const metric = stats.length === 0 ? "" : ` (${stats.join(" · ")})`;
-	const gap = Math.max(
-		1,
-		width - displayWidth(indent) - 2 - displayWidth(summary) - displayWidth(metric) - 2,
-	);
 	if (member.status === "failed") {
 		// 失败整行失败色:符号、标签、任务名一眼归为一处错误;展开时让位给原因色带
 		const failedHead = `${indent}${SUBAGENT_FAILED_COLOR}× ${label}  ${summary}${RESET}`;

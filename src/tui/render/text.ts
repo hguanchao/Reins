@@ -1,4 +1,5 @@
 import { eastAsianWidth } from "get-east-asian-width";
+import { stripVTControlCharacters } from "node:util";
 
 import { THEME } from "./theme.ts";
 
@@ -34,27 +35,34 @@ export function truncateToWidth(text: string, width: number): string {
 	return chars.slice(0, end).join("");
 }
 
-/** 按显示宽度折行；超长单词也按字符切开，保证每一行都不超过上限。 */
+/**
+ * 按显示宽度折行；超长单词也按字符切开，保证每一行都不超过上限。
+ *
+ * 换行符是硬断行：调用方给的常常是模型输出、文件内容或错误正文，里面本来就有换行。
+ * 把它当成宽度 1 的普通字符会让整段挤进一行，终端却按 LF 下移，帧就错位了。
+ */
 export function wrapText(text: string, limit: number): string[] {
 	if (limit <= 0) return [""];
 
-	const chars = Array.from(text);
 	const lines: string[] = [];
-	let line = "";
-	let used = 0;
+	for (const paragraph of sanitizeForDisplay(text).split("\n")) {
+		const chars = Array.from(paragraph);
+		let line = "";
+		let used = 0;
 
-	for (const char of chars) {
-		const charWidth = characterWidth(char);
-		if (used + charWidth > limit && line.length > 0) {
-			lines.push(line);
-			line = "";
-			used = 0;
+		for (const char of chars) {
+			const charWidth = characterWidth(char);
+			if (used + charWidth > limit && line.length > 0) {
+				lines.push(line);
+				line = "";
+				used = 0;
+			}
+			line += char;
+			used += charWidth;
 		}
-		line += char;
-		used += charWidth;
-	}
 
-	lines.push(line);
+		lines.push(line);
+	}
 	return lines;
 }
 
@@ -68,6 +76,15 @@ export function wrapWords(text: string, limit: number): string[] {
 	if (limit <= 0) return [""];
 
 	const lines: string[] = [];
+	// 换行符是硬断行：说明文字里常带换行（错误正文、frontmatter 块标量），必须按行拆开。
+	for (const paragraph of sanitizeForDisplay(text).split("\n")) {
+		wrapParagraph(paragraph, limit, lines);
+	}
+	return lines;
+}
+
+/** 单段（不含换行）的按词折行，结果追加进 lines。 */
+function wrapParagraph(text: string, limit: number, lines: string[]): void {
 	let line = "";
 	let used = 0;
 	const push = (): void => {
@@ -101,7 +118,6 @@ export function wrapWords(text: string, limit: number): string[] {
 	}
 
 	lines.push(line);
-	return lines;
 }
 
 /** 截到指定宽度；放不下时末尾补省略号，保证结果不超过宽度。 */
@@ -132,7 +148,7 @@ export function coloredLine(text: string, width: number, color: string): string 
  * 折行并悬挂缩进：首行带 prefix，续行缩进到 prefix 之后，整段同一个颜色。
  *
  * 对话流里「一条逻辑行占多个屏幕行」的块（说明、通知、任务条目）都用它，续行才不会
- * 折回行首盖住标记列。
+ * 折回行首盖住标记列。传入的文本来自模型、文件或插件，先清掉转义序列再排版。
  */
 export function wrappedLines(
 	text: string,
@@ -141,10 +157,20 @@ export function wrappedLines(
 	color: string,
 ): readonly string[] {
 	const prefixWidth = displayWidth(prefix);
-	const lines = wrapText(text, Math.max(0, width - prefixWidth));
+	const lines = wrapText(sanitizeForDisplay(text), Math.max(0, width - prefixWidth));
 	const continuation = " ".repeat(prefixWidth);
 
 	return lines.map((line, index) =>
 		coloredLine(`${index === 0 ? prefix : continuation}${line}`, width, color),
 	);
+}
+
+/**
+ * 清掉不可打印的终端控制序列。
+ *
+ * 界面上显示的文本多半不是使用者自己敲的——模型输出、文件内容、命令输出、插件消息都可能
+ * 带 ESC 序列。它们能清屏、移动光标、改写剪贴板，让「看到的」与「实际的」不一致。
+ */
+export function sanitizeForDisplay(text: string): string {
+	return stripVTControlCharacters(text).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
 }

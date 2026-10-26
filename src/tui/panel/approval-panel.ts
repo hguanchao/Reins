@@ -1,13 +1,13 @@
 import type { ApprovalPrompt } from "../../permission/approval.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
-import { displayToolName } from "../../tools/describe.ts";
+import { displayToolName, sanitizeLine } from "../../tools/describe.ts";
 import {
 	ACCENT_COLOR,
 	BORDER_COLOR,
 	PANEL_BG,
 	RESET,
 } from "./menu-panel.ts";
-import { displayWidth, truncateToWidth } from "../render/text.ts";
+import { displayWidth, fitToWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
 /**
@@ -107,8 +107,11 @@ function detailColor(prompt: ApprovalPrompt): string {
 
 /** 把工具展示名与参数铺成最多两行；第二行仍放不下就在末尾省略。 */
 function detailLines(width: number, prompt: ApprovalPrompt): DetailLines {
-	const tool = displayToolName(prompt.tool);
-	const prefixWidth = 2 + displayWidth(tool) + 2;
+	// 工具名与参数都来自模型，可能带转义序列：先清理再排版，否则面板内容可被伪造。
+	// 工具名过长时同样要截断，否则 prefixWidth 会超过面板宽度、整行溢出。
+	const maxTool = Math.max(1, Math.floor(width / 3));
+	const tool = fitToWidth(sanitizeLine(displayToolName(prompt.tool)), maxTool);
+	const prefixWidth = Math.min(width - 1, 2 + displayWidth(tool) + 2);
 	const limit = Math.max(1, width - prefixWidth);
 	const detail = compact(prompt.detail);
 
@@ -228,6 +231,6 @@ function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOp
 
 /** 参数是格式化过的 JSON 或命令文本，压成一行才能放进固定高度的面板。 */
 function compact(detail: string): string {
-	const oneLine = detail.replace(/\s+/g, " ").trim();
+	const oneLine = sanitizeLine(detail).replace(/\s+/g, " ").trim();
 	return oneLine.length > 0 ? oneLine : "(no arguments)";
 }

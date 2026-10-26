@@ -34,7 +34,7 @@ export const ERROR_STATUS = "Error";
 export function shortReason(reason: string): string {
 	const first = reason.split("\n", 1)[0] ?? "";
 	const clean = first.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
-	return clean.length > 40 ? `${clean.slice(0, 39)}…` : clean;
+	return truncateChars(clean, 40);
 }
 
 /** 附件读取失败时的单行原因；错误体常带换行，状态行只放得下第一行。 */
@@ -42,7 +42,14 @@ export function errorLine(error: unknown): string {
 	const message = describeError(error);
 	const first = message.split("\n", 1)[0] ?? "";
 	const clean = first.replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
-	return clean.length > 80 ? `${clean.slice(0, 79)}…` : clean;
+	return truncateChars(clean, 80);
+}
+
+/** 按码位截断并补省略号：按码元切会把 emoji 之类的代理对劈成半个字符。 */
+function truncateChars(text: string, limit: number): string {
+	const chars = Array.from(text);
+	if (chars.length <= limit) return text;
+	return `${chars.slice(0, limit - 1).join("")}…`;
 }
 
 /** 批准计划后交给模型的用户消息：整份计划重新进入上下文，不依赖摘要里是否留下了它。 */

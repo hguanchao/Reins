@@ -72,16 +72,28 @@ export function queuedEditKey(text: string): "recall" | "discard" | undefined {
 }
 
 /** 对话流滚动键；不与输入行的 Home/End 抢按键。 */
-export function scrollKey(text: string): "pageUp" | "pageDown" | "top" | undefined {
+export function scrollKey(text: string): "pageUp" | "pageDown" | "top" | "bottom" | undefined {
 	if (text === "\x1b[5~") return "pageUp";
 	if (text === "\x1b[6~") return "pageDown";
 	if (text === "\x1b[1;5H") return "top";
+	if (text === "\x1b[1;5F") return "bottom";
 	return undefined;
 }
 
 /** 去掉 SGR 鼠标事件，避免它们被当成普通输入。 */
 export function stripMouseEvents(text: string): string {
 	return text.replace(/\x1b\[<[0-9;]+[Mm]/g, "");
+}
+
+/**
+ * 去掉括起来的粘贴内容，只留下真实的按键。
+ *
+ * 模态界面（审批卡、菜单、整屏页）只认按键，不该读粘贴的正文：粘贴里随便一个换行就会被
+ * 当成回车、一个字母 y 就会被当成「允许」，等于让剪贴板内容替使用者做决定。返回空串说明
+ * 这一块全是粘贴内容，调用方应当整块忽略。
+ */
+export function stripPasteContent(text: string): string {
+	return text.replace(/\x1b\[200~[\s\S]*?(?:\x1b\[201~|$)/g, "");
 }
 
 export interface MouseInput {
@@ -299,20 +311,41 @@ function nextIndex(text: string, index: number): number {
 	return index + 1;
 }
 
-/** 多行输入里上下移动光标；单行输入交给历史。 */
+/**
+ * 多行输入里上下移动光标；单行输入交给历史。
+ *
+ * 列按码位算而不是按码元：上一行含 emoji 时按码元取列会落进代理对中间，接着输入字符就会
+ * 写出一个非法序列。
+ */
 export function moveInputVertical(text: string, cursor: number, delta: number): number | undefined {
 	const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-	const column = cursor - lineStart;
+	const column = codePointColumn(text, lineStart, cursor);
 	if (delta < 0) {
 		if (lineStart === 0) return undefined;
 		const previousEnd = lineStart - 1;
 		const previousStart = text.lastIndexOf("\n", Math.max(0, previousEnd - 1)) + 1;
-		return previousStart + Math.min(column, previousEnd - previousStart);
+		return columnToOffset(text, previousStart, previousEnd, column);
 	}
 	const lineEnd = text.indexOf("\n", cursor);
 	if (lineEnd < 0) return undefined;
 	const nextStart = lineEnd + 1;
 	const nextEnd = text.indexOf("\n", nextStart);
 	const end = nextEnd < 0 ? text.length : nextEnd;
-	return nextStart + Math.min(column, end - nextStart);
+	return columnToOffset(text, nextStart, end, column);
+}
+
+/** 从 start 到 end 之间的码位列数（把光标所在位置换算成列）。 */
+function codePointColumn(text: string, start: number, cursor: number): number {
+	let column = 0;
+	for (let index = start; index < cursor; index = nextIndex(text, index)) column += 1;
+	return column;
+}
+
+/** 把码位列换算成某个区间内的偏移；列超出该行长度时停在行尾。 */
+function columnToOffset(text: string, start: number, end: number, column: number): number {
+	let offset = start;
+	for (let used = 0; used < column && offset < end; used += 1) {
+		offset = nextIndex(text, offset);
+	}
+	return Math.min(offset, end);
 }

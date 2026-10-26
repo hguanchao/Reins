@@ -1,6 +1,6 @@
 import { formatDuration } from "../../shared/format.ts";
 import { swept, type AnimationFrame } from "../render/sweep.ts";
-import { displayWidth, fitToWidth, truncateToWidth } from "../render/text.ts";
+import { displayWidth, fitToWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
 /**
@@ -122,7 +122,7 @@ function todoHeaderLine(card: TranscriptTodo, width: number, frame?: AnimationFr
 			available - displayWidth(base) - displayWidth(`  ${frame.spinner} `),
 		);
 		if (budget >= 2) {
-			const name = fitToWidth(running.content, Math.min(TODO_RUNNING_NAME_WIDTH, budget));
+			const name = fitToWidth(sanitizeForDisplay(running.content), Math.min(TODO_RUNNING_NAME_WIDTH, budget));
 			nameWidth = displayWidth(name);
 			namePart = `  ${TODO_ACTIVE_COLOR}${BOLD}${frame.spinner} ${swept(name, frame.sweepPhase, THEME.accentDim, THEME.accentRgb)}`;
 		}
@@ -149,7 +149,7 @@ function todoItemLine(
 		0,
 		width - displayWidth(indent) - 2 - displayWidth(label) - 2,
 	);
-	const summary = truncateToWidth(item.content, budget);
+	const summary = truncateToWidth(sanitizeForDisplay(item.content), budget);
 
 	if (item.status === "completed") {
 		return `${indent}${TODO_DONE_COLOR}● ${THEME.reset}${TODO_DONE_COLOR}${BOLD}${label}${THEME.reset}  ${TODO_PENDING_COLOR}${summary}${THEME.reset}`;

@@ -1,7 +1,7 @@
 import { formatDuration } from "../../shared/format.ts";
 import type { JobStatus, JobView } from "../../tools/jobs.ts";
 import { actionLines, pageTitle, subtleLine } from "./chrome.ts";
-import { displayWidth, truncateToWidth } from "../render/text.ts";
+import { displayWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
 /**
@@ -44,17 +44,20 @@ export function jobListLines(jobs: readonly JobView[], width: number, cursor: nu
 
 export function jobOutputLines(job: JobView, output: string, width: number): readonly string[] {
 	const columns = Math.max(0, width);
+	// 命令可能是多行脚本：压成一行，否则会把页面的固定行数撑开
+	const command = singleLine(job.command);
 	const lines = [
 		pageTitle(`${OUTPUT_TITLE}${job.id}`, columns),
 		" ".repeat(columns),
-		`${RUNNING_COLOR}  ${truncateToWidth(job.command, Math.max(0, columns - 2))}${RESET}`,
+		`${RUNNING_COLOR}  ${truncateToWidth(command, Math.max(0, columns - 2))}${RESET}`,
 		`${META_COLOR}  ${truncateToWidth(jobSummary(job), Math.max(0, columns - 2))}${RESET}`,
 		" ".repeat(columns),
 	];
 
+	// \r 是进度条用来回到行首的：留在页面上会把前一段覆盖掉，逐行按最后一个 \r 之后取
 	const clean = output
 		.split("\n")
-		.map((line) => line.replace(/\t/g, "    "));
+		.map((line) => line.slice(line.lastIndexOf("\r") + 1).replace(/\t/g, "    "));
 	const start = Math.max(0, clean.length - MAX_OUTPUT_LINES);
 	if (start > 0) {
 		lines.push(subtleLine(`… ${start} earlier lines omitted · full output stays in the job buffer`, columns));
@@ -95,7 +98,7 @@ function jobRow(job: JobView, width: number, selected: boolean): string {
 	const id = job.id.padEnd(4);
 	const status = jobStatusLabel(job);
 	const detail = jobDetail(job);
-	const leftPlain = `${marker}${id}  ${job.command}`;
+	const leftPlain = `${marker}${id}  ${singleLine(job.command)}`;
 	const leftWidth = displayWidth(leftPlain);
 	const right = `${status}  ${detail}`;
 	const fitsRight = leftWidth + 2 + displayWidth(right) <= width;
@@ -141,8 +144,7 @@ export function jobElapsed(job: JobView): string {
 	return formatDuration((job.endedAt ?? Date.now()) - job.startedAt);
 }
 
-function jobDetail(job: JobView): string {
-	const elapsed = jobElapsed(job);
+function jobDetail(job: JobView): string {	const elapsed = jobElapsed(job);
 	if (job.status === "running") return elapsed;
 	if (job.timedOut === true) return `timeout · ${elapsed}`;
 	if (job.exitCode !== undefined && job.exitCode !== null) return `exit ${job.exitCode} · ${elapsed}`;
@@ -169,7 +171,7 @@ export function renderJobBarLine(jobs: readonly JobView[], width: number): strin
 	const finished = jobs.length - running.length;
 	const prefix = " ◎ Jobs";
 	const count = `${running.length} running${finished === 0 ? "" : ` · ${finished} finished`}`;
-	const detail = `${newest.command} · ${jobElapsed(newest)} · ${newest.id}`;
+	const detail = `${singleLine(newest.command)} · ${jobElapsed(newest)} · ${newest.id}`;
 	const hint = "/jobs";
 	const prefixWidth = displayWidth(prefix);
 	const countWidth = displayWidth(count);
@@ -188,4 +190,9 @@ export function renderJobBarLine(jobs: readonly JobView[], width: number): strin
 	}
 	const plain = truncateToWidth(`${prefix}  ${count}`, width);
 	return `${META_COLOR}${plain}${" ".repeat(Math.max(0, width - displayWidth(plain)))}${RESET}`;
+}
+
+/** 命令与输出都是模型给的文本：压成一行并清掉控制序列，单行高度才不会被撑开。 */
+function singleLine(text: string): string {
+	return sanitizeForDisplay(text).replace(/\s+/g, " ").trim();
 }

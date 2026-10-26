@@ -182,10 +182,12 @@ function tailToWidth(text: string, width: number): string {
 	if (width <= 0) return "";
 	if (displayWidth(text) <= width) return text;
 
+	// 按码位从后往前取：按 UTF-16 码元倒序会把 emoji 的代理对拆开，留下半个字符
+	const chars = Array.from(text);
 	let tail = "";
 	let used = 0;
-	for (let index = text.length - 1; index >= 0; index -= 1) {
-		const char = text[index] ?? "";
+	for (let index = chars.length - 1; index >= 0; index -= 1) {
+		const char = chars[index] ?? "";
 		const charWidth = characterWidth(char);
 		if (used + charWidth > width - 1) break;
 		tail = char + tail;

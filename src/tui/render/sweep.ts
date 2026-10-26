@@ -31,15 +31,18 @@ export function swept(
 	highlight: Rgb,
 	radius: number = SWEEP_RADIUS,
 ): string {
-	const center = -radius + phase * (text.length + radius * 2);
+	// 按码位遍历而不是按 UTF-16 码元：emoji 等代理对若被拆开，着色序列会插在高低位之间，
+	// 终端拿到的就是两个无法解码的孤立代理项。
+	const chars = Array.from(text);
+	const center = -radius + phase * (chars.length + radius * 2);
 	let output = "";
-	for (let index = 0; index < text.length; index += 1) {
+	for (let index = 0; index < chars.length; index += 1) {
 		const distance = Math.abs(index - center);
 		const intensity = Math.max(0, 1 - distance / radius);
 		const r = Math.round(base.r + (highlight.r - base.r) * intensity);
 		const g = Math.round(base.g + (highlight.g - base.g) * intensity);
 		const b = Math.round(base.b + (highlight.b - base.b) * intensity);
-		output += `\x1b[38;2;${r};${g};${b}m${text[index]}`;
+		output += `\x1b[38;2;${r};${g};${b}m${chars[index]}`;
 	}
 	return output + THEME.reset;
 }

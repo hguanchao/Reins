@@ -392,9 +392,10 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 				subagentHeaders.push({ start: groupStart, group: line });
 				const rendered = subagentGroupLines(line, width, liveLines, groupStart);
 				lines.push(...rendered.lines);
-				// 失败行登记双击命中:展开/收起失败原因
+				// 失败行登记双击命中:展开/收起失败原因。failure.start 已经是绝对行号
+				// （subagentGroupLines 内部用传入的 groupStart 算过），不能再加一次偏移。
 				for (const failure of rendered.failureRows) {
-					subagentFailureRows.push({ start: groupStart + failure.start, group: line, callId: failure.callId });
+					subagentFailureRows.push({ start: failure.start, group: line, callId: failure.callId });
 				}
 				continue;
 			}

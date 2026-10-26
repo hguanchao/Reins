@@ -3,7 +3,7 @@ import { lexer, type Token, type Tokens } from "marked";
 import { sanitizeDetail, sanitizeLine } from "../../tools/describe.ts";
 import { highlightCode, type SyntaxLines } from "./syntax.ts";
 import { syntaxColor } from "./syntax-style.ts";
-import { characterWidth, displayWidth, fitToWidth, truncateToWidth } from "./text.ts";
+import { characterWidth, displayWidth, fitToWidth, truncateToWidth, wrapText } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -85,12 +85,16 @@ export function renderMarkdown(text: string, width: number): readonly string[] {
 	if (width <= 0 || text.length === 0) return [];
 
 	// 模型输出什么都能进来，解析器对畸形输入抛错不该把整帧渲染带崩——终端会停在
-	// 备用屏与原始模式里。渲染不出来就按普通正文折行，内容一行不丢
+	// 备用屏与原始模式里。渲染不出来就按普通正文折行，内容一行不丢；折行与净化必须照做，
+	// 否则原文里的转义序列与超宽行会直接进帧。
 	let tokens: Token[];
 	try {
 		tokens = lexer(text, { gfm: true });
 	} catch {
-		return text.split("\n").map((line) => line);
+		return text
+			.split("\n")
+			.flatMap((line) => wrapText(line, Math.max(1, width - INDENT)))
+			.map((line: string) => `${" ".repeat(INDENT)}${line}`);
 	}
 	const rows: Row[] = [];
 	for (const token of tokens) appendBlock(token, { width, indent: INDENT }, rows, true);

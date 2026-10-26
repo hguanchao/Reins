@@ -1,6 +1,6 @@
 import { APPROVAL_MODES } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
-import { mouseEvents, shiftTabKey, type MouseInput } from "./keys.ts";
+import { mouseEvents, shiftTabKey, stripPasteContent, type MouseInput } from "./keys.ts";
 import { CTRL_C } from "../terminal.ts";
 import { PASTE_START } from "./keys.ts";
 import { handleApprovalInput } from "./approval.ts";
@@ -52,16 +52,17 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 		}
 
 		if (state.approvalPrompt !== undefined) {
-			handleApprovalInput(host, deps, text, mouseOf);
+			// 审批卡只认按键：粘贴内容里的换行或字母不能被当成确认/允许
+			handleApprovalInput(host, deps, stripPasteContent(text), mouseOf);
 			return;
 		}
 
 		if (host.modalMenuOpen()) {
-			if (handleModalMenuInput(host, deps, text, mouseOf)) return;
+			if (handleModalMenuInput(host, deps, stripPasteContent(text), mouseOf)) return;
 		}
 
 		if (state.openPage !== undefined) {
-			handlePageInput(host, deps, text, mouseOf);
+			handlePageInput(host, deps, stripPasteContent(text), mouseOf);
 			return;
 		}
 

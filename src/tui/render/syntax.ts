@@ -255,6 +255,10 @@ function pushSegment(line: SyntaxSegment[], text: string, token: SyntaxToken | u
 function tokenFor(className: readonly unknown[] | undefined): SyntaxToken | undefined {
 	if (className === undefined) return undefined;
 
+	// highlight.js 对类名给的是 class="hljs-title class_"，两个标记同时出现。
+	// 必须先判细分后缀再看大类，否则 hljs-title 会先命中、类型名被染成函数色。
+	if (className.includes("class_")) return "type";
+
 	for (const entry of className) {
 		if (typeof entry !== "string") continue;
 		// 类名形如 hljs-title function_，前缀决定大类，后缀只用于细分

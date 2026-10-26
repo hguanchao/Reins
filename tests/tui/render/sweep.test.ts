@@ -29,4 +29,12 @@ describe("扫光", () => {
 	it("空文本也能得到干净输出", () => {
 		assert.equal(swept("", 0.5, base, highlight), "\x1b[0m");
 	});
+
+	it("emoji 的代理对不会被着色序列拆开", () => {
+		const output = swept("x🚀y", 0.5, base, highlight);
+		// 每个码位只对应一次着色前缀；按码元遍历时 🚀 会被劈成两个孤立代理项
+		const prefixes = [...output.matchAll(/\x1b\[38;2;\d+;\d+;\d+m/g)];
+		assert.equal(prefixes.length, 3);
+		assert.ok(output.includes("🚀"));
+	});
 });
