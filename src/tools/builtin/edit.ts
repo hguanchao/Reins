@@ -94,24 +94,39 @@ export const editTool: ToolDefinition<EditArgs> = {
 			}
 
 			const file = decodeTextFile(buffer);
+			if (file.lossy) {
+				// 非 UTF-8 文件解码时已经出现替换字符，整份写回会把原文彻底改坏。
+				return {
+					content:
+						`${displayPath} is not valid UTF-8, so editing it would corrupt the file. ` +
+						"Convert it to UTF-8 first, or change it with a tool that preserves the original encoding.",
+					isError: true,
+				};
+			}
 			const original = file.text;
 			if (args.edits.length === 0) {
 				return { content: "At least one edit is required", isError: true };
 			}
 
-			const located: AppliedEdit[] = [];
+			const located: (AppliedEdit & { readonly source: number })[] = [];
 			for (const [position, edit] of args.edits.entries()) {
 				const start = locateEdit(original, edit, position);
 				if (typeof start === "string") return { content: start, isError: true };
-				located.push({ start, end: start + edit.oldText.length, newText: edit.newText });
+				located.push({
+					start,
+					end: start + edit.oldText.length,
+					newText: edit.newText,
+					source: position + 1,
+				});
 			}
 
 			located.sort((left, right) => left.start - right.start);
 			for (let index = 1; index < located.length; index += 1) {
 				if (located[index].start < located[index - 1].end) {
+					// 报原始序号：模型按自己给的顺序去找这两条，排序后的位置对它没有意义
 					return {
 						content:
-							`Edits ${index} and ${index + 1} overlap and cannot be applied together. ` +
+							`Edits ${located[index - 1].source} and ${located[index].source} overlap and cannot be applied together. ` +
 							"Merge them into one edit, or make the fragments disjoint.",
 						isError: true,
 					};

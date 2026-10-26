@@ -8,7 +8,7 @@ import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { formatEditDiff } from "./diff.ts";
 import { withFileMutation } from "./mutation-queue.ts";
-import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "../text-file.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, encodeTextFile, looksBinary } from "../text-file.ts";
 
 /** 创建或覆盖文件。父目录不存在时一并建出来，省掉一次单独的建目录往返。 */
 
@@ -51,21 +51,38 @@ export const writeTool: ToolDefinition<WriteArgs> = {
 			const existed = existsSync(absolute);
 			const previousBytes = existed ? statSync(absolute).size : 0;
 			let previous: string | undefined;
-			if (!existed && bytes <= MAX_DIFF_BYTES) {
-				previous = "";
-			} else if (existed && previousBytes <= MAX_DIFF_BYTES) {
+			// 已有文件按它自己的编码与行尾写回：直接按 UTF-8 覆盖会让 CRLF 文件整体变成 LF、
+			// 丢掉 BOM，或把 UTF-16 文件换成 UTF-8——使用者只改内容，不该连带改编码。
+			let existing: ReturnType<typeof decodeTextFile> | undefined;
+			if (existed && previousBytes <= MAX_DIFF_BYTES) {
 				try {
 					const buffer = readFileSync(absolute);
-					if (!looksBinary(buffer, BINARY_PROBE_BYTES)) previous = decodeTextFile(buffer).text;
+					if (!looksBinary(buffer, BINARY_PROBE_BYTES)) {
+						existing = decodeTextFile(buffer);
+						previous = existing.text;
+					}
 				} catch {
 					// 读不到旧内容不影响写入，只是这次没有 diff 可展示
 					previous = undefined;
 				}
 			}
+			if (!existed) previous = bytes <= MAX_DIFF_BYTES ? "" : undefined;
+
+			if (existing?.lossy === true) {
+				return {
+					content:
+						`${displayPath} is not valid UTF-8, so overwriting it would corrupt the file. ` +
+						"Convert it to UTF-8 first, or change it with a tool that preserves the original encoding.",
+					isError: true,
+				};
+			}
 
 			try {
 				mkdirSync(dirname(absolute), { recursive: true });
-				writeFileSync(absolute, args.content, "utf8");
+				writeFileSync(
+					absolute,
+					existing === undefined ? args.content : encodeTextFile(existing, args.content),
+				);
 			} catch (error) {
 				return { content: `Failed to write ${displayPath}: ${describeError(error)}`, isError: true };
 			}

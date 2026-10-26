@@ -19,6 +19,13 @@ export interface TextFile {
 	readonly encoding: TextEncoding;
 	readonly hasBom: boolean;
 	readonly eol: "\n" | "\r\n";
+	/**
+	 * 解码时出现过非法字节序列。
+	 *
+	 * 这类文件（GBK、Shift-JIS 等非 UTF-8 编码）读进来就已经有字符被替换成 U+FFFD，再整份
+	 * 编码写回会把原文彻底改坏。调用方据此拒绝写入，而不是悄悄毁掉使用者的文件。
+	 */
+	readonly lossy: boolean;
 }
 
 export function decodeTextFile(buffer: Buffer): TextFile {
@@ -30,11 +37,15 @@ export function decodeTextFile(buffer: Buffer): TextFile {
 		encoding: decoded.encoding,
 		hasBom: decoded.hasBom,
 		eol,
+		lossy: decoded.lossy,
 	};
 }
 
 export function encodeTextFile(file: TextFile, text: string): Buffer {
-	const withEol = file.eol === "\r\n" ? text.replaceAll("\n", "\r\n") : text;
+	// 先把调用方给的换行统一成 LF 再还原：newText 可能自带 CRLF（从命令输出或另一个
+	// Windows 文件里抄来的），直接 replaceAll 会把它变成 \r\r\n。
+	const normalized = normalizeEol(text);
+	const withEol = file.eol === "\r\n" ? normalized.replaceAll("\n", "\r\n") : normalized;
 	return encodeBytes(withEol, file.encoding, file.hasBom);
 }
 
@@ -47,24 +58,38 @@ interface DecodedBytes {
 	readonly text: string;
 	readonly encoding: TextEncoding;
 	readonly hasBom: boolean;
+	readonly lossy: boolean;
 }
 
 function decodeBytes(buffer: Buffer): DecodedBytes {
 	if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
-		return { text: buffer.subarray(2).toString("utf16le"), encoding: "utf16le", hasBom: true };
+		return {
+			text: buffer.subarray(2).toString("utf16le"),
+			encoding: "utf16le",
+			hasBom: true,
+			lossy: false,
+		};
 	}
 	if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
 		return {
 			text: new TextDecoder("utf-16be").decode(buffer.subarray(2)),
 			encoding: "utf16be",
 			hasBom: true,
+			lossy: false,
 		};
 	}
-	const text = buffer.toString("utf8");
-	if (text.startsWith("\uFEFF")) {
-		return { text: text.slice(1), encoding: "utf8", hasBom: true };
+
+	// 用 fatal 解码试一次：非 UTF-8 编码（GBK、Shift-JIS 等）会抛错，据此标出「这份文件
+	// 读进来就已经有损」，调用方据此拒绝回写。
+	// BOM 由字节判断：TextDecoder 默认会把它从输出里去掉，靠字符串前缀判断会永远为假。
+	const hasBom = buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf;
+	const decoder = new TextDecoder("utf-8", { fatal: true });
+	try {
+		return { text: decoder.decode(buffer), encoding: "utf8", hasBom, lossy: false };
+	} catch {
+		// 解码失败时按替换字符显示：读取仍能进行，但这份内容不能原样写回。
+		return { text: buffer.toString("utf8"), encoding: "utf8", hasBom, lossy: true };
 	}
-	return { text, encoding: "utf8", hasBom: false };
 }
 
 function encodeBytes(text: string, encoding: TextEncoding, hasBom: boolean): Buffer {
