@@ -401,6 +401,44 @@ describe("工具调用行", () => {
 		assert.ok(body.includes(THEME.detailBg));
 	});
 
+	it("详情里的回车被清掉，色带不会被打回终端底色", () => {
+		// Windows 命令输出与错误正文常带 CRLF：CR 被终端当成回车执行，其后的补齐空格
+		// 从行首重写，整条色带断开，这一行内容也会被覆盖成空白
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Bash",
+			detail: "cmd",
+			fullDetail: "cmd /c foo\n\nError: line one\r\nError: line two\r",
+			detailKind: "text",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(50, 16, [{ prompt: "hi", response: [tool] }], 0);
+		const body = lines.find((line) => plain(line).includes("Error: line one"));
+
+		assert.ok(body);
+		assert.equal(plain(body).includes("\r"), false);
+		// 内容与行宽都要按去掉 CR 之后算，否则补齐少一列、色带右缘缺一格
+		assert.equal(plain(body).includes("Error: line one  "), true);
+		assert.equal(displayWidth(plain(body)), 50);
+	});
+
+	it("思考正文里的回车同样清掉，色带保持完整", () => {
+		const block: TranscriptLine = {
+			kind: "thinkingBlock",
+			header: "Thought for 1.0s",
+			body: ["先读文件\r"],
+			partial: "",
+			running: false,
+			expanded: true,
+		};
+		const lines = renderTranscript(40, 16, [{ prompt: "hi", response: [block] }], 0);
+		const body = lines.find((line) => plain(line).includes("先读文件"));
+
+		assert.ok(body);
+		assert.equal(plain(body).includes("\r"), false);
+		assert.equal(displayWidth(plain(body)), 40);
+	});
+
 	it("展开标题与 Thought 同色，文件路径用实线下划线", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",

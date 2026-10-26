@@ -26,7 +26,8 @@ export function detailBand(tool: TranscriptTool, baseIndent: string, width: numb
 	// 工具结果普遍以换行结尾，直接切行会在详情末尾多出一个空行，与下边距叠成两行留白
 	const rows = stripTrailingBlank((tool.fullDetail ?? "").split("\n"));
 	// 只截显示不截数据：全文仍在 tool.fullDetail 里，展开多长都不会把这一轮的其他内容挤出屏幕
-	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES).map(expandTabs);
+	// 先展开制表符再清控制字符：顺序反了会把制表符当控制字符删掉，缩进整段丢失
+	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES).map((row) => stripLineControls(expandTabs(row)));
 	const syntax =
 		kind === "diff"
 			? diffSyntax(visible, tool.detail)
@@ -80,6 +81,17 @@ export function expandTabs(text: string): string {
 		column += characterWidth(char);
 	}
 	return output;
+}
+
+/**
+ * 去掉行内的控制字符。
+ *
+ * 详情正文来自工具结果与错误信息，其中可能夹着 CR：终端把 CR 当回车执行，它之后的补齐
+ * 空格会从行首重写，把整条色带盖回终端底色。宽度计算同样会因此偏一位，正文被截短。
+ * 行已经切好，这里的换行符不参与排版，一并清掉。
+ */
+export function stripLineControls(text: string): string {
+	return text.replace(/[\u0000-\u001f\u007f]/g, "");
 }
 
 /**

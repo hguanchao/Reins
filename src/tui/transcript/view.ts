@@ -46,6 +46,7 @@ import {
 	THINKING_TAIL_LINES,
 } from "./style.ts";
 import { animatedSubagentLine, subagentGroupLines } from "./subagent.ts";
+import { stripLineControls } from "./detail.ts";
 import { hasExpandableDetail, toolGroupLines, toolLines, toolResultLines } from "./tool.ts";
 import type {
 	LiveSubagentLine,
@@ -520,7 +521,8 @@ function thinkingBodyLines(text: string, width: number): readonly string[] {
 	const inside = " ".repeat(insideWidth);
 	const contentWidth = Math.max(1, innerWidth - insideWidth - DETAIL_RIGHT_PADDING);
 
-	return wrapText(text, contentWidth).map((line) => {
+	// 模型输出可能带 CR：终端执行回车后，补齐空格会从行首重写，整条色带被盖掉
+	return wrapText(stripLineControls(text), contentWidth).map((line) => {
 		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
 		const visible = truncateToWidth(content, innerWidth);
 		const padding = " ".repeat(Math.max(0, innerWidth - displayWidth(visible)));
