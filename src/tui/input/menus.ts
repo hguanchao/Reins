@@ -1,10 +1,17 @@
 import { THINKING_LEVELS } from "../../config/file.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, dragMotion, menuIndexAtRow, menuKey } from "./keys.ts";
+import { MOUSE_BUTTON_MASK, dragMotion, menuIndexAtRow, menuKey } from "./keys.ts";
 import type { MenuMouseTarget, MouseInput } from "./keys.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
 import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
+/**
+ * 菜单面板的鼠标交互：悬停改选、左键点击选中。
+ *
+ * 滚轮不参与菜单：面板里的滚轮与对话流滚动是同一个手势，让它在菜单上改光标会让「滚一下
+ * 看看下面有什么」变成「换了个选项」。左键只选中不确认，执行统一交给回车，避免一次误点
+ * 就把模型或会话换掉。
+ */
 export function handleMenuMouse(
 	events: readonly MouseInput[],
 	target: MenuMouseTarget,
@@ -21,17 +28,11 @@ export function handleMenuMouse(
 			}
 			continue;
 		}
-		if (event.press && event.button === MOUSE_WHEEL_UP) {
-			target.move(-1);
-			return true;
-		}
-		if (event.press && event.button === MOUSE_WHEEL_DOWN) {
-			target.move(1);
-			return true;
-		}
 		if (event.press && (event.button & MOUSE_BUTTON_MASK) === 0 && index !== undefined) {
-			target.select(index);
-			target.confirm();
+			if (index !== target.cursor()) {
+				target.select(index);
+				render();
+			}
 			return true;
 		}
 	}
@@ -48,8 +49,6 @@ interface InlineMenuState {
 export function inlineMenuTarget(
 	menu: InlineMenuState,
 	panelTop: number,
-	move: (delta: number) => void,
-	confirm: () => void,
 ): MenuMouseTarget {
 	return {
 		hitItem: (row) => menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor),
@@ -58,8 +57,6 @@ export function inlineMenuTarget(
 			menu.cursor = index;
 			menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
 		},
-		move,
-		confirm,
 	};
 }
 
@@ -147,8 +144,6 @@ export function handleModalMenuInput(
 					menuIndexAtRow(row, panelTop, panel.items.length, panel.scrollTop(), panel.cursor()),
 				cursor: panel.cursor,
 				select: panel.select,
-				move: panel.move,
-				confirm: panel.confirm,
 			},
 			deps.render,
 		)

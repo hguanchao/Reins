@@ -125,7 +125,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("会话面板的鼠标点击即切换", async () => {
+	it("会话面板的鼠标点击只选中，回车才切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 40;
@@ -157,17 +157,17 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
 			assert.equal(selected, undefined);
 
-			// 点第二项直接切换，不需要回车
+			// 点第二项只移动光标，不切换
 			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
-			assert.equal(selected, "fedcba9876543210", "点击即切换会话");
-			assert.equal(
-				frameLines(output)
-					.map(plain)
-					.join("\n")
-					.includes("Fix the login flow"),
-				false,
-				"面板收掉",
+			assert.equal(selected, undefined, "点击不切换会话");
+			assert.ok(
+				frameLines(output).map(plain).join("\n").includes("fedcba9876543210"),
+				"面板仍然开着",
 			);
+
+			// 回车才真正切换
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(selected, "fedcba9876543210", "回车切换会话");
 		} finally {
 			exitTui(input);
 		}
@@ -175,7 +175,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("会话面板里点击当前会话不重新加载", async () => {
+	it("会话面板里选中当前会话后回车不会重复加载", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 40;
@@ -201,10 +201,11 @@ describe("命令补全与选择面板", () => {
 			const currentRow = rows.findIndex((line) => line.includes("0123456789abcdef")) + 1;
 			assert.ok(currentRow > 0);
 
-			// 点当前会话：面板收掉，但不切换
+			// 点当前会话只是选中；回车后由宿主判断「就是当前会话」而不再切换
 			input.emit("data", Buffer.from(`\x1b[<0;10;${currentRow}M`));
-			assert.equal(selectCalls, 0);
-			assert.equal(frameLines(output).map(plain).join("\n").includes("Fix the login flow"), false);
+			assert.equal(selectCalls, 0, "点击不切换");
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(selectCalls, 0, "选中当前会话不重新加载");
 		} finally {
 			exitTui(input);
 		}
@@ -212,7 +213,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("模型面板点击即切换", async () => {
+	it("模型面板点击只选中，回车才切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -243,9 +244,17 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
 			assert.equal(selected, undefined);
 
-			// 点第二项直接切换，不需要回车
+			// 点第二项只移动光标，不切换
 			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
-			assert.equal(selected, "openai/gpt-5.2", "点击即切换模型");
+			assert.equal(selected, undefined, "点击不切换模型");
+			assert.ok(
+				frameLines(output).map(plain).some((line) => line.includes(" 3 ────")),
+				"面板仍然开着",
+			);
+
+			// 回车才真正切换
+			input.emit("data", Buffer.from("\r"));
+			assert.equal(selected, "openai/gpt-5.2", "回车切换模型");
 			// 面板收起：画面上不再有面板上边框
 			assert.equal(
 				frameLines(output)
@@ -325,7 +334,7 @@ describe("命令补全与选择面板", () => {
 		}
 	});
 
-	it("命令补全面板点击即执行", () => {
+	it("命令补全面板点击只选中，回车才执行", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -342,12 +351,18 @@ describe("命令补全与选择面板", () => {
 			assert.ok(row > 0);
 			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
 
-			// 点击即执行：帮助页直接打开，不需要回车
+			// 点击只选中：帮助页不打开，补全面板仍在
+			const afterClick = frameLines(output).map(plain).join("\n");
+			assert.equal(afterClick.includes("Reins — help"), false, "点击不执行命令");
+
+			// 回车才执行
+			input.emit("data", Buffer.from("\r"));
 			assert.ok(
 				frameLines(output)
 					.map(plain)
 					.join("\n")
 					.includes("Reins — help"),
+				"回车执行命令",
 			);
 		} finally {
 			exitTui(input);

@@ -81,6 +81,15 @@ export function handleTranscriptInput(
 				return;
 			}
 
+			// 落在补全面板上的点击交给下面的菜单分支处理，不能拿它改输入框焦点：
+			// 面板画在输入框上方，按位置算就是「输入框外」，会把焦点判成失焦，
+			// 于是紧接着的回车只会被当成抢回焦点，选中的命令反而执行不了
+			const menuTop =
+				state.commandMenu === undefined && state.fileMenu === undefined
+					? undefined
+					: menuPanelTop(state, host.options);
+			if (menuTop !== undefined && event.row >= menuTop) continue;
+
 			// 可点区域要含上下两条边框：使用者把那个方框整体当成输入框，点在边框上
 			// 却没有任何反应，会以为界面卡住了
 			const inputLineTotal = inputView(state.input, width, state.inputCursor).lines.length;
@@ -115,19 +124,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, commandPanelTop, (delta) => host.moveCommandMenu(delta), () => {
-						// 点击即选中并执行，与回车一致：有二级面板的命令点开面板，其余直接执行
-						const chosen = menu.items[menu.cursor];
-						if (chosen === undefined) return;
-						if (state.activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(chosen.name)) {
-							state.commandMenu = undefined;
-							state.commandMenuDismissed = true;
-							host.setStatus(`/${chosen.name} is unavailable while a turn is running`, "notice");
-							deps.render();
-							return;
-						}
-					host.executeCommand(chosen);
-				}),
+				inlineMenuTarget(menu, commandPanelTop),
 				deps.render,
 			)
 		) {
@@ -175,7 +172,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, filePanelTop, (delta) => host.moveFileMenu(delta), insert),
+				inlineMenuTarget(menu, filePanelTop),
 				deps.render,
 			)
 		) {
