@@ -10,7 +10,7 @@ import type { TuiOptions } from "./options.ts";
  */
 export const TURN_SAFE_COMMANDS: ReadonlySet<string> = new Set(["help", "model", "effort"]);
 
-/** 命令补全列表：配置不可用时仍然显示，但标成不可执行。 */
+/** 命令补全列表：配置不可用时仍然显示，但标成不可执行；隐藏项只在完整输入时执行。 */
 export function createBuiltinCommands(options: TuiOptions): readonly CommandMenuItem[] {
 	return [
 		{
@@ -60,6 +60,7 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 					? "Session forking is unavailable"
 					: "Fork the current session at its current point",
 			enabled: options.sessionMenu?.fork !== undefined,
+			hidden: true,
 		},
 		{
 			name: "help",
@@ -81,6 +82,7 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 					? "Browse and restore checkpoints"
 					: "Checkpoints are unavailable in this workspace",
 			enabled: options.checkpoints?.available() === true,
+			hidden: true,
 		},
 		{
 			name: "sandbox",
@@ -89,11 +91,13 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 					? "Sandbox details are unavailable in this session"
 					: "Show sandbox mode and platform limits",
 			enabled: options.sandbox !== undefined,
+			hidden: true,
 		},
 		{
 			name: "view-plan",
 			description: "Reopen the latest plan",
 			enabled: true,
+			hidden: true,
 		},
 		{
 			name: "jobs",
@@ -102,6 +106,7 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 					? "Background jobs are unavailable"
 					: "Show background jobs and their output",
 			enabled: options.jobs !== undefined,
+			hidden: true,
 		},
 		{
 			name: "skills",

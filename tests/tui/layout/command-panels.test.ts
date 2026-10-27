@@ -576,12 +576,12 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("\x1b[A"));
 			let lines = frameLines(output).map(plain);
 			assert.ok(lines.some((line) => line.startsWith(" › /mcps")), "向上从第一项到最后一个");
-			assert.ok(lines.some((line) => line.endsWith(" 14/14 ────")), "显示滚动位置");
+			assert.ok(lines.some((line) => line.endsWith(" 9/9 ────")), "显示滚动位置");
 
 			input.emit("data", Buffer.from("\x1b[B"));
 			lines = frameLines(output).map(plain);
 			assert.ok(lines.some((line) => line.startsWith(" › /model")), "向下从最后一项回到第一项");
-			assert.ok(lines.some((line) => line.endsWith(" 1/14 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 1/9 ────")));
 		} finally {
 			exitTui(input);
 		}
@@ -1419,7 +1419,7 @@ describe("命令补全与选择面板", () => {
 			assert.ok(text.includes("/compact"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 1/14 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 1/9 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);

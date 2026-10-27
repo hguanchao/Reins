@@ -310,8 +310,10 @@ export function updateCommandMenu(host: TuiHost): void {
 		const query = state.input.slice(1).toLowerCase();
 		const items = host.commands().filter(
 			(command) =>
-				command.name.toLowerCase().startsWith(query) ||
-				command.description.toLowerCase().includes(query),
+				// 隐藏命令只在完整输入命令名时出现，避免塞满补全列表
+				(command.hidden !== true || command.name.toLowerCase() === query) &&
+				(command.name.toLowerCase().startsWith(query) ||
+					command.description.toLowerCase().includes(query)),
 		);
 		if (items.length > 0) {
 			// 输入完整命令名时，光标落到这条命令上：描述里含同一个词的其他命令

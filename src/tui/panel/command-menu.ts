@@ -27,6 +27,8 @@ export interface CommandMenuItem {
 	readonly description: string;
 	/** 配置不可用时仍显示，但标记为不可执行 */
 	readonly enabled: boolean;
+	/** 不在补全列表里主动出现；完整输入命令名仍可执行 */
+	readonly hidden?: boolean;
 }
 
 export interface CommandMenuState {
