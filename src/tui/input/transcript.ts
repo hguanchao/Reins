@@ -30,6 +30,8 @@ export function handleTranscriptInput(
 	const bottomButton = host.menuOpen() ? undefined : scrollButtonPlacement(width, mainHeight);
 	/** 按钮此刻是否真的画着：没画出来的位置不该被点中，也不该响应悬停。 */
 	const buttonShown = bottomButton !== undefined && state.scrollTop < host.maxScroll();
+	/** 补全面板是否开着；它盖住对话流，滚轮与点击都要避开。 */
+	const menuOpen = state.commandMenu !== undefined || state.fileMenu !== undefined;
 
 	for (const event of mouseOf()) {
 		const left = (event.button & MOUSE_BUTTON_MASK) === 0;
@@ -47,9 +49,11 @@ export function handleTranscriptInput(
 		}
 
 		if (event.press && event.button === MOUSE_WHEEL_UP) {
-			wheelSteps -= 1;
+			// 菜单打开时滚轮不对对话流起作用：面板盖在对话流上方，指针多半停在面板上，
+			// 这时滚动的是看不见的底层内容，画面看起来毫无反应，等关掉面板才发现位置变了
+			if (!menuOpen) wheelSteps -= 1;
 		} else if (event.press && event.button === MOUSE_WHEEL_DOWN) {
-			wheelSteps += 1;
+			if (!menuOpen) wheelSteps += 1;
 		} else if (event.press && left && !motion) {
 			// 置底按钮盖在对话流上，命中就回到底部并恢复跟随，不再往下走双击与聚焦判断
 			if (buttonShown && scrollButtonHit(bottomButton, event.row, event.column)) {
@@ -84,11 +88,7 @@ export function handleTranscriptInput(
 			// 落在补全面板上的点击交给下面的菜单分支处理，不能拿它改输入框焦点：
 			// 面板画在输入框上方，按位置算就是「输入框外」，会把焦点判成失焦，
 			// 于是紧接着的回车只会被当成抢回焦点，选中的命令反而执行不了
-			const menuTop =
-				state.commandMenu === undefined && state.fileMenu === undefined
-					? undefined
-					: menuPanelTop(state, host.options);
-			if (menuTop !== undefined && event.row >= menuTop) continue;
+			if (menuOpen && event.row >= menuPanelTop(state, host.options)) continue;
 
 			// 可点区域要含上下两条边框：使用者把那个方框整体当成输入框，点在边框上
 			// 却没有任何反应，会以为界面卡住了

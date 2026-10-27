@@ -369,6 +369,80 @@ describe("命令补全与选择面板", () => {
 		}
 	});
 
+	it("面板打开时滚轮不滚动对话流", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 14;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hi\r"));
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 60 }, (_, index) => `line ${index + 1}`).join("\n"),
+			});
+			t.mock.timers.tick(100);
+
+			input.emit("data", Buffer.from("/"));
+			t.mock.timers.tick(100);
+			const before = frameLines(output).map(plain).join("\n");
+
+			// 在面板上滚轮：画面不该有任何变化
+			input.emit("data", Buffer.from("\x1b[<65;10;8M"));
+			t.mock.timers.tick(100);
+			assert.equal(frameLines(output).map(plain).join("\n"), before, "面板打开时滚轮无效");
+
+			// 关掉面板，对话流仍在最新位置
+			input.emit("data", Buffer.from("\x1b"));
+			t.mock.timers.tick(100);
+			assert.ok(
+				frameLines(output).map(plain).join("\n").includes("line 60"),
+				"对话流没有被滚走",
+			);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("点击面板每一项都命中对应的命令", () => {
+		// 面板画在哪里就要点得中哪里：逐项点击，光标必须落到被点的那一项
+		for (const name of ["/model", "/effort", "/help"]) {
+			const input = new FakeInput();
+			const output = new FakeOutput();
+			output.columns = 80;
+			output.rows = 20;
+			void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+			try {
+				input.emit("data", Buffer.from("/"));
+				const row =
+					frameLines(output)
+						.map(plain)
+						.findIndex((line) => line.includes(name)) + 1;
+				assert.ok(row > 0, `${name} 画出来了`);
+
+				input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
+				const cursorLine = frameLines(output)
+					.map(plain)
+					.find((line) => line.startsWith(" › /"));
+				assert.ok(
+					cursorLine?.includes(name),
+					`点 ${name} 那一行后光标应落在 ${name}，实际是 ${cursorLine ?? "(无)"}`,
+				);
+			} finally {
+				exitTui(input);
+			}
+		}
+	});
+
 	it("方向键移动并回车切换模型，页脚随之更新", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
