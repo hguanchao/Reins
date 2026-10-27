@@ -270,6 +270,50 @@ describe("审批卡", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("粘贴内容里的鼠标序列不会确认审批", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+
+			let decision: ApprovalAnswer | undefined;
+			void broker
+				.request({ tool: "bash", risk: "destructive", detail: "npm test" })
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			// 动作行在 19 行；点击序列藏在 bracketed paste 里，不能当成真实点击
+			input.emit("data", Buffer.from("\x1b[200~\x1b[<0;5;19M\x1b[201~"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, undefined, "粘贴里的鼠标序列不应确认审批");
+
+			input.emit("data", Buffer.from("y"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "once");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("审批出现后直接回车确认", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();

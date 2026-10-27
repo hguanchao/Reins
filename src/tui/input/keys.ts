@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { MENU_MAX_VISIBLE, keepVisible } from "../panel/menu-panel.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
 
@@ -87,6 +89,11 @@ export function scrollKey(text: string): "pageUp" | "pageDown" | "top" | "bottom
 /** 去掉 SGR 鼠标事件，避免它们被当成普通输入。 */
 export function stripMouseEvents(text: string): string {
 	return text.replace(/\x1b\[<[0-9;]+[Mm]/g, "");
+}
+
+/** 去掉窗口焦点上报，避免它们被当成输入或触发输入焦点恢复。 */
+export function stripFocusEvents(text: string): string {
+	return text.replace(/\x1b\[[IO]/g, "");
 }
 
 /**
@@ -197,7 +204,11 @@ export function editInput(
 		handled = true;
 	};
 	const insertPaste = (value: string): void => {
-		insert(value.replace(/\r\n?/g, "\n").replace(/\t/g, "    "));
+		// 粘贴正文里可能带终端控制序列：它们不是要输入的文字，留着会污染输入框的渲染
+		const cleaned = stripVTControlCharacters(
+			value.replace(/\r\n?/g, "\n").replace(/\t/g, "    "),
+		).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+		insert(cleaned);
 	};
 
 	const applyKey = (sequence: string): void => {

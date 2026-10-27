@@ -141,7 +141,7 @@ export function drainQueue(host: TuiHost): void {
 export function notify(host: TuiHost, message: string): void {
 	const mode = host.options.notify ?? "auto";
 	if (mode === "off") return;
-	if (mode === "auto" && host.state.focused) return;
+	if (mode === "auto" && host.state.windowFocused) return;
 	if (mode === "desktop" && process.platform !== "win32") {
 		desktopNotify(message);
 		return;

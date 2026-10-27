@@ -2,7 +2,7 @@ import { APPROVAL_MODES } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import { mouseEvents, shiftTabKey, stripPasteContent, type MouseInput } from "./keys.ts";
 import { CTRL_C, FOCUS_IN, FOCUS_OUT } from "../terminal.ts";
-import { PASTE_START } from "./keys.ts";
+import { PASTE_END, PASTE_START } from "./keys.ts";
 import { handleApprovalInput } from "./approval.ts";
 import { handleModalMenuInput } from "./menus.ts";
 import { handlePageInput } from "./pages.ts";
@@ -29,6 +29,19 @@ function focusOf(text: string): boolean | undefined {
 }
 
 /**
+ * 取出粘贴区间之外的文本。
+ *
+ * 粘贴正文里的转义序列是内容，不是按键、鼠标或焦点事件；按键路径已经用
+ * stripPasteContent 防过一轮，鼠标与焦点解析也必须看同一份文本，否则一段剪贴板内容
+ * 就能触发菜单点击或在审批卡上点到动作。跨数据块的粘贴由 pasting 记住。
+ */
+function interactiveText(text: string, pasting: boolean): string {
+	if (!pasting) return stripPasteContent(text);
+	const end = text.indexOf(PASTE_END);
+	return end < 0 ? "" : stripPasteContent(text.slice(end + PASTE_END.length));
+}
+
+/**
  * 按键与鼠标分发。
  *
  * 顺序是固定的：焦点上报、Ctrl+C 与 Shift+Tab 是全局的；随后按当前最上层的界面接管输入——
@@ -38,21 +51,28 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 	return (chunk: Buffer): void => {
 		const state = host.state;
 		const text = state.decoder.write(chunk);
+		const eventText = interactiveText(text, state.pasting);
 		// 鼠标事件最多解析一次:同一条数据块会被多个面板分支检查,每次都跑一遍
 		// matchAll 是纯浪费;纯键盘块则一次也不解析
 		let mouseOfChunk: readonly MouseInput[] | undefined;
 		const mouseOf = (): readonly MouseInput[] => {
-			mouseOfChunk ??= mouseEvents(text);
+			// 超屏时画面与命中坐标已经对不上，鼠标先停用，键盘操作不受影响
+			if (state.layoutOverflow) return [];
+			mouseOfChunk ??= mouseEvents(eventText);
 			return mouseOfChunk;
 		};
 
-		// 焦点排在所有分支之前：面板打开时切走窗口，回来仍要知道自己失去了焦点
-		const focus = focusOf(text);
-		if (focus !== undefined && focus !== state.focused) {
+		// 焦点排在所有分支之前：面板打开时切走窗口，回来仍要知道自己失去了焦点。
+		// 窗口焦点与输入焦点分开记：点过对话流后输入框已失焦，但窗口仍在前台，
+		// 这时回合结束不该被当成「人不在」而响铃。
+		const focus = focusOf(eventText);
+		if (focus !== undefined) {
+			const changed = focus !== state.windowFocused || focus !== state.focused;
+			state.windowFocused = focus;
 			state.focused = focus;
 			// 失焦意味着指针也不在这个窗口上：拖动到一半的滚动条不该继续跟着走
 			if (!focus) state.draggingScrollbar = false;
-			deps.render();
+			if (changed) deps.render();
 		}
 
 		// Ctrl+C 只认真实的按键块:粘贴的内容被括在粘贴标记里,其中的 \x03 是正文,

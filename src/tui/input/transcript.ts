@@ -1,6 +1,6 @@
 import { inputView } from "../view/footer.ts";
 import { imageMarker } from "../image.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripMouseEvents } from "./keys.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripFocusEvents, stripMouseEvents } from "./keys.ts";
 import type { MouseInput } from "./keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
 import { ABORTING } from "../render/status.ts";
@@ -21,7 +21,7 @@ export function handleTranscriptInput(
 	const width = host.terminalWidth();
 	const mainHeight = host.mainAreaHeight();
 	const beforeScroll = state.scrollTop;
-	const withoutMouse = stripMouseEvents(text);
+	const withoutMouse = stripMouseEvents(stripFocusEvents(text));
 	let focusChanged = false;
 	let hoverChanged = false;
 	let wheelSteps = 0;
@@ -183,6 +183,13 @@ export function handleTranscriptInput(
 		}
 	}
 
+	/** 任何要编辑输入框的动作都把输入焦点收回来；只滚对话流或展开内容的按键不算。 */
+	const focusInput = (): void => {
+		if (state.focused) return;
+		state.focused = true;
+		focusChanged = true;
+	};
+
 	// 输入框失焦后，回车只负责把焦点抢回来：这一下不提交，避免误发已经打好的内容。
 	// 只认单独的换行块，粘贴进来的多行内容不会被当成聚焦键吞掉。
 	if (!state.focused && (withoutMouse === "\r" || withoutMouse === "\n")) {
@@ -193,6 +200,7 @@ export function handleTranscriptInput(
 	// Ctrl+V / Alt+V 读剪贴板里的图片；终端自己处理的文本粘贴不会走到这里
 	const clipboardKey = withoutMouse === "\x16" || withoutMouse === "\x1bv" || withoutMouse === "\x1bV";
 	if (clipboardKey && !state.pasting) {
+		focusInput();
 		host.attachClipboardImage();
 		return;
 	}
@@ -200,6 +208,7 @@ export function handleTranscriptInput(
 	if (state.commandMenu === undefined && !state.pasting) {
 		const dragged = host.draggedImagePath(text);
 		if (dragged !== undefined) {
+			focusInput();
 			host.attachImagePath(dragged);
 			return;
 		}
@@ -239,6 +248,7 @@ export function handleTranscriptInput(
 						state.pendingImages.push({ token, image });
 					}
 				}
+				focusInput();
 				host.setInput(state.input.length === 0 ? recalled.text : `${recalled.text}\n${state.input}`);
 				host.updateCommandMenu();
 				host.updateFileMenu();
@@ -258,14 +268,25 @@ export function handleTranscriptInput(
 		if (state.input.includes("\n")) {
 			const moved = moveInputVertical(state.input, state.inputCursor, step);
 			if (moved !== undefined && moved !== state.inputCursor) {
+				focusInput();
 				host.setInput(state.input, moved);
 				deps.render();
 				return;
 			}
 		}
 		const consumed = host.recallHistory(step);
-		if (consumed) return;
+		if (consumed) {
+			if (!state.focused) {
+				state.focused = true;
+				deps.render();
+			}
+			return;
+		}
 	}
+
+	// 真正落到编辑器的键盘输入都表示使用者想继续编辑：把焦点收回来。
+	// 否则文字能进输入框，边框与光标却还是失焦态，紧接着的回车也只被当成抢焦点。
+	if (withoutMouse.length > 0 && withoutMouse !== "\x1b") focusInput();
 
 	const edit = editInput(state.input, state.inputCursor, withoutMouse, state.pasting);
 	state.pasting = edit.pasting;

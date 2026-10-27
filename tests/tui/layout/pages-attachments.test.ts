@@ -257,6 +257,40 @@ describe("整屏页与图片附件", () => {
 		}
 	});
 
+	it("读图失败的错误提示不会在 1.5 秒后自动消失", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			images: fakeImageSource({
+				clipboard: async () => {
+					throw new Error("clipboard unavailable");
+				},
+			}),
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x16"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("clipboard unavailable"), "错误应立即显示");
+
+			t.mock.timers.tick(2000);
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("clipboard unavailable"), "错误不应自动消失");
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("图片标记可以单独发送，模型能力缺失时提示", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();

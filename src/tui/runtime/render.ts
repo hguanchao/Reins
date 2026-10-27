@@ -11,6 +11,8 @@ import { renderJobBarLine } from "../page/job.ts";
 import { renderTranscriptView, measureTranscriptView, scrollbarColumn } from "../transcript.ts";
 import { scrollButtonPlacement } from "../view/scroll-button.ts";
 import { todoPanelLines } from "../view/todo-card.ts";
+import { truncateToWidth } from "../render/text.ts";
+import { THEME } from "../render/theme.ts";
 import {
 	BEGIN_SYNCHRONIZED_UPDATE,
 	END_SYNCHRONIZED_UPDATE,
@@ -27,6 +29,8 @@ import { SPINNER_FRAMES } from "./constants.ts";
 import { menuOpen, terminalWidth, terminalRows } from "./geometry.ts";
 import { framedPageFor } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
+
+const OVERFLOW_NOTICE = "▸ Terminal too small: some content is hidden";
 
 /**
  * 整帧绘制。
@@ -115,24 +119,37 @@ export function render(host: TuiHost): void {
 	// 后台作业只占一行，放在任务面板与页脚之间；没有运行中作业时不占高度
 	const jobBar = host.jobBarHeight() > 0 ? [renderJobBarLine(options.jobs?.list() ?? [], width)] : [];
 	// 整屏自上而下：主区域、任务面板、Jobs bar、选择面板、页脚
-	const lines = [...mainLines, ...panelLines, ...jobBar, ...menuLines, ...footer].slice(0, height);
-	const inputRow = host.inputTopRow(mainHeight) + inputLines.row;
+	const lines = [...mainLines, ...panelLines, ...jobBar, ...menuLines, ...footer];
+	const fullInputRow = host.inputTopRow(mainHeight) + inputLines.row;
+	state.layoutOverflow = lines.length > height;
+	// 内容超屏时从底部保留：输入框与页脚比对话流顶部重要。光标行若被挤出可见区，
+	// 窗口再往上挪，保证正在编辑的那一行总能看到。
+	let start = Math.max(0, lines.length - height);
+	if (height > 0 && fullInputRow - start < 1) start = Math.max(0, fullInputRow - 1);
+	start = Math.min(start, Math.max(0, lines.length - 1));
+	const visible = lines.slice(start, start + height);
+	const inputRow = fullInputRow - start;
+	// 顶部让出一行说明内容被裁掉了；光标正好落在第一行时不覆盖它
+	if (start > 0 && inputRow !== 1 && visible.length > 0) {
+		visible[0] = `${THEME.warning}${truncateToWidth(OVERFLOW_NOTICE, width)}${RESET}`;
+	}
 	// 选择面板只盖在输入框上方，输入行仍然可见可编辑，光标照常显示；
 	// 只有整屏页与审批面板会夺走焦点
 	const cursor =
 		state.focused &&
 		state.openPage === undefined &&
 		state.approvalPrompt === undefined &&
+		inputRow >= 1 &&
 		inputRow <= height
 			? moveCursor(inputRow, inputLines.column) + SHOW_CURSOR
 			: "";
 
 	let frame = HIDE_CURSOR + BEGIN_SYNCHRONIZED_UPDATE;
-	for (let row = 0; row < lines.length; row += 1) {
-		frame += `${moveCursor(row + 1, 1)}${RESET}${ERASE_LINE}${lines[row]}`;
+	for (let row = 0; row < visible.length; row += 1) {
+		frame += `${moveCursor(row + 1, 1)}${RESET}${ERASE_LINE}${visible[row]}`;
 	}
 	// 滚动条列最后单独画：它只依赖自己的行列位置，内容怎么换行都不会把它带断
-	if (transcriptShown) {
+	if (transcriptShown && !state.layoutOverflow) {
 		// 用 scrollLines 而不是 totalLines：留白也是能滚到的范围，滑块大小与位置得按
 		// 真实量程算，否则滑块几乎满格、怎么滚都不动
 		const gutter = scrollbarColumn(mainHeight, metrics.scrollLines, state.scrollTop);
@@ -141,7 +158,8 @@ export function render(host: TuiHost): void {
 		}
 	}
 	// 置底按钮同样单独定位：它盖在对话流最后一行中部，只在真的离开底部时出现
-	const showButton = transcriptShown && !menuOpen(state) && state.scrollTop < maxScroll;
+	const showButton =
+		!state.layoutOverflow && transcriptShown && !menuOpen(state) && state.scrollTop < maxScroll;
 	// 按钮没画出来时悬停状态要一起清掉，否则下次出现会带着上一次的高亮
 	if (!showButton) state.buttonHovered = false;
 	if (showButton) {
@@ -149,8 +167,8 @@ export function render(host: TuiHost): void {
 		if (button !== undefined) frame += `${moveCursor(button.row, button.column)}${button.text}`;
 	}
 	// 终端变高后，上一帧底部的行不在这一帧的覆盖范围内，补一次擦除
-	if (lines.length < height) {
-		frame += `${moveCursor(lines.length + 1, 1)}${RESET}${ERASE_BELOW}`;
+	if (visible.length < height) {
+		frame += `${moveCursor(visible.length + 1, 1)}${RESET}${ERASE_BELOW}`;
 	}
 	state.stdout.write(frame + cursor + END_SYNCHRONIZED_UPDATE);
 }

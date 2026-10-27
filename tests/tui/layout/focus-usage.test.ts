@@ -317,6 +317,40 @@ describe("焦点、状态与用量", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("notify=auto 点击对话流后仍视为终端在前台", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const agent = createFakeAgent();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			notify: "auto",
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("one\r"));
+			await agent.finish();
+			assert.equal(output.chunks.some((chunk) => chunk.includes("\x07")), false);
+
+			input.emit("data", Buffer.from("two\r"));
+			// 点对话流只让输入框失焦，终端窗口仍在前台，回合结束不该响铃
+			input.emit("data", Buffer.from("\x1b[<0;3;2M\x1b[<0;3;2m"));
+			await agent.finish();
+			assert.equal(
+				output.chunks.some((chunk) => chunk.includes("\x07")),
+				false,
+				"点击对话流不应被当成终端失焦",
+			);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("每记一笔用量页脚就更新，不必等整轮结束", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

@@ -293,6 +293,41 @@ describe("滚动与输入", () => {
 		}
 	});
 
+	it("粘贴正文里的转义序列不会进入输入框", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("\x1b[200~safe\x1b[31mred\x1b[0m\x1b[201~"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" › safered"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("终端过小时保留正在编辑的输入行并提示内容被裁掉", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 40;
+		output.rows = 8;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			const text = Array.from({ length: 7 }, (_, index) => `long-line-${index + 1}`).join("\n");
+			input.emit("data", Buffer.from(`\x1b[200~${text}\x1b[201~`));
+			t.mock.timers.tick(100);
+
+			const frame = frameLines(output).map(plain).join("\n");
+			assert.ok(frame.includes("Terminal too small"), "应提示内容被裁掉");
+			assert.ok(frame.includes("long-line-7"), "光标所在行仍应可见");
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("还没输入就按退格，品牌名与版本号仍然显示", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();

@@ -91,8 +91,10 @@ export interface TuiState {
 	readonly pendingCommandTurns: LiveTurn[];
 	/** 首次绘制时把已有历史滚到底部。 */
 	initialScroll: boolean;
-	/** 终端窗口是否有焦点；界面启动时默认有焦点。 */
+	/** 输入框是否持有焦点；点击对话流会失焦，窗口焦点上报也会同步它。 */
 	focused: boolean;
+	/** 终端窗口是否持有操作系统焦点；只用于通知，不参与输入框边框与光标 */
+	windowFocused: boolean;
 	/** 对话流从顶部滚过的行数。 */
 	scrollTop: number;
 	/** 上一次左键按下的位置与时间，用于识别双击。 */
@@ -106,6 +108,8 @@ export interface TuiState {
 	transcriptDirty: boolean;
 	/** 是否正按住滚动条拖动。 */
 	draggingScrollbar: boolean;
+	/** 当前帧内容是否超出终端高度；超出时鼠标命中不可靠，先停用鼠标交互。 */
+	layoutOverflow: boolean;
 	/** 指针是否停在置底按钮上；只影响按钮颜色。 */
 	buttonHovered: boolean;
 	decoder: InstanceType<typeof import("node:string_decoder").StringDecoder>;

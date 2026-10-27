@@ -146,6 +146,45 @@ describe("输入框焦点", () => {
 		}
 	});
 
+	it("点对话流失焦后继续打字会恢复焦点，回车直接发送", async (t) => {
+		const { input, output, agent } = start(t);
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+			agent.emit({ type: "text_delta", text: "line 1\nline 2\nline 3" });
+			t.mock.timers.tick(100);
+			await agent.finish();
+			t.mock.timers.tick(100);
+
+			input.emit("data", Buffer.from("\x1b[<0;3;2M\x1b[<0;3;2m"));
+			t.mock.timers.tick(100);
+			assert.equal(inputBorderFocused(output), false, "点对话流应失焦");
+
+			input.emit("data", Buffer.from("world"));
+			t.mock.timers.tick(100);
+			assert.ok(inputBorderFocused(output), "继续打字应恢复焦点");
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			t.mock.timers.tick(100);
+			assert.deepEqual(agent.prompts, ["hello", "world"]);
+			await agent.finish();
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("粘贴内容里的焦点序列不会让输入框失焦", (t) => {
+		const { input, output } = start(t);
+		try {
+			input.emit("data", Buffer.from("\x1b[200~\x1b[O\x1b[201~"));
+			t.mock.timers.tick(100);
+			assert.ok(inputBorderFocused(output), "粘贴的焦点序列不应改变焦点");
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("打开模型面板再关闭，焦点应回到输入框", (t) => {
 		const { input, output } = start(t);
 		try {

@@ -42,6 +42,9 @@ export function resetStatusMeta(state: TuiState): void {
 }
 
 export function scheduleStatusClear(state: TuiState, render: () => void): void {
+	// 错误与警告留给使用者读完：1.5 秒往往不够，而且不少错误只写状态行、不落对话流。
+	// 下一条状态或回合收尾会覆盖它，不会永久占位；提示类（notice）仍按原节奏消失。
+	if (state.statusTone === "warning" || state.statusTone === "error") return;
 	if (state.statusClearTimer !== undefined) clearTimeout(state.statusClearTimer);
 	state.statusClearTimer = setTimeout(() => {
 		state.statusClearTimer = undefined;
