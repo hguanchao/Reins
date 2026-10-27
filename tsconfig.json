@@ -20,8 +20,8 @@
 		"forceConsistentCasingInFileNames": true,
 
 		"paths": {
-			"highlight.js": ["./types/highlight.js.d.ts"]
+			"highlight.js": ["./src/types/highlight.js.d.ts"]
 		}
 	},
-	"include": ["src/**/*.ts", "tests/**/*.ts", "types/**/*.d.ts"]
+	"include": ["src/**/*.ts", "tests/**/*.ts"]
 }
