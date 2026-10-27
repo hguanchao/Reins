@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { describeError } from "../../shared/describe-error.ts";
+import { describeError } from "../shared/describe-error.ts";
 import { createParser } from "eventsource-parser";
 
 /**

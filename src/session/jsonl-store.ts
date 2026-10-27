@@ -1,17 +1,17 @@
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { describeError } from "../../shared/describe-error.ts";
-import { firstLine } from "../../shared/format.ts";
+import { describeError } from "../shared/describe-error.ts";
+import { firstLine } from "../shared/format.ts";
 
-import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../session/port.ts";
+import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "./port.ts";
 import type {
 	SessionCreateOptions,
 	SessionFile,
 	SessionListing,
 	SessionStore,
 	SessionWriter,
-} from "../../session/store.ts";
-import { splitLines } from "../../tools/truncate.ts";
+} from "./store.ts";
+import { splitLines } from "../tools/truncate.ts";
 import { SessionLock } from "./lock.ts";
 
 /**

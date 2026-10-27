@@ -87,21 +87,30 @@ function readPlugin(module: unknown): Plugin {
 export class ExternalPlugins {
 	readonly #directory: string;
 	readonly #host: PluginHost;
+	/** 配置里点名关掉的插件标识 */
+	readonly #disabled: ReadonlySet<string>;
 
-	constructor(options: { readonly directory: string; readonly host: PluginHost }) {
+	constructor(options: {
+		readonly directory: string;
+		readonly host: PluginHost;
+		readonly disabled?: ReadonlySet<string>;
+	}) {
 		this.#directory = options.directory;
 		this.#host = options.host;
+		this.#disabled = options.disabled ?? new Set();
 	}
 
 	/**
 	 * 发现并装载目录里的全部插件。
 	 *
-	 * 单个文件装载失败不影响其余文件：一个写坏的插件不该让别的插件也起不来。
+	 * 单个文件装载失败不影响其余文件：一个写坏的插件不该让别的插件也起不来。禁用清单在这里
+	 * 生效：随包插件已经不存在，`plugins.disabled` 现在只用来关掉外部插件。
 	 */
 	async load(): Promise<readonly PluginFailure[]> {
 		const failures: PluginFailure[] = [];
 		const plugins: Plugin[] = [];
 		for (const source of discoverPlugins(this.#directory)) {
+			if (this.#disabled.has(source.name)) continue;
 			try {
 				plugins.push(await importPlugin(source));
 			} catch (error) {

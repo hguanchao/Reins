@@ -22,6 +22,14 @@ import type { ResultSpiller } from "./spill.ts";
  * 工具的可用集合就是注册进来的集合，没有单独的启用清单：注册了就能被调用，判定留给权限层。
  */
 
+/**
+ * 工具来源。
+ *
+ * - `core`：宿主自带，装配时直接注册，不可被替换。
+ * - `bundled`：宿主接入的外部能力（当前是 MCP 远端工具）。它们的声明来自工作区之外，
+ *   只读标注不能像核心工具那样直接采信。
+ * - `plugin`：磁盘上的外部插件提供。信任级别最低，只读标注一律不采信。
+ */
 export type ToolSource = "core" | "bundled" | "plugin";
 
 interface ToolCallRequest {

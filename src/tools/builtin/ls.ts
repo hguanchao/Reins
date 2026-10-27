@@ -1,9 +1,9 @@
 import { readdirSync, statSync } from "node:fs";
 
-import { resolveToolPath } from "../../tools/path.ts";
+import { resolveToolPath } from "../path.ts";
 import { describeError } from "../../shared/describe-error.ts";
-import type { ToolDefinition, ToolResult } from "../../tools/contract.ts";
-import type { JsonSchema } from "../../tools/schema.ts";
+import type { ToolDefinition, ToolResult } from "../contract.ts";
+import type { JsonSchema } from "../schema.ts";
 import { walk, type WalkEntry } from "../../workspace/walk.ts";
 
 /**

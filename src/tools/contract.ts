@@ -100,7 +100,7 @@ export interface GateRequest {
 	readonly tool: string;
 	readonly annotations: ToolAnnotations;
 	readonly args: Record<string, unknown>;
-	/** 工具来源：审批层据此决定只读标注是否可信 */
+	/** 工具来源：审批层据此决定只读标注是否可信（core 可信，bundled 与 plugin 不可信） */
 	readonly source: "core" | "bundled" | "plugin";
 	/** 本会话可记住的放行范围；undefined 表示这次调用只能逐次批准 */
 	readonly scope: PermissionScope | undefined;

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { findTool } from "../../../src/plugins/tools-plugin/find.ts";
+import { findTool } from "../../../src/tools/builtin/find.ts";
 import { WorkspaceBoundary } from "../../../src/workspace/boundary.ts";
 
 describe("查找文件", () => {

@@ -6,14 +6,13 @@ import { createSession } from "./target.ts";
 /**
  * 新建本次会话。
  *
- * 会话存储由插件提供，它缺席时新建会话仍可用（只留在内存里），但必须说出来：使用者以为历史
- * 留在磁盘上、事后去找却发现什么都没有，是最难查的一种失败。
+ * 会话存储内置在宿主里，正常情况下不会缺席。仍然保留这条分支：插件换掉的存储实现可能在
+ * 装载期失败，此时新建会话仍可用（只留在内存里），但必须说出来：使用者以为历史留在磁盘上、
+ * 事后去找却发现什么都没有，是最难查的一种失败。
  */
 export function createSessionFor(workRoot: string, store: SessionStore | undefined): Session {
 	if (store === undefined) {
-		writeStderr(
-			"No session store (session-plugin is disabled or failed to load), this session will not be saved to a file\n",
-		);
+		writeStderr("No session store is available, this session will not be saved to a file\n");
 	}
 	return createSession(workRoot, store);
 }

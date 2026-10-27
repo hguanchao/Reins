@@ -109,17 +109,29 @@ describe("插件宿主", () => {
 		assert.deepEqual(host.commands().map((command) => command.name), ["dup"]);
 	});
 
-	it("会话存储只允许一个", async () => {
-		const { failures } = await hostWith(
-			pluginOf("one", (api) => {
-				api.registerSessionStore({} as never);
+	it("会话存储后注册者替换先前的实现", async () => {
+		// 内置实现先装好，插件提供自己的实现即替换：条目从此写到新存储里
+		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
+		const host = new PluginHost(registry, new PermissionPolicy("ask"), {
+			sessionStore: { builtin: true } as never,
+		});
+		const failures = await host.load([
+			pluginOf("custom", (api) => {
+				api.registerSessionStore({ custom: true } as never);
 			}),
-			pluginOf("two", (api) => {
-				api.registerSessionStore({} as never);
+		]);
+
+		assert.deepEqual(failures, []);
+		assert.deepEqual(host.sessionStore(), { custom: true });
+	});
+
+	it("内置实现缺席时插件提供的会话存储生效", async () => {
+		const { host } = await hostWith(
+			pluginOf("only", (api) => {
+				api.registerSessionStore({ custom: true } as never);
 			}),
 		);
-		assert.equal(failures.length, 1);
-		assert.match((failures as { message: string }[])[0]!.message, /only one is allowed/);
+		assert.deepEqual(host.sessionStore(), { custom: true });
 	});
 
 	it("宿主自己的命令与插件命令同一份清单且不许重名", async () => {
@@ -189,5 +201,47 @@ describe("插件宿主", () => {
 
 		assert.equal(failures.length, 1);
 		assert.equal(registry.get("first_ok"), undefined);
+	});
+
+	it("插件不能替换内置工具", async () => {
+		// 内置工具是「能改代码」这件事本身，被换掉之后使用者很难察觉
+		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
+		registry.register(toolNamed("read"), "core");
+		const host = new PluginHost(registry, new PermissionPolicy("ask"));
+
+		const failures = await host.load([
+			pluginOf("hijack", (api) => {
+				api.registerTool(toolNamed("read"));
+			}),
+		]);
+
+		// 装载期的预检先撞上重名，注册表那层「核心工具不可替换」是它的第二道闸
+		assert.equal(failures.length, 1);
+		assert.match(failures[0]!.message, /already registered|cannot be replaced/);
+		assert.equal(registry.describe()[0]!.source, "core");
+	});
+
+	it("内置后端在构造时装好，插件按标识替换", async () => {
+		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
+		const builtin = { id: "seatbelt", available: false, wrap: () => undefined };
+		const host = new PluginHost(registry, new PermissionPolicy("ask"), { backends: [builtin] });
+		assert.deepEqual(host.backends().map((backend) => backend.id), ["seatbelt"]);
+
+		const replacement = { id: "seatbelt", available: true, wrap: () => "wrapped" };
+		await host.load([pluginOf("swap", (api) => api.registerSandboxBackend(replacement))]);
+
+		// 同标识即替换，而不是让两份实现并存、由装配处去猜该用哪个
+		assert.deepEqual(host.backends(), [replacement]);
+	});
+
+	it("不同标识的后端并列，保留原有顺序", async () => {
+		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
+		const first = { id: "first", available: false, wrap: () => undefined };
+		const host = new PluginHost(registry, new PermissionPolicy("ask"), { backends: [first] });
+
+		const second = { id: "second", available: false, wrap: () => undefined };
+		await host.load([pluginOf("extra", (api) => api.registerSandboxBackend(second))]);
+
+		assert.deepEqual(host.backends().map((backend) => backend.id), ["first", "second"]);
 	});
 });

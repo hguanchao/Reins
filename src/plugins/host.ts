@@ -13,19 +13,26 @@ import type { ToolRegistry, ToolSource } from "../tools/registry.ts";
  * 设置审批方式、也没有改沙箱模式的方法——那些是宿主的安全边界，插件不该有能力放宽自己。
  *
  * 插件之间没有共享的引用，只有宿主：它拿到的 api 是宿主给的，能做的也只是往宿主这里登记。
+ *
+ * 工具与会话存储、沙箱后端这两类「手段」的替换规则不同：
+ * - 工具注册项一律不可同名覆盖。核心工具是「能改代码」这件事本身，被换掉之后使用者很难
+ *   察觉，而没有察觉的替换正是最危险的一类改动；插件工具重名同样直接报错，让作者知道
+ *   自己没注册成功。
+ * - 会话存储与沙箱后端是「同一件事的不同实现」，允许后注册者替换先前的实现。内置实现
+ *   先装好，插件随后注册即覆盖——这是「产品自带可用，插件可以换掉」这条设计的落点。
  */
 
 /** 交到插件手上的那部分能力。 */
 export interface PluginApi {
-	/** 注册一个工具。与核心工具重名会被拒绝。 */
+	/** 注册一个工具。与已有工具重名会被拒绝，内置工具不能被替换。 */
 	registerTool(tool: AnyToolDefinition): void;
 	/** 注册一条斜杠命令。 */
 	registerCommand(command: PluginCommand): void;
-	/** 注册一套平台层面的命令隔离手段。 */
+	/** 注册一套平台层面的命令隔离手段。标识相同的会替换先前的实现。 */
 	registerSandboxBackend(backend: SandboxBackend): void;
 	/** 注册一条审批规则。规则只能加严，不能放行。 */
 	registerPermissionRule(rule: PermissionRule): void;
-	/** 提供会话的落盘方式。只能有一个，否则条目该写到哪里就没有定论。 */
+	/** 替换会话的落盘方式。内置实现先装好，后注册的生效。 */
 	registerSessionStore(store: SessionStore): void;
 }
 
@@ -81,9 +88,24 @@ export class PluginHost {
 	readonly #backends: SandboxBackend[] = [];
 	#sessionStore: SessionStore | undefined;
 
-	constructor(tools: ToolRegistry, policy: PermissionPolicy) {
+	/**
+	 * builtins 是产品自带的实现，在构造时就装好。
+	 *
+	 * 它们与插件注册走同一份容器，因此插件后注册即可替换：这是「默认可用，插件可以换掉」
+	 * 这条设计的落点。内置工具不经过这里——工具由装配处直接注册进注册表，且不可被替换。
+	 */
+	constructor(
+		tools: ToolRegistry,
+		policy: PermissionPolicy,
+		builtins: {
+			readonly backends?: readonly SandboxBackend[];
+			readonly sessionStore?: SessionStore;
+		} = {},
+	) {
 		this.#tools = tools;
 		this.#policy = policy;
+		for (const backend of builtins.backends ?? []) this.#addBackend(backend);
+		this.#sessionStore = builtins.sessionStore;
 	}
 
 	/**
@@ -195,7 +217,7 @@ export class PluginHost {
 			registerSandboxBackend: (backend) => {
 				assertLive();
 				if (!pending.open) {
-					this.#backends.push(backend);
+					this.#addBackend(backend);
 					return;
 				}
 				pending.backends.push(backend);
@@ -210,9 +232,7 @@ export class PluginHost {
 			},
 			registerSessionStore: (store) => {
 				assertLive();
-				if (this.#sessionStore !== undefined || pending.store !== undefined) {
-					throw new Error("A session store is already registered; only one is allowed");
-				}
+				// 内置实现已经装好，这里就是「替换」：后注册的生效，条目从此写到这里
 				if (!pending.open) {
 					this.#sessionStore = store;
 					return;
@@ -233,10 +253,26 @@ export class PluginHost {
 
 		// 工具先提交：它的重名检查会抛错，抛在这里仍算在该插件名下
 		for (const tool of pending.tools) this.#tools.register(tool, source);
-		for (const backend of pending.backends) this.#backends.push(backend);
+		for (const backend of pending.backends) this.#addBackend(backend);
 		for (const rule of pending.rules) this.#policy.addRule(rule);
 		for (const command of pending.commands) this.#commands.set(command.name, command);
 		if (pending.store !== undefined) this.#sessionStore = pending.store;
+	}
+
+	/**
+	 * 装上一套沙箱后端。
+	 *
+	 * 标识相同即替换：内置的 seatbelt/bubblewrap 先装好，插件提供同标识的实现时就是「换掉
+	 * 这套手段」，而不是让两份实现同时存在、由装配处去猜该用哪个。位置保持不变，这样
+	 * 候选顺序仍然稳定。
+	 */
+	#addBackend(backend: SandboxBackend): void {
+		const index = this.#backends.findIndex((item) => item.id === backend.id);
+		if (index === -1) {
+			this.#backends.push(backend);
+			return;
+		}
+		this.#backends[index] = backend;
 	}
 }
 

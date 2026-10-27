@@ -13,7 +13,8 @@ import { isPathInside, resolveRealPath } from "../workspace/boundary.ts";
  *     的执行——那会让使用者以为自己有保护，实际上一点也没有。
  *
  * 这里没有任何具体的隔离实现：操作系统的手段（macOS 的 seatbelt、Linux 的 bubblewrap）
- * 由插件提供。所以「没有后端」是一个正常状态，它的含义就是「当前无法约束命令」。
+ * 由沙箱后端提供，宿主自带这两个实现，插件可以按标识替换。所以「没有后端」是一个正常状态，
+ * 它的含义就是「当前无法约束命令」。
  */
 
 export interface SandboxView {

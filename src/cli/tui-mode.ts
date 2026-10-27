@@ -17,7 +17,7 @@ import { applyLiveConfig, diffConfig } from "../config/reload.ts";
 import { lastContextTokens } from "../session/usage.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ApprovalBroker } from "../permission/approval.ts";
-import type { McpStatusSource } from "../plugins/registry.ts";
+import type { McpStatusSource } from "../mcp/service.ts";
 import { Session } from "../session/session.ts";
 import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
 import { imageBlock, type ImageAttachment } from "../tui/image.ts";

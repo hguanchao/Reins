@@ -115,7 +115,7 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 			name: "mcps",
 			description:
 				options.mcpServers === undefined
-					? "No MCP plugin in this session"
+					? "No MCP connection in this session"
 					: "List MCP server connections and their tools",
 			enabled: options.mcpServers !== undefined,
 		},

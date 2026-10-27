@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
-import { SessionLock } from "../../../src/plugins/session-plugin/lock.ts";
+import { SessionLock } from "../../src/session/lock.ts";
 
 describe("会话写者锁", () => {
 	const DIR = join(tmpdir(), `reins-lock-${Date.now()}`);

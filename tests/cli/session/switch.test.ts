@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 
 import { openSessionForSwitch } from "../../../src/cli/session/switch.ts";
 import { createSession } from "../../../src/cli/session/target.ts";
-import { JsonlSessionStore } from "../../../src/plugins/session-plugin/jsonl-store.ts";
+import { JsonlSessionStore } from "../../../src/session/jsonl-store.ts";
 
 /** 会话目录由 REINS_HOME 决定；每个用例用自己的临时目录，结束后恢复并删除。 */
 async function withHome(run: (workRoot: string) => Promise<void>): Promise<void> {

@@ -1,4 +1,4 @@
-import type { JsonSchema } from "../../tools/schema.ts";
+import type { JsonSchema } from "../tools/schema.ts";
 import type { JsonRpcMessage, McpTransport } from "./transport.ts";
 
 /**

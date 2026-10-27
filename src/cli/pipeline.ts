@@ -9,11 +9,12 @@ import type { Config } from "../config/file.ts";
 import { pluginsDir, spillDir } from "../config/paths.ts";
 import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
+import { startMcpServers, type McpStatusSource } from "../mcp/service.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ExternalPlugins } from "../plugins/external.ts";
 import { PluginHost, type PluginFailure } from "../plugins/host.ts";
-import { bundledPlugins, type McpStatusSource } from "../plugins/registry.ts";
+import { builtinSandboxBackends, builtinSessionStore } from "../plugins/registry.ts";
 import { createSandbox, type SandboxInfo } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { Session } from "../session/session.ts";
@@ -97,7 +98,7 @@ export function createCompactor(
 /** Plan 模式下模型能看到的全部工具：只读探索加计划提交，没有 shell、编辑或子代理。 */
 const PLAN_TOOL_NAMES = ["read", "ls", "find", "grep", "present_plan"] as const;
 
-/** 按白名单收窄注册表；随包工具可能被配置禁用，缺失的名字直接跳过。 */
+/** 按白名单收窄注册表；工具名可能因外部插件注册失败而不存在，缺失的名字直接跳过。 */
 function planToolRegistry(registry: ToolRegistry): ToolRegistry {
 	const names = PLAN_TOOL_NAMES.filter((name) => registry.get(name) !== undefined);
 	return registry.only(...names);
@@ -188,19 +189,22 @@ export function createReviewer(
 /**
  * 装载外部插件。
  *
- * 放在随包插件之后：两者共用一份注册表，重名要在这里成为一条清楚的装载失败。只在启动时装
+ * 放在内置能力之后：两者共用一份注册表，重名要在这里成为一条清楚的装载失败。只在启动时装
  * 一次——改完插件文件要重启进程，没有热重载。
  */
-async function loadExternalPlugins(host: PluginHost): Promise<readonly PluginFailure[]> {
-	return new ExternalPlugins({ directory: pluginsDir(), host }).load();
+async function loadExternalPlugins(host: PluginHost, disabled: ReadonlySet<string>): Promise<readonly PluginFailure[]> {
+	return new ExternalPlugins({ directory: pluginsDir(), host, disabled }).load();
 }
 
 /**
  * 装配工具与插件管线。
  *
- * 交互与非交互共用这一段:注册表、核心工具、随包与外部插件、沙箱。审批门由调用方先按
- * 「有没有人可问」建好传进来;onStage 给交互模式挂启动计时的阶段标记。
- * 返回 null 表示沙箱起不来,原因已经写给使用者,调用方直接以失败退出。
+ * 交互与非交互共用这一段：注册表、核心工具、内置能力、MCP 客户端、外部插件、沙箱。审批门
+ * 由调用方先按「有没有人可问」建好传进来；onStage 给交互模式挂启动计时的阶段标记。
+ *
+ * 顺序有讲究：内置能力先装好（产品不依赖插件即可完整工作），MCP 与外部插件随后注册——
+ * 后者与内置实现同标识时即替换。返回 null 表示沙箱起不来，原因已经写给使用者，调用方直接
+ * 以失败退出。
  */
 export async function assemblePipeline(options: {
 	readonly config: Config;
@@ -223,21 +227,23 @@ export async function assemblePipeline(options: {
 		registry.register(tool, "core");
 	}
 
-	const host = new PluginHost(registry, policy);
-	const failures = await host.load(
-		bundledPlugins({
-			cwd: workRoot,
-			version: readVersion(),
-			mcpServers: config.mcpServers,
-			...(options.onMcpStatus === undefined ? {} : { onMcpStatus: options.onMcpStatus }),
-		}).filter((plugin) => !disabledPlugins(config).has(plugin.name)),
-	);
-	for (const failure of failures) {
-		// 插件加载失败只说一声：一个写坏的插件不该让整个程序起不来
-		writeStderr(`Plugin ${failure.plugin} failed to load: ${failure.message}\n`);
-	}
-	options.onStage?.("plugins");
-	reportExternalFailures(await loadExternalPlugins(host));
+	const host = new PluginHost(registry, policy, {
+		backends: builtinSandboxBackends(),
+		sessionStore: builtinSessionStore(),
+	});
+
+	// MCP 是宿主能力：插件层整个不可用也照常连接。远端工具与核心工具走同一条管线，
+	// 但按 bundled 记账——它们的声明来自外部，只读标注不可信
+	startMcpServers({
+		cwd: workRoot,
+		version: readVersion(),
+		servers: config.mcpServers,
+		registerTool: (tool) => registry.register(tool, "bundled"),
+		...(options.onMcpStatus === undefined ? {} : { onStatus: options.onMcpStatus }),
+	});
+	options.onStage?.("mcp");
+
+	reportExternalFailures(await loadExternalPlugins(host, disabledPlugins(config)));
 	options.onStage?.("external");
 
 	try {

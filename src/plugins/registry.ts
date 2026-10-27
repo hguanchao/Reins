@@ -1,47 +1,25 @@
-import type { McpServerConfig } from "../config/file.ts";
-import type { Plugin } from "./host.ts";
-import { createMcpPlugin, type McpStatusSource } from "./mcp-plugin/index.ts";
-import sandboxPlugin from "./sandbox-plugin/index.ts";
-import sessionPlugin from "./session-plugin/index.ts";
-import toolsPlugin from "./tools-plugin/index.ts";
+import { BubblewrapBackend } from "../sandbox/backends/bubblewrap.ts";
+import { SeatbeltBackend } from "../sandbox/backends/seatbelt.ts";
+import type { SandboxBackend } from "../sandbox/policy.ts";
+import { JsonlSessionStore } from "../session/jsonl-store.ts";
+import type { SessionStore } from "../session/store.ts";
 
 /**
- * 组合根。
+ * 产品自带的实现。
  *
- * 全项目只有这个文件导入具体的插件：宿主模块只认识插件契约，装配处从这里取清单再驱动生命
- * 周期。这样「宿主不依赖具体插件」这条规则才有落点——依赖方向始终是 plugins 指向宿主，
- * 反过来一次都没有。
+ * 这几项能力的产品语义都在宿主里（沙箱判定、会话条目与折叠、工具管线），只有「用什么手段
+ * 落地」是可换的：命令隔离靠哪个操作系统设施、条目写成哪种文件格式。它们默认全部装好，
+ * 产品不依赖任何插件就能完整工作；插件随后注册同标识的实现即可替换。
+ *
+ * 工具不在这个清单里：核心工具由装配处直接注册进注册表，且不允许被插件替换。
  */
 
-interface BundledPluginContext {
-	/** 工作目录：要起外部进程的插件在这里动手 */
-	readonly cwd: string;
-	/** 本程序自己的版本，握手时用得上 */
-	readonly version: string;
-	/**
-	 * 要连接的 MCP server。
-	 *
-	 * 只读命令（比如列会话清单）传空数组：为了显示一份清单去起一堆外部进程，既慢又会在使用者
-	 * 看不见的地方留下副作用。
-	 */
-	readonly mcpServers: readonly McpServerConfig[];
-	/** 把 MCP 连接清单交给装配处；界面用它排 /mcps 页。 */
-	readonly onMcpStatus?: (source: McpStatusSource) => void;
+/** 内置的沙箱后端。顺序即候选顺序：前一个自检不过时接着试下一个。 */
+export function builtinSandboxBackends(): readonly SandboxBackend[] {
+	return [new SeatbeltBackend(), new BubblewrapBackend()];
 }
 
-export function bundledPlugins(context: BundledPluginContext): readonly Plugin[] {
-	return [
-		toolsPlugin,
-		sessionPlugin,
-		sandboxPlugin,
-		createMcpPlugin({
-			cwd: context.cwd,
-			version: context.version,
-			servers: context.mcpServers,
-			onStatus: context.onMcpStatus,
-		}),
-	];
+/** 内置的会话存储：以 JSONL 落盘。 */
+export function builtinSessionStore(): SessionStore {
+	return new JsonlSessionStore();
 }
-
-export { sandboxPlugin, sessionPlugin, toolsPlugin };
-export type { McpStatusSource } from "./mcp-plugin/index.ts";
