@@ -80,11 +80,14 @@ export function render(host: TuiHost): void {
 								? state.statusElapsedMs
 								: undefined,
 					tokens:
-						active !== undefined
-							? active.tokensUsed
-							: state.statusTokens > 0
-								? state.statusTokens
-								: undefined,
+						state.copyNotice === true
+							? undefined
+							: active !== undefined
+								? active.tokensUsed
+								: state.statusTokens > 0
+									? state.statusTokens
+									: undefined,
+					tokenLabel: state.copyNotice === true ? "Copied!" : undefined,
 				};
 	const menuLines = menuLinesOf(host, width, metrics);
 	const inputLines = inputView(state.input, width, state.inputCursor);

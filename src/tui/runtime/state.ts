@@ -50,6 +50,8 @@ export function createState(options: TuiOptions): TuiState {
 		statusTone: undefined,
 		statusElapsedMs: 0,
 		statusTokens: 0,
+		copyNotice: false,
+		copyNoticeTimer: undefined,
 		statusPhaseStartedAt: 0,
 		spinnerFrame: 0,
 		sweepPhase: 0,

@@ -67,6 +67,8 @@ interface RuntimeStatus {
 	readonly elapsedMs?: number;
 	/** 本轮请求累计消耗的 token 数；压缩请求不计入 */
 	readonly tokens?: number;
+	/** token 位置要显示的文字；有值时优先于 tokens，用于复制成功这类瞬时提示 */
+	readonly tokenLabel?: string;
 	/** 扫光位置，0 到 1；省略时静态显示。 */
 	readonly sweep?: number;
 	/**
@@ -429,7 +431,13 @@ function statusLine(width: number, status: RuntimeStatus | undefined): string {
 
 	const rightParts: string[] = [];
 	if (status.elapsedMs !== undefined) rightParts.push(formatDuration(status.elapsedMs));
-	if (status.tokens !== undefined) rightParts.push(`⇣${formatCompactTokens(status.tokens)}`);
+	const metering =
+		status.tokenLabel !== undefined
+			? status.tokenLabel
+			: status.tokens === undefined
+				? undefined
+				: `⇣${formatCompactTokens(status.tokens)}`;
+	if (metering !== undefined) rightParts.push(metering);
 	const right = rightParts.join("  ");
 
 	// 状态文本可能是中文或带宽字符,长度一律按显示列算:按码元截断会让宽字符撑破行宽,

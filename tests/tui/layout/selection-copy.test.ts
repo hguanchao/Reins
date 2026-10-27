@@ -30,7 +30,7 @@ function locate(
 
 describe("鼠标拖选复制", () => {
 	it("拖动一段文字，松开后复制到系统剪贴板", (t) => {
-		t.mock.timers.enable({ apis: ["setInterval"] });
+		t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 60;
@@ -69,8 +69,16 @@ describe("鼠标拖选复制", () => {
 			t.mock.timers.tick(100);
 
 			assert.deepEqual(copied, ["hello world"]);
-			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Copied 11 chars"));
+			let text = frameLines(output).map(plain).join("\n");
+			// 提示占用 token 位置，期间不显示 token 计量
+			assert.ok(text.includes("Copied!"));
+			assert.equal(text.includes("⇣"), false);
+
+			// 自动消失后 token 计量回显
+			t.mock.timers.tick(1_500);
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Copied!"), false);
+			assert.ok(text.includes("⇣0"));
 		} finally {
 			exitTui(input);
 		}
@@ -113,7 +121,7 @@ describe("鼠标拖选复制", () => {
 				),
 			);
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Copy sent to terminal"));
+			assert.ok(text.includes("Copied!"));
 		} finally {
 			exitTui(input);
 		}

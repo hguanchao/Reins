@@ -65,6 +65,10 @@ export function cleanup(
 		clearTimeout(state.statusClearTimer);
 		state.statusClearTimer = undefined;
 	}
+	if (state.copyNoticeTimer !== undefined) {
+		clearTimeout(state.copyNoticeTimer);
+		state.copyNoticeTimer = undefined;
+	}
 	state.stdout.off("resize", deps.render);
 	state.stdin.off("data", deps.onData);
 	process.off("SIGINT", deps.onInterrupt);

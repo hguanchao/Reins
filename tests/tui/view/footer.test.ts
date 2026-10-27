@@ -311,6 +311,20 @@ describe("页脚输入框", () => {
 		assert.ok(raw.endsWith("\x1b[0m"));
 	});
 
+	it("token 位置可以临时显示复制提示", () => {
+		const lines = renderFooter(70, "", true, {
+			symbol: "⠧",
+			text: "Writing response...",
+			phaseMs: 2500,
+			elapsedMs: 5300,
+			tokens: 21400,
+			tokenLabel: "Copied!",
+		});
+		const text = plain(lines[1] ?? "");
+		assert.ok(text.endsWith("5.3s  Copied!"));
+		assert.equal(text.includes("⇣"), false);
+	});
+
 	it("耗时满一分钟后改为分钟与秒", () => {
 		const lines = renderFooter(70, "", true, {
 			symbol: "⠋",

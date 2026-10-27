@@ -1,30 +1,46 @@
 import type { TuiOutput } from "../options.ts";
+import { STATUS_CLEAR_MS } from "./constants.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
  * 复制一段文本。
  *
  * 先交给宿主提供的系统剪贴板；写不进去时退到 OSC 52，让终端自己接住（SSH、容器里没有
- * 剪贴板命令时还有这一条路）。复制是瞬时动作，结果只写状态行，不在对话流里留痕。
+ * 剪贴板命令时还有这一条路）。成功提示只占用状态行里 token 计量的位置，超时后 token 数
+ * 自动回来，不打断当前正在显示的状态文字。
  */
 export function copyText(host: TuiHost, text: string): void {
 	if (text.trim().length === 0) return;
-	const chars = Array.from(text).length;
 	let copied = false;
 	try {
 		copied = host.options.clipboard?.copy(text) ?? false;
 	} catch {
 		copied = false;
 	}
+	if (!copied) copied = writeOsc52(host.state.stdout, text);
 
-	if (copied) {
-		host.setStatus(`Copied ${chars} chars`, "notice");
-	} else if (writeOsc52(host.state.stdout, text)) {
-		host.setStatus(`Copy sent to terminal (${chars} chars)`, "notice");
-	} else {
+	if (!copied) {
 		host.setStatus("Copy failed", "warning");
+		host.scheduleStatusClear();
+		return;
 	}
-	host.scheduleStatusClear();
+
+	const state = host.state;
+	// 没有运行时状态行就没有 token 位置可占，退成一条短暂提示
+	if (state.statusText === undefined) {
+		host.setStatus("Copied!", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+
+	state.copyNotice = true;
+	if (state.copyNoticeTimer !== undefined) clearTimeout(state.copyNoticeTimer);
+	state.copyNoticeTimer = setTimeout(() => {
+		state.copyNoticeTimer = undefined;
+		state.copyNotice = false;
+		host.render();
+	}, STATUS_CLEAR_MS);
+	host.render();
 }
 
 /** OSC 52：把文本直接交给终端写剪贴板；终端不支持时序列会被忽略。 */

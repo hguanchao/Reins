@@ -39,6 +39,11 @@ export function clearStatus(state: TuiState): void {
 export function resetStatusMeta(state: TuiState): void {
 	state.statusElapsedMs = 0;
 	state.statusTokens = 0;
+	if (state.copyNoticeTimer !== undefined) {
+		clearTimeout(state.copyNoticeTimer);
+		state.copyNoticeTimer = undefined;
+	}
+	state.copyNotice = false;
 }
 
 export function scheduleStatusClear(state: TuiState, render: () => void): void {

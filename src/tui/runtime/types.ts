@@ -131,6 +131,9 @@ export interface TuiState {
 	statusElapsedMs: number;
 	/** 回合结束时的定格用量；运行中由渲染按 active.tokensUsed 现算。 */
 	statusTokens: number;
+	/** 复制成功后的短暂提示：优先占用 token 位置，超时后回显 token 数 */
+	copyNotice: boolean;
+	copyNoticeTimer: ReturnType<typeof setTimeout> | undefined;
 	spinnerFrame: number;
 	sweepPhase: number;
 
