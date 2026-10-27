@@ -11,6 +11,7 @@ import { fileMenuHeight } from "../panel/file-menu.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "./scroll.ts";
 import type { InputDeps } from "./deps.ts";
 import { handleMenuMouse, inlineMenuTarget } from "./menus.ts";
+import { toolHeaderInView } from "../transcript.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 export function handleTranscriptInput(
@@ -85,6 +86,17 @@ export function handleTranscriptInput(
 			const doubleClick = trackClick(state, event);
 			if (doubleClick && host.toggleTranscriptAt(event.row, event.column, mainHeight, width)) {
 				return;
+			}
+
+			// 单击工具行把它记成 Ctrl+G 的查看目标；展开/收起仍归双击
+			if (event.column < width - 1) {
+				const selected = toolHeaderInView(
+					host.currentTranscript(width),
+					mainHeight,
+					state.scrollTop,
+					event.row,
+				);
+				if (selected !== undefined) state.viewerTool = selected;
 			}
 
 			// 常驻面板头行:双击收起/展开条目。面板在对话流外面,行号要按自己的位置算

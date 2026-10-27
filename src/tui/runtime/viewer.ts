@@ -3,14 +3,15 @@ import { showPage } from "./pages.ts";
 import type { TuiHost, ViewerContent } from "./types.ts";
 
 /**
- * Ctrl+G：把最近一块可能被折叠或截断的内容打开成整屏页。
+ * Ctrl+G：把使用者选中的工具或最近一块可能被折叠/截断的内容打开成整屏页。
  *
- * 对话流里的工具结果、命令详情、思考与提示保持现状；查看页只是同一份原文的完整排版。
- * 优先工具结果/详情，其次思考，最后是最近一条提示；普通 Markdown 回复本来就在对话流里，
- * 不在这里重复。
+ * 点选或展开过的工具优先，Ctrl+G 跟着使用者正在看的那一行；没有这种选择时才回退到
+ * 对话流里最近的长内容。查看页只是同一份原文的完整排版，不改变对话流本身。
  */
 export function openLatestViewer(host: TuiHost): void {
-	const block = latestViewerBlock(host.state.turns);
+	const block =
+		(host.state.viewerTool === undefined ? undefined : anchoredBlock(host.state.viewerTool)) ??
+		latestViewerBlock(host.state.turns);
 	if (block === undefined) {
 		host.setStatus("Nothing to view yet", "notice");
 		host.scheduleStatusClear();
@@ -22,6 +23,14 @@ export function openLatestViewer(host: TuiHost): void {
 	host.render();
 }
 
+/** 目标工具的内容；连结果和详情都没有时退回它的一行说明，别让 Ctrl+G 跳去看别处。 */
+function anchoredBlock(tool: TranscriptTool): ViewerContent | undefined {
+	const block = toolBlock(tool);
+	if (block !== undefined) return block;
+	return tool.detail.length === 0 ? undefined : { title: `${tool.name} details`, text: tool.detail };
+}
+
+/** 回退路径：优先工具结果/详情，其次思考，最后是最近一条提示；普通回复本来就在对话流里。 */
 function latestViewerBlock(turns: readonly TranscriptTurn[]): ViewerContent | undefined {
 	for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
 		const turn = turns[turnIndex];

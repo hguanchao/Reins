@@ -99,7 +99,10 @@ export function handleToggleKey(state: TuiState, text: string): boolean {
 		return true;
 	}
 	if (text === "\x0f") {
-		if (toggleLastToolResult(state.turns)) {
+		const tool = toggleLastToolResult(state.turns);
+		if (tool !== undefined) {
+			// 刚展开的这条就是 Ctrl+G 要继续看的那条，别再跳回“最新”
+			state.viewerTool = tool;
 			markTranscriptDirty(state);
 			state.follow = false;
 		}

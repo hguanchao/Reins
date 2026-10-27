@@ -100,6 +100,17 @@ describe("展开键", () => {
 		assert.equal(handleToggleKey(stateOf(), "a"), false);
 	});
 
+	it("Ctrl+O 记下被展开的工具供 Ctrl+G 定位", () => {
+		const tool: TranscriptTool = { kind: "tool", name: "read", detail: "a", result: "ok" };
+		const state = stateOf({ turns: [{ prompt: "p", response: [tool] }] });
+		assert.equal(handleToggleKey(state, "\x0f"), true);
+		assert.equal(state.viewerTool, tool);
+
+		// 收起同一条工具时目标不变：Ctrl+G 仍然指向使用者最近摆弄的那一行
+		assert.equal(handleToggleKey(state, "\x0f"), true);
+		assert.equal(state.viewerTool, tool);
+	});
+
 	it("有目标时改动对话流并关闭跟随", () => {
 		const tool: TranscriptTool = { kind: "tool", name: "read", detail: "a", result: "ok" };
 		const state = stateOf({ turns: [{ prompt: "p", response: [tool] }] });

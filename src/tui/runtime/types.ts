@@ -15,6 +15,7 @@ import type {
 	TranscriptMarkdown,
 	TranscriptPlan,
 	TranscriptThinking,
+	TranscriptTool,
 	TranscriptTurn,
 	TranscriptView,
 } from "../transcript.ts";
@@ -159,6 +160,8 @@ export interface TuiState {
 	pageScrollTop: number;
 	/** Ctrl+G 打开的整屏长内容；关闭后保留到下一次打开覆盖 */
 	viewer: ViewerContent | undefined;
+	/** Ctrl+G 优先查看的工具：使用者最后点选或展开的那一行 */
+	viewerTool: TranscriptTool | undefined;
 	/** 当前正在审批页里展示的计划；为空时计划页没有内容。 */
 	planReview: TranscriptPlan | undefined;
 	/** 最近一份计划；/view-plan 与计划卡都从这里打开。 */

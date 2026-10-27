@@ -232,8 +232,8 @@ export function toggleLastExpandable(turns: readonly TranscriptTurn[]): boolean 
 	return false;
 }
 
-/** Ctrl+O：展开或收起最近一个成功工具的结果。 */
-export function toggleLastToolResult(turns: readonly TranscriptTurn[]): boolean {
+/** Ctrl+O：展开或收起最近一个成功工具的结果，返回被切换的工具供 Ctrl+G 定位。 */
+export function toggleLastToolResult(turns: readonly TranscriptTurn[]): TranscriptTool | undefined {
 	for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
 		const response = turns[turnIndex]?.response ?? [];
 		for (let index = response.length - 1; index >= 0; index -= 1) {
@@ -241,7 +241,7 @@ export function toggleLastToolResult(turns: readonly TranscriptTurn[]): boolean 
 			if (typeof line !== "object" || line === null) continue;
 			if (line.kind === "tool" && line.result !== undefined) {
 				line.resultExpanded = !line.resultExpanded;
-				return true;
+				return line;
 			}
 			if (line.kind === "toolGroup") {
 				for (let member = line.members.length - 1; member >= 0; member -= 1) {
@@ -254,12 +254,12 @@ export function toggleLastToolResult(turns: readonly TranscriptTurn[]): boolean 
 					} else {
 						item.resultExpanded = !item.resultExpanded;
 					}
-					return true;
+					return item;
 				}
 			}
 		}
 	}
-	return false;
+	return undefined;
 }
 
 /** 组里是否还有子代理在跑；并行派发时用它决定状态行还要不要继续等待。 */

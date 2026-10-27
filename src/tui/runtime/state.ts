@@ -71,6 +71,7 @@ export function createState(options: TuiOptions): TuiState {
 		openPage: undefined,
 		pageScrollTop: 0,
 		viewer: undefined,
+		viewerTool: undefined,
 		planReview: undefined,
 		latestPlan: options.historyPlan,
 		pendingPlan: undefined,

@@ -71,6 +71,61 @@ describe("对话流长内容查看", () => {
 		}
 	});
 
+	it("Ctrl+G 查看点选过的工具，而不是最新工具", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("跑两下\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "first" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: false,
+				durationMs: 1,
+				summary: "FIRST-OUTPUT",
+				content: "FIRST-OUTPUT",
+			});
+			agent.emit({ type: "tool_start", callId: "c2", name: "bash", args: { command: "second" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c2",
+				name: "bash",
+				isError: false,
+				durationMs: 1,
+				summary: "SECOND-OUTPUT",
+				content: "SECOND-OUTPUT",
+			});
+			t.mock.timers.tick(100);
+
+			// 点选较早的那条工具行；Ctrl+G 应该跟着它，而不是回到最新一条
+			const row = frameLines(output).map(plain).findIndex((line) => line.includes("first")) + 1;
+			assert.ok(row > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+
+			input.emit("data", Buffer.from("\x07"));
+			t.mock.timers.tick(100);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Reins — Bash output"));
+			assert.ok(text.includes("FIRST-OUTPUT"));
+			assert.equal(text.includes("SECOND-OUTPUT"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("没有工具输出时 Ctrl+G 查看最近的长提示", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
