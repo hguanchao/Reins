@@ -1,5 +1,6 @@
 import type { ApprovalMode } from "../config/file.ts";
 import type { GateOutcome, GateRequest, PermissionScope, ToolAnnotations } from "../tools/contract.ts";
+import { describeApprovalPresentation, type ApprovalPresentation } from "../tools/describe.ts";
 
 /**
  * 审批判定。
@@ -171,6 +172,12 @@ export interface ApprovalRequest {
 	/** 风险标签：destructive / external；没有风险时为空串 */
 	readonly risk: string;
 	readonly detail: string;
+	/** 卡片上的一行核心摘要；省略时界面退回 detail */
+	readonly summary?: string;
+	/** 展开后显示的完整命令、聚焦 diff 或待写入内容；省略时不能展开 */
+	readonly preview?: string;
+	/** 展开区的标题：Command / Diff / Content / Arguments */
+	readonly previewLabel?: string;
 	/** 「总是允许」的完整说明；undefined 表示这次不能记住 */
 	readonly saveLabel?: string;
 	/** 动作行里的短标签 */
@@ -240,10 +247,12 @@ export class PermissionGate {
 			};
 		}
 
+		const presentation = approvalPresentation(request.tool, request.args);
 		const answer = await confirmer({
 			tool: request.tool,
 			risk: riskLabel(request.annotations),
 			detail: describeCall(request.tool, request.args),
+			...(presentation === undefined ? {} : presentation),
 			saveLabel: request.scope?.label,
 			saveShort: request.scope?.short ?? request.scope?.label,
 		});
@@ -279,6 +288,18 @@ function describeCall(tool: string, args: Record<string, unknown>): string {
 
 	const text = JSON.stringify(args);
 	return text.length > CALL_SUMMARY_LIMIT ? `${text.slice(0, CALL_SUMMARY_LIMIT)}…` : text;
+}
+
+/** 展示材料生成失败不能影响判定：最坏退回只有 detail 的卡片。 */
+function approvalPresentation(
+	tool: string,
+	args: Record<string, unknown>,
+): ApprovalPresentation | undefined {
+	try {
+		return describeApprovalPresentation(tool, args);
+	} catch {
+		return undefined;
+	}
 }
 
 function riskLabel(annotations: ToolAnnotations): string {

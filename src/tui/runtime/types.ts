@@ -129,6 +129,10 @@ export interface TuiState {
 	approvalPromptId: number | undefined;
 	/** 动作行当前高亮的选项；默认允许一次，直接回车就是放行 */
 	approvalSelection: ApprovalAnswer;
+	/** 审批详情是否展开；每次出现新的审批请求时收起 */
+	approvalExpanded: boolean;
+	/** 审批详情滚动到第几行（已按宽度折行） */
+	approvalScrollTop: number;
 
 	// —— 面板 ——
 	modelMenu: ModelMenuState | undefined;

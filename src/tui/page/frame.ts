@@ -55,6 +55,7 @@ const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar" },
 	{ name: "Double-click", description: "Expand or collapse thinking, tool groups, and tool details" },
 	{ name: "y / a / n", description: "Allow once, always allow, or deny an approval" },
+	{ name: "d", description: "Expand or hide approval details; arrow keys scroll them" },
 	{ name: "@", description: "Complete a workspace file path; an image becomes an inline marker" },
 ];
 

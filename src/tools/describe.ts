@@ -279,6 +279,138 @@ export function sanitizeLine(value: string): string {
 		.replace(/[\u0000-\u001f\u007f]/g, "");
 }
 
+/**
+ * 审批卡展开后的详情。
+ *
+ * summary 是卡片上能一眼读完的核心：命令的核心段或改动的规模。preview 是展开后才看的
+ * 完整命令、聚焦 diff 或待写入内容；两者都只是展示，不改变审批判定。
+ */
+export interface ApprovalPresentation {
+	readonly summary?: string;
+	readonly preview?: string;
+	readonly previewLabel?: string;
+}
+
+/** 展开详情的行数与字符上限：再多也只是滚动，不必把整份文件塞进一帧。 */
+const APPROVAL_PREVIEW_MAX_LINES = 200;
+const APPROVAL_PREVIEW_MAX_CHARS = 24 * 1024;
+
+function capPreview(text: string): string {
+	const lines = sanitizePreviewBlock(text).split("\n");
+	let result =
+		lines.length > APPROVAL_PREVIEW_MAX_LINES
+			? [
+					...lines.slice(0, APPROVAL_PREVIEW_MAX_LINES - 1),
+					`… (${lines.length - APPROVAL_PREVIEW_MAX_LINES + 1} more lines)`,
+				].join("\n")
+			: lines.join("\n");
+	const chars = Array.from(result);
+	if (chars.length > APPROVAL_PREVIEW_MAX_CHARS) {
+		result = `${chars.slice(0, APPROVAL_PREVIEW_MAX_CHARS - 1).join("")}…`;
+	}
+	return result;
+}
+
+/** 多行文本拆行；末尾的换行不算多出来的一行。预览保留换行与缩进。 */
+function previewLines(value: string): readonly string[] {
+	const text = sanitizePreviewBlock(value);
+	if (text.length === 0) return [];
+	const lines = text.split("\n");
+	if (lines.at(-1) === "") lines.pop();
+	return lines;
+}
+
+/** 预览需要保留换行与缩进：控制序列与其余控制字符清掉，制表符展开成四列。 */
+function sanitizePreviewBlock(value: string): string {
+	return stripVTControlCharacters(value)
+		.replace(/\r\n?/g, "\n")
+		.replace(/\t/g, "    ")
+		.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+}
+
+function editPresentation(
+	path: string,
+	edits: readonly unknown[],
+): ApprovalPresentation | undefined {
+	const blocks: string[] = [];
+	let added = 0;
+	let removed = 0;
+
+	edits.forEach((entry, index) => {
+		if (typeof entry !== "object" || entry === null) return;
+		const oldText = (entry as Record<string, unknown>)["oldText"];
+		const newText = (entry as Record<string, unknown>)["newText"];
+		const oldLines = typeof oldText === "string" ? previewLines(oldText) : [];
+		const newLines = typeof newText === "string" ? previewLines(newText) : [];
+		if (oldLines.length === 0 && newLines.length === 0) return;
+
+		removed += oldLines.length;
+		added += newLines.length;
+		const body = [
+			...oldLines.map((line) => `- ${line}`),
+			...newLines.map((line) => `+ ${line}`),
+		];
+		blocks.push(`@@ edit ${index + 1} @@\n${body.join("\n")}`);
+	});
+
+	if (blocks.length === 0) return undefined;
+	const count = blocks.length;
+	return {
+		summary: `${path} · ${count} ${count === 1 ? "edit" : "edits"} · +${added} −${removed}`,
+		preview: capPreview(blocks.join("\n\n")),
+		previewLabel: "Diff",
+	};
+}
+
+/**
+ * 审批请求的展示材料。
+ *
+ * bash 的卡片摘要取核心命令（长内联脚本只留解释器与参数标记），展开才看完整命令；
+ * edit 用参数里的新旧文本生成聚焦 diff，write 展示待写入内容。其余工具摘要保持一行 JSON，
+ * 展开给格式化后的参数。这些都只用于展示，原始参数仍由权限判定使用。
+ */
+export function describeApprovalPresentation(
+	tool: string,
+	args: Record<string, unknown>,
+): ApprovalPresentation | undefined {
+	if (tool === "bash") {
+		const command = text(args["command"]);
+		if (command === undefined) return undefined;
+		const full = sanitizePreviewBlock(command).trimEnd();
+		if (full.length === 0) return undefined;
+		const core = commandCore(sanitizeLine(full));
+		if (core.length === 0 || core === full) return undefined;
+		// 摘要可能丢掉了命令链的后半段：末尾的省略号提示还有内容，展开可见完整命令
+		const summary = core.endsWith("…") ? core : `${core} …`;
+		return { summary, preview: capPreview(full), previewLabel: "Command" };
+	}
+
+	if (tool === "edit") {
+		const path = text(args["path"]) ?? "(missing path)";
+		const edits = Array.isArray(args["edits"]) ? args["edits"] : [];
+		return editPresentation(path, edits);
+	}
+
+	if (tool === "write") {
+		const path = text(args["path"]) ?? "(missing path)";
+		const content = typeof args["content"] === "string" ? args["content"] : "";
+		const lines = previewLines(content);
+		return {
+			summary: `${path} · ${lines.length} ${lines.length === 1 ? "line" : "lines"}`,
+			preview: capPreview(lines.length === 0 ? "(empty file)" : lines.map((line) => `+ ${line}`).join("\n")),
+			previewLabel: "Content",
+		};
+	}
+
+	const json = JSON.stringify(args, null, 2);
+	if (json === "{}") return undefined;
+	return {
+		summary: shortenText(sanitizeLine(JSON.stringify(args)), 160),
+		preview: capPreview(json),
+		previewLabel: "Arguments",
+	};
+}
+
 function text(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }

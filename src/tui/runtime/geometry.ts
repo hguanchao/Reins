@@ -1,5 +1,5 @@
 import { inputView, queueHeight } from "../view/footer.ts";
-import { APPROVAL_PANEL_HEIGHT } from "../panel/approval-panel.ts";
+import { approvalPanelHeight } from "../panel/approval-panel.ts";
 import { commandMenuHeight } from "../panel/command-menu.ts";
 import { effortMenuHeight } from "../panel/effort-menu.ts";
 import { fileMenuHeight } from "../panel/file-menu.ts";
@@ -38,9 +38,16 @@ export function planning(options: TuiOptions): boolean {
 	return options.planMode?.current() === true;
 }
 
+/** 审批面板的高度随详情展开变化；其余面板高度固定。 */
+function approvalHeight(state: TuiState): number {
+	const prompt = state.approvalPrompt;
+	if (prompt === undefined) return 0;
+	return approvalPanelHeight(prompt, state.approvalExpanded, terminalWidth(state), terminalRows(state));
+}
+
 /** 审批面板、选择面板占用的行数；没开面板为 0。 */
 export function menuHeight(state: TuiState, options: TuiOptions): number {
-	if (state.approvalPrompt !== undefined) return APPROVAL_PANEL_HEIGHT;
+	if (state.approvalPrompt !== undefined) return approvalHeight(state);
 	if (state.modelMenu !== undefined) return modelMenuHeight(state.modelMenu.items.length);
 	if (state.effortMenu !== undefined) return effortMenuHeight();
 	if (state.sessionMenu !== undefined) {
@@ -77,7 +84,7 @@ export function compactFooter(state: TuiState): boolean {
 }
 
 export function footerHeight(state: TuiState, options: TuiOptions): number {
-	if (state.approvalPrompt !== undefined) return APPROVAL_PANEL_HEIGHT;
+	if (state.approvalPrompt !== undefined) return approvalHeight(state);
 	// 整屏页不保留输入框与常驻信息
 	if (state.openPage !== undefined) return 0;
 	const lines = inputView(state.input, terminalWidth(state), state.inputCursor).lines.length;
@@ -89,12 +96,13 @@ export function footerHeight(state: TuiState, options: TuiOptions): number {
 
 /**
  * 常驻任务面板的高度:无任务表、空表或已收尾为 0;收起缩为一行,其余头行加条目。
- * 高度只在 todo 调用与收展切换时变化(低频),主区域随之重排。
+ * 审批卡是模态决定,打开时给卡片让位,保证动作行不被挤掉。
  */
 export function todoPanelHeight(state: TuiState, options: TuiOptions): number {
 	const todo = state.currentTodo;
 	if (
 		state.openPage !== undefined ||
+		state.approvalPrompt !== undefined ||
 		planning(options) ||
 		todo === undefined ||
 		todo.items.length === 0 ||

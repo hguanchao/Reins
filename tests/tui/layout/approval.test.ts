@@ -42,7 +42,7 @@ describe("审批卡", () => {
 			assert.ok(text.includes("Permission required"));
 			assert.ok(text.includes("Bash  npm test"));
 			assert.ok(text.includes("←/→ select"));
-			assert.equal(text.includes("destructive"), false);
+			assert.ok(text.includes("destructive"));
 			assert.ok(text.includes("[y] allow once"));
 			assert.ok(text.includes("[n] deny"));
 			// 面板占据原本页脚的六行；输入行、状态行与信息行都不再显示
@@ -65,6 +65,91 @@ describe("审批卡", () => {
 			});
 			t.mock.timers.tick(100);
 			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(decision, "once");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("审批卡展开详情后可滚动，动作行随之下移仍可确认", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+		const text = (): string => frameLines(output).map(plain).join("\n");
+		const preview = Array.from(
+			{ length: 30 },
+			(_, index) => `detail-${String(index + 1).padStart(2, "0")}`,
+		).join("\n");
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+
+			let decision: ApprovalAnswer | undefined;
+			void broker
+				.request({
+					tool: "bash",
+					risk: "destructive",
+					detail: "npm test",
+					summary: "npm test",
+					preview,
+					previewLabel: "Command",
+				})
+				.then((value) => {
+					decision = value;
+				});
+			t.mock.timers.tick(100);
+
+			assert.ok(text().includes("Permission required"));
+			assert.equal(text().includes("detail-01"), false, "默认收起");
+			assert.ok(text().includes("d details"));
+
+			// d 展开：详情标题与第一行出现
+			input.emit("data", Buffer.from("d"));
+			t.mock.timers.tick(100);
+			assert.ok(text().includes("Command"));
+			assert.ok(text().includes("detail-01"));
+
+			// PageDown 滚详情：第一行移出视口
+			input.emit("data", Buffer.from("\x1b[6~"));
+			t.mock.timers.tick(100);
+			assert.equal(text().includes("detail-01"), false);
+			assert.ok(text().includes("detail-12"));
+
+			// PageUp 回到详情顶部
+			input.emit("data", Buffer.from("\x1b[5~"));
+			t.mock.timers.tick(100);
+			assert.ok(text().includes("detail-01"));
+
+			// d 收起
+			input.emit("data", Buffer.from("d"));
+			t.mock.timers.tick(100);
+			assert.equal(text().includes("detail-01"), false);
+
+			// 再展开，点动作行：动作行随面板高度下移，命中仍然正确
+			input.emit("data", Buffer.from("d"));
+			t.mock.timers.tick(100);
+			const actionRow =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("[y] allow once")) + 1;
+			assert.ok(actionRow > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${actionRow}M`));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.equal(decision, "once");
 		} finally {

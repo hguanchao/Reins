@@ -23,9 +23,18 @@ export function syncApprovalPrompt(host: TuiHost): boolean {
 				state.approvalPrompt.tool !== next.tool ||
 				state.approvalPrompt.risk !== next.risk ||
 				state.approvalPrompt.detail !== next.detail ||
+				state.approvalPrompt.summary !== next.summary ||
+				state.approvalPrompt.preview !== next.preview ||
+				state.approvalPrompt.previewLabel !== next.previewLabel ||
 				state.approvalPrompt.saveShort !== next.saveShort;
 	if (next !== undefined && changed) {
 		state.approvalSelection = "once";
+		state.approvalExpanded = false;
+		state.approvalScrollTop = 0;
+	}
+	if (next === undefined && changed) {
+		state.approvalExpanded = false;
+		state.approvalScrollTop = 0;
 	}
 	state.approvalPrompt = next;
 	// 记下这份请求的标识：交回结论时要带上它，避免把按键记到另一个从未展示过的请求上

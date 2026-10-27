@@ -55,6 +55,8 @@ export function createState(options: TuiOptions): TuiState {
 		approvalPrompt: undefined,
 		approvalPromptId: undefined,
 		approvalSelection: "once",
+		approvalExpanded: false,
+		approvalScrollTop: 0,
 		modelMenu: undefined,
 		effortMenu: undefined,
 		sessionMenu: undefined,

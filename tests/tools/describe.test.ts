@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
 
-import { describeToolCall, displayToolName } from "../../src/tools/describe.ts";
+import { describeApprovalPresentation, describeToolCall, displayToolName } from "../../src/tools/describe.ts";
 
 describe("工具调用摘要", () => {
 	it("工具名首字母大写，带命名空间的名称保持原样", () => {
@@ -201,5 +201,67 @@ describe("工具调用摘要", () => {
 	it("缺少必填参数时给出占位，不显示 undefined", () => {
 		assert.equal(describeToolCall("read", {}).detail, "(missing path)");
 		assert.equal(describeToolCall("bash", {}).detail, "(no command)");
+	});
+});
+
+describe("审批展示材料", () => {
+	it("bash 长命令给核心摘要与完整命令预览", () => {
+		const command =
+			`cd E:\\Projects\\demo && python -c " import re,xml.etree.ElementTree as ET ` +
+			`s=open('pelican-bike.html',encoding='utf-8').read()"`;
+		const presentation = describeApprovalPresentation("bash", { command });
+
+		assert.ok(presentation?.summary?.includes("python -c"));
+		assert.notEqual(presentation?.summary, command);
+		assert.equal(presentation?.preview, command);
+		assert.equal(presentation?.previewLabel, "Command");
+	});
+
+	it("bash 短命令不需要展开", () => {
+		assert.equal(describeApprovalPresentation("bash", { command: "git status" }), undefined);
+		assert.equal(describeApprovalPresentation("bash", {}), undefined);
+	});
+
+	it("edit 用新旧文本生成聚焦 diff", () => {
+		const presentation = describeApprovalPresentation("edit", {
+			path: "src/a.ts",
+			edits: [{ oldText: "const a = 1;\nconst b = 2;", newText: "const a = 2;" }],
+		});
+
+		assert.ok(presentation?.summary?.includes("src/a.ts · 1 edit · +1 −2"));
+		assert.deepEqual(presentation?.preview?.split("\n"), [
+			"@@ edit 1 @@",
+			"- const a = 1;",
+			"- const b = 2;",
+			"+ const a = 2;",
+		]);
+		assert.equal(presentation?.previewLabel, "Diff");
+	});
+
+	it("write 展示待写入内容", () => {
+		const presentation = describeApprovalPresentation("write", {
+			path: "src/new.ts",
+			content: "first\nsecond",
+		});
+
+		assert.ok(presentation?.summary?.includes("src/new.ts · 2 lines"));
+		assert.equal(presentation?.preview, "+ first\n+ second");
+		assert.equal(presentation?.previewLabel, "Content");
+	});
+
+	it("未知工具给一行摘要与格式化参数", () => {
+		const presentation = describeApprovalPresentation("mcp__fs__list", { path: "a" });
+		assert.equal(presentation?.summary, '{"path":"a"}');
+		assert.equal(presentation?.preview, '{\n  "path": "a"\n}');
+		assert.equal(presentation?.previewLabel, "Arguments");
+	});
+
+	it("预览清掉控制字符并保留换行", () => {
+		const presentation = describeApprovalPresentation("bash", {
+			command: 'echo "a\u001b[2Kb"\nnext',
+		});
+
+		assert.equal(presentation?.preview?.includes("\u001b[2K"), false);
+		assert.ok(presentation?.preview?.includes("\n"));
 	});
 });

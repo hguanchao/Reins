@@ -106,7 +106,10 @@ export function render(host: TuiHost): void {
 	const mainLines = [...main];
 	// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示;Plan 模式隐藏旧任务表
 	const panelLines =
-		state.openPage === undefined && !host.planning() && state.currentTodo !== undefined
+		state.openPage === undefined &&
+		state.approvalPrompt === undefined &&
+		!host.planning() &&
+		state.currentTodo !== undefined
 			? [...todoPanelLines(state.currentTodo, width, animation)]
 			: [];
 	// 后台作业只占一行，放在任务面板与页脚之间；没有运行中作业时不占高度
@@ -155,7 +158,14 @@ export function render(host: TuiHost): void {
 function menuLinesOf(host: TuiHost, width: number, _metrics: unknown): readonly string[] {
 	const state = host.state;
 	if (state.approvalPrompt !== undefined) {
-		return renderApprovalPanel(width, state.approvalPrompt, state.approvalSelection);
+		return renderApprovalPanel(
+			width,
+			terminalRows(state),
+			state.approvalPrompt,
+			state.approvalSelection,
+			state.approvalExpanded,
+			state.approvalScrollTop,
+		);
 	}
 	if (state.modelMenu !== undefined) return renderModelMenu(width, state.modelMenu);
 	if (state.effortMenu !== undefined) return renderEffortMenu(width, state.effortMenu);

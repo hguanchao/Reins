@@ -230,6 +230,31 @@ describe("审批落实", () => {
 		assert.equal(captured?.detail, "src/a.ts");
 	});
 
+	it("ask:编辑请求带改动规模与 diff 预览", async () => {
+		let captured: ApprovalRequest | undefined;
+		const confirmer: Confirmer = async (request) => {
+			captured = request;
+			return "once";
+		};
+		const gate = new PermissionGate({ policy: new PermissionPolicy("ask"), confirmer });
+		await gate.check({
+			tool: "edit",
+			annotations: WRITES,
+			args: {
+				path: "src/a.ts",
+				edits: [{ oldText: "old", newText: "new" }],
+			},
+			source: "core",
+			scope: undefined,
+			signal: new AbortController().signal,
+		});
+
+		assert.equal(captured?.detail, "src/a.ts");
+		assert.equal(captured?.summary, "src/a.ts · 1 edit · +1 −1");
+		assert.equal(captured?.preview, "@@ edit 1 @@\n- old\n+ new");
+		assert.equal(captured?.previewLabel, "Diff");
+	});
+
 	it("auto:有审查模型时按其结论", async () => {
 		const reviewer: ApprovalReviewer = {
 			review: async () => ({ allowed: true, reason: "safe enough" }),

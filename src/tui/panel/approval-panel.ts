@@ -7,17 +7,21 @@ import {
 	PANEL_BG,
 	RESET,
 } from "./menu-panel.ts";
-import { displayWidth, fitToWidth, truncateToWidth } from "../render/text.ts";
+import { characterWidth, displayWidth, fitToWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
 /**
  * 工具审批面板。
  *
- * 六行：标题边框、工具与参数、参数续行、导航提示、动作行、下边框。
- * 工具名与参数分层；参数最多两行；动作行按宽度逐级退化；选中动作加粗。
+ * 默认六行：标题边框、工具与核心摘要、摘要续行、导航提示、动作行、下边框。
+ * 摘要只放核心命令或改动规模；更长的命令、diff 与文件内容按 d 展开成可滚动详情，
+ * 高度封顶并给对话流留最小空间。这样卡片不会被长内容撑爆。
  */
 
-export const APPROVAL_PANEL_HEIGHT = 6;
+/** 收起状态的高度：标题、两行摘要、提示、动作、下边框。 */
+export const APPROVAL_PANEL_BASE_HEIGHT = 6;
+/** 展开详情时至少给对话流留出的行数。 */
+const APPROVAL_MIN_MAIN_ROWS = 3;
 
 const TITLE = "Permission required";
 const HINT = "←/→ select · Enter confirm · Esc deny";
@@ -29,33 +33,122 @@ const ACTION_SLOT = " ".repeat(displayWidth(ACTION_MARKER));
 const BOLD = "\x1b[1m";
 const BOLD_OFF = "\x1b[22m";
 
+/**
+ * 展开后的详情行（已按宽度折行）。
+ *
+ * 第一行是详情标题；后续是完整命令、diff 或文件内容。宽字符按显示列算，代码行在字符边界
+ * 折行，续行与首行同缩进，避免把缩进吃掉。
+ */
+export function approvalPreviewLines(prompt: ApprovalPrompt, width: number): readonly string[] {
+	if (prompt.preview === undefined) return [];
+	const columns = Math.max(1, width);
+	const bodyWidth = Math.max(1, columns - 2);
+	const text = sanitizeForDisplay(
+		prompt.preview.replace(/\r\n?/g, "\n").replace(/\t/g, "    "),
+	);
+	if (text.trim().length === 0) return [];
+
+	const lines: string[] = [`  ${fitToWidth(prompt.previewLabel ?? "Details", bodyWidth)}`];
+	for (const raw of text.split("\n")) {
+		if (raw.length === 0) {
+			lines.push("");
+			continue;
+		}
+		if (displayWidth(raw) <= bodyWidth) {
+			lines.push(`  ${raw}`);
+			continue;
+		}
+		for (const chunk of wrapPreviewLine(raw, bodyWidth)) lines.push(`  ${chunk}`);
+	}
+	return lines;
+}
+
+/** 审批卡的高度：展开时最多占终端高度减三行，再长就靠滚动。 */
+export function approvalPanelHeight(
+	prompt: ApprovalPrompt,
+	expanded: boolean,
+	width: number,
+	rows: number,
+): number {
+	if (!expanded) return APPROVAL_PANEL_BASE_HEIGHT;
+	const preview = approvalPreviewLines(prompt, width).length;
+	if (preview === 0) return APPROVAL_PANEL_BASE_HEIGHT;
+
+	const maxHeight = Math.max(
+		APPROVAL_PANEL_BASE_HEIGHT,
+		Math.max(1, rows) - APPROVAL_MIN_MAIN_ROWS,
+	);
+	const capacity = Math.max(0, maxHeight - APPROVAL_PANEL_BASE_HEIGHT);
+	return APPROVAL_PANEL_BASE_HEIGHT + Math.min(preview, capacity);
+}
+
+/** 详情还能往下滚多少行；输入处理用它收紧滚动位置。 */
+export function approvalPreviewScrollLimit(
+	prompt: ApprovalPrompt,
+	expanded: boolean,
+	width: number,
+	rows: number,
+): number {
+	const total = approvalPreviewLines(prompt, width).length;
+	const visible = approvalPanelHeight(prompt, expanded, width, rows) - APPROVAL_PANEL_BASE_HEIGHT;
+	return Math.max(0, total - visible);
+}
+
 export function renderApprovalPanel(
 	width: number,
+	rows: number,
 	prompt: ApprovalPrompt,
 	selected: ApprovalAnswer = "once",
+	expanded = false,
+	scrollTop = 0,
 ): readonly string[] {
 	const columns = Math.max(1, width);
+	const height = approvalPanelHeight(prompt, expanded, columns, rows);
 	const detail = detailLines(columns, prompt);
 	const actions = actionRow(columns, prompt, selected);
 
-	return [
-		titleBorder(columns),
+	const lines: string[] = [
+		titleBorder(columns, prompt.risk),
 		toolLine(columns, prompt, detail),
 		continuationLine(columns, prompt, detail),
-		hintLine(columns),
-		styledContent(`  ${actions.styled}`, 2 + actions.width, columns),
-		bottomBorder(columns),
 	];
+
+	const capacity = height - APPROVAL_PANEL_BASE_HEIGHT;
+	if (capacity > 0) {
+		const preview = approvalPreviewLines(prompt, columns);
+		const top = Math.min(Math.max(0, scrollTop), Math.max(0, preview.length - capacity));
+		for (let index = 0; index < capacity; index += 1) {
+			lines.push(previewLine(columns, preview[top + index]));
+		}
+	}
+
+	const canExpand = approvalPanelHeight(prompt, true, columns, rows) > APPROVAL_PANEL_BASE_HEIGHT;
+	lines.push(hintLine(columns, canExpand, expanded));
+	lines.push(styledContent(`  ${actions.styled}`, 2 + actions.width, columns));
+	lines.push(bottomBorder(columns));
+	return lines;
 }
 
-function titleBorder(width: number): string {
-	const label = ` ${TITLE} `;
-	const labelWidth = displayWidth(label);
-	if (labelWidth >= width) return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
+/** 风险词放在标题最前面：窄屏截断时先保它。 */
+function titleBorder(width: number, risk: string): string {
+	const label = risk.length === 0 ? ` ${TITLE} ` : ` ${risk} · ${TITLE} `;
+	if (displayWidth(label) < width) {
+		const pad = width - displayWidth(label);
+		const left = Math.floor(pad / 2);
+		return `${BORDER_COLOR}${"─".repeat(left)}${riskColor(risk)}${label}${BORDER_COLOR}${"─".repeat(pad - left)}${RESET}`;
+	}
+	if (risk.length === 0) return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
 
-	const left = Math.floor((width - labelWidth) / 2);
-	const right = width - labelWidth - left;
-	return `${BORDER_COLOR}${"─".repeat(left)}${THEME.warning}${label}${BORDER_COLOR}${"─".repeat(right)}${RESET}`;
+	// 标题放不下时只保留风险词；连风险词都放不下才退回纯边框
+	const compact = ` ${fitToWidth(risk, Math.max(0, width - 2))} `;
+	if (displayWidth(compact) >= width) return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
+	const pad = width - displayWidth(compact);
+	const left = Math.floor(pad / 2);
+	return `${BORDER_COLOR}${"─".repeat(left)}${riskColor(risk)}${compact}${BORDER_COLOR}${"─".repeat(pad - left)}${RESET}`;
+}
+
+function riskColor(risk: string): string {
+	return risk === "destructive" ? THEME.error : THEME.warning;
 }
 
 function bottomBorder(width: number): string {
@@ -94,9 +187,13 @@ function continuationLine(width: number, prompt: ApprovalPrompt, detail: DetailL
 	return `${PANEL_BG}${detailColor(prompt)}${indent}${detail.second}${padding}${RESET}`;
 }
 
-/** 导航提示：y/a/n 已经写在动作里，这里补上左右与确认、拒绝键。 */
-function hintLine(width: number): string {
-	const text = truncateToWidth(`  ${HINT}`, width);
+/** 导航提示：y/a/n 已经写在动作里，这里补上左右与确认、拒绝键，以及详情开关。 */
+function hintLine(width: number, hasDetails: boolean, expanded: boolean): string {
+	const suffix = hasDetails ? (expanded ? " · d hide · ↑/↓ scroll" : " · d details") : "";
+	const full = `  ${HINT}${suffix}`;
+	// 窄屏优先保住 d 提示，否则详情入口会被整段截掉
+	const compact = hasDetails ? `  d ${expanded ? "hide · ↑/↓ scroll" : "details"} · ←/→ · Enter · Esc` : full;
+	const text = truncateToWidth(displayWidth(full) <= width ? full : compact, width);
 	const padding = " ".repeat(Math.max(0, width - displayWidth(text)));
 	return `${PANEL_BG}${THEME.textSubtle}${text}${padding}${RESET}`;
 }
@@ -105,15 +202,15 @@ function detailColor(prompt: ApprovalPrompt): string {
 	return prompt.tool === "edit" || prompt.tool === "write" ? THEME.path : THEME.textPrimary;
 }
 
-/** 把工具展示名与参数铺成最多两行；第二行仍放不下就在末尾省略。 */
+/** 把工具展示名与核心摘要铺成最多两行；第二行仍放不下就在末尾省略。 */
 function detailLines(width: number, prompt: ApprovalPrompt): DetailLines {
-	// 工具名与参数都来自模型，可能带转义序列：先清理再排版，否则面板内容可被伪造。
+	// 工具名与摘要都来自模型，可能带转义序列：先清理再排版，否则面板内容可被伪造。
 	// 工具名过长时同样要截断，否则 prefixWidth 会超过面板宽度、整行溢出。
 	const maxTool = Math.max(1, Math.floor(width / 3));
 	const tool = fitToWidth(sanitizeLine(displayToolName(prompt.tool)), maxTool);
 	const prefixWidth = Math.min(width - 1, 2 + displayWidth(tool) + 2);
 	const limit = Math.max(1, width - prefixWidth);
-	const detail = compact(prompt.detail);
+	const detail = compact(prompt.summary ?? prompt.detail);
 
 	const first = truncateToWidth(detail, limit);
 	const rest = detail.slice(first.length);
@@ -125,6 +222,41 @@ function detailLines(width: number, prompt: ApprovalPrompt): DetailLines {
 		second = `${truncateToWidth(rest, Math.max(0, limit - 1))}…`;
 	}
 	return { tool, first, second, prefixWidth };
+}
+
+/** 详情区的单行：diff 的增删用成功/失败色，其余用正文副色。 */
+function previewLine(width: number, line: string | undefined): string {
+	if (line === undefined) return `${PANEL_BG}${" ".repeat(width)}${RESET}`;
+	const head = line.trimStart();
+	const color =
+		head.startsWith("+ ")
+			? THEME.success
+			: head.startsWith("- ")
+				? THEME.error
+				: head.startsWith("@@")
+					? THEME.textSubtle
+					: THEME.textSecondary;
+	const padding = " ".repeat(Math.max(0, width - displayWidth(line)));
+	return `${PANEL_BG}${color}${line}${padding}${RESET}`;
+}
+
+/** 代码行按字符边界折行，保留缩进；与按词折行的说明文字不同。 */
+function wrapPreviewLine(text: string, width: number): readonly string[] {
+	const lines: string[] = [];
+	let line = "";
+	let used = 0;
+	for (const char of text) {
+		const charWidth = characterWidth(char);
+		if (used + charWidth > width && line.length > 0) {
+			lines.push(line);
+			line = "";
+			used = 0;
+		}
+		line += char;
+		used += charWidth;
+	}
+	lines.push(line);
+	return lines;
 }
 
 interface ActionOption {
