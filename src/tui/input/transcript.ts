@@ -28,6 +28,11 @@ export function handleTranscriptInput(
 	let focusChanged = false;
 	let hoverChanged = false;
 	let selectionChanged = false;
+	// 键盘输入说明已经离开鼠标拖选；松开事件丢失时不能把高亮留在屏幕上
+	if (withoutMouse.length > 0 && state.selection !== undefined) {
+		state.selection = undefined;
+		selectionChanged = true;
+	}
 	let wheelSteps = 0;
 	let dragRow: number | undefined;
 	/** 任何菜单面板开着时滚轮都不该动对话流：面板盖着，滚动看不见的底层内容只会让人以为界面没反应。 */
@@ -59,6 +64,11 @@ export function handleTranscriptInput(
 			inlineMenuTop !== undefined && event.row >= inlineMenuTop && event.row < inlineMenuBottom;
 
 		if (hover) {
+			// 没有按键的移动只说明指针在挪；松开事件丢失时顺手清掉残留选区
+			if (state.selection !== undefined) {
+				state.selection = undefined;
+				selectionChanged = true;
+			}
 			const over = buttonShown && scrollButtonHit(bottomButton, event.row, event.column);
 			if (over !== state.buttonHovered) {
 				state.buttonHovered = over;
@@ -191,6 +201,11 @@ export function handleTranscriptInput(
 		}
 	}
 
+	// 滚轮一旦滚动，选区的行号就不在同一屏上了；残留高亮跟着清掉
+	if (wheelSteps !== 0 && state.selection !== undefined) {
+		state.selection = undefined;
+		selectionChanged = true;
+	}
 	applyWheelScroll(host, state, wheelSteps);
 	if (dragRow !== undefined) applyDragScroll(host, state, dragRow, mainHeight);
 	const scrollChanged = state.scrollTop !== beforeScroll;
@@ -406,7 +421,7 @@ export function handleTranscriptInput(
 
 	if (edit.submit) {
 		const submitted = host.submit();
-		if (!submitted && (focusChanged || scrollChanged)) deps.render();
+		if (!submitted && (focusChanged || scrollChanged || selectionChanged)) deps.render();
 		return;
 	}
 	if (

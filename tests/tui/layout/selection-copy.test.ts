@@ -11,6 +11,7 @@ import {
 	plain,
 } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
+import { THEME } from "../../../src/tui/render/theme.ts";
 
 /** 在对话流里找到一段文字，返回它的屏幕行与起止列（1 基）。 */
 function locate(
@@ -61,8 +62,8 @@ describe("鼠标拖选复制", () => {
 				Buffer.from(`\x1b[<0;${span.start};${span.row}M\x1b[<32;${span.end};${span.row}M`),
 			);
 			t.mock.timers.tick(100);
-			// 拖动过程中选区反显
-			assert.ok(frameLines(output).some((line) => line.includes("\x1b[7m")));
+			// 拖动过程中选区底色
+			assert.ok(frameLines(output).some((line) => line.includes(THEME.selectionBg)));
 
 			input.emit("data", Buffer.from(`\x1b[<0;${span.end};${span.row}m`));
 			t.mock.timers.tick(100);
@@ -113,6 +114,50 @@ describe("鼠标拖选复制", () => {
 			);
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("Copy sent to terminal"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("松开事件丢失后，键盘输入或鼠标移动会清掉残留选区", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("说点话\r"));
+			agent.emit({ type: "text_delta", text: "AA hello world BB" });
+			t.mock.timers.tick(100);
+			const span = locate(output, "hello world", 0);
+
+			const drag =
+				`\x1b[<0;${span.start};${span.row}M` + `\x1b[<32;${span.end};${span.row}M`;
+			input.emit("data", Buffer.from(drag));
+			t.mock.timers.tick(100);
+			assert.ok(frameLines(output).some((line) => line.includes(THEME.selectionBg)));
+
+			// 键盘输入表示已经离开拖选
+			input.emit("data", Buffer.from("x"));
+			t.mock.timers.tick(100);
+			assert.equal(frameLines(output).some((line) => line.includes(THEME.selectionBg)), false);
+
+			// 再拖一次，这次用没有按键的指针移动收尾
+			input.emit("data", Buffer.from(drag));
+			t.mock.timers.tick(100);
+			assert.ok(frameLines(output).some((line) => line.includes(THEME.selectionBg)));
+			input.emit("data", Buffer.from(`\x1b[<35;${span.end};${span.row}M`));
+			t.mock.timers.tick(100);
+			assert.equal(frameLines(output).some((line) => line.includes(THEME.selectionBg)), false);
 		} finally {
 			exitTui(input);
 		}

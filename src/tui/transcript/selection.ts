@@ -1,4 +1,5 @@
 import { characterWidth, displayWidth } from "../render/text.ts";
+import { THEME } from "../render/theme.ts";
 import { lineIndexAtRow } from "./scroll.ts";
 import type { TranscriptView } from "./types.ts";
 
@@ -22,9 +23,8 @@ export interface SelectionRegion {
 	readonly focus: SelectionPoint;
 }
 
-/** 选区反显：只切换反显属性，底下原有的前景色与底色都保留。 */
-const SELECT_ON = "\x1b[7m";
-const SELECT_OFF = "\x1b[27m";
+/** 行首默认底色；离开选区时恢复行内最后见到的底色。 */
+const DEFAULT_BG = "\x1b[49m";
 
 /**
  * 把屏幕上的 1 基行列换算成选区端点。
@@ -93,10 +93,11 @@ export function selectionRange(
 }
 
 /**
- * 给一行的指定列范围套上反显。
+ * 给一行的指定列范围套上选区底色。
  *
- * 渲染后的行里夹着颜色、下划线、OSC 8 链接等转义序列。选区内的重置序列会把反显一起清掉，
- * 因此每遇到一个转义就在后面补一次反显；离开范围时只关闭反显，不重置其他属性。
+ * 渲染后的行里夹着颜色、色带底色、OSC 8 链接等转义序列。进入选区时换成统一定义的选区
+ * 底色；选区内的转义（尤其是重置）可能把底色清掉，因此每遇到一个转义就补一次选区底色。
+ * 离开选区时恢复这一行最后见到的底色，色带与提示块不会被选区永久改色。
  */
 export function highlightSelection(
 	line: string,
@@ -105,12 +106,16 @@ export function highlightSelection(
 	let out = "";
 	let cell = 0;
 	let active = false;
+	let background = DEFAULT_BG;
 	let index = 0;
 	while (index < line.length) {
 		if (line[index] === "\x1b") {
 			const length = escapeLength(line, index);
-			out += line.slice(index, index + length);
-			if (active) out += SELECT_ON;
+			const sequence = line.slice(index, index + length);
+			out += sequence;
+			const next = backgroundOf(sequence);
+			if (next !== undefined) background = next;
+			if (active) out += THEME.selectionBg;
 			index += length;
 			continue;
 		}
@@ -118,14 +123,53 @@ export function highlightSelection(
 		const width = characterWidth(char);
 		const selected = cell >= range.from && cell <= range.to;
 		if (selected !== active) {
-			out += selected ? SELECT_ON : SELECT_OFF;
 			active = selected;
+			out += active ? THEME.selectionBg : background;
 		}
 		out += char;
 		cell += width;
 		index += char.length;
 	}
-	return active ? `${out}${SELECT_OFF}` : out;
+	return active ? `${out}${background}` : out;
+}
+
+/**
+ * 一条 SGR 序列设置的新底色；不涉及底色时返回 undefined。
+ *
+ * 只认设置底色的参数（40–47、100–107、48;5;n、48;2;r;g;b）与重置（0、49）。前景色、
+ * 加粗与下划线都与选区底色无关，离开选区后不需要重放。
+ */
+function backgroundOf(sequence: string): string | undefined {
+	if (!sequence.startsWith("\x1b[") || !sequence.endsWith("m")) return undefined;
+	const body = sequence.slice(2, -1);
+	if (body.length === 0) return DEFAULT_BG;
+	const params = body.split(";");
+	let background: string | undefined;
+	for (let index = 0; index < params.length; index += 1) {
+		const param = params[index] ?? "";
+		if (param === "0" || param === "49") {
+			background = DEFAULT_BG;
+			continue;
+		}
+		if (param === "48") {
+			const mode = params[index + 1];
+			if (mode === "5" && params[index + 2] !== undefined) {
+				background = `\x1b[48;5;${params[index + 2]}m`;
+				index += 2;
+				continue;
+			}
+			if (mode === "2" && params[index + 4] !== undefined) {
+				background = `\x1b[48;2;${params[index + 2]};${params[index + 3]};${params[index + 4]}m`;
+				index += 4;
+			}
+			continue;
+		}
+		const code = Number(param);
+		if ((code >= 40 && code <= 47) || (code >= 100 && code <= 107)) {
+			background = `\x1b[${code}m`;
+		}
+	}
+	return background;
 }
 
 /** 清掉一行里的 CSI（颜色等）与 OSC（超链接）序列，只留下屏幕上的字符。 */

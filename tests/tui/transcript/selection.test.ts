@@ -10,6 +10,7 @@ import {
 	selectionText,
 	stripTerminalStyles,
 } from "../../../src/tui/transcript.ts";
+import { THEME } from "../../../src/tui/render/theme.ts";
 
 describe("文本选区", () => {
 	function viewOf() {
@@ -79,16 +80,22 @@ describe("文本选区", () => {
 		assert.equal(selectionRange(6, selection), undefined);
 	});
 
-	it("反显只覆盖选区，并跨过区间内的重置序列", () => {
+	it("选区底色只覆盖选区，并跨过区间内的重置序列", () => {
 		const line = `\x1b[31mhello\x1b[0m world`;
 		assert.equal(
 			highlightSelection(line, { from: 1, to: 3 }),
-			`\x1b[31mh\x1b[7mell\x1b[27mo\x1b[0m world`,
+			`\x1b[31mh${THEME.selectionBg}ell\x1b[49mo\x1b[0m world`,
 		);
 
 		const reset = highlightSelection("ab\x1b[0mcd", { from: 0, to: 3 });
-		assert.ok(reset.includes("\x1b[7mab\x1b[0m\x1b[7mcd"));
-		assert.ok(reset.endsWith("\x1b[27m"));
+		assert.ok(reset.includes(`${THEME.selectionBg}ab\x1b[0m${THEME.selectionBg}cd`));
+		assert.ok(reset.endsWith("\x1b[49m"));
+	});
+
+	it("离开选区后恢复行内原有的底色", () => {
+		const banded = `\x1b[48;2;22;25;29mhello\x1b[0m`;
+		const highlighted = highlightSelection(banded, { from: 1, to: 2 });
+		assert.ok(highlighted.includes(`${THEME.selectionBg}el\x1b[48;2;22;25;29mlo`));
 	});
 
 	it("OSC 8 链接只去掉序列，保留链接文字", () => {
@@ -96,7 +103,7 @@ describe("文本选区", () => {
 		assert.equal(stripTerminalStyles(link), "text");
 
 		const highlighted = highlightSelection(link, { from: 0, to: 3 });
-		assert.ok(highlighted.includes("\x1b[7mtext"));
+		assert.ok(highlighted.includes(`${THEME.selectionBg}text`));
 		assert.ok(highlighted.includes("http://example.com"));
 	});
 });
