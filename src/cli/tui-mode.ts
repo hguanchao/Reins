@@ -32,7 +32,7 @@ import type {
 import { JobManager } from "../tools/jobs.ts";
 import { fileEntries } from "../workspace/walk.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
-import { readVersion } from "../shared/version.ts";
+import { readVersion } from "../version.ts";
 import { sessionAge } from "./session/age.ts";
 import {
 	configFileStamp,

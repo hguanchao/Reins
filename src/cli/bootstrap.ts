@@ -5,7 +5,7 @@ import {
 } from "../agent/instructions.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
-import { readVersion } from "../shared/version.ts";
+import { readVersion } from "../version.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
 import { loadSelection } from "./config-selection.ts";
 import { initializeConfig } from "./initialize-config.ts";

@@ -25,7 +25,7 @@ import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
-import { readVersion } from "../shared/version.ts";
+import { readVersion } from "../version.ts";
 import { disabledPlugins, warnUnsandboxedMcpServers } from "./config-selection.ts";
 import { writeStderr } from "./output.ts";
 

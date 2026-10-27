@@ -10,7 +10,7 @@ let cached: string | undefined;
 export function readVersion(): string {
 	if (cached !== undefined) return cached;
 
-	const url = new URL("../../package.json", import.meta.url);
+	const url = new URL("../package.json", import.meta.url);
 	const parsed: unknown = JSON.parse(readFileSync(url, "utf8"));
 	if (typeof parsed === "object" && parsed !== null && "version" in parsed) {
 		const version = (parsed as { version: unknown }).version;
