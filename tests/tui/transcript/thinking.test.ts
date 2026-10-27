@@ -53,6 +53,25 @@ describe("思考区块", () => {
 		assert.ok(text.includes("one") && text.includes("seven"));
 	});
 
+	it("运行中的耗时按 startedAt 现算，不沿用旧标题", (t) => {
+		t.mock.timers.enable({ apis: ["Date"] });
+		t.mock.timers.setTime(10_000);
+		const block: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thinking… 0.0s",
+			startedAt: 3_000,
+			body: [],
+			partial: "",
+			running: true,
+			expanded: false,
+		};
+		const turn: TranscriptTurn = { prompt: "hi", response: [block] };
+
+		const text = renderTranscript(40, 12, [turn], 0).map(plain).join("\n");
+		assert.ok(text.includes("Thinking… 7.0s"));
+		assert.equal(text.includes("Thinking… 0.0s"), false);
+	});
+
 	it("正文缩进到标题首字，色带外留四列", () => {
 		const block = blockOf("Thinking…", true);
 		const turn: TranscriptTurn = { prompt: "hi", response: [block] };

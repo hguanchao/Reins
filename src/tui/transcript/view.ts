@@ -1,4 +1,5 @@
 import { sanitizeLine } from "../../tools/describe.ts";
+import { formatDuration } from "../../shared/format.ts";
 import { highlightImageMarkers } from "../image.ts";
 import { renderMarkdown } from "../render/markdown.ts";
 import {
@@ -489,14 +490,15 @@ function thinkingBlockLines(block: TranscriptThinking, width: number): readonly 
  * 收起时用 ✻；展开后用工具组头同款的 ◈，并提亮可点击的标签。耗时继续用弱化色。
  */
 function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly string[] {
+	const header = thinkingHeaderText(block);
 	if (!block.expanded) {
-		return wrappedLines(block.header, THINKING_PREFIX, width, THINKING_COLOR);
+		return wrappedLines(header, THINKING_PREFIX, width, THINKING_COLOR);
 	}
 
 	const prefix = THINKING_EXPANDED_PREFIX;
-	const label = block.header.startsWith("Thought for ") ? "Thought for " : block.header;
+	const label = header.startsWith("Thought for ") ? "Thought for " : header;
 	const prefixWidth = displayWidth(prefix);
-	const lines = wrapText(block.header, Math.max(0, width - prefixWidth));
+	const lines = wrapText(header, Math.max(0, width - prefixWidth));
 	let offset = 0;
 
 	return lines.map((line, index) => {
@@ -509,6 +511,13 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 		const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
 		return `${THINKING_ACTIVE_COLOR}${lead}${active}${THINKING_COLOR}${rest}${RESET}${padding}`;
 	});
+}
+
+/** 运行中的标题按起始时间现算；结束后的标题已经在关闭时定格。 */
+function thinkingHeaderText(block: TranscriptThinking): string {
+	if (!block.running || block.startedAt === undefined) return block.header;
+	const elapsed = Math.max(0, Date.now() - block.startedAt);
+	return `Thinking… ${formatDuration(Math.floor(elapsed / 1000) * 1000)}`;
 }
 
 /** 思考正文的一行：色带在标题符号右侧留出与工具详情相同的列数，带内留一列内边距。 */

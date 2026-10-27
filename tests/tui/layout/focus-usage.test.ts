@@ -201,6 +201,40 @@ describe("焦点、状态与用量", () => {
 		}
 	});
 
+	it("状态行耗时按渲染时刻现算，不依赖刷新帧累加", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+
+			// 只推进时钟，不再触发刷新帧：下一次重绘仍要显示真实经过的时间
+			t.mock.timers.setTime(Date.now() + 5_000);
+			output.emit("resize");
+
+			const status =
+				frameLines(output)
+					.map(plain)
+					.find((line) => line.includes("Waiting for model")) ?? "";
+			assert.ok(status.includes("5.1s"), status);
+			assert.ok(status.endsWith("5.1s  ⇣0"), status);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("运行时状态按 Waiting、Thinking、Writing 推进", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
 

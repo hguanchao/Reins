@@ -47,7 +47,6 @@ export function createState(options: TuiOptions): TuiState {
 		decoder: new StringDecoder("utf8"),
 		statusText: undefined,
 		statusTone: undefined,
-		statusPhaseMs: 0,
 		statusElapsedMs: 0,
 		statusTokens: 0,
 		statusPhaseStartedAt: 0,

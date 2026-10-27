@@ -1,4 +1,3 @@
-import { formatDuration } from "../../shared/format.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { STATUS_CLEAR_MS, SWEEP_STEP } from "./constants.ts";
 import type { TuiState, ActiveTurn } from "./types.ts";
@@ -23,7 +22,9 @@ export function setStatus(
 	}
 	state.statusText = text;
 	state.statusTone = tone;
-	state.statusPhaseMs = 0;
+	// 新状态属于新的阶段，上一条留下的定格值不再适用；运行中的耗时与用量由渲染现算
+	state.statusElapsedMs = 0;
+	state.statusTokens = 0;
 	state.statusPhaseStartedAt = Date.now();
 }
 
@@ -31,7 +32,6 @@ export function setStatus(
 export function clearStatus(state: TuiState): void {
 	state.statusText = undefined;
 	state.statusTone = undefined;
-	state.statusPhaseMs = 0;
 	resetStatusMeta(state);
 }
 
@@ -62,8 +62,8 @@ export function stopSpinner(state: TuiState): void {
 /**
  * 启动刷新帧。
  *
- * 帧同时推进转圈、扫光、耗时与思考标题；有子代理在跑时还要标脏对话流，
- * 让组头的计数与耗时跟着走。
+ * 帧推进转圈与扫光，并让运行中的思考标题和子代理组头按整秒失效；耗时本身不在这里
+ * 累加，由渲染按各自的时间戳现算。
  */
 export function startSpinner(
 	state: TuiState,
@@ -83,25 +83,22 @@ export function startSpinner(
 	}, SPINNER_INTERVAL_MS);
 }
 
-/** 刷新帧里属于「当前这一轮」的部分：耗时、用量、思考标题与运行中的子代理组。 */
+/** 刷新帧里属于「当前这一轮」的部分：思考标题与运行中的子代理组。 */
 function tickActiveStatus(
 	state: TuiState,
 	active: ActiveTurn,
 	syncApprovalPrompt: () => void,
 ): void {
 	const now = Date.now();
-	state.statusElapsedMs = now - active.startedAt;
-	state.statusPhaseMs = Math.max(0, now - state.statusPhaseStartedAt);
-	state.statusTokens = active.tokensUsed;
 	syncApprovalPrompt();
 
 	const block = active.thinkingBlock;
 	const startedAt = active.thinkingStartedAt;
 	if (block !== undefined && startedAt !== undefined) {
-		// 按整秒更新，避免每个 spinner tick 都重建整份对话流
-		const header = `Thinking… ${formatDuration(Math.floor((now - startedAt) / 1000) * 1000)}`;
-		if (block.header !== header) {
-			block.header = header;
+		// 对话流按整秒重建一次，标题里的耗时由视图按同一个起点现算
+		const second = Math.floor(Math.max(0, now - startedAt) / 1000);
+		if (second !== active.thinkingSecond) {
+			active.thinkingSecond = second;
 			markTranscriptDirty(state);
 		}
 	}

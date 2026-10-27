@@ -43,6 +43,7 @@ export function startRun(
 		lines: [],
 		textBlock: undefined,
 		thinkingStartedAt: undefined,
+		thinkingSecond: 0,
 		thinkingBlock: undefined,
 		tokensUsed: 0,
 		outcome: "done",
@@ -101,8 +102,6 @@ export function startRun(
 			state.pendingPlan = undefined;
 			if (completedPlan !== undefined) host.openPlanReview(completedPlan);
 			options.agent?.refreshInfo();
-			state.statusElapsedMs = Date.now() - active.startedAt;
-			state.statusTokens = active.tokensUsed;
 			if (active.outcome === "aborted") {
 				// 主动停下由对话流里的 Interrupted 说明，状态行不再留结局
 				host.clearStatus();
@@ -110,6 +109,9 @@ export function startRun(
 				host.clearStatus();
 			} else {
 				host.setStatus(ERROR_STATUS, "error");
+				// 回合已经结束：把耗时与用量定格，错误提示保留时显示这一轮的最终值
+				state.statusElapsedMs = Math.max(0, Date.now() - active.startedAt);
+				state.statusTokens = active.tokensUsed;
 				host.scheduleStatusClear();
 			}
 			host.render();

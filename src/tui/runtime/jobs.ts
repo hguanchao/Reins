@@ -74,7 +74,7 @@ export function appendJobNote(host: TuiHost, job: JobView): void {
 	]);
 }
 
-/** 有作业运行时每 500ms 重绘一次，空闲时也更新 Jobs bar 的耗时。 */
+/** 有作业运行时每 500ms 重绘一次，让 Jobs bar 与作业页的耗时跟着当前时间走。 */
 export function ensureJobTimer(host: TuiHost): void {
 	const state = host.state;
 	const running = host.options.jobs?.list().filter((job) => job.status === "running") ?? [];

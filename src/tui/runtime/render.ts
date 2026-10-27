@@ -55,6 +55,10 @@ export function render(host: TuiHost): void {
 		state.scrollTop = Math.min(state.scrollTop, maxScroll);
 	}
 
+	const now = Date.now();
+	const active = state.activeTurn;
+	// 状态行里的耗时与用量每帧现算；回合结束后沿用收尾时定格的快照
+	const ongoing = state.statusTone === undefined || state.statusTone === "warning";
 	const status =
 		state.statusText === undefined
 			? undefined
@@ -67,9 +71,20 @@ export function render(host: TuiHost): void {
 					text: state.statusText,
 					sweep: state.statusTone === undefined ? state.sweepPhase : undefined,
 					tone: state.statusTone,
-					phaseMs: state.statusPhaseMs,
-					elapsedMs: state.statusElapsedMs,
-					tokens: state.statusTokens,
+					phaseMs:
+						active !== undefined && ongoing ? Math.max(0, now - state.statusPhaseStartedAt) : undefined,
+					elapsedMs:
+						active !== undefined
+							? Math.max(0, now - active.startedAt)
+							: state.statusElapsedMs > 0
+								? state.statusElapsedMs
+								: undefined,
+					tokens:
+						active !== undefined
+							? active.tokensUsed
+							: state.statusTokens > 0
+								? state.statusTokens
+								: undefined,
 				};
 	const menuLines = menuLinesOf(host, width, metrics);
 	const inputLines = inputView(state.input, width, state.inputCursor);

@@ -43,6 +43,8 @@ export interface ActiveTurn {
 	textBlock: TranscriptMarkdown | undefined;
 	/** 当前这段思考是什么时候开始的；没有思考在进行时为空 */
 	thinkingStartedAt: number | undefined;
+	/** 上一次已经按整秒画出的思考耗时；只在跨秒时重建对话流 */
+	thinkingSecond: number;
 	/** 当前正在写入的思考区块；结束后仍留在 lines 里供双击展开 */
 	thinkingBlock: TranscriptThinking | undefined;
 	/** 本轮已经产生的 token 消耗；每次请求回报后累加，压缩请求不计入 */
@@ -120,10 +122,12 @@ export interface TuiState {
 	statusText: string | undefined;
 	/** 运行状态的色调：重试、失败与阻断提示各用一种，别跟「正在进行」混成一样。 */
 	statusTone: "warning" | "error" | "notice" | undefined;
-	statusPhaseMs: number;
-	statusElapsedMs: number;
-	statusTokens: number;
+	/** 当前阶段开始的时刻；运行中的阶段耗时由渲染按它现算。 */
 	statusPhaseStartedAt: number;
+	/** 回合结束时的定格耗时；运行中不为渲染提供数据，由渲染按 active.startedAt 现算。 */
+	statusElapsedMs: number;
+	/** 回合结束时的定格用量；运行中由渲染按 active.tokensUsed 现算。 */
+	statusTokens: number;
 	spinnerFrame: number;
 	sweepPhase: number;
 
@@ -191,7 +195,7 @@ export interface TuiState {
 
 	// —— 定时器与生命周期 ——
 	spinnerTimer: ReturnType<typeof setInterval> | undefined;
-	/** 只在有作业运行时启动：空闲回合也要更新 Jobs bar 的耗时。 */
+	/** 只在有作业运行时启动：让 Jobs bar 与作业页的耗时跟着当前时间走。 */
 	jobTimer: ReturnType<typeof setInterval> | undefined;
 	unsubscribeJobs: () => void;
 	statusClearTimer: ReturnType<typeof setTimeout> | undefined;

@@ -144,11 +144,14 @@ export interface TranscriptToolGroup {
  * 思考区块。
  *
  * 正文完整保留在内存里：运行时默认只显示最后五行，结束后默认只显示标题；双击标题切换
- * 全文。区块对象在对话流里是可变的，流式增量直接写进 body/partial。
+ * 全文。区块对象在对话流里是可变的，流式增量直接写进 body/partial。运行中的标题耗时
+ * 由视图按 startedAt 现算；结束后 header 已经定格，startedAt 不再参与显示。
  */
 export interface TranscriptThinking {
 	readonly kind: "thinkingBlock";
 	header: string;
+	/** 运行中标题的计时起点 */
+	readonly startedAt?: number;
 	readonly body: string[];
 	partial: string;
 	running: boolean;

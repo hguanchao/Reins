@@ -171,6 +171,9 @@ describe("对话流长内容查看", () => {
 			t.mock.timers.tick(100);
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("Nothing to view yet"));
+			// 提示是静止状态：不该带着属于活动回合的 0.0s 与用量
+			assert.equal(text.includes("0.0s"), false);
+			assert.equal(text.includes("⇣0"), false);
 			assert.ok(text.includes("📁 Reins"));
 		} finally {
 			exitTui(input);

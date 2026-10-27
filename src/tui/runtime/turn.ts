@@ -236,10 +236,13 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 					break;
 				}
 				if (active.thinkingBlock === undefined) {
-					active.thinkingStartedAt = Date.now();
+					const startedAt = Date.now();
+					active.thinkingStartedAt = startedAt;
+					active.thinkingSecond = 0;
 					const block: TranscriptThinking = {
 						kind: "thinkingBlock",
-						header: `Thinking… ${formatDuration(0)}`,
+						header: "Thinking…",
+						startedAt,
 						body: [],
 						partial: "",
 						running: true,
