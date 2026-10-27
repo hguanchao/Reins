@@ -26,20 +26,17 @@ export const MENU_MAX_VISIBLE = 8;
 /** 上边框数量右侧固定的横线数。 */
 const TAIL_DASHES = 4;
 
-/** 面板附加行：无匹配提示与按键提示。 */
+/** 面板附加行：无匹配提示。 */
 export interface MenuListOptions {
 	/** 没有条目时显示的一句话；省略时不画空态行 */
 	readonly empty?: string;
-	/** 面板底部的一行按键提示；省略时不画 */
-	readonly hint?: string;
 }
 
-/** 面板总高度：上边框、可见行（或空态）、下边框与提示行。 */
+/** 面板总高度：上边框、可见行（或空态）与下边框。 */
 export function menuListHeight(itemCount: number, options: MenuListOptions = {}): number {
 	const visible = Math.min(Math.max(0, itemCount), MENU_MAX_VISIBLE);
 	const empty = itemCount === 0 && options.empty !== undefined ? 1 : 0;
-	const hint = options.hint === undefined ? 0 : 1;
-	return visible + empty + 2 + hint;
+	return visible + empty + 2;
 }
 
 /**
@@ -130,20 +127,12 @@ export function menuListLines<T, L>(
 	}
 
 	lines.push(bottomBorder(width));
-	if (options.hint !== undefined) lines.push(hintLine(width, options.hint));
 	return lines;
 }
 
 /** 空态行：面板保留，告诉使用者是没匹配而不是补全坏了。 */
 function emptyLine(width: number, text: string): string {
 	const visible = fitToWidth(`  ${text}`, width);
-	const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
-	return `${PANEL_BG}${SUBTLE_COLOR}${visible}${padding}${RESET}`;
-}
-
-/** 面板底部的按键提示。 */
-function hintLine(width: number, hint: string): string {
-	const visible = fitToWidth(`  ${hint}`, width);
 	const padding = " ".repeat(Math.max(0, width - displayWidth(visible)));
 	return `${PANEL_BG}${SUBTLE_COLOR}${visible}${padding}${RESET}`;
 }

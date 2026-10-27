@@ -1128,7 +1128,6 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/session\r"));
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("↳ Fork of Fix the login flow"));
-			assert.ok(text.includes("f fork"));
 		} finally {
 			exitTui(input);
 		}

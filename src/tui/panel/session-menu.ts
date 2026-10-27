@@ -52,25 +52,16 @@ const MAX_TIME_WIDTH = 16;
 const CURRENT_WIDTH = 7;
 /** 标题少于这么多列就不显示，把宽度还给标识与时间。 */
 const MIN_TITLE_WIDTH = 8;
-const HINT = "↑↓ move · Tab/click fill · Enter switch · Esc close";
-const FORK_HINT = "↑↓ move · Tab/click fill · Enter switch · f fork · Esc close";
 
-function hintFor(forkAvailable: boolean): string {
-	return forkAvailable ? FORK_HINT : HINT;
-}
-
-export function sessionMenuHeight(itemCount: number, forkAvailable = false): number {
-	return menuListHeight(itemCount, { hint: hintFor(forkAvailable) });
+export function sessionMenuHeight(itemCount: number): number {
+	return menuListHeight(itemCount);
 }
 
 export function renderSessionMenu(
 	width: number,
 	state: SessionMenuState,
-	forkAvailable = false,
 ): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row, {
-		hint: hintFor(forkAvailable),
-	});
+	return menuListLines(width, state.items, state, layoutColumns, row);
 }
 
 interface Columns {

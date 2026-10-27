@@ -39,7 +39,6 @@ export interface ModelMenuState {
 
 /** 面板最多显示的模型行数；超出时用上下方向键滚动。 */
 export const MODEL_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
-const HINT = "↑↓ move · Tab/click fill · Enter apply · Esc close";
 
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
 const PREFIX_WIDTH = 3;
@@ -47,13 +46,13 @@ const PREFIX_WIDTH = 3;
 const GAP = 4;
 const CURRENT_WIDTH = 7;
 
-/** 面板总高度：上边框、可见行、下边框与提示。 */
+/** 面板总高度：上边框、可见行与下边框。 */
 export function modelMenuHeight(itemCount: number): number {
-	return menuListHeight(itemCount, { hint: HINT });
+	return menuListHeight(itemCount);
 }
 
 export function renderModelMenu(width: number, state: ModelMenuState): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row, { hint: HINT });
+	return menuListLines(width, state.items, state, layoutColumns, row);
 }
 
 interface Columns {

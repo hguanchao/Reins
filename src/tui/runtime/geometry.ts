@@ -46,12 +46,12 @@ function approvalHeight(state: TuiState): number {
 }
 
 /** 审批面板、选择面板占用的行数；没开面板为 0。 */
-export function menuHeight(state: TuiState, options: TuiOptions): number {
+export function menuHeight(state: TuiState): number {
 	if (state.approvalPrompt !== undefined) return approvalHeight(state);
 	if (state.modelMenu !== undefined) return modelMenuHeight(state.modelMenu.items.length);
 	if (state.effortMenu !== undefined) return effortMenuHeight();
 	if (state.sessionMenu !== undefined) {
-		return sessionMenuHeight(state.sessionMenu.items.length, options.sessionMenu?.fork !== undefined);
+		return sessionMenuHeight(state.sessionMenu.items.length);
 	}
 	if (state.commandMenu !== undefined) return commandMenuHeight(state.commandMenu.items.length);
 	if (state.fileMenu !== undefined) return fileMenuHeight(state.fileMenu.items.length);
@@ -83,7 +83,7 @@ export function compactFooter(state: TuiState): boolean {
 	return menuOpen(state) || state.openPage !== undefined;
 }
 
-export function footerHeight(state: TuiState, options: TuiOptions): number {
+export function footerHeight(state: TuiState, _options: TuiOptions): number {
 	if (state.approvalPrompt !== undefined) return approvalHeight(state);
 	// 整屏页不保留输入框与常驻信息
 	if (state.openPage !== undefined) return 0;
@@ -91,7 +91,7 @@ export function footerHeight(state: TuiState, options: TuiOptions): number {
 	if (!compactFooter(state)) {
 		return FULL_FOOTER_FIXED_LINES + queueHeight(state.queued.length) + lines;
 	}
-	return COMPACT_FOOTER_FIXED_LINES + lines + menuHeight(state, options);
+	return COMPACT_FOOTER_FIXED_LINES + lines + menuHeight(state);
 }
 
 /**
@@ -153,7 +153,7 @@ export function mainAreaHeight(state: TuiState, options: TuiOptions): number {
 export function inputTopRow(state: TuiState, options: TuiOptions, mainHeight: number): number {
 	const panel = todoPanelHeight(state, options);
 	return compactFooter(state)
-		? mainHeight + panel + menuHeight(state, options) + COMPACT_FOOTER_INPUT_ROW
+		? mainHeight + panel + menuHeight(state) + COMPACT_FOOTER_INPUT_ROW
 		: mainHeight +
 				panel +
 				jobBarHeight(state, options) +

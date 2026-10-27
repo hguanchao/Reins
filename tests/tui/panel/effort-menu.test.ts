@@ -13,14 +13,13 @@ describe("思考等级面板", () => {
 		const lines = renderEffortMenu(40, { current: "medium", cursor: 2, scrollTop: 0 });
 		const rows = lines.map(plain);
 
-		assert.equal(effortMenuHeight(), 9);
-		assert.equal(lines.length, 9);
+		assert.equal(effortMenuHeight(), 8);
+		assert.equal(lines.length, 8);
 		assert.ok(rows[0]?.endsWith(" 6 ────"));
 		assert.deepEqual(
 			rows.slice(1, 7).map((line) => line.trim().split(/\s+/).filter((token) => token !== "›")[0]),
 			["off", "low", "medium", "high", "xhigh", "max"],
 		);
-		assert.ok(rows[8]?.includes("Tab/click fill"));
 	});
 
 	it("每个等级都有使用场景说明，当前等级和光标分别标记", () => {

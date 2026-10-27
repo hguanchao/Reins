@@ -43,14 +43,13 @@ const PREFIX_WIDTH = 3;
 const GAP = "    ";
 const GAP_WIDTH = displayWidth(GAP);
 const EMPTY = "No matching commands";
-const HINT = "↑↓ move · Tab/click fill · Enter run · Esc close";
 
 export function commandMenuHeight(itemCount: number): number {
-	return menuListHeight(itemCount, { empty: EMPTY, hint: HINT });
+	return menuListHeight(itemCount, { empty: EMPTY });
 }
 
 export function renderCommandMenu(width: number, state: CommandMenuState): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row, { empty: EMPTY, hint: HINT });
+	return menuListLines(width, state.items, state, layoutColumns, row, { empty: EMPTY });
 }
 
 interface Columns {

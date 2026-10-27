@@ -34,7 +34,6 @@ const PREFIX_WIDTH = 3;
 /** 相邻两列之间的间距。 */
 const GAP = 4;
 const CURRENT_WIDTH = 7;
-const HINT = "↑↓ move · Tab/click fill · Enter apply · Esc close";
 
 /** 用使用场景说明每个等级，光看 low/high 这些缩写很难判断该选哪个。 */
 const EFFORT_DESCRIPTIONS: Readonly<Record<ThinkingLevel, string>> = {
@@ -47,7 +46,7 @@ const EFFORT_DESCRIPTIONS: Readonly<Record<ThinkingLevel, string>> = {
 };
 
 export function effortMenuHeight(): number {
-	return menuListHeight(THINKING_LEVELS.length, { hint: HINT });
+	return menuListHeight(THINKING_LEVELS.length);
 }
 
 export function renderEffortMenu(width: number, state: EffortMenuState): readonly string[] {
@@ -75,7 +74,6 @@ export function renderEffortMenu(width: number, state: EffortMenuState): readonl
 				layout.descriptionWidth >= 4 ? layout.descriptionWidth : 0,
 				layout.currentWidth,
 			),
-		{ hint: HINT },
 	);
 }
 

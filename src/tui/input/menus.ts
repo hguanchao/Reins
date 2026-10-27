@@ -210,7 +210,7 @@ function activeModalMenu(host: TuiHost): ModalMenuActions | undefined {
 			},
 			move: (delta) => host.moveSessionMenu(delta),
 			scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false),
-			height: () => sessionMenuHeight(menu.items.length, host.options.sessionMenu?.fork !== undefined),
+			height: () => sessionMenuHeight(menu.items.length),
 			confirm: () => host.confirmSessionMenu(),
 			complete: () => host.completeSessionMenu(),
 			cancel: () => host.cancelSessionMenu(),

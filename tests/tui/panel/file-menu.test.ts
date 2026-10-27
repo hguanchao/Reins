@@ -69,9 +69,9 @@ describe("@ 文件过滤", () => {
 });
 
 describe("@ 补全面板", () => {
-	it("高度随可见条目数、空态与提示变化", () => {
-		assert.equal(fileMenuHeight(0), 4);
-		assert.equal(fileMenuHeight(2), 5);
+	it("高度随可见条目数与空态变化", () => {
+		assert.equal(fileMenuHeight(0), 3);
+		assert.equal(fileMenuHeight(2), 4);
 	});
 
 	it("显示选中项、图片标记与数量", () => {

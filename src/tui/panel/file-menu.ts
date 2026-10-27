@@ -50,11 +50,10 @@ const PREFIX_WIDTH = 3;
 const IMAGE_BADGE = "  [image]";
 const MIN_PATH_WIDTH = 12;
 const EMPTY = "No matching files";
-const HINT = "↑↓ move · Enter/Tab/click insert · Esc close";
 
 /** 面板高度与条数一致：超过一屏时只画窗口内的行。 */
 export function fileMenuHeight(itemCount: number): number {
-	return menuListHeight(itemCount, { empty: EMPTY, hint: HINT });
+	return menuListHeight(itemCount, { empty: EMPTY });
 }
 
 /**
@@ -134,7 +133,7 @@ export function renderFileMenu(width: number, state: FileMenuState): readonly st
 		state,
 		() => undefined,
 		(columns, path, selected, hovered) => row(columns, path, selected, hovered),
-		{ empty: EMPTY, hint: HINT },
+		{ empty: EMPTY },
 	);
 }
 

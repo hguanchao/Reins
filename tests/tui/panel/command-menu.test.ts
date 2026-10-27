@@ -23,17 +23,17 @@ function plain(line: string): string {
 }
 
 describe("命令补全面板", () => {
-	it("高度由可见行数、空态、边框与提示组成", () => {
-		assert.equal(commandMenuHeight(0), 4);
-		assert.equal(commandMenuHeight(2), 5);
-		assert.equal(commandMenuHeight(20), MENU_MAX_VISIBLE + 3);
+	it("高度由可见行数、空态与边框组成", () => {
+		assert.equal(commandMenuHeight(0), 3);
+		assert.equal(commandMenuHeight(2), 4);
+		assert.equal(commandMenuHeight(20), MENU_MAX_VISIBLE + 2);
 	});
 
 	it("上边框显示匹配数量，命令名与说明按列对齐", () => {
 		const lines = renderCommandMenu(72, { items: ITEMS, cursor: 0, scrollTop: 0 });
 		const rows = lines.map(plain);
 
-		assert.equal(lines.length, 5);
+		assert.equal(lines.length, 4);
 		assert.ok(rows[0]?.endsWith(" 2 ────"));
 		assert.ok(rows[1]?.startsWith(" › /model"));
 		assert.ok(rows[2]?.startsWith("   /reload"));
@@ -44,12 +44,11 @@ describe("命令补全面板", () => {
 		assert.equal(rows[1]?.indexOf("Switch the current model"), 14);
 		assert.equal(rows[2]?.indexOf("Reload external plugins"), 14);
 		assert.equal(rows[3], "─".repeat(72));
-		assert.ok(rows[4]?.includes("Tab/click fill"));
 	});
 
 	it("没有匹配时保留面板并显示空态", () => {
 		const rows = renderCommandMenu(72, { items: [], cursor: 0, scrollTop: 0 }).map(plain);
-		assert.equal(rows.length, 4);
+		assert.equal(rows.length, 3);
 		assert.ok(rows[0]?.endsWith(" 0 ────"));
 		assert.ok(rows[1]?.includes("No matching commands"));
 	});

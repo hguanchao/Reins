@@ -188,7 +188,7 @@ function menuLinesOf(host: TuiHost, width: number, _metrics: unknown): readonly 
 	if (state.modelMenu !== undefined) return renderModelMenu(width, state.modelMenu);
 	if (state.effortMenu !== undefined) return renderEffortMenu(width, state.effortMenu);
 	if (state.sessionMenu !== undefined) {
-		return renderSessionMenu(width, state.sessionMenu, host.options.sessionMenu?.fork !== undefined);
+		return renderSessionMenu(width, state.sessionMenu);
 	}
 	if (state.commandMenu !== undefined) return renderCommandMenu(width, state.commandMenu);
 	if (state.fileMenu !== undefined) return renderFileMenu(width, state.fileMenu);
