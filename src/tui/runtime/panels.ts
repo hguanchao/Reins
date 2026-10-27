@@ -334,10 +334,11 @@ export function updateCommandMenu(host: TuiHost): void {
 /**
  * Tab 或点击命令补全项：把选中命令补进输入框，不执行。
  *
- * 有二级选择面板的命令直接打开面板，输入框保留命令名；其余只补命令名与空格，
- * 补全面板保持打开。执行统一交给回车；一轮进行中只放行不碰对话的命令。
+ * 有二级选择面板的命令直接打开面板，输入框保留命令名；其余只补命令名与空格。
+ * 点击是明确的选中动作，补完就收起补全面板；Tab 保留继续浏览的语义。执行统一交给回车；
+ * 一轮进行中只放行不碰对话的命令。
  */
-export function completeCommandMenu(host: TuiHost): void {
+export function completeCommandMenu(host: TuiHost, dismiss = false): void {
 	const state = host.state;
 	const menu = state.commandMenu;
 	const chosen = menu?.items[menu.cursor];
@@ -352,6 +353,7 @@ export function completeCommandMenu(host: TuiHost): void {
 		return;
 	}
 	host.setInput(`/${chosen.name} `);
+	if (dismiss) state.commandMenu = undefined;
 	host.render();
 }
 

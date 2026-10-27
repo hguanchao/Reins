@@ -349,11 +349,16 @@ describe("命令补全与选择面板", () => {
 			assert.ok(row > 0);
 			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
 
-			// 点击回显：输入框补成 /help 加一个空格，帮助页不打开
+			// 点击回显：输入框补成 /help 加一个空格，补全面板收起，帮助页不打开
 			const afterClick = frameLines(output).map(plain);
 			assert.ok(
 				afterClick.some((line) => line === " › /help "),
 				"点击把命令补进输入框",
+			);
+			assert.equal(
+				afterClick.some((line) => line.includes("Show the commands and keys")),
+				false,
+				"点击后补全面板收起",
 			);
 			assert.equal(afterClick.join("\n").includes("Reins — help"), false, "点击不执行命令");
 

@@ -127,7 +127,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, commandPanelTop, () => completeCommandMenu(host)),
+				inlineMenuTarget(menu, commandPanelTop, () => completeCommandMenu(host, true)),
 			)
 		) {
 			return;
