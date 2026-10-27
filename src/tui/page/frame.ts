@@ -51,6 +51,7 @@ const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Ctrl+Home/End", description: "Jump to the oldest or latest output" },
 	{ name: "Ctrl+E", description: "Expand or collapse the latest thinking or tool group" },
 	{ name: "Ctrl+O", description: "Show or hide the latest successful tool result" },
+	{ name: "Ctrl+G", description: "View the latest long block (tool output, details, thinking, or prompt) full-screen" },
 	{ name: "Ctrl/Alt+V", description: "Insert an image from the clipboard as [image: name]" },
 	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar" },
 	{ name: "Double-click", description: "Expand or collapse thinking, tool groups, and tool details" },

@@ -70,6 +70,7 @@ export function createState(options: TuiOptions): TuiState {
 		fileIndexStart: undefined,
 		openPage: undefined,
 		pageScrollTop: 0,
+		viewer: undefined,
 		planReview: undefined,
 		latestPlan: options.historyPlan,
 		pendingPlan: undefined,

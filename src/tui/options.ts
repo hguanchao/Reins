@@ -159,7 +159,7 @@ export interface AgentRuntime {
 	readonly refreshInfo: () => void;
 }
 
-/** 整屏页的内容；帮助、技能、MCP、沙箱、计划、检查点与后台作业共用同一套滚动。 */
+/** 整屏页的内容；帮助、技能、MCP、沙箱、计划、检查点、后台作业与长内容查看共用同一套滚动。 */
 export type PageKind =
 	| "help"
 	| "skills"
@@ -169,7 +169,8 @@ export type PageKind =
 	| "checkpoints"
 	| "checkpoint"
 	| "jobs"
-	| "job";
+	| "job"
+	| "viewer";
 
 /**
  * `/skills` 页的内容。

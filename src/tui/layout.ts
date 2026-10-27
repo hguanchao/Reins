@@ -102,6 +102,7 @@ import {
 } from "./runtime/panels.ts";
 import { submit } from "./runtime/submit.ts";
 import { togglingTranscriptAt } from "./runtime/view.ts";
+import { openLatestViewer } from "./runtime/viewer.ts";
 import type { ActiveTurn, TuiHost } from "./runtime/types.ts";
 import type { ImageAttachment } from "./image.ts";
 import { measureTranscriptView, scrollTopForRow as scrollTopForRowImpl, type TranscriptMetrics } from "./transcript.ts";
@@ -138,6 +139,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			state.pageCache = undefined;
 		},
 		pageLines: (kind, width) => pageLines(host, kind, width),
+		openViewer: () => openLatestViewer(host),
 		terminalWidth: () => terminalWidth(state),
 		terminalHeight: () => terminalRows(state),
 		mainAreaHeight: () => mainAreaHeight(state, options),

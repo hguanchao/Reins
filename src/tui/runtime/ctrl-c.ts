@@ -35,7 +35,10 @@ export function onCtrlC(
 		if (state.openPage === "plan") closePlanReview(state);
 		else if (state.openPage === "checkpoints" || state.openPage === "checkpoint") closeCheckpointPage(host);
 		else if (state.openPage === "jobs" || state.openPage === "job") closeJobPage(host);
-		else state.openPage = undefined;
+		else {
+			if (state.openPage === "viewer") state.viewer = undefined;
+			state.openPage = undefined;
+		}
 		armExit(state, () => disarm(state), EXIT_CONFIRM_WINDOW_MS);
 		deps.render();
 		return;

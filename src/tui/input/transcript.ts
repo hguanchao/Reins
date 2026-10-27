@@ -210,6 +210,18 @@ export function handleTranscriptInput(
 		focusChanged = true;
 	};
 
+	// Ctrl+G：把最近一块长内容（工具输出/详情、思考、提示）打开成整屏页
+	if (
+		withoutMouse === "\x07" &&
+		!state.pasting &&
+		state.commandMenu === undefined &&
+		state.fileMenu === undefined &&
+		!host.modalMenuOpen()
+	) {
+		host.openViewer();
+		return;
+	}
+
 	// 输入框失焦后，回车只负责把焦点抢回来：这一下不提交，避免误发已经打好的内容。
 	// 只认单独的换行块，粘贴进来的多行内容不会被当成聚焦键吞掉。
 	if (!state.focused && (withoutMouse === "\r" || withoutMouse === "\n")) {

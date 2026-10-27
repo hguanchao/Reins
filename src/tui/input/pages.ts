@@ -4,6 +4,7 @@ import type { MouseInput } from "./keys.ts";
 import { JOB_ACTION_HEIGHT } from "../page/job.ts";
 import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
 import { SANDBOX_ACTION_HEIGHT } from "../page/sandbox.ts";
+import { VIEWER_ACTION_HEIGHT } from "../page/viewer.ts";
 import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
@@ -118,9 +119,11 @@ export function handlePageInput(
 				? CHECKPOINT_ACTION_HEIGHT
 				: page === "jobs" || page === "job"
 					? JOB_ACTION_HEIGHT
-					: page === "sandbox"
-						? SANDBOX_ACTION_HEIGHT
-						: 0;
+						: page === "sandbox"
+							? SANDBOX_ACTION_HEIGHT
+							: page === "viewer"
+								? VIEWER_ACTION_HEIGHT
+								: 0;
 	const rows = Math.max(1, host.mainAreaHeight() - actionHeight);
 	const width = host.terminalWidth();
 	const total = host.pageLines(page, width).length;
@@ -137,7 +140,10 @@ export function handlePageInput(
 
 	if (key === "escape") {
 		if (page === "plan") host.closePlanReview();
-		else state.openPage = undefined;
+		else {
+			if (page === "viewer") state.viewer = undefined;
+			state.openPage = undefined;
+		}
 		deps.render();
 		return;
 	}

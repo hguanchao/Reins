@@ -15,6 +15,7 @@ import {
 import { jobListActions, jobListLines, jobOutputActions, jobOutputLines } from "../page/job.ts";
 import { planActionLines, planReviewLines } from "../page/plan.ts";
 import { sandboxActionLines, sandboxPageLines } from "../page/sandbox.ts";
+import { viewerActionLines, viewerPageLines } from "../page/viewer.ts";
 import { THEME } from "../render/theme.ts";
 import { RESET } from "../panel/menu-panel.ts";
 import type { PageKind } from "../options.ts";
@@ -87,6 +88,9 @@ function buildPage(host: TuiHost, kind: PageKind, width: number): readonly strin
 		}
 		return jobOutputLines(job, host.options.jobs?.output(job.id) ?? "", width);
 	}
+	if (kind === "viewer") {
+		return state.viewer === undefined ? [] : viewerPageLines(state.viewer, width);
+	}
 	return mcpsPageLines(width, host.options.mcpServers?.() ?? []);
 }
 
@@ -132,6 +136,7 @@ export function framedPageFor(
 	}
 	if (kind === "jobs") return framedPage(content, jobListActions(width), height, scroll);
 	if (kind === "sandbox") return framedPage(content, sandboxActionLines(width), height, scroll);
+	if (kind === "viewer") return framedPage(content, viewerActionLines(width), height, scroll);
 	return renderPage(content, height, scroll);
 }
 

@@ -157,6 +157,8 @@ export interface TuiState {
 	openPage: PageKind | undefined;
 	/** 整屏页从顶部滚过的行数。 */
 	pageScrollTop: number;
+	/** Ctrl+G 打开的整屏长内容；关闭后保留到下一次打开覆盖 */
+	viewer: ViewerContent | undefined;
 	/** 当前正在审批页里展示的计划；为空时计划页没有内容。 */
 	planReview: TranscriptPlan | undefined;
 	/** 最近一份计划；/view-plan 与计划卡都从这里打开。 */
@@ -196,6 +198,12 @@ export interface TuiState {
 	finish: () => void;
 }
 
+/** 整屏查看的长内容；标题用于页头，正文由查看页按宽度重排。 */
+export interface ViewerContent {
+	readonly title: string;
+	readonly text: string;
+}
+
 /** 装配层提供给各域模块的能力：状态读写、几何、页面切换与跨域动作。 */
 export interface TuiHost {
 	readonly options: TuiOptions;
@@ -208,6 +216,8 @@ export interface TuiHost {
 	scheduleStatusClear(): void;
 	markTranscriptDirty(): void;
 	showPage(kind: PageKind): void;
+	/** 打开最近一块长内容的整屏查看页；没有可查看内容时只给提示 */
+	openViewer(): void;
 	pageLines(kind: PageKind, width: number): readonly string[];
 	terminalWidth(): number;
 	terminalHeight(): number;
