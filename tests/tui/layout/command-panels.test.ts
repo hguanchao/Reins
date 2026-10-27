@@ -154,11 +154,11 @@ describe("命令补全与选择面板", () => {
 			assert.ok(borderRow > 0 && secondRow > 0, "面板与第二项都画出来了");
 
 			// 上边框本身不响应
-			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M\x1b[<0;10;${borderRow}m`));
 			assert.equal(selected, undefined);
 
 			// 点第二项：命令补进输入框，面板收起，不切换
-			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M\x1b[<0;10;${secondRow}m`));
 			assert.equal(selected, undefined, "点击不切换会话");
 			const afterClick = frameLines(output).map(plain);
 			assert.ok(
@@ -241,11 +241,11 @@ describe("命令补全与选择面板", () => {
 			assert.ok(borderRow > 0 && secondRow > 0);
 
 			// 点上边框不响应
-			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M\x1b[<0;10;${borderRow}m`));
 			assert.equal(selected, undefined);
 
 			// 点第二项：命令补进输入框，面板收起，不切换
-			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M\x1b[<0;10;${secondRow}m`));
 			assert.equal(selected, undefined, "点击不切换模型");
 			const afterClick = frameLines(output).map(plain);
 			assert.ok(
@@ -347,7 +347,7 @@ describe("命令补全与选择面板", () => {
 					.map(plain)
 					.findIndex((line) => line.includes("/help")) + 1;
 			assert.ok(row > 0);
-			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M\x1b[<0;10;${row}m`));
 
 			// 点击回显：输入框补成 /help 加一个空格，补全面板收起，帮助页不打开
 			const afterClick = frameLines(output).map(plain);
@@ -376,12 +376,12 @@ describe("命令补全与选择面板", () => {
 		}
 	});
 
-	it("面板打开时滚轮不滚动对话流", (t) => {
+	it("滚轮停在菜单上移动选中，停在别处滚动对话流", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
-		output.rows = 14;
+		output.rows = 20;
 		const agent = createFakeAgent();
 		void runTui({
 			version: "1.2.3",
@@ -408,26 +408,30 @@ describe("命令补全与选择面板", () => {
 					.findIndex((line) => line.includes("/session")) + 1;
 			assert.ok(otherRow > 0, "另一个命令画出来了");
 
-			// 滚轮向上停在别的命令上：64 的低两位同样是 0，不能被当成左键
-			input.emit("data", Buffer.from(`\x1b[<64;10;${otherRow}M`));
-			// 滚轮向下：不能滚动被面板盖住的对话流
-			input.emit("data", Buffer.from("\x1b[<65;10;8M"));
+			// 滚轮停在菜单上：选中项下移
+			input.emit("data", Buffer.from(`\x1b[<65;10;${otherRow}M`));
 			t.mock.timers.tick(100);
-			assert.equal(frameLines(output).map(plain).join("\n"), before, "面板打开时滚轮无效");
+			assert.notEqual(frameLines(output).map(plain).join("\n"), before, "滚轮移动选中");
 
-			// 关掉面板，对话流仍在最新位置
-			input.emit("data", Buffer.from("\x1b"));
+			// 反向滚回原处
+			input.emit("data", Buffer.from(`\x1b[<64;10;${otherRow}M`));
 			t.mock.timers.tick(100);
-			assert.ok(
+			assert.equal(frameLines(output).map(plain).join("\n"), before, "滚轮回到原选中");
+
+			// 滚轮停在对话流上：菜单不拦截，对话流滚动
+			input.emit("data", Buffer.from(`${"\x1b[<64;10;2M".repeat(5)}`));
+			t.mock.timers.tick(100);
+			assert.equal(
 				frameLines(output).map(plain).join("\n").includes("line 60"),
-				"对话流没有被滚走",
+				false,
+				"对话流被滚走",
 			);
 		} finally {
 			exitTui(input);
 		}
 	});
 
-	it("模态菜单打开时滚轮不改选中也不滚动对话流", (t) => {
+	it("模态菜单滚轮移动选中但不滚动对话流", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -466,11 +470,22 @@ describe("命令补全与选择面板", () => {
 			assert.ok(borderRow > 0 && secondRow > 0, "面板与第二项都画出来了");
 			const before = rows.join("\n");
 
-			// 向上停在别的模型上不能被当成左键；向下落在边框上不能漏到对话流
+			// 滚轮停在面板上：选中项下移
+			input.emit("data", Buffer.from(`\x1b[<65;10;${secondRow}M`));
+			t.mock.timers.tick(100);
+			assert.notEqual(frameLines(output).map(plain).join("\n"), before, "滚轮移动选中");
+
+			// 反向滚回
 			input.emit("data", Buffer.from(`\x1b[<64;10;${secondRow}M`));
+			t.mock.timers.tick(100);
+			assert.equal(frameLines(output).map(plain).join("\n"), before, "滚轮回到原选中");
+
+			// 滚轮落在边框上也归菜单，不漏到对话流
 			input.emit("data", Buffer.from(`\x1b[<65;10;${borderRow}M`));
 			t.mock.timers.tick(100);
-			assert.equal(frameLines(output).map(plain).join("\n"), before, "滚轮不改变画面");
+			assert.notEqual(frameLines(output).map(plain).join("\n"), before, "边框上的滚轮也归菜单");
+			input.emit("data", Buffer.from(`\x1b[<64;10;${borderRow}M`));
+			t.mock.timers.tick(100);
 
 			// 关掉面板，对话流仍在最新位置
 			input.emit("data", Buffer.from("\x1b"));
@@ -486,6 +501,115 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("\r"));
 			t.mock.timers.tick(100);
 			assert.equal(selected, "fengshao/deepseek-v4.1-flash");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("菜单点击按下只选中，松开才补全；拖到别处松开取消", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			const rows = frameLines(output).map(plain);
+			const helpRow = rows.findIndex((line) => line.includes("/help")) + 1;
+			const modelRow = rows.findIndex((line) => line.includes("/model")) + 1;
+			assert.ok(helpRow > 0 && modelRow > 0);
+
+			// 按下只选中，不补全
+			input.emit("data", Buffer.from(`\x1b[<0;10;${helpRow}M`));
+			let lines = frameLines(output).map(plain);
+			assert.equal(lines.some((line) => line === " › /help "), false, "按下不补全");
+			assert.ok(lines.some((line) => line.startsWith(" › /help")), "按下只选中");
+
+			// 拖到另一项再松开：取消这次点击
+			input.emit("data", Buffer.from(`\x1b[<0;10;${modelRow}m`));
+			lines = frameLines(output).map(plain);
+			assert.equal(lines.some((line) => line === " › /help "), false, "拖开松开不补全");
+
+			// 同一项按下并松开才补全
+			input.emit("data", Buffer.from(`\x1b[<0;10;${helpRow}M\x1b[<0;10;${helpRow}m`));
+			lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line === " › /help "), "松开补全到输入框");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("悬停只高亮不改变选中", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			const rows = frameLines(output).map(plain);
+			const helpRow = rows.findIndex((line) => line.includes("/help")) + 1;
+			assert.ok(helpRow > 0);
+
+			input.emit("data", Buffer.from(`\x1b[<35;10;${helpRow}M`));
+			const raw = frameLines(output);
+			const text = raw.map(plain).join("\n");
+			assert.ok((raw[helpRow - 1] ?? "").includes(THEME.hoverBg), "悬停行有底色");
+			assert.ok(text.includes("› /model"), "选中没有跟着悬停移动");
+			assert.equal(text.includes("› /help"), false, "悬停不选中");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("菜单方向键首尾相接", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			input.emit("data", Buffer.from("\x1b[A"));
+			let lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line.startsWith(" › /mcps")), "向上从第一项到最后一个");
+			assert.ok(lines.some((line) => line.endsWith(" 14/14 ────")), "显示滚动位置");
+
+			input.emit("data", Buffer.from("\x1b[B"));
+			lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line.startsWith(" › /model")), "向下从最后一项回到第一项");
+			assert.ok(lines.some((line) => line.endsWith(" 1/14 ────")));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("命令没有匹配时保留空态，回车不发送未知命令", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/zzz"));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("No matching commands"));
+
+			input.emit("data", Buffer.from("\r"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Unknown command: /zzz"));
+			assert.deepEqual(agent.prompts, []);
 		} finally {
 			exitTui(input);
 		}
@@ -507,7 +631,7 @@ describe("命令补全与选择面板", () => {
 						.findIndex((line) => line.includes(name)) + 1;
 				assert.ok(row > 0, `${name} 画出来了`);
 
-				input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
+				input.emit("data", Buffer.from(`\x1b[<0;10;${row}M\x1b[<0;10;${row}m`));
 				const lines = frameLines(output).map(plain);
 				assert.ok(
 					lines.some((line) => line === ` › ${name} `),
@@ -804,7 +928,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 补出普通命令名，补全面板保持打开", async () => {
+	it("命令补全里 Tab 补出普通命令名并收起面板", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
@@ -816,8 +940,12 @@ describe("命令补全与选择面板", () => {
 			const lines = frameLines(output).map(plain);
 			// 输入框补全成带空格的命令名
 			assert.ok(lines.some((line) => line === " › /help "));
-			// 补全面板没有收掉，说明行仍在画面里
-			assert.ok(lines.some((line) => line.includes("Show the commands and keys")));
+			// 补全面板已经收起
+			assert.equal(lines.some((line) => line.includes("Show the commands and keys")), false);
+
+			// 回车才执行
+			input.emit("data", Buffer.from("\r"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Reins — help"));
 		} finally {
 			exitTui(input);
 		}
@@ -825,7 +953,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 直接打开模型面板", async () => {
+	it("命令补全里 Tab 只补出模型命令，回车才打开面板", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -849,7 +977,12 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("\t"));
 
 			assert.equal(calls, 0);
-			const lines = frameLines(output).map(plain);
+			let lines = frameLines(output).map(plain);
+			assert.ok(lines.some((line) => line === " › /model "));
+			assert.equal(lines.some((line) => line.includes("fengshao/deepseek-v4.1-flash")), false);
+
+			input.emit("data", Buffer.from("\r"));
+			lines = frameLines(output).map(plain);
 			assert.ok(lines.some((line) => line.includes("fengshao/deepseek-v4.1-flash")));
 		} finally {
 			exitTui(input);
@@ -858,7 +991,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 直接打开思考等级面板", async () => {
+	it("命令补全里 Tab 只补出思考命令，回车才打开面板", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -877,7 +1010,12 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/effort"));
 			input.emit("data", Buffer.from("\t"));
 
-			const text = frameLines(output).map(plain).join("\n");
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" › /effort "));
+			assert.equal(text.includes("xhigh"), false);
+
+			input.emit("data", Buffer.from("\r"));
+			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("xhigh"));
 			assert.ok(text.includes("› medium"));
 		} finally {
@@ -990,7 +1128,7 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/session\r"));
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("↳ Fork of Fix the login flow"));
-			assert.ok(text.includes("f fork at end"));
+			assert.ok(text.includes("f fork"));
 		} finally {
 			exitTui(input);
 		}
@@ -1143,7 +1281,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 直接打开会话菜单", async () => {
+	it("命令补全里 Tab 只补出会话命令，回车才打开菜单", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -1162,7 +1300,12 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/session"));
 			input.emit("data", Buffer.from("\t"));
 
-			const text = frameLines(output).map(plain).join("\n");
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" › /session "));
+			assert.equal(text.includes("Fix the login flow"), false);
+
+			input.emit("data", Buffer.from("\r"));
+			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("Fix the login flow"));
 			assert.ok(text.includes("Write the release notes"));
 		} finally {
@@ -1277,7 +1420,7 @@ describe("命令补全与选择面板", () => {
 			assert.ok(text.includes("/compact"));
 			assert.ok(text.includes("Requires a valid configuration"));
 			assert.ok(lines.some((line) => line.includes("› /")));
-			assert.ok(lines.some((line) => line.endsWith(" 14 ────")));
+			assert.ok(lines.some((line) => line.endsWith(" 1/14 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
 		} finally {
 			exitTui(input);
@@ -1383,6 +1526,7 @@ describe("命令补全与选择面板", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
+		output.rows = 20;
 		let selected: string | undefined;
 		let info = FOOTER_INFO;
 		const running = runTui({

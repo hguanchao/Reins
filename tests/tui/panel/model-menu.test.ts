@@ -27,16 +27,16 @@ function plain(line: string): string {
 }
 
 describe("模型选择面板", () => {
-	it("高度由可见行数与上下边框组成", () => {
-		assert.equal(modelMenuHeight(0), 2);
-		assert.equal(modelMenuHeight(3), 5);
-		assert.equal(modelMenuHeight(20), MODEL_MENU_MAX_VISIBLE + 2);
+	it("高度由可见行数、边框与提示组成", () => {
+		assert.equal(modelMenuHeight(0), 3);
+		assert.equal(modelMenuHeight(3), 6);
+		assert.equal(modelMenuHeight(20), MODEL_MENU_MAX_VISIBLE + 3);
 	});
 
 	it("上边框右侧显示总数并保留 4 个尾部横线", () => {
 		const lines = renderModelMenu(72, { items: ITEMS, cursor: 0, scrollTop: 0 });
 
-		assert.equal(lines.length, 5);
+		assert.equal(lines.length, 6);
 		assert.equal(plain(lines[0] ?? "").length, 72);
 		assert.ok(plain(lines[0] ?? "").endsWith(" 3 ────"));
 	});
@@ -85,7 +85,7 @@ describe("模型选择面板", () => {
 		const lines = renderModelMenu(60, state);
 		const rows = lines.map(plain);
 
-		assert.equal(lines.length, MODEL_MENU_MAX_VISIBLE + 2);
+		assert.equal(lines.length, MODEL_MENU_MAX_VISIBLE + 3);
 		assert.ok(rows[1]?.includes("p/m2"));
 		assert.ok(rows[8]?.startsWith(" › p/m9"));
 	});

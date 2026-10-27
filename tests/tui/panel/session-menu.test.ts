@@ -18,9 +18,9 @@ function plain(line: string): string {
 }
 
 describe("会话选择面板", () => {
-	it("高度由可见行数与边框组成", () => {
-		assert.equal(sessionMenuHeight(0), 2);
-		assert.equal(sessionMenuHeight(2), 4);
+	it("高度由可见行数、边框与提示组成", () => {
+		assert.equal(sessionMenuHeight(0), 3);
+		assert.equal(sessionMenuHeight(2), 5);
 		assert.equal(sessionMenuHeight(3, true), 6);
 	});
 
@@ -38,10 +38,10 @@ describe("会话选择面板", () => {
 		const rows = renderSessionMenu(100, { items, cursor: 0, scrollTop: 0 }, true).map(plain);
 
 		assert.ok(rows[3]?.includes("↳ Fork of Fix the login flow"));
-		assert.ok(rows.at(-1)?.includes("f fork at end"));
+		assert.ok(rows.at(-1)?.includes("f fork"));
 
 		const withoutFork = renderSessionMenu(100, { items, cursor: 0, scrollTop: 0 }).map(plain);
-		assert.equal(withoutFork.some((line) => line.includes("f fork at end")), false);
+		assert.equal(withoutFork.some((line) => line.includes("f fork")), false);
 	});
 
 	it("列顺序是会话标识、标题、时间，最后是 current", () => {

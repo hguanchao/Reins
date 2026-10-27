@@ -124,14 +124,22 @@ export function dragMotion(button: number): boolean {
 	return button >= 32 && button < 64 && (button & MOUSE_BUTTON_MASK) !== 3;
 }
 
-/** 一个菜单面板交给公共鼠标处理器的交互面:命中、当前光标、选中同步与补全。 */
+/** 一个菜单面板交给公共鼠标处理器的交互面。 */
 export interface MenuMouseTarget {
 	/** 终端行号命中的条目下标;命中不了(点到面板外或边框上)返回 undefined */
 	readonly hitItem: (row: number) => number | undefined;
+	/** 这一行是否落在面板范围内（含边框与提示行） */
+	readonly contains: (row: number) => boolean;
 	readonly cursor: () => number;
 	readonly select: (index: number) => void;
+	/** 滚轮移动选中项：不循环，到头即停 */
+	readonly scroll: (delta: number) => void;
 	/** 左键点击条目后把该项补进输入框;只回显不执行 */
 	readonly complete: () => void;
+	readonly pressed: () => number | undefined;
+	readonly setPressed: (index: number | undefined) => void;
+	readonly hover: () => number | undefined;
+	readonly setHover: (index: number | undefined) => void;
 }
 
 export function mouseEvents(text: string): readonly MouseInput[] {

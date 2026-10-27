@@ -1,32 +1,95 @@
 import { THINKING_LEVELS } from "../../config/file.ts";
 import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, menuIndexAtRow, menuKey } from "./keys.ts";
 import type { MenuMouseTarget, MouseInput } from "./keys.ts";
+import { moveMenuSelection } from "../panel/menu-panel.ts";
+import { effortMenuHeight } from "../panel/effort-menu.ts";
+import { modelMenuHeight } from "../panel/model-menu.ts";
+import { sessionMenuHeight } from "../panel/session-menu.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 /**
- * 菜单面板的鼠标交互：只认左键点击条目。
+ * 菜单面板的鼠标交互：悬停高亮、按下选中、松开补全。
  *
- * 悬停与拖动只是指针在移动，不改选中；滚轮向上（64）的低两位同样是 0，不单独排掉会被
- * 当成左键。点击把该项补进输入框而不是执行，避免一次误点就把模型或会话换掉。
+ * 滚轮只在指针位于面板上时移动选中项，指针在面板外时事件继续交给对话流；
+ * 点击必须按下和松开落在同一项上，拖开即取消；补全只改输入框，不执行。
  */
 export function handleMenuMouse(
 	events: readonly MouseInput[],
 	target: MenuMouseTarget,
+	render: () => void,
 ): boolean {
+	let handled = false;
 	for (const event of events) {
-		if (!event.press) continue;
-		// 移动位或滚轮位置位时，这次上报不是「按下左键」
-		if ((event.button & MOUSE_MOTION_BIT) !== 0 || (event.button & MOUSE_WHEEL_BIT) !== 0) continue;
+		const wheel = (event.button & MOUSE_WHEEL_BIT) !== 0;
+		const motion = (event.button & MOUSE_MOTION_BIT) !== 0 && !wheel;
+
+		if (wheel) {
+			if (!event.press || !target.contains(event.row)) continue;
+			const button = event.button & MOUSE_BUTTON_MASK;
+			if (button > 1) continue;
+			target.scroll(button === 0 ? -1 : 1);
+			// 列表滚动后，指针下可能已经换成另一项：高亮跟着指针走
+			target.setHover(target.hitItem(event.row));
+			render();
+			handled = true;
+			continue;
+		}
+
+		// 纯悬停只改高亮，不改选中
+		if (motion) {
+			if ((event.button & MOUSE_BUTTON_MASK) !== 3) continue;
+			if (!target.contains(event.row)) {
+				if (target.hover() !== undefined) {
+					target.setHover(undefined);
+					render();
+				}
+				continue;
+			}
+			const index = target.hitItem(event.row);
+			if (target.hover() !== index) {
+				target.setHover(index);
+				render();
+			}
+			handled = true;
+			continue;
+		}
+
+		if (!event.press) {
+			// 松开：只有按下与松开落在同一项上才算一次点击
+			const pressed = target.pressed();
+			if (pressed === undefined) continue;
+			target.setPressed(undefined);
+			target.setHover(undefined);
+			if (target.contains(event.row) && target.hitItem(event.row) === pressed) target.complete();
+			handled = true;
+			continue;
+		}
+
 		if ((event.button & MOUSE_BUTTON_MASK) !== 0) continue;
 
+		if (!target.contains(event.row)) {
+			if (target.pressed() !== undefined || target.hover() !== undefined) {
+				target.setPressed(undefined);
+				target.setHover(undefined);
+				render();
+			}
+			continue;
+		}
+
+		// 左键按下：只选中并高亮；松开且没有拖开才补全
 		const index = target.hitItem(event.row);
-		if (index === undefined) continue;
-		if (index !== target.cursor()) target.select(index);
-		target.complete();
-		return true;
+		target.setHover(index);
+		if (index !== undefined) {
+			if (index !== target.cursor()) target.select(index);
+			target.setPressed(index);
+		} else {
+			target.setPressed(undefined);
+		}
+		render();
+		handled = true;
 	}
-	return false;
+	return handled;
 }
 
 /** 行内补全面板（命令、文件）的鼠标目标：光标直接落在菜单状态上，补全交给宿主。 */
@@ -34,21 +97,34 @@ interface InlineMenuState {
 	readonly items: readonly unknown[];
 	cursor: number;
 	scrollTop: number;
+	hover?: number;
+	pressed?: number;
 }
 
 export function inlineMenuTarget(
 	menu: InlineMenuState,
 	panelTop: number,
+	panelHeight: number,
 	complete: () => void,
 ): MenuMouseTarget {
 	return {
 		hitItem: (row) => menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor),
+		contains: (row) => row >= panelTop && row < panelTop + panelHeight,
 		cursor: () => menu.cursor,
 		select: (index) => {
-			menu.cursor = index;
-			menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
+			// 点击的是当前窗口里的条目：只移动光标，不把窗口整体滚到该条目的下标处
+			moveMenuSelection(menu, index - menu.cursor, menu.items.length, false);
 		},
+		scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false),
 		complete,
+		pressed: () => menu.pressed,
+		setPressed: (index) => {
+			menu.pressed = index;
+		},
+		hover: () => menu.hover,
+		setHover: (index) => {
+			menu.hover = index;
+		},
 	};
 }
 
@@ -59,9 +135,15 @@ interface ModalMenuActions {
 	readonly scrollTop: () => number;
 	readonly select: (index: number) => void;
 	readonly move: (delta: number) => void;
+	readonly scroll: (delta: number) => void;
+	readonly height: () => number;
 	readonly confirm: () => void;
 	readonly complete: () => void;
 	readonly cancel: () => void;
+	readonly hover: () => number | undefined;
+	readonly setHover: (index: number | undefined) => void;
+	readonly pressed: () => number | undefined;
+	readonly setPressed: (index: number | undefined) => void;
 }
 
 /** 当前打开的是哪个模态菜单；三者互斥，返回 undefined 表示没有。 */
@@ -74,13 +156,22 @@ function activeModalMenu(host: TuiHost): ModalMenuActions | undefined {
 			cursor: () => menu.cursor,
 			scrollTop: () => menu.scrollTop,
 			select: (index) => {
-				menu.cursor = index;
-				menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
+				moveMenuSelection(menu, index - menu.cursor, menu.items.length, false);
 			},
 			move: (delta) => host.moveMenu(delta),
+			scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false),
+			height: () => modelMenuHeight(menu.items.length),
 			confirm: () => host.confirmMenu(),
 			complete: () => host.completeModelMenu(),
 			cancel: () => host.cancelMenu(),
+			hover: () => menu.hover,
+			setHover: (index) => {
+				menu.hover = index;
+			},
+			pressed: () => menu.pressed,
+			setPressed: (index) => {
+				menu.pressed = index;
+			},
 		};
 	}
 	if (state.effortMenu !== undefined) {
@@ -90,12 +181,22 @@ function activeModalMenu(host: TuiHost): ModalMenuActions | undefined {
 			cursor: () => menu.cursor,
 			scrollTop: () => menu.scrollTop,
 			select: (index) => {
-				menu.cursor = index;
+				moveMenuSelection(menu, index - menu.cursor, THINKING_LEVELS.length, false);
 			},
 			move: (delta) => host.moveEffortMenu(delta),
+			scroll: (delta) => moveMenuSelection(menu, delta, THINKING_LEVELS.length, false),
+			height: () => effortMenuHeight(),
 			confirm: () => host.confirmEffortMenu(),
 			complete: () => host.completeEffortMenu(),
 			cancel: () => host.cancelEffortMenu(),
+			hover: () => menu.hover,
+			setHover: (index) => {
+				menu.hover = index;
+			},
+			pressed: () => menu.pressed,
+			setPressed: (index) => {
+				menu.pressed = index;
+			},
 		};
 	}
 	if (state.sessionMenu !== undefined) {
@@ -105,12 +206,22 @@ function activeModalMenu(host: TuiHost): ModalMenuActions | undefined {
 			cursor: () => menu.cursor,
 			scrollTop: () => menu.scrollTop,
 			select: (index) => {
-				menu.cursor = index;
+				moveMenuSelection(menu, index - menu.cursor, menu.items.length, false);
 			},
 			move: (delta) => host.moveSessionMenu(delta),
+			scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false),
+			height: () => sessionMenuHeight(menu.items.length, host.options.sessionMenu?.fork !== undefined),
 			confirm: () => host.confirmSessionMenu(),
 			complete: () => host.completeSessionMenu(),
 			cancel: () => host.cancelSessionMenu(),
+			hover: () => menu.hover,
+			setHover: (index) => {
+				menu.hover = index;
+			},
+			pressed: () => menu.pressed,
+			setPressed: (index) => {
+				menu.pressed = index;
+			},
 		};
 	}
 	return undefined;
@@ -128,13 +239,23 @@ export function handleModalMenuInput(
 	// 面板画在页脚区的第一行，命中判定只在这块窗口内有效
 	const panelTop = menuPanelTop(host.state, host.options);
 	if (
-		handleMenuMouse(mouseOf(), {
-			hitItem: (row) =>
-				menuIndexAtRow(row, panelTop, panel.items.length, panel.scrollTop(), panel.cursor()),
-			cursor: panel.cursor,
-			select: panel.select,
-			complete: panel.complete,
-		})
+		handleMenuMouse(
+			mouseOf(),
+			{
+				hitItem: (row) =>
+					menuIndexAtRow(row, panelTop, panel.items.length, panel.scrollTop(), panel.cursor()),
+				contains: (row) => row >= panelTop && row < panelTop + panel.height(),
+				cursor: panel.cursor,
+				select: panel.select,
+				scroll: panel.scroll,
+				complete: panel.complete,
+				pressed: panel.pressed,
+				setPressed: panel.setPressed,
+				hover: panel.hover,
+				setHover: panel.setHover,
+			},
+			host.render,
+		)
 	) {
 		return true;
 	}

@@ -2,14 +2,14 @@ import { isImagePath } from "../image.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
-
+	HOVER_BG,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	SUBTLE_COLOR,
 	TEXT_COLOR,
-	menuHeight,
+	menuListHeight,
 	menuListLines,
 } from "./menu-panel.ts";
 import { characterWidth, displayWidth, fitToWidth } from "../render/text.ts";
@@ -41,16 +41,20 @@ export interface FileMenuState {
 	readonly token: AtToken;
 	cursor: number;
 	scrollTop: number;
+	hover?: number;
+	pressed?: number;
 }
 
 const MAX_RESULTS = 200;
 const PREFIX_WIDTH = 3;
 const IMAGE_BADGE = "  [image]";
 const MIN_PATH_WIDTH = 12;
+const EMPTY = "No matching files";
+const HINT = "↑↓ move · Enter/Tab/click insert · Esc close";
 
 /** 面板高度与条数一致：超过一屏时只画窗口内的行。 */
 export function fileMenuHeight(itemCount: number): number {
-	return menuHeight(itemCount);
+	return menuListHeight(itemCount, { empty: EMPTY, hint: HINT });
 }
 
 /**
@@ -124,12 +128,18 @@ export function formatFileReference(path: string): string {
 }
 
 export function renderFileMenu(width: number, state: FileMenuState): readonly string[] {
-	return menuListLines(Math.max(0, width), state.items, state, () => undefined, (columns, path, selected) =>
-		row(columns, path, selected),
+	return menuListLines(
+		Math.max(0, width),
+		state.items,
+		state,
+		() => undefined,
+		(columns, path, selected, hovered) => row(columns, path, selected, hovered),
+		{ empty: EMPTY, hint: HINT },
 	);
 }
 
-function row(width: number, path: string, selected: boolean): string {
+function row(width: number, path: string, selected: boolean, hovered: boolean): string {
+	const background = selected ? PANEL_BG : hovered ? HOVER_BG : PANEL_BG;
 	const columns = Math.max(0, width);
 	const image = isImagePath(path);
 	const badge = image ? IMAGE_BADGE : "";
@@ -156,7 +166,7 @@ function row(width: number, path: string, selected: boolean): string {
 		? `${selected ? SELECTED_TEXT_COLOR : SUBTLE_COLOR}${badge}`
 		: "";
 	const boldOff = selected ? BOLD_OFF : "";
-	return `${PANEL_BG}${prefix}${dir}${name}${badgeText}${boldOff}${padding}${RESET}`;
+	return `${background}${prefix}${dir}${name}${badgeText}${boldOff}${padding}${RESET}`;
 }
 
 /**

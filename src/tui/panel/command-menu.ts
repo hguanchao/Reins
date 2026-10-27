@@ -2,13 +2,13 @@ import {
 	ACCENT_COLOR,
 	BOLD_OFF,
 	DISABLED_COLOR,
-
+	HOVER_BG,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-	menuHeight,
+	menuListHeight,
 	menuListLines,
 	padEnd,
 } from "./menu-panel.ts";
@@ -33,6 +33,8 @@ export interface CommandMenuState {
 	readonly items: readonly CommandMenuItem[];
 	cursor: number;
 	scrollTop: number;
+	hover?: number;
+	pressed?: number;
 }
 
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
@@ -40,13 +42,15 @@ const PREFIX_WIDTH = 3;
 /** 命令名与说明之间的间距。 */
 const GAP = "    ";
 const GAP_WIDTH = displayWidth(GAP);
+const EMPTY = "No matching commands";
+const HINT = "↑↓ move · Tab/click fill · Enter run · Esc close";
 
 export function commandMenuHeight(itemCount: number): number {
-	return menuHeight(itemCount);
+	return menuListHeight(itemCount, { empty: EMPTY, hint: HINT });
 }
 
 export function renderCommandMenu(width: number, state: CommandMenuState): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row);
+	return menuListLines(width, state.items, state, layoutColumns, row, { empty: EMPTY, hint: HINT });
 }
 
 interface Columns {
@@ -71,8 +75,10 @@ function row(
 	width: number,
 	item: CommandMenuItem,
 	selected: boolean,
+	hovered: boolean,
 	columns: Columns,
 ): string {
+	const background = selected ? PANEL_BG : hovered ? HOVER_BG : PANEL_BG;
 	const prefix = selected ? " › " : "   ";
 	const name = padEnd(`/${item.name}`, columns.nameWidth);
 	const description =
@@ -93,5 +99,5 @@ function row(
 	const descriptionOutput =
 		columns.descriptionWidth > 0 ? `${GAP}${MUTED_COLOR}${description}` : "";
 
-	return `${PANEL_BG}${nameColor}${prefixOutput}${name}${boldOff}${descriptionOutput}${padding}${RESET}`;
+	return `${background}${nameColor}${prefixOutput}${name}${boldOff}${descriptionOutput}${padding}${RESET}`;
 }

@@ -6,6 +6,8 @@ import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts
 import { ABORTING } from "../render/status.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
 import { completeCommandMenu } from "../runtime/panels.ts";
+import { commandMenuHeight } from "../panel/command-menu.ts";
+import { fileMenuHeight } from "../panel/file-menu.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "./scroll.ts";
 import type { InputDeps } from "./deps.ts";
 import { handleMenuMouse, inlineMenuTarget } from "./menus.ts";
@@ -34,6 +36,16 @@ export function handleTranscriptInput(
 	const buttonShown = bottomButton !== undefined && state.scrollTop < host.maxScroll();
 	/** 补全面板画在输入框上方，落在它上面的点击不参与焦点判定。 */
 	const completionOpen = state.commandMenu !== undefined || state.fileMenu !== undefined;
+	/** 行内补全面板的屏幕范围；滚轮停在面板上时交给菜单，停在面板外时滚对话流。 */
+	let inlineMenuTop: number | undefined;
+	let inlineMenuBottom = 0;
+	if (state.commandMenu !== undefined) {
+		inlineMenuTop = menuPanelTop(state, host.options);
+		inlineMenuBottom = inlineMenuTop + commandMenuHeight(state.commandMenu.items.length);
+	} else if (state.fileMenu !== undefined) {
+		inlineMenuTop = menuPanelTop(state, host.options);
+		inlineMenuBottom = inlineMenuTop + fileMenuHeight(state.fileMenu.items.length);
+	}
 
 	for (const event of mouseOf()) {
 		const motion = (event.button & MOUSE_MOTION_BIT) !== 0 && (event.button & MOUSE_WHEEL_BIT) === 0;
@@ -41,6 +53,8 @@ export function handleTranscriptInput(
 		const left = (event.button & MOUSE_BUTTON_MASK) === 0 && (event.button & MOUSE_WHEEL_BIT) === 0;
 		// 低两位是 3 表示没有按键：1003 模式下这类事件只是指针在移动，也就是悬停
 		const hover = motion && (event.button & MOUSE_BUTTON_MASK) === 3;
+		const overInlineMenu =
+			inlineMenuTop !== undefined && event.row >= inlineMenuTop && event.row < inlineMenuBottom;
 
 		if (hover) {
 			const over = buttonShown && scrollButtonHit(bottomButton, event.row, event.column);
@@ -52,11 +66,10 @@ export function handleTranscriptInput(
 		}
 
 		if (event.press && event.button === MOUSE_WHEEL_UP) {
-			// 菜单打开时滚轮不对对话流起作用：面板盖在对话流上方，指针多半停在面板上，
-			// 这时滚动的是看不见的底层内容，画面看起来毫无反应，等关掉面板才发现位置变了
-			if (!menuOpen) wheelSteps -= 1;
+			// 停在菜单上时滚轮归菜单；停在别处时仍然滚动对话流
+			if (!overInlineMenu) wheelSteps -= 1;
 		} else if (event.press && event.button === MOUSE_WHEEL_DOWN) {
-			if (!menuOpen) wheelSteps += 1;
+			if (!overInlineMenu) wheelSteps += 1;
 		} else if (event.press && left && !motion) {
 			// 置底按钮盖在对话流上，命中就回到底部并恢复跟随，不再往下走双击与聚焦判断
 			if (buttonShown && scrollButtonHit(bottomButton, event.row, event.column)) {
@@ -127,7 +140,13 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, commandPanelTop, () => completeCommandMenu(host, true)),
+				inlineMenuTarget(
+					menu,
+					commandPanelTop,
+					commandMenuHeight(menu.items.length),
+					() => completeCommandMenu(host),
+				),
+				deps.render,
 			)
 		) {
 			return;
@@ -161,7 +180,8 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, filePanelTop, insert),
+				inlineMenuTarget(menu, filePanelTop, fileMenuHeight(menu.items.length), insert),
+				deps.render,
 			)
 		) {
 			return;

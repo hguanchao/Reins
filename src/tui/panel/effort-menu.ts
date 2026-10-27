@@ -3,12 +3,13 @@ import { displayWidth } from "../render/text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
+	HOVER_BG,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-	menuHeight,
+	menuListHeight,
 	menuListLines,
 	padEnd,
 	padStart,
@@ -25,12 +26,15 @@ export interface EffortMenuState {
 	readonly current: ThinkingLevel;
 	cursor: number;
 	scrollTop: number;
+	hover?: number;
+	pressed?: number;
 }
 
 const PREFIX_WIDTH = 3;
 /** 相邻两列之间的间距。 */
 const GAP = 4;
 const CURRENT_WIDTH = 7;
+const HINT = "↑↓ move · Tab/click fill · Enter apply · Esc close";
 
 /** 用使用场景说明每个等级，光看 low/high 这些缩写很难判断该选哪个。 */
 const EFFORT_DESCRIPTIONS: Readonly<Record<ThinkingLevel, string>> = {
@@ -43,7 +47,7 @@ const EFFORT_DESCRIPTIONS: Readonly<Record<ThinkingLevel, string>> = {
 };
 
 export function effortMenuHeight(): number {
-	return menuHeight(THINKING_LEVELS.length);
+	return menuListHeight(THINKING_LEVELS.length, { hint: HINT });
 }
 
 export function renderEffortMenu(width: number, state: EffortMenuState): readonly string[] {
@@ -60,16 +64,18 @@ export function renderEffortMenu(width: number, state: EffortMenuState): readonl
 		THINKING_LEVELS,
 		state,
 		() => ({ levelWidth, currentWidth, descriptionWidth }),
-		(_columns, level, selected, layout) =>
+		(_columns, level, selected, hovered, layout) =>
 			row(
 				width,
 				level,
 				selected,
+				hovered,
 				level === state.current,
 				layout.levelWidth,
 				layout.descriptionWidth >= 4 ? layout.descriptionWidth : 0,
 				layout.currentWidth,
 			),
+		{ hint: HINT },
 	);
 }
 
@@ -77,11 +83,13 @@ function row(
 	width: number,
 	level: ThinkingLevel,
 	selected: boolean,
+	hovered: boolean,
 	current: boolean,
 	levelWidth: number,
 	descriptionWidth: number,
 	currentWidth: number,
 ): string {
+	const background = selected ? PANEL_BG : hovered ? HOVER_BG : PANEL_BG;
 	const prefix = selected ? " › " : "   ";
 	const primaryColor = selected ? SELECTED_TEXT_COLOR : TEXT_COLOR;
 	const boldOff = selected ? BOLD_OFF : "";
@@ -102,5 +110,5 @@ function row(
 	const currentOutput =
 		currentWidth > 0 ? `${" ".repeat(GAP)}${ACCENT_COLOR}${currentText}` : "";
 
-	return `${PANEL_BG}${primaryColor}${prefixOutput}${levelText}${boldOff}${descriptionOutput}${currentOutput}${padding}${RESET}`;
+	return `${background}${primaryColor}${prefixOutput}${levelText}${boldOff}${descriptionOutput}${currentOutput}${padding}${RESET}`;
 }

@@ -1,6 +1,5 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
-import { TURN_SAFE_COMMANDS } from "../commands.ts";
-import { keepVisible } from "../panel/menu-panel.ts";
+import { keepVisible, moveMenuSelection } from "../panel/menu-panel.ts";
 import type { ModelMenuItem } from "../panel/model-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
 import { errorLine } from "../render/status.ts";
@@ -19,10 +18,16 @@ import type { TuiHost } from "./types.ts";
  * 开关、移动、确认与取消都按面板分开写，公共的滚动窗口规则在 panel 目录里。
  */
 
-/** 把光标移动 delta 并保证它落在可见窗口内；窗口最多 8 行。 */
-function moveCursor(menu: { cursor: number; scrollTop: number }, delta: number, count: number): void {
-	menu.cursor = Math.min(count - 1, Math.max(0, menu.cursor + delta));
-	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, count);
+/** 把光标移动 delta 并保证它落在可见窗口内；键盘移动首尾相接。 */
+function moveCursor(
+	menu: { cursor: number; scrollTop: number; hover?: number; pressed?: number },
+	delta: number,
+	count: number,
+): void {
+	moveMenuSelection(menu, delta, count, true);
+	// 键盘接管后，指针位置与旧的高亮/按下状态不再对应
+	menu.hover = undefined;
+	menu.pressed = undefined;
 }
 
 /** 收起全部模态面板；各面板的确认与取消都先走这一步。 */
@@ -326,6 +331,10 @@ export function updateCommandMenu(host: TuiHost): void {
 			};
 			return;
 		}
+
+		// 没匹配也保留面板：直接收掉会让人以为补全坏了
+		state.commandMenu = { items: [], cursor: 0, scrollTop: 0 };
+		return;
 	}
 
 	state.commandMenu = undefined;
@@ -334,26 +343,17 @@ export function updateCommandMenu(host: TuiHost): void {
 /**
  * Tab 或点击命令补全项：把选中命令补进输入框，不执行。
  *
- * 有二级选择面板的命令直接打开面板，输入框保留命令名；其余只补命令名与空格。
- * 点击是明确的选中动作，补完就收起补全面板；Tab 保留继续浏览的语义。执行统一交给回车；
- * 一轮进行中只放行不碰对话的命令。
+ * 补完就收起面板；执行统一交给回车。有参数的命令由使用者继续输入参数，
+ * 第二次回车才真正执行。
  */
-export function completeCommandMenu(host: TuiHost, dismiss = false): void {
+export function completeCommandMenu(host: TuiHost): void {
 	const state = host.state;
 	const menu = state.commandMenu;
 	const chosen = menu?.items[menu.cursor];
 	if (chosen === undefined) return;
 
-	const opensPanel =
-		(chosen.name === "model" && host.options.modelMenu !== undefined) ||
-		(chosen.name === "effort" && host.options.effortMenu !== undefined) ||
-		(chosen.name === "session" && host.options.sessionMenu !== undefined);
-	if (opensPanel && (state.activeTurn === undefined || TURN_SAFE_COMMANDS.has(chosen.name))) {
-		host.executeCommand(chosen);
-		return;
-	}
 	host.setInput(`/${chosen.name} `);
-	if (dismiss) state.commandMenu = undefined;
+	state.commandMenu = undefined;
 	host.render();
 }
 
@@ -413,8 +413,8 @@ export function updateFileMenu(host: TuiHost): void {
 
 	const items = filterFiles(state.fileFiles, token.query);
 	if (items.length === 0) {
-		// 索引留着：继续输入出现匹配时不必再扫一遍
-		state.fileMenu = undefined;
+		// 索引留着：继续输入出现匹配时不必再扫一遍；面板保留，显示无匹配而不是消失
+		state.fileMenu = { items: [], token, cursor: 0, scrollTop: 0 };
 		return;
 	}
 

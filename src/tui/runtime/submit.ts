@@ -43,6 +43,14 @@ export function submit(host: TuiHost): boolean {
 	// 只有一个斜杠、又没有选中项：还不算命令，也不该当成提问发给模型
 	if (message === "/" && selected === undefined) return false;
 	const command = selected ?? findCommand(message, host.commands());
+	if (message.startsWith("/") && command === undefined) {
+		// 斜杠开头没有对应命令时不要把它当普通提问发给模型
+		state.commandMenu = undefined;
+		host.resetStatusMeta();
+		host.setStatus(`Unknown command: ${message.split(/\s/, 1)[0]}`, "warning");
+		host.render();
+		return false;
+	}
 	if (message.startsWith("/") && command !== undefined) {
 		// 一轮进行中只放行不碰对话的命令；其余要等这一轮结束，但得说清为什么没执行。
 		// 补全面板此刻占着状态行的位置，先收起它，提示才看得见

@@ -480,7 +480,7 @@ describe("整屏页与图片附件", () => {
 			assert.ok(row > 0, "第二项画出来了");
 
 			// 点击第二项：整段 @片段换成完整路径，面板收起，不发送
-			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M\x1b[<0;10;${row}m`));
 			const lines = frameLines(output).map(plain);
 			assert.ok(
 				lines.some((line) => line.includes("看一下 @src/tui/layout.ts")),
@@ -492,6 +492,32 @@ describe("整屏页与图片附件", () => {
 				"面板收起",
 			);
 			assert.equal(agent.prompts.length, 0, "点击不发送");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("@ 文件补全没有匹配时保留空态", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			files: { list: () => ["README.md"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("看一下 @zzz"));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("No matching files"));
+
+			input.emit("data", Buffer.from("\x1b"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("No matching files"), false);
 		} finally {
 			exitTui(input);
 		}

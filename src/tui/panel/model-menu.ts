@@ -2,13 +2,14 @@ import { displayWidth } from "../render/text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
+	HOVER_BG,
 	MENU_MAX_VISIBLE,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-	menuHeight,
+	menuListHeight,
 	menuListLines,
 	padEnd,
 	padStart,
@@ -32,10 +33,13 @@ export interface ModelMenuState {
 	readonly items: readonly ModelMenuItem[];
 	cursor: number;
 	scrollTop: number;
+	hover?: number;
+	pressed?: number;
 }
 
 /** 面板最多显示的模型行数；超出时用上下方向键滚动。 */
 export const MODEL_MENU_MAX_VISIBLE = MENU_MAX_VISIBLE;
+const HINT = "↑↓ move · Tab/click fill · Enter apply · Esc close";
 
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */
 const PREFIX_WIDTH = 3;
@@ -43,13 +47,13 @@ const PREFIX_WIDTH = 3;
 const GAP = 4;
 const CURRENT_WIDTH = 7;
 
-/** 面板总高度：上边框、可见行、底部空白、下边框。 */
+/** 面板总高度：上边框、可见行、下边框与提示。 */
 export function modelMenuHeight(itemCount: number): number {
-	return menuHeight(itemCount);
+	return menuListHeight(itemCount, { hint: HINT });
 }
 
 export function renderModelMenu(width: number, state: ModelMenuState): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row);
+	return menuListLines(width, state.items, state, layoutColumns, row, { hint: HINT });
 }
 
 interface Columns {
@@ -76,7 +80,14 @@ function layoutColumns(width: number, items: readonly ModelMenuItem[]): Columns 
 	return { keyWidth, nameWidth, currentWidth: CURRENT_WIDTH };
 }
 
-function row(width: number, item: ModelMenuItem, selected: boolean, columns: Columns): string {
+function row(
+	width: number,
+	item: ModelMenuItem,
+	selected: boolean,
+	hovered: boolean,
+	columns: Columns,
+): string {
+	const background = selected ? PANEL_BG : hovered ? HOVER_BG : PANEL_BG;
 	const prefix = selected ? " › " : "   ";
 	const primaryColor = selected ? SELECTED_TEXT_COLOR : TEXT_COLOR;
 	const boldOff = selected ? BOLD_OFF : "";
@@ -96,7 +107,7 @@ function row(width: number, item: ModelMenuItem, selected: boolean, columns: Col
 	const currentOutput =
 		columns.currentWidth > 0 ? `${" ".repeat(GAP)}${ACCENT_COLOR}${current}` : "";
 
-	return `${PANEL_BG}${primaryColor}${prefixOutput}${key}${boldOff}${nameOutput}${currentOutput}${padding}${RESET}`;
+	return `${background}${primaryColor}${prefixOutput}${key}${boldOff}${nameOutput}${currentOutput}${padding}${RESET}`;
 }
 
 /** 展示名与 id 相同时留空，避免同一行重复两遍。 */

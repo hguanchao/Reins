@@ -1,16 +1,15 @@
-import { displayWidth, fitToWidth, truncateToWidth } from "../render/text.ts";
+import { displayWidth, fitToWidth } from "../render/text.ts";
 import {
 	ACCENT_COLOR,
 	BOLD_OFF,
-
-	menuListLines,
+	HOVER_BG,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
 	SELECTED_TEXT_COLOR,
-	SUBTLE_COLOR,
 	TEXT_COLOR,
-	menuHeight,
+	menuListHeight,
+	menuListLines,
 	padEnd,
 } from "./menu-panel.ts";
 
@@ -36,8 +35,9 @@ export interface SessionMenuState {
 	readonly items: readonly SessionMenuItem[];
 	cursor: number;
 	scrollTop: number;
+	hover?: number;
+	pressed?: number;
 }
-
 
 /** " › " 的显示宽度；未选中行用等宽空格占位。 */
 const PREFIX_WIDTH = 3;
@@ -52,9 +52,15 @@ const MAX_TIME_WIDTH = 16;
 const CURRENT_WIDTH = 7;
 /** 标题少于这么多列就不显示，把宽度还给标识与时间。 */
 const MIN_TITLE_WIDTH = 8;
+const HINT = "↑↓ move · Tab/click fill · Enter switch · Esc close";
+const FORK_HINT = "↑↓ move · Tab/click fill · Enter switch · f fork · Esc close";
+
+function hintFor(forkAvailable: boolean): string {
+	return forkAvailable ? FORK_HINT : HINT;
+}
 
 export function sessionMenuHeight(itemCount: number, forkAvailable = false): number {
-	return menuHeight(itemCount) + (forkAvailable ? 1 : 0);
+	return menuListHeight(itemCount, { hint: hintFor(forkAvailable) });
 }
 
 export function renderSessionMenu(
@@ -62,17 +68,9 @@ export function renderSessionMenu(
 	state: SessionMenuState,
 	forkAvailable = false,
 ): readonly string[] {
-	const lines = [
-		...menuListLines(width, state.items, state, layoutColumns, row),
-	];
-	if (forkAvailable) lines.push(actionHint(width));
-	return lines;
-}
-
-/** 面板底部的一行动作提示；分叉不可用时只说切换与关闭。 */
-function actionHint(width: number): string {
-	const text = truncateToWidth("  Enter switch   f fork at end   Esc close", width);
-	return `${PANEL_BG}${SUBTLE_COLOR}${text}${" ".repeat(Math.max(0, width - displayWidth(text)))}${RESET}`;
+	return menuListLines(width, state.items, state, layoutColumns, row, {
+		hint: hintFor(forkAvailable),
+	});
 }
 
 interface Columns {
@@ -121,7 +119,14 @@ function titleOf(item: SessionMenuItem): string {
 	return item.forkedFrom === undefined ? item.title : `↳ Fork of ${item.forkedFrom}`;
 }
 
-function row(width: number, item: SessionMenuItem, selected: boolean, columns: Columns): string {
+function row(
+	width: number,
+	item: SessionMenuItem,
+	selected: boolean,
+	hovered: boolean,
+	columns: Columns,
+): string {
+	const background = selected ? PANEL_BG : hovered ? HOVER_BG : PANEL_BG;
 	const primaryColor = selected ? SELECTED_TEXT_COLOR : TEXT_COLOR;
 	const boldOff = selected ? BOLD_OFF : "";
 	const prefix = selected ? " › " : "   ";
@@ -148,5 +153,5 @@ function row(width: number, item: SessionMenuItem, selected: boolean, columns: C
 	const time = timeText.length > 0 ? `${GAP}${MUTED_COLOR}${timeText}` : "";
 	const current = currentText.length > 0 ? `${GAP}${ACCENT_COLOR}${currentText}` : "";
 
-	return `${PANEL_BG}${primaryColor}${prefixOutput}${id}${title}${time}${current}${boldOff}${padding}${RESET}`;
+	return `${background}${primaryColor}${prefixOutput}${id}${title}${time}${current}${boldOff}${padding}${RESET}`;
 }
