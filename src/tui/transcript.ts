@@ -27,6 +27,7 @@ export {
 	selectionSpans,
 	selectionText,
 	stripTerminalStyles,
+	visibleTextWidth,
 } from "./transcript/selection.ts";
 export {
 	scrollbarColumn,

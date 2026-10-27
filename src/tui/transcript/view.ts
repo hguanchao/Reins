@@ -19,7 +19,7 @@ import {
 	scrollbarColumn,
 	visibleIndexes,
 } from "./scroll.ts";
-import { highlightSelection, selectionRange } from "./selection.ts";
+import { highlightSelection, selectionRange, visibleTextWidth } from "./selection.ts";
 import type { SelectionRegion } from "./selection.ts";
 import {
 	DETAIL_BAND_LEFT,
@@ -132,7 +132,7 @@ export function renderTranscriptView(
 	const visible = indexes.map((index) => {
 		const line = lineAt(index);
 		if (selection === undefined) return line;
-		const range = selectionRange(index, selection);
+		const range = selectionRange(index, selection, visibleTextWidth(line));
 		return range === undefined ? line : highlightSelection(line, range);
 	});
 

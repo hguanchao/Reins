@@ -23,16 +23,17 @@ describe("文本选区", () => {
 		return view.lines.findIndex((line) => stripTerminalStyles(line).includes(needle));
 	}
 
-	it("屏幕行列映射到视图行列，列超出时夹到行尾", () => {
+	it("屏幕行列映射到视图行列，列超出时夹到最后一个可见字符", () => {
 		const view = viewOf();
 		const line = lineIndex(view, "hello");
 		const plain = stripTerminalStyles(view.lines[line] ?? "");
+		const visible = plain.trimEnd();
 		const start = plain.indexOf("hello");
 
 		assert.deepEqual(selectionPoint(view, 30, 0, line + 1, start + 1), { line, cell: start });
 		assert.deepEqual(selectionPoint(view, 30, 0, line + 1, 10_000), {
 			line,
-			cell: Math.max(0, plain.length - 1),
+			cell: Math.max(0, visible.length - 1),
 		});
 		assert.equal(selectionPoint(view, 30, 0, view.lines.length + 1, 1), undefined);
 	});
@@ -68,16 +69,20 @@ describe("文本选区", () => {
 		assert.equal(text, "hello world");
 	});
 
-	it("选区范围覆盖首行到末行时整段都是选中状态", () => {
+	it("选区范围覆盖首行到末行，行尾空白不参与高亮", () => {
 		const selection = {
 			anchor: { line: 2, cell: 4 },
 			focus: { line: 5, cell: 1 },
 		};
-		assert.deepEqual(selectionRange(2, selection), { from: 4, to: Number.MAX_SAFE_INTEGER });
-		assert.deepEqual(selectionRange(3, selection), { from: 0, to: Number.MAX_SAFE_INTEGER });
-		assert.deepEqual(selectionRange(5, selection), { from: 0, to: 1 });
-		assert.equal(selectionRange(1, selection), undefined);
-		assert.equal(selectionRange(6, selection), undefined);
+		assert.deepEqual(selectionRange(2, selection, 40), { from: 4, to: 39 });
+		assert.deepEqual(selectionRange(3, selection, 40), { from: 0, to: 39 });
+		assert.deepEqual(selectionRange(5, selection, 40), { from: 0, to: 1 });
+		assert.equal(selectionRange(1, selection, 40), undefined);
+		assert.equal(selectionRange(6, selection, 40), undefined);
+		// 一行只有 12 个可见字符时，拖过行尾也只框到第 12 个
+		assert.deepEqual(selectionRange(3, selection, 12), { from: 0, to: 11 });
+		assert.deepEqual(selectionRange(2, selection, 3), { from: 2, to: 2 });
+		assert.equal(selectionRange(3, selection, 0), undefined);
 	});
 
 	it("选区底色只覆盖选区，并跨过区间内的重置序列", () => {

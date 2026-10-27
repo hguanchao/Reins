@@ -41,9 +41,14 @@ export function selectionPoint(
 ): SelectionPoint | undefined {
 	const line = lineIndexAtRow(view, height, scrollTop, row);
 	if (line === undefined || line >= view.lines.length) return undefined;
-	const width = displayWidth(stripTerminalStyles(view.lines[line] ?? ""));
+	const width = visibleTextWidth(view.lines[line] ?? "");
 	const cell = Math.max(0, Math.min(column - 1, Math.max(0, width - 1)));
 	return { line, cell };
+}
+
+/** 一行真正有字的显示宽度：行尾补齐的空格不算可选内容。 */
+export function visibleTextWidth(line: string): number {
+	return displayWidth(stripTerminalStyles(line).trimEnd());
 }
 
 /** 选区是否真的跨过一段内容；原地点击与双击没有选区，不该触发复制。 */
@@ -79,17 +84,24 @@ export function selectionText(view: TranscriptView, selection: SelectionRegion):
 	return lines.join("\n");
 }
 
-/** 某一行与选区的交集；不在选区里返回 undefined。行内列按显示宽度计算。 */
+/**
+ * 某一行与选区的交集；不在选区里或这一行没有文字时返回 undefined。
+ *
+ * 右侧边界夹在最后一个可见字符上：行宽是为了排版补齐的，把行尾空白也画成选中会让一段
+ * 两行的选择在第一行变成整行色块。文本本身仍由 selectionText 按行提取。
+ */
 export function selectionRange(
 	line: number,
 	selection: SelectionRegion,
+	textWidth: number,
 ): { readonly from: number; readonly to: number } | undefined {
 	const { start, end } = orderedSelection(selection);
 	if (line < start.line || line > end.line) return undefined;
-	return {
-		from: line === start.line ? start.cell : 0,
-		to: line === end.line ? end.cell : Number.MAX_SAFE_INTEGER,
-	};
+	const limit = textWidth - 1;
+	if (limit < 0) return undefined;
+	const from = Math.min(line === start.line ? start.cell : 0, limit);
+	const to = Math.min(line === end.line ? end.cell : limit, limit);
+	return from > to ? undefined : { from, to };
 }
 
 /**
