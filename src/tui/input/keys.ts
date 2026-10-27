@@ -8,9 +8,13 @@ import type { ApprovalAnswer } from "../../permission/policy.ts";
  * 何时调用它们，不再自己解析转义序列。
  */
 
+/** 按钮码的滚轮位:64–67 都是滚轮,带修饰键时这一位同样置位。 */
+export const MOUSE_WHEEL_BIT = 64;
 /** SGR 鼠标协议:滚轮向上与向下的按钮码。 */
-export const MOUSE_WHEEL_UP = 64;
-export const MOUSE_WHEEL_DOWN = 65;
+export const MOUSE_WHEEL_UP = MOUSE_WHEEL_BIT;
+export const MOUSE_WHEEL_DOWN = MOUSE_WHEEL_BIT + 1;
+/** 按钮码的移动位:纯悬停与按住拖动都会带上它。 */
+export const MOUSE_MOTION_BIT = 32;
 /** 按钮码低两位是真实按键编号:0 是左键,掩出来为 0 才算点击。 */
 export const MOUSE_BUTTON_MASK = 3;
 
@@ -113,12 +117,14 @@ export function dragMotion(button: number): boolean {
 	return button >= 32 && button < 64 && (button & MOUSE_BUTTON_MASK) !== 3;
 }
 
-/** 一个菜单面板交给公共鼠标处理器的交互面:命中、当前光标与选中同步。 */
+/** 一个菜单面板交给公共鼠标处理器的交互面:命中、当前光标、选中同步与补全。 */
 export interface MenuMouseTarget {
 	/** 终端行号命中的条目下标;命中不了(点到面板外或边框上)返回 undefined */
 	readonly hitItem: (row: number) => number | undefined;
 	readonly cursor: () => number;
 	readonly select: (index: number) => void;
+	/** 左键点击条目后把该项补进输入框;只回显不执行 */
+	readonly complete: () => void;
 }
 
 export function mouseEvents(text: string): readonly MouseInput[] {

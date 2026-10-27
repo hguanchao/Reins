@@ -1,45 +1,35 @@
 import { THINKING_LEVELS } from "../../config/file.ts";
-import { MOUSE_BUTTON_MASK, dragMotion, menuIndexAtRow, menuKey } from "./keys.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, menuIndexAtRow, menuKey } from "./keys.ts";
 import type { MenuMouseTarget, MouseInput } from "./keys.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
-import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 /**
- * 菜单面板的鼠标交互：悬停改选、左键点击选中。
+ * 菜单面板的鼠标交互：只认左键点击条目。
  *
- * 滚轮不参与菜单：面板里的滚轮与对话流滚动是同一个手势，让它在菜单上改光标会让「滚一下
- * 看看下面有什么」变成「换了个选项」。左键只选中不确认，执行统一交给回车，避免一次误点
- * 就把模型或会话换掉。
+ * 悬停与拖动只是指针在移动，不改选中；滚轮向上（64）的低两位同样是 0，不单独排掉会被
+ * 当成左键。点击把该项补进输入框而不是执行，避免一次误点就把模型或会话换掉。
  */
 export function handleMenuMouse(
 	events: readonly MouseInput[],
 	target: MenuMouseTarget,
-	render: () => void,
 ): boolean {
 	for (const event of events) {
-		const motion = dragMotion(event.button);
+		if (!event.press) continue;
+		// 移动位或滚轮位置位时，这次上报不是「按下左键」
+		if ((event.button & MOUSE_MOTION_BIT) !== 0 || (event.button & MOUSE_WHEEL_BIT) !== 0) continue;
+		if ((event.button & MOUSE_BUTTON_MASK) !== 0) continue;
+
 		const index = target.hitItem(event.row);
-		if (motion) {
-			if (index !== undefined && index !== target.cursor()) {
-				target.select(index);
-				render();
-				return true;
-			}
-			continue;
-		}
-		if (event.press && (event.button & MOUSE_BUTTON_MASK) === 0 && index !== undefined) {
-			if (index !== target.cursor()) {
-				target.select(index);
-				render();
-			}
-			return true;
-		}
+		if (index === undefined) continue;
+		if (index !== target.cursor()) target.select(index);
+		target.complete();
+		return true;
 	}
 	return false;
 }
 
-/** 行内补全面板（命令、文件）的鼠标目标：光标直接落在菜单状态上，翻动与确认交给宿主。 */
+/** 行内补全面板（命令、文件）的鼠标目标：光标直接落在菜单状态上，补全交给宿主。 */
 interface InlineMenuState {
 	readonly items: readonly unknown[];
 	cursor: number;
@@ -49,6 +39,7 @@ interface InlineMenuState {
 export function inlineMenuTarget(
 	menu: InlineMenuState,
 	panelTop: number,
+	complete: () => void,
 ): MenuMouseTarget {
 	return {
 		hitItem: (row) => menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor),
@@ -57,6 +48,7 @@ export function inlineMenuTarget(
 			menu.cursor = index;
 			menu.scrollTop = Math.max(0, Math.min(index, menu.items.length - 1));
 		},
+		complete,
 	};
 }
 
@@ -127,7 +119,6 @@ function activeModalMenu(host: TuiHost): ModalMenuActions | undefined {
 /** 模态选择面板：只接管选择相关按键，其余放行给输入框。 */
 export function handleModalMenuInput(
 	host: TuiHost,
-	deps: InputDeps,
 	text: string,
 	mouseOf: () => readonly MouseInput[],
 ): boolean {
@@ -137,16 +128,13 @@ export function handleModalMenuInput(
 	// 面板画在页脚区的第一行，命中判定只在这块窗口内有效
 	const panelTop = menuPanelTop(host.state, host.options);
 	if (
-		handleMenuMouse(
-			mouseOf(),
-			{
-				hitItem: (row) =>
-					menuIndexAtRow(row, panelTop, panel.items.length, panel.scrollTop(), panel.cursor()),
-				cursor: panel.cursor,
-				select: panel.select,
-			},
-			deps.render,
-		)
+		handleMenuMouse(mouseOf(), {
+			hitItem: (row) =>
+				menuIndexAtRow(row, panelTop, panel.items.length, panel.scrollTop(), panel.cursor()),
+			cursor: panel.cursor,
+			select: panel.select,
+			complete: panel.complete,
+		})
 	) {
 		return true;
 	}

@@ -1,4 +1,5 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
+import { TURN_SAFE_COMMANDS } from "../commands.ts";
 import { keepVisible } from "../panel/menu-panel.ts";
 import type { ModelMenuItem } from "../panel/model-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
@@ -328,6 +329,30 @@ export function updateCommandMenu(host: TuiHost): void {
 	}
 
 	state.commandMenu = undefined;
+}
+
+/**
+ * Tab 或点击命令补全项：把选中命令补进输入框，不执行。
+ *
+ * 有二级选择面板的命令直接打开面板，输入框保留命令名；其余只补命令名与空格，
+ * 补全面板保持打开。执行统一交给回车；一轮进行中只放行不碰对话的命令。
+ */
+export function completeCommandMenu(host: TuiHost): void {
+	const state = host.state;
+	const menu = state.commandMenu;
+	const chosen = menu?.items[menu.cursor];
+	if (chosen === undefined) return;
+
+	const opensPanel =
+		(chosen.name === "model" && host.options.modelMenu !== undefined) ||
+		(chosen.name === "effort" && host.options.effortMenu !== undefined) ||
+		(chosen.name === "session" && host.options.sessionMenu !== undefined);
+	if (opensPanel && (state.activeTurn === undefined || TURN_SAFE_COMMANDS.has(chosen.name))) {
+		host.executeCommand(chosen);
+		return;
+	}
+	host.setInput(`/${chosen.name} `);
+	host.render();
 }
 
 export function moveCommandMenu(host: TuiHost, delta: number): void {

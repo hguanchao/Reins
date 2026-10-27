@@ -84,7 +84,7 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 		}
 
 		if (host.modalMenuOpen()) {
-			if (handleModalMenuInput(host, deps, stripPasteContent(text), mouseOf)) return;
+			if (handleModalMenuInput(host, stripPasteContent(text), mouseOf)) return;
 		}
 
 		if (state.openPage !== undefined) {

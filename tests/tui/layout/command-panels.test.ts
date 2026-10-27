@@ -125,7 +125,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("会话面板的鼠标点击只选中，回车才切换", async () => {
+	it("会话面板的鼠标点击把选中项补进输入框，回车才切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 40;
@@ -157,12 +157,18 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
 			assert.equal(selected, undefined);
 
-			// 点第二项只移动光标，不切换
+			// 点第二项：命令补进输入框，面板收起，不切换
 			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
 			assert.equal(selected, undefined, "点击不切换会话");
+			const afterClick = frameLines(output).map(plain);
 			assert.ok(
-				frameLines(output).map(plain).join("\n").includes("fedcba9876543210"),
-				"面板仍然开着",
+				afterClick.some((line) => line === " › /session fedcba9876543210"),
+				"点击回显到输入框",
+			);
+			assert.equal(
+				afterClick.some((line) => line.includes("Write the release notes")),
+				false,
+				"面板收起",
 			);
 
 			// 回车才真正切换
@@ -197,13 +203,7 @@ describe("命令补全与选择面板", () => {
 
 		try {
 			input.emit("data", Buffer.from("/session\r"));
-			const rows = frameLines(output).map(plain);
-			const currentRow = rows.findIndex((line) => line.includes("0123456789abcdef")) + 1;
-			assert.ok(currentRow > 0);
-
-			// 点当前会话只是选中；回车后由宿主判断「就是当前会话」而不再切换
-			input.emit("data", Buffer.from(`\x1b[<0;10;${currentRow}M`));
-			assert.equal(selectCalls, 0, "点击不切换");
+			// 光标默认落在当前会话；回车由面板直接收掉，不走宿主的切换
 			input.emit("data", Buffer.from("\r"));
 			assert.equal(selectCalls, 0, "选中当前会话不重新加载");
 		} finally {
@@ -213,7 +213,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("模型面板点击只选中，回车才切换", async () => {
+	it("模型面板点击把选中项补进输入框，回车才切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -244,25 +244,23 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;10;${borderRow}M`));
 			assert.equal(selected, undefined);
 
-			// 点第二项只移动光标，不切换
+			// 点第二项：命令补进输入框，面板收起，不切换
 			input.emit("data", Buffer.from(`\x1b[<0;10;${secondRow}M`));
 			assert.equal(selected, undefined, "点击不切换模型");
+			const afterClick = frameLines(output).map(plain);
 			assert.ok(
-				frameLines(output).map(plain).some((line) => line.includes(" 3 ────")),
-				"面板仍然开着",
+				afterClick.some((line) => line === " › /model openai/gpt-5.2"),
+				"点击回显到输入框",
+			);
+			assert.equal(
+				afterClick.some((line) => line.includes(" 3 ────")),
+				false,
+				"面板收起",
 			);
 
 			// 回车才真正切换
 			input.emit("data", Buffer.from("\r"));
 			assert.equal(selected, "openai/gpt-5.2", "回车切换模型");
-			// 面板收起：画面上不再有面板上边框
-			assert.equal(
-				frameLines(output)
-					.map(plain)
-					.some((line) => line.includes(" 3 ────")),
-				false,
-				"面板收掉",
-			);
 		} finally {
 			exitTui(input);
 		}
@@ -334,7 +332,7 @@ describe("命令补全与选择面板", () => {
 		}
 	});
 
-	it("命令补全面板点击只选中，回车才执行", () => {
+	it("命令补全面板点击回显到输入框，回车才执行", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -351,9 +349,13 @@ describe("命令补全与选择面板", () => {
 			assert.ok(row > 0);
 			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
 
-			// 点击只选中：帮助页不打开，补全面板仍在
-			const afterClick = frameLines(output).map(plain).join("\n");
-			assert.equal(afterClick.includes("Reins — help"), false, "点击不执行命令");
+			// 点击回显：输入框补成 /help 加一个空格，帮助页不打开
+			const afterClick = frameLines(output).map(plain);
+			assert.ok(
+				afterClick.some((line) => line === " › /help "),
+				"点击把命令补进输入框",
+			);
+			assert.equal(afterClick.join("\n").includes("Reins — help"), false, "点击不执行命令");
 
 			// 回车才执行
 			input.emit("data", Buffer.from("\r"));
@@ -395,8 +397,15 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/"));
 			t.mock.timers.tick(100);
 			const before = frameLines(output).map(plain).join("\n");
+			const otherRow =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("/session")) + 1;
+			assert.ok(otherRow > 0, "另一个命令画出来了");
 
-			// 在面板上滚轮：画面不该有任何变化
+			// 滚轮向上停在别的命令上：64 的低两位同样是 0，不能被当成左键
+			input.emit("data", Buffer.from(`\x1b[<64;10;${otherRow}M`));
+			// 滚轮向下：不能滚动被面板盖住的对话流
 			input.emit("data", Buffer.from("\x1b[<65;10;8M"));
 			t.mock.timers.tick(100);
 			assert.equal(frameLines(output).map(plain).join("\n"), before, "面板打开时滚轮无效");
@@ -413,8 +422,72 @@ describe("命令补全与选择面板", () => {
 		}
 	});
 
-	it("点击面板每一项都命中对应的命令", () => {
-		// 面板画在哪里就要点得中哪里：逐项点击，光标必须落到被点的那一项
+	it("模态菜单打开时滚轮不改选中也不滚动对话流", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		let selected: string | undefined;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			modelMenu: {
+				list: () => MODEL_ITEMS,
+				select: (item) => {
+					selected = `${item.provider}/${item.model}`;
+					return { warnings: [], ready: true, warning: undefined };
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hi\r"));
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 60 }, (_, index) => `line ${index + 1}`).join("\n"),
+			});
+			t.mock.timers.tick(100);
+
+			input.emit("data", Buffer.from("/model\r"));
+			t.mock.timers.tick(100);
+			const rows = frameLines(output).map(plain);
+			const borderRow = rows.findIndex((line) => line.includes(" 3 ────")) + 1;
+			const secondRow = rows.findIndex((line) => line.includes("openai/gpt-5.2")) + 1;
+			assert.ok(borderRow > 0 && secondRow > 0, "面板与第二项都画出来了");
+			const before = rows.join("\n");
+
+			// 向上停在别的模型上不能被当成左键；向下落在边框上不能漏到对话流
+			input.emit("data", Buffer.from(`\x1b[<64;10;${secondRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<65;10;${borderRow}M`));
+			t.mock.timers.tick(100);
+			assert.equal(frameLines(output).map(plain).join("\n"), before, "滚轮不改变画面");
+
+			// 关掉面板，对话流仍在最新位置
+			input.emit("data", Buffer.from("\x1b"));
+			t.mock.timers.tick(100);
+			assert.ok(
+				frameLines(output).map(plain).join("\n").includes("line 60"),
+				"对话流没有被滚走",
+			);
+
+			// 光标也没被挪走：重新打开后回车选中的仍是当前模型
+			input.emit("data", Buffer.from("/model\r"));
+			t.mock.timers.tick(100);
+			input.emit("data", Buffer.from("\r"));
+			t.mock.timers.tick(100);
+			assert.equal(selected, "fengshao/deepseek-v4.1-flash");
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("点击面板每一项都把对应的命令补进输入框", () => {
+		// 面板画在哪里就要点得中哪里：逐项点击，输入框必须回显被点的那条命令
 		for (const name of ["/model", "/effort", "/help"]) {
 			const input = new FakeInput();
 			const output = new FakeOutput();
@@ -430,16 +503,38 @@ describe("命令补全与选择面板", () => {
 				assert.ok(row > 0, `${name} 画出来了`);
 
 				input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
-				const cursorLine = frameLines(output)
-					.map(plain)
-					.find((line) => line.startsWith(" › /"));
+				const lines = frameLines(output).map(plain);
 				assert.ok(
-					cursorLine?.includes(name),
-					`点 ${name} 那一行后光标应落在 ${name}，实际是 ${cursorLine ?? "(无)"}`,
+					lines.some((line) => line === ` › ${name} `),
+					`点 ${name} 那一行后输入框应补成 ${name}`,
 				);
 			} finally {
 				exitTui(input);
 			}
+		}
+	});
+
+	it("菜单面板上的悬停不改变选中", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			const row =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("/session")) + 1;
+			assert.ok(row > 0);
+			const before = frameLines(output).map(plain).join("\n");
+
+			// 1003 模式下的纯悬停（按钮码 35）：指针停在别的条目上也不该改光标
+			input.emit("data", Buffer.from(`\x1b[<35;10;${row}M`));
+			assert.equal(frameLines(output).map(plain).join("\n"), before, "悬停不改变画面");
+		} finally {
+			exitTui(input);
 		}
 	});
 

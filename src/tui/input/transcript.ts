@@ -1,11 +1,11 @@
-import { TURN_SAFE_COMMANDS } from "../commands.ts";
 import { inputView } from "../view/footer.ts";
 import { imageMarker } from "../image.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripMouseEvents } from "./keys.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripMouseEvents } from "./keys.ts";
 import type { MouseInput } from "./keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
 import { ABORTING } from "../render/status.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
+import { completeCommandMenu } from "../runtime/panels.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "./scroll.ts";
 import type { InputDeps } from "./deps.ts";
 import { handleMenuMouse, inlineMenuTarget } from "./menus.ts";
@@ -26,16 +26,19 @@ export function handleTranscriptInput(
 	let hoverChanged = false;
 	let wheelSteps = 0;
 	let dragRow: number | undefined;
+	/** 任何菜单面板开着时滚轮都不该动对话流：面板盖着，滚动看不见的底层内容只会让人以为界面没反应。 */
+	const menuOpen = host.menuOpen();
 	/** 置底按钮；命中判定与悬停都用同一份位置，保证画在哪里就能点在哪里。 */
-	const bottomButton = host.menuOpen() ? undefined : scrollButtonPlacement(width, mainHeight);
+	const bottomButton = menuOpen ? undefined : scrollButtonPlacement(width, mainHeight);
 	/** 按钮此刻是否真的画着：没画出来的位置不该被点中，也不该响应悬停。 */
 	const buttonShown = bottomButton !== undefined && state.scrollTop < host.maxScroll();
-	/** 补全面板是否开着；它盖住对话流，滚轮与点击都要避开。 */
-	const menuOpen = state.commandMenu !== undefined || state.fileMenu !== undefined;
+	/** 补全面板画在输入框上方，落在它上面的点击不参与焦点判定。 */
+	const completionOpen = state.commandMenu !== undefined || state.fileMenu !== undefined;
 
 	for (const event of mouseOf()) {
-		const left = (event.button & MOUSE_BUTTON_MASK) === 0;
-		const motion = event.button >= 32 && event.button < 64;
+		const motion = (event.button & MOUSE_MOTION_BIT) !== 0 && (event.button & MOUSE_WHEEL_BIT) === 0;
+		// 滚轮向上（64）的低两位同样是 0，不能只按低两位判断是不是左键
+		const left = (event.button & MOUSE_BUTTON_MASK) === 0 && (event.button & MOUSE_WHEEL_BIT) === 0;
 		// 低两位是 3 表示没有按键：1003 模式下这类事件只是指针在移动，也就是悬停
 		const hover = motion && (event.button & MOUSE_BUTTON_MASK) === 3;
 
@@ -88,7 +91,7 @@ export function handleTranscriptInput(
 			// 落在补全面板上的点击交给下面的菜单分支处理，不能拿它改输入框焦点：
 			// 面板画在输入框上方，按位置算就是「输入框外」，会把焦点判成失焦，
 			// 于是紧接着的回车只会被当成抢回焦点，选中的命令反而执行不了
-			if (menuOpen && event.row >= menuPanelTop(state, host.options)) continue;
+			if (completionOpen && event.row >= menuPanelTop(state, host.options)) continue;
 
 			// 可点区域要含上下两条边框：使用者把那个方框整体当成输入框，点在边框上
 			// 却没有任何反应，会以为界面卡住了
@@ -124,8 +127,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, commandPanelTop),
-				deps.render,
+				inlineMenuTarget(menu, commandPanelTop, () => completeCommandMenu(host)),
 			)
 		) {
 			return;
@@ -137,20 +139,7 @@ export function handleTranscriptInput(
 			return;
 		}
 		if (key === "tab") {
-			const chosen = state.commandMenu.items[state.commandMenu.cursor];
-			if (chosen === undefined) return;
-			// 有二级选择面板的命令，Tab 等同于回车：直接打开面板；一轮进行中只放行安全命令
-			const opensPanel =
-				(chosen.name === "model" && host.options.modelMenu !== undefined) ||
-				(chosen.name === "effort" && host.options.effortMenu !== undefined) ||
-				(chosen.name === "session" && host.options.sessionMenu !== undefined);
-			if (opensPanel && (state.activeTurn === undefined || TURN_SAFE_COMMANDS.has(chosen.name))) {
-				host.executeCommand(chosen);
-				return;
-			}
-			// 其余命令只补全命令名与一个空格，补全面板保持打开：Tab 不执行也不收起
-			host.setInput(`/${chosen.name} `);
-			deps.render();
+			completeCommandMenu(host);
 			return;
 		}
 		if (key === "escape") {
@@ -172,8 +161,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, filePanelTop),
-				deps.render,
+				inlineMenuTarget(menu, filePanelTop, insert),
 			)
 		) {
 			return;

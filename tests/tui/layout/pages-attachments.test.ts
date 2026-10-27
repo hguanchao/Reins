@@ -422,6 +422,47 @@ describe("整屏页与图片附件", () => {
 		}
 	});
 
+	it("@ 文件补全面板点击把选中路径补进输入框，不发送", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			files: { list: () => ["src/tui/layout.ts", "src/tui/text.ts", "README.md"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("看一下 @src/tu"));
+			const row =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("src/tui/layout.ts")) + 1;
+			assert.ok(row > 0, "第二项画出来了");
+
+			// 点击第二项：整段 @片段换成完整路径，面板收起，不发送
+			input.emit("data", Buffer.from(`\x1b[<0;10;${row}M`));
+			const lines = frameLines(output).map(plain);
+			assert.ok(
+				lines.some((line) => line.includes("看一下 @src/tui/layout.ts")),
+				"点击插入路径",
+			);
+			assert.equal(
+				lines.some((line) => line.includes("src/tui/text.ts")),
+				false,
+				"面板收起",
+			);
+			assert.equal(agent.prompts.length, 0, "点击不发送");
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("@ 面板里回车只插入路径，不发送", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
