@@ -1,6 +1,7 @@
 import { characterWidth, displayWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { lineIndexAtRow } from "./scroll.ts";
+import { PLAIN_LINE_META } from "./types.ts";
 import type { TranscriptView } from "./types.ts";
 
 /**
@@ -23,7 +24,8 @@ export interface SelectionRegion {
 	readonly focus: SelectionPoint;
 }
 
-/** 行首默认底色；离开选区时恢复行内最后见到的底色。 */
+/** 行首默认前景/底色；离开选区时恢复行内最后见到的设置。 */
+const DEFAULT_FG = "\x1b[39m";
 const DEFAULT_BG = "\x1b[49m";
 
 /**
@@ -42,7 +44,8 @@ export function selectionPoint(
 	const line = lineIndexAtRow(view, height, scrollTop, row);
 	if (line === undefined || line >= view.lines.length) return undefined;
 	const width = visibleTextWidth(view.lines[line] ?? "");
-	const cell = Math.max(0, Math.min(column - 1, Math.max(0, width - 1)));
+	const contentStart = Math.min(view.lineMeta[line]?.contentStart ?? 0, Math.max(0, width - 1));
+	const cell = Math.max(contentStart, Math.min(column - 1, Math.max(0, width - 1)));
 	return { line, cell };
 }
 
@@ -69,19 +72,27 @@ export function orderedSelection(selection: SelectionRegion): {
 /**
  * 选区里的纯文本。
  *
- * 每行去掉尾部补齐空白的空格：行宽是排版用的，复制出去不该带着一截空白。中间行的结尾空格
- * 同样清掉，但行首缩进保留，粘贴回编辑器时相对层级还在。
+ * 每行从内容起点开始取，跳过详情色带的行号与缩进；软换行出来的续行直接接回上一条逻辑行，
+ * 不因为终端宽度插进换行。每行末尾补齐的空白同样清掉，但行首缩进保留。
  */
 export function selectionText(view: TranscriptView, selection: SelectionRegion): string {
 	const { start, end } = orderedSelection(selection);
 	const lines: string[] = [];
 	for (let index = start.line; index <= end.line && index < view.lines.length; index += 1) {
+		const meta = view.lineMeta[index] ?? PLAIN_LINE_META;
 		const plain = stripTerminalStyles(view.lines[index] ?? "");
-		const from = index === start.line ? start.cell : 0;
-		const to = index === end.line ? end.cell : Number.MAX_SAFE_INTEGER;
-		lines.push(sliceCells(plain, from, to).replace(/[ \t]+$/u, ""));
+		const width = visibleTextWidth(view.lines[index] ?? "");
+		const from =
+			index === start.line ? Math.max(start.cell, Math.min(meta.contentStart, width)) : meta.contentStart;
+		const to = Math.min(index === end.line ? end.cell : width - 1, width - 1);
+		const piece = from > to ? "" : sliceCells(plain, from, to);
+		if (meta.softWrap && lines.length > 0) {
+			lines[lines.length - 1] += piece;
+		} else {
+			lines.push(piece);
+		}
 	}
-	return lines.join("\n");
+	return lines.map((line) => line.replace(/[ \t]+$/u, "")).join("\n");
 }
 
 /**
@@ -94,12 +105,16 @@ export function selectionRange(
 	line: number,
 	selection: SelectionRegion,
 	textWidth: number,
+	contentStart = 0,
 ): { readonly from: number; readonly to: number } | undefined {
 	const { start, end } = orderedSelection(selection);
 	if (line < start.line || line > end.line) return undefined;
+	// 这一行只有行号或只有色带留白：没有正文可选，连行号也不该高亮
+	if (textWidth <= contentStart) return undefined;
 	const limit = textWidth - 1;
-	if (limit < 0) return undefined;
-	const from = Math.min(line === start.line ? start.cell : 0, limit);
+	const first = contentStart;
+	const fromCell = line === start.line ? Math.min(start.cell, limit) : first;
+	const from = Math.max(fromCell, first);
 	const to = Math.min(line === end.line ? end.cell : limit, limit);
 	return from > to ? undefined : { from, to };
 }
@@ -107,9 +122,9 @@ export function selectionRange(
 /**
  * 给一行的指定列范围套上选区底色。
  *
- * 渲染后的行里夹着颜色、色带底色、OSC 8 链接等转义序列。进入选区时换成统一定义的选区
- * 底色；选区内的转义（尤其是重置）可能把底色清掉，因此每遇到一个转义就补一次选区底色。
- * 离开选区时恢复这一行最后见到的底色，色带与提示块不会被选区永久改色。
+ * 渲染后的行里夹着颜色、色带底色、OSC 8 链接等转义序列。进入选区时换成深色字配浅色底；
+ * 选区内的转义（尤其是重置）可能把颜色清掉，因此每遇到一个转义就补一次选区样式。离开
+ * 选区时恢复这一行最后见到的前景色与底色，色带与提示块不会被选区永久改色。
  */
 export function highlightSelection(
 	line: string,
@@ -118,6 +133,7 @@ export function highlightSelection(
 	let out = "";
 	let cell = 0;
 	let active = false;
+	let foreground = DEFAULT_FG;
 	let background = DEFAULT_BG;
 	let index = 0;
 	while (index < line.length) {
@@ -125,9 +141,11 @@ export function highlightSelection(
 			const length = escapeLength(line, index);
 			const sequence = line.slice(index, index + length);
 			out += sequence;
-			const next = backgroundOf(sequence);
-			if (next !== undefined) background = next;
-			if (active) out += THEME.selectionBg;
+			const nextFg = foregroundOf(sequence);
+			if (nextFg !== undefined) foreground = nextFg;
+			const nextBg = backgroundOf(sequence);
+			if (nextBg !== undefined) background = nextBg;
+			if (active) out += THEME.selectionFg + THEME.selectionBg;
 			index += length;
 			continue;
 		}
@@ -136,13 +154,52 @@ export function highlightSelection(
 		const selected = cell >= range.from && cell <= range.to;
 		if (selected !== active) {
 			active = selected;
-			out += active ? THEME.selectionBg : background;
+			out += active ? THEME.selectionFg + THEME.selectionBg : foreground + background;
 		}
 		out += char;
 		cell += width;
 		index += char.length;
 	}
-	return active ? `${out}${background}` : out;
+	return active ? `${out}${foreground}${background}` : out;
+}
+
+/**
+ * 一条 SGR 序列设置的新前景色；不涉及前景色时返回 undefined。
+ *
+ * 只认设置前景色的参数（30–37、90–97、38;5;n、38;2;r;g;b）与重置（0、39）。加粗、下划线
+ * 等属性不在此处理，选区只替换颜色。
+ */
+function foregroundOf(sequence: string): string | undefined {
+	if (!sequence.startsWith("\x1b[") || !sequence.endsWith("m")) return undefined;
+	const body = sequence.slice(2, -1);
+	if (body.length === 0) return DEFAULT_FG;
+	const params = body.split(";");
+	let foreground: string | undefined;
+	for (let index = 0; index < params.length; index += 1) {
+		const param = params[index] ?? "";
+		if (param === "0" || param === "39") {
+			foreground = DEFAULT_FG;
+			continue;
+		}
+		if (param === "38") {
+			const mode = params[index + 1];
+			if (mode === "5" && params[index + 2] !== undefined) {
+				foreground = `\x1b[38;5;${params[index + 2]}m`;
+				index += 2;
+				continue;
+			}
+			if (mode === "2" && params[index + 4] !== undefined) {
+				foreground = `\x1b[38;2;${params[index + 2]};${params[index + 3]};${params[index + 4]}m`;
+				index += 4;
+			}
+			continue;
+		}
+		const code = Number(param);
+		if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
+			foreground = `\x1b[${code}m`;
+		}
+	}
+	return foreground;
 }
 
 /**

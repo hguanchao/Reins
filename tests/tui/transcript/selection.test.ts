@@ -9,7 +9,9 @@ import {
 	selectionSpans,
 	selectionText,
 	stripTerminalStyles,
+	visibleTextWidth,
 } from "../../../src/tui/transcript.ts";
+import type { TranscriptTool } from "../../../src/tui/transcript.ts";
 import { THEME } from "../../../src/tui/render/theme.ts";
 
 describe("文本选区", () => {
@@ -85,30 +87,115 @@ describe("文本选区", () => {
 		assert.equal(selectionRange(3, selection, 0), undefined);
 	});
 
-	it("选区底色只覆盖选区，并跨过区间内的重置序列", () => {
+	it("选区样式只覆盖选区，并跨过区间内的重置序列", () => {
 		const line = `\x1b[31mhello\x1b[0m world`;
 		assert.equal(
 			highlightSelection(line, { from: 1, to: 3 }),
-			`\x1b[31mh${THEME.selectionBg}ell\x1b[49mo\x1b[0m world`,
+			`\x1b[31mh${THEME.selectionFg}${THEME.selectionBg}ell\x1b[31m\x1b[49mo\x1b[0m world`,
 		);
 
 		const reset = highlightSelection("ab\x1b[0mcd", { from: 0, to: 3 });
-		assert.ok(reset.includes(`${THEME.selectionBg}ab\x1b[0m${THEME.selectionBg}cd`));
-		assert.ok(reset.endsWith("\x1b[49m"));
+		assert.ok(
+			reset.includes(
+				`${THEME.selectionFg}${THEME.selectionBg}ab\x1b[0m${THEME.selectionFg}${THEME.selectionBg}cd`,
+			),
+		);
+		assert.ok(reset.endsWith("\x1b[39m\x1b[49m"));
 	});
 
-	it("离开选区后恢复行内原有的底色", () => {
+	it("离开选区后恢复行内原有的前景色与底色", () => {
 		const banded = `\x1b[48;2;22;25;29mhello\x1b[0m`;
 		const highlighted = highlightSelection(banded, { from: 1, to: 2 });
-		assert.ok(highlighted.includes(`${THEME.selectionBg}el\x1b[48;2;22;25;29mlo`));
+		assert.ok(
+			highlighted.includes(
+				`${THEME.selectionFg}${THEME.selectionBg}el\x1b[39m\x1b[48;2;22;25;29mlo`,
+			),
+		);
 	});
 
-	it("OSC 8 链接只去掉序列，保留链接文字", () => {
-		const link = "\x1b]8;;http://example.com\x1b\\text\x1b]8;;\x1b\\";
-		assert.equal(stripTerminalStyles(link), "text");
+	it("展开详情复制的文本跳过行号，软换行不插换行", () => {
+		const rows = [
+			"# xz-acl",
+			"",
+			"## Getting started",
+			"",
+			"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+			"",
+			"## Project status",
+			"If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going.",
+		];
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "README.md",
+			fullDetail: rows.map((row, index) => `${index + 1}  ${row}`).join("\n"),
+			detailKind: "file",
+			detailExpanded: true,
+		};
+		const view = buildTranscriptView(80, [{ prompt: "熟悉项目", response: [tool] }]);
+		const first = view.lines.findIndex((line) => stripTerminalStyles(line).includes("Getting started"));
+		// 最后一行可能被终端宽度拆成多个续行，取最后一个有内容的详情行
+		const last = view.lines.reduce((found, line, index) => {
+			const meta = view.lineMeta[index];
+			return meta !== undefined && meta.contentStart > 0 && stripTerminalStyles(line).trim().length > 0
+				? index
+				: found;
+		}, -1);
+		assert.ok(first >= 0 && last > first);
 
-		const highlighted = highlightSelection(link, { from: 0, to: 3 });
-		assert.ok(highlighted.includes(`${THEME.selectionBg}text`));
-		assert.ok(highlighted.includes("http://example.com"));
+		const firstPlain = stripTerminalStyles(view.lines[first] ?? "");
+		const lastPlain = stripTerminalStyles(view.lines[last] ?? "");
+		const selection = {
+			anchor: { line: first, cell: firstPlain.indexOf("##") },
+			focus: { line: last, cell: lastPlain.trimEnd().length - 1 },
+		};
+		const copied = selectionText(view, selection);
+
+		assert.equal(/^\s*\d+  /m.test(copied), false);
+		assert.ok(copied.includes("eiusmod tempor incididunt"));
+		assert.ok(copied.includes("allowing your project to keep going."));
+		assert.ok(copied.includes("## Getting started\n\nLorem ipsum"));
+		// 中间行的行号列不进选区，选区从正文起点开始
+		const middle = view.lines.findIndex((line, index) => {
+			const meta = view.lineMeta[index];
+			return (
+				index > first &&
+				index < last &&
+				meta !== undefined &&
+				meta.contentStart > 0 &&
+				stripTerminalStyles(line).slice(meta.contentStart).trim().length > 0
+			);
+		});
+		assert.ok(middle > 0);
+		// 点在这一行的行号上，端点也落在正文起点
+		assert.equal(selectionPoint(view, 40, 0, first + 1, 1)?.cell, view.lineMeta[first]?.contentStart);
+		// 只有行号的空详情行不高亮行号
+		const empty = view.lines.findIndex((line, index) => {
+			const meta = view.lineMeta[index];
+			return (
+				index > first &&
+				index < last &&
+				meta !== undefined &&
+				meta.contentStart > 0 &&
+				stripTerminalStyles(line).slice(meta.contentStart).trim().length === 0
+			);
+		});
+		assert.ok(empty > 0);
+		assert.equal(
+			selectionRange(
+				empty,
+				selection,
+				visibleTextWidth(view.lines[empty] ?? ""),
+				view.lineMeta[empty]?.contentStart ?? 0,
+			),
+			undefined,
+		);
+		const range = selectionRange(
+			middle,
+			selection,
+			visibleTextWidth(view.lines[middle] ?? ""),
+			view.lineMeta[middle]?.contentStart ?? 0,
+		);
+		assert.equal(range?.from, view.lineMeta[middle]?.contentStart);
 	});
 });

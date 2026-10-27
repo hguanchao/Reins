@@ -167,11 +167,24 @@ export interface PromptRange {
 	readonly responseStart: number;
 }
 
+/** 视图行在选区里的行为。 */
+export interface LineMeta {
+	/** 行内内容的起始显示列；行号、色带留白等排版前缀不算可选内容 */
+	readonly contentStart: number;
+	/** 本行是上一条逻辑行的软换行续行：复制时直接接上，不插换行 */
+	readonly softWrap: boolean;
+}
+
+/** 普通正文行：没有行号前缀，也不是续行。 */
+export const PLAIN_LINE_META: LineMeta = { contentStart: 0, softWrap: false };
+
 /** 构建好的对话流：同一帧的测量、绘制与命中都复用它，避免重复换行整份内容。 */
 export interface TranscriptView {
 	/** 内容区宽度（已扣掉滚动条列） */
 	readonly width: number;
 	readonly lines: string[];
+	/** 每行在选区里的行为，与 lines 一一对应 */
+	readonly lineMeta: readonly LineMeta[];
 	readonly prompts: PromptRange[];
 	/** 每个思考区块标题在 lines 里的起点，双击命中使用 */
 	readonly thinkingHeaders: readonly { readonly start: number; readonly block: TranscriptThinking }[];

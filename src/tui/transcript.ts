@@ -52,7 +52,9 @@ export {
 	transcriptMetrics,
 } from "./transcript/view.ts";
 export type { SelectionPoint, SelectionRegion } from "./transcript/selection.ts";
+export { PLAIN_LINE_META } from "./transcript/types.ts";
 export type {
+	LineMeta,
 	PromptRange,
 	SubagentRunView,
 	TranscriptLine,

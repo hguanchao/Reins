@@ -19,7 +19,7 @@ import {
 	scrollbarColumn,
 	visibleIndexes,
 } from "./scroll.ts";
-import { highlightSelection, selectionRange, visibleTextWidth } from "./selection.ts";
+import { highlightSelection, selectionRange, stripTerminalStyles, visibleTextWidth } from "./selection.ts";
 import type { SelectionRegion } from "./selection.ts";
 import {
 	DETAIL_BAND_LEFT,
@@ -51,7 +51,9 @@ import {
 import { animatedSubagentLine, subagentGroupLines } from "./subagent.ts";
 import { stripLineControls } from "./detail.ts";
 import { hasExpandableDetail, toolGroupLines, toolLines, toolResultLines } from "./tool.ts";
+import { PLAIN_LINE_META } from "./types.ts";
 import type {
+	LineMeta,
 	LiveSubagentLine,
 	PromptRange,
 	TranscriptLine,
@@ -132,7 +134,8 @@ export function renderTranscriptView(
 	const visible = indexes.map((index) => {
 		const line = lineAt(index);
 		if (selection === undefined) return line;
-		const range = selectionRange(index, selection, visibleTextWidth(line));
+		const meta = view.lineMeta[index] ?? PLAIN_LINE_META;
+		const range = selectionRange(index, selection, visibleTextWidth(line), meta.contentStart);
 		return range === undefined ? line : highlightSelection(line, range);
 	});
 
@@ -423,6 +426,7 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 	return {
 		width,
 		lines,
+		lineMeta: buildLineMeta(lines),
 		prompts,
 		thinkingHeaders,
 		groupHeaders,
@@ -433,6 +437,73 @@ function build(width: number, turns: readonly TranscriptTurn[], notice: string |
 		subagentHeaders,
 		subagentFailureRows,
 	};
+}
+
+/**
+ * 从已排好的行里补出选区元数据。
+ *
+ * 工具详情的色带行带行号与缩进：行号是排版刻度，不算内容；同一逻辑行换行出来的续行在
+ * 复制时也不该插换行。普通正文没有这些前缀，保持默认元数据。只认详情色带，避免把普通
+ * 正文里的缩进当成行号。
+ */
+function buildLineMeta(lines: readonly string[]): readonly LineMeta[] {
+	const meta: LineMeta[] = [];
+	// 当前详情色带的内容起点；遇到非详情行、空行或新的行号时重置
+	let contentStart = 0;
+	let inDetail = false;
+	// diff 色带里带行号的上下文行与文件内容长得一样，靠前一条增删行/ hunk 头确认类型
+	let diffBand = false;
+	for (const line of lines) {
+		const detail = line.includes(THEME.detailBg) || line.includes(THEME.diffInsertBg) || line.includes(THEME.diffDeleteBg);
+		if (!detail) {
+			meta.push(PLAIN_LINE_META);
+			inDetail = false;
+			contentStart = 0;
+			diffBand = false;
+			continue;
+		}
+		const plain = stripTerminalStyles(line);
+		if (plain.trim().length === 0) {
+			// 色带上下留白与空行：不是一条可续行的内容
+			meta.push(PLAIN_LINE_META);
+			inDetail = false;
+			contentStart = 0;
+			diffBand = false;
+			continue;
+		}
+		const trimmed = plain.trimStart();
+		if (trimmed.startsWith("@@") || trimmed.startsWith("… (")) {
+			// diff 的 hunk 头与省略行是独立行，不能接在上一条逻辑行后面
+			contentStart = plain.length - trimmed.length;
+			meta.push({ contentStart, softWrap: false });
+			inDetail = false;
+			diffBand = trimmed.startsWith("@@");
+			continue;
+		}
+		const diff = /^(\s*\d+ )([-+] |  )/.exec(plain);
+		if (diff !== null && (diffBand || line.includes(THEME.diffInsertBg) || line.includes(THEME.diffDeleteBg))) {
+			contentStart = (diff[1] ?? "").length + 2;
+			meta.push({ contentStart, softWrap: false });
+			inDetail = true;
+			diffBand = true;
+			continue;
+		}
+		const file = /^(\s*\d+  )/.exec(plain);
+		if (file !== null) {
+			contentStart = (file[1] ?? "").length;
+			meta.push({ contentStart, softWrap: false });
+			inDetail = true;
+			diffBand = false;
+			continue;
+		}
+		if (inDetail) {
+			// 详情色带里没有行号的行是上一条逻辑行的软换行续行
+			meta.push({ contentStart, softWrap: true });
+			continue;
+		}
+		meta.push(PLAIN_LINE_META);
+	}
+	return meta;
 }
 
 /**
