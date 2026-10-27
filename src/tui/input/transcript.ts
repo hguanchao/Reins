@@ -5,7 +5,6 @@ import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, history
 import type { MouseInput } from "./keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
 import { ABORTING } from "../render/status.ts";
-import { FOCUS_IN, FOCUS_OUT } from "../terminal.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "./scroll.ts";
 import type { InputDeps } from "./deps.ts";
@@ -31,17 +30,6 @@ export function handleTranscriptInput(
 	const bottomButton = host.menuOpen() ? undefined : scrollButtonPlacement(width, mainHeight);
 	/** 按钮此刻是否真的画着：没画出来的位置不该被点中，也不该响应悬停。 */
 	const buttonShown = bottomButton !== undefined && state.scrollTop < host.maxScroll();
-
-	const lastIn = withoutMouse.lastIndexOf(FOCUS_IN);
-	const lastOut = withoutMouse.lastIndexOf(FOCUS_OUT);
-	if (lastIn >= 0 || lastOut >= 0) {
-		const next = lastIn > lastOut;
-		if (next !== state.focused) {
-			state.focused = next;
-			focusChanged = true;
-		}
-		if (!next) state.draggingScrollbar = false;
-	}
 
 	for (const event of mouseOf()) {
 		const left = (event.button & MOUSE_BUTTON_MASK) === 0;
@@ -93,9 +81,12 @@ export function handleTranscriptInput(
 				return;
 			}
 
+			// 可点区域要含上下两条边框：使用者把那个方框整体当成输入框，点在边框上
+			// 却没有任何反应，会以为界面卡住了
 			const inputLineTotal = inputView(state.input, width, state.inputCursor).lines.length;
 			const inputTop = host.inputTopRow(mainHeight);
-			const insideInput = event.row >= inputTop && event.row < inputTop + inputLineTotal;
+			const insideInput =
+				event.row >= inputTop - 1 && event.row <= inputTop + inputLineTotal;
 			if (insideInput !== state.focused) {
 				state.focused = insideInput;
 				focusChanged = true;
