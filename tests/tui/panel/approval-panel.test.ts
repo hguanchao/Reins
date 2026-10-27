@@ -30,7 +30,7 @@ function render(
 }
 
 describe("审批面板", () => {
-	it("显示风险标签、工具与核心摘要、动作行", () => {
+	it("标题用警告色、不显示风险词，工具与动作行保留", () => {
 		const lines = render(60, {
 			tool: "bash",
 			risk: "destructive",
@@ -40,17 +40,15 @@ describe("审批面板", () => {
 
 		assert.equal(lines.length, APPROVAL_PANEL_BASE_HEIGHT);
 		assert.ok(rows[0]?.includes("Permission required"));
-		assert.ok(rows[0]?.includes("destructive"));
+		assert.equal(rows[0]?.includes("destructive"), false);
+		assert.ok((lines[0] ?? "").includes(THEME.warning));
 		assert.ok(rows[1]?.includes('Bash  { "command": "npm test" }'));
 		assert.equal(rows[2], " ".repeat(60));
-		assert.ok(rows[3]?.includes("←/→ select"));
-		assert.ok(rows[3]?.includes("Enter confirm"));
-		assert.ok(rows[3]?.includes("Esc deny"));
-		assert.ok(rows[4]?.includes("› [y] allow once"));
-		assert.ok(rows[4]?.includes("[n] deny"));
-		assert.equal(rows[4]?.includes("› [n] deny"), false);
-		assert.equal(rows[4]?.includes("[a]"), false);
-		assert.equal(rows[5], "─".repeat(60));
+		assert.ok(rows[3]?.includes("› [y] allow once"));
+		assert.ok(rows[3]?.includes("[n] deny"));
+		assert.equal(rows[3]?.includes("› [n] deny"), false);
+		assert.equal(rows[3]?.includes("[a]"), false);
+		assert.equal(rows[4], "─".repeat(60));
 	});
 
 	it("没有风险时不画风险词", () => {
@@ -82,10 +80,10 @@ describe("审批面板", () => {
 
 		assert.ok(rows[0]?.includes("Permission required"));
 		assert.ok(rows[1]?.includes("Bash  git status"));
-		assert.ok(rows[4]?.includes('[a] always for "git status"'));
-		assert.ok(rows[4]?.includes("[n] deny"));
-		assert.equal(rows[4]?.includes("› [a]"), false);
-		assert.equal(rows[4]?.includes("› [n]"), false);
+		assert.ok(rows[3]?.includes('[a] always for "git status"'));
+		assert.ok(rows[3]?.includes("[n] deny"));
+		assert.equal(rows[3]?.includes("› [a]"), false);
+		assert.equal(rows[3]?.includes("› [n]"), false);
 	});
 
 	it("长摘要仍在第二行续写，仍放不下时末尾省略", () => {
@@ -116,7 +114,6 @@ describe("审批面板", () => {
 		const card = rows.slice(0, APPROVAL_PANEL_BASE_HEIGHT).join("\n");
 		assert.ok(card.includes("python -c [inline script]"));
 		assert.equal(card.includes("a very long inline script"), false);
-		assert.ok(rows[3]?.includes("d details"));
 	});
 
 	it("展开后显示详情，滚动位置落在可见窗口", () => {
@@ -133,7 +130,6 @@ describe("审批面板", () => {
 		const collapsed = render(60, prompt);
 		assert.equal(collapsed.length, APPROVAL_PANEL_BASE_HEIGHT);
 		assert.equal(collapsed.map(plain).join("\n").includes("row-01"), false);
-		assert.ok(collapsed.map(plain).some((line) => line.includes("d details")));
 
 		const expanded = render(60, prompt, "once", true, 0);
 		assert.equal(expanded.length, approvalPanelHeight(prompt, true, 60, ROWS));
@@ -162,19 +158,6 @@ describe("审批面板", () => {
 		assert.ok(approvalPreviewScrollLimit(prompt, true, 60, 12) > 0);
 	});
 
-	it("窄屏仍保留 d 详情提示", () => {
-		const rows = render(40, {
-			tool: "bash",
-			risk: "destructive",
-			detail: "npm test",
-			summary: "npm test",
-			preview: "one\ntwo",
-			previewLabel: "Command",
-		}).map(plain);
-		assert.ok(rows[3]?.includes("d details"));
-		assert.ok(rows[3]?.includes("Esc"));
-	});
-
 	it("默认选中 allow once", () => {
 		const row = render(80, {
 			tool: "bash",
@@ -182,7 +165,7 @@ describe("审批面板", () => {
 			detail: "git status",
 			saveLabel: 'commands starting with "git status"',
 			saveShort: "git status",
-		})[4];
+		})[3];
 
 		assert.ok(row?.includes(`${ACCENT_COLOR}› [y] allow once`));
 		assert.equal(row?.includes(`${THEME.error}[n]`), false);
@@ -197,14 +180,14 @@ describe("审批面板", () => {
 			saveShort: "git status",
 		};
 
-		const always = render(80, prompt, "always")[4];
+		const always = render(80, prompt, "always")[3];
 		assert.ok(always?.includes(`${ACCENT_COLOR}› [a] always for "git status"`));
 		assert.ok(always?.includes("\x1b[1m"));
 		assert.equal(always?.includes(`${ACCENT_COLOR}[y]`), false);
 		assert.equal(always?.includes("› [y]"), false);
 
 		// 默认选中的拒绝用危险色，而不是主题强调色
-		const deny = render(80, prompt, "deny")[4];
+		const deny = render(80, prompt, "deny")[3];
 		assert.ok(deny?.includes(`${THEME.error}› [n] deny`));
 		assert.equal(deny?.includes(`${ACCENT_COLOR}[n]`), false);
 		assert.equal(deny?.includes("› [y]"), false);
@@ -220,8 +203,8 @@ describe("审批面板", () => {
 		}).map(plain);
 
 		assert.ok(rows[1]?.includes("Edit  src/a.ts"));
-		assert.ok(rows[4]?.includes("[a] always for this file"));
-		assert.ok(rows[4]?.includes("[y] allow once"));
+		assert.ok(rows[3]?.includes("[a] always for this file"));
+		assert.ok(rows[3]?.includes("[y] allow once"));
 	});
 
 	it("窄终端下退化为短动作行，拒绝键仍然可见", () => {
@@ -234,11 +217,11 @@ describe("审批面板", () => {
 		}).map(plain);
 
 		assert.ok(rows[1]?.includes("Bash  git status"));
-		assert.ok(rows[4]?.includes("› [y] once"));
-		assert.ok(rows[4]?.includes("[a] always"));
-		assert.ok(rows[4]?.includes("[n] deny"));
-		assert.equal(rows[4]?.includes("› [a]"), false);
-		assert.equal(rows[4]?.includes("› [n]"), false);
+		assert.ok(rows[3]?.includes("› [y] once"));
+		assert.ok(rows[3]?.includes("[a] always"));
+		assert.ok(rows[3]?.includes("[n] deny"));
+		assert.equal(rows[3]?.includes("› [a]"), false);
+		assert.equal(rows[3]?.includes("› [n]"), false);
 	});
 });
 

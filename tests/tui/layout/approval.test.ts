@@ -41,12 +41,11 @@ describe("审批卡", () => {
 			let text = lines.map(plain).join("\n");
 			assert.ok(text.includes("Permission required"));
 			assert.ok(text.includes("Bash  npm test"));
-			assert.ok(text.includes("←/→ select"));
-			assert.ok(text.includes("destructive"));
+			assert.equal(text.includes("destructive"), false);
 			assert.ok(text.includes("[y] allow once"));
 			assert.ok(text.includes("[n] deny"));
-			// 面板占据原本页脚的六行；输入行、状态行与信息行都不再显示
-			assert.ok(plain(lines[6] ?? "").includes("Permission required"));
+			// 面板占据原本页脚的五行；输入行、状态行与信息行都不再显示
+			assert.ok(plain(lines[7] ?? "").includes("Permission required"));
 			assert.equal(text.includes("📁 Reins"), false);
 
 			input.emit("data", Buffer.from("y"));
@@ -117,7 +116,6 @@ describe("审批卡", () => {
 
 			assert.ok(text().includes("Permission required"));
 			assert.equal(text().includes("detail-01"), false, "默认收起");
-			assert.ok(text().includes("d details"));
 
 			// d 展开：详情标题与第一行出现
 			input.emit("data", Buffer.from("d"));

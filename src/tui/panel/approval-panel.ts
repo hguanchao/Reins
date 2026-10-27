@@ -18,13 +18,12 @@ import { THEME } from "../render/theme.ts";
  * 高度封顶并给对话流留最小空间。这样卡片不会被长内容撑爆。
  */
 
-/** 收起状态的高度：标题、两行摘要、提示、动作、下边框。 */
-export const APPROVAL_PANEL_BASE_HEIGHT = 6;
+/** 收起状态的高度：标题、两行摘要、动作、下边框。 */
+export const APPROVAL_PANEL_BASE_HEIGHT = 5;
 /** 展开详情时至少给对话流留出的行数。 */
 const APPROVAL_MIN_MAIN_ROWS = 3;
 
 const TITLE = "Permission required";
-const HINT = "←/→ select · Enter confirm · Esc deny";
 /** 选中动作前的标记，与用户提示和工具调用保持一致。 */
 const ACTION_MARKER = "› ";
 /** 未选中的动作用同宽空白占位，移动高亮时文字不左右跳。 */
@@ -108,7 +107,7 @@ export function renderApprovalPanel(
 	const actions = actionRow(columns, prompt, selected);
 
 	const lines: string[] = [
-		titleBorder(columns, prompt.risk),
+		titleBorder(columns),
 		toolLine(columns, prompt, detail),
 		continuationLine(columns, prompt, detail),
 	];
@@ -122,33 +121,19 @@ export function renderApprovalPanel(
 		}
 	}
 
-	const canExpand = approvalPanelHeight(prompt, true, columns, rows) > APPROVAL_PANEL_BASE_HEIGHT;
-	lines.push(hintLine(columns, canExpand, expanded));
 	lines.push(styledContent(`  ${actions.styled}`, 2 + actions.width, columns));
 	lines.push(bottomBorder(columns));
 	return lines;
 }
 
-/** 风险词放在标题最前面：窄屏截断时先保它。 */
-function titleBorder(width: number, risk: string): string {
-	const label = risk.length === 0 ? ` ${TITLE} ` : ` ${risk} · ${TITLE} `;
-	if (displayWidth(label) < width) {
-		const pad = width - displayWidth(label);
-		const left = Math.floor(pad / 2);
-		return `${BORDER_COLOR}${"─".repeat(left)}${riskColor(risk)}${label}${BORDER_COLOR}${"─".repeat(pad - left)}${RESET}`;
-	}
-	if (risk.length === 0) return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
-
-	// 标题放不下时只保留风险词；连风险词都放不下才退回纯边框
-	const compact = ` ${fitToWidth(risk, Math.max(0, width - 2))} `;
-	if (displayWidth(compact) >= width) return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
-	const pad = width - displayWidth(compact);
-	const left = Math.floor(pad / 2);
-	return `${BORDER_COLOR}${"─".repeat(left)}${riskColor(risk)}${compact}${BORDER_COLOR}${"─".repeat(pad - left)}${RESET}`;
-}
-
-function riskColor(risk: string): string {
-	return risk === "destructive" ? THEME.error : THEME.warning;
+/** 标题固定用警告色；风险词不再挤占标题，信息交给工具与摘要。 */
+function titleBorder(width: number): string {
+	const label = ` ${TITLE} `;
+	const labelWidth = displayWidth(label);
+	if (labelWidth >= width) return `${BORDER_COLOR}${"─".repeat(width)}${RESET}`;
+	const left = Math.floor((width - labelWidth) / 2);
+	const right = width - labelWidth - left;
+	return `${BORDER_COLOR}${"─".repeat(left)}${THEME.warning}${label}${BORDER_COLOR}${"─".repeat(right)}${RESET}`;
 }
 
 function bottomBorder(width: number): string {
@@ -185,17 +170,6 @@ function continuationLine(width: number, prompt: ApprovalPrompt, detail: DetailL
 	const used = detail.prefixWidth + displayWidth(detail.second);
 	const padding = " ".repeat(Math.max(0, width - used));
 	return `${PANEL_BG}${detailColor(prompt)}${indent}${detail.second}${padding}${RESET}`;
-}
-
-/** 导航提示：y/a/n 已经写在动作里，这里补上左右与确认、拒绝键，以及详情开关。 */
-function hintLine(width: number, hasDetails: boolean, expanded: boolean): string {
-	const suffix = hasDetails ? (expanded ? " · d hide · ↑/↓ scroll" : " · d details") : "";
-	const full = `  ${HINT}${suffix}`;
-	// 窄屏优先保住 d 提示，否则详情入口会被整段截掉
-	const compact = hasDetails ? `  d ${expanded ? "hide · ↑/↓ scroll" : "details"} · ←/→ · Enter · Esc` : full;
-	const text = truncateToWidth(displayWidth(full) <= width ? full : compact, width);
-	const padding = " ".repeat(Math.max(0, width - displayWidth(text)));
-	return `${PANEL_BG}${THEME.textSubtle}${text}${padding}${RESET}`;
 }
 
 function detailColor(prompt: ApprovalPrompt): string {
