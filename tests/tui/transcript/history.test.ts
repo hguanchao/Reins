@@ -202,7 +202,7 @@ describe("会话历史回填", () => {
 		);
 	});
 
-	it("回填时连续够数的命令塌成收起的命令组", () => {
+	it("回填时连续命令成组并收起", () => {
 		const calls = Array.from({ length: 5 }, (_, i) => ({
 			type: "toolCall" as const,
 			id: `cmd${i}`,
@@ -224,7 +224,7 @@ describe("会话历史回填", () => {
 		assert.equal(group.expanded, false);
 	});
 
-	it("回填时失败的命令不进组", () => {
+	it("回填时失败的命令从组里摘出来", () => {
 		const messages: LlmMessage[] = [
 			{ role: "user", content: "hi" },
 			{
@@ -240,9 +240,18 @@ describe("会话历史回填", () => {
 		];
 
 		const turns = buildTranscriptHistory(messages).turns;
+		const response = turns[0]?.response ?? [];
 
-		// 失败行把命令串切成两段：两段都不足门槛，全部保持逐行
-		assert.equal(turns[0]?.response.length, 5);
+		// 组里剩下四条命令，失败行回到顶层可见
+		assert.equal(response.length, 2);
+		const group = response[0];
+		assert.ok(typeof group === "object" && group !== null && group.kind === "toolGroup");
+		if (typeof group !== "object" || group === null || group.kind !== "toolGroup") return;
+		assert.equal(group.members.length, 4);
+		assert.equal(group.expanded, false);
+
+		const failed = response[1];
+		assert.ok(typeof failed === "object" && failed !== null && failed.kind === "tool" && failed.isError === true);
 	});
 
 	it("跳过压缩摘要，前导助手消息归入 earlier conversation", () => {

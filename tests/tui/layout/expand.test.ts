@@ -117,6 +117,56 @@ describe("对话流展开", () => {
 		}
 	});
 
+	it("连续命令在运行期成组，回合结束后收起", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("跑两条\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "first" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: false,
+				durationMs: 1,
+				summary: "ONE",
+				content: "ONE",
+			});
+			agent.emit({ type: "tool_start", callId: "c2", name: "bash", args: { command: "second" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c2",
+				name: "bash",
+				isError: false,
+				durationMs: 1,
+				summary: "TWO",
+				content: "TWO",
+			});
+			t.mock.timers.tick(100);
+
+			// 运行期组头已经出现并展开；结果仍收在成员行里
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("◈ Ran 2 commands"));
+			assert.ok(text.includes("Bash  first"));
+			assert.ok(text.includes("Bash  second"));
+			assert.equal(text.includes("ONE"), false);
+
+			await agent.finish();
+			t.mock.timers.tick(100);
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Ran 2 commands"));
+			assert.equal(text.includes("Bash  first"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("命令没被截短时，双击仍能展开它的输出", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

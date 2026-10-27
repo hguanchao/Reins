@@ -191,7 +191,7 @@ describe("工具调用摘要", () => {
 		assert.equal(describeToolCall("ls", {}).group, "list");
 		assert.equal(describeToolCall("find", { pattern: "*" }).group, "search");
 		assert.equal(describeToolCall("grep", { pattern: "x" }).group, "search");
-		// 命令是延迟分组：运行期独立成行，回合结束够数才塌
+		// 命令与只读探索一样在运行期成组，但两类不混在一起
 		assert.equal(describeToolCall("bash", { command: "x" }).group, "command");
 		assert.equal(describeToolCall("write", { path: "a.ts" }).group, undefined);
 		assert.equal(describeToolCall("edit", { path: "a.ts" }).group, undefined);

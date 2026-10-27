@@ -65,8 +65,6 @@ export const TOOL_EXPANDED_MARKER = "◆";
 export const TOOL_GROUP_EXPANDED_MARKER = EXPANDED_DIAMOND;
 /** 工具组成员比组头多缩进两格。 */
 export const TOOL_GROUP_MEMBER_INDENT = `${RESPONSE_INDENT}  `;
-/** 连续命令至少多少条才塌成命令组：短序列逐行更直观，长序列才值得收成一行。 */
-export const COMMAND_GROUP_MIN = 5;
 /** 错误行的标记：与工具失败行共用，错误消息因此有一致的起头。 */
 export const ERROR_MARKER = "×";
 /** 子代理组头的固定标签。 */

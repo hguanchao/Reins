@@ -230,6 +230,43 @@ describe("工具行渲染", () => {
 		}
 	});
 
+	it("组里的命令失败后摘回顶层可见", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("跑两条\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "first" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: false,
+				durationMs: 1,
+				summary: "ONE",
+				content: "ONE",
+			});
+			agent.emit({ type: "tool_start", callId: "c2", name: "bash", args: { command: "second" } });
+			agent.emit({ type: "tool_end", callId: "c2", name: "bash", isError: true, durationMs: 1, summary: "exit 1" });
+			t.mock.timers.tick(100);
+
+			const text = frameLines(output).map(plain).join("\n");
+			// 失败的一条退回顶层错误行；组剩一条后不再保留组头
+			assert.ok(text.includes("× Bash  second"));
+			assert.ok(text.includes("Bash  first"));
+			assert.equal(text.includes("Ran 1 command"), false);
+			assert.equal(text.match(/× Bash/g)?.length, 1);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("工具结束后把结构化结果指标挂到折叠行", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

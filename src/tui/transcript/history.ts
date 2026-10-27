@@ -16,7 +16,7 @@ import {
 	collapseToolGroups,
 	describeToolLine,
 	findToolByCallId,
-	findTopLevelToolByCallId,
+	takeToolForFailure,
 	type TranscriptLine,
 	type TranscriptPlan,
 	type TranscriptTurn,
@@ -130,7 +130,7 @@ export function buildTranscriptHistory(
 					break;
 				}
 				const turn = ensureTurn("(earlier conversation)");
-				const tool = findTopLevelToolByCallId(turn.response, message.toolCallId);
+				const tool = takeToolForFailure(turn.response, message.toolCallId);
 				if (tool !== undefined) {
 					// 与实时一致：失败结果改调用行本身，错误详情留给双击展开
 					attachToolFailure(tool, sanitizeDetail(message.content));

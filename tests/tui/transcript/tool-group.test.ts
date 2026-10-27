@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { appendToolLine, collapseToolGroups, renderTranscript, toolGroupHeaderAtRow, toolHeaderAtRow } from "../../../src/tui/transcript.ts";
+import { appendToolLine, collapseToolGroups, renderTranscript, takeToolForFailure, toolGroupHeaderAtRow, toolHeaderAtRow } from "../../../src/tui/transcript.ts";
 import type { TranscriptLine, TranscriptTool, TranscriptToolGroup, TranscriptTurn } from "../../../src/tui/transcript.ts";
 
 
@@ -16,7 +16,13 @@ describe("工具组", () => {
 	const read = (path: string): TranscriptTool => ({ kind: "tool", name: "Read", detail: path, group: "read" });
 	const list = (path: string): TranscriptTool => ({ kind: "tool", name: "List", detail: path, group: "list" });
 	const search = (pattern: string): TranscriptTool => ({ kind: "tool", name: "Grep", detail: pattern, group: "search" });
-	const command = (cmd: string): TranscriptTool => ({ kind: "tool", name: "Bash", detail: cmd, group: "command" });
+	const command = (cmd: string, callId: string = cmd): TranscriptTool => ({
+		kind: "tool",
+		name: "Bash",
+		detail: cmd,
+		group: "command",
+		callId,
+	});
 
 	function groupOf(members: readonly TranscriptTool[], expanded: boolean): TranscriptToolGroup {
 		return { kind: "toolGroup", members: [...members], expanded };
@@ -137,53 +143,70 @@ describe("工具组", () => {
 		assert.ok(text.includes("path: src/a.ts"));
 	});
 
-	it("运行期命令各自独立成行，不即时进组", () => {
+	it("运行期连续命令即时成组", () => {
 		const lines: TranscriptLine[] = [];
-		for (let i = 0; i < 5; i += 1) appendToolLine(lines, command(`cmd${i}`), true);
-		// 五条命令行都还是独立的 tool 行：结果回挂与失败行都依赖这一点
-		assert.equal(lines.length, 5);
-		assert.ok(lines.every((line) => typeof line === "object" && line !== null && line.kind === "tool"));
+		appendToolLine(lines, command("cmd0"), true);
+		assert.equal(kindAt(lines, 0), "tool");
+
+		appendToolLine(lines, command("cmd1"), true);
+		assert.equal(lines.length, 1);
+		const group = groupAt(lines, 0);
+		assert.equal(group.members.length, 2);
+		assert.equal(group.expanded, true);
+
+		appendToolLine(lines, command("cmd2"), true);
+		assert.equal(group.members.length, 3);
+		assert.equal(lines.length, 1);
 	});
 
-	it("命令不会被只读工具并进组", () => {
+	it("命令与只读工具不并进同一组", () => {
 		const lines: TranscriptLine[] = [];
 		appendToolLine(lines, read("a"), true);
 		appendToolLine(lines, command("npm test"), true);
 		assert.equal(kindAt(lines, 0), "tool");
 		assert.equal(kindAt(lines, 1), "tool");
+
+		// 反方向同样不合并：命令组后面的只读调用另起一行
+		const reverse: TranscriptLine[] = [];
+		appendToolLine(reverse, command("cmd0"), true);
+		appendToolLine(reverse, command("cmd1"), true);
+		appendToolLine(reverse, read("a"), true);
+		assert.equal(kindAt(reverse, 0), "toolGroup");
+		assert.equal(kindAt(reverse, 1), "tool");
 	});
 
-	it("回合结束连续够数的命令塌成一个收起的命令组", () => {
+	it("回合结束收起运行期形成的命令组", () => {
 		const lines: TranscriptLine[] = [];
 		for (let i = 0; i < 5; i += 1) appendToolLine(lines, command(`cmd${i}`), true);
-		collapseToolGroups(lines);
 
 		assert.equal(lines.length, 1);
 		const group = groupAt(lines, 0);
 		assert.equal(group.members.length, 5);
+		assert.equal(group.expanded, true);
+
+		collapseToolGroups(lines);
 		assert.equal(group.expanded, false);
 	});
 
-	it("不足门槛的连续命令保持逐行", () => {
+	it("组里的命令失败时被摘回顶层可见", () => {
 		const lines: TranscriptLine[] = [];
-		for (let i = 0; i < 4; i += 1) appendToolLine(lines, command(`cmd${i}`), true);
-		collapseToolGroups(lines);
-		assert.equal(lines.length, 4);
-		assert.ok(lines.every((line) => typeof line === "object" && line !== null && line.kind === "tool"));
-	});
+		for (let i = 0; i < 4; i += 1) appendToolLine(lines, command(`cmd${i}`, `c${i}`), true);
 
-	it("失败的命令不进组，留在顶层可见", () => {
-		const lines: TranscriptLine[] = [];
-		for (let i = 0; i < 5; i += 1) appendToolLine(lines, command(`cmd${i}`), true);
-		// 把第三条标成失败：塌缩时它要留在组外
-		const third = lines[2];
-		if (typeof third === "object" && third !== null && third.kind === "tool") third.isError = true;
-		collapseToolGroups(lines);
+		const failed = takeToolForFailure(lines, "c1");
+		assert.equal(failed?.detail, "cmd1");
+		// 组还剩三条，错误行紧跟在组后面
+		assert.equal(lines.length, 2);
+		assert.deepEqual(groupAt(lines, 0).members.map((member) => member.detail), ["cmd0", "cmd2", "cmd3"]);
+		assert.equal(lines[1], failed);
 
-		// 失败行把命令串切成两段：前两条与后两条都不足门槛，全部保持逐行
-		assert.equal(lines.length, 5);
-		const failed = lines[2];
-		assert.ok(typeof failed === "object" && failed !== null && failed.kind === "tool" && failed.isError === true);
+		// 摘走一条后不足两条：组还原成普通工具行
+		const pair: TranscriptLine[] = [];
+		appendToolLine(pair, command("first", "a"), true);
+		appendToolLine(pair, command("second", "b"), true);
+		const first = takeToolForFailure(pair, "a");
+		assert.equal(pair.length, 2);
+		assert.equal(pair[0], first);
+		assert.equal(kindAt(pair, 1), "tool");
 	});
 
 	it("命令组头汇总为 Ran N commands", () => {

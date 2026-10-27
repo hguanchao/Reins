@@ -15,6 +15,7 @@ export {
 	findTopLevelToolByCallId,
 	hasRunningSubagent,
 	isSubagentCall,
+	takeToolForFailure,
 	toggleLastExpandable,
 	toggleLastToolResult,
 } from "./transcript/model.ts";

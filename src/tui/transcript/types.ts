@@ -120,7 +120,7 @@ export interface TranscriptTool {
 	durationMs?: number;
 	/** 工具调用 id，用于把成功结果挂回对应行 */
 	readonly callId?: string;
-	/** 工具分组类型：只读探索工具即时成组；命令延迟到回合结束成组；写操作与失败行没有 */
+	/** 工具分组类型：只读探索与命令在运行期成组；写操作与失败行没有 */
 	readonly group?: ToolGroupKind;
 	/** 成功结果全文；展开时显示 */
 	result?: string;

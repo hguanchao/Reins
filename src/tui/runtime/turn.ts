@@ -12,6 +12,7 @@ import {
 	findTopLevelToolByCallId,
 	hasRunningSubagent,
 	isSubagentCall,
+	takeToolForFailure,
 } from "../transcript.ts";
 import {
 	COMPACTING_CONTEXT,
@@ -294,11 +295,12 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 				}
 				// 成功不落行：工具调用本身已经显示；结果挂到调用行，Ctrl+O 可展开
 				if (event.isError) {
-					const tool = findTopLevelToolByCallId(active.lines, event.callId);
+					// 失败行可能刚从组里摘出来，结构变了要整体同步，不能只标脏
+					const tool = takeToolForFailure(active.lines, event.callId);
 					if (tool !== undefined) {
 						// 失败行就是调用行本身：保留命令与耗时，错误详情留给双击展开
 						attachToolFailure(tool, sanitizeDetail(event.content ?? event.summary), event.durationMs);
-						host.markTranscriptDirty();
+						host.syncTurnFull(active);
 					} else {
 						host.appendLine(active, {
 							kind: "tool",

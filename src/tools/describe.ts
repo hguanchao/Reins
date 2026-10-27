@@ -35,7 +35,7 @@ export type ToolGroupKind = "read" | "list" | "search" | "command";
  * switch/集合里,新增工具要改多处。收成一张表后,新增工具加一行。
  */
 interface ToolPresentation {
-	/** 只读探索工具的分组类型;写操作与命令没有(命令是延迟分组,运行期不进组) */
+	/** 可成组工具的分组类型;写操作没有 */
 	readonly group?: ToolGroupKind;
 	/** 展开态直接显示结果内容,而不是把调用参数再列一遍 */
 	readonly resultIsDetail: boolean;
@@ -86,10 +86,9 @@ export function describeToolCall(
 }
 
 /**
- * 探索类调用返回其分组类型；命令返回 "command"。
+ * 可成组调用返回其分组类型；命令返回 "command"。
  *
- * "command" 是延迟分组：运行期命令仍各自独立成行（失败行、结果回挂都靠这一点），只有回合
- * 结束时连续够数才塌成一组。写操作返回 undefined，永不进组。
+ * 只读探索与命令在运行期就会成组，两类不混在一起。写操作返回 undefined，永不进组。
  */
 function toolGroupKind(tool: string): ToolGroupKind | undefined {
 	return toolPresentation(tool)?.group;

@@ -2,22 +2,8 @@ import { describeToolCall, type ToolDescription, type ToolGroupKind } from "../.
 import { formatDuration } from "../../shared/format.ts";
 import { resultDetail } from "../../tools/result/detail.ts";
 import { resultMetric } from "../../tools/result/metric.ts";
-import { COMMAND_GROUP_MIN } from "./style.ts";
 import type { TranscriptLine, TranscriptTool, TranscriptTurn } from "./types.ts";
 
-/**
- * 追加一条工具行。
- *
- * 连续两个只读探索工具才收进组；单个工具、写操作、失败行和普通正文都会断开组。运行时
- * 传入 expanded=true 先展开，回合结束时由调用方统一收起。
- *
- * 命令（group==="command"）是延迟分组：运行期一律独立成行，失败回挂与结果挂载都依赖这一
- * 点；只有回合结束时连续够数才由 collapseToolGroups 塌成一组，所以这里既不主动入组，也不
- * 让只读工具并进命令行。
- *
- * 返回 true 表示把上一条普通工具行换成了组对象；调用方如果维护了另一份行数组，需要整段
- * 同步一次，不能只追加新增行。
- */
 /** 把一条工具调用的描述变成对话流行；可选的展开字段缺省时不写入。 */
 export function toolLineOf(described: ToolDescription, callId: string): TranscriptTool {
 	return {
@@ -41,6 +27,16 @@ export function describeToolLine(
 	return toolLineOf(describeToolCall(name, args, workspaceRoot), callId);
 }
 
+/**
+ * 追加一条工具行。
+ *
+ * 连续两个可成组的工具就收进组：只读探索调用彼此成组，命令彼此成组，两类不混在一起；
+ * 写操作、失败行和普通正文都会断开组。运行时传入 expanded=true 先展开，回合结束时由
+ * 调用方统一收起。
+ *
+ * 返回 true 表示把上一条普通工具行换成了组对象；调用方如果维护了另一份行数组，需要整段
+ * 同步一次，不能只追加新增行。
+ */
 export function appendToolLine(
 	lines: TranscriptLine[],
 	tool: TranscriptTool,
@@ -52,7 +48,12 @@ export function appendToolLine(
 	}
 
 	const last = lines.at(-1);
-	if (typeof last === "object" && last !== null && last.kind === "toolGroup") {
+	if (
+		typeof last === "object" &&
+		last !== null &&
+		last.kind === "toolGroup" &&
+		sameGroupFamily(last.members[0]?.group, tool.group)
+	) {
 		last.members.push(tool);
 		return false;
 	}
@@ -61,7 +62,8 @@ export function appendToolLine(
 		last !== null &&
 		last.kind === "tool" &&
 		isEagerGroup(last.group) &&
-		last.isError !== true
+		last.isError !== true &&
+		sameGroupFamily(last.group, tool.group)
 	) {
 		lines[lines.length - 1] = { kind: "toolGroup", members: [last, tool], expanded };
 		return true;
@@ -70,53 +72,23 @@ export function appendToolLine(
 	return false;
 }
 
-/** 运行期即时成组的只读类型；命令是延迟分组，不在此列。 */
+/** 运行期就能成组的类型：只读探索与命令；写操作不进组。 */
 function isEagerGroup(group: ToolGroupKind | undefined): boolean {
-	return group === "read" || group === "list" || group === "search";
+	return group === "read" || group === "list" || group === "search" || group === "command";
 }
 
-/**
- * 回合结束：收起所有工具组，并把连续够数的命令塌成一个命令组。
- *
- * 命令组只在结束时形成——运行期命令各自独立行（见 appendToolLine）。够数才塌：不足
- * COMMAND_GROUP_MIN 条的短序列保持逐行，一眼能看完。失败的命令不进组，留在顶层可见。
- */
+/** 命令与只读探索不并进同一组：组头概括的是同一类动作，混在一起折叠后看不出跑了什么。 */
+function sameGroupFamily(left: ToolGroupKind | undefined, right: ToolGroupKind | undefined): boolean {
+	return (left === "command") === (right === "command");
+}
+
+/** 回合结束：收起所有工具组；命令组在运行期就已经形成，这里只负责收起。 */
 export function collapseToolGroups(lines: TranscriptLine[]): void {
-	mergeCommandRuns(lines);
 	for (const line of lines) {
 		if (typeof line === "object" && line !== null && line.kind === "toolGroup") {
 			line.expanded = false;
 		}
 	}
-}
-
-/** 把连续 ≥ COMMAND_GROUP_MIN 条成功的命令行替换成一个收起的命令组。 */
-function mergeCommandRuns(lines: TranscriptLine[]): void {
-	let i = 0;
-	while (i < lines.length) {
-		const start = i;
-		while (i < lines.length && isCollapsibleCommand(lines[i])) i += 1;
-		const runLength = i - start;
-		// 不可塌的行自己也要往前走一格，否则 runLength 为 0 时会原地不动
-		if (runLength < COMMAND_GROUP_MIN) {
-			i = start + runLength + 1;
-			continue;
-		}
-		const members = lines.slice(start, i) as TranscriptTool[];
-		lines.splice(start, runLength, { kind: "toolGroup", members, expanded: false });
-		i = start + 1;
-	}
-}
-
-/** 一条可塌进命令组的行：命令工具、非失败。 */
-function isCollapsibleCommand(line: TranscriptLine | undefined): boolean {
-	return (
-		typeof line === "object" &&
-		line !== null &&
-		line.kind === "tool" &&
-		line.group === "command" &&
-		line.isError !== true
-	);
 }
 
 /**
@@ -200,6 +172,37 @@ export function findTopLevelToolByCallId(
 	for (const line of lines) {
 		if (typeof line !== "object" || line === null) continue;
 		if (line.kind === "tool" && line.callId === callId) return line;
+	}
+	return undefined;
+}
+
+/**
+ * 失败结果要落到的工具行。
+ *
+ * 顶层行直接返回；已经在组里的先摘出来，连同失败回到顶层可见——收起的组头不能把错误
+ * 盖住。摘走一条后组不够成组，还原成剩下的那条普通工具行。
+ */
+export function takeToolForFailure(
+	lines: TranscriptLine[],
+	callId: string,
+): TranscriptTool | undefined {
+	const top = findTopLevelToolByCallId(lines, callId);
+	if (top !== undefined) return top;
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (typeof line !== "object" || line === null || line.kind !== "toolGroup") continue;
+		const memberIndex = line.members.findIndex((member) => member.callId === callId);
+		if (memberIndex < 0) continue;
+		const [tool] = line.members.splice(memberIndex, 1);
+		if (tool === undefined) return undefined;
+		if (line.members.length < 2) {
+			const remaining = line.members[0];
+			if (remaining === undefined) lines.splice(index, 1);
+			else lines.splice(index, 1, remaining);
+		}
+		// 原位置在前时把错误放在组前，否则放在组后：首尾两条失败仍保持先后顺序
+		lines.splice(memberIndex === 0 ? index : index + 1, 0, tool);
+		return tool;
 	}
 	return undefined;
 }
