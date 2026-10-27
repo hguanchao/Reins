@@ -11,6 +11,7 @@ import type { FileMenuState } from "../panel/file-menu.ts";
 import type { ModelMenuState } from "../panel/model-menu.ts";
 import type { SessionMenuState } from "../panel/session-menu.ts";
 import type {
+	SelectionRegion,
 	TranscriptLine,
 	TranscriptMarkdown,
 	TranscriptPlan,
@@ -102,6 +103,8 @@ export interface TuiState {
 	scrollTop: number;
 	/** 上一次左键按下的位置与时间，用于识别双击。 */
 	lastClick: { at: number; row: number; column: number } | undefined;
+	/** 鼠标拖选中的文本区域；松开时复制并清空。 */
+	selection: SelectionRegion | undefined;
 	/** 是否跟随新内容滚到底部。 */
 	follow: boolean;
 	/** 对话流构建缓存：同一内容只换行一次，测量、绘制与命中共用。 */
@@ -221,6 +224,8 @@ export interface TuiHost {
 	clearStatus(): void;
 	resetStatusMeta(): void;
 	scheduleStatusClear(): void;
+	/** 复制一段文本并在状态行报告结果 */
+	copyText(text: string): void;
 	markTranscriptDirty(): void;
 	showPage(kind: PageKind): void;
 	/** 打开最近一块长内容的整屏查看页；没有可查看内容时只给提示 */

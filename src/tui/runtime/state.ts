@@ -36,6 +36,7 @@ export function createState(options: TuiOptions): TuiState {
 		windowFocused: true,
 		scrollTop: 0,
 		lastClick: undefined,
+		selection: undefined,
 		follow: true,
 		transcriptView: undefined,
 		transcriptViewWidth: -1,

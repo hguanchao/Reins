@@ -195,6 +195,12 @@ interface SandboxPageSource {
 	readonly warning?: string;
 }
 
+/** 文本剪贴板；由装配处提供，界面不直接碰平台命令。 */
+export interface ClipboardSource {
+	/** 写入系统剪贴板；成功返回 true，失败时由界面退到 OSC 52 */
+	copy(text: string): boolean;
+}
+
 export interface TuiOptions {
 	readonly version: string;
 	/** 输入框下方常驻信息：项目、分支、模型、思考强度、上下文与缓存命中率 */
@@ -205,6 +211,8 @@ export interface TuiOptions {
 	readonly sandbox?: SandboxPageSource;
 	/** 图片读取；不提供时剪贴板、拖入与 @ 选图片都不可用 */
 	readonly images?: ImageSource;
+	/** 文本剪贴板写入；不提供时拖选复制退到终端 OSC 52 */
+	readonly clipboard?: ClipboardSource;
 	/** 当前模型是否声明了图片输入；没有声明时附加图片给出提示 */
 	readonly imagesSupported?: () => boolean;
 	/** @ 文件补全的数据来源；不提供时 @ 按普通文本处理 */

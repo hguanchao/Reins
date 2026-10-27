@@ -34,6 +34,8 @@ export function showPage(state: TuiState, kind: PageKind): void {
 	state.openPage = kind;
 	state.pageScrollTop = 0;
 	state.pageCache = undefined;
+	// 整屏页里没有对话流选区；留着只会在返回时闪出一块旧高亮
+	state.selection = undefined;
 }
 
 /** 页面内容；宽度变了才重排，滚动与重绘都复用同一份。 */

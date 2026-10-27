@@ -53,7 +53,7 @@ const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Ctrl+O", description: "Show or hide the latest successful tool result" },
 	{ name: "Ctrl+G", description: "View the selected tool full-screen, or the latest long block" },
 	{ name: "Ctrl/Alt+V", description: "Insert an image from the clipboard as [image: name]" },
-	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar" },
+	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar or select text to copy" },
 	{ name: "Double-click", description: "Expand or collapse thinking, tool groups, and tool details" },
 	{ name: "y / a / n", description: "Allow once, always allow, or deny an approval" },
 	{ name: "d", description: "Expand or hide approval details; arrow keys scroll them" },

@@ -40,6 +40,7 @@ import {
 } from "./runtime/approval.ts";
 import { closePlanReview, openPlanReview, pageLines } from "./runtime/pages.ts";
 import { setStatus, clearStatus, resetStatusMeta, scheduleStatusClear } from "./runtime/status.ts";
+import { copyText } from "./runtime/copy.ts";
 import { closeThinking, appendLine, syncTurn, syncTurnFull } from "./runtime/turn.ts";
 import {
 	appendJobNote,
@@ -174,6 +175,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		resolveApproval: (answer) => resolveApproval(host, answer),
 		moveApprovalSelection: (delta) => moveApprovalSelection(host, delta),
 		notify: (message) => notify(host, message),
+		copyText: (text) => copyText(host, text),
 		runUndo: () => executeUndo(host),
 		toggleTranscriptAt: (row, column, mainHeight, width) =>
 			togglingTranscriptAt(host, row, column, mainHeight, width),

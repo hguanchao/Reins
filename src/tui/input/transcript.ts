@@ -11,7 +11,7 @@ import { fileMenuHeight } from "../panel/file-menu.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "./scroll.ts";
 import type { InputDeps } from "./deps.ts";
 import { handleMenuMouse, inlineMenuTarget } from "./menus.ts";
-import { toolHeaderInView } from "../transcript.ts";
+import { selectionPoint, selectionSpans, selectionText, toolHeaderInView } from "../transcript.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 export function handleTranscriptInput(
@@ -27,6 +27,7 @@ export function handleTranscriptInput(
 	const withoutMouse = stripMouseEvents(stripFocusEvents(text));
 	let focusChanged = false;
 	let hoverChanged = false;
+	let selectionChanged = false;
 	let wheelSteps = 0;
 	let dragRow: number | undefined;
 	/** 任何菜单面板开着时滚轮都不该动对话流：面板盖着，滚动看不见的底层内容只会让人以为界面没反应。 */
@@ -77,6 +78,7 @@ export function handleTranscriptInput(
 				state.scrollTop = host.maxScroll();
 				state.follow = true;
 				state.draggingScrollbar = false;
+				state.selection = undefined;
 				state.lastClick = undefined;
 				deps.render();
 				return;
@@ -118,6 +120,27 @@ export function handleTranscriptInput(
 			// 于是紧接着的回车只会被当成抢回焦点，选中的命令反而执行不了
 			if (completionOpen && event.row >= menuPanelTop(state, host.options)) continue;
 
+			// 左键在对话流里按下：开始一次拖选。单击不动没有选区，松开时不会复制
+			if (event.column < width - 1) {
+				const point = selectionPoint(
+					host.currentTranscript(width),
+					mainHeight,
+					state.scrollTop,
+					event.row,
+					event.column,
+				);
+				if (point !== undefined) {
+					state.selection = { anchor: point, focus: point };
+					selectionChanged = true;
+				} else if (state.selection !== undefined) {
+					state.selection = undefined;
+					selectionChanged = true;
+				}
+			} else if (state.selection !== undefined) {
+				state.selection = undefined;
+				selectionChanged = true;
+			}
+
 			// 可点区域要含上下两条边框：使用者把那个方框整体当成输入框，点在边框上
 			// 却没有任何反应，会以为界面卡住了
 			const inputLineTotal = inputView(state.input, width, state.inputCursor).lines.length;
@@ -135,9 +158,36 @@ export function handleTranscriptInput(
 				state.draggingScrollbar = false;
 			}
 		} else if (event.press && left && motion) {
-			if (state.draggingScrollbar) dragRow = event.row;
+			if (state.draggingScrollbar) {
+				dragRow = event.row;
+			} else if (state.selection !== undefined) {
+				const point = selectionPoint(
+					host.currentTranscript(width),
+					mainHeight,
+					state.scrollTop,
+					event.row,
+					event.column,
+				);
+				if (
+					point !== undefined &&
+					(point.line !== state.selection.focus.line || point.cell !== state.selection.focus.cell)
+				) {
+					state.selection = { anchor: state.selection.anchor, focus: point };
+					selectionChanged = true;
+				}
+			}
 		} else if (!event.press) {
 			state.draggingScrollbar = false;
+			if (state.selection !== undefined) {
+				const selection = state.selection;
+				state.selection = undefined;
+				selectionChanged = true;
+				// 只有真的拖过一段才复制；原地点击与双击不该带走任何文字
+				if (selectionSpans(selection)) {
+					const text = selectionText(host.currentTranscript(width), selection);
+					if (text.trim().length > 0) host.copyText(text);
+				}
+			}
 		}
 	}
 
@@ -365,7 +415,8 @@ export function handleTranscriptInput(
 		edit.handled ||
 		focusChanged ||
 		hoverChanged ||
-		scrollChanged
+		scrollChanged ||
+		selectionChanged
 	) {
 		deps.render();
 	}

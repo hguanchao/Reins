@@ -8,7 +8,7 @@ import { renderFileMenu } from "../panel/file-menu.ts";
 import { renderModelMenu } from "../panel/model-menu.ts";
 import { renderSessionMenu } from "../panel/session-menu.ts";
 import { renderJobBarLine } from "../page/job.ts";
-import { renderTranscriptView, measureTranscriptView, scrollbarColumn } from "../transcript.ts";
+import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "../transcript.ts";
 import { scrollButtonPlacement } from "../view/scroll-button.ts";
 import { todoPanelLines } from "../view/todo-card.ts";
 import { truncateToWidth } from "../render/text.ts";
@@ -116,11 +116,13 @@ export function render(host: TuiHost): void {
 		spinner: SPINNER_FRAMES[state.spinnerFrame] ?? "",
 		sweepPhase: state.sweepPhase,
 	};
+	const selection =
+		state.selection !== undefined && selectionSpans(state.selection) ? state.selection : undefined;
 	const main =
 		state.openPage !== undefined
 			? framedPageFor(host, state.openPage, width, mainHeight)
 			: transcriptShown
-				? renderTranscriptView(view, mainHeight, state.scrollTop, animation)
+				? renderTranscriptView(view, mainHeight, state.scrollTop, animation, selection)
 				: renderMain(width, mainHeight, options.version);
 	const mainLines = [...main];
 	// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示;Plan 模式隐藏旧任务表

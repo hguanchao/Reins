@@ -39,6 +39,7 @@ import {
 	loadSelection,
 	readConfigQuietly,
 } from "./config-selection.ts";
+import { createClipboardSource } from "./clipboard.ts";
 import { createImageSource } from "./image-reader.ts";
 import { initializeConfig } from "./initialize-config.ts";
 import { writeStderr, writeStdout } from "./output.ts";
@@ -117,6 +118,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 				warning: `Warning: ${loaded.error.message}`,
 				ready: false,
 				skills: skillsPage,
+				clipboard: createClipboardSource(),
 			});
 		} catch (error) {
 			writeStderr(`reins: ${describeError(error)}\n`);
@@ -562,6 +564,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			},
 			images: createImageSource(workRoot),
 			imagesSupported: () => catalog.selection?.model.input.includes("image") ?? false,
+			clipboard: createClipboardSource(),
 			files: {
 				list: () =>
 					[...fileEntries(workRoot, MAX_FILE_COMPLETION_FILES)].map((entry) => entry.relative),

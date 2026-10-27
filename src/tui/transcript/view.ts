@@ -19,6 +19,8 @@ import {
 	scrollbarColumn,
 	visibleIndexes,
 } from "./scroll.ts";
+import { highlightSelection, selectionRange } from "./selection.ts";
+import type { SelectionRegion } from "./selection.ts";
 import {
 	DETAIL_BAND_LEFT,
 	DETAIL_RIGHT_PADDING,
@@ -111,6 +113,7 @@ export function renderTranscriptView(
 	height: number,
 	scrollTop: number,
 	frame?: AnimationFrame,
+	selection?: SelectionRegion,
 ): readonly string[] {
 	const rows = Math.max(0, height);
 	if (rows === 0) return [];
@@ -126,7 +129,12 @@ export function renderTranscriptView(
 		}
 		return view.lines[index] ?? " ".repeat(view.width);
 	};
-	const visible = indexes.map(lineAt);
+	const visible = indexes.map((index) => {
+		const line = lineAt(index);
+		if (selection === undefined) return line;
+		const range = selectionRange(index, selection);
+		return range === undefined ? line : highlightSelection(line, range);
+	});
 
 	const gutter = scrollbarColumn(rows, view.lines.length, top);
 	return visible.map((line, index) => `${line} ${gutter[index]}`);

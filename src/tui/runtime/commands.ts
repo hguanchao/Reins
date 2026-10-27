@@ -472,6 +472,7 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	state.pendingPlan = undefined;
 	// Ctrl+G 的目标指向旧会话的工具行，留着只会打开一段已经不在界面上的内容
 	state.viewerTool = undefined;
+	state.selection = undefined;
 	if (state.openPage === "plan") closePlanReview(state);
 	else state.planReview = undefined;
 	host.closeCheckpointPage();

@@ -20,6 +20,15 @@ export {
 	toggleLastToolResult,
 } from "./transcript/model.ts";
 export {
+	highlightSelection,
+	orderedSelection,
+	selectionPoint,
+	selectionRange,
+	selectionSpans,
+	selectionText,
+	stripTerminalStyles,
+} from "./transcript/selection.ts";
+export {
 	scrollbarColumn,
 	scrollbarThumb,
 	scrollTopForRow,
@@ -41,6 +50,7 @@ export {
 	toolHeaderInView,
 	transcriptMetrics,
 } from "./transcript/view.ts";
+export type { SelectionPoint, SelectionRegion } from "./transcript/selection.ts";
 export type {
 	PromptRange,
 	SubagentRunView,
