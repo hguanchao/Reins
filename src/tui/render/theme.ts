@@ -26,10 +26,10 @@ export const THEME = {
 	textPrimary: "\x1b[38;2;230;233;237m",
 	/** 次要文字：说明、页脚数值 #a7b0ba */
 	textSecondary: "\x1b[38;2;167;176;186m",
+	/** 次级文字的裸数值：启动标志扫光逐字符混色时只认数值 */
+	textSecondaryRgb: { r: 167, g: 176, b: 186 },
 	/** 更弱的文字：边框上的数量、状态行元信息 #6b7580 */
 	textSubtle: "\x1b[38;2;107;117;128m",
-	/** 启动标志与版本号 #16191d */
-	textBanner: "\x1b[38;2;22;25;29m",
 	/** 不可用命令 #4a535d */
 	textDisabled: "\x1b[38;2;74;83;93m",
 	/** 强调色：焦点边框、选中标记、current #4ec9b0 */
@@ -42,7 +42,7 @@ export const THEME = {
 	image: "\x1b[38;2;97;175;239m",
 	/** 扫光暗部 #2f7d6d */
 	accentDim: { r: 47, g: 125, b: 109 },
-	/** 扫光亮点 #ffffff：运行期状态行与启动标志共用 */
+	/** 运行期状态行的扫光亮点 #ffffff */
 	sweepHighlight: { r: 255, g: 255, b: 255 },
 	/** 选中行主文字：加粗白 #ffffff */
 	selectedText: "\x1b[1;38;2;255;255;255m",

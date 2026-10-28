@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 
+import { THEME } from "../../../src/tui/render/theme.ts";
 import { bannerLines } from "../../../src/tui/view/banner.ts";
 
 /** 五行块字，与视图里的标志逐字一致；测试直接比对，防止改坏笔画。 */
@@ -14,14 +15,26 @@ const ART = [
 ] as const;
 const BLOCK_WIDTH = Math.max(...ART.map((line) => line.length));
 
+const BASE = `${THEME.textSecondaryRgb.r};${THEME.textSecondaryRgb.g};${THEME.textSecondaryRgb.b}`;
+const HIGHLIGHT = `${THEME.accentRgb.r};${THEME.accentRgb.g};${THEME.accentRgb.b}`;
+
 function visible(line: string): string {
 	return stripVTControlCharacters(line);
 }
 
-/** 一帧里出现过的前景色亮度；这里全是灰阶，只看红通道就够区分。 */
-function reds(line: string): number[] {
-	return [...line.matchAll(/\x1b\[38;2;(\d+);(\d+);(\d+)m/g)].map((match) => Number(match[1]));
+/** 一帧里出现过的前景色，按 RGB 三元组返回。 */
+function colors(line: string): string[] {
+	return [...line.matchAll(/\x1b\[38;2;(\d+);(\d+);(\d+)m/g)].map(
+		(match) => `${match[1]};${match[2]};${match[3]}`,
+	);
 }
+
+function colorOf(sgr: string): string {
+	const match = /\x1b\[38;2;(\d+);(\d+);(\d+)m/.exec(sgr);
+	return `${match?.[1] ?? ""};${match?.[2] ?? ""};${match?.[3] ?? ""}`;
+}
+
+const SUBTLE = colorOf(THEME.textSubtle);
 
 describe("启动标志", () => {
 	it("五行块字在上，版本号隔一空行居中", () => {
@@ -44,38 +57,42 @@ describe("启动标志", () => {
 		assert.ok(lefts.every((left) => left === 4), lefts.join(","));
 	});
 
-	it("静止时标志与版本号都是 #16191d", () => {
+	it("静止时标志用次级文字色，版本号再弱一档", () => {
 		const lines = bannerLines(40, "1.0.0", undefined);
 
-		for (const line of lines.slice(0, 5).concat(lines[6] ?? "")) {
-			assert.deepEqual(new Set(reds(line)), new Set([22]));
+		for (const line of lines.slice(0, 5)) {
+			assert.ok(line.includes(THEME.textSecondary));
+			assert.deepEqual(new Set(colors(line)), new Set([BASE]));
 		}
+		assert.ok(lines[6]?.includes(THEME.textSubtle));
+		assert.deepEqual(new Set(colors(lines[6] ?? "")), new Set([SUBTLE]));
 	});
 
-	it("扫光与运行时状态共用暗部与亮点，版本号保持静止", () => {
+	it("扫光以标志自身颜色为底，只把经过处提亮到强调色", () => {
 		const lines = bannerLines(40, "1.0.0", 0.5);
-		const artReds = lines.slice(0, 5).flatMap(reds);
 
-		assert.ok(Math.max(...artReds) > 47);
-		assert.ok(Math.min(...artReds) >= 47);
-		assert.deepEqual(new Set(reds(lines[6] ?? "")), new Set([22]));
+		for (const line of lines.slice(0, 5)) {
+			const values = colors(line);
+			assert.ok(values.includes(BASE));
+			assert.ok(values.includes(HIGHLIGHT));
+			assert.equal(values.includes("47;125;109"), false);
+			assert.equal(values.includes("255;255;255"), false);
+		}
+		assert.deepEqual(new Set(colors(lines[6] ?? "")), new Set([SUBTLE]));
 	});
 
 	it("整块共用一个相位，光带竖直从左往右", () => {
 		const lines = bannerLines(40, "1.0.0", 0.5);
-		const peaks = lines.slice(0, 5).map((line) => {
-			const values = reds(line);
-			return values.indexOf(Math.max(...values));
-		});
+		const peaks = lines.slice(0, 5).map((line) => colors(line).indexOf(HIGHLIGHT));
 
-		assert.deepEqual(new Set(peaks), new Set([peaks[0]]));
+		assert.deepEqual(new Set(peaks), new Set([16]));
 	});
 
-	it("扫到最右端时只剩暗部", () => {
+	it("扫到最右端时只剩底色", () => {
 		const lines = bannerLines(40, "1.0.0", 1);
 
 		for (const line of lines.slice(0, 5)) {
-			assert.equal(Math.max(...reds(line)), 47);
+			assert.deepEqual(new Set(colors(line)), new Set([BASE]));
 		}
 	});
 
