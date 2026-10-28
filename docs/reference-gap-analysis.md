@@ -10,7 +10,7 @@ pi `842c731`。本文记录"别人有、我们没有"的结论与佐证位置,�
 以下核心项 Reins 均已实现,质量不输参考项目,个别项目(pi 无沙箱、无审批;dsh 无 checkpoint)
 反而没有:
 
-- 内置工具集:read/write/edit/patch、bash(超时+后台)、terminal_start/write/read/kill/list、
+- 内置工具集:read/write/edit/patch、bash(超时+后台)、terminal_start/write/kill、
   ls/find/grep、todo、present_plan、job_output/kill_job、subagent,大结果落盘(spill)。
 - 权限与安全:ask/auto/yolo 三种审批模式(auto 走审查模型)、off/workspace/read-only
   三档沙箱、realpath 路径边界防目录链接逃逸、workspace 信任门控。
@@ -44,7 +44,7 @@ browser-use 等),与"最小代码实现"原则相悖,不跟进。
 从当前叶子的路径重放,重启后仍停在最后写下的分支上。
 
 **持久终端。** `terminal_start` 启动一个跨工具调用存活的进程,`terminal_write` 向它的 stdin
-写输入,`terminal_read` 增量读取输出,`terminal_kill` 结束整棵进程树。实现走管道而不是 PTY:
+写输入并返回增量输出(省略 input 即只读),`terminal_kill` 结束整棵进程树。实现走管道而不是 PTY:
 真正的 PTY 需要原生依赖,与「无构建产物、开箱可用」冲突;全屏 TUI 程序不支持,REPL、dev
 server 与测试监听这类只需要 stdin 的场景不受影响。终端只活在当前进程里,退出时统一终止。
 
