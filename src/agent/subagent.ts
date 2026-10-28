@@ -1,14 +1,13 @@
 import type { Config } from "../config/file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient, LlmResult } from "../llm/client.ts";
-import { requestOptions, requestTools, TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";
+import { requestOptions, requestTools } from "./request.ts";
+import { rejectToolCalls, runToolCalls, type ToolRunDeps } from "./tool-run.ts";
 import {
 	assistantText,
 	assistantToolCalls,
 	type LlmAssistantMessage,
 	type LlmMessage,
-	type LlmToolCallBlock,
-	type LlmToolResultMessage,
 } from "../llm/messages.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { SessionPort } from "../session/port.ts";
@@ -111,6 +110,14 @@ interface SubagentOutcome {
 
 export class Subagent {
 	readonly #deps: SubagentDeps;
+	/**
+	 * 本次运行的对话消息。
+	 *
+	 * 放在实例上而不是 run 的局部变量里：工具编排要往里写结果，而那些调用发生在别的
+	 * 回调里，拿不到 run 的作用域。每次 run 开始时重置，所以一个实例跑两次也不会带上一次
+	 * 的历史。
+	 */
+	#messages: LlmMessage[] = [];
 
 	constructor(deps: SubagentDeps) {
 		this.#deps = deps;
@@ -124,6 +131,7 @@ export class Subagent {
 			instructions: this.#deps.instructions?.(),
 		});
 		const messages: LlmMessage[] = [{ role: "user", content: task }];
+		this.#messages = messages;
 		/** 最后一次说出口的话。用满步数时它是汇报里唯一有价值的部分 */
 		let said = "";
 		const startedAt = Date.now();
@@ -199,15 +207,7 @@ export class Subagent {
 
 			if (result.stopReason === "length") {
 				// 与主对话同一条判断：被截断的参数可能指向完全不同的东西，不能拿去执行
-				for (const call of calls) {
-					messages.push({
-						role: "toolResult",
-						toolCallId: call.id,
-						toolName: call.name,
-						content: TRUNCATED_TOOL_ARGUMENTS,
-						isError: true,
-					});
-				}
+				await rejectToolCalls(calls, this.#toolRunDeps(context));
 				continue;
 			}
 
@@ -218,9 +218,7 @@ export class Subagent {
 					? undefined
 					: `${focus.name}  ${firstArgumentSummary(focus.arguments)}`;
 			context.onProgress(lastActivity ?? `step ${step}/${this.#deps.maxSteps}`);
-			for (const outcome of await Promise.all(calls.map((call) => this.#callTool(call, context)))) {
-				messages.push(outcome);
-			}
+			await runToolCalls(calls, this.#toolRunDeps(context));
 		}
 
 		return this.#finish(
@@ -285,34 +283,31 @@ export class Subagent {
 		return result;
 	}
 
-	async #callTool(call: LlmToolCallBlock, context: SubagentContext): Promise<LlmToolResultMessage> {
-		if (call.argumentsError !== undefined) {
-			// 参数不是合法 JSON 时不能拿空对象去执行：那等于替使用者猜了一个调用
-			return {
-				role: "toolResult",
-				toolCallId: call.id,
-				toolName: call.name,
-				content: call.argumentsError,
-				isError: true,
-			};
-		}
-
-		const result = await this.#deps.tools.call(
-			{ callId: call.id, name: call.name, args: call.arguments },
-			{
+	/**
+	 * 子代理自己的工具编排参数。
+	 *
+	 * 结果只进子代理的局部消息表，不进会话：子代理的对话不回到主对话，主对话只拿到它最后
+	 * 交回的那份汇报。进度照旧交给界面，运行期间使用者能看到它在做什么。
+	 */
+	#toolRunDeps(context: SubagentContext): ToolRunDeps {
+		return {
+			tools: this.#deps.tools,
+			run: {
 				workspace: context.workspace,
 				sandbox: context.sandbox,
 				session: { id: this.#deps.session.id, path: this.#deps.session.path },
 				signal: context.signal,
-				onUpdate: context.onProgress,
 			},
-		);
-		return {
-			role: "toolResult",
-			toolCallId: call.id,
-			toolName: call.name,
-			content: result.content,
-			isError: result.isError,
+			write: async (outcome) => {
+				this.#messages.push({
+					role: "toolResult",
+					toolCallId: outcome.callId,
+					toolName: outcome.toolName,
+					content: outcome.content,
+					isError: outcome.isError,
+				});
+			},
+			onUpdate: (_call, text) => context.onProgress(text),
 		};
 	}
 }

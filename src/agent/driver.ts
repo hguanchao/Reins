@@ -1,6 +1,5 @@
-import { requestOptions, requestTools, TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";
-import { describeError } from "../shared/describe-error.ts";
-import { firstLine } from "../shared/format.ts";
+import { requestOptions, requestTools } from "./request.ts";
+import { rejectToolCalls, runToolCalls, type ToolRunDeps } from "./tool-run.ts";
 import type { Config } from "../config/file.ts";
 import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
 import type { LlmClient, LlmResult } from "../llm/client.ts";
@@ -9,7 +8,6 @@ import {
 	type LlmAssistantMessage,
 	type LlmTextBlock,
 	type LlmThinkingBlock,
-	type LlmToolCallBlock,
 	type LlmUserContentBlock,
 } from "../llm/messages.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
@@ -200,96 +198,68 @@ export class TurnDriver {
 		if (result.stopReason === "length") {
 			// 输出被长度上限截断时，流式的参数可能只是前半截。拿去做执行是危险的：
 			// 一个被截断的路径或命令可能指向完全不同的东西。
-			await this.#recordFailures(calls, TRUNCATED_TOOL_ARGUMENTS);
+			await rejectToolCalls(calls, this.#toolRunDeps(signal));
 			return "continue";
 		}
 
-		await this.#runTools(calls, signal);
+		await runToolCalls(calls, this.#toolRunDeps(signal));
 		return "continue";
 	}
 
-	async #runTools(calls: readonly LlmToolCallBlock[], signal: AbortSignal): Promise<void> {
-		// 并行执行，但不让单次调用的意外异常炸掉整批：助手消息已带着全部调用落进会话，
-		// 任何一条缺结果都会让后续请求被端点拒绝，所以异常也转成错误结果照常写回
-		const settled = await Promise.allSettled(calls.map((call) => this.#runTool(call, signal)));
-		const outcomes = settled.map((outcome, index) =>
-			outcome.status === "fulfilled"
-				? outcome.value
-				: {
-						callId: calls[index]?.id ?? "",
-						toolName: calls[index]?.name ?? "",
-						content: `Internal error while running the tool: ${describeError(outcome.reason)}`,
-						isError: true,
-					},
-		);
-		// 结果按模型给出的顺序写回：并行执行改变的是完成次序，不是对话里的次序
-		for (const outcome of outcomes) {
-			await this.#deps.session.append({
-				type: "message",
-				message: {
-					role: "toolResult",
-					toolCallId: outcome.callId,
-					toolName: outcome.toolName,
-					content: outcome.content,
-					isError: outcome.isError,
-				},
-			});
-		}
-	}
-
-	async #runTool(call: LlmToolCallBlock, signal: AbortSignal): Promise<ToolOutcome> {
-		if (call.argumentsError !== undefined) {
-			// 参数不是合法 JSON 时不能拿空对象去执行：那等于替使用者猜了一个调用。
-			// 但调用行仍要发出去：不发的话界面上只会看到这一轮突然停下，使用者无从判断
-			// 是模型说完了还是调用失败了。
-			await this.emit({
-				type: "tool_start",
-				callId: call.id,
-				name: call.name,
-				args: {},
-			});
-			await this.emit({
-				type: "tool_end",
-				callId: call.id,
-				name: call.name,
-				isError: true,
-				durationMs: 0,
-				summary: call.argumentsError,
-				content: call.argumentsError,
-			});
-			return { callId: call.id, toolName: call.name, content: call.argumentsError, isError: true };
-		}
-
-		await this.emit({ type: "tool_start", callId: call.id, name: call.name, args: call.arguments });
-		const outcome = await this.#deps.tools.call(
-			{ callId: call.id, name: call.name, args: call.arguments },
-			{
-				workspace: this.#deps.workspace,
-				sandbox: this.#deps.sandbox,
-				session: { id: this.#deps.session.id, path: this.#deps.session.path },
+	/**
+	 * 主对话的工具编排参数。
+	 *
+	 * 与子代理共用同一份编排流程，差别只在这里的两个动作：结果写进会话、每个阶段都发事件。
+	 */
+	#toolRunDeps(signal: AbortSignal): ToolRunDeps {
+		const deps = this.#deps;
+		return {
+			tools: deps.tools,
+			run: {
+				workspace: deps.workspace,
+				sandbox: deps.sandbox,
+				session: { id: deps.session.id, path: deps.session.path },
 				signal,
-				onUpdate: (text) => {
-					// 阶段性输出只是给界面看的，不参与对话内容，因此不阻塞执行；
-					// 监听者自身出错也不往上抛，火后 Promise 的拒绝没人接会拖垮整个进程
-					void this.emit({ type: "tool_update", callId: call.id, text }).catch(() => {});
+			},
+			summaryLimit: SUMMARY_LIMIT,
+			write: async (outcome) => {
+				await deps.session.append({
+					type: "message",
+					message: {
+						role: "toolResult",
+						toolCallId: outcome.callId,
+						toolName: outcome.toolName,
+						content: outcome.content,
+						isError: outcome.isError,
+					},
+				});
+			},
+			onUpdate: (call, text) => {
+				// 结果已写回会话，界面上的阶段性输出只是过程展示
+				void this.emit({ type: "tool_update", callId: call.id, text }).catch(() => {});
+			},
+			reporting: {
+				start: async (call) => {
+					await this.emit({
+						type: "tool_start",
+						callId: call.id,
+						name: call.name,
+						args: call.arguments,
+					});
+				},
+				end: async (outcome) => {
+					await this.emit({
+						type: "tool_end",
+						callId: outcome.callId,
+						name: outcome.toolName,
+						isError: outcome.isError,
+						durationMs: outcome.durationMs,
+						summary: outcome.summary,
+						content: outcome.content,
+						...(outcome.details === undefined ? {} : { details: outcome.details }),
+					});
 				},
 			},
-		);
-		await this.emit({
-			type: "tool_end",
-			callId: call.id,
-			name: call.name,
-			isError: outcome.isError,
-			durationMs: outcome.durationMs,
-			summary: firstLine(outcome.content, SUMMARY_LIMIT),
-			content: outcome.content,
-			...(outcome.details === undefined ? {} : { details: outcome.details }),
-		});
-		return {
-			callId: call.id,
-			toolName: call.name,
-			content: outcome.content,
-			isError: outcome.isError,
 		};
 	}
 
@@ -407,31 +377,6 @@ export class TurnDriver {
 		});
 	}
 
-	async #recordFailures(calls: readonly LlmToolCallBlock[], content: string): Promise<void> {
-		for (const call of calls) {
-			await this.#deps.session.append({
-				type: "message",
-				message: {
-					role: "toolResult",
-					toolCallId: call.id,
-					toolName: call.name,
-					content,
-					isError: true,
-				},
-			});
-			// 也要告诉界面：不发声的话，使用者只看到这一轮突然停下，不知道工具根本没执行
-			await this.emit({
-				type: "tool_end",
-				callId: call.id,
-				name: call.name,
-				isError: true,
-				durationMs: 0,
-				summary: firstLine(content, SUMMARY_LIMIT),
-				content,
-			});
-		}
-	}
-
 	/**
 	 * 把当前的运行状态写进会话。
 	 *
@@ -508,11 +453,4 @@ export class TurnDriver {
 	}
 }
 
-
-interface ToolOutcome {
-	readonly callId: string;
-	readonly toolName: string;
-	readonly content: string;
-	readonly isError: boolean;
-}
 
