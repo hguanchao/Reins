@@ -56,6 +56,8 @@ export function createState(options: TuiOptions): TuiState {
 		spinnerFrame: 0,
 		sweepPhase: 0,
 		activeTurn: undefined,
+		reviewing: false,
+		reviewAbort: undefined,
 		trustPrompt:
 			options.trustPrompt === undefined
 				? undefined
@@ -96,6 +98,7 @@ export function createState(options: TuiOptions): TuiState {
 		jobCursor: 0,
 		jobDetailId: undefined,
 		jobReturnToList: false,
+		mcpCursor: 0,
 		pageCache: undefined,
 		spinnerTimer: undefined,
 		jobTimer: undefined,

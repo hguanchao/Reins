@@ -31,6 +31,13 @@ export function submit(host: TuiHost): boolean {
 		host.render();
 		return false;
 	}
+	if (state.reviewing) {
+		// 审查子代理正往会话里记用量；此时开新回合或换会话会让两边同时写同一份文件
+		host.setStatus("A review is running; press Ctrl+C to cancel it", "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return false;
+	}
 	if (state.input.length === 0) {
 		// 输入框空着而队列里还有东西：回车把队首发出去，中止之后靠它恢复队列
 		if (state.activeTurn !== undefined || state.queued.length === 0) return false;

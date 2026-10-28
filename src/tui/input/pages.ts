@@ -1,6 +1,7 @@
 import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
 import { MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, menuKey, scrollKey } from "./keys.ts";
 import type { MouseInput } from "./keys.ts";
+import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
 import { JOB_ACTION_HEIGHT } from "../page/job.ts";
 import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
 import { SANDBOX_ACTION_HEIGHT } from "../page/sandbox.ts";
@@ -111,16 +112,31 @@ export function handlePageInput(
 			return;
 		}
 	}
+	if (page === "mcps") {
+		if (key === "up" || key === "down") {
+			host.moveMcpCursor(key === "up" ? -1 : 1);
+			return;
+		}
+		if (text === "r") return host.reconnectMcp();
+		if (text === "h") return host.healthCheckMcp();
+		if (key === "escape") {
+			state.openPage = undefined;
+			deps.render();
+			return;
+		}
+	}
 	// 整屏页是模态的：上下键与滚轮翻页，Esc 返回，其它按键忽略
 	const actionHeight =
 		page === "plan"
 			? PLAN_ACTION_HEIGHT
 			: page === "checkpoints" || page === "checkpoint"
 				? CHECKPOINT_ACTION_HEIGHT
-				: page === "jobs" || page === "job"
-					? JOB_ACTION_HEIGHT
-						: page === "sandbox"
-							? SANDBOX_ACTION_HEIGHT
+			: page === "jobs" || page === "job"
+				? JOB_ACTION_HEIGHT
+					: page === "sandbox"
+						? SANDBOX_ACTION_HEIGHT
+						: page === "mcps"
+							? MCP_ACTION_HEIGHT
 							: page === "viewer"
 								? VIEWER_ACTION_HEIGHT
 								: 0;

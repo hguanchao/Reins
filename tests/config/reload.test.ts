@@ -32,36 +32,43 @@ describe("配置热更新的分界线", () => {
 	});
 
 	it("每轮重新读取的项算「立刻生效」", () => {
-		const diff = diffConfig(BASE, { ...BASE, reasoningEffort: "high", maxRetries: 3 });
+		const diff = diffConfig(BASE, {
+			...BASE,
+			reasoningEffort: "high",
+			maxRetries: 3,
+			approval: "yolo",
+			spillThreshold: 0,
+			ui: { notify: "off" },
+		});
 
-		assert.deepEqual(diff.live, ["reasoningEffort", "maxRetries"]);
+		assert.deepEqual(diff.live, ["reasoningEffort", "maxRetries", "approval", "spillThreshold", "ui"]);
 		assert.deepEqual(diff.restart, []);
 	});
 
 	it("启动时被别的对象拿走的项算「要重启」", () => {
-		const diff = diffConfig(BASE, { ...BASE, sandbox: "workspace", approval: "yolo" });
+		const diff = diffConfig(BASE, { ...BASE, sandbox: "workspace", shellPath: "/bin/sh" });
 
 		assert.deepEqual(diff.live, []);
 		// 顺序跟着 Config 的字段声明走，断言只看集合
-		assert.deepEqual([...diff.restart].sort(), ["approval", "sandbox"]);
+		assert.deepEqual([...diff.restart].sort(), ["sandbox", "shellPath"]);
 	});
 
 	it("混合改动分开报，不混为一谈", () => {
-		const diff = diffConfig(BASE, { ...BASE, maxTokens: 4096, spillThreshold: 0 });
+		const diff = diffConfig(BASE, { ...BASE, maxTokens: 4096, shellPath: "/bin/sh" });
 
 		assert.deepEqual(diff.live, ["maxTokens"]);
-		assert.deepEqual(diff.restart, ["spillThreshold"]);
+		assert.deepEqual(diff.restart, ["shellPath"]);
 	});
 
 	it("嵌套项按值比较，深层变化也算", () => {
 		const diff = diffConfig(BASE, {
 			...BASE,
 			compaction: { ...BASE.compaction, compactAt: 0.6 },
-			ui: { notify: "off" },
+			plugins: { ...BASE.plugins, disabled: ["x"] },
 		});
 
 		assert.deepEqual(diff.live, ["compaction"]);
-		assert.deepEqual(diff.restart, ["ui"]);
+		assert.deepEqual(diff.restart, ["plugins"]);
 	});
 });
 
@@ -71,12 +78,24 @@ describe("应用能立刻生效的那部分", () => {
 			...BASE,
 			reasoningEffort: "high",
 			maxRetries: 3,
+			approval: "yolo",
+			spillThreshold: 0,
+			ui: { notify: "off" },
 			sandbox: "workspace",
 		};
-		const applied = applyLiveConfig(BASE, next, ["reasoningEffort", "maxRetries"]);
+		const applied = applyLiveConfig(BASE, next, [
+			"reasoningEffort",
+			"maxRetries",
+			"approval",
+			"spillThreshold",
+			"ui",
+		]);
 
 		assert.equal(applied.reasoningEffort, "high");
 		assert.equal(applied.maxRetries, 3);
+		assert.equal(applied.approval, "yolo");
+		assert.equal(applied.spillThreshold, 0);
+		assert.equal(applied.ui.notify, "off");
 		// 沙箱要重启才生效，这里必须还是旧值
 		assert.equal(applied.sandbox, "off");
 	});

@@ -1,5 +1,7 @@
+import { isAbsolute, join } from "node:path";
+
 import { describeError } from "../shared/describe-error.ts";
-import { firstLine } from "../shared/format.ts";
+import { firstLine, formatBytes } from "../shared/format.ts";
 import { CheckpointService } from "../checkpoint/service.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import {
@@ -21,17 +23,28 @@ import type { SessionEntry, SessionMessageEntry } from "../session/port.ts";
 import { userImages, userText, type LlmUserMessage } from "../llm/messages.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ApprovalBroker } from "../permission/approval.ts";
-import type { McpStatusSource } from "../mcp/service.ts";
+import type { McpControl, McpStatusSource } from "../mcp/service.ts";
 import { Session } from "../session/session.ts";
+import { writeSessionExport } from "../session/export.ts";
+import { Subagent } from "../agent/subagent.ts";
+import {
+	DEFAULT_REVIEW_STEPS,
+	buildReviewTask,
+	collectReviewContext,
+	parseReviewTarget,
+} from "../agent/review.ts";
 import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
 import { imageBlock, type ImageAttachment } from "../tui/image.ts";
-import { buildTranscriptHistory, SUMMARY_PREFIX } from "../tui/transcript/history.ts";
+import { buildTranscriptHistory } from "../tui/transcript/history.ts";
+import { SUMMARY_PREFIX } from "../session/fold.ts";
 import { runTui } from "../tui/layout.ts";
 import type {
 	ApprovalModeSource,
 	CheckpointSource,
 	ConversationSource,
+	ExportSource,
 	PlanModeSource,
+	ReviewSource,
 	SessionMenuSource,
 	SessionSwitchResult,
 } from "../tui/options.ts";
@@ -51,7 +64,7 @@ import { createClipboardSource } from "./clipboard.ts";
 import { createImageSource } from "./image-reader.ts";
 import { initializeConfig } from "./initialize-config.ts";
 import { writeStderr, writeStdout } from "./output.ts";
-import { assemblePipeline, createCompactor, createDriverFor } from "./pipeline.ts";
+import { assemblePipeline, createCompactor, createDriverFor, createLlmClient } from "./pipeline.ts";
 import { createSessionFor, sessionTitle } from "./session/factory.ts";
 import { createSession, forkSession, listSessions, resumeCommand, resumeSession } from "./session/target.ts";
 import { openSessionForSwitch } from "./session/switch.ts";
@@ -206,6 +219,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	});
 	/** MCP 连接清单由插件装载时交过来；插件缺席时保持 undefined，/mcps 也随之不可用。 */
 	let mcpStatus: McpStatusSource | undefined;
+	let mcpControl: McpControl | undefined;
 	const jobs = new JobManager({ shellPath: config.shellPath });
 	const terminals = new TerminalManager({ shellPath: config.shellPath });
 	const pipeline = await assemblePipeline({
@@ -217,6 +231,9 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 		terminals,
 		onMcpStatus: (source) => {
 			mcpStatus = source;
+		},
+		onMcpControl: (control) => {
+			mcpControl = control;
 		},
 		onStage: (stage) => startup.mark(stage),
 	});
@@ -421,6 +438,9 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 		if (diff.live.length === 0 && diff.restart.length === 0) return undefined;
 		if (diff.live.length > 0) {
 			activeConfig = applyLiveConfig(activeConfig, next, diff.live);
+			// 常驻对象持有的项在这里同步过去：策略管审批，注册表管落盘阈值，界面每帧读通知方式
+			if (diff.live.includes("approval")) policy.setMode(activeConfig.approval);
+			if (diff.live.includes("spillThreshold")) registry.setSpillThreshold(activeConfig.spillThreshold);
 			refreshInfo();
 		}
 
@@ -717,6 +737,72 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 					},
 				};
 
+	/** `/export`：默认写到工作区根的 Markdown，显式 `.jsonl` 后缀则复制会话文件。 */
+	const exportSession: ExportSource = {
+		export: async (target) => {
+			const path =
+				target === undefined
+					? join(workRoot, `reins-${activeSession.id}.md`)
+					: isAbsolute(target)
+						? target
+						: join(workRoot, target);
+			const result = writeSessionExport(activeSession, path);
+			return `Exported ${result.format} to ${result.path} (${formatBytes(result.bytes)}, ${
+				result.created ? "created" : "overwrote"
+			})`;
+		},
+	};
+
+	/**
+	 * `/review`：只读子代理审当前改动。
+	 *
+	 * 子代理有自己的上下文与步数预算，主对话只拿到最终报告；它用的工具收窄到 read/ls/find/grep，
+	 * 因此审查不会改动工作区。用量照常记进当前会话。
+	 */
+	const review: ReviewSource = {
+		run: async (args, signal, onProgress) => {
+			const selection = catalog.selection;
+			if (selection === undefined) throw new Error("No model selected; run /model first");
+
+			const context = collectReviewContext(workRoot, parseReviewTarget(args));
+			if (!context.hasChanges) {
+				return {
+					label: context.label,
+					report: "No changes to review.",
+					steps: 0,
+					durationMs: 0,
+					stopReason: "done",
+				};
+			}
+
+			const model = selection.reviewModel ?? selection.model;
+			const subagent = new Subagent({
+				provider: selection.provider,
+				model,
+				config: activeConfig,
+				client: createLlmClient(activeConfig, selection.provider, model),
+				tools: registry.only("read", "ls", "find", "grep"),
+				session: activeSession,
+				maxSteps: activeConfig.maxTurns ?? DEFAULT_REVIEW_STEPS,
+				contextWindow: model.contextWindow ?? activeConfig.contextWindow,
+				instructions,
+			});
+			const outcome = await subagent.run(buildReviewTask(context), {
+				workspace,
+				sandbox,
+				signal,
+				onProgress,
+			});
+			return {
+				label: context.label,
+				report: outcome.report,
+				steps: outcome.steps,
+				durationMs: outcome.durationMs,
+				stopReason: outcome.stopReason,
+			};
+		},
+	};
+
 	try {
 		const code = await runTui({
 			version: readVersion(),
@@ -726,8 +812,11 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			trustPrompt,
 			skills: skillsPage,
 			mcpServers: mcpStatus === undefined ? undefined : mcpServerRows,
+			mcpControl,
 			sessionMenu,
 			conversation,
+			exportSession,
+			review,
 			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
 			approvalMode,
@@ -748,7 +837,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			modelMenu,
 			effortMenu,
 			pluginCommands,
-			notify: activeConfig.ui.notify,
+			notify: () => activeConfig.ui.notify,
 			history: history.turns,
 			historyTodo: history.todo,
 			historyPlan: history.plan,

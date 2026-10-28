@@ -161,6 +161,11 @@ export class ToolRegistry {
 		return this.#tools.get(name)?.definition;
 	}
 
+	/** 配置热更新时调整落盘阈值；只影响之后的结果。 */
+	setSpillThreshold(threshold: number): void {
+		this.#spiller.setThreshold(threshold);
+	}
+
 	/** 声明给模型的工具清单。 */
 	list(): readonly AnyToolDefinition[] {
 		return [...this.#tools.values()].map((item) => item.definition);

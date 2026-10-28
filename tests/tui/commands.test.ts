@@ -14,7 +14,7 @@ describe("内置斜杠命令", () => {
 		);
 		assert.deepEqual(
 			commands.filter((command) => command.hidden === true).map((command) => command.name),
-			["fork", "rewind", "branches", "checkpoints", "sandbox", "view-plan", "jobs"],
+			["fork", "rewind", "branches", "export", "review", "checkpoints", "sandbox", "view-plan", "jobs"],
 		);
 	});
 

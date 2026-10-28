@@ -81,6 +81,24 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 			hidden: options.conversation === undefined,
 		},
 		{
+			name: "export",
+			description:
+				options.exportSession === undefined
+					? "Session export is unavailable"
+					: "Export this conversation to a Markdown or JSONL file",
+			enabled: options.exportSession !== undefined,
+			hidden: options.exportSession === undefined,
+		},
+		{
+			name: "review",
+			description:
+				options.review === undefined
+					? "Code review is unavailable"
+					: "Review the current changes in a read-only subagent",
+			enabled: options.review !== undefined,
+			hidden: options.review === undefined,
+		},
+		{
 			name: "help",
 			description: "Show the commands and keys",
 			enabled: true,

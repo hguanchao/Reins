@@ -2,6 +2,7 @@ import type { CommandMenuItem } from "../panel/command-menu.ts";
 import { padEnd } from "../panel/menu-panel.ts";
 import { displayWidth, fitToWidth, wrapWords } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
+import { actionLines } from "./chrome.ts";
 
 /**
  * 整屏页。
@@ -19,6 +20,8 @@ export interface PageEntry {
 	readonly description: string;
 	/** 另起一行的小字；用来放位置这类不该挤进说明列的信息 */
 	readonly note?: string;
+	/** 当前选中的条目；只有带操作的可选清单会设置 */
+	readonly selected?: boolean;
 }
 
 interface PageSection {
@@ -138,19 +141,36 @@ export function skillsPageLines(
 }
 
 /** MCP 连接清单；连不上的要把原因带出来，否则使用者只知道「没连上」。 */
-export function mcpsPageLines(width: number, servers: readonly PageEntry[]): readonly string[] {
+export function mcpsPageLines(
+	width: number,
+	servers: readonly PageEntry[],
+	cursor = 0,
+): readonly string[] {
+	const entries = servers.map((entry, index) => ({ ...entry, selected: index === cursor }));
 	return sectionPageLines(
 		MCPS_TITLE,
 		[
 			{
 				title: SERVERS_SECTION,
-				entries: servers,
+				entries,
 				empty: "No MCP servers configured.",
 			},
 		],
 		["Add [mcp_servers.<name>] to config.toml to connect one."],
 		width,
 	);
+}
+
+/** MCP 页底部的操作条：选中一个 server 后重连，或检查全部连接。 */
+export const MCP_ACTION_HEIGHT = 2;
+
+export function mcpsActionLines(width: number): readonly string[] {
+	return actionLines(width, [
+		["↑↓", "select", THEME.textSubtle],
+		["r", "reconnect", THEME.textSubtle],
+		["h", "health check", THEME.textSubtle],
+		["Esc", "close", THEME.textSubtle],
+	]);
 }
 
 /**
@@ -248,10 +268,12 @@ function sectionLines(section: PageSection, width: number): readonly string[] {
  * 什么」，后续的触发条件之类的长文退到说明色，扫读时先看到每个技能是什么。
  */
 function cardLines(entry: PageEntry, width: number): readonly string[] {
-	const indent = CARD_INDENT.slice(0, width);
+	const selected = entry.selected === true;
+	const indent = (selected ? "› " : CARD_INDENT).slice(0, width);
 	const bodyIndent = CARD_BODY_INDENT.slice(0, width);
 	const bodyWidth = Math.max(1, width - displayWidth(bodyIndent));
 	const nameWidth = Math.max(1, width - displayWidth(indent));
+	const nameColor = selected ? TITLE_COLOR : NAME_COLOR;
 
 	const note = entry.note ?? "";
 	// 名称与来源同行需要「至少一列间隔 + 来源」的余量；放不下时来源折到说明缩进里
@@ -264,7 +286,7 @@ function cardLines(entry: PageEntry, width: number): readonly string[] {
 						Math.max(1, nameWidth - displayWidth(entry.name) - displayWidth(note)),
 					)}${fitToWidth(note, nameWidth)}${RESET}`
 				: fitToWidth(entry.name, nameWidth);
-	const lines = [`${indent}${NAME_COLOR}${head}${RESET}`];
+	const lines = [`${indent}${nameColor}${head}${RESET}`];
 
 	if (!inlineNote && note.length > 0) {
 		for (const line of wrapWords(note, bodyWidth)) {
@@ -276,7 +298,7 @@ function cardLines(entry: PageEntry, width: number): readonly string[] {
 		const [lead, ...rest] = splitFirstSentence(entry.description);
 		// 首句用亮色单独折行；剩余部分换回说明色。首句自己超宽时照常折行，只是整段都是亮色
 		for (const line of wrapWords(lead, bodyWidth)) {
-			lines.push(`${bodyIndent}${NAME_COLOR}${line}${RESET}`);
+			lines.push(`${bodyIndent}${nameColor}${line}${RESET}`);
 		}
 		const remainder = rest.join(" ");
 		if (remainder.length > 0) {
@@ -307,7 +329,10 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 	const available = Math.max(1, width - displayWidth(ENTRY_INDENT) - displayWidth(ENTRY_GAP));
 	const label =
 		displayWidth(entry.name) > nameWidth ? fitToWidth(entry.name, available) : padEnd(entry.name, nameWidth);
-	const head = `${ENTRY_INDENT}${label}${ENTRY_GAP}`;
+	const selected = entry.selected === true;
+	const indentText = selected ? "› " : ENTRY_INDENT;
+	const nameColor = selected ? TITLE_COLOR : NAME_COLOR;
+	const head = `${indentText}${label}${ENTRY_GAP}`;
 	const headWidth = displayWidth(head);
 	const noteLines =
 		entry.note === undefined
@@ -319,7 +344,7 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 	if (width - headWidth < MIN_INLINE_DESCRIPTION) {
 		const indent = ENTRY_INDENT.slice(0, width);
 		return [
-			`${NAME_COLOR}${head}${RESET}`,
+			`${nameColor}${head}${RESET}`,
 			...wrapWords(entry.description, Math.max(1, width - displayWidth(indent))).map(
 				(line) => `${indent}${DESCRIPTION_COLOR}${line}${RESET}`,
 			),
@@ -332,7 +357,7 @@ function entryLines(entry: PageEntry, nameWidth: number, width: number): readonl
 	return [
 		...wrapped.map((line, index) =>
 			index === 0
-				? `${NAME_COLOR}${head}${DESCRIPTION_COLOR}${line}${RESET}`
+				? `${nameColor}${head}${DESCRIPTION_COLOR}${line}${RESET}`
 				: `${indent}${DESCRIPTION_COLOR}${line}${RESET}`,
 		),
 		...noteLines,

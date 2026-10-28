@@ -37,6 +37,17 @@ export type McpStatusSource = () => readonly McpStatus[];
 /** 远端连上之后把工具交出去的方式。由装配处决定它落到哪张注册表、按哪个来源记账。 */
 export type McpToolSink = (tool: AnyToolDefinition) => void;
 
+/**
+ * 运行期的 MCP 管理动作。
+ *
+ * 只暴露「重连一个 server」与「检查全部连接」两件事：新增或删除 server 仍然要改配置并重启，
+ * 那会改变工具注册表的全集，不是一次连接操作。
+ */
+export interface McpControl {
+	reconnect(name: string): Promise<string>;
+	healthCheck(): Promise<readonly string[]>;
+}
+
 interface McpServiceOptions {
 	/** 工作目录：stdio 型的 server 在这里起子进程 */
 	readonly cwd: string;
@@ -51,6 +62,8 @@ interface McpServiceOptions {
 	 * `/mcps` 是整屏页，要按终端宽度排版；服务本身只产出数据，排版交给界面。
 	 */
 	readonly onStatus?: (source: McpStatusSource) => void;
+	/** 把重连与健康检查交给界面；/mcps 页的 r 与 h 用它 */
+	readonly onControl?: (control: McpControl) => void;
 }
 
 type ConnectionStatus = "connecting" | "ready" | "failed" | "disabled";
@@ -66,6 +79,10 @@ class McpConnection {
 	#client: McpClient | undefined;
 	/** 远程连接的生命周期信号:连接失败时中止它,在途的 fetch 与 SSE 才会真正断开。 */
 	#connectionAbort: AbortController | undefined;
+	/** 首次连接时交进来的工具登记回调；重连时只在还没登记过的情况下复用 */
+	#registerTool: McpToolSink | undefined;
+	/** 工具是否已经登记过。已登记的 server 重连时不再重复注册，避免顶掉注册表里的定义 */
+	#registered = false;
 
 	constructor(config: McpServerConfig, cwd: string, version: string) {
 		this.#config = config;
@@ -78,12 +95,23 @@ class McpConnection {
 		return this.#config.name;
 	}
 
-	async start(registerTool: McpToolSink): Promise<void> {
+	async start(registerTool?: McpToolSink): Promise<void> {
 		if (this.#status === "disabled") return;
+		if (registerTool !== undefined) this.#registerTool = registerTool;
+
+		// 重连前先收掉旧连接：留着旧进程或旧 SSE 会让两个连接同时存在，工具调用落到哪个都不确定
+		this.#connectionAbort?.abort();
+		this.#connectionAbort = undefined;
+		this.#client?.close();
+		this.#client = undefined;
+		this.#status = "connecting";
+		this.#failure = "";
 
 		try {
+			const connection = this.#createTransport();
+			this.#connectionAbort = connection.abort;
 			const client = new McpClient({
-				transport: this.#createTransport(),
+				transport: connection.transport,
 				clientName: "reins",
 				version: this.#version,
 				controlTimeoutMs: CONTROL_TIMEOUT_MS,
@@ -96,12 +124,15 @@ class McpConnection {
 
 			await client.connect();
 			const tools = await client.listTools();
-			for (const tool of tools) {
-				registerTool(
-					createMcpTool(this.#config.name, tool, (name, args, signal) =>
-						this.#call(name, args, signal),
-					),
-				);
+			if (registerTool !== undefined) {
+				for (const tool of tools) {
+					registerTool(
+						createMcpTool(this.#config.name, tool, (name, args, signal) =>
+							this.#call(name, args, signal),
+						),
+					);
+				}
+				this.#registered = true;
 			}
 			this.#tools = tools.map((tool) => tool.name);
 			this.#status = "ready";
@@ -113,6 +144,40 @@ class McpConnection {
 			// 失败了就中止连接信号:不中止的话在途的 fetch 与 SSE 会一直挂到对端关闭
 			this.#connectionAbort?.abort();
 			this.#connectionAbort = undefined;
+		}
+	}
+
+	/** 重连一个 server；已经登记过工具的连接不再重复注册，避免顶掉注册表里的定义。 */
+	async reconnect(): Promise<string> {
+		if (this.#status === "disabled") return `${this.name} is disabled in config.toml`;
+		const before = this.#tools.join("\n");
+		await this.start(this.#registered ? undefined : this.#registerTool);
+
+		if (this.#status !== "ready") {
+			return `Could not reconnect ${this.name}: ${this.#failure.length > 0 ? this.#failure : "unknown error"}`;
+		}
+		const changed = before !== this.#tools.join("\n");
+		return `Reconnected ${this.name}: ${this.#tools.length} tools${
+			changed ? " (tool list changed; restart to refresh the tool registry)" : ""
+		}`;
+	}
+
+	/** 健康检查；失败时把连接标成不可用，之后工具调用会明确报错而不是挂起。 */
+	async healthCheck(): Promise<string> {
+		if (this.#status === "disabled") return `${this.name}: disabled`;
+		if (this.#status !== "ready" || this.#client === undefined) {
+			const detail = this.#failure.length > 0 ? ` (${this.#failure})` : "";
+			return `${this.name}: ${this.status().status}${detail}`;
+		}
+
+		try {
+			await this.#client.ping();
+			return `${this.name}: ok`;
+		} catch (error) {
+			this.#failure = describeError(error);
+			this.#status = "failed";
+			this.#client.close();
+			return `${this.name}: failed (${this.#failure})`;
 		}
 	}
 
@@ -149,30 +214,35 @@ class McpConnection {
 		return client.callTool(name, args, signal);
 	}
 
-	#createTransport(): McpTransport {
+	#createTransport(): { readonly transport: McpTransport; readonly abort?: AbortController } {
 		// 连接断掉之后工具还在注册表里：留着它，调用时会得到一句「当前不可用」，
-		// 比让工具凭空消失更好查——工具消失只会表现为「模型忽然不调它了」
+		// 比让工具凭空消失更好查——工具消失只会表现为「模型忽然不调它了」。
+		// 只在当前连接确实可用时记失败：重连期间旧连接关闭也会走到这里，那不算新连接失败。
 		const onClose = (reason: string): void => {
+			if (this.#status !== "ready") return;
 			this.#failure = reason;
-			if (this.#status === "ready") this.#status = "failed";
+			this.#status = "failed";
 		};
 
 		const config = this.#config;
 		if (config.type === "stdio") {
-			return createStdioTransport({
-				command: config.command ?? "",
-				args: config.args,
-				cwd: this.#cwd,
-				onClose,
-			});
+			return {
+				transport: createStdioTransport({
+					command: config.command ?? "",
+					args: config.args,
+					cwd: this.#cwd,
+					onClose,
+				}),
+			};
 		}
 
-		const options = { url: config.url ?? "", headers: config.headers, onClose };
-		this.#connectionAbort = new AbortController();
-		if (config.type === "sse") {
-			return createSseTransport({ ...options, signal: this.#connectionAbort.signal });
-		}
-		return createHttpTransport({ ...options, signal: this.#connectionAbort.signal });
+		const abort = new AbortController();
+		const options = { url: config.url ?? "", headers: config.headers, onClose, signal: abort.signal };
+		return {
+			transport:
+				config.type === "sse" ? createSseTransport(options) : createHttpTransport(options),
+			abort,
+		};
 	}
 }
 
@@ -190,6 +260,14 @@ export function startMcpServers(options: McpServiceOptions): McpStatusSource {
 	const source: McpStatusSource = () => connections.map((connection) => connection.status());
 	// 清单交给装配处，再由它转给界面：/mcps 要在整屏页里按宽度排版
 	options.onStatus?.(source);
+	options.onControl?.({
+		reconnect: async (name) => {
+			const connection = connections.find((item) => item.name === name);
+			if (connection === undefined) throw new Error(`Unknown MCP server: ${name}`);
+			return connection.reconnect();
+		},
+		healthCheck: async () => Promise.all(connections.map((connection) => connection.healthCheck())),
+	});
 
 	// 后台连接：不 await，连不上的进 /mcps 的清单，不挡启动
 	for (const connection of connections) void connection.start(options.registerTool);

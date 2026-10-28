@@ -6,6 +6,7 @@ import {
 	type LlmMessage,
 } from "../../llm/messages.ts";
 import { firstLine } from "../../shared/format.ts";
+import { SUMMARY_PREFIX } from "../../session/fold.ts";
 import { displayToolName, sanitizeDetail } from "../../tools/describe.ts";
 import { imageMarker } from "../image.ts";
 import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "../view/todo-card.ts";
@@ -32,7 +33,6 @@ import {
 
 /** 历史工具行的首行上限；过长时截断加省略号。 */
 const MAX_LINE = 200;
-export const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
 
 interface MutableTurn extends TranscriptTurn {
 	response: TranscriptLine[];

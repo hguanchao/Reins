@@ -26,13 +26,20 @@ interface MutableState {
 }
 
 /**
+ * 摘要进入上下文时的外壳前缀。
+ *
+ * 历史回填与导出都要靠它把摘要与使用者真正说过的话分开，因此放在会话层，由使用方引用同一份。
+ */
+export const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
+
+/**
  * 摘要进入上下文时的外壳。
  *
  * 必须让模型一眼看出这是先前对话的替代品，否则它会以为有人刚说了这么一段话，从而把摘要里
  * 的第三手描述当成新的指令。
  */
 export function summaryMessage(summary: string): LlmUserMessage {
-	return { role: "user", content: `(Summary of the earlier conversation, kept so the work can continue)\n\n${summary}` };
+	return { role: "user", content: `${SUMMARY_PREFIX}\n\n${summary}` };
 }
 
 /** 增量折叠。写入方每追加一条就加一条，避免每写一条都重放整份历史。 */

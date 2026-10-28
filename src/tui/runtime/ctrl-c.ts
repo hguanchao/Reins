@@ -26,6 +26,18 @@ export function onCtrlC(
 		deps.render();
 		return;
 	}
+	if (state.reviewing) {
+		// 审查子代理与普通回合一样：第一次只中止，2 秒内再按一次强制退出
+		if (state.exitArmed) {
+			deps.cleanup();
+			return;
+		}
+		armExit(state, () => disarm(state), EXIT_CONFIRM_WINDOW_MS);
+		state.reviewAbort?.abort();
+		host.setStatus("Cancelling review...", "notice");
+		deps.render();
+		return;
+	}
 	if (state.openPage !== undefined) {
 		// 整屏页是模态视图：第一次按回对话流，连按两次才退出
 		if (state.exitArmed) {

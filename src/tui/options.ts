@@ -5,6 +5,7 @@ import type {
 	CheckpointRestoreResult,
 } from "../checkpoint/service.ts";
 import type { ApprovalMode, NotifyMode, ThinkingLevel } from "../config/file.ts";
+import type { McpControl } from "../mcp/service.ts";
 import type { ApprovalBroker } from "../permission/approval.ts";
 import type { SandboxInfo } from "../sandbox/setup.ts";
 import type { CommandMenuItem } from "./panel/command-menu.ts";
@@ -108,6 +109,40 @@ export interface ConversationSource {
 	readonly messages: () => readonly SessionMenuItem[];
 	/** 回退到这条消息之前；失败时抛错 */
 	readonly rewind: (id: string) => RewindResult;
+}
+
+/**
+ * 会话导出。
+ *
+ * target 省略时由宿主决定默认文件名；返回一句给使用者看的结果，失败时抛错。
+ */
+export interface ExportSource {
+	readonly export: (target: string | undefined) => Promise<string>;
+}
+
+/** 一次只读审查的结果。 */
+export interface ReviewResult {
+	/** 审查范围，例如 "Working tree" */
+	readonly label: string;
+	readonly report: string;
+	readonly steps: number;
+	readonly durationMs: number;
+	/** done / steps / context / error / aborted / truncated / empty */
+	readonly stopReason: string;
+}
+
+/**
+ * 代码审查子代理。
+ *
+ * 与普通回合分开：它有自己的上下文与只读工具集，不把 diff 塞进主对话。signal 由界面在
+ * Ctrl+C 时中止，onProgress 用于把步骤与当前工具显示在状态行。
+ */
+export interface ReviewSource {
+	readonly run: (
+		args: string,
+		signal: AbortSignal,
+		onProgress: (text: string) => void,
+	) => Promise<ReviewResult>;
 }
 
 export interface EffortMenuSource {
@@ -293,12 +328,18 @@ export interface TuiOptions {
 	readonly skills?: SkillsPageSource;
 	/** /mcps 的数据来源；不提供时该命令不可用（MCP 插件缺席就是这种情况） */
 	readonly mcpServers?: () => readonly PageEntry[];
+	/** /mcps 页的重连与健康检查；不提供时 r/h 无效 */
+	readonly mcpControl?: McpControl;
 	/** /session 菜单的数据来源；不提供时该命令不可用（没有会话存储时就是这种情况） */
 	readonly sessionMenu?: SessionMenuSource;
 	/** /rewind 与 /branches 的数据来源；不提供时两条命令都不可用 */
 	readonly conversation?: ConversationSource;
-	/** 一轮结束时的提醒方式；默认 auto（失焦时响铃） */
-	readonly notify?: NotifyMode;
+	/** /export 的数据来源；不提供时该命令不可用 */
+	readonly exportSession?: ExportSource;
+	/** /review 的数据来源；不提供时该命令不可用 */
+	readonly review?: ReviewSource;
+	/** 一轮结束时的提醒方式；默认 auto（失焦时响铃）。函数形式让配置热更新立即生效 */
+	readonly notify?: NotifyMode | (() => NotifyMode);
 	/** 启动时回填的历史对话；续聊时使用 */
 	readonly history?: readonly TranscriptTurn[];
 	/** 历史里最后一张任务表；续聊时让常驻面板立即有内容 */

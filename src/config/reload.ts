@@ -4,8 +4,9 @@ import type { Config } from "./file.ts";
  * 配置热更新的分界线。
  *
  * 只有「每轮重新读取」的项才能在运行中生效：客户端、压缩器、驱动都是每轮新建的，它们从配置
- * 里取值，值变了下一轮就是新的。其余项在启动时已经被别的对象拿走了——权限策略持有审批方式、
- * 沙箱视图持有后端、工具注册表持有落盘阈值、MCP 插件持有连接——改它们等于重做一次装配。
+ * 里取值，值变了下一轮就是新的。审批方式、落盘阈值与通知方式虽然被常驻对象持有，但它们都有
+ * 一个明确的即时生效点，由调用方在应用新配置时同步过去。其余项在启动时已经被别的对象拿走了
+ * ——沙箱视图持有后端、MCP 连接持有 server 清单——改它们等于重做一次装配。
  *
  * 所以这里不假装全部能热更新：分不清的项一律归到「要重启」，宁可多要求一次重启，也不要
  * 悄悄生效一半。
@@ -19,8 +20,11 @@ const LIVE_FIELDS: ReadonlySet<keyof Config> = new Set<keyof Config>([
 	"httpProxy",
 	"compactModel",
 	"reviewModel",
+	"approval",
 	"maxTurns",
+	"spillThreshold",
 	"compaction",
+	"ui",
 ]);
 
 interface ConfigDiff {
@@ -61,8 +65,11 @@ export function applyLiveConfig(
 		...(has("httpProxy") ? { httpProxy: next.httpProxy } : {}),
 		...(has("compactModel") ? { compactModel: next.compactModel } : {}),
 		...(has("reviewModel") ? { reviewModel: next.reviewModel } : {}),
+		...(has("approval") ? { approval: next.approval } : {}),
 		...(has("maxTurns") ? { maxTurns: next.maxTurns } : {}),
+		...(has("spillThreshold") ? { spillThreshold: next.spillThreshold } : {}),
 		...(has("compaction") ? { compaction: next.compaction } : {}),
+		...(has("ui") ? { ui: next.ui } : {}),
 	};
 }
 

@@ -71,6 +71,7 @@ import {
 	readAndInsertImage,
 } from "./input/attachments.ts";
 import { recallHistory, rememberInput } from "./input/history.ts";
+import { healthCheckMcp, moveMcpCursor, reconnectMcp } from "./runtime/mcp.ts";
 import {
 	approvePlan,
 	executeCommand,
@@ -196,6 +197,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		openCheckpointList: () => openCheckpointList(host),
 		restoreCheckpoint: () => restoreCheckpoint(host),
 		loadCheckpointPreview: (entry) => loadCheckpointPreview(host, entry),
+		moveMcpCursor: (delta) => moveMcpCursor(host, delta),
+		reconnectMcp: () => reconnectMcp(host),
+		healthCheckMcp: () => healthCheckMcp(host),
 		applySession: () => {},
 		rememberInput: (value) => rememberInput(state, value),
 		recallHistory: (delta) => recallHistory(state, delta, () => {

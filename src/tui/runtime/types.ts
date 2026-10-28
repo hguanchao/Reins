@@ -151,6 +151,9 @@ export interface TuiState {
 
 	// —— 运行与审批 ——
 	activeTurn: ActiveTurn | undefined;
+	/** 只读审查正在跑；期间拒绝新输入与换会话，Ctrl+C 可中止 */
+	reviewing: boolean;
+	reviewAbort: AbortController | undefined;
 	/** 启动信任确认；非空时界面只画这一页，不接受对话输入 */
 	trustPrompt: TrustPromptState | undefined;
 	approvalPrompt: ApprovalPrompt | undefined;
@@ -208,6 +211,8 @@ export interface TuiState {
 	jobDetailId: string | undefined;
 	/** 作业页与检查点页一样把动作条固定在底部。 */
 	jobReturnToList: boolean;
+	/** /mcps 页的选中项；重连与健康检查作用在它上面 */
+	mcpCursor: number;
 	/** 排好版的页面内容；宽度不变就复用，滚动与重绘都不必重排。 */
 	pageCache:
 		| { readonly kind: PageKind; readonly width: number; readonly lines: readonly string[] }
@@ -305,6 +310,10 @@ export interface TuiHost {
 	openCheckpointList(): void;
 	restoreCheckpoint(): void;
 	loadCheckpointPreview(entry: CheckpointEntry): void;
+	/** /mcps 页：移动选中项、重连选中的 server、检查全部连接 */
+	moveMcpCursor(delta: number): void;
+	reconnectMcp(): void;
+	healthCheckMcp(): void;
 	applySession(result: SessionSwitchResult): void;
 	rememberInput(value: string): void;
 	recallHistory(delta: -1 | 1): boolean;

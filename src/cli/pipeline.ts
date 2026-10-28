@@ -9,7 +9,7 @@ import type { Config } from "../config/file.ts";
 import { pluginsDir, spillDir } from "../config/paths.ts";
 import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
 import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
-import { startMcpServers, type McpStatusSource } from "../mcp/service.ts";
+import { startMcpServers, type McpControl, type McpStatusSource } from "../mcp/service.ts";
 import { ModelReviewer } from "../permission/reviewer.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ExternalPlugins } from "../plugins/external.ts";
@@ -39,7 +39,7 @@ function streamIdleTimeoutMs(config: Config): number | undefined {
 	return config.streamIdleTimeout > 0 ? config.streamIdleTimeout * 1000 : undefined;
 }
 
-function createClient(
+export function createLlmClient(
 	config: Config,
 	provider: ProviderEntry,
 	model: ModelEntry,
@@ -84,7 +84,7 @@ export function createCompactor(
 		model === selection.model ? undefined : model.contextWindow,
 	);
 	return new Compactor({
-		client: createClient(config, selection.provider, model),
+		client: createLlmClient(config, selection.provider, model),
 		provider: selection.provider.id,
 		model,
 		contextWindow,
@@ -129,7 +129,7 @@ export function createDriverFor(
 	onEvent: AgentEventListener,
 ): TurnDriver {
 	// 主对话与子代理共用同一个客户端：它们只是同一个端点的两次请求，客户端本身没有连接状态
-	const client = createClient(context.config, context.selection.provider, context.selection.model);
+	const client = createLlmClient(context.config, context.selection.provider, context.selection.model);
 	const available =
 		context.planMode === true
 			? planToolRegistry(shared.registry)
@@ -180,7 +180,7 @@ export function createReviewer(
 ): ModelReviewer {
 	const reviewModel = selection.reviewModel ?? selection.model;
 	return new ModelReviewer({
-		client: createClient(config, selection.provider, reviewModel),
+		client: createLlmClient(config, selection.provider, reviewModel),
 		model: reviewModel.id,
 		maxTokens: reviewModel.maxTokens ?? config.maxTokens,
 		workspaceRoot: workRoot,
@@ -215,6 +215,7 @@ export async function assemblePipeline(options: {
 	readonly jobs?: JobManager;
 	readonly terminals?: TerminalManager;
 	readonly onMcpStatus?: (source: McpStatusSource) => void;
+	readonly onMcpControl?: (control: McpControl) => void;
 	readonly onStage?: (stage: string) => void;
 }): Promise<{
 	readonly registry: ToolRegistry;
@@ -242,6 +243,7 @@ export async function assemblePipeline(options: {
 		servers: config.mcpServers,
 		registerTool: (tool) => registry.register(tool, "bundled"),
 		...(options.onMcpStatus === undefined ? {} : { onStatus: options.onMcpStatus }),
+		...(options.onMcpControl === undefined ? {} : { onControl: options.onMcpControl }),
 	});
 	options.onStage?.("mcp");
 

@@ -90,6 +90,20 @@ export class McpClient {
 		return infos;
 	}
 
+	/**
+	 * 健康检查。
+	 *
+	 * MCP 定义了 ping，但不是每个 server 都实现；方法不存在时退回列一次工具，同样能证明
+	 * 连接还在。两种都失败才算连接不可用。
+	 */
+	async ping(): Promise<void> {
+		try {
+			await this.#request("ping", {}, this.#options.controlTimeoutMs);
+		} catch {
+			await this.listTools();
+		}
+	}
+
 	async callTool(
 		name: string,
 		args: Record<string, unknown>,

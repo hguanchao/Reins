@@ -1,5 +1,6 @@
 import { THINKING_LEVELS } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
+import { formatDuration } from "../../shared/format.ts";
 import type { CommandMenuItem } from "../panel/command-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
 import type { RewindResult, SessionSwitchResult } from "../options.ts";
@@ -38,6 +39,8 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 		fork: () => executeForkCommand(host),
 		rewind: () => executeRewindCommand(host),
 		branches: () => executeBranchesCommand(host),
+		export: () => executeExportCommand(host, args),
+		review: () => executeReviewCommand(host, args),
 		compact: () => executeCompactCommand(host),
 		plan: () => executePlanCommand(host, args),
 		"view-plan": () => executeViewPlanCommand(host),
@@ -315,10 +318,26 @@ function applyConversation(host: TuiHost, result: SessionSwitchResult): void {
 	host.clearAttachments();
 }
 
+/**
+ * 审查进行中拒绝会写会话的操作。
+ *
+ * 审查子代理把用量记进当前会话；此时换会话、回退或导出会让两边同时读同一份文件，
+ * 或者导出一份正在变化的快照。
+ */
+function reviewBlocks(host: TuiHost, action: string): boolean {
+	if (!host.state.reviewing) return false;
+	host.resetStatusMeta();
+	host.setStatus(`A review is running; ${action} is unavailable until it finishes`, "notice");
+	host.scheduleStatusClear();
+	host.render();
+	return true;
+}
+
 /** 切到当前会话的另一个分支末尾。 */
 export function switchBranch(host: TuiHost, id: string): void {
 	const source = host.options.conversation;
 	if (source === undefined) return;
+	if (reviewBlocks(host, "/branches")) return;
 
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
@@ -351,6 +370,7 @@ export function switchBranch(host: TuiHost, id: string): void {
 export function rewindTo(host: TuiHost, id: string): void {
 	const source = host.options.conversation;
 	if (source === undefined) return;
+	if (reviewBlocks(host, "/rewind")) return;
 
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
@@ -380,6 +400,108 @@ export function rewindTo(host: TuiHost, id: string): void {
 		...result.warnings,
 	]);
 	host.render();
+}
+
+/** /export:把当前会话写成 Markdown 或 JSONL。 */
+function executeExportCommand(host: TuiHost, args: string): void {
+	host.setInput("");
+	const source = host.options.exportSession;
+	if (source === undefined) {
+		host.resetStatusMeta();
+		host.setStatus("Session export is unavailable in this session", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus("/export is unavailable while a turn is running", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	if (reviewBlocks(host, "/export")) return;
+
+	const target = args.trim();
+	host.resetStatusMeta();
+	host.setStatus("Exporting...");
+	host.render();
+	void Promise.resolve()
+		.then(() => source.export(target.length === 0 ? undefined : target))
+		.then((message) => {
+			if (host.state.finished) return;
+			host.clearStatus();
+			host.appendCommandTurn("/export", [message]);
+		})
+		.catch((error) => {
+			if (host.state.finished) return;
+			host.setStatus("Export failed", "error");
+			host.appendCommandTurn("/export", [
+				{ kind: "error", text: `Error: ${describeError(error)}` },
+			]);
+		});
+}
+
+/** /review:在只读子代理里审查当前改动。 */
+function executeReviewCommand(host: TuiHost, args: string): void {
+	host.setInput("");
+	const source = host.options.review;
+	if (source === undefined) {
+		host.resetStatusMeta();
+		host.setStatus("Code review is unavailable in this session", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus("/review is unavailable while a turn is running", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	if (host.state.reviewing) {
+		host.resetStatusMeta();
+		host.setStatus("A review is already running", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+
+	const state = host.state;
+	const controller = new AbortController();
+	state.reviewing = true;
+	state.reviewAbort = controller;
+	host.resetStatusMeta();
+	host.setStatus("Reviewing changes...");
+	host.render();
+
+	void Promise.resolve()
+		.then(() =>
+			source.run(args, controller.signal, (text) => {
+				if (state.finished || !state.reviewing) return;
+				host.setStatus(text);
+				host.render();
+			}),
+		)
+		.then((result) => {
+			if (state.finished) return;
+			host.clearStatus();
+			host.appendCommandTurn("/review", [
+				`${result.label} · ${result.steps} steps · ${formatDuration(result.durationMs)}${
+					result.stopReason === "done" ? "" : ` · ${result.stopReason}`
+				}`,
+				"",
+				{ kind: "markdown" as const, text: result.report },
+			]);
+		})
+		.catch((error) => {
+			if (state.finished) return;
+			host.setStatus("Review failed", "error");
+			host.appendCommandTurn("/review", [
+				{ kind: "error", text: `Error: ${describeError(error)}` },
+			]);
+		})
+		.finally(() => {
+			state.reviewing = false;
+			state.reviewAbort = undefined;
+			if (!state.finished) host.render();
+		});
 }
 
 /** /compact:立即压缩一轮上下文。 */
@@ -571,6 +693,7 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	if (source === undefined) return;
 
 	const forking = action === "fork";
+	if (reviewBlocks(host, forking ? "/fork" : "/session")) return;
 	// 一轮进行中不能换会话：宿主会关掉旧会话的写入器，正在跑的驱动下一次追加就失败，
 	// 而新会话已经把旧 turn 移出了界面状态——本轮回复会无声地丢掉。
 	if (host.state.activeTurn !== undefined) {

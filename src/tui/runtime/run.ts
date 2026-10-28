@@ -141,7 +141,8 @@ export function drainQueue(host: TuiHost): void {
 
 /** 一轮结束的提醒。auto 只在终端失焦时响铃；desktop 在 macOS/Linux 调系统通知。 */
 export function notify(host: TuiHost, message: string): void {
-	const mode = host.options.notify ?? "auto";
+	const configured = host.options.notify ?? "auto";
+	const mode = typeof configured === "function" ? configured() : configured;
 	if (mode === "off") return;
 	if (mode === "auto" && host.state.windowFocused) return;
 	if (mode === "desktop" && process.platform !== "win32") {

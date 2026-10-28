@@ -38,13 +38,18 @@ export function hasSpillFooter(content: string): boolean {
 	return content.includes(`\n\n${SPILL_FOOTER_PREFIX}`);
 }
 export class ResultSpiller {
-	readonly #threshold: number;
+	#threshold: number;
 	readonly #directory: string;
 	#counter = 0;
 
 	constructor(threshold: number, directory: string) {
 		this.#threshold = threshold;
 		this.#directory = directory;
+	}
+
+	/** 配置热更新时换阈值；之后的工具结果按新值判断，已经落盘的不受影响。 */
+	setThreshold(threshold: number): void {
+		this.#threshold = threshold;
 	}
 
 	/** 未超过阈值就原样返回。 */

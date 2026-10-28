@@ -1,5 +1,6 @@
 import type { CheckpointEntry } from "../../checkpoint/service.ts";
 import {
+	mcpsActionLines,
 	mcpsPageLines,
 	skillsPageLines,
 	helpPageLines,
@@ -40,8 +41,14 @@ export function showPage(state: TuiState, kind: PageKind): void {
 
 /** 页面内容；宽度变了才重排，滚动与重绘都复用同一份。 */
 export function pageLines(host: TuiHost, kind: PageKind, width: number): readonly string[] {
-	// 检查点与作业都有光标/实时状态：不缓存，避免画出上一帧
-	if (kind === "checkpoints" || kind === "checkpoint" || kind === "jobs" || kind === "job") {
+	// 检查点、作业与 MCP 都有光标/实时状态：不缓存，避免画出上一帧
+	if (
+		kind === "checkpoints" ||
+		kind === "checkpoint" ||
+		kind === "jobs" ||
+		kind === "job" ||
+		kind === "mcps"
+	) {
 		return buildPage(host, kind, width);
 	}
 	const cache = host.state.pageCache;
@@ -93,7 +100,12 @@ function buildPage(host: TuiHost, kind: PageKind, width: number): readonly strin
 	if (kind === "viewer") {
 		return state.viewer === undefined ? [] : viewerPageLines(state.viewer, width);
 	}
-	return mcpsPageLines(width, host.options.mcpServers?.() ?? []);
+	if (kind === "mcps") {
+		const servers = host.options.mcpServers?.() ?? [];
+		state.mcpCursor = Math.min(state.mcpCursor, Math.max(0, servers.length - 1));
+		return mcpsPageLines(width, servers, state.mcpCursor);
+	}
+	return [];
 }
 
 /** 打开计划审批页；计划同时成为 /view-plan 的最近一份。 */
@@ -138,6 +150,7 @@ export function framedPageFor(
 	}
 	if (kind === "jobs") return framedPage(content, jobListActions(width), height, scroll);
 	if (kind === "sandbox") return framedPage(content, sandboxActionLines(width), height, scroll);
+	if (kind === "mcps") return framedPage(content, mcpsActionLines(width), height, scroll);
 	if (kind === "viewer") return framedPage(content, viewerActionLines(width), height, scroll);
 	return renderPage(content, height, scroll);
 }
