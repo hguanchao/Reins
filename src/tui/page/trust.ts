@@ -63,7 +63,7 @@ const SHORT_LABELS: readonly TrustOption[] = [
  * 整屏内容。
  *
  * 标题钉在首行，其余正文在「标题之下、底部分隔线之上」的区域里垂直居中；底部固定区
- * 占最后三行（分隔线、一行留白、居中的选项），内容再长也只截正文，选项的位置不跳。
+ * 占最后四行（分隔线、留白、居中的选项、留白），内容再长也只截正文，选项的位置不跳。
  */
 export function trustPageLines(input: TrustPageInput, width: number, height: number): readonly string[] {
 	const columns = Math.max(1, width);
@@ -111,12 +111,12 @@ function bodyLines(input: TrustPageInput, width: number): readonly string[] {
 
 function actionLines(input: TrustPageInput, width: number): readonly string[] {
 	const rule = `${THEME.border}${"─".repeat(width)}${RESET}`;
-	// 分隔线与选项之间留一行空白，否则选项像是贴在线上
+	// 分隔线与选项之间、选项与底边之间各留一行：选项在底部这块区域里上下居中
 	if (input.pending) {
 		// 录入结论时把选项行换成进行中的说明：避免连按回车重复提交
-		return [rule, "", center(PENDING, width, THEME.textSecondary)];
+		return [rule, "", center(PENDING, width, THEME.textSecondary), ""];
 	}
-	return [rule, "", optionRow(input.selection, width)];
+	return [rule, "", optionRow(input.selection, width), ""];
 }
 
 /** 三档横排、整体水平居中：当前档高亮加粗，拒绝档用失败色提示后果。 */

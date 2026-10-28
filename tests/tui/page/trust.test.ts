@@ -54,30 +54,35 @@ describe("工作区信任页", () => {
 		}
 	});
 
-	it("底部固定三行：分隔线、一行留白、三档横排", () => {
+	it("底部固定四行：分隔线、留白、三档横排、留白", () => {
 		const lines = render(input(), 80, 24);
 		assert.equal(lines.length, 24);
-		assert.ok((lines.at(-3) ?? "").trim().startsWith("─"), "倒数第三行应是分隔线");
-		assert.equal((lines.at(-2) ?? "").trim(), "", "分隔线与选项之间应留一行空白");
-		const options = lines.at(-1) ?? "";
+		assert.ok((lines.at(-4) ?? "").trim().startsWith("─"), "倒数第四行应是分隔线");
+		assert.equal((lines.at(-3) ?? "").trim(), "", "分隔线与选项之间应留一行空白");
+		const options = lines.at(-2) ?? "";
 		assert.match(options, /› Trust this workspace/);
 		assert.match(options, /Trust for this session/);
 		assert.match(options, /Do not trust/);
+		assert.equal((lines.at(-1) ?? "").trim(), "", "选项与底边之间应留一行空白");
 	});
 
-	it("选项整体水平居中，不贴着左边缘", () => {
+	it("选项水平居中，且在底部区上下留白相等", () => {
 		const width = 80;
-		const options = render(input(), width, 24).at(-1) ?? "";
+		const lines = render(input(), width, 24);
+		const options = lines.at(-2) ?? "";
 		const left = options.length - options.trimStart().length;
 		const expected = Math.floor((width - displayWidth(options.trim())) / 2);
 		assert.ok(left > 0);
 		assert.equal(left, expected);
+		// 选项之上与之下各一行空白，位置才算垂直居中
+		assert.equal((lines.at(-3) ?? "").trim(), "");
+		assert.equal((lines.at(-1) ?? "").trim(), "");
 	});
 
 	it("正文在标题与分隔线之间垂直居中：上下留白大致相等", () => {
 		const lines = render(input(), 80, 30);
 		// 标题占首行，正文从其后开始；分隔线在倒数第三行
-		const bodyEnd = lines.length - 3;
+		const bodyEnd = lines.length - 4;
 		const first = lines.findIndex((line, index) => index > 0 && index < bodyEnd && line.trim().length > 0);
 		const last = lines.reduce(
 			(found, line, index) => (index > 0 && index < bodyEnd && line.trim().length > 0 ? index : found),
@@ -91,7 +96,7 @@ describe("工作区信任页", () => {
 
 	it("当前档用标记高亮，移动后标记跟着走", () => {
 		const last = (selection: TrustPageInput["selection"]): string =>
-			render(input({ selection }), 80, 24).at(-1) ?? "";
+			render(input({ selection }), 80, 24).at(-2) ?? "";
 
 		assert.match(last("trust"), /› Trust this workspace\s+Trust for this session\s+Do not trust/);
 		assert.match(last("session"), / {2}Trust this workspace\s+› Trust for this session/);
@@ -99,7 +104,7 @@ describe("工作区信任页", () => {
 	});
 
 	it("窄终端退到短标签，仍然给出三档", () => {
-		const line = render(input(), 44, 24).at(-1) ?? "";
+		const line = render(input(), 44, 24).at(-2) ?? "";
 		assert.match(line, /Trust\s+›|›\s+Trust/);
 		assert.match(line, /This session/);
 		assert.match(line, /Do not trust/);
@@ -121,9 +126,9 @@ describe("工作区信任页", () => {
 
 	it("记录结论时把选项行换成进行中的说明", () => {
 		const lines = render(input({ pending: true }), 80, 24);
-		assert.match(lines.at(-1) ?? "", /Recording the decision\.\.\./);
-		assert.equal((lines.at(-1) ?? "").includes("Trust"), false);
-		// 固定区仍占两行，画面不会跟着跳
+		assert.match(lines.at(-2) ?? "", /Recording the decision\.\.\./);
+		assert.equal((lines.at(-2) ?? "").includes("Trust"), false);
+		// 固定区仍占四行，画面不会跟着跳
 		assert.equal(lines.length, 24);
 	});
 
