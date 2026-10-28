@@ -85,8 +85,8 @@ export function compactFooter(state: TuiState): boolean {
 
 export function footerHeight(state: TuiState, _options: TuiOptions): number {
 	if (state.approvalPrompt !== undefined) return approvalHeight(state);
-	// 整屏页不保留输入框与常驻信息
-	if (state.openPage !== undefined) return 0;
+	// 信任页与整屏页一样独占画面：输入框与常驻信息都让给内容
+	if (state.openPage !== undefined || state.trustPrompt !== undefined) return 0;
 	const lines = inputView(state.input, terminalWidth(state), state.inputCursor).lines.length;
 	if (!compactFooter(state)) {
 		return FULL_FOOTER_FIXED_LINES + queueHeight(state.queued.length) + lines;
@@ -102,6 +102,7 @@ export function todoPanelHeight(state: TuiState, options: TuiOptions): number {
 	const todo = state.currentTodo;
 	if (
 		state.openPage !== undefined ||
+		state.trustPrompt !== undefined ||
 		state.approvalPrompt !== undefined ||
 		planning(options) ||
 		todo === undefined ||
@@ -127,6 +128,7 @@ function runningJobs(options: TuiOptions): readonly JobView[] {
 export function jobBarHeight(state: TuiState, options: TuiOptions): number {
 	return runningJobs(options).length > 0 &&
 		state.openPage === undefined &&
+		state.trustPrompt === undefined &&
 		state.approvalPrompt === undefined &&
 		!menuOpen(state)
 		? 1

@@ -138,7 +138,7 @@ describe("整屏页与图片附件", () => {
 						scope: "user",
 					},
 				],
-				directories: ["/home/me/.reins/skills"],
+				directories: () => ["/home/me/.reins/skills"],
 			},
 			mcpServers: () => [{ name: "context7", description: "connected  2 tools: a, b" }],
 			stdin: input,
@@ -682,7 +682,7 @@ describe("整屏页与图片附件", () => {
 		const running = runTui({
 			version: "1.2.3",
 			info: FOOTER_INFO,
-			skills: { list: () => entries, directories: ["/skills"] },
+			skills: { list: () => entries, directories: () => ["/skills"] },
 			stdin: input,
 			stdout: output,
 		});

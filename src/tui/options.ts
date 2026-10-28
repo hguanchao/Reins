@@ -180,8 +180,25 @@ export type PageKind =
  */
 interface SkillsPageSource {
 	readonly list: () => readonly SkillPageEntry[];
-	/** 实际扫过的目录，脚注逐条列出 */
-	readonly directories: readonly string[];
+	/** 实际扫过的目录，脚注逐条列出；按需读取，取得信任后要多出项目目录 */
+	readonly directories: () => readonly string[];
+}
+
+/**
+ * 启动时的信任确认。
+ *
+ * 只在「这个工作区带有需要信任的东西、而使用者还没给过结论」时提供；没有它时界面直接进入
+ * 对话流。询问发生在主界面里而不是启动前的独立页面，因为界面已经装配好，项目技能与规则
+ * 本来就是每轮重读的，翻转让下一轮立即生效。
+ */
+export interface TrustPromptSource {
+	readonly root: string;
+	/** 需要信任才会读取的文件 */
+	readonly files: readonly string[];
+	/** 需要信任才会读取的技能目录 */
+	readonly skillDirectories: readonly string[];
+	/** 记录授予并返回要给使用者看的说明；失败时抛错，由界面显示原因 */
+	readonly accept: () => Promise<readonly string[]>;
 }
 
 /**
@@ -219,6 +236,8 @@ export interface TuiOptions {
 	readonly files?: FileSource;
 	/** 配置不可用时为 false：界面照常显示，但不接受提交 */
 	readonly ready?: boolean;
+	/** 工作区是否已取得信任；只在还没结论、且有需要信任的内容时提供 */
+	readonly trustPrompt?: TrustPromptSource;
 	/** 真实对话入口；不提供时无法提交普通提示 */
 	readonly agent?: AgentRuntime;
 	/** 工具审批桥接；不提供时不会弹出审批面板 */

@@ -56,6 +56,16 @@ export function createState(options: TuiOptions): TuiState {
 		spinnerFrame: 0,
 		sweepPhase: 0,
 		activeTurn: undefined,
+		trustPrompt:
+			options.trustPrompt === undefined
+				? undefined
+				: {
+						root: options.trustPrompt.root,
+						files: options.trustPrompt.files,
+						skillDirectories: options.trustPrompt.skillDirectories,
+						selection: "trust",
+						pending: false,
+					},
 		approvalPrompt: undefined,
 		approvalPromptId: undefined,
 		approvalSelection: "once",

@@ -21,7 +21,7 @@ import {
  * 更难解释清楚到底生效了什么。
  */
 
-interface ProjectResources {
+export interface ProjectResources {
 	/** 目录本身 */
 	readonly directory: string;
 	/** 需要信任才能读取的具体文件 */

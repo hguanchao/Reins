@@ -7,4 +7,6 @@
 export interface InputDeps {
 	readonly render: () => void;
 	readonly onCtrlC: () => void;
+	/** 直接收尾退出；启动期的信任页用它，那里没有需要二次确认的会话内容 */
+	readonly cleanup: () => void;
 }

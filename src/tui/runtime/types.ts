@@ -53,6 +53,17 @@ export interface ActiveTurn {
 	outcome: "done" | "error" | "aborted";
 }
 
+/** 启动时的信任确认；有它时界面挡在对话流前面，作出结论后才继续。 */
+export interface TrustPromptState {
+	readonly root: string;
+	readonly files: readonly string[];
+	readonly skillDirectories: readonly string[];
+	/** 动作行当前高亮的结论；默认授予，回车即放行 */
+	selection: "trust" | "skip";
+	/** 正在记录结论；期间按键忽略，避免重复触发回调 */
+	pending: boolean;
+}
+
 /**
  * 界面运行期的全部可变状态。
  *
@@ -139,6 +150,8 @@ export interface TuiState {
 
 	// —— 运行与审批 ——
 	activeTurn: ActiveTurn | undefined;
+	/** 启动信任确认；非空时界面只画这一页，不接受对话输入 */
+	trustPrompt: TrustPromptState | undefined;
 	approvalPrompt: ApprovalPrompt | undefined;
 	/** 界面上这份审批请求的标识；交回结论时带上，防止回答落到另一个请求上 */
 	approvalPromptId: number | undefined;
@@ -270,6 +283,8 @@ export interface TuiHost {
 	clearAttachments(): void;
 	syncApprovalPrompt(): boolean;
 	resolveApproval(answer: ApprovalAnswer): void;
+	/** 交回信任结论；授予时由宿主记录并落地，跳过后本次维持不信任 */
+	resolveTrust(trusted: boolean): void;
 	moveApprovalSelection(delta: number): void;
 	notify(message: string): void;
 	runUndo(): void;

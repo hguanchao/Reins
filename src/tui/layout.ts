@@ -102,6 +102,7 @@ import {
 	updateFileMenu,
 } from "./runtime/panels.ts";
 import { submit } from "./runtime/submit.ts";
+import { resolveTrust } from "./runtime/trust.ts";
 import { togglingTranscriptAt } from "./runtime/view.ts";
 import { openLatestViewer } from "./runtime/viewer.ts";
 import type { ActiveTurn, TuiHost } from "./runtime/types.ts";
@@ -174,6 +175,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		syncApprovalPrompt: () => syncApprovalPrompt(host),
 		resolveApproval: (answer) => resolveApproval(host, answer),
 		moveApprovalSelection: (delta) => moveApprovalSelection(host, delta),
+		resolveTrust: (trusted) => resolveTrust(host, trusted),
 		notify: (message) => notify(host, message),
 		copyText: (text) => copyText(host, text),
 		runUndo: () => executeUndo(host),
@@ -238,6 +240,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	onData = createInputHandler(host, {
 		render: host.render,
 		onCtrlC: () => onCtrlC(host, { render: host.render, cleanup: cleanUp }),
+		// 箭头包一层：cleanUp 在装配完成时才指向真正实现，直接传值会捕获初始的空函数
+		cleanup: () => cleanUp(),
 	});
 	cleanUp = () =>
 		cleanup(state, options, { render: host.render, onData, onInterrupt: cleanUp });

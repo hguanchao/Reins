@@ -32,6 +32,7 @@ import type {
 import { JobManager } from "../tools/jobs.ts";
 import { fileEntries } from "../workspace/walk.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
+import { recordTrust } from "../workspace/trust.ts";
 import { readVersion } from "../version.ts";
 import { sessionAge } from "./session/age.ts";
 import {
@@ -87,13 +88,17 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	const loaded = await loadSelection(options);
 
 	const workRoot = process.cwd();
-	const trusted = "trusted" in loaded && loaded.trusted;
+	/**
+	 * 工作区信任。信任名单由界面里的信任页翻转；技能与规则的读取都在闭包内取值，
+	 * 所以授予信任后下一轮就会带上项目里的内容，不必重启。
+	 */
+	let workspaceTrusted = "trusted" in loaded && loaded.trusted;
 
 	// 技能与规则每轮重扫：改完 SKILL.md / AGENTS.md 下一轮就生效，不必重启
-	const skillRoots = defaultSkillRoots(workRoot, trusted);
-	const skills = (): readonly SkillInfo[] => discoverSkills(skillRoots);
+	const skillRoots = () => defaultSkillRoots(workRoot, workspaceTrusted);
+	const skills = (): readonly SkillInfo[] => discoverSkills(skillRoots());
 	const instructions = (): readonly PromptInstruction[] =>
-		readInstructions(defaultInstructionSources(workRoot, trusted));
+		readInstructions(defaultInstructionSources(workRoot, workspaceTrusted));
 	const skillsPage = {
 		list: () =>
 			skills().map((skill) => ({
@@ -102,7 +107,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 				note: abbreviateHome(skill.directory),
 				scope: skill.scope,
 			})),
-		directories: skillRoots.map((root) => root.directory),
+		directories: () => skillRoots().map((root) => root.directory),
 	};
 
 	const configFile = options.configPath ?? configFilePath();
@@ -252,6 +257,54 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	};
 
 	/**
+	 * 信任页授予之后要做的事。
+	 *
+	 * 记录只是写一份用户级配置，真正要处理的是「项目配置现在才生效」。这里沿用热重载的
+	 * 分界线：每轮重建的项立即换上，启动时已被别的对象拿走的项明说要重启——假装全部
+	 * 生效，最后只会剩一个「配置写了却没用」的疑问。
+	 */
+	const acceptTrust = async (): Promise<readonly string[]> => {
+		recordTrust(workRoot, true);
+		workspaceTrusted = true;
+		const lines = [`Trusted ${workRoot}`];
+
+		let next: Config;
+		try {
+			next = readConfigQuietly(options, workRoot, true);
+		} catch (error) {
+			lines.push(`workspace config could not be read: ${describeError(error)}`);
+			return lines;
+		}
+		// 重读过一次就把版本号记下来，免得下一轮把这次重读当成文件变动再报一遍
+		configStamp = configFileStamp(configFile, projectConfigFilePath(workRoot));
+
+		const diff = diffConfig(activeConfig, next);
+		if (diff.live.length > 0) {
+			activeConfig = applyLiveConfig(activeConfig, next, diff.live);
+			refreshInfo();
+			lines.push(`applied now: ${diff.live.join(", ")}`);
+		}
+		if (diff.restart.length > 0) lines.push(`restart to apply: ${diff.restart.join(", ")}`);
+		return lines;
+	};
+
+	/**
+	 * 只在还没有任何结论时问一次。
+	 *
+	 * 命令行旗标与保存过的记录都已经定下结论，再问一遍等于不承认它。目录里没有需要信任
+	 * 的东西时 source 是 none，同样不打扰。
+	 */
+	const trustPrompt =
+		"trust" in loaded && loaded.trust.source === "default"
+			? {
+					root: workRoot,
+					files: loaded.resources.files,
+					skillDirectories: loaded.resources.skillDirectories,
+					accept: acceptTrust,
+				}
+			: undefined;
+
+	/**
 	 * 把一个已经打开的会话接成当前会话。
 	 *
 	 * 旧会话先释放写入器，之后条目才只落到新会话里。Plan 与检查点都是会话级状态，换会话
@@ -294,7 +347,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 
 		let next: Config;
 		try {
-			next = readConfigQuietly(options, workRoot, "trusted" in loaded && loaded.trusted);
+			next = readConfigQuietly(options, workRoot, workspaceTrusted);
 		} catch (error) {
 			// 带上具体原因：配置错误本身带行列信息，丢掉它使用者只能瞎猜改哪儿
 			const detail = describeError(error);
@@ -549,6 +602,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			info: () => footerInfo,
 			warning,
 			ready,
+			trustPrompt,
 			skills: skillsPage,
 			mcpServers: mcpStatus === undefined ? undefined : mcpServerRows,
 			sessionMenu,

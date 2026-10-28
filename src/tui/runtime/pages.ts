@@ -57,7 +57,7 @@ function buildPage(host: TuiHost, kind: PageKind, width: number): readonly strin
 	if (kind === "skills") {
 		const source = host.options.skills;
 		if (source === undefined) return skillsPageLines(width, [], []);
-		return skillsPageLines(width, source.list(), source.directories);
+		return skillsPageLines(width, source.list(), source.directories());
 	}
 	if (kind === "sandbox") {
 		const source = host.options.sandbox;

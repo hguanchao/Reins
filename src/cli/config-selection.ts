@@ -11,7 +11,13 @@ import {
 	providersFilePath,
 } from "../config/paths.ts";
 import { resolveSelection, type ModelSelection } from "../config/selection.ts";
-import { findProjectResources, recordTrust, resolveTrust, type TrustDecision } from "../workspace/trust.ts";
+import {
+	findProjectResources,
+	recordTrust,
+	resolveTrust,
+	type ProjectResources,
+	type TrustDecision,
+} from "../workspace/trust.ts";
 import type { CliOptions } from "./args.ts";
 import { writeStderr } from "./output.ts";
 
@@ -26,6 +32,9 @@ type SelectionResult =
 			readonly ok: true;
 			/** 工作区是否已取得信任：项目级技能要靠它决定扫不扫 */
 			readonly trusted: boolean;
+			/** 这次的信任结论从哪来：界面据此决定要不要先问一句 */
+			readonly trust: TrustDecision;
+			readonly resources: ProjectResources;
 			readonly value: {
 				readonly config: Config;
 				readonly providersConfig: ProvidersConfig;
@@ -37,6 +46,8 @@ type SelectionResult =
 			readonly ok: false;
 			readonly recoverable: true;
 			readonly trusted: boolean;
+			readonly trust: TrustDecision;
+			readonly resources: ProjectResources;
 			readonly config: Config;
 			readonly providersConfig: ProvidersConfig;
 			readonly error: ConfigError;
@@ -59,6 +70,8 @@ export async function loadSelection(options: CliOptions): Promise<SelectionResul
 		return {
 			ok: true,
 			trusted: effective.trust.trusted,
+			trust: effective.trust,
+			resources: effective.resources,
 			value: {
 				config: effective.config,
 				providersConfig: effective.providersConfig,
@@ -76,6 +89,8 @@ export async function loadSelection(options: CliOptions): Promise<SelectionResul
 				ok: false,
 				recoverable: true,
 				trusted: effective.trust.trusted,
+				trust: effective.trust,
+				resources: effective.resources,
 				config: effective.config,
 				providersConfig: effective.providersConfig,
 				error,
@@ -102,8 +117,8 @@ async function loadEffectiveConfig(
 	/** 实际参与合并的配置文件，按优先级从低到高 */
 	readonly sources: readonly string[];
 	readonly trust: TrustDecision;
-	/** 工作区里需要信任才会读取的文件 */
-	readonly resources: readonly string[];
+	/** 工作区里需要信任才会读取的东西；信任页要照着它逐条列出 */
+	readonly resources: ProjectResources;
 }> {
 	const workRoot = process.cwd();
 	const userConfigPath = options.configPath ?? configFilePath();
@@ -126,7 +141,7 @@ async function loadEffectiveConfig(
 			providersConfig: userProviders,
 			sources: [userConfigPath],
 			trust: { trusted: false, source: "none" },
-			resources,
+			resources: projectResources,
 		};
 	}
 
@@ -154,7 +169,7 @@ async function loadEffectiveConfig(
 			providersConfig: userProviders,
 			sources: [userConfigPath],
 			trust: decision,
-			resources,
+			resources: projectResources,
 		};
 	}
 
@@ -169,7 +184,7 @@ async function loadEffectiveConfig(
 	const sources = resources.includes(projectConfigPath)
 		? [userConfigPath, projectConfigPath]
 		: [userConfigPath];
-	return { config, providersConfig, sources, trust: decision, resources };
+	return { config, providersConfig, sources, trust: decision, resources: projectResources };
 }
 
 /**

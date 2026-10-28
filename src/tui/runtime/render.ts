@@ -11,6 +11,8 @@ import { renderJobBarLine } from "../page/job.ts";
 import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "../transcript.ts";
 import { scrollButtonPlacement } from "../view/scroll-button.ts";
 import { todoPanelLines } from "../view/todo-card.ts";
+import { framedPage } from "../page/frame.ts";
+import { trustActionLines, trustPageLines } from "../page/trust.ts";
 import { truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import {
@@ -91,13 +93,15 @@ export function render(host: TuiHost): void {
 				};
 	const menuLines = menuLinesOf(host, width, metrics);
 	const inputLines = inputView(state.input, width, state.inputCursor);
+	// 信任页挡在对话流前面：页脚、状态行与光标都不出现，画面只有这一页
+	const trust = state.trustPrompt;
 	// 输入以已注册的命令开头时把命令本身着色，参数保持正文色
 	const typedCommand = commandNameOf(state.input);
 	const commandLength = host.commands().some((item) => item.name === typedCommand)
 		? typedCommand.length + 1
 		: 0;
 	const footer =
-		state.openPage !== undefined || state.approvalPrompt !== undefined
+		trust !== undefined || state.openPage !== undefined || state.approvalPrompt !== undefined
 			? []
 			: host.compactFooter()
 				? renderFooter(
@@ -113,7 +117,10 @@ export function render(host: TuiHost): void {
 						commandLength,
 						queued: state.queued.map((item) => item.text),
 					});
-	const transcriptShown = state.openPage === undefined && (state.hasInput || host.noticeText() !== undefined);
+	const transcriptShown =
+		trust === undefined &&
+		state.openPage === undefined &&
+		(state.hasInput || host.noticeText() !== undefined);
 	// 运行中的行按当前帧重建转圈与扫光；没有动画行时这只是原样返回缓存行
 	const animation: AnimationFrame = {
 		spinner: SPINNER_FRAMES[state.spinnerFrame] ?? "",
@@ -122,14 +129,22 @@ export function render(host: TuiHost): void {
 	const selection =
 		state.selection !== undefined && selectionSpans(state.selection) ? state.selection : undefined;
 	const main =
-		state.openPage !== undefined
-			? framedPageFor(host, state.openPage, width, mainHeight)
-			: transcriptShown
-				? renderTranscriptView(view, mainHeight, state.scrollTop, animation, selection)
-				: renderMain(width, mainHeight, options.version);
+		trust !== undefined
+			? framedPage(
+					trustPageLines(trust, width),
+					trustActionLines(width, trust.selection, trust.pending),
+					mainHeight,
+					0,
+				)
+			: state.openPage !== undefined
+				? framedPageFor(host, state.openPage, width, mainHeight)
+				: transcriptShown
+					? renderTranscriptView(view, mainHeight, state.scrollTop, animation, selection)
+					: renderMain(width, mainHeight, options.version);
 	const mainLines = [...main];
 	// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示;Plan 模式隐藏旧任务表
 	const panelLines =
+		trust === undefined &&
 		state.openPage === undefined &&
 		state.approvalPrompt === undefined &&
 		!host.planning() &&
@@ -157,6 +172,7 @@ export function render(host: TuiHost): void {
 	// 只有整屏页与审批面板会夺走焦点
 	const cursor =
 		state.focused &&
+		trust === undefined &&
 		state.openPage === undefined &&
 		state.approvalPrompt === undefined &&
 		inputRow >= 1 &&

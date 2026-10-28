@@ -7,6 +7,7 @@ import { handleApprovalInput } from "./approval.ts";
 import { handleModalMenuInput } from "./menus.ts";
 import { handlePageInput } from "./pages.ts";
 import { handleTranscriptInput } from "./transcript.ts";
+import { handleTrustInput } from "./trust.ts";
 import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
@@ -73,6 +74,19 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 			// 失焦意味着指针也不在这个窗口上：拖动到一半的滚动条不该继续跟着走
 			if (!focus) state.draggingScrollbar = false;
 			if (changed) deps.render();
+		}
+
+		// 信任页排在所有分支之前：它没给出结论时，界面上的输入框根本不可见，
+		// 任何按键都不该落到对话流或命令补全上。
+		if (state.trustPrompt !== undefined) {
+			// 此时没有任何会话内容需要保护，Ctrl+C 直接退出。连按两次的确认在这里
+			// 不合适——信任页没有状态行可以显示，第一次按下看起来像没反应。
+			if (text.includes(CTRL_C) && !state.pasting && !text.includes(PASTE_START)) {
+				deps.cleanup();
+				return;
+			}
+			handleTrustInput(host, deps, stripPasteContent(text));
+			return;
 		}
 
 		// Ctrl+C 只认真实的按键块:粘贴的内容被括在粘贴标记里,其中的 \x03 是正文,
