@@ -1135,7 +1135,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("/fork 从当前会话末尾分叉并显示复制量", async () => {
+	it("会话菜单按 f 从当前会话分叉并显示复制量", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -1162,7 +1162,8 @@ describe("命令补全与选择面板", () => {
 		});
 
 		try {
-			input.emit("data", Buffer.from("/fork\r"));
+			input.emit("data", Buffer.from("/session\r"));
+			input.emit("data", Buffer.from("f"));
 
 			assert.deepEqual(forks, ["0123456789abcdef"]);
 			const text = frameLines(output).map(plain).join("\n");
@@ -1238,7 +1239,8 @@ describe("命令补全与选择面板", () => {
 		});
 
 		try {
-			input.emit("data", Buffer.from("/fork\r"));
+			input.emit("data", Buffer.from("/session\r"));
+			input.emit("data", Buffer.from("f"));
 
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("Failed to fork session"));

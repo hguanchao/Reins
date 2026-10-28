@@ -10,7 +10,7 @@ interface SwitchedSession {
 	readonly history: readonly TranscriptTurn[];
 	/** 目标会话最后一张任务表；没有时面板保持收起 */
 	readonly todo?: TranscriptTodo;
-	/** 目标会话最近一份计划；供 /view-plan 恢复 */
+	/** 目标会话最近一份计划；供计划卡恢复 */
 	readonly plan?: TranscriptPlan;
 }
 

@@ -4,6 +4,17 @@ import { describe, it } from "node:test";
 import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
 
+/** 双击历史里的计划卡：没有 /view-plan 之后，这是重新打开计划的入口。 */
+async function openPlanCard(input: FakeInput, output: FakeOutput): Promise<void> {
+	const row = frameLines(output)
+		.map(plain)
+		.findIndex((line) => line.includes("◇ Plan")) + 1;
+	assert.ok(row > 0, "plan card is visible");
+	input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+	input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+	await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
 describe("Plan 模式", () => {
 	it("提交计划后自动打开审批页，批准后带着完整计划实现", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
@@ -104,8 +115,7 @@ describe("Plan 模式", () => {
 		try {
 			input.emit("data", Buffer.from("/plan\r"));
 			assert.equal(planMode, true);
-			input.emit("data", Buffer.from("/view-plan\r"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
+			await openPlanCard(input, output);
 
 			let text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("Reins — plan"));
@@ -118,15 +128,8 @@ describe("Plan 模式", () => {
 			text = frameLines(output).map(plain).join("\n");
 			assert.equal(text.includes("Reins — plan"), false);
 
-			// 双击计划卡重新打开
-			const row =
-				frameLines(output)
-					.map(plain)
-					.findIndex((line) => line.includes("◇ Plan")) + 1;
-			assert.ok(row > 0);
-			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
-			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
-			await new Promise<void>((resolve) => setImmediate(resolve));
+			// 再次双击计划卡重新打开
+			await openPlanCard(input, output);
 			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — plan"));
 
 			// q 退出 Plan 模式
@@ -205,8 +208,7 @@ describe("Plan 模式", () => {
 		});
 
 		try {
-			input.emit("data", Buffer.from("/view-plan\r"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
+			await openPlanCard(input, output);
 			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — plan"));
 
 			input.emit("data", Buffer.from("r"));

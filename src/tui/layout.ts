@@ -14,7 +14,6 @@ import { createInputHandler } from "./input/dispatch.ts";
 import { render } from "./runtime/render.ts";
 import { onCtrlC } from "./runtime/ctrl-c.ts";
 import { cleanup } from "./runtime/lifecycle.ts";
-import { startBannerShine } from "./runtime/banner-shine.ts";
 import { startRun } from "./runtime/run.ts";
 import { notify } from "./runtime/run.ts";
 import { drainQueue } from "./runtime/run.ts";
@@ -284,10 +283,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		state.stdin.on("data", onData);
 		process.on("SIGINT", cleanUp);
 		host.render();
-		// 启动画面被信任页或配置警告占据时没有可扫的标志，不启动一次性动画
-		if (state.trustPrompt === undefined && host.noticeText() === undefined) {
-			startBannerShine(state, host.render);
-		}
 	} catch (error) {
 		cleanUp();
 		throw error;

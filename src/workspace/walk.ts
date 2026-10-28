@@ -42,6 +42,8 @@ interface Pending {
 	readonly absolute: string;
 	readonly relative: string;
 	readonly layers: readonly IgnoreLayer[];
+	/** 起点为 0，顶层条目为 1 */
+	readonly depth: number;
 }
 
 /**
@@ -54,6 +56,8 @@ export const MAX_WALK_ENTRIES = 100_000;
 interface WalkOptions {
 	/** 最多产出多少条，达到上限即停止 */
 	readonly maxEntries: number;
+	/** 最多下探到第几层；省略表示不限制。顶层条目为第 1 层 */
+	readonly maxDepth?: number;
 }
 
 /**
@@ -63,7 +67,7 @@ interface WalkOptions {
  */
 export function* walk(root: string, options: WalkOptions): Generator<WalkEntry> {
 	const ancestors = ancestorLayers(root);
-	const queue: Pending[] = [{ absolute: root, relative: "", layers: [] }];
+	const queue: Pending[] = [{ absolute: root, relative: "", layers: [], depth: 0 }];
 	let produced = 0;
 
 	while (queue.length > 0) {
@@ -97,7 +101,14 @@ export function* walk(root: string, options: WalkOptions): Generator<WalkEntry> 
 
 			produced += 1;
 			yield { absolute, relative: relativePath, kind };
-			if (kind === "directory") queue.push({ absolute, relative: relativePath, layers });
+			// 只列一层的调用不需要继续下探；目录本身已经产出，子项不必再读
+			const childDepth = directory.depth + 1;
+			if (
+				kind === "directory" &&
+				(options.maxDepth === undefined || childDepth < options.maxDepth)
+			) {
+				queue.push({ absolute, relative: relativePath, layers, depth: childDepth });
+			}
 		}
 	}
 }

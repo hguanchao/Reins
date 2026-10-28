@@ -61,7 +61,7 @@ export interface SessionSwitchResult {
 	readonly history: readonly TranscriptTurn[];
 	/** 新会话最后一张任务表；没有时常驻面板随之收起 */
 	readonly todo?: TranscriptTodo;
-	/** 新会话最近一份计划；没有时 /view-plan 提示还没有计划 */
+	/** 新会话最近一份计划；没有时计划卡不显示 */
 	readonly plan?: TranscriptPlan;
 	readonly warnings: readonly string[];
 	/** 分叉时说明来源与复制量；普通切换没有这一项 */
@@ -76,7 +76,7 @@ export interface SessionMenuSource {
 	readonly list: () => readonly SessionMenuItem[];
 	/** 切换会话；失败时抛错，由界面显示原因 */
 	readonly select: (id: string) => SessionSwitchResult;
-	/** 从选中会话的当前末尾分叉并切过去；不提供时 /fork 与菜单里的 f 不可用 */
+	/** 从选中会话的当前末尾分叉并切过去；不提供时菜单里的 f 不可用 */
 	readonly fork?: (id: string) => SessionSwitchResult;
 }
 
@@ -344,7 +344,7 @@ export interface TuiOptions {
 	readonly history?: readonly TranscriptTurn[];
 	/** 历史里最后一张任务表；续聊时让常驻面板立即有内容 */
 	readonly historyTodo?: TranscriptTodo;
-	/** 历史里最近一份计划；续聊时 /view-plan 可以立即打开 */
+	/** 历史里最近一份计划；续聊时计划卡可以立即打开 */
 	readonly historyPlan?: TranscriptPlan;
 	/** 工作根：用来判断命令开头的工作根 cd 是否多余，省略时原样显示 */
 	readonly workspaceRoot?: string;

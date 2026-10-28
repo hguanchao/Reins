@@ -14,15 +14,13 @@ describe("内置斜杠命令", () => {
 		);
 		assert.deepEqual(
 			commands.filter((command) => command.hidden === true).map((command) => command.name),
-			["fork", "rewind", "branches", "export", "review", "checkpoints", "sandbox", "view-plan", "jobs"],
+			["rewind", "branches", "export", "review", "checkpoints", "sandbox", "jobs"],
 		);
 	});
 
 	it("隐藏命令完整输入时仍能查到并执行", () => {
-		assert.equal(findCommand("/fork", commands)?.name, "fork");
 		assert.equal(findCommand("/checkpoints", commands)?.name, "checkpoints");
 		assert.equal(findCommand("/sandbox", commands)?.name, "sandbox");
-		assert.equal(findCommand("/view-plan", commands)?.name, "view-plan");
 		assert.equal(findCommand("/jobs", commands)?.name, "jobs");
 	});
 });

@@ -54,15 +54,6 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 			enabled: options.sessionMenu !== undefined,
 		},
 		{
-			name: "fork",
-			description:
-				options.sessionMenu?.fork === undefined
-					? "Session forking is unavailable"
-					: "Fork the current session at its current point",
-			enabled: options.sessionMenu?.fork !== undefined,
-			hidden: true,
-		},
-		{
 			name: "rewind",
 			description:
 				options.conversation === undefined
@@ -127,12 +118,6 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 					? "Sandbox details are unavailable in this session"
 					: "Show sandbox mode and platform limits",
 			enabled: options.sandbox !== undefined,
-			hidden: true,
-		},
-		{
-			name: "view-plan",
-			description: "Reopen the latest plan",
-			enabled: true,
 			hidden: true,
 		},
 		{

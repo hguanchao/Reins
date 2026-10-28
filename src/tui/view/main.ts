@@ -17,9 +17,8 @@ export function renderMain(
 	width: number,
 	height: number,
 	version: string,
-	shine?: number,
 ): readonly string[] {
-	const content = bannerLines(width, version, shine);
+	const content = bannerLines(width, version);
 	const fitted = content.length > height ? content.filter((line) => line !== "") : content;
 	const lines: string[] = Array.from({ length: Math.max(0, height) }, () => "");
 	const top = Math.max(0, Math.floor((lines.length - fitted.length) / 2));

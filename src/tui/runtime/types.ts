@@ -191,7 +191,7 @@ export interface TuiState {
 	viewerTool: TranscriptTool | undefined;
 	/** 当前正在审批页里展示的计划；为空时计划页没有内容。 */
 	planReview: TranscriptPlan | undefined;
-	/** 最近一份计划；/view-plan 与计划卡都从这里打开。 */
+	/** 最近一份计划；计划卡与审批页都从这里打开。 */
 	latestPlan: TranscriptPlan | undefined;
 	/** 本轮刚提交、等回合结束后自动打开审批页的计划。 */
 	pendingPlan: TranscriptPlan | undefined;
@@ -222,9 +222,6 @@ export interface TuiState {
 	spinnerTimer: ReturnType<typeof setInterval> | undefined;
 	/** 只在有作业运行时启动：让 Jobs bar 与作业页的耗时跟着当前时间走。 */
 	jobTimer: ReturnType<typeof setInterval> | undefined;
-	/** 启动标志的一次性扫光：0..1 为进度，扫完置回 undefined。 */
-	bannerShine: number | undefined;
-	bannerTimer: ReturnType<typeof setInterval> | undefined;
 	unsubscribeJobs: () => void;
 	statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 	exitArmed: boolean;

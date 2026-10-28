@@ -4,7 +4,6 @@ import { describe, it } from "node:test";
 import { FakeInput, FakeOutput, ENTER, SYNC_BEGIN, SYNC_END, LEAVE, FOCUS, INFO, BORDER, FOOTER_INFO, WARNING, pressCtrlC, exitTui, rawFrame, frameLines, cursorAt, plain } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
 import { THEME } from "../../../src/tui/render/theme.ts";
-import { BANNER_FRAME_MS, BANNER_SWEEP_MS } from "../../../src/tui/view/banner.ts";
 
 describe("终端启动与收尾", () => {
 	it("进入备用屏，按当前尺寸绘制，连按两次 Ctrl+C 后恢复", async () => {
@@ -91,35 +90,6 @@ describe("终端启动与收尾", () => {
 				output.chunks.some((chunk) => chunk.includes(LEAVE)),
 				false,
 			);
-		} finally {
-			exitTui(input);
-		}
-
-		assert.equal(await running, 0);
-	});
-
-	it("启动后标志只扫光一次", async (t) => {
-		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
-
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
-
-		try {
-			const initial = output.chunks.length;
-			t.mock.timers.tick(BANNER_FRAME_MS);
-			assert.equal(output.chunks.length, initial + 1);
-			assert.notEqual(rawFrame(output), output.chunks[initial - 1]);
-
-			t.mock.timers.tick(BANNER_SWEEP_MS);
-			const settled = output.chunks.length;
-			const banner = frameLines(output).slice(0, 5).join("\n");
-			const highlight = `\x1b[38;2;${THEME.bannerHighlightRgb.r};${THEME.bannerHighlightRgb.g};${THEME.bannerHighlightRgb.b}m`;
-			assert.ok(banner.includes(THEME.textSubtle));
-			assert.equal(banner.includes(highlight), false);
-
-			t.mock.timers.tick(BANNER_SWEEP_MS);
-			assert.equal(output.chunks.length, settled);
 		} finally {
 			exitTui(input);
 		}

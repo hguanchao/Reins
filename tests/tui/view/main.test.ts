@@ -42,11 +42,4 @@ describe("主区域启动画面", () => {
 		assert.equal(visible(lines[0] ?? "").trimEnd(), ART_TOP);
 		assert.equal(visible(lines[1] ?? "").trimEnd(), "█   █ █        █    ██  █  █");
 	});
-
-	it("扫光参数透传到标志", () => {
-		const still = renderMain(40, 6, "1.2.3");
-		const shining = renderMain(40, 6, "1.2.3", 0.5);
-
-		assert.notEqual(shining[0], still[0]);
-	});
 });

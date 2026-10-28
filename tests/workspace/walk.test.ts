@@ -68,6 +68,16 @@ describe("目录遍历", () => {
 		});
 	});
 
+	it("maxDepth 限制下探层数，顶层目录不再展开", () => {
+		withTree((root) => {
+			const paths = [...walk(root, { maxEntries: 200, maxDepth: 1 })]
+				.map((entry) => entry.relative)
+				.sort();
+
+			assert.deepEqual(paths, ["file.txt", "real"]);
+		});
+	});
+
 	it("子目录的 .gitignore 只作用于它自己那层", () => {
 		withTree((root) => {
 			mkdirSync(join(root, "a"));

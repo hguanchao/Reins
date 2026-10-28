@@ -2,11 +2,10 @@ import { THINKING_LEVELS } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import { formatDuration } from "../../shared/format.ts";
 import type { CommandMenuItem } from "../panel/command-menu.ts";
-import type { SessionMenuItem } from "../panel/session-menu.ts";
 import type { RewindResult, SessionSwitchResult } from "../options.ts";
 import { CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE, implementationPrompt } from "../render/status.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
-import { closePlanReview, openPlanReview, showPage } from "./pages.ts";
+import { closePlanReview, showPage } from "./pages.ts";
 import {
 	openBranchMenu,
 	openEffortMenu,
@@ -36,14 +35,12 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 		model: () => executeModelCommand(host, args),
 		effort: () => executeEffortCommand(host, args),
 		session: () => executeSessionCommand(host, args),
-		fork: () => executeForkCommand(host),
 		rewind: () => executeRewindCommand(host),
 		branches: () => executeBranchesCommand(host),
 		export: () => executeExportCommand(host, args),
 		review: () => executeReviewCommand(host, args),
 		compact: () => executeCompactCommand(host),
 		plan: () => executePlanCommand(host, args),
-		"view-plan": () => executeViewPlanCommand(host),
 		undo: () => executeUndoCommand(host),
 		checkpoints: () => executeCheckpointsCommand(host),
 		sandbox: () => {
@@ -215,34 +212,6 @@ function executeSessionCommand(host: TuiHost, args: string): void {
 	}
 	host.setInput("");
 	host.switchSession(target);
-}
-
-/** /fork:从当前会话的当前末尾分叉，并切换到新会话。 */
-function executeForkCommand(host: TuiHost): void {
-	const source = host.options.sessionMenu;
-	host.setInput("");
-	if (source === undefined || source.fork === undefined) {
-		host.resetStatusMeta();
-		host.setStatus("Session forking is unavailable in this session", "notice");
-		return;
-	}
-
-	host.state.follow = true;
-	let items: readonly SessionMenuItem[];
-	try {
-		items = source.list();
-	} catch (error) {
-		host.appendCommandTurn("/fork", [{ kind: "error", text: `Error: Failed to list sessions: ${describeError(error)}` }]);
-		return;
-	}
-	const current = items.find((item) => item.current);
-	if (current === undefined) {
-		host.appendCommandTurn("/fork", [
-			{ kind: "error", text: "Error: The current session is not in the session list." },
-		]);
-		return;
-	}
-	host.switchSession(current.id, "fork");
 }
 
 /** /rewind:选择一条历史消息，回到它之前并把它放回输入框。 */
@@ -555,19 +524,6 @@ function executePlanCommand(host: TuiHost, args: string): void {
 	host.clearStatus();
 }
 
-/** /view-plan:重新打开最近一份计划；没有计划时只给提示。 */
-function executeViewPlanCommand(host: TuiHost): void {
-	host.setInput("");
-	const plan = host.state.latestPlan;
-	if (plan === undefined) {
-		host.resetStatusMeta();
-		host.setStatus("No plan yet. Use /plan to write one.", "notice");
-		host.scheduleStatusClear();
-		return;
-	}
-	openPlanReview(host, plan);
-}
-
 function executeUndoCommand(host: TuiHost): void {
 	host.setInput("");
 	host.runUndo();
@@ -661,7 +617,7 @@ export function revisePlan(host: TuiHost): void {
 	host.render();
 }
 
-/** 退出计划：关闭审批页并离开 Plan 模式，计划本身仍可用 /view-plan 回看。 */
+/** 退出计划：关闭审批页并离开 Plan 模式，计划本身仍可由计划卡回看。 */
 export function leavePlan(host: TuiHost): void {
 	// 同 /plan：一轮进行中切换会让这一轮后续的工具立刻越过只读闸门
 	if (host.state.activeTurn !== undefined) {
@@ -693,13 +649,13 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	if (source === undefined) return;
 
 	const forking = action === "fork";
-	if (reviewBlocks(host, forking ? "/fork" : "/session")) return;
+	if (reviewBlocks(host, forking ? "forking" : "/session")) return;
 	// 一轮进行中不能换会话：宿主会关掉旧会话的写入器，正在跑的驱动下一次追加就失败，
 	// 而新会话已经把旧 turn 移出了界面状态——本轮回复会无声地丢掉。
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
 		host.setStatus(
-			`${forking ? "/fork" : "/session"} is unavailable while a turn is running`,
+			`${forking ? "Forking" : "/session"} is unavailable while a turn is running`,
 			"notice",
 		);
 		host.scheduleStatusClear();
@@ -715,7 +671,7 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	} catch (error) {
 		host.state.follow = true;
 		const message = describeError(error);
-		host.appendCommandTurn(forking ? "/fork" : "/session", [
+		host.appendCommandTurn("/session", [
 			{
 				kind: "error",
 				text: `Error: Failed to ${forking ? "fork" : "switch"} session: ${message}`,
@@ -732,7 +688,7 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	if (forking) {
 		const origin = result.fork?.sourceId ?? id;
 		const copied = result.fork?.copied ?? 0;
-		host.appendCommandTurn("/fork", [
+		host.appendCommandTurn("/session", [
 			`Forked from ${origin} · ${copied} ${copied === 1 ? "entry" : "entries"} copied`,
 			"Workspace unchanged · checkpoints start fresh within the fork.",
 			...result.warnings,

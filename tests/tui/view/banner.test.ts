@@ -15,8 +15,7 @@ const ART = [
 ] as const;
 const BLOCK_WIDTH = Math.max(...ART.map((line) => line.length));
 
-const BASE = `${THEME.textSubtleRgb.r};${THEME.textSubtleRgb.g};${THEME.textSubtleRgb.b}`;
-const HIGHLIGHT = `${THEME.bannerHighlightRgb.r};${THEME.bannerHighlightRgb.g};${THEME.bannerHighlightRgb.b}`;
+const BASE = "107;117;128";
 
 function visible(line: string): string {
 	return stripVTControlCharacters(line);
@@ -31,7 +30,7 @@ function colors(line: string): string[] {
 
 describe("启动标志", () => {
 	it("五行块字在上，版本号隔一空行居中", () => {
-		const lines = bannerLines(40, "1.0.0", undefined);
+		const lines = bannerLines(40, "1.0.0");
 
 		assert.equal(lines.length, 7);
 		for (let row = 0; row < ART.length; row += 1) {
@@ -42,7 +41,7 @@ describe("启动标志", () => {
 	});
 
 	it("短行补齐到整块宽度，所有行的左缘对齐", () => {
-		const lines = bannerLines(40, "1.0.0", undefined);
+		const lines = bannerLines(40, "1.0.0");
 		const widths = ART.map((_, row) => visible(lines[row] ?? "").length);
 		const lefts = ART.map((_, row) => visible(lines[row] ?? "").indexOf("█"));
 
@@ -50,8 +49,8 @@ describe("启动标志", () => {
 		assert.ok(lefts.every((left) => left === 4), lefts.join(","));
 	});
 
-	it("静止时标志与版本号都用弱文字色", () => {
-		const lines = bannerLines(40, "1.0.0", undefined);
+	it("标志与版本号都用弱文字色", () => {
+		const lines = bannerLines(40, "1.0.0");
 
 		for (const line of lines.slice(0, 5).concat(lines[6] ?? "")) {
 			assert.ok(line.includes(THEME.textSubtle));
@@ -59,36 +58,8 @@ describe("启动标志", () => {
 		}
 	});
 
-	it("扫光以标志自身颜色为底，只把经过处提亮一档", () => {
-		const lines = bannerLines(40, "1.0.0", 0.5);
-
-		for (const line of lines.slice(0, 5)) {
-			const values = colors(line);
-			assert.ok(values.includes(BASE));
-			assert.ok(values.includes(HIGHLIGHT));
-			assert.equal(values.includes("47;125;109"), false);
-			assert.equal(values.includes("255;255;255"), false);
-		}
-		assert.deepEqual(new Set(colors(lines[6] ?? "")), new Set([BASE]));
-	});
-
-	it("整块共用一个相位，光带竖直从左往右", () => {
-		const lines = bannerLines(40, "1.0.0", 0.5);
-		const peaks = lines.slice(0, 5).map((line) => colors(line).indexOf(HIGHLIGHT));
-
-		assert.deepEqual(new Set(peaks), new Set([16]));
-	});
-
-	it("扫到最右端时只剩底色", () => {
-		const lines = bannerLines(40, "1.0.0", 1);
-
-		for (const line of lines.slice(0, 5)) {
-			assert.deepEqual(new Set(colors(line)), new Set([BASE]));
-		}
-	});
-
 	it("终端比整块窄时不缩进也不截断", () => {
-		const lines = bannerLines(20, "1.0.0", undefined);
+		const lines = bannerLines(20, "1.0.0");
 
 		for (let row = 0; row < ART.length; row += 1) {
 			assert.equal(visible(lines[row] ?? "").trimEnd(), ART[row]);

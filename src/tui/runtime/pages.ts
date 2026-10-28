@@ -108,7 +108,7 @@ function buildPage(host: TuiHost, kind: PageKind, width: number): readonly strin
 	return [];
 }
 
-/** 打开计划审批页；计划同时成为 /view-plan 的最近一份。 */
+/** 打开计划审批页；计划同时成为最近一份，供计划卡重新打开。 */
 export function openPlanReview(host: TuiHost, plan: TranscriptPlan): void {
 	const state = host.state;
 	state.planReview = plan;
@@ -121,7 +121,7 @@ export function openPlanReview(host: TuiHost, plan: TranscriptPlan): void {
 	showPage(state, "plan");
 }
 
-/** 关闭审批页但保留最近一份计划，之后仍可用 /view-plan 打开。 */
+/** 关闭审批页但保留最近一份计划，之后仍可由计划卡打开。 */
 export function closePlanReview(state: TuiState): void {
 	if (state.openPage === "plan") state.openPage = undefined;
 	state.planReview = undefined;

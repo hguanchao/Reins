@@ -111,13 +111,13 @@ describe("持久终端", () => {
 		manager.shutdown();
 	});
 
-	it("工具层：启动、列出、写入、终止", async () => {
+	it("工具层：启动、写入、读取、终止", async () => {
 		const manager = new TerminalManager();
 		try {
 			const tools = createTerminalTools(manager);
 			assert.deepEqual(
 				tools.map((tool) => tool.name),
-				["terminal_start", "terminal_write", "terminal_read", "terminal_kill", "terminal_list"],
+				["terminal_start", "terminal_write", "terminal_kill"],
 			);
 			const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
@@ -136,8 +136,12 @@ describe("持久终端", () => {
 			} as never);
 			assert.match(written.content, /got:tool/);
 
-			const listed = await byName.get("terminal_list")!.execute({ args: {} } as never);
-			assert.match(listed.content, /t1 · running/);
+			// 省略 input 就是只读：上一笔写入已经把输出读走，这里没有新内容
+			const readOnly = await byName.get("terminal_write")!.execute({
+				args: { id, waitMs: 0 },
+			} as never);
+			assert.match(readOnly.content, /Terminal t1 · running/);
+			assert.match(readOnly.content, /\[no new output\]/);
 
 			const killed = await byName.get("terminal_kill")!.execute({ args: { id } } as never);
 			assert.match(killed.content, /Stopping terminal t1|already/);

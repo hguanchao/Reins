@@ -268,12 +268,6 @@ export class TerminalManager {
 		return session.info;
 	}
 
-	list(): readonly TerminalView[] {
-		return [...this.#terminals.values()]
-			.map((session) => session.info)
-			.sort((left, right) => right.startedAt - left.startedAt);
-	}
-
 	/** 退出时收起所有子进程，避免留下孤儿进程。 */
 	shutdown(): void {
 		for (const session of this.#terminals.values()) {
@@ -364,15 +358,6 @@ function formatRead(read: TerminalRead): string {
 	].join("\n");
 }
 
-function formatList(view: TerminalView): string {
-	const elapsed = (view.endedAt ?? Date.now()) - view.startedAt;
-	const exit =
-		view.status === "exited" && view.exitCode !== undefined && view.exitCode !== null
-			? ` (${view.exitCode})`
-			: "";
-	return `${view.id} · ${view.status}${exit} · ${formatDuration(elapsed)} · ${view.command}`;
-}
-
 const START_PARAMETERS = {
 	type: "object",
 	properties: {
@@ -398,7 +383,10 @@ const WRITE_PARAMETERS = {
 	type: "object",
 	properties: {
 		id: { type: "string", description: "The terminal id returned by terminal_start." },
-		input: { type: "string", description: "Text to send to the process's stdin." },
+		input: {
+			type: "string",
+			description: "Text to send to the process's stdin. Omit it (or pass an empty string) to only read new output.",
+		},
 		submit: {
 			type: "boolean",
 			description: "Append a newline when the input does not already end with one. Default true.",
@@ -409,37 +397,14 @@ const WRITE_PARAMETERS = {
 			description: "How long to wait for output, up to 5000 ms; default 250.",
 		},
 	},
-	required: ["id", "input"],
+	required: ["id"],
 } as const satisfies JsonSchema;
 
 type TerminalWriteArgs = {
 	readonly id: string;
-	readonly input: string;
+	readonly input?: string;
 	readonly submit?: boolean;
 	readonly waitMs?: number;
-};
-
-const READ_PARAMETERS = {
-	type: "object",
-	properties: {
-		id: { type: "string", description: "The terminal id returned by terminal_start." },
-		waitMs: {
-			type: "integer",
-			minimum: 0,
-			description: "How long to wait for new output, up to 5000 ms; default 250.",
-		},
-		all: {
-			type: "boolean",
-			description: "Return the whole retained buffer instead of only output since the last read.",
-		},
-	},
-	required: ["id"],
-} as const satisfies JsonSchema;
-
-type TerminalReadArgs = {
-	readonly id: string;
-	readonly waitMs?: number;
-	readonly all?: boolean;
 };
 
 const ID_PARAMETERS = {
@@ -463,7 +428,8 @@ export function createTerminalTools(manager: TerminalManager): readonly AnyToolD
 			"Start a long-running process and keep its stdin open across tool calls. Use it for REPLs, dev servers, " +
 			"test watchers and similar interactive work. This is a pipe-backed terminal, not a full PTY: programs " +
 			"that require a real terminal (full-screen editors, curses UIs) will not work. Use bash for one-shot " +
-			"commands. Output is accumulated per terminal; read it with terminal_read or terminal_write.",
+			"commands. Output is accumulated per terminal; read it with terminal_write (omit input) or send input " +
+			"with terminal_write.",
 		parameters: START_PARAMETERS,
 		annotations: { readOnly: false, destructive: true, openWorld: true },
 
@@ -493,7 +459,7 @@ export function createTerminalTools(manager: TerminalManager): readonly AnyToolD
 						? `Terminal ${view.id} exited before input: ${args.command}`
 						: `Started terminal ${view.id}: ${args.command}`,
 					...(read === undefined ? [] : [formatRead(read)]),
-					`Use terminal_write with id "${view.id}" to send input, terminal_read to poll, terminal_kill to stop.`,
+					`Use terminal_write with id "${view.id}" to send input or read output, terminal_kill to stop.`,
 				].join("\n\n"),
 				...(failed ? { isError: true } : {}),
 				details: { terminalId: view.id, status: read?.view.status ?? view.status },
@@ -505,9 +471,9 @@ export function createTerminalTools(manager: TerminalManager): readonly AnyToolD
 		name: "terminal_write",
 		summary: "Send input to a running terminal and return new output",
 		description:
-			"Send text to a terminal's stdin and return output produced since the last read. submit defaults to true " +
-			"and appends a newline when the input does not already end with one. A terminal that already exited is " +
-			"not written to; its final status is returned instead.",
+			"Send text to a terminal's stdin and return output produced since the last read. Omit input (or pass an " +
+			"empty string) to only read new output. submit defaults to true and appends a newline when the input does " +
+			"not already end with one. A terminal that already exited is not written to; its final status is returned.",
 		parameters: WRITE_PARAMETERS,
 		annotations: { readOnly: false, destructive: true, openWorld: true },
 
@@ -518,40 +484,21 @@ export function createTerminalTools(manager: TerminalManager): readonly AnyToolD
 		}),
 
 		async execute({ args }): Promise<ToolResult> {
-			const read = await manager.write(
-				args.id,
-				args.input,
-				args.submit ?? true,
-				args.waitMs ?? DEFAULT_WAIT_MS,
-			);
+			const waitMs = args.waitMs ?? DEFAULT_WAIT_MS;
+			const hasInput = args.input !== undefined && args.input.length > 0;
+			const read = hasInput
+				? await manager.write(args.id, args.input ?? "", args.submit ?? true, waitMs)
+				: await manager.read(args.id, waitMs, false);
 			if (read === undefined) {
 				return { content: `Unknown terminal: ${args.id}`, isError: true };
 			}
-			const stopped = read.view.status === "running" ? "" : `Terminal ${read.view.id} is ${read.view.status}; input was not sent.\n\n`;
+			const stopped =
+				hasInput && read.view.status !== "running"
+					? `Terminal ${read.view.id} is ${read.view.status}; input was not sent.\n\n`
+					: "";
 			return {
 				content: `${stopped}${formatRead(read)}`,
 				details: { terminalId: args.id, status: read.view.status },
-			};
-		},
-	};
-
-	const read: ToolDefinition<TerminalReadArgs> = {
-		name: "terminal_read",
-		summary: "Read new output from a terminal",
-		description:
-			"Read output produced since the last read. Omit waitMs (or use 0) for a snapshot; a positive waitMs waits " +
-			"for new output up to 5 seconds. Set all to true to return the whole retained buffer without waiting.",
-		parameters: READ_PARAMETERS,
-		annotations: { readOnly: true, destructive: false, openWorld: false },
-
-		async execute({ args }): Promise<ToolResult> {
-			const result = await manager.read(args.id, args.waitMs ?? DEFAULT_WAIT_MS, args.all ?? false);
-			if (result === undefined) {
-				return { content: `Unknown terminal: ${args.id}`, isError: true };
-			}
-			return {
-				content: formatRead(result),
-				details: { terminalId: args.id, status: result.view.status },
 			};
 		},
 	};
@@ -584,22 +531,5 @@ export function createTerminalTools(manager: TerminalManager): readonly AnyToolD
 		},
 	};
 
-	const list: ToolDefinition<Record<string, never>> = {
-		name: "terminal_list",
-		summary: "List terminals started in this session",
-		description: "List terminals started in this session with their status, elapsed time and command.",
-		parameters: { type: "object", properties: {} },
-		annotations: { readOnly: true, destructive: false, openWorld: false },
-
-		async execute(): Promise<ToolResult> {
-			const terminals = manager.list();
-			if (terminals.length === 0) return { content: "No terminals in this session." };
-			return {
-				content: terminals.map(formatList).join("\n"),
-				details: { count: terminals.length },
-			};
-		},
-	};
-
-	return [start, write, read, kill, list];
+	return [start, write, kill];
 }

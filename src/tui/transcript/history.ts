@@ -42,7 +42,7 @@ interface TranscriptHistory {
 	readonly turns: readonly TranscriptTurn[];
 	/** 最后一张未收尾的任务表；续聊时用它恢复常驻面板 */
 	readonly todo?: TranscriptTodo;
-	/** 最近一份计划；重启或切会话后仍能从 /view-plan 打开 */
+	/** 最近一份计划；重启或切会话后仍能由计划卡打开 */
 	readonly plan?: TranscriptPlan;
 }
 

@@ -104,7 +104,7 @@ export class JsonlSessionStore implements SessionStore {
 			if (!name.endsWith(FILE_SUFFIX)) continue;
 			const file = join(dir, name);
 			// 单个文件读不动或内容残缺时跳过它：一个坏文件不该让整个目录的会话都列不出来，
-			// 那会让 /session、/fork 与 --resume 一起失效。
+			// 那会让 /session 与 --resume 一起失效。
 			let parsed: ReturnType<typeof parseSessionText>;
 			try {
 				parsed = parseSessionText(readText(file));

@@ -34,16 +34,16 @@ describe("命令补全的隐藏项", () => {
 	});
 
 	it("完整输入隐藏命令名时才出现", () => {
-		const state = stateOf("/fork");
+		const state = stateOf("/sandbox");
 		updateCommandMenu(hostOf(state));
 		assert.deepEqual(
 			state.commandMenu?.items.map((item) => item.name),
-			["fork"],
+			["sandbox"],
 		);
 	});
 
 	it("隐藏命令的前缀不会把它带出来", () => {
-		const state = stateOf("/for");
+		const state = stateOf("/jo");
 		updateCommandMenu(hostOf(state));
 		assert.deepEqual(state.commandMenu?.items, []);
 	});

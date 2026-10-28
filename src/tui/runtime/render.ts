@@ -136,7 +136,7 @@ export function render(host: TuiHost): void {
 				? framedPageFor(host, state.openPage, width, mainHeight)
 				: transcriptShown
 					? renderTranscriptView(view, mainHeight, state.scrollTop, animation, selection)
-					: renderMain(width, mainHeight, options.version, state.bannerShine);
+					: renderMain(width, mainHeight, options.version);
 	const mainLines = [...main];
 	// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示;Plan 模式隐藏旧任务表
 	const panelLines =

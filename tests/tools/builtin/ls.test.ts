@@ -18,8 +18,8 @@ function context(root: string) {
 	};
 }
 
-describe("列出目录树", () => {
-	it("递归列出文件，小目录展开，按 .gitignore 跳过", async () => {
+describe("列出一层目录", () => {
+	it("只列一层，目录在前，按 .gitignore 过滤", async () => {
 		const root = mkdtempSync(join(tmpdir(), "reins-ls-"));
 		try {
 			mkdirSync(join(root, "output"), { recursive: true });
@@ -43,76 +43,22 @@ describe("列出目录树", () => {
 			const content = result.content;
 
 			assert.ok(content.startsWith("./\n"));
-			assert.ok(content.includes("├── docker-compose.yml"));
-			assert.ok(content.includes("├── output/"));
-			assert.ok(content.includes("│   ├── a.txt"));
-			assert.ok(content.includes("│   └── b.csv"));
-			assert.ok(content.includes("└── server/"));
-			assert.ok(content.includes("    └── __init__.py"));
-			// .gitignore 本身要列出来，.git/ 目录不列
-			assert.ok(content.includes("├── .gitignore"));
+			assert.ok(content.includes("output/"));
+			assert.ok(content.includes("server/"));
+			assert.ok(content.includes("docker-compose.yml"));
+			assert.ok(content.includes("Dockerfile"));
+			assert.ok(content.includes("README.md"));
+			assert.ok(content.includes(".gitignore"));
+			// 目录排在文件之前
+			assert.ok(content.indexOf("output/") < content.indexOf("Dockerfile"));
+			// 只列一层：子项不出现
+			assert.equal(content.includes("a.txt"), false);
+			assert.equal(content.includes("__init__.py"), false);
+			// 版本库目录与 .gitignore 命中的目录不列
 			assert.equal(content.includes(".git/"), false);
 			assert.equal(content.includes("node_modules"), false);
 			assert.equal(content.includes(".venv"), false);
-			assert.equal(content.includes("__pycache__"), false);
-			assert.equal(content.includes("x.pyc"), false);
-			// 根层：.gitignore、docker-compose.yml、Dockerfile、output/、README.md、server/
-			assert.equal((result.details as { total: number }).total, 6);
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("宽目录只列前 20 个子项，其余收成一行", async () => {
-		const root = mkdtempSync(join(tmpdir(), "reins-ls-wide-"));
-		try {
-			const wide = join(root, "wide");
-			mkdirSync(wide);
-			for (let index = 0; index < 50; index += 1) {
-				writeFileSync(join(wide, `file-${String(index).padStart(3, "0")}.txt`), "");
-			}
-
-			const result = await lsTool.execute({ ...context(root), args: { path: "." } });
-
-			assert.ok(result.content.includes("└── wide/"));
-			assert.ok(result.content.includes("file-000.txt"));
-			assert.ok(result.content.includes("file-019.txt"));
-			assert.equal(result.content.includes("file-020.txt"), false);
-			assert.ok(result.content.includes("… +30 more"));
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("字符预算用尽后剩余子树收敛成文件数与扩展名汇总", async () => {
-		const root = mkdtempSync(join(tmpdir(), "reins-ls-big-"));
-		try {
-			// 10 个目录、每个 20 个长名字文件：前几个把字符预算吃掉，后面的只能给汇总行
-			for (let dir = 0; dir < 10; dir += 1) {
-				const child = join(root, `d${dir}`);
-				mkdirSync(child);
-				for (let index = 0; index < 20; index += 1) {
-					writeFileSync(join(child, `${"x".repeat(60)}-${index}.txt`), "");
-				}
-			}
-
-			const result = await lsTool.execute({ ...context(root), args: { path: "." } });
-
-			assert.match(result.content, /\[\d+ files? in subtree: \d+ \*\.txt\]/);
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-
-	it("空目录给出明确标记", async () => {
-		const root = mkdtempSync(join(tmpdir(), "reins-ls-empty-"));
-		try {
-			mkdirSync(join(root, "empty"));
-
-			const result = await lsTool.execute({ ...context(root), args: { path: "empty" } });
-
-			assert.equal(result.content, "empty/\n(empty)");
-			assert.deepEqual(result.details, { path: "empty", total: 0, shown: 0, truncated: false });
+			assert.deepEqual(result.details, { path: ".", total: 6, shown: 6, truncated: false });
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -128,6 +74,20 @@ describe("列出目录树", () => {
 			assert.equal((result.details as { shown: number }).shown, 2);
 			assert.equal((result.details as { truncated: boolean }).truncated, true);
 			assert.ok(result.content.includes("listing stopped"));
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("空目录给出明确标记", async () => {
+		const root = mkdtempSync(join(tmpdir(), "reins-ls-empty-"));
+		try {
+			mkdirSync(join(root, "empty"));
+
+			const result = await lsTool.execute({ ...context(root), args: { path: "empty" } });
+
+			assert.equal(result.content, "empty/\n(empty)");
+			assert.deepEqual(result.details, { path: "empty", total: 0, shown: 0, truncated: false });
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}

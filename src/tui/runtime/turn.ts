@@ -90,7 +90,7 @@ export function closeThinking(host: TuiHost, active: ActiveTurn): void {
  * 计划提交：对话流只放一张计划卡，完整正文留给审批页。
  *
  * 空计划不建卡，让它落回普通工具行，工具返回的错误才有地方显示。有效计划在回合结束时
- * 自动打开审批页；latest 同时更新，供 /view-plan 重新打开。
+ * 自动打开审批页；latest 同时更新，供计划卡重新打开。
  */
 function handlePlanStart(
 	host: TuiHost,

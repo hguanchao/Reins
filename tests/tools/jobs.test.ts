@@ -68,7 +68,8 @@ describe("后台作业", () => {
 	it("kill 结束进程并落成 killed", async () => {
 		const jobs = manager();
 		const job = jobs.start({
-			command: "sleep 5",
+			// 比等待时间长得多：进程只能因为 kill 结束，避免自然退出与收尾同时发生
+			command: "sleep 30",
 			workspace: WORKSPACE,
 			sandbox: SANDBOX,
 			session: SESSION,
