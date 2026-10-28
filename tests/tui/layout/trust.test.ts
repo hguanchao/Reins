@@ -56,7 +56,7 @@ describe("启动信任页", () => {
 
 		try {
 			const text = textOf(output);
-			assert.match(text, /Workspace trust/);
+			assert.match(text, /Reins — workspace trust/);
 			assert.match(text, /\.reins\/config\.toml|\.reins\\config\.toml/);
 			assert.match(text, /AGENTS\.md/);
 			assert.match(text, /› Trust this workspace/);
@@ -89,7 +89,7 @@ describe("启动信任页", () => {
 
 			assert.deepEqual(trust.remembered, [true]);
 			const text = textOf(output);
-			assert.equal(text.includes("Workspace trust"), false);
+			assert.equal(text.includes("workspace trust"), false);
 			assert.match(text, /Trusted the workspace/);
 			assert.match(text, /Reins/);
 		} finally {
@@ -114,14 +114,14 @@ describe("启动信任页", () => {
 		});
 
 		try {
-			// 下移一档到「仅本次」，回车后不写配置
-			input.emit("data", Buffer.from("\x1b[B"));
-			assert.match(textOf(output), /› Trust for this session only/);
+			// 右移一档到「仅本次」，回车后不写配置
+			input.emit("data", Buffer.from("\x1b[C"));
+			assert.match(textOf(output), /› Trust for this session/);
 			input.emit("data", Buffer.from("\r"));
 			await flush();
 
 			assert.deepEqual(trust.remembered, [false]);
-			assert.equal(textOf(output).includes("Workspace trust"), false);
+			assert.equal(textOf(output).includes("workspace trust"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -173,7 +173,7 @@ describe("启动信任页", () => {
 			await flush();
 
 			assert.deepEqual(trust.remembered, []);
-			assert.equal(textOf(output).includes("Workspace trust"), false);
+			assert.equal(textOf(output).includes("workspace trust"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -280,7 +280,7 @@ describe("启动信任页", () => {
 
 		try {
 			const text = textOf(output);
-			assert.equal(text.includes("Workspace trust"), false);
+			assert.equal(text.includes("workspace trust"), false);
 			assert.match(text, /v1\.2\.3/);
 		} finally {
 			exitTui(input);

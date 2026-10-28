@@ -19,12 +19,17 @@ function input(overrides: Partial<TrustPageInput> = {}): TrustPageInput {
 	};
 }
 
-describe("工作区信任页", () => {
-	it("逐条列出会生效的文件与技能目录，路径按工作区相对位置显示", () => {
-		const lines = trustPageLines(input(), 80, 40);
-		const text = lines.map(plain).join("\n");
+function render(input: TrustPageInput, width = 80, height = 24): string[] {
+	return trustPageLines(input, width, height).map(plain);
+}
 
-		assert.match(text, /Workspace trust/);
+describe("工作区信任页", () => {
+	it("标题钉在左上，逐条列出会生效的文件与技能目录", () => {
+		const lines = render(input());
+
+		assert.equal(lines[0]?.trimEnd(), "Reins — workspace trust");
+		assert.ok((lines[0] ?? "").startsWith("Reins"), "标题不该居中，它就在左上角");
+		const text = lines.join("\n");
 		assert.match(text, /Files read under this trust/);
 		assert.match(text, /\.reins\/config\.toml|\.reins\\config\.toml/);
 		assert.match(text, /AGENTS\.md/);
@@ -35,76 +40,81 @@ describe("工作区信任页", () => {
 		assert.equal(text.includes("/work/project/.reins"), false);
 	});
 
-	it("给出三个结论，默认高亮记住信任这一项", () => {
-		const text = trustPageLines(input(), 80, 40).map(plain).join("\n");
-		assert.match(text, /› Trust this workspace/);
-		assert.match(text, / {2}Trust for this session only/);
-		assert.match(text, / {2}Do not trust/);
+	it("正文逐行水平居中：行首缩进等于剩余宽度的一半", () => {
+		const width = 80;
+		const lines = render(input(), width, 24);
+		// 跳过标题行，只看中间的描述段落
+		for (const keyword of ["This workspace ships files", "Trusting lets those files take effect"]) {
+			const line = lines.find((candidate) => candidate.includes(keyword));
+			assert.ok(line !== undefined, `缺少以 ${keyword} 开头的描述行`);
+			const left = line.length - line.trimStart().length;
+			const expected = Math.floor((width - displayWidth(line.trim())) / 2);
+			assert.ok(left > 0, "居中就不该贴左边缘");
+			assert.equal(left, expected);
+		}
 	});
 
-	it("切换选中项时标记跟着走，未选中项保持同宽占位", () => {
-		const session = trustPageLines(input({ selection: "session" }), 80, 40)
-			.map(plain)
-			.join("\n");
-		assert.match(session, / {2}Trust this workspace/);
-		assert.match(session, /› Trust for this session only/);
+	it("底部固定三行：分隔线、三档横排、按键提示", () => {
+		const lines = render(input(), 80, 24);
+		assert.equal(lines.length, 24);
+		const rule = lines[21] ?? "";
+		assert.ok(rule.trim().startsWith("─"), "倒数第三行应是分隔线");
+		assert.match(lines[22] ?? "", /› Trust this workspace/);
+		assert.match(lines[22] ?? "", /Trust for this session/);
+		assert.match(lines[22] ?? "", /Do not trust/);
+		assert.match(lines[23] ?? "", /←→ move · enter confirm/);
+	});
 
-		const skip = trustPageLines(input({ selection: "skip" }), 80, 40)
-			.map(plain)
-			.join("\n");
+	it("当前档用标记高亮，←→ 移动后标记跟着走", () => {
+		const trust = render(input({ selection: "trust" }), 80, 24)[22] ?? "";
+		assert.match(trust, /› Trust this workspace\s+Trust for this session\s+Do not trust/);
+
+		const session = render(input({ selection: "session" }), 80, 24)[22] ?? "";
+		assert.match(session, / {2}Trust this workspace\s+› Trust for this session/);
+
+		const skip = render(input({ selection: "skip" }), 80, 24)[22] ?? "";
 		assert.match(skip, /› Do not trust/);
 	});
 
-	it("对话框在终端里居中：左右留白相等，上下都留出空行", () => {
-		const width = 100;
-		const height = 40;
-		const lines = trustPageLines(input(), width, height).map(plain);
-		assert.equal(lines.length, height);
-
-		const top = lines.findIndex((line) => line.trim().length > 0);
-		const bottom = lines.length - 1 - [...lines].reverse().findIndex((line) => line.trim().length > 0);
-		assert.ok(top > 0, "上方应当留白");
-		assert.ok(bottom < height - 1, "下方应当留白");
-		// 上下留白差值不超过一行：奇数行差一属于取整
-		assert.ok(Math.abs(top - (height - 1 - bottom)) <= 1);
-
-		const first = lines[top] ?? "";
-		const left = first.length - first.trimStart().length;
-		assert.equal(left, Math.floor((width - 76) / 2));
+	it("窄终端退到短标签，仍然给出三档", () => {
+		const line = render(input(), 44, 24)[22] ?? "";
+		assert.match(line, /Trust\s+›|›\s+Trust/);
+		assert.match(line, /This session/);
+		assert.match(line, /Do not trust/);
+		assert.ok(displayWidth(line) <= 44);
 	});
 
 	it("没有某一类资源时不画空分节", () => {
-		const onlyFiles = trustPageLines(input({ skillDirectories: [] }), 80, 40)
-			.map(plain)
-			.join("\n");
+		const onlyFiles = render(input({ skillDirectories: [] })).join("\n");
 		assert.equal(onlyFiles.includes("Skill directories"), false);
 
-		const onlySkills = trustPageLines(input({ files: [] }), 80, 40)
-			.map(plain)
-			.join("\n");
+		const onlySkills = render(input({ files: [] })).join("\n");
 		assert.equal(onlySkills.includes("Files read"), false);
 	});
 
 	it("工作区外的路径保持绝对路径，不显示成一串上级目录", () => {
-		const lines = trustPageLines(input({ files: ["/elsewhere/shared.toml"] }), 80, 40).map(plain);
-		assert.ok(lines.some((line) => line.includes("/elsewhere/shared.toml")));
+		const text = render(input({ files: ["/elsewhere/shared.toml"] })).join("\n");
+		assert.ok(text.includes("/elsewhere/shared.toml"));
 	});
 
-	it("记录结论期间只显示进行中的说明，不再给出可执行的动作", () => {
-		const text = trustPageLines(input({ pending: true }), 80, 40).map(plain).join("\n");
-		assert.match(text, /Recording the decision\.\.\./);
-		assert.equal(text.includes("enter confirm"), false);
+	it("记录结论时把选项行换成进行中的说明", () => {
+		const lines = render(input({ pending: true }), 80, 24);
+		assert.match(lines[22] ?? "", /Recording the decision\.\.\./);
+		assert.equal((lines[22] ?? "").includes("Trust"), false);
+		// 固定区仍然占三行，画面不会跟着跳
+		assert.equal(lines.length, 24);
 	});
 
-	it("窄终端与矮终端下溢出内容被截断，不超出给定尺寸", () => {
+	it("行数恒等于给定高度，内容每行都不超出宽度", () => {
 		for (const [width, height] of [
 			[30, 40],
 			[80, 12],
 			[20, 8],
+			[120, 30],
 		] as const) {
 			const lines = trustPageLines(input(), width, height);
 			assert.equal(lines.length, height);
-			for (const line of lines) assert.ok(displayWidth(plain(line)) <= width);
+			for (const line of lines) assert.ok(displayWidth(plain(line)) <= width, `${width}x${height}: ${line}`);
 		}
 	});
 });

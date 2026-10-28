@@ -2,24 +2,22 @@ import { isAbsolute, relative } from "node:path";
 
 import { displayWidth, fitToWidth, truncateToWidth, wrapWords } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
+import { pageTitle } from "./chrome.ts";
 
 /**
  * 工作区信任页。
  *
- * 排成一块居中的对话框而不是铺满整屏：这是启动时的一次性确认，看完即走，居中比贴顶更容易
- * 被当成「先回答这一句」。列出具体路径而不是一句「项目配置」，因为按下信任之前得先知道
- * 自己在信任什么。
+ * 整屏铺满：标题钉在左上，正文与清单在中间逐行水平居中，底部分隔线固定不动。列出具体
+ * 路径而不是一句「项目配置」，因为按下信任之前得先知道自己在信任什么。
  */
 
 /** 结论：记住信任、仅本次信任、不信任。 */
 export type TrustAnswer = "trust" | "session" | "skip";
 
-/** 对话框最宽到这里为止，再宽行长就不好扫读了。 */
-const DIALOG_MAX_WIDTH = 76;
-/** 对话框两侧至少留出的空白，窄终端下靠它保证内容不贴边。 */
-const DIALOG_MARGIN = 2;
+/** 正文最宽到这里为止再居中：铺满整屏的长句一行读完很吃力。 */
+const TEXT_MAX_WIDTH = 72;
 
-const TITLE = "Workspace trust";
+const TITLE = "Reins — workspace trust";
 const FILES_SECTION = "Files read under this trust";
 const SKILLS_SECTION = "Skill directories scanned under this trust";
 const INTRO = "This workspace ships files that change how Reins behaves.";
@@ -27,7 +25,7 @@ const TRUST_NOTE =
 	"Trusting lets those files take effect. Reins only reads them; commands still run under the sandbox and the approval rules.";
 const SKIP_NOTE = "Not trusting keeps the default: this workspace's configuration is ignored.";
 const PENDING = "Recording the decision...";
-const KEYS = "↑↓ move · enter confirm · esc do not trust";
+const KEYS = "←→ move · enter confirm";
 
 export interface TrustPageInput {
 	readonly root: string;
@@ -37,77 +35,124 @@ export interface TrustPageInput {
 	readonly pending: boolean;
 }
 
-const INDENT = "  ";
-const BODY_INDENT = "    ";
 const RESET = THEME.reset;
+/** 选中项前的标记；未选中项用同宽空白占位，移动高亮时文字不左右跳。 */
 const MARKER = "› ";
 const SLOT = "  ";
+const GAP = "   ";
 const BOLD = "\x1b[1m";
 const BOLD_OFF = "\x1b[22m";
 
-const OPTIONS: readonly { readonly answer: TrustAnswer; readonly label: string }[] = [
+interface TrustOption {
+	readonly answer: TrustAnswer;
+	readonly label: string;
+}
+
+const FULL_LABELS: readonly TrustOption[] = [
 	{ answer: "trust", label: "Trust this workspace" },
-	{ answer: "session", label: "Trust for this session only" },
+	{ answer: "session", label: "Trust for this session" },
+	{ answer: "skip", label: "Do not trust" },
+];
+/** 窄终端下的退路：宁可少几个字，也不要把「不信任」截成半截。 */
+const SHORT_LABELS: readonly TrustOption[] = [
+	{ answer: "trust", label: "Trust" },
+	{ answer: "session", label: "This session" },
 	{ answer: "skip", label: "Do not trust" },
 ];
 
 /**
- * 整屏内容：对话框在给定区域里水平与垂直居中。
+ * 整屏内容。
  *
- * 返回的行数恰好等于 height，内容放不下时从顶部开始并截断——此时对话框已经不是居中的了，
- * 但至少最要紧的标题与选项还在视野里。
+ * 返回的行数恰好等于 height：正文自上而下排，放不下就从底部截断，底部固定区始终占满最后
+ * 三行。
  */
 export function trustPageLines(input: TrustPageInput, width: number, height: number): readonly string[] {
 	const columns = Math.max(1, width);
 	const rows = Math.max(0, height);
-	const dialogWidth = Math.max(1, Math.min(DIALOG_MAX_WIDTH, columns - DIALOG_MARGIN * 2));
-	const content = dialogLines(input, dialogWidth);
-	const block = [rule(dialogWidth), "", ...content, "", rule(dialogWidth)];
-
-	const left = Math.max(0, Math.floor((columns - dialogWidth) / 2));
-	const indent = " ".repeat(left);
-	const top = Math.max(0, Math.floor((rows - block.length) / 2));
-	const lines: string[] = Array.from({ length: rows }, () => "");
-	for (let index = 0; index < block.length && top + index < rows; index += 1) {
-		lines[top + index] = `${indent}${block[index]}`;
-	}
-	return lines;
+	const actions = actionLines(input, columns);
+	const contentHeight = Math.max(0, rows - actions.length);
+	const content = bodyLines(input, columns);
+	const body = Array.from({ length: contentHeight }, (_, index) => content[index] ?? "");
+	return [...body, ...actions].slice(0, rows);
 }
 
-/** 对话框正文：标题、资源清单、说明，最后是选项与按键提示。 */
-function dialogLines(input: TrustPageInput, width: number): readonly string[] {
-	const lines: string[] = [`${THEME.accent}${fitToWidth(TITLE, width)}${RESET}`, ""];
-	lines.push(...paragraph(INTRO, width), "");
+/** 标题左对齐，其余内容逐行水平居中。 */
+function bodyLines(input: TrustPageInput, width: number): readonly string[] {
+	const lines: string[] = [pageTitle(TITLE, width), ""];
+	const textWidth = Math.max(1, Math.min(TEXT_MAX_WIDTH, width));
+	lines.push(...centered(INTRO, textWidth, width), "");
 	if (input.files.length > 0) {
-		lines.push(...section(FILES_SECTION, width));
-		for (const file of input.files) lines.push(...pathLines(input.root, file, width));
+		lines.push(...centered(FILES_SECTION, textWidth, width, THEME.textSubtle));
+		for (const file of input.files) lines.push(...centeredPath(input.root, file, textWidth, width));
 		lines.push("");
 	}
 	if (input.skillDirectories.length > 0) {
-		lines.push(...section(SKILLS_SECTION, width));
-		for (const directory of input.skillDirectories) lines.push(...pathLines(input.root, directory, width));
+		lines.push(...centered(SKILLS_SECTION, textWidth, width, THEME.textSubtle));
+		for (const directory of input.skillDirectories) {
+			lines.push(...centeredPath(input.root, directory, textWidth, width));
+		}
 		lines.push("");
 	}
-	lines.push(...paragraph(TRUST_NOTE, width), "", ...paragraph(SKIP_NOTE, width), "");
-	lines.push(...optionLines(input, width));
-	if (input.pending) lines.push("", `${THEME.textSecondary}${INDENT}${PENDING}${RESET}`);
-	else lines.push("", `${THEME.textSubtle}${truncateToWidth(`${INDENT}${KEYS}`, width)}${RESET}`);
+	lines.push(...centered(TRUST_NOTE, textWidth, width));
+	lines.push("");
+	lines.push(...centered(SKIP_NOTE, textWidth, width));
 	return lines;
 }
 
-/** 选项列表：选中项用箭头标记并高亮，未选中项用同宽空白占位，切换时文字不左右跳。 */
-function optionLines(input: TrustPageInput, width: number): readonly string[] {
-	return OPTIONS.map((option) => {
-		const head = option.answer === input.selection ? MARKER : SLOT;
-		const label = `${head}${option.label}`;
-		return option.answer === input.selection
-			? `${BOLD}${THEME.accent}${truncateToWidth(label, width)}${BOLD_OFF}${THEME.textPrimary}`
-			: `${THEME.textSubtle}${truncateToWidth(label, width)}${RESET}`;
-	});
+function actionLines(input: TrustPageInput, width: number): readonly string[] {
+	const rule = `${THEME.border}${"─".repeat(width)}${RESET}`;
+	if (input.pending) {
+		// 录入结论时把选项行换成进行中的说明：避免连按回车重复提交
+		return [rule, center(PENDING, width, THEME.textSecondary), ""];
+	}
+	return [rule, optionRow(input.selection, width), center(KEYS, width, THEME.textSubtle)];
 }
 
-function rule(width: number): string {
-	return `${THEME.border}${"─".repeat(Math.max(0, width))}${RESET}`;
+/** 三档横排：当前档高亮加粗，拒绝档用失败色提示后果。 */
+function optionRow(selection: TrustAnswer, width: number): string {
+	const options = layoutOptions(width, selection);
+	const plain = optionText(selection, options);
+	if (displayWidth(plain) > width) return `${THEME.textSubtle}${truncateToWidth(plain, width)}${RESET}`;
+	const styled = options
+		.map((option) => {
+			const head = option.answer === selection ? MARKER : SLOT;
+			const label = `${head}${option.label}`;
+			if (option.answer !== selection) return `${THEME.textSubtle}${label}${RESET}`;
+			const color = option.answer === "skip" ? THEME.error : THEME.accent;
+			return `${BOLD}${color}${label}${BOLD_OFF}${THEME.textPrimary}`;
+		})
+		.join(GAP);
+	return `${styled}${" ".repeat(Math.max(0, width - displayWidth(plain)))}`;
+}
+
+function layoutOptions(width: number, selection: TrustAnswer): readonly TrustOption[] {
+	return displayWidth(optionText(selection, FULL_LABELS)) <= width ? FULL_LABELS : SHORT_LABELS;
+}
+
+function optionText(selection: TrustAnswer, options: readonly TrustOption[]): string {
+	return options
+		.map((option) => `${option.answer === selection ? MARKER : SLOT}${option.label}`)
+		.join(GAP);
+}
+
+/** 文本按可用宽度折行后逐行居中；折行宽度与居中宽度分开算，免得长句横贯整屏。 */
+function centered(
+	text: string,
+	textWidth: number,
+	width: number,
+	color: string = THEME.textSecondary,
+): readonly string[] {
+	return wrapWords(text, textWidth).map((line) => center(line, width, color));
+}
+
+function center(text: string, width: number, color: string): string {
+	const visible = fitToWidth(text, width);
+	const pad = Math.max(0, Math.floor((width - displayWidth(visible)) / 2));
+	return `${" ".repeat(pad)}${color}${visible}${RESET}`;
+}
+
+function centeredPath(root: string, path: string, textWidth: number, width: number): readonly string[] {
+	return wrapWords(displayPath(root, path), textWidth).map((line) => center(line, width, THEME.path));
 }
 
 /** 路径按工作区相对位置显示：绝对路径在信任页上一眼看不出是哪一个文件。 */
@@ -116,23 +161,4 @@ function displayPath(root: string, path: string): string {
 	return relativePath.length === 0 || relativePath.startsWith("..") || isAbsolute(relativePath)
 		? path
 		: relativePath;
-}
-
-function section(title: string, width: number): readonly string[] {
-	const text = truncateToWidth(title, Math.max(0, width - INDENT.length));
-	return [`${THEME.textSubtle}${INDENT}${text}${RESET}`];
-}
-
-function pathLines(root: string, path: string, width: number): readonly string[] {
-	const indent = BODY_INDENT.slice(0, width);
-	const bodyWidth = Math.max(1, width - displayWidth(indent));
-	return wrapWords(displayPath(root, path), bodyWidth).map(
-		(line) => `${indent}${THEME.path}${line}${RESET}`,
-	);
-}
-
-function paragraph(text: string, width: number): readonly string[] {
-	const indent = INDENT.slice(0, width);
-	const bodyWidth = Math.max(1, width - displayWidth(indent));
-	return wrapWords(text, bodyWidth).map((line) => `${indent}${THEME.textSecondary}${line}${RESET}`);
 }
