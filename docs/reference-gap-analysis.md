@@ -18,10 +18,11 @@ pi `842c731`。本文记录"别人有、我们没有"的结论与佐证位置,�
   工具结果上)、用量与成本累计。
 - 模型层:anthropic-messages / openai-completions / openai-responses 三协议适配器、
   指数退避重试、thinking/effort 阶梯、providers.json 目录与会话内切换。
-- 扩展:MCP 客户端(stdio/SSE/HTTP)、插件 seam(可注册工具/命令/沙箱后端/会话存储)、
-  skills 发现、AGENTS.md 系规则文件加载。
-- 编排与交互:计划模式(只读闸门不可绕)、后台 bash 作业、持久终端、checkpoint 影子 git
-  回滚、图片输入、print 模式、剪贴板与通知。
+- 扩展:MCP 客户端(stdio/SSE/HTTP)、重连与健康检查、插件 seam(可注册工具/命令/沙箱
+  后端/会话存储)、skills 发现、AGENTS.md 系规则文件加载。
+- 配置:分层合并与严格校验、热更新(审批方式、落盘阈值、通知方式等)。
+- 编排与交互:计划模式(只读闸门不可绕)、后台 bash 作业、持久终端、审查子代理、会话导出、
+  checkpoint 影子 git 回滚、图片输入、print 模式、剪贴板与通知。
 
 各有各的重度差异化能力(codex 云任务与语音、grok Rhai workflow 与媒体生成、dsh PTC 与
 browser-use 等),与"最小代码实现"原则相悖,不跟进。
@@ -50,6 +51,20 @@ server 与测试监听这类只需要 stdin 的场景不受影响。终端只活
 **多文件补丁。** `patch` 一次接收跨文件的精确文本替换,先把所有目标文件读入并校验,再统一
 写入:任何一条 oldText 找不到、不唯一或重叠,一个文件都不动。匹配、唯一性与重叠判定与
 `edit` 共用同一份实现。
+
+**审查子代理。** `/review` 默认审查工作区相对 HEAD 的改动,也支持 `--staged`、`--base` 与
+`--commit`。子代理使用 read/ls/find/grep 的只读工具集,有自己的上下文与步数预算;报告以
+Markdown 回到对话流,不把 diff 塞进主对话。Ctrl+C 可中止审查。
+
+**MCP 重连与健康检查。** `/mcps` 页选中 server 后按 `r` 重连、按 `h` 检查全部连接。健康
+检查优先发 MCP `ping`,server 没实现时退回列一次工具;失败即标记不可用,工具调用会明确报错
+而不是挂起。已登记的 server 重连时不重复注册工具;工具清单变化仍需重启以刷新注册表。
+
+**配置热更新扩容。** 审批方式、落盘阈值与通知方式加入热更新。重载时分别同步到权限策略、
+结果落盘器与界面通知读取函数,不再要求为了这几项重启。
+
+**会话导出。** `/export [path]` 默认写成 Markdown,`.jsonl` 后缀则复制会话文件。Markdown
+取当前分支的消息与工具调用,JSONL 保留全部分支与原始条目;父目录不存在时一并建出来。
 
 ### 明确不做
 
@@ -107,8 +122,6 @@ mid-turn 插话(消息立刻注入当前回合的工具循环)**不做**:它会�
 
 - **read_image/view_image 工具**:让模型主动读本地图片进上下文(codex `view_image`、
   dsh `read_image`、grok read_file 内含图片解析)。Reins 只有用户侧贴图入口。
-- **review 审查子代理**:codex 有专用 review 会话(`/review`、`codex exec review`,
-  支持 --staged/--base/--commit)。
 - **git worktree 集成**:codex/grok/opencode/dsh 均有(worktree 创建、gc、隔离子代理)。
 - **模型 failover**:codex 重试预算耗尽后切备用 provider(`core/src/client.rs`);
   Reins 只有重试,无跨模型降级。
@@ -121,7 +134,7 @@ mid-turn 插话(消息立刻注入当前回合的工具循环)**不做**:它会�
   自行读取。
 - **跨 provider 中途换模型**:pi 支持保留完整上下文的 handoff;Reins 换模型仅对
   后续请求生效(上下文本身可延续,但无协议差异的块翻译保证)。
-- **会话导出/分享**:pi `/export` HTML/JSONL、`/share` 在线 viewer;opencode share。
+- **会话在线分享**:pi `/share` 在线 viewer、opencode share;本地导出已具备,在线分享不做。
 
 ## 四、剩余事项
 
