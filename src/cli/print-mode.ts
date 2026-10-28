@@ -3,12 +3,17 @@ import type { TurnDriver } from "../agent/driver.ts";
 import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
 import { describeToolCall, displayToolName } from "../tools/describe.ts";
 import { formatDuration } from "../shared/format.ts";
+import { JsonStream, type JsonRunResult } from "./json-stream.ts";
 
 /**
  * 非交互模式。
  *
- * 标准输出只放模型的回答，过程中的工具调用等信息一律走标准错误：这样 `reins 做某事 > 文件`
- * 拿到的就是干净的答案，而人在终端上仍能看到它在做什么。
+ * 两种输出形态共用同一次运行：
+ *
+ * - 默认把模型的回答写进标准输出，过程中的工具调用等信息一律走标准错误。这样
+ *   `reins 做某事 > 文件` 拿到的就是干净的答案，而人在终端上仍能看到它在做什么。
+ * - `--json` 把事件流按行写成 JSON。此时标准输出只放事件，标准错误仍留给装配阶段的
+ *   提示（配置警告、沙箱说明），两者不混。
  *
  * 退出码按结果给：出错或中止为 1，正常结束为 0。脚本据此判断成败，比去 grep 输出可靠。
  */
@@ -19,11 +24,41 @@ interface PrintModeDeps {
 	readonly createDriver: (onEvent: AgentEventListener) => Pick<TurnDriver, "run">;
 	/** 工作根：用来剥掉命令开头多余的工作根 cd，省略时原样显示 */
 	readonly workspaceRoot?: string;
+	/** 事件流形态；省略时是给人看的文本 */
+	readonly json?: boolean;
 	readonly stdout: (text: string) => void;
 	readonly stderr: (text: string) => void;
 }
 
 export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
+	const controller = new AbortController();
+	const onInterrupt = (): void => controller.abort();
+	process.on("SIGINT", onInterrupt);
+
+	try {
+		if (deps.json === true) return await runJson(deps, controller.signal);
+		return await runText(deps, controller.signal);
+	} catch (error) {
+		deps.stderr(`\n× Error: ${describeError(error)}\n`);
+		return 1;
+	} finally {
+		process.removeListener("SIGINT", onInterrupt);
+	}
+}
+
+/** 机器可读的一条流：出错也写成事件，让下游不必同时读标准错误才对得上。 */
+async function runJson(deps: PrintModeDeps, signal: AbortSignal): Promise<number> {
+	const stream = new JsonStream({ write: deps.stdout });
+	try {
+		await deps.createDriver(stream.listener()).run(deps.prompt, signal);
+	} catch (error) {
+		// 抛到这一层的只有装配或驱动本身的意外；仍要发出去，否则流里只剩一个没有结论的开头
+		stream.handle({ type: "error", message: describeError(error) });
+	}
+	return exitCode(stream.result());
+}
+
+async function runText(deps: PrintModeDeps, signal: AbortSignal): Promise<number> {
 	const state = { failed: false, wroteText: false, finished: false };
 
 	const listener: AgentEventListener = (event: AgentEvent): void => {
@@ -77,19 +112,15 @@ export async function runPrintMode(deps: PrintModeDeps): Promise<number> {
 		}
 	};
 
-	const controller = new AbortController();
-	const onInterrupt = (): void => controller.abort();
-	process.on("SIGINT", onInterrupt);
-
 	try {
-		await deps.createDriver(listener).run(deps.prompt, controller.signal);
-	} catch (error) {
-		deps.stderr(`\n× Error: ${describeError(error)}\n`);
-		return 1;
+		await deps.createDriver(listener).run(deps.prompt, signal);
 	} finally {
-		process.removeListener("SIGINT", onInterrupt);
 		if (state.wroteText) deps.stdout("\n");
 	}
+	return exitCode({ failed: state.failed, finished: state.finished, error: undefined });
+}
 
-	return state.failed || !state.finished ? 1 : 0;
+/** 两种输出形态的退出码只有这一处判断：中止与出错都是一次没跑完的运行。 */
+function exitCode(outcome: JsonRunResult): number {
+	return outcome.failed || !outcome.finished ? 1 : 0;
 }

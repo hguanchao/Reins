@@ -94,6 +94,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 					onEvent,
 				),
 			workspaceRoot: workRoot,
+			json: options.json,
 			stdout: writeStdout,
 			stderr: writeStderr,
 		});

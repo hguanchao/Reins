@@ -29,6 +29,7 @@ function options(configPath: string, providersPath: string): CliOptions {
 		providersPath,
 		trust: undefined,
 		resume: undefined,
+		json: false,
 	};
 }
 

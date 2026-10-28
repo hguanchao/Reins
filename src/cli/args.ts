@@ -19,6 +19,8 @@ export interface CliOptions {
 	readonly trust: boolean | undefined;
 	/** 全屏界面要接续的会话标识；没给就是新建会话 */
 	readonly resume: string | undefined;
+	/** print 模式把事件流写成 JSONL，而不是把回答写到标准输出 */
+	readonly json: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	let explicitPrint = false;
 	let trust: boolean | undefined;
 	let resume: string | undefined;
+	let json = false;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
@@ -43,6 +46,10 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 
 		if (argument === "--print" || argument === "-p") {
 			explicitPrint = true;
+			continue;
+		}
+		if (argument === "--json") {
+			json = true;
 			continue;
 		}
 		if (argument === "--trust") {
@@ -95,6 +102,10 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 	if (resume !== undefined && command === "print") {
 		throw new UsageError("--resume only works with the full-screen interface");
 	}
+	// 事件流是给程序读的，标准输出里只有 JSON 行；全屏界面下它没有意义，直接报错而不是忽略
+	if (json && command !== "print") {
+		throw new UsageError("--json only works together with -p");
+	}
 	return {
 		command,
 		prompt: command === "print" ? positionals.join(" ") : "",
@@ -102,6 +113,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		providersPath,
 		trust,
 		resume,
+		json,
 	};
 }
 
@@ -113,6 +125,7 @@ function optionsOf(command: CliCommand): CliOptions {
 		providersPath: undefined,
 		trust: undefined,
 		resume: undefined,
+		json: false,
 	};
 }
 
@@ -129,10 +142,12 @@ Usage:
   reins                       Start the full-screen interface
   reins <prompt>              Run one prompt, write the answer to stdout
   reins -p <prompt>           Same, explicitly non-interactive
+  reins -p --json <prompt>    Write a JSONL event stream to stdout instead
   reins --help                Show this help
   reins --version             Show the version
 
 Options:
+  --json                      Emit one JSON event per line; requires -p
   --trust                     Read the config shipped in this workspace and record the decision
   --no-trust                  Do not read the workspace config, and record the decision
   --config <path>             Use the given config.toml instead of the one in the config directory

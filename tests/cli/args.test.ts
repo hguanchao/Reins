@@ -83,3 +83,27 @@ describe("parseArgs 拒绝非法输入", () => {
 		);
 	});
 });
+
+describe("parseArgs 的 --json", () => {
+	it("与一次性提问一起用时开启事件流", () => {
+		const options = parseArgs(["-p", "--json", "做点事"]);
+		assert.equal(options.command, "print");
+		assert.equal(options.json, true);
+		assert.equal(options.prompt, "做点事");
+		// 位置参数本身就等价于 -p，--json 也一样成立
+		assert.equal(parseArgs(["--json", "做点事"]).json, true);
+	});
+
+	it("默认关闭", () => {
+		assert.equal(parseArgs(["-p", "x"]).json, false);
+		assert.equal(parseArgs([]).json, false);
+	});
+
+	it("单独使用时直接报错：全屏界面没有事件流可写", () => {
+		assert.throws(() => parseArgs(["--json"]), /--json only works together with -p/);
+		assert.throws(
+			() => parseArgs(["--json", "--resume", "abc"]),
+			/--json only works together with -p/,
+		);
+	});
+});
