@@ -48,15 +48,15 @@ interface TrustOption {
 }
 
 const FULL_LABELS: readonly TrustOption[] = [
-	{ answer: "trust", label: "Trust this workspace" },
-	{ answer: "session", label: "Trust for this session" },
-	{ answer: "skip", label: "Do not trust" },
+	{ answer: "trust", label: "[y] Trust this workspace" },
+	{ answer: "session", label: "[s] Trust for this session" },
+	{ answer: "skip", label: "[n] Do not trust" },
 ];
-/** 窄终端下的退路：宁可少几个字，也不要把「不信任」截成半截。 */
+/** 窄终端下的退路：宁可少几个字，也不要把按键前缀或「不信任」截掉。 */
 const SHORT_LABELS: readonly TrustOption[] = [
-	{ answer: "trust", label: "Trust" },
-	{ answer: "session", label: "This session" },
-	{ answer: "skip", label: "Do not trust" },
+	{ answer: "trust", label: "[y] Trust" },
+	{ answer: "session", label: "[s] Session" },
+	{ answer: "skip", label: "[n] Skip" },
 ];
 
 /**

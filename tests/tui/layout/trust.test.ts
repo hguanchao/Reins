@@ -66,7 +66,7 @@ describe("启动信任页", () => {
 			assert.match(text, /Reins — workspace trust/);
 			assert.match(text, /\.reins\/config\.toml|\.reins\\config\.toml/);
 			assert.match(text, /AGENTS\.md/);
-			assert.match(text, /› Trust this workspace/);
+			assert.match(text, /› \[y\] Trust this workspace/);
 			// 信任页独占画面：没有输入框的页脚，也没有光标
 			assert.equal(output.chunks.at(-1)?.includes("\x1b[?25h"), false);
 		} finally {
@@ -123,11 +123,11 @@ describe("启动信任页", () => {
 		try {
 			// 上下键不再参与：选项是横排的，按了不该有任何移动
 			input.emit("data", Buffer.from("\x1b[B"));
-			assert.match(textOf(output), /› Trust this workspace/);
+			assert.match(textOf(output), /› \[y\] Trust this workspace/);
 
 			// 右移一档到「仅本次」，回车后不写配置
 			input.emit("data", Buffer.from("\x1b[C"));
-			assert.match(textOf(output), /› Trust for this session/);
+			assert.match(textOf(output), /› \[s\] Trust for this session/);
 			input.emit("data", Buffer.from("\r"));
 			await flush();
 

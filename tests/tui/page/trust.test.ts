@@ -60,9 +60,9 @@ describe("工作区信任页", () => {
 		assert.ok((lines.at(-4) ?? "").trim().startsWith("─"), "倒数第四行应是分隔线");
 		assert.equal((lines.at(-3) ?? "").trim(), "", "分隔线与选项之间应留一行空白");
 		const options = lines.at(-2) ?? "";
-		assert.match(options, /› Trust this workspace/);
-		assert.match(options, /Trust for this session/);
-		assert.match(options, /Do not trust/);
+		assert.match(options, /› \[y\] Trust this workspace/);
+		assert.match(options, /\[s\] Trust for this session/);
+		assert.match(options, /\[n\] Do not trust/);
 		assert.equal((lines.at(-1) ?? "").trim(), "", "选项与底边之间应留一行空白");
 	});
 
@@ -98,16 +98,16 @@ describe("工作区信任页", () => {
 		const last = (selection: TrustPageInput["selection"]): string =>
 			render(input({ selection }), 80, 24).at(-2) ?? "";
 
-		assert.match(last("trust"), /› Trust this workspace\s+Trust for this session\s+Do not trust/);
-		assert.match(last("session"), / {2}Trust this workspace\s+› Trust for this session/);
-		assert.match(last("skip"), /› Do not trust/);
+		assert.match(last("trust"), /› \[y\] Trust this workspace\s+\[s\] Trust for this session\s+\[n\] Do not trust/);
+		assert.match(last("session"), / {2}\[y\] Trust this workspace\s+› \[s\] Trust for this session/);
+		assert.match(last("skip"), /› \[n\] Do not trust/);
 	});
 
 	it("窄终端退到短标签，仍然给出三档", () => {
 		const line = render(input(), 44, 24).at(-2) ?? "";
-		assert.match(line, /Trust\s+›|›\s+Trust/);
-		assert.match(line, /This session/);
-		assert.match(line, /Do not trust/);
+		assert.match(line, /› \[y\] Trust/);
+		assert.match(line, /\[s\] Session/);
+		assert.match(line, /\[n\] Skip/);
 		assert.ok(displayWidth(line) <= 44);
 	});
 
