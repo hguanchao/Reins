@@ -106,7 +106,7 @@ describe("启动信任页", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("方向键按三选一移动，回车执行高亮项", async () => {
+	it("左右键在三档间移动，回车执行高亮项", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -121,6 +121,10 @@ describe("启动信任页", () => {
 		});
 
 		try {
+			// 上下键不再参与：选项是横排的，按了不该有任何移动
+			input.emit("data", Buffer.from("\x1b[B"));
+			assert.match(textOf(output), /› Trust this workspace/);
+
 			// 右移一档到「仅本次」，回车后不写配置
 			input.emit("data", Buffer.from("\x1b[C"));
 			assert.match(textOf(output), /› Trust for this session/);
@@ -136,29 +140,34 @@ describe("启动信任页", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("数字键一步选到对应结论", async () => {
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		output.columns = 80;
-		output.rows = 40;
-		const trust = fakeTrust();
-		const running = runTui({
-			version: "1.2.3",
-			info: FOOTER_INFO,
-			trustPrompt: trust,
-			stdin: input,
-			stdout: output,
-		});
+	it("y / s / n 三个字母与三档一一对应", async () => {
+		for (const [key, remember] of [
+			["y", true],
+			["s", false],
+		] as const) {
+			const input = new FakeInput();
+			const output = new FakeOutput();
+			output.columns = 80;
+			output.rows = 40;
+			const trust = fakeTrust();
+			const running = runTui({
+				version: "1.2.3",
+				info: FOOTER_INFO,
+				trustPrompt: trust,
+				stdin: input,
+				stdout: output,
+			});
 
-		try {
-			input.emit("data", Buffer.from("2"));
-			await flush();
-			assert.deepEqual(trust.remembered, [false]);
-		} finally {
-			exitTui(input);
+			try {
+				input.emit("data", Buffer.from(key));
+				await flush();
+				assert.deepEqual(trust.remembered, [remember], `按 ${key} 的 remember 应为 ${remember}`);
+			} finally {
+				exitTui(input);
+			}
+
+			assert.equal(await running, 0);
 		}
-
-		assert.equal(await running, 0);
 	});
 
 	it("按 n 不信任：不记录、不写配置，界面直接收尾退出", async () => {
