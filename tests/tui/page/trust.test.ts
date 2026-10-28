@@ -54,30 +54,28 @@ describe("工作区信任页", () => {
 		}
 	});
 
-	it("底部固定三行：分隔线、三档横排、按键提示", () => {
+	it("底部固定两行：分隔线加三档横排", () => {
 		const lines = render(input(), 80, 24);
 		assert.equal(lines.length, 24);
-		const rule = lines[21] ?? "";
-		assert.ok(rule.trim().startsWith("─"), "倒数第三行应是分隔线");
-		assert.match(lines[22] ?? "", /› Trust this workspace/);
-		assert.match(lines[22] ?? "", /Trust for this session/);
-		assert.match(lines[22] ?? "", /Do not trust/);
-		assert.match(lines[23] ?? "", /←→ move · enter confirm/);
+		const rule = lines.at(-2) ?? "";
+		assert.ok(rule.trim().startsWith("─"), "倒数第二行应是分隔线");
+		const options = lines.at(-1) ?? "";
+		assert.match(options, /› Trust this workspace/);
+		assert.match(options, /Trust for this session/);
+		assert.match(options, /Do not trust/);
 	});
 
-	it("当前档用标记高亮，←→ 移动后标记跟着走", () => {
-		const trust = render(input({ selection: "trust" }), 80, 24)[22] ?? "";
-		assert.match(trust, /› Trust this workspace\s+Trust for this session\s+Do not trust/);
+	it("当前档用标记高亮，移动后标记跟着走", () => {
+		const last = (selection: TrustPageInput["selection"]): string =>
+			render(input({ selection }), 80, 24).at(-1) ?? "";
 
-		const session = render(input({ selection: "session" }), 80, 24)[22] ?? "";
-		assert.match(session, / {2}Trust this workspace\s+› Trust for this session/);
-
-		const skip = render(input({ selection: "skip" }), 80, 24)[22] ?? "";
-		assert.match(skip, /› Do not trust/);
+		assert.match(last("trust"), /› Trust this workspace\s+Trust for this session\s+Do not trust/);
+		assert.match(last("session"), / {2}Trust this workspace\s+› Trust for this session/);
+		assert.match(last("skip"), /› Do not trust/);
 	});
 
 	it("窄终端退到短标签，仍然给出三档", () => {
-		const line = render(input(), 44, 24)[22] ?? "";
+		const line = render(input(), 44, 24).at(-1) ?? "";
 		assert.match(line, /Trust\s+›|›\s+Trust/);
 		assert.match(line, /This session/);
 		assert.match(line, /Do not trust/);
@@ -99,9 +97,9 @@ describe("工作区信任页", () => {
 
 	it("记录结论时把选项行换成进行中的说明", () => {
 		const lines = render(input({ pending: true }), 80, 24);
-		assert.match(lines[22] ?? "", /Recording the decision\.\.\./);
-		assert.equal((lines[22] ?? "").includes("Trust"), false);
-		// 固定区仍然占三行，画面不会跟着跳
+		assert.match(lines.at(-1) ?? "", /Recording the decision\.\.\./);
+		assert.equal((lines.at(-1) ?? "").includes("Trust"), false);
+		// 固定区仍占两行，画面不会跟着跳
 		assert.equal(lines.length, 24);
 	});
 

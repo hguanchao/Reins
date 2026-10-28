@@ -235,6 +235,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		moveFileMenu: (delta) => moveFileMenu(host, delta),
 		executeCommand: (command, args) => executeCommand(host, command, args),
 		submit: () => submit(host),
+		// cleanUp 在装配完成后才指向真正实现；退出发生在运行期，闭包按调用时的值取即可
+		exit: () => cleanUp(),
 	};
 
 	onData = createInputHandler(host, {

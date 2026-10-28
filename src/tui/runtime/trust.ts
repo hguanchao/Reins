@@ -5,12 +5,11 @@ import type { TuiHost } from "./types.ts";
 /**
  * 信任页的结论落地。
  *
- * 页面先收掉再记录结论：授予信任要写一次配置、可能还要重读一遍，这段时间里界面应该已经
- * 回到可以继续使用的状态，而不是停在一张按不动、也不知道在做什么的页面上。结果用状态行
- * 说一句，成功与失败都留痕。
+ * 授予与拒绝走两条截然不同的路。授予要先收掉页面再记录结论：写配置、可能还要重读一遍，
+ * 这段时间里界面应该已经回到可以继续使用的状态，而不是停在一张按不动、也不知道在做什么的
+ * 页面上。拒绝则没有「继续」可言——项目配置正是要被它挡住的东西，放行就等于什么都没挡住，
+ * 所以直接收尾退出，退出原因交给装配层说明。
  */
-
-const SKIPPED = "Workspace config skipped for this run; pass --trust to use it next time";
 
 export function resolveTrust(host: TuiHost, answer: TrustAnswer): void {
 	const state = host.state;
@@ -19,9 +18,8 @@ export function resolveTrust(host: TuiHost, answer: TrustAnswer): void {
 
 	if (answer === "skip") {
 		state.trustPrompt = undefined;
-		host.setStatus(SKIPPED, "notice");
-		host.scheduleStatusClear();
-		host.render();
+		host.options.trustPrompt?.decline();
+		host.exit();
 		return;
 	}
 

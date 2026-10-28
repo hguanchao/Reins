@@ -21,9 +21,11 @@ function flush(): Promise<void> {
 function fakeTrust(overrides: Partial<TrustPromptSource> = {}): TrustPromptSource & {
 	/** 记录到的 remember 参数，按调用顺序 */
 	readonly remembered: boolean[];
+	/** decline 被调用的次数 */
+	declined: number;
 } {
 	const remembered: boolean[] = [];
-	return {
+	const self: TrustPromptSource & { remembered: boolean[]; declined: number } = {
 		root: "/work/project",
 		files: ["/work/project/.reins/config.toml", "/work/project/AGENTS.md"],
 		skillDirectories: ["/work/project/.reins/skills"],
@@ -31,9 +33,14 @@ function fakeTrust(overrides: Partial<TrustPromptSource> = {}): TrustPromptSourc
 			remembered.push(remember);
 			return ["Trusted the workspace"];
 		},
+		decline: () => {
+			self.declined += 1;
+		},
 		...overrides,
 		remembered,
+		declined: 0,
 	};
+	return self;
 }
 
 function textOf(output: FakeOutput): string {
@@ -154,7 +161,7 @@ describe("启动信任页", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("按 n 不写配置，直接进入对话流", async () => {
+	it("按 n 不信任：不记录、不写配置，界面直接收尾退出", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -170,15 +177,15 @@ describe("启动信任页", () => {
 
 		try {
 			input.emit("data", Buffer.from("n"));
-			await flush();
 
+			// 拒绝没有「继续」可言：decline 被调用，accept 从未被调用，界面退出
+			assert.equal(trust.declined, 1);
 			assert.deepEqual(trust.remembered, []);
-			assert.equal(textOf(output).includes("workspace trust"), false);
+			assert.equal(await running, 0);
+			assert.equal(input.rawMode, false);
 		} finally {
 			exitTui(input);
 		}
-
-		assert.equal(await running, 0);
 	});
 
 	it("记录期间重复按键不会再次触发记录", async () => {

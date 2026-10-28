@@ -25,7 +25,6 @@ const TRUST_NOTE =
 	"Trusting lets those files take effect. Reins only reads them; commands still run under the sandbox and the approval rules.";
 const SKIP_NOTE = "Not trusting keeps the default: this workspace's configuration is ignored.";
 const PENDING = "Recording the decision...";
-const KEYS = "←→ move · enter confirm";
 
 export interface TrustPageInput {
 	readonly root: string;
@@ -63,8 +62,8 @@ const SHORT_LABELS: readonly TrustOption[] = [
 /**
  * 整屏内容。
  *
- * 返回的行数恰好等于 height：正文自上而下排，放不下就从底部截断，底部固定区始终占满最后
- * 三行。
+ * 返回的行数恰好等于 height：正文自上而下排，放不下就从底部截断，底部分隔线与选项行
+ * 始终占满最后两行。
  */
 export function trustPageLines(input: TrustPageInput, width: number, height: number): readonly string[] {
 	const columns = Math.max(1, width);
@@ -103,9 +102,9 @@ function actionLines(input: TrustPageInput, width: number): readonly string[] {
 	const rule = `${THEME.border}${"─".repeat(width)}${RESET}`;
 	if (input.pending) {
 		// 录入结论时把选项行换成进行中的说明：避免连按回车重复提交
-		return [rule, center(PENDING, width, THEME.textSecondary), ""];
+		return [rule, center(PENDING, width, THEME.textSecondary)];
 	}
-	return [rule, optionRow(input.selection, width), center(KEYS, width, THEME.textSubtle)];
+	return [rule, optionRow(input.selection, width)];
 }
 
 /** 三档横排：当前档高亮加粗，拒绝档用失败色提示后果。 */

@@ -199,6 +199,8 @@ export interface TrustPromptSource {
 	readonly skillDirectories: readonly string[];
 	/** 记录授予并返回要给使用者看的说明；remember 为 false 时只对本次运行生效。失败时抛错，由界面显示原因 */
 	readonly accept: (remember: boolean) => Promise<readonly string[]>;
+	/** 使用者拒绝信任：界面随即收尾退出，装配层负责说明原因与退出码 */
+	readonly decline: () => void;
 }
 
 /**

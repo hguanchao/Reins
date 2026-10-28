@@ -294,6 +294,8 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	 * 命令行旗标与保存过的记录都已经定下结论，再问一遍等于不承认它。目录里没有需要信任
 	 * 的东西时 source 是 none，同样不打扰。
 	 */
+	/** 使用者在信任页拒绝了：界面会直接退出，这里记下原因以便收尾时说明。 */
+	let trustDeclined = false;
 	const trustPrompt =
 		"trust" in loaded && loaded.trust.source === "default"
 			? {
@@ -301,6 +303,9 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 					files: loaded.resources.files,
 					skillDirectories: loaded.resources.skillDirectories,
 					accept: acceptTrust,
+					decline: () => {
+						trustDeclined = true;
+					},
 				}
 			: undefined;
 
@@ -632,6 +637,10 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			historyPlan: history.plan,
 			workspaceRoot: workRoot,
 		});
+		if (trustDeclined) {
+			writeStderr(`reins: workspace not trusted; run again with --trust to use its configuration\n`);
+			return 1;
+		}
 		if (sessionPersisted) writeStdout(`${resumeCommand(activeSession.id)}\n`);
 		return code;
 	} catch (error) {

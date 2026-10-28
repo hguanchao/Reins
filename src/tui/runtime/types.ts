@@ -340,4 +340,6 @@ export interface TuiHost {
 	moveFileMenu(delta: number): void;
 	executeCommand(command: CommandMenuItem, args?: string): void;
 	submit(): boolean;
+	/** 收尾退出整个界面；用于拒绝信任这类「不再继续」的结论。 */
+	exit(): void;
 }
