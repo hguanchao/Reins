@@ -23,81 +23,71 @@ pi `842c731`。本文记录"别人有、我们没有"的结论与佐证位置,�
 - 编排与交互:计划模式(只读闸门不可绕)、后台 bash 作业、checkpoint 影子 git 回滚、
   图片输入、print 模式、剪贴板与通知。
 
-各家重度的差异化能力(codex 云任务与语音、grok Rhai workflow 与媒体生成、dsh PTC 与
-browser-use 等)与"最小代码实现"原则相悖,明确不跟进。
+各有各的重度差异化能力(codex 云任务与语音、grok Rhai workflow 与媒体生成、dsh PTC 与
+browser-use 等),与"最小代码实现"原则相悖,不跟进。
 
-## 二、核心缺口(多数参考项目视为必备)
+## 二、已决策的缺口(2026-10-28 复核后收缩)
 
-按重要度排序。每条附参考项目中的佐证位置(均在 `reference/` 下)。
+初版列了 8 条核心缺口。复核后按「是否解决真实痛点、能否用最小代码实现、是否与最小内核定位
+冲突」重新过了一遍,结论如下。判断依据写在每条后面,便于日后翻回来重议。
 
-### 1. Windows 沙箱后端
+### 已完成
 
-沙箱后端只有 macOS Seatbelt 与 Linux bubblewrap(`src/sandbox/backends/`),而开发与
-使用主力平台是 Windows——当前在 Windows 上沙箱实际只有 `off` 可用,bash 裸跑。
-三家已实现:codex 整套 AppContainer + 受限 token + WFP 网络过滤
-(`codex-rs/windows-sandbox-rs/`);grok-build 用 Windows ACL(`xai-grok-sandbox/`);
-deepseek-harness 有 `sandbox-windows-acl` 包。结论:可行且必要,是所有缺口里最重的一个。
+**Headless JSON 事件流。** `reins -p --json` 把事件按行写成 JSON,标准输出只放事件,标准错误
+仍留给装配阶段的提示。`tool_end` 不带结果全文与结构化结果——前者动辄几十 KB,后者不是这个
+协议的形状。事件集合就是 `AgentEvent` 本身,所以新增事件类型时协议自动跟上。
 
-### 2. 持久化权限规则
+### 明确不做
 
-现有审批模式与会话内"总是允许"都不落盘,重启即失效,做不到"本项目内 npm test 永远放行"。
-opencode 有 `allow/ask/deny` 规则且用户选择可存为规则(`core/src/permission/`);
-grok-build 有 `.grok/config.toml` 规则引擎,deny 永远赢、bash 按链式命令分段匹配、
-危险命令表永不走前缀记忆(`xai-grok-*` 权限管线,docs/user-guide/22);codex 有
-execpolicy 规则引擎(`codex-rs/execpolicy/`)。设计要点取自 grok:规则三来源
-(项目配置 + CLI 参数 + 每次批准的"记住")、deny 优先、bash 危险命令绕过记忆化。
+**Windows 沙箱后端。** 初版结论"grok-build 用 Windows ACL"是错的:grok 的沙箱后端只有
+`seatbelt.rs`(macOS),`detect.rs` 里写死 `no per-command sandbox backend for {os}: v1 has
+Seatbelt on macos only`。codex 与 deepseek-harness 都走**受限令牌**路线(WRITE_RESTRICTED +
+Low 完整性标签 + DACL/SACL 编辑),必须 FFI 调 Win32,并各自附带 AppContainer、DPAPI、卸载
+程序等外围设施。deepseek-harness 自己的已知限制里有一条直接与 Reins 冲突:受限子进程的管道
+式 stdio 会 EPERM,而 bash 工具靠管道抓输出。`reference/` 中没有任何项目用 `icacls` 做隔离,
+纯 Node 路线做不出真正有效的写隔离,只能做出"看起来开着"的一层——那正是沙箱铁律要排除的
+情形。当前行为是**失败即拒绝**(Windows 上 `sandbox = workspace` 会拒绝执行命令),没有安全
+漏洞,只是功能缺失。
 
-### 3. Headless 结构化输出与程序化接入面
+**持久化权限规则。** 技术上可行且不复杂,但产品语义与现有设计冲突:审批方式有 `ask`、`auto`、
+`yolo` 三档,`auto` 已经用审查模型代替逐次确认;再把"本项目内某条命令永远放行"落盘,等于
+在审查模型之外又开了一条静态放行通道,规则优先级、与 deny 表的关系、跨项目共享与否都要
+重新定义。收益(少点几次确认)不抵这套复杂度,暂缓。
 
-`-p` print 模式只出纯文本。没有 JSON 事件流,就接不了 IDE、CI 自动化与二次开发。
-四家的形态:codex `exec --json` 输出 JSONL 事件流;opencode 常驻 server + REST/事件流,
-多客户端共享会话;pi `--mode json/rpc`(rpc 为双向 JSONL,面向 IDE)+ SDK;grok-build
-原生 ACP server(`grok agent stdio`)。最小做法是先补"print 模式输出 JSONL 事件流",
-server/ACP 等有需求再议。
+**MCP tool_search(惰性发现)。** 在安全边界上加一层间接调用:能不能执行某个远端工具,从
+"静态注册表里有没有"变成"检索结果里有没有"。要防住这一点,工具检索器就必须只能检索、不能
+执行,代码量与判断难度都翻倍。MCP 工具多到撑爆上下文的场景,用 `disabled` 关掉几个 server
+即可解决。
 
-### 4. Hooks(生命周期钩子)
+**MCP OAuth 登录。** 面向公有云 MCP 服务。Reins 以本地 stdio 与自建 HTTP 端点为主,headers
+里放 token 已够用;完整授权码流程 + token 持久化与刷新 + 浏览器回调,与收益不匹配。
 
-插件目前只能注册工具与命令,挂不进生命周期。grok-build 有 15 类事件
-(SessionStart/End、UserPromptSubmit、Pre/PostToolUse、Stop、Pre/PostCompact、
-Subagent* 等),且直接兼容 Claude 与 Cursor 的 hooks 配置文件(`xai-grok-hooks/`);
-codex 有独立 hooks crate(`codex-rs/hooks/`,事件在 `hooks/src/events/`);
-deepseek-harness 有 hook 桥(`packages/experimental/hooks-*`)。Reins 的对应 seam
-应落在插件契约上:宿主在生命周期点广播事件,插件与外部命令均可订阅。
+**MCP resources 读取。** 使用率低;真有需求写一个插件即可,属外部增强,不进内核。
 
-### 5. Web search / web fetch 内置工具
+**Web search / fetch 内置工具。** MCP 生态已有大量实现,一行配置即可接入。内置成本(网页
+转发、HTML 清洗、编码、分页)不小,且会往审批链里加入一类难以判断风险的 openWorld 调用。
 
-codex、opencode、deepseek-harness、grok-build 四家均内置且 provider 可换
-(dsh:`packages/web/tool-web`,可换 DeepSeek/Exa/Perplexity;opencode:
-`core/src/plugin/websearch/`)。Reins 现在只能靠 MCP 外挂或 bash curl。若坚持
-"最小内核、外挂增强"的定位可以不做,但属四家共识,记录在案。
+**模型主动提问(ask_user_question)。** Reins 的 Plan 模式已覆盖同一场景:歧义处把不确定写成
+计划交给使用者审批,比弹结构化问题表单更可审查。print 模式没有人可答,只能填默认值,违反
+"不确定就按最保守的一侧处理"。
 
-### 6. 模型主动提问与运行中插话
+### 例外项(按需再做)
 
-两类交互均缺:
+**Hooks。** 15 类生命周期事件是 grok 要同时兼容 Claude 与 Cursor 配置格式带来的负担。Reins
+的实际需求可以缩到 PreToolUse / PostToolUse 两个点(如"改完 .ts 跑 lint"),完整形态不做。
 
-- `ask_user_question`/`question` 工具:模型在歧义处主动向用户要结构化决策
-  (codex `request_user_input`、opencode `question`、grok 与 dsh 同名工具)。
-- steering 与消息队列:回合进行中插话(下一轮生效)、追加消息排队
-  (pi:Enter 插入 / Alt+Enter 排队 / Alt+Up 取回;grok mid-turn interject;
-  opencode 会话队列)。
+**Markdown 自定义 slash 命令。** 与 skills 功能重叠:skills 已覆盖"模型按需取用",而命令
+面向"人反复手敲同一段话",后者用历史记录临时应付得住。等真实抱怨再说。
 
-长回合任务里用户目前只能打断重说,这两条直接改善交互闭环。
+### 已在本轮之前就具备
 
-### 7. MCP 工程化补齐
+**steering 与消息队列。** 初版记录成缺口,实际 TUI 早已实现:回合进行中提交的消息排进队列、
+本轮收尾后逐条自动发送、Alt+Up 取回、Alt+Down 丢弃、Esc 中止并立即发送队首、切换会话清空
+队列。本轮只补了最后一处缺口:队列超过可见条数(3)时给一句提示,而不是静默接受。
 
-- 工具惰性发现:MCP 工具一多就撑爆上下文。四家的解法是元工具按需加载——
-  codex `tool_search`(`core/src/tools/handlers/tool_search.rs`)、grok
-  `search_tool`/`use_tool`、pi BM25 检索 + deferred 暴露、opencode codemode。
-  Reins 目前全量注入注册表。
-- MCP OAuth 登录:codex/grok/opencode/pi 均支持,Reins 的 transport 无认证。
-- resources 读取:opencode 与 dsh 有列/读 MCP 资源的工具,Reins 只接工具。
-
-### 8. Markdown 自定义 slash 命令
-
-"一个 md 文件即一条命令"是四家通用入口:codex `~/.codex/prompts/*.md`、
-pi prompt templates(支持 `$1` 参数)、opencode `command/*.md`、grok 把每个
-skill 直接注册为 slash 命令。Reins 只认插件命令,普通用户没有零代码扩展入口。
-与 skills 的差别:命令面向用户手敲,skills 面向模型按需取用;两者共存。
+mid-turn 插话(消息立刻注入当前回合的工具循环)**不做**:它会打破 `TurnDriver` 的核心不变量
+——回合内上下文只由已写入会话的消息组成。一旦插进去,`#buildRequest` 就不再等于重放会话的
+结果,这个项目最可贵的属性也就没了。
 
 ## 三、次级缺口(部分项目有,属增强项)
 
@@ -124,13 +114,13 @@ skill 直接注册为 slash 命令。Reins 只认插件命令,普通用户没有
   后续请求生效(上下文本身可延续,但无协议差异的块翻译保证)。
 - **会话导出/分享**:pi `/export` HTML/JSONL、`/share` 在线 viewer;opencode share。
 
-## 四、建议优先级
+## 四、剩余事项
 
-按"补产品短板 + 顺平台"排:
+收缩之后仍有价值的是:
 
-- **P0**:Windows 沙箱后端;持久化权限规则;headless JSON 事件流。
-- **P1**:hooks;ask_user 工具与 steering/队列;MCP tool_search;markdown 自定义命令。
-- **P2**:三节所列增强项,按实际需求取用。
+- **PreToolUse / PostToolUse 两个钩子点**:挂着跑 lint、格式化这类"改完就做"的事。
+- **第三节的次级缺口**:按实际需求取用,不排期。
 
-排序理由:Windows 沙箱是当前平台上的安全实洞;权限规则是审批体系的收口;
-JSON 输出是自动化与生态的地基。P1 四项都是"扩展面"性质,可按插件需求逐步落。
+Windows 沙箱与持久化权限规则若日后重议,先确认平台是否已有可用的受限令牌手段(例如宿主本身
+就以受限身份运行),否则不启动。
+
