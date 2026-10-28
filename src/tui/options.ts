@@ -7,7 +7,6 @@ import type {
 import type { ApprovalMode, NotifyMode, ThinkingLevel } from "../config/file.ts";
 import type { McpControl } from "../mcp/service.ts";
 import type { ApprovalBroker } from "../permission/approval.ts";
-import type { SandboxInfo } from "../sandbox/setup.ts";
 import type { CommandMenuItem } from "./panel/command-menu.ts";
 import type { FileSource } from "./panel/file-menu.ts";
 import type { FooterInfo } from "./view/footer.ts";
@@ -225,12 +224,11 @@ export interface AgentRuntime {
 	readonly refreshInfo: () => void;
 }
 
-/** 整屏页的内容；帮助、技能、MCP、沙箱、计划、检查点、后台作业与长内容查看共用同一套滚动。 */
+/** 整屏页的内容；帮助、技能、MCP、计划、检查点、后台作业与长内容查看共用同一套滚动。 */
 export type PageKind =
 	| "help"
 	| "skills"
 	| "mcps"
-	| "sandbox"
 	| "plan"
 	| "checkpoints"
 	| "checkpoint"
@@ -269,17 +267,6 @@ export interface TrustPromptSource {
 	readonly decline: () => void;
 }
 
-/**
- * `/sandbox` 页的数据来源。
- *
- * warning 与配置警告分开保存：配置警告会在 /model 修复后消失，而平台缺少命令隔离这件事
- * 不会因为换模型而改变，启动说明要一直留到本次界面退出。
- */
-interface SandboxPageSource {
-	readonly info: SandboxInfo;
-	readonly warning?: string;
-}
-
 /** 文本剪贴板；由装配处提供，界面不直接碰平台命令。 */
 export interface ClipboardSource {
 	/** 写入系统剪贴板；成功返回 true，失败时由界面退到 OSC 52 */
@@ -292,8 +279,8 @@ export interface TuiOptions {
 	readonly info: FooterInfo | (() => FooterInfo);
 	/** 配置有问题时在主区域显示的一行警告；配置正常时不传 */
 	readonly warning?: string;
-	/** 沙箱模式与平台限制；不提供时 /sandbox 不可用 */
-	readonly sandbox?: SandboxPageSource;
+	/** 沙箱平台限制的启动说明；不提供时没有这条提示 */
+	readonly sandboxWarning?: string;
 	/** 图片读取；不提供时剪贴板、拖入与 @ 选图片都不可用 */
 	readonly images?: ImageSource;
 	/** 文本剪贴板写入；不提供时拖选复制退到终端 OSC 52 */

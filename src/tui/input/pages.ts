@@ -4,7 +4,6 @@ import type { MouseInput } from "./keys.ts";
 import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
 import { JOB_ACTION_HEIGHT } from "../page/job.ts";
 import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
-import { SANDBOX_ACTION_HEIGHT } from "../page/sandbox.ts";
 import { VIEWER_ACTION_HEIGHT } from "../page/viewer.ts";
 import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
@@ -131,15 +130,13 @@ export function handlePageInput(
 			? PLAN_ACTION_HEIGHT
 			: page === "checkpoints" || page === "checkpoint"
 				? CHECKPOINT_ACTION_HEIGHT
-			: page === "jobs" || page === "job"
-				? JOB_ACTION_HEIGHT
-					: page === "sandbox"
-						? SANDBOX_ACTION_HEIGHT
-						: page === "mcps"
-							? MCP_ACTION_HEIGHT
-							: page === "viewer"
-								? VIEWER_ACTION_HEIGHT
-								: 0;
+				: page === "jobs" || page === "job"
+					? JOB_ACTION_HEIGHT
+					: page === "mcps"
+						? MCP_ACTION_HEIGHT
+						: page === "viewer"
+							? VIEWER_ACTION_HEIGHT
+							: 0;
 	const rows = Math.max(1, host.mainAreaHeight() - actionHeight);
 	const width = host.terminalWidth();
 	const total = host.pageLines(page, width).length;

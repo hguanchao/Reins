@@ -238,7 +238,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 		onStage: (stage) => startup.mark(stage),
 	});
 	if (pipeline === null) return 1;
-	const { registry, host, sandbox, sandboxInfo, sandboxWarnings } = pipeline;
+	const { registry, host, sandbox, sandboxWarnings } = pipeline;
 
 	const workspace = new WorkspaceBoundary(workRoot);
 	startup.mark("sandbox");
@@ -823,10 +823,8 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			planMode,
 			checkpoints: checkpointSource,
 			jobs,
-			sandbox: {
-				info: sandboxInfo,
-				...(sandboxWarnings.length === 0 ? {} : { warning: sandboxWarnings.join("\n\n") }),
-			},
+			sandboxWarning:
+				sandboxWarnings.length === 0 ? undefined : sandboxWarnings.join("\n\n"),
 			images: createImageSource(workRoot),
 			imagesSupported: () => catalog.selection?.model.input.includes("image") ?? false,
 			clipboard: createClipboardSource(),

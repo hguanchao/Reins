@@ -112,15 +112,6 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 			hidden: true,
 		},
 		{
-			name: "sandbox",
-			description:
-				options.sandbox === undefined
-					? "Sandbox details are unavailable in this session"
-					: "Show sandbox mode and platform limits",
-			enabled: options.sandbox !== undefined,
-			hidden: true,
-		},
-		{
 			name: "jobs",
 			description:
 				options.jobs === undefined

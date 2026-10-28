@@ -11,7 +11,7 @@ export function createState(options: TuiOptions): TuiState {
 		stdout: options.stdout ?? process.stdout,
 		ready: options.ready ?? true,
 		activeWarning: options.warning,
-		sandboxNotice: options.sandbox?.warning,
+		sandboxNotice: options.sandboxWarning,
 		builtinCommands: createBuiltinCommands(options),
 		input: "",
 		inputCursor: 0,

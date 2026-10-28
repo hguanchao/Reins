@@ -43,9 +43,6 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 		plan: () => executePlanCommand(host, args),
 		undo: () => executeUndoCommand(host),
 		checkpoints: () => executeCheckpointsCommand(host),
-		sandbox: () => {
-			if (host.options.sandbox !== undefined) showPage(state, "sandbox");
-		},
 		jobs: () => executeJobsCommand(host),
 		help: () => showPage(state, "help"),
 		skills: () => showPage(state, "skills"),
@@ -57,8 +54,7 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 		if (
 			command.name === "help" ||
 			command.name === "skills" ||
-			command.name === "mcps" ||
-			command.name === "sandbox"
+			command.name === "mcps"
 		) {
 			host.setInput("");
 		}

@@ -15,7 +15,6 @@ import {
 } from "../page/checkpoint.ts";
 import { jobListActions, jobListLines, jobOutputActions, jobOutputLines } from "../page/job.ts";
 import { planActionLines, planReviewLines } from "../page/plan.ts";
-import { sandboxActionLines, sandboxPageLines } from "../page/sandbox.ts";
 import { viewerActionLines, viewerPageLines } from "../page/viewer.ts";
 import { THEME } from "../render/theme.ts";
 import { RESET } from "../panel/menu-panel.ts";
@@ -27,7 +26,7 @@ import type { TuiHost, TuiState } from "./types.ts";
  * 整屏页。
  *
  * 页面内容按宽度排版并缓存；带动作条的页面把动作条钉在底部，正文按剩余高度滚动。
- * 计划、检查点、作业与沙箱页共用同一套几何，动作条变化时不会各自偏移。
+ * 计划、检查点与作业页共用同一套几何，动作条变化时不会各自偏移。
  */
 
 /** 打开一整页：滚动位置回到顶部，下次绘制按当前宽度重排。 */
@@ -65,10 +64,6 @@ function buildPage(host: TuiHost, kind: PageKind, width: number): readonly strin
 		const source = host.options.skills;
 		if (source === undefined) return skillsPageLines(width, [], []);
 		return skillsPageLines(width, source.list(), source.directories());
-	}
-	if (kind === "sandbox") {
-		const source = host.options.sandbox;
-		return source === undefined ? [] : sandboxPageLines(source.info, width);
 	}
 	if (kind === "plan") {
 		return state.planReview === undefined ? [] : planReviewLines(state.planReview, width);
@@ -149,7 +144,6 @@ export function framedPageFor(
 		return framedPage(content, jobOutputActions(width, selected?.status ?? "done"), height, scroll);
 	}
 	if (kind === "jobs") return framedPage(content, jobListActions(width), height, scroll);
-	if (kind === "sandbox") return framedPage(content, sandboxActionLines(width), height, scroll);
 	if (kind === "mcps") return framedPage(content, mcpsActionLines(width), height, scroll);
 	if (kind === "viewer") return framedPage(content, viewerActionLines(width), height, scroll);
 	return renderPage(content, height, scroll);

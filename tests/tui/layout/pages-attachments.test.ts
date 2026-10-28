@@ -169,7 +169,7 @@ describe("整屏页与图片附件", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("沙箱限制在启动区提示，/sandbox 打开说明页", async () => {
+	it("沙箱平台限制在启动区提示，/sandbox 已移除", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 100;
@@ -180,14 +180,7 @@ describe("整屏页与图片附件", () => {
 		const running = runTui({
 			version: "1.2.3",
 			info: FOOTER_INFO,
-			sandbox: {
-				info: {
-					mode: "workspace",
-					platform: "win32",
-					confinesCommands: false,
-				},
-				warning,
-			},
+			sandboxWarning: warning,
 			stdin: input,
 			stdout: output,
 		});
@@ -199,20 +192,12 @@ describe("整屏页与图片附件", () => {
 			assert.ok(text.includes("no usable command isolation"));
 
 			input.emit("data", Buffer.from("/sandbox\r"));
-			const page = frameLines(output).map(plain);
-			text = page.join("\n");
-			assert.equal(page[0]?.trimEnd(), "Reins — sandbox");
-			assert.ok(text.includes("Command isolation"));
-			assert.ok(text.includes("unavailable"));
-			assert.ok(text.includes("Shell commands are refused"));
-			assert.ok(text.includes("Esc close"));
-
-			input.emit("data", Buffer.from("\x1b"));
 			text = frameLines(output)
 				.map(plain)
 				.join("\n");
+			assert.ok(text.includes("Unknown command: /sandbox"));
 			assert.equal(text.includes("Reins — sandbox"), false);
-			// 平台限制不是可修复的配置问题：页面关掉后启动说明仍在
+			// 平台限制不是可修复的配置问题：命令移除后启动说明仍在
 			assert.ok(text.includes("no usable command isolation"));
 		} finally {
 			exitTui(input);
