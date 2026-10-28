@@ -21,12 +21,8 @@ const MARK: readonly string[] = [
 
 /** 标志与版本号之间的空行。 */
 const GAP = 1;
-/** 相邻两行之间的相位差：让光带斜着走，而不是一条竖线扫过。 */
-const SKEW = 0.08;
 /** 整块宽度；短行按它补齐。 */
 const BLOCK_WIDTH = Math.max(...MARK.map((line) => displayWidth(line)));
-/** 整块扫完所需的相位跨度；最后一行还要再晚 SKEW 才出画面。 */
-const SPAN = 1 + SKEW * (MARK.length - 1);
 
 /** 一帧的间隔：12fps 已经够平滑，首屏也不必为此连着重绘几十次。 */
 export const BANNER_FRAME_MS = 83;
@@ -36,9 +32,9 @@ export const BANNER_SWEEP_MS = 700;
 /**
  * 启动画面的内容行。
  *
- * `shine` 是 0..1 的扫光进度，undefined 表示停在静止状态；标志与版本号都用弱灰，
- * 光带经过标志时提亮到主文字色，扫完回到弱灰。版本号不参与扫光：它只有一行，光带
- * 扫过去只会闪一下，反而打断整块标志的节奏。
+ * `shine` 是 0..1 的扫光进度，undefined 表示停在静止状态；标志与版本号都用 #16191d。
+ * 光带整块共用一个相位，竖直地从左往右扫过，暗部与亮点跟运行时状态行共用同一套颜色。
+ * 版本号不参与扫光：它只有一行，光带扫过去只会闪一下，反而打断整块标志的节奏。
  */
 export function bannerLines(
 	width: number,
@@ -53,12 +49,12 @@ export function bannerLines(
 		const art = padToWidth(MARK[row] ?? "", BLOCK_WIDTH);
 		const colored =
 			shine === undefined
-				? `${THEME.textSubtle}${art}${THEME.reset}`
+				? `${THEME.textBanner}${art}${THEME.reset}`
 				: swept(
 						art,
-						Math.min(1, Math.max(0, shine * SPAN - SKEW * row)),
-						THEME.textSubtleRgb,
-						THEME.textPrimaryRgb,
+						Math.min(1, Math.max(0, shine)),
+						THEME.accentDim,
+						THEME.sweepHighlight,
 					);
 		lines.push(`${" ".repeat(left)}${colored}`);
 	}
@@ -66,7 +62,7 @@ export function bannerLines(
 	lines.push(...Array.from({ length: GAP }, () => ""));
 	const label = `v${version}`;
 	const labelLeft = left + Math.max(0, Math.floor((BLOCK_WIDTH - displayWidth(label)) / 2));
-	lines.push(`${" ".repeat(labelLeft)}${THEME.textSubtle}${label}${THEME.reset}`);
+	lines.push(`${" ".repeat(labelLeft)}${THEME.textBanner}${label}${THEME.reset}`);
 	return lines;
 }
 

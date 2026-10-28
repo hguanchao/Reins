@@ -80,7 +80,7 @@ interface RuntimeStatus {
 
 /** 扫光从强调色暗部过渡到白色。 */
 const SWEEP_BASE = THEME.accentDim;
-const SWEEP_HIGHLIGHT = { r: 0xff, g: 0xff, b: 0xff };
+const SWEEP_HIGHLIGHT = THEME.sweepHighlight;
 /** 阶段计时、总计时与 token 数的静态颜色。 */
 const STATUS_META_COLOR = THEME.textSubtle;
 /** 输入框下方常驻信息行的颜色。 */

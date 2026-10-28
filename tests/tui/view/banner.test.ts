@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 
-import { THEME } from "../../../src/tui/render/theme.ts";
 import { bannerLines } from "../../../src/tui/view/banner.ts";
 
 /** 五行块字，与视图里的标志逐字一致；测试直接比对，防止改坏笔画。 */
@@ -45,29 +44,38 @@ describe("启动标志", () => {
 		assert.ok(lefts.every((left) => left === 4), lefts.join(","));
 	});
 
-	it("静止时标志与版本号都是弱灰", () => {
+	it("静止时标志与版本号都是 #16191d", () => {
 		const lines = bannerLines(40, "1.0.0", undefined);
 
 		for (const line of lines.slice(0, 5).concat(lines[6] ?? "")) {
-			assert.ok(line.includes(THEME.textSubtle));
-			assert.equal(line.includes(THEME.textPrimary), false);
+			assert.deepEqual(new Set(reds(line)), new Set([22]));
 		}
 	});
 
-	it("扫光经过标志时提亮，版本号保持静止", () => {
+	it("扫光与运行时状态共用暗部与亮点，版本号保持静止", () => {
 		const lines = bannerLines(40, "1.0.0", 0.5);
 		const artReds = lines.slice(0, 5).flatMap(reds);
 
-		assert.ok(Math.max(...artReds) > 107);
-		assert.ok(Math.min(...artReds) >= 107);
-		assert.deepEqual(new Set(reds(lines[6] ?? "")), new Set([107]));
+		assert.ok(Math.max(...artReds) > 47);
+		assert.ok(Math.min(...artReds) >= 47);
+		assert.deepEqual(new Set(reds(lines[6] ?? "")), new Set([22]));
 	});
 
-	it("扫光结束后回到静止弱灰", () => {
+	it("整块共用一个相位，光带竖直从左往右", () => {
+		const lines = bannerLines(40, "1.0.0", 0.5);
+		const peaks = lines.slice(0, 5).map((line) => {
+			const values = reds(line);
+			return values.indexOf(Math.max(...values));
+		});
+
+		assert.deepEqual(new Set(peaks), new Set([peaks[0]]));
+	});
+
+	it("扫到最右端时只剩暗部", () => {
 		const lines = bannerLines(40, "1.0.0", 1);
 
 		for (const line of lines.slice(0, 5)) {
-			assert.equal(Math.max(...reds(line)), 107);
+			assert.equal(Math.max(...reds(line)), 47);
 		}
 	});
 
