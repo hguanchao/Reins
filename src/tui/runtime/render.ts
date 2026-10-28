@@ -7,7 +7,7 @@ import { renderEffortMenu } from "../panel/effort-menu.ts";
 import { renderFileMenu } from "../panel/file-menu.ts";
 import { renderModelMenu } from "../panel/model-menu.ts";
 import { renderSessionMenu } from "../panel/session-menu.ts";
-import { renderJobBarLine } from "../page/job.ts";
+import { renderJobBarLine } from "../job.ts";
 import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "../transcript.ts";
 import { scrollButtonPlacement } from "../view/scroll-button.ts";
 import { todoPanelLines } from "../view/todo-card.ts";

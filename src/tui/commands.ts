@@ -103,24 +103,6 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 			enabled: options.checkpoints?.available() === true,
 		},
 		{
-			name: "checkpoints",
-			description:
-				options.checkpoints?.available() === true
-					? "Browse and restore checkpoints"
-					: "Checkpoints are unavailable in this workspace",
-			enabled: options.checkpoints?.available() === true,
-			hidden: true,
-		},
-		{
-			name: "jobs",
-			description:
-				options.jobs === undefined
-					? "Background jobs are unavailable"
-					: "Show background jobs and their output",
-			enabled: options.jobs !== undefined,
-			hidden: true,
-		},
-		{
 			name: "skills",
 			description:
 				options.skills === undefined

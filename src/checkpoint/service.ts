@@ -203,7 +203,7 @@ export class CheckpointService {
 	/**
 	 * 恢复检查点。
 	 *
-	 * 先抓安全检查点，再恢复目标；恢复失败时安全点仍然保留，可以使用 /checkpoints 恢复。
+	 * 先抓安全检查点，再恢复目标；恢复失败时安全点仍然保留，可以再次恢复到它。
 	 */
 	async restore(id: string): Promise<CheckpointRestoreResult> {
 		this.#requireAvailable();
@@ -247,7 +247,7 @@ export class CheckpointService {
 		try {
 			safety.changes = await this.#store.changes(safety.tree);
 		} catch (error) {
-			// 文件已经恢复成功；算不出安全点的反向差异只影响 /checkpoints 的计数，不能反报失败
+			// 文件已经恢复成功；算不出安全点的反向差异只影响统计，不能反报失败
 			this.#lastError = messageOf(error);
 		}
 		this.#save();

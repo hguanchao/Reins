@@ -1,6 +1,5 @@
 import type { AgentEventListener } from "../agent/events.ts";
 import type {
-	CheckpointEntry,
 	CheckpointPreview,
 	CheckpointRestoreResult,
 } from "../checkpoint/service.ts";
@@ -11,7 +10,7 @@ import type { CommandMenuItem } from "./panel/command-menu.ts";
 import type { FileSource } from "./panel/file-menu.ts";
 import type { FooterInfo } from "./view/footer.ts";
 import type { ImageAttachment, ImageSource } from "./image.ts";
-import type { JobEvent, JobView } from "./page/job.ts";
+import type { JobEvent, JobView } from "./job.ts";
 import type { ModelMenuItem } from "./panel/model-menu.ts";
 import type { PageEntry, SkillPageEntry } from "./page/frame.ts";
 import type { SessionMenuItem } from "./panel/session-menu.ts";
@@ -186,16 +185,13 @@ export interface PlanModeSource {
 export interface CheckpointSource {
 	readonly available: () => boolean;
 	readonly error: () => string | undefined;
-	readonly list: () => readonly CheckpointEntry[];
 	readonly latestUndoable: () => Promise<CheckpointPreview | undefined>;
-	readonly preview: (id: string) => Promise<CheckpointPreview>;
 	readonly restore: (id: string) => Promise<CheckpointRestoreResult>;
 }
 
-/** 后台作业的界面数据源；由宿主的 JobManager 提供。 */
+/** 后台作业的界面数据源；由宿主的 JobManager 提供。Jobs bar 与结束说明只读这些。 */
 export interface JobSource {
 	readonly list: () => readonly JobView[];
-	readonly output: (id: string) => string;
 	readonly kill: (id: string) => unknown;
 	readonly subscribe: (listener: (event: JobEvent) => void) => () => void;
 	readonly shutdown: () => void;
@@ -224,16 +220,12 @@ export interface AgentRuntime {
 	readonly refreshInfo: () => void;
 }
 
-/** 整屏页的内容；帮助、技能、MCP、计划、检查点、后台作业与长内容查看共用同一套滚动。 */
+/** 整屏页的内容；帮助、技能、MCP、计划与长内容查看共用同一套滚动。 */
 export type PageKind =
 	| "help"
 	| "skills"
 	| "mcps"
 	| "plan"
-	| "checkpoints"
-	| "checkpoint"
-	| "jobs"
-	| "job"
 	| "viewer";
 
 /**
@@ -301,9 +293,9 @@ export interface TuiOptions {
 	readonly approvalMode?: ApprovalModeSource;
 	/** Plan 模式的数据来源；不提供时 /plan 不可用、页脚也不显示 PLAN */
 	readonly planMode?: PlanModeSource;
-	/** 检查点与撤销；不提供时 /undo 与 /checkpoints 不可用 */
+	/** 检查点与撤销；不提供时 /undo 不可用 */
 	readonly checkpoints?: CheckpointSource;
-	/** 后台作业；不提供时 /jobs 不可用，bash 的 background 也会被拒绝 */
+	/** 后台作业；不提供时没有 Jobs bar，bash 的 background 也会被拒绝 */
 	readonly jobs?: JobSource;
 	/** /model 菜单的数据来源；不提供时 /model 按普通输入处理 */
 	readonly modelMenu?: ModelMenuSource;

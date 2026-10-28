@@ -283,14 +283,9 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	const checkpointSource: CheckpointSource = {
 		available: () => checkpoints.available,
 		error: () => checkpoints.lastError,
-		list: () => checkpoints.list(),
 		latestUndoable: async () => {
 			await checkpoints.init();
 			return checkpoints.latestUndoable();
-		},
-		preview: async (id) => {
-			await checkpoints.init();
-			return checkpoints.preview(id);
 		},
 		restore: async (id) => {
 			await checkpoints.init();

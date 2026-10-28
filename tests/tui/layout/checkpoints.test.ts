@@ -5,20 +5,25 @@ import { FakeInput, FakeOutput, FOOTER_INFO, exitTui, frameLines, plain } from "
 import { runTui } from "../../../src/tui/layout.ts";
 
 describe("检查点与撤销", () => {
-	function source(available = true): {
+	function makeSource(
+		available = true,
+		overrides: {
+			latestUndoable?: () => Promise<undefined>;
+			restoreError?: string;
+		} = {},
+	): {
 		source: import("../../../src/tui/options.ts").CheckpointSource;
 		readonly restored: string[];
 	} {
-		const entry = {
-			id: "t2",
-			turn: 2,
-			createdAt: Date.now() - 60_000,
-			kind: "turn" as const,
-			label: "Turn 2",
-			changes: 1,
-		};
 		const preview = {
-			entry,
+			entry: {
+				id: "t2",
+				turn: 2,
+				createdAt: Date.now() - 60_000,
+				kind: "turn" as const,
+				label: "Turn 2",
+				changes: 1,
+			},
 			changes: [{ path: "src/a.ts", status: "modified" as const }],
 		};
 		const restored: string[] = [];
@@ -27,69 +32,35 @@ describe("检查点与撤销", () => {
 			source: {
 				available: () => available,
 				error: () => (available ? undefined : "Checkpoints need a Git repository"),
-				list: () => (available ? [entry] : []),
-				latestUndoable: async () => (available ? preview : undefined),
-				preview: async () => preview,
+				latestUndoable: async () => {
+					if (overrides.latestUndoable !== undefined) return overrides.latestUndoable();
+					return available ? preview : undefined;
+				},
 				restore: async () => {
-					restored.push(entry.id);
-					return { entry, restored: 1, removed: 0, safety: { ...entry, id: "s1", kind: "safety", label: "Before undo of Turn 2" } };
+					if (overrides.restoreError !== undefined) throw new Error(overrides.restoreError);
+					restored.push(preview.entry.id);
+					return {
+						entry: preview.entry,
+						restored: 1,
+						removed: 0,
+						safety: { ...preview.entry, id: "s1", kind: "safety", label: "Before undo of Turn 2" },
+					};
 				},
 			},
 		};
 	}
 
-	it("/checkpoints 打开列表、预览并恢复", async () => {
-		const fake = source();
+	it("/undo 直接恢复最近变更并在对话流留下记录", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
-		output.rows = 30;
+		output.rows = 20;
+		const { source: checkpointSource, restored } = makeSource();
 		const running = runTui({
 			version: "1.2.3",
 			info: FOOTER_INFO,
-			checkpoints: fake.source,
-			stdin: input,
-			stdout: output,
-		});
-
-		try {
-			input.emit("data", Buffer.from("/checkpoints\r"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — checkpoints"));
-			assert.ok(text.includes("Turn 2"));
-
-			input.emit("data", Buffer.from("\r"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — undo"));
-			assert.ok(text.includes("M  src/a.ts"));
-			assert.ok(text.includes("will be restored"));
-
-			input.emit("data", Buffer.from("u"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.deepEqual(fake.restored, ["t2"]);
-			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("› /undo"));
-			assert.ok(text.includes("Undid Turn 2"));
-			assert.equal(text.includes("Reins — undo"), false);
-		} finally {
-			exitTui(input);
-		}
-
-		assert.equal(await running, 0);
-	});
-
-	it("/undo 直接预览最近变更并恢复", async () => {
-		const fake = source();
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		output.columns = 80;
-		output.rows = 30;
-		const running = runTui({
-			version: "1.2.3",
-			info: FOOTER_INFO,
-			checkpoints: fake.source,
+checkpoints: checkpointSource,
 			stdin: input,
 			stdout: output,
 		});
@@ -97,12 +68,11 @@ describe("检查点与撤销", () => {
 		try {
 			input.emit("data", Buffer.from("/undo\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — undo"));
 
-			input.emit("data", Buffer.from("u"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.deepEqual(fake.restored, ["t2"]);
-			assert.ok(plain(frameLines(output).join("\n")).includes("Undid Turn 2"));
+			assert.deepEqual(restored, ["t2"]);
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Undid Turn 2 · 1 restored"));
+			assert.equal(text.includes("Reins — checkpoints"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -110,50 +80,15 @@ describe("检查点与撤销", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("列表预览后 Esc 取消回列表", async () => {
-		const fake = source();
+	it("没有可恢复的变更时给出提示", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
-		output.columns = 80;
-		output.rows = 30;
+		const { source: checkpointSource } = makeSource(true, { latestUndoable: () => Promise.resolve(undefined) });
 		const running = runTui({
 			version: "1.2.3",
 			info: FOOTER_INFO,
-			checkpoints: fake.source,
-			stdin: input,
-			stdout: output,
-		});
-
-		try {
-			input.emit("data", Buffer.from("/checkpoints\r"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			input.emit("data", Buffer.from("\r"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — undo"));
-
-			input.emit("data", Buffer.from("\x1b"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — checkpoints"));
-
-			input.emit("data", Buffer.from("\x1b"));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.equal(plain(frameLines(output).join("\n")).includes("Reins — checkpoints"), false);
-		} finally {
-			exitTui(input);
-		}
-
-		assert.equal(await running, 0);
-	});
-
-	it("检查点不可用时命令给出原因，不打开页面", async () => {
-		const fake = source(false);
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		output.columns = 80;
-		const running = runTui({
-			version: "1.2.3",
-			info: FOOTER_INFO,
-			checkpoints: fake.source,
+checkpoints: checkpointSource,
 			stdin: input,
 			stdout: output,
 		});
@@ -161,9 +96,61 @@ describe("检查点与撤销", () => {
 		try {
 			input.emit("data", Buffer.from("/undo\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			const text = plain(frameLines(output).join("\n"));
-			assert.ok(text.includes("Checkpoints need a Git repository"));
-			assert.equal(text.includes("Reins — undo"), false);
+
+			assert.ok(frameLines(output).map(plain).join("\n").includes("No file changes to undo"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("恢复失败时在对话流里给出原因", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const { source: checkpointSource } = makeSource(true, { restoreError: "git failed" });
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+checkpoints: checkpointSource,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/undo\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("Error: git failed"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("检查点不可用时命令给出原因", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const { source: checkpointSource } = makeSource(false);
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+checkpoints: checkpointSource,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/undo\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			assert.ok(
+				frameLines(output).map(plain).join("\n").includes("Checkpoints need a Git repository"),
+			);
 		} finally {
 			exitTui(input);
 		}

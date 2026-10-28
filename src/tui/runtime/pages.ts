@@ -1,4 +1,3 @@
-import type { CheckpointEntry } from "../../checkpoint/service.ts";
 import {
 	mcpsActionLines,
 	mcpsPageLines,
@@ -7,17 +6,8 @@ import {
 	framedPage,
 	renderPage,
 } from "../page/frame.ts";
-import {
-	checkpointListActions,
-	checkpointListLines,
-	checkpointPreviewActions,
-	checkpointPreviewLines,
-} from "../page/checkpoint.ts";
-import { jobListActions, jobListLines, jobOutputActions, jobOutputLines } from "../page/job.ts";
 import { planActionLines, planReviewLines } from "../page/plan.ts";
 import { viewerActionLines, viewerPageLines } from "../page/viewer.ts";
-import { THEME } from "../render/theme.ts";
-import { RESET } from "../panel/menu-panel.ts";
 import type { PageKind } from "../options.ts";
 import type { TranscriptPlan } from "../transcript.ts";
 import type { TuiHost, TuiState } from "./types.ts";
@@ -26,7 +16,7 @@ import type { TuiHost, TuiState } from "./types.ts";
  * 整屏页。
  *
  * 页面内容按宽度排版并缓存；带动作条的页面把动作条钉在底部，正文按剩余高度滚动。
- * 计划、检查点与作业页共用同一套几何，动作条变化时不会各自偏移。
+ * 计划与 MCP 页共用同一套几何，动作条变化时不会各自偏移。
  */
 
 /** 打开一整页：滚动位置回到顶部，下次绘制按当前宽度重排。 */
@@ -40,14 +30,8 @@ export function showPage(state: TuiState, kind: PageKind): void {
 
 /** 页面内容；宽度变了才重排，滚动与重绘都复用同一份。 */
 export function pageLines(host: TuiHost, kind: PageKind, width: number): readonly string[] {
-	// 检查点、作业与 MCP 都有光标/实时状态：不缓存，避免画出上一帧
-	if (
-		kind === "checkpoints" ||
-		kind === "checkpoint" ||
-		kind === "jobs" ||
-		kind === "job" ||
-		kind === "mcps"
-	) {
+	// MCP 页有光标与实时连接状态：不缓存，避免画出上一帧
+	if (kind === "mcps") {
 		return buildPage(host, kind, width);
 	}
 	const cache = host.state.pageCache;
@@ -67,30 +51,6 @@ function buildPage(host: TuiHost, kind: PageKind, width: number): readonly strin
 	}
 	if (kind === "plan") {
 		return state.planReview === undefined ? [] : planReviewLines(state.planReview, width);
-	}
-	if (kind === "checkpoints") {
-		return checkpointListLines(state.checkpointList, width, state.checkpointCursor, state.checkpointLoading);
-	}
-	if (kind === "checkpoint") {
-		return state.checkpointPreview === undefined
-			? checkpointListLines([], width, 0)
-			: checkpointPreviewLines(state.checkpointPreview, width);
-	}
-	if (kind === "jobs") {
-		const jobs = host.options.jobs?.list() ?? [];
-		state.jobCursor = Math.min(state.jobCursor, Math.max(0, jobs.length - 1));
-		return jobListLines(jobs, width, state.jobCursor);
-	}
-	if (kind === "job") {
-		const job = host.options.jobs?.list().find((candidate) => candidate.id === state.jobDetailId);
-		if (job === undefined) {
-			return [
-				`${THEME.accent}Reins — jobs${RESET}`,
-				"",
-				`${THEME.textSubtle}  This job is no longer available.${RESET}`,
-			];
-		}
-		return jobOutputLines(job, host.options.jobs?.output(job.id) ?? "", width);
 	}
 	if (kind === "viewer") {
 		return state.viewer === undefined ? [] : viewerPageLines(state.viewer, width);
@@ -134,31 +94,7 @@ export function framedPageFor(
 	const content = pageLines(host, kind, width);
 	const scroll = state.pageScrollTop;
 	if (kind === "plan") return framedPage(content, planActionLines(width), height, scroll);
-	if (kind === "checkpoint") {
-		const actions = checkpointPreviewActions(width, state.checkpointPreview?.entry.kind ?? "turn");
-		return framedPage(content, actions, height, scroll);
-	}
-	if (kind === "checkpoints") return framedPage(content, checkpointListActions(width), height, scroll);
-	if (kind === "job") {
-		const selected = host.options.jobs?.list().find((job) => job.id === state.jobDetailId);
-		return framedPage(content, jobOutputActions(width, selected?.status ?? "done"), height, scroll);
-	}
-	if (kind === "jobs") return framedPage(content, jobListActions(width), height, scroll);
 	if (kind === "mcps") return framedPage(content, mcpsActionLines(width), height, scroll);
 	if (kind === "viewer") return framedPage(content, viewerActionLines(width), height, scroll);
 	return renderPage(content, height, scroll);
-}
-
-
-export type { CheckpointEntry };
-
-/**
- * 让列表页的光标始终落在可见区内。
- *
- * `row` 是光标在页面正文里的行号，`rows` 是可滚动区域的高度（已扣掉动作条）。上下越界时
- * 只挪到刚好可见，滚动位置不会跳动。
- */
-export function ensureCursorVisible(state: TuiState, row: number, rows: number): void {
-	if (row < state.pageScrollTop) state.pageScrollTop = row;
-	else if (row >= state.pageScrollTop + rows) state.pageScrollTop = row - rows + 1;
 }

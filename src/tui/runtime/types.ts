@@ -1,10 +1,8 @@
 import type { AgentEventListener } from "../../agent/events.ts";
-import type { CheckpointEntry, CheckpointPreview } from "../../checkpoint/service.ts";
 import type { ApprovalPrompt } from "../../permission/approval.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
 import type { TrustAnswer } from "../page/trust.ts";
 import type { ImageAttachment, PendingImage } from "../image.ts";
-import type { JobView } from "../page/job.ts";
 import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "../options.ts";
 import type { CommandMenuState, CommandMenuItem } from "../panel/command-menu.ts";
 import type { EffortMenuState } from "../panel/effort-menu.ts";
@@ -195,22 +193,8 @@ export interface TuiState {
 	latestPlan: TranscriptPlan | undefined;
 	/** 本轮刚提交、等回合结束后自动打开审批页的计划。 */
 	pendingPlan: TranscriptPlan | undefined;
-	/** 检查点列表的数据快照；打开页面时取一次，翻动选择不重新扫索引。 */
-	checkpointList: readonly CheckpointEntry[];
-	checkpointCursor: number;
-	/** 当前确认页要恢复的检查点；为空时确认页显示空态。 */
-	checkpointPreview: CheckpointPreview | undefined;
-	/** 确认页取消后回到列表，而不是直接回对话流。 */
-	checkpointReturnToList: boolean;
-	/** 防止连续 Enter 同时发起多个预览请求。 */
-	checkpointLoading: boolean;
 	/** 恢复期间拒绝新输入，避免在工作区变化时开始下一轮。 */
 	restoringCheckpoint: boolean;
-	/** 后台作业页的光标与当前输出页。 */
-	jobCursor: number;
-	jobDetailId: string | undefined;
-	/** 作业页与检查点页一样把动作条固定在底部。 */
-	jobReturnToList: boolean;
 	/** /mcps 页的选中项；重连与健康检查作用在它上面 */
 	mcpCursor: number;
 	/** 排好版的页面内容；宽度不变就复用，滚动与重绘都不必重排。 */
@@ -220,7 +204,7 @@ export interface TuiState {
 
 	// —— 定时器与生命周期 ——
 	spinnerTimer: ReturnType<typeof setInterval> | undefined;
-	/** 只在有作业运行时启动：让 Jobs bar 与作业页的耗时跟着当前时间走。 */
+	/** 只在有作业运行时启动：让 Jobs bar 的耗时跟着当前时间走。 */
 	jobTimer: ReturnType<typeof setInterval> | undefined;
 	unsubscribeJobs: () => void;
 	statusClearTimer: ReturnType<typeof setTimeout> | undefined;
@@ -284,8 +268,6 @@ export interface TuiHost {
 	appendCommandTurn(prompt: string, response: readonly TranscriptLine[]): void;
 	openPlanReview(plan: TranscriptPlan): void;
 	closePlanReview(): void;
-	closeCheckpointPage(): void;
-	closeJobPage(): void;
 	clearAttachments(): void;
 	syncApprovalPrompt(): boolean;
 	resolveApproval(answer: ApprovalAnswer): void;
@@ -297,16 +279,6 @@ export interface TuiHost {
 	toggleTranscriptAt(row: number, column: number, mainHeight: number, width: number): boolean;
 	switchSession(id: string, action?: "select" | "fork"): void;
 	sessionTitle(title: string | undefined): string;
-	jobsOf(): readonly JobView[];
-	selectedJob(): JobView | undefined;
-	ensureCheckpointVisible(): void;
-	ensureJobVisible(): void;
-	openJobDetail(job: JobView): void;
-	killSelectedJob(): void;
-	openJobsPage(): void;
-	openCheckpointList(): void;
-	restoreCheckpoint(): void;
-	loadCheckpointPreview(entry: CheckpointEntry): void;
 	/** /mcps 页：移动选中项、重连选中的 server、检查全部连接 */
 	moveMcpCursor(delta: number): void;
 	reconnectMcp(): void;

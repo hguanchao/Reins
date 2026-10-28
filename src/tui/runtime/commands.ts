@@ -42,8 +42,6 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 		compact: () => executeCompactCommand(host),
 		plan: () => executePlanCommand(host, args),
 		undo: () => executeUndoCommand(host),
-		checkpoints: () => executeCheckpointsCommand(host),
-		jobs: () => executeJobsCommand(host),
 		help: () => showPage(state, "help"),
 		skills: () => showPage(state, "skills"),
 		mcps: () => showPage(state, "mcps"),
@@ -263,11 +261,9 @@ function applyConversation(host: TuiHost, result: SessionSwitchResult): void {
 	state.latestPlan = result.plan;
 	state.pendingPlan = undefined;
 	// Ctrl+G 的目标指向旧位置的工具行，留着只会打开一段已经不在界面上的内容
-	state.viewerTool = undefined;
-	state.selection = undefined;
+	state.viewerTool = undefined;	state.selection = undefined;
 	if (state.openPage === "plan") closePlanReview(state);
 	else state.planReview = undefined;
-	host.closeCheckpointPage();
 	markTranscriptDirty(state);
 	state.initialScroll = false;
 	state.scrollTop = 0;
@@ -523,16 +519,6 @@ function executePlanCommand(host: TuiHost, args: string): void {
 function executeUndoCommand(host: TuiHost): void {
 	host.setInput("");
 	host.runUndo();
-}
-
-function executeCheckpointsCommand(host: TuiHost): void {
-	host.setInput("");
-	host.openCheckpointList();
-}
-
-function executeJobsCommand(host: TuiHost): void {
-	host.setInput("");
-	host.openJobsPage();
 }
 
 /** 批准计划：退出 Plan 模式，并把整份计划作为新提示交给模型。 */

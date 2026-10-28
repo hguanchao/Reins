@@ -7,7 +7,7 @@ import { modelMenuHeight } from "../panel/model-menu.ts";
 import { sessionMenuHeight } from "../panel/session-menu.ts";
 import { DEFAULT_COLUMNS, terminalHeight } from "../terminal.ts";
 import { todoCardFinished, TODO_PANEL_MAX_ITEMS } from "../view/todo-card.ts";
-import type { JobView } from "../page/job.ts";
+import type { JobView } from "../job.ts";
 import type { TuiOptions } from "../options.ts";
 import {
 	COMPACT_FOOTER_FIXED_LINES,

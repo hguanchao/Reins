@@ -42,24 +42,8 @@ import { closePlanReview, openPlanReview, pageLines } from "./runtime/pages.ts";
 import { setStatus, clearStatus, resetStatusMeta, scheduleStatusClear } from "./runtime/status.ts";
 import { copyText } from "./runtime/copy.ts";
 import { closeThinking, appendLine, syncTurn, syncTurnFull } from "./runtime/turn.ts";
-import {
-	appendJobNote,
-	closeJobPage,
-	ensureJobVisible,
-	ensureJobTimer,
-	killSelectedJob,
-	openJobDetail,
-	openJobsPage,
-	selectedJob,
-} from "./runtime/jobs.ts";
-import {
-	closeCheckpointPage,
-	ensureCheckpointVisible,
-	executeUndo,
-	loadCheckpointPreview,
-	openCheckpointList,
-	restoreCheckpoint,
-} from "./runtime/checkpoints.ts";
+import { appendJobNote, ensureJobTimer } from "./runtime/jobs.ts";
+import { executeUndo } from "./runtime/checkpoints.ts";
 import {
 	attachClipboardImage,
 	attachImagePath,
@@ -172,8 +156,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		appendCommandTurn: (prompt, response) => appendCommandTurn(host, prompt, response),
 		openPlanReview: (plan) => openPlanReview(host, plan),
 		closePlanReview: () => closePlanReview(state),
-		closeCheckpointPage: () => closeCheckpointPage(host),
-		closeJobPage: () => closeJobPage(host),
 		clearAttachments: () => clearAttachments(host),
 		syncApprovalPrompt: () => syncApprovalPrompt(host),
 		resolveApproval: (answer) => resolveApproval(host, answer),
@@ -186,16 +168,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 			togglingTranscriptAt(host, row, column, mainHeight, width),
 		switchSession: (id, action) => switchSession(host, id, action),
 		sessionTitle: (title) => sessionTitle(title),
-		jobsOf: () => options.jobs?.list() ?? [],
-		selectedJob: () => selectedJob(host),
-		ensureCheckpointVisible: () => ensureCheckpointVisible(host),
-		ensureJobVisible: () => ensureJobVisible(host),
-		openJobDetail: (job) => openJobDetail(host, job),
-		killSelectedJob: () => killSelectedJob(host),
-		openJobsPage: () => openJobsPage(host),
-		openCheckpointList: () => openCheckpointList(host),
-		restoreCheckpoint: () => restoreCheckpoint(host),
-		loadCheckpointPreview: (entry) => loadCheckpointPreview(host, entry),
 		moveMcpCursor: (delta) => moveMcpCursor(host, delta),
 		reconnectMcp: () => reconnectMcp(host),
 		healthCheckMcp: () => healthCheckMcp(host),

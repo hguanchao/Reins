@@ -1,72 +1,19 @@
-import { JOB_ACTION_HEIGHT } from "../page/job.ts";
-import { jobElapsed } from "../page/job.ts";
-import type { JobView } from "../page/job.ts";
-import { ensureCursorVisible, showPage } from "./pages.ts";
+import { jobElapsed, type JobView } from "../job.ts";
 import type { TuiHost } from "./types.ts";
 
-/** 后台作业页与作业说明。 */
-
-/** 打开作业列表；没有作业源时只给提示。 */
-export function openJobsPage(host: TuiHost): void {
-	if (host.options.jobs === undefined) {
-		host.resetStatusMeta();
-		host.setStatus("Background jobs are unavailable in this session", "notice");
-		host.scheduleStatusClear();
-		return;
-	}
-	const state = host.state;
-	state.jobCursor = 0;
-	state.jobDetailId = undefined;
-	state.jobReturnToList = false;
-	showPage(state, "jobs");
-}
-
-/** 关闭作业列表/输出页。 */
-export function closeJobPage(host: TuiHost): void {
-	const state = host.state;
-	if (state.openPage === "jobs" || state.openPage === "job") state.openPage = undefined;
-	state.jobDetailId = undefined;
-	state.jobCursor = 0;
-	state.jobReturnToList = false;
-	state.pageScrollTop = 0;
-}
-
-export function selectedJob(host: TuiHost): JobView | undefined {
-	const jobs = host.options.jobs?.list() ?? [];
-	if (jobs.length === 0) return undefined;
-	const state = host.state;
-	state.jobCursor = Math.min(state.jobCursor, jobs.length - 1);
-	return jobs[state.jobCursor];
-}
-
-export function openJobDetail(host: TuiHost, job: JobView): void {
-	const state = host.state;
-	state.jobDetailId = job.id;
-	state.jobReturnToList = true;
-	showPage(state, "job");
-	host.render();
-}
-
-export function killSelectedJob(host: TuiHost): void {
-	const job = selectedJob(host);
-	if (job === undefined) return;
-	host.options.jobs?.kill(job.id);
-	host.render();
-}
-
-/** 让作业列表的光标始终可见。 */
-export function ensureJobVisible(host: TuiHost): void {
-	const state = host.state;
-	const rows = Math.max(1, host.mainAreaHeight() - JOB_ACTION_HEIGHT);
-	ensureCursorVisible(state, 2 + state.jobCursor, rows);
-}
+/**
+ * 后台作业在界面上的两处残留：结束说明与刷新计时器。
+ *
+ * 作业页删掉之后，界面上只剩 Jobs bar 与对话流里的一条结束说明。输出与终止都交给模型
+ * 的 job_output / kill_job 工具。
+ */
 
 /** 作业结束时在对话流里补一条说明。 */
 export function appendJobNote(host: TuiHost, job: JobView): void {
 	const elapsed = jobElapsed(job);
 	const code = job.exitCode !== undefined && job.exitCode !== null ? ` · exit ${job.exitCode}` : "";
 	const verb = job.status === "done" ? "finished" : job.status === "killed" ? "killed" : "failed";
-	host.appendCommandTurn("/jobs", [
+	host.appendCommandTurn("jobs", [
 		{
 			kind: job.status === "failed" ? "error" : "info",
 			text: `Job ${job.id} ${verb} · ${job.command}${code} · ${elapsed}`,
@@ -74,7 +21,7 @@ export function appendJobNote(host: TuiHost, job: JobView): void {
 	]);
 }
 
-/** 有作业运行时每 500ms 重绘一次，让 Jobs bar 与作业页的耗时跟着当前时间走。 */
+/** 有作业运行时每 500ms 重绘一次，让 Jobs bar 的耗时跟着当前时间走。 */
 export function ensureJobTimer(host: TuiHost): void {
 	const state = host.state;
 	const running = host.options.jobs?.list().filter((job) => job.status === "running") ?? [];

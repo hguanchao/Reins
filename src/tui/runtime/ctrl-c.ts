@@ -1,8 +1,6 @@
 import { ABORTING } from "../render/status.ts";
 import { cleanup } from "./lifecycle.ts";
 import { closePlanReview } from "./pages.ts";
-import { closeCheckpointPage } from "./checkpoints.ts";
-import { closeJobPage } from "./jobs.ts";
 import { armExit, disarm } from "./lifecycle.ts";
 import { EXIT_CONFIRM_WINDOW_MS } from "./constants.ts";
 import type { TuiHost } from "./types.ts";
@@ -45,8 +43,6 @@ export function onCtrlC(
 			return;
 		}
 		if (state.openPage === "plan") closePlanReview(state);
-		else if (state.openPage === "checkpoints" || state.openPage === "checkpoint") closeCheckpointPage(host);
-		else if (state.openPage === "jobs" || state.openPage === "job") closeJobPage(host);
 		else {
 			if (state.openPage === "viewer") state.viewer = undefined;
 			state.openPage = undefined;

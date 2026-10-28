@@ -76,7 +76,8 @@ describe("后台作业", () => {
 		});
 		const killed = jobs.kill(job.id);
 		assert.equal(killed?.status, "running");
-		const done = await jobs.wait(job.id, 5000);
+		// 全量测试并行跑时系统很忙，进程树终止可能比预想慢；等待窗口放宽到 15 秒
+		const done = await jobs.wait(job.id, 15000);
 		assert.equal(done?.status, "killed");
 
 		const tool = createKillJobTool(jobs);

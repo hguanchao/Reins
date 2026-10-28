@@ -1,8 +1,6 @@
-import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
 import { MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, menuKey, scrollKey } from "./keys.ts";
 import type { MouseInput } from "./keys.ts";
 import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
-import { JOB_ACTION_HEIGHT } from "../page/job.ts";
 import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
 import { VIEWER_ACTION_HEIGHT } from "../page/viewer.ts";
 import type { InputDeps } from "./deps.ts";
@@ -24,93 +22,6 @@ export function handlePageInput(
 		if (text === "r") return host.revisePlan();
 		if (text === "q") return host.leavePlan();
 	}
-	if (page === "checkpoints") {
-		if (key === "up" || key === "down") {
-			if (state.checkpointList.length > 0) {
-				state.checkpointCursor = Math.min(
-					state.checkpointList.length - 1,
-					Math.max(0, state.checkpointCursor + (key === "up" ? -1 : 1)),
-				);
-				host.ensureCheckpointVisible();
-				deps.render();
-			}
-			return;
-		}
-		if (key === "enter") {
-			const entry = state.checkpointList[state.checkpointCursor];
-			if (entry !== undefined) host.loadCheckpointPreview(entry);
-			return;
-		}
-		if (key === "escape") {
-			host.closeCheckpointPage();
-			deps.render();
-			return;
-		}
-	}
-	if (page === "checkpoint") {
-		if (text === "u") return host.restoreCheckpoint();
-		if (key === "escape") {
-			if (state.checkpointReturnToList) {
-				state.openPage = "checkpoints";
-				state.checkpointPreview = undefined;
-				state.pageScrollTop = 0;
-				host.ensureCheckpointVisible();
-				deps.render();
-			} else {
-				host.closeCheckpointPage();
-				deps.render();
-			}
-			return;
-		}
-	}
-	if (page === "jobs") {
-		if (key === "up" || key === "down") {
-			const jobs = host.options.jobs?.list() ?? [];
-			if (jobs.length > 0) {
-				state.jobCursor = Math.min(
-					jobs.length - 1,
-					Math.max(0, state.jobCursor + (key === "up" ? -1 : 1)),
-				);
-				host.ensureJobVisible();
-				deps.render();
-			}
-			return;
-		}
-		if (key === "enter") {
-			const job = host.selectedJob();
-			if (job !== undefined) host.openJobDetail(job);
-			return;
-		}
-		if (text === "k") return host.killSelectedJob();
-		if (key === "escape") {
-			host.closeJobPage();
-			deps.render();
-			return;
-		}
-	}
-	if (page === "job") {
-		if (text === "k") {
-			const job = host.options.jobs?.list().find((candidate) => candidate.id === state.jobDetailId);
-			if (job !== undefined) {
-				host.options.jobs?.kill(job.id);
-				deps.render();
-			}
-			return;
-		}
-		if (key === "escape") {
-			if (state.jobReturnToList) {
-				state.openPage = "jobs";
-				state.jobDetailId = undefined;
-				state.pageScrollTop = 0;
-				host.ensureJobVisible();
-				deps.render();
-			} else {
-				host.closeJobPage();
-				deps.render();
-			}
-			return;
-		}
-	}
 	if (page === "mcps") {
 		if (key === "up" || key === "down") {
 			host.moveMcpCursor(key === "up" ? -1 : 1);
@@ -128,15 +39,11 @@ export function handlePageInput(
 	const actionHeight =
 		page === "plan"
 			? PLAN_ACTION_HEIGHT
-			: page === "checkpoints" || page === "checkpoint"
-				? CHECKPOINT_ACTION_HEIGHT
-				: page === "jobs" || page === "job"
-					? JOB_ACTION_HEIGHT
-					: page === "mcps"
-						? MCP_ACTION_HEIGHT
-						: page === "viewer"
-							? VIEWER_ACTION_HEIGHT
-							: 0;
+			: page === "mcps"
+				? MCP_ACTION_HEIGHT
+				: page === "viewer"
+					? VIEWER_ACTION_HEIGHT
+					: 0;
 	const rows = Math.max(1, host.mainAreaHeight() - actionHeight);
 	const width = host.terminalWidth();
 	const total = host.pageLines(page, width).length;

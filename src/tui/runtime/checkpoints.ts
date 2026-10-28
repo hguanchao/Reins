@@ -1,93 +1,15 @@
 import { describeError } from "../../shared/describe-error.ts";
-import type { CheckpointEntry } from "../../checkpoint/service.ts";
-import { CHECKPOINT_ACTION_HEIGHT } from "../page/checkpoint.ts";
 import { ERROR_STATUS } from "../render/status.ts";
-import { ensureCursorVisible, showPage } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
- * 检查点页与撤销。
+ * /undo:恢复最近一个与当前工作区有差异的回合检查点。
  *
- * 恢复要跑 git，页面先关掉，进度走状态行；失败通过对话流的错误行留下原因，
- * 不把使用者困在一个没有反馈的页面里。
+ * 没有页面可确认，所以恢复直接执行，结果通过对话流留下记录。恢复要跑 git，期间工作区
+ * 必须是稳定状态：回合在跑或后台作业未停时明确拒绝，不做一半的恢复。
  */
 
-/** 关闭检查点列表/确认页，清掉临时数据。 */
-export function closeCheckpointPage(host: TuiHost): void {
-	const state = host.state;
-	if (state.openPage === "checkpoints" || state.openPage === "checkpoint") state.openPage = undefined;
-	state.checkpointPreview = undefined;
-	state.checkpointList = [];
-	state.checkpointCursor = 0;
-	state.checkpointLoading = false;
-	state.checkpointReturnToList = false;
-	state.pageScrollTop = 0;
-}
-
-/** 打开检查点列表；索引已在内存里，不需要异步等待。 */
-export function openCheckpointList(host: TuiHost): void {
-	const source = host.options.checkpoints;
-	if (source === undefined || !source.available()) {
-		host.resetStatusMeta();
-		host.setStatus(source?.error() ?? "Checkpoints are unavailable in this workspace", "notice");
-		host.scheduleStatusClear();
-		return;
-	}
-	const state = host.state;
-	state.checkpointList = source.list();
-	state.checkpointCursor = 0;
-	state.checkpointPreview = undefined;
-	state.checkpointReturnToList = false;
-	state.checkpointLoading = false;
-	showPage(state, "checkpoints");
-}
-
-/** 选中列表项后读取实际差异，再打开确认页。 */
-export function loadCheckpointPreview(host: TuiHost, entry: CheckpointEntry): void {
-	const source = host.options.checkpoints;
-	const state = host.state;
-	if (source === undefined || !source.available() || state.checkpointLoading) return;
-	state.checkpointLoading = true;
-	host.render();
-	void source
-		.preview(entry.id)
-		.then((preview) => {
-			state.checkpointLoading = false;
-			if (state.finished) return;
-			if (state.openPage !== "checkpoints") {
-				host.render();
-				return;
-			}
-			if (preview.changes.length === 0) {
-				state.openPage = undefined;
-				host.resetStatusMeta();
-				host.setStatus("No file changes to restore", "notice");
-				host.scheduleStatusClear();
-				host.render();
-				return;
-			}
-			state.checkpointPreview = preview;
-			state.checkpointReturnToList = true;
-			showPage(state, "checkpoint");
-			host.render();
-		})
-		.catch((error) => {
-			state.checkpointLoading = false;
-			if (state.finished) return;
-			if (state.openPage !== "checkpoints") {
-				host.render();
-				return;
-			}
-			state.openPage = undefined;
-			host.resetStatusMeta();
-			host.appendCommandTurn("/checkpoints", [{ kind: "error", text: `Error: ${describeError(error)}` }]);
-			host.setStatus(ERROR_STATUS, "error");
-			host.scheduleStatusClear();
-			host.render();
-		});
-}
-
-/** /undo:取最近一个与当前工作区有差异的回合检查点。 */
+/** /undo:取最近一个与当前工作区有差异的回合检查点并恢复。 */
 export function executeUndo(host: TuiHost): void {
 	const source = host.options.checkpoints;
 	const state = host.state;
@@ -97,119 +19,71 @@ export function executeUndo(host: TuiHost): void {
 		host.scheduleStatusClear();
 		return;
 	}
-	if (state.checkpointLoading || state.restoringCheckpoint) return;
+	if (state.restoringCheckpoint) return;
 
-	state.checkpointLoading = true;
+	state.restoringCheckpoint = true;
 	host.resetStatusMeta();
 	host.setStatus("Reading checkpoints...", "notice");
+	host.render();
 	void source
 		.latestUndoable()
 		.then((preview) => {
-			state.checkpointLoading = false;
 			if (state.finished) return;
-			// 读检查点要跑 git，期间使用者可能已经提交了新的一轮。这时再打开整屏页会把
-			// 正在流式输出的回合整个盖住，状态行也会被清掉。
-			if (state.activeTurn !== undefined) {
-				host.render();
-				return;
-			}
-			host.clearStatus();
-			if (preview === undefined) {
-				host.setStatus("No file changes to undo", "notice");
+			// 读检查点要跑 git，期间使用者可能已经提交了新的一轮；回合在改文件时也不能恢复
+			if (state.activeTurn !== undefined || preview === undefined || preview.changes.length === 0) {
+				state.restoringCheckpoint = false;
+				host.setStatus(
+					preview === undefined || preview.changes.length === 0
+						? "No file changes to undo"
+						: "Wait for the running turn to finish before restoring files",
+					"notice",
+				);
 				host.scheduleStatusClear();
 				host.render();
 				return;
 			}
-			state.checkpointPreview = preview;
-			state.checkpointReturnToList = false;
-			showPage(state, "checkpoint");
+			if (host.options.jobs?.list().some((job) => job.status === "running") === true) {
+				// 后台作业可能正在写同一批文件；先让它停下来，否则恢复出来的工作区不是任何一个稳定状态
+				state.restoringCheckpoint = false;
+				host.setStatus("Stop background jobs before restoring files", "notice");
+				host.scheduleStatusClear();
+				host.render();
+				return;
+			}
+
+			host.clearStatus();
 			host.render();
+			return source
+				.restore(preview.entry.id)
+				.then((result) => {
+					state.restoringCheckpoint = false;
+					if (state.finished) return;
+					const verb = result.entry.kind === "safety" ? "Restored" : "Undid";
+					const removed = result.removed > 0 ? `, ${result.removed} removed` : "";
+					host.appendCommandTurn("/undo", [
+						{
+							kind: "info",
+							text: `${verb} ${result.entry.label} · ${result.restored} restored${removed}`,
+						},
+					]);
+					host.clearStatus();
+					host.render();
+				})
+				.catch((error) => {
+					state.restoringCheckpoint = false;
+					if (state.finished) return;
+					host.appendCommandTurn("/undo", [{ kind: "error", text: `Error: ${describeError(error)}` }]);
+					host.setStatus(ERROR_STATUS, "error");
+					host.scheduleStatusClear();
+					host.render();
+				});
 		})
 		.catch((error) => {
-			state.checkpointLoading = false;
+			state.restoringCheckpoint = false;
 			if (state.finished) return;
 			host.resetStatusMeta();
 			host.setStatus(`Undo unavailable: ${describeError(error)}`, "error");
 			host.scheduleStatusClear();
 			host.render();
 		});
-}
-
-/** 恢复当前确认页里的检查点。 */
-export function restoreCheckpoint(host: TuiHost): void {
-	const state = host.state;
-	const preview = state.checkpointPreview;
-	const source = host.options.checkpoints;
-	if (
-		preview === undefined ||
-		preview.changes.length === 0 ||
-		source === undefined ||
-		state.restoringCheckpoint
-	) {
-		return;
-	}
-	if (host.options.jobs?.list().some((job) => job.status === "running") === true) {
-		// 后台作业可能正在写同一批文件；先让它停下来，否则恢复出来的工作区不是任何一个稳定状态
-		closeCheckpointPage(host);
-		host.resetStatusMeta();
-		host.setStatus("Stop background jobs before restoring files", "notice");
-		host.scheduleStatusClear();
-		host.render();
-		return;
-	}
-	if (state.activeTurn !== undefined) {
-		// 回合正在改文件：此刻恢复只会把工作区停在「半个回合」的状态
-		closeCheckpointPage(host);
-		host.resetStatusMeta();
-		host.setStatus("Wait for the running turn to finish before restoring files", "notice");
-		host.scheduleStatusClear();
-		host.render();
-		return;
-	}
-
-	state.restoringCheckpoint = true;
-	state.checkpointPreview = undefined;
-	state.checkpointList = [];
-	state.checkpointCursor = 0;
-	state.checkpointLoading = false;
-	state.checkpointReturnToList = false;
-	state.openPage = undefined;
-	state.pageScrollTop = 0;
-	host.setInput("");
-	host.resetStatusMeta();
-	host.setStatus("Restoring checkpoint...", "notice");
-	host.render();
-
-	void source
-		.restore(preview.entry.id)
-		.then((result) => {
-			state.restoringCheckpoint = false;
-			if (state.finished) return;
-			const verb = result.entry.kind === "safety" ? "Restored" : "Undid";
-			const removed = result.removed > 0 ? `, ${result.removed} removed` : "";
-			host.appendCommandTurn("/undo", [
-				{
-					kind: "info",
-					text: `${verb} ${result.entry.label} · ${result.restored} restored${removed}`,
-				},
-			]);
-			host.clearStatus();
-			host.render();
-		})
-		.catch((error) => {
-			state.restoringCheckpoint = false;
-			if (state.finished) return;
-			host.appendCommandTurn("/undo", [{ kind: "error", text: `Error: ${describeError(error)}` }]);
-			host.setStatus(ERROR_STATUS, "error");
-			host.scheduleStatusClear();
-			host.render();
-		});
-}
-
-/** 让检查点列表的光标始终落在可见区内。 */
-export function ensureCheckpointVisible(host: TuiHost): void {
-	const state = host.state;
-	const rows = Math.max(1, host.mainAreaHeight() - CHECKPOINT_ACTION_HEIGHT);
-	// 读盘期间列表上方多一行提示，光标整体下移一格
-	ensureCursorVisible(state, (state.checkpointLoading ? 3 : 2) + state.checkpointCursor, rows);
 }
