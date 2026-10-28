@@ -10,18 +10,18 @@ pi `842c731`。本文记录"别人有、我们没有"的结论与佐证位置,�
 以下核心项 Reins 均已实现,质量不输参考项目,个别项目(pi 无沙箱、无审批;dsh 无 checkpoint)
 反而没有:
 
-- 内置工具集:read/write/edit、bash(超时+后台)、ls/find/grep、todo、present_plan、
-  job_output/kill_job、subagent,大结果落盘(spill)。
+- 内置工具集:read/write/edit/patch、bash(超时+后台)、terminal_start/write/read/kill/list、
+  ls/find/grep、todo、present_plan、job_output/kill_job、subagent,大结果落盘(spill)。
 - 权限与安全:ask/auto/yolo 三种审批模式(auto 走审查模型)、off/workspace/read-only
   三档沙箱、realpath 路径边界防目录链接逃逸、workspace 信任门控。
-- 会话:JSONL 树结构存储、resume/fork、80% 窗口自动压缩(边界不落在工具结果上)、
-  用量与成本累计。
+- 会话:JSONL 树结构存储、resume/fork、对话回退与分支切换、80% 窗口自动压缩(边界不落在
+  工具结果上)、用量与成本累计。
 - 模型层:anthropic-messages / openai-completions / openai-responses 三协议适配器、
   指数退避重试、thinking/effort 阶梯、providers.json 目录与会话内切换。
 - 扩展:MCP 客户端(stdio/SSE/HTTP)、插件 seam(可注册工具/命令/沙箱后端/会话存储)、
   skills 发现、AGENTS.md 系规则文件加载。
-- 编排与交互:计划模式(只读闸门不可绕)、后台 bash 作业、checkpoint 影子 git 回滚、
-  图片输入、print 模式、剪贴板与通知。
+- 编排与交互:计划模式(只读闸门不可绕)、后台 bash 作业、持久终端、checkpoint 影子 git
+  回滚、图片输入、print 模式、剪贴板与通知。
 
 各有各的重度差异化能力(codex 云任务与语音、grok Rhai workflow 与媒体生成、dsh PTC 与
 browser-use 等),与"最小代码实现"原则相悖,不跟进。
@@ -36,6 +36,20 @@ browser-use 等),与"最小代码实现"原则相悖,不跟进。
 **Headless JSON 事件流。** `reins -p --json` 把事件按行写成 JSON,标准输出只放事件,标准错误
 仍留给装配阶段的提示。`tool_end` 不带结果全文与结构化结果——前者动辄几十 KB,后者不是这个
 协议的形状。事件集合就是 `AgentEvent` 本身,所以新增事件类型时协议自动跟上。
+
+**会话回退与分支导航。** 会话文件仍是只追加的 JSONL,回退与切换只追加一条 `branch` 标记:
+`parentId` 指向新的接续点,旧分支一个字节都不动。`/rewind` 列出当前路径上的用户消息,选中后
+对话截断到它之前并把原文放回输入框;`/branches` 列出全部叶子并在它们之间切换。会话状态始终
+从当前叶子的路径重放,重启后仍停在最后写下的分支上。
+
+**持久终端。** `terminal_start` 启动一个跨工具调用存活的进程,`terminal_write` 向它的 stdin
+写输入,`terminal_read` 增量读取输出,`terminal_kill` 结束整棵进程树。实现走管道而不是 PTY:
+真正的 PTY 需要原生依赖,与「无构建产物、开箱可用」冲突;全屏 TUI 程序不支持,REPL、dev
+server 与测试监听这类只需要 stdin 的场景不受影响。终端只活在当前进程里,退出时统一终止。
+
+**多文件补丁。** `patch` 一次接收跨文件的精确文本替换,先把所有目标文件读入并校验,再统一
+写入:任何一条 oldText 找不到、不唯一或重叠,一个文件都不动。匹配、唯一性与重叠判定与
+`edit` 共用同一份实现。
 
 ### 明确不做
 
@@ -93,11 +107,6 @@ mid-turn 插话(消息立刻注入当前回合的工具循环)**不做**:它会�
 
 - **read_image/view_image 工具**:让模型主动读本地图片进上下文(codex `view_image`、
   dsh `read_image`、grok read_file 内含图片解析)。Reins 只有用户侧贴图入口。
-- **持久 PTY / 交互式终端**:codex unified_exec + `write_stdin`、opencode
-  persistent-pty、dsh `terminal_*`、grok `monitor` 流式事件。Reins 后台作业是
-  一次性进程,无法向运行中的进程写 stdin。
-- **apply_patch/patch 批量编辑**:codex 独立补丁协议、opencode `patch` 多文件编辑;
-  Reins 只有单文件 str-replace,多文件重构靠多次调用。
 - **review 审查子代理**:codex 有专用 review 会话(`/review`、`codex exec review`,
   支持 --staged/--base/--commit)。
 - **git worktree 集成**:codex/grok/opencode/dsh 均有(worktree 创建、gc、隔离子代理)。
