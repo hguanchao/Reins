@@ -116,10 +116,12 @@ export function render(host: TuiHost): void {
 						commandLength,
 						queued: state.queued.map((item) => item.text),
 					});
+	// 输入框一有字就收起启动画面：欢迎屏只在真正空闲时出现。hasInput 记录已经开始的对话，
+	// input.length 覆盖还没提交的普通输入与斜杠命令。
 	const transcriptShown =
 		trust === undefined &&
 		state.openPage === undefined &&
-		(state.hasInput || host.noticeText() !== undefined);
+		(state.hasInput || state.input.length > 0 || host.noticeText() !== undefined);
 	// 运行中的行按当前帧重建转圈与扫光；没有动画行时这只是原样返回缓存行
 	const animation: AnimationFrame = {
 		spinner: SPINNER_FRAMES[state.spinnerFrame] ?? "",

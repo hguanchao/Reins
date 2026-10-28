@@ -415,8 +415,8 @@ export function handleTranscriptInput(
 	host.setInput(edit.text, edit.cursor);
 	host.updateCommandMenu();
 	host.updateFileMenu();
-	// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流；
-	// 斜杠命令同样不是对话内容，补全面板与帮助页都盖在启动画面上
+	// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流。
+	// 这里只记录「对话已经开始」；斜杠命令不算对话内容，输入框里的字由渲染层临时收起启动画面。
 	if (state.input.length > 0 && !state.input.startsWith("/") && state.ready) state.hasInput = true;
 
 	if (edit.submit) {

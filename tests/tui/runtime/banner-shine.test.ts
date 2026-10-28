@@ -89,6 +89,22 @@ describe("启动标志扫光", () => {
 		assert.equal(renders, 0);
 	});
 
+	it("输入框出现文字后提前停止", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+		const state = newState();
+		let renders = 0;
+
+		startBannerShine(state, () => {
+			renders += 1;
+		});
+		state.input = "/";
+		t.mock.timers.tick(BANNER_FRAME_MS);
+
+		assert.equal(state.bannerTimer, undefined);
+		assert.equal(state.bannerShine, undefined);
+		assert.equal(renders, 0);
+	});
+
 	it("整屏页接管后提前停止", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
 		const state = newState();

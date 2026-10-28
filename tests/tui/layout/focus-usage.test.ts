@@ -164,6 +164,23 @@ describe("焦点、状态与用量", () => {
 		}
 	});
 
+	it("输入斜杠命令时启动标志与版本号也隐藏", () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("v1.2.3"), false);
+			assert.equal(text.includes("████"), false);
+			assert.ok(text.includes("/help"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("回车后提示在顶部，状态行开始等待", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
