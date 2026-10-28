@@ -19,21 +19,20 @@ function flush(): Promise<void> {
 }
 
 function fakeTrust(overrides: Partial<TrustPromptSource> = {}): TrustPromptSource & {
-	readonly accepted: number;
+	/** 记录到的 remember 参数，按调用顺序 */
+	readonly remembered: boolean[];
 } {
-	let accepted = 0;
+	const remembered: boolean[] = [];
 	return {
 		root: "/work/project",
 		files: ["/work/project/.reins/config.toml", "/work/project/AGENTS.md"],
 		skillDirectories: ["/work/project/.reins/skills"],
-		accept: async () => {
-			accepted += 1;
+		accept: async (remember) => {
+			remembered.push(remember);
 			return ["Trusted the workspace"];
 		},
 		...overrides,
-		get accepted(): number {
-			return accepted;
-		},
+		remembered,
 	};
 }
 
@@ -46,6 +45,7 @@ describe("启动信任页", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
+		output.rows = 40;
 		const running = runTui({
 			version: "1.2.3",
 			info: FOOTER_INFO,
@@ -56,10 +56,10 @@ describe("启动信任页", () => {
 
 		try {
 			const text = textOf(output);
-			assert.match(text, /Reins — workspace trust/);
+			assert.match(text, /Workspace trust/);
 			assert.match(text, /\.reins\/config\.toml|\.reins\\config\.toml/);
 			assert.match(text, /AGENTS\.md/);
-			assert.match(text, /› \[y\] trust this workspace/);
+			assert.match(text, /› Trust this workspace/);
 			// 信任页独占画面：没有输入框的页脚，也没有光标
 			assert.equal(output.chunks.at(-1)?.includes("\x1b[?25h"), false);
 		} finally {
@@ -69,9 +69,11 @@ describe("启动信任页", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("按 y 记录信任后回到对话流", async () => {
+	it("按 y 记住信任后回到对话流", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 40;
 		const trust = fakeTrust();
 		const running = runTui({
 			version: "1.2.3",
@@ -85,9 +87,9 @@ describe("启动信任页", () => {
 			input.emit("data", Buffer.from("y"));
 			await flush();
 
-			assert.equal(trust.accepted, 1);
+			assert.deepEqual(trust.remembered, [true]);
 			const text = textOf(output);
-			assert.equal(text.includes("workspace trust"), false);
+			assert.equal(text.includes("Workspace trust"), false);
 			assert.match(text, /Trusted the workspace/);
 			assert.match(text, /Reins/);
 		} finally {
@@ -97,10 +99,11 @@ describe("启动信任页", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("回车执行高亮项，左右键先切换选中", async () => {
+	it("方向键按三选一移动，回车执行高亮项", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
+		output.rows = 40;
 		const trust = fakeTrust();
 		const running = runTui({
 			version: "1.2.3",
@@ -111,14 +114,14 @@ describe("启动信任页", () => {
 		});
 
 		try {
-			// 默认高亮「信任」，右键切到「跳过」后回车：不应记录信任
-			input.emit("data", Buffer.from("\x1b[C"));
-			assert.match(textOf(output), /› \[n\] not now/);
+			// 下移一档到「仅本次」，回车后不写配置
+			input.emit("data", Buffer.from("\x1b[B"));
+			assert.match(textOf(output), /› Trust for this session only/);
 			input.emit("data", Buffer.from("\r"));
 			await flush();
 
-			assert.equal(trust.accepted, 0);
-			assert.match(textOf(output), /Workspace config skipped/);
+			assert.deepEqual(trust.remembered, [false]);
+			assert.equal(textOf(output).includes("Workspace trust"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -126,9 +129,36 @@ describe("启动信任页", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("按 n 跳过时不写配置，直接进入对话流", async () => {
+	it("数字键一步选到对应结论", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 40;
+		const trust = fakeTrust();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			trustPrompt: trust,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("2"));
+			await flush();
+			assert.deepEqual(trust.remembered, [false]);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("按 n 不写配置，直接进入对话流", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 40;
 		const trust = fakeTrust();
 		const running = runTui({
 			version: "1.2.3",
@@ -142,8 +172,8 @@ describe("启动信任页", () => {
 			input.emit("data", Buffer.from("n"));
 			await flush();
 
-			assert.equal(trust.accepted, 0);
-			assert.equal(textOf(output).includes("workspace trust"), false);
+			assert.deepEqual(trust.remembered, []);
+			assert.equal(textOf(output).includes("Workspace trust"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -154,12 +184,17 @@ describe("启动信任页", () => {
 	it("记录期间重复按键不会再次触发记录", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 40;
+		const calls: boolean[] = [];
 		let release: (() => void) | undefined;
 		const trust = fakeTrust({
-			accept: () =>
-				new Promise<readonly string[]>((resolve) => {
+			accept: (remember) => {
+				calls.push(remember);
+				return new Promise<readonly string[]>((resolve) => {
 					release = () => resolve([]);
-				}),
+				});
+			},
 		});
 		const running = runTui({
 			version: "1.2.3",
@@ -176,7 +211,7 @@ describe("启动信任页", () => {
 
 			input.emit("data", Buffer.from("y"));
 			await flush();
-			assert.equal(trust.accepted, 0);
+			assert.equal(calls.length, 1);
 
 			release?.();
 			await flush();
@@ -245,7 +280,7 @@ describe("启动信任页", () => {
 
 		try {
 			const text = textOf(output);
-			assert.equal(text.includes("workspace trust"), false);
+			assert.equal(text.includes("Workspace trust"), false);
 			assert.match(text, /v1\.2\.3/);
 		} finally {
 			exitTui(input);

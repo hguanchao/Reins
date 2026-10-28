@@ -2,6 +2,7 @@ import type { AgentEventListener } from "../../agent/events.ts";
 import type { CheckpointEntry, CheckpointPreview } from "../../checkpoint/service.ts";
 import type { ApprovalPrompt } from "../../permission/approval.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
+import type { TrustAnswer } from "../page/trust.ts";
 import type { ImageAttachment, PendingImage } from "../image.ts";
 import type { JobView } from "../page/job.ts";
 import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "../options.ts";
@@ -58,8 +59,8 @@ export interface TrustPromptState {
 	readonly root: string;
 	readonly files: readonly string[];
 	readonly skillDirectories: readonly string[];
-	/** 动作行当前高亮的结论；默认授予，回车即放行 */
-	selection: "trust" | "skip";
+	/** 动作行当前高亮的结论；默认记住信任，回车即放行 */
+	selection: TrustAnswer;
 	/** 正在记录结论；期间按键忽略，避免重复触发回调 */
 	pending: boolean;
 }
@@ -283,8 +284,8 @@ export interface TuiHost {
 	clearAttachments(): void;
 	syncApprovalPrompt(): boolean;
 	resolveApproval(answer: ApprovalAnswer): void;
-	/** 交回信任结论；授予时由宿主记录并落地，跳过后本次维持不信任 */
-	resolveTrust(trusted: boolean): void;
+	/** 交回信任结论；记住与仅本次的区别由宿主决定要不要落盘 */
+	resolveTrust(answer: TrustAnswer): void;
 	moveApprovalSelection(delta: number): void;
 	notify(message: string): void;
 	runUndo(): void;

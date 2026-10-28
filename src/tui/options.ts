@@ -197,8 +197,8 @@ export interface TrustPromptSource {
 	readonly files: readonly string[];
 	/** 需要信任才会读取的技能目录 */
 	readonly skillDirectories: readonly string[];
-	/** 记录授予并返回要给使用者看的说明；失败时抛错，由界面显示原因 */
-	readonly accept: () => Promise<readonly string[]>;
+	/** 记录授予并返回要给使用者看的说明；remember 为 false 时只对本次运行生效。失败时抛错，由界面显示原因 */
+	readonly accept: (remember: boolean) => Promise<readonly string[]>;
 }
 
 /**

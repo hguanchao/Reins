@@ -11,8 +11,7 @@ import { renderJobBarLine } from "../page/job.ts";
 import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "../transcript.ts";
 import { scrollButtonPlacement } from "../view/scroll-button.ts";
 import { todoPanelLines } from "../view/todo-card.ts";
-import { framedPage } from "../page/frame.ts";
-import { trustActionLines, trustPageLines } from "../page/trust.ts";
+import { trustPageLines } from "../page/trust.ts";
 import { truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import {
@@ -130,12 +129,7 @@ export function render(host: TuiHost): void {
 		state.selection !== undefined && selectionSpans(state.selection) ? state.selection : undefined;
 	const main =
 		trust !== undefined
-			? framedPage(
-					trustPageLines(trust, width),
-					trustActionLines(width, trust.selection, trust.pending),
-					mainHeight,
-					0,
-				)
+			? trustPageLines(trust, width, mainHeight)
 			: state.openPage !== undefined
 				? framedPageFor(host, state.openPage, width, mainHeight)
 				: transcriptShown

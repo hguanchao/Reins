@@ -175,7 +175,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		syncApprovalPrompt: () => syncApprovalPrompt(host),
 		resolveApproval: (answer) => resolveApproval(host, answer),
 		moveApprovalSelection: (delta) => moveApprovalSelection(host, delta),
-		resolveTrust: (trusted) => resolveTrust(host, trusted),
+		resolveTrust: (answer) => resolveTrust(host, answer),
 		notify: (message) => notify(host, message),
 		copyText: (text) => copyText(host, text),
 		runUndo: () => executeUndo(host),

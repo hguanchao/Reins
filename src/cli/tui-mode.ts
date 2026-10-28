@@ -263,10 +263,10 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	 * 分界线：每轮重建的项立即换上，启动时已被别的对象拿走的项明说要重启——假装全部
 	 * 生效，最后只会剩一个「配置写了却没用」的疑问。
 	 */
-	const acceptTrust = async (): Promise<readonly string[]> => {
-		recordTrust(workRoot, true);
+	const acceptTrust = async (remember: boolean): Promise<readonly string[]> => {
+		if (remember) recordTrust(workRoot, true);
 		workspaceTrusted = true;
-		const lines = [`Trusted ${workRoot}`];
+		const lines = [remember ? `Trusted ${workRoot}` : `Trusted ${workRoot} for this session`];
 
 		let next: Config;
 		try {

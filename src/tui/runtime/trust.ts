@@ -1,4 +1,5 @@
 import { describeError } from "../../shared/describe-error.ts";
+import type { TrustAnswer } from "../page/trust.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
@@ -11,12 +12,12 @@ import type { TuiHost } from "./types.ts";
 
 const SKIPPED = "Workspace config skipped for this run; pass --trust to use it next time";
 
-export function resolveTrust(host: TuiHost, trusted: boolean): void {
+export function resolveTrust(host: TuiHost, answer: TrustAnswer): void {
 	const state = host.state;
 	const prompt = state.trustPrompt;
 	if (prompt === undefined || prompt.pending) return;
 
-	if (!trusted) {
+	if (answer === "skip") {
 		state.trustPrompt = undefined;
 		host.setStatus(SKIPPED, "notice");
 		host.scheduleStatusClear();
@@ -34,7 +35,8 @@ export function resolveTrust(host: TuiHost, trusted: boolean): void {
 		return;
 	}
 
-	void source.accept().then(
+	// 仅本次信任不落盘：下次启动仍会再问一次，这是「只影响本次」的字面含义
+	void source.accept(answer === "trust").then(
 		(lines) => {
 			// 记录期间按过 Ctrl+C 就已经收尾离场：这时再画一帧会写到恢复后的主屏上
 			if (state.finished) return;
