@@ -427,4 +427,84 @@ describe("排队消息", () => {
 			exitTui(input);
 		}
 	});
+
+	it("超过可见条数时照收不误，并说明只显示前几条", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		// 状态行按终端宽度截断，提示句要放得下才断言得到全文
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			// 前三条落在可见范围内，不打扰状态行
+			input.emit("data", Buffer.from("q1\r"));
+			input.emit("data", Buffer.from("q2\r"));
+			input.emit("data", Buffer.from("q3\r"));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("only the first"), false);
+
+			// 第四条只显式提示，不丢；页脚仍只画三条加一行计数
+			input.emit("data", Buffer.from("q4\r"));
+			const frame = frameLines(output).map(plain).join("\n");
+			assert.ok(frame.includes("Queued (4); only the first 3 are shown"));
+			assert.ok(frame.includes("↳ q1"));
+			assert.equal(frame.includes("↳ q4"), false);
+
+			// 队列仍然逐条发送，说明提示不影响实际排队
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first", "q1"]);
+			await agent.finish();
+			await agent.finish();
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first", "q1", "q2", "q3", "q4"]);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("替换排队消息时不会把队列顺序弄错", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.rows = 16;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("first\r"));
+			t.mock.timers.tick(50);
+			input.emit("data", Buffer.from("second\r"));
+			input.emit("data", Buffer.from("third\r"));
+			// 拉回最近一条之后又写了一条新的：新的排在它后面
+			input.emit("data", Buffer.from("\x1b[1;3A"));
+			input.emit("data", Buffer.from("\r"));
+			const frame = frameLines(output).map(plain).join("\n");
+			assert.ok(frame.includes("↳ third"));
+
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first", "second"]);
+			await agent.finish();
+			assert.deepEqual(agent.prompts, ["first", "second", "third"]);
+		} finally {
+			exitTui(input);
+		}
+	});
 });

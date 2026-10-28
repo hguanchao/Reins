@@ -3,6 +3,7 @@ import { TURN_SAFE_COMMANDS } from "../commands.ts";
 import { commandArgs } from "../commands.ts";
 import { CONFIGURATION_REQUIRED } from "../render/status.ts";
 import { attachmentLimit, clearAttachments, imagesOf } from "../input/attachments.ts";
+import { QUEUE_MAX_VISIBLE } from "../view/footer.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { drainQueue } from "./run.ts";
 import { executeCommand } from "./commands.ts";
@@ -82,6 +83,15 @@ export function submit(host: TuiHost): boolean {
 		state.commandMenu = undefined;
 		host.setInput("");
 		state.queued.push({ text: message, images });
+		// 队列越多，页脚越高，对话流就越矮。超过能显示的行数之后照收不误，但要当场说一句：
+		// 静默接受会让人以为消息丢了，而它其实排在后面。
+		if (state.queued.length > QUEUE_MAX_VISIBLE) {
+			host.setStatus(
+				`Queued (${state.queued.length}); only the first ${QUEUE_MAX_VISIBLE} are shown`,
+				"notice",
+			);
+			host.scheduleStatusClear();
+		}
 		host.render();
 		return true;
 	}

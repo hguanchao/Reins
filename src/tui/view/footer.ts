@@ -132,7 +132,7 @@ const INPUT_PREFIX = " › ";
 /** 排队消息的缩进与标记，列宽与输入提示符一致，两处文字对齐。 */
 const QUEUE_PREFIX = " ↳ ";
 /** 排队预览最多显示几条；更多的收成一行计数。 */
-const QUEUE_MAX_VISIBLE = 3;
+export const QUEUE_MAX_VISIBLE = 3;
 /** 排队消息比正文弱一档：它还没发生，不该跟正在进行的对话抢注意力。 */
 const QUEUE_COLOR = THEME.textSubtle;
 /** 多行输入的续行缩进，与首行正文对齐。 */
