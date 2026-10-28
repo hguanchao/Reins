@@ -5,11 +5,16 @@ import type { TuiHost } from "./types.ts";
 /**
  * 信任页的结论落地。
  *
- * 授予与拒绝走两条截然不同的路。授予要先收掉页面再记录结论：写配置、可能还要重读一遍，
- * 这段时间里界面应该已经回到可以继续使用的状态，而不是停在一张按不动、也不知道在做什么的
- * 页面上。拒绝则没有「继续」可言——项目配置正是要被它挡住的东西，放行就等于什么都没挡住，
- * 所以直接收尾退出，退出原因交给装配层说明。
+ * 授予与拒绝走两条不同的路。授予要先收掉页面再记录结论：写配置、可能还要重读一遍，这段
+ * 时间里界面应该已经回到可以继续使用的状态，而不是停在一张按不动、也不知道在做什么的页面上。
+ *
+ * 拒绝要看被挡住的是什么：项目配置与规则文件会改变程序行为，少了它们继续干活，等于用一份
+ * 「看起来生效、实际没生效」的配置办事，所以直接退出；只有技能目录时不一样——技能是可选
+ * 增强，对话本身不依赖它们，跳过后照常进入对话流。
  */
+
+/** 只跳过技能目录时的说明：让使用者知道少了什么，而不是以为项目配置生效了。 */
+const SKILLS_SKIPPED = "Workspace skills skipped for this run";
 
 export function resolveTrust(host: TuiHost, answer: TrustAnswer): void {
 	const state = host.state;
@@ -18,6 +23,13 @@ export function resolveTrust(host: TuiHost, answer: TrustAnswer): void {
 
 	if (answer === "skip") {
 		state.trustPrompt = undefined;
+		if (prompt.files.length === 0) {
+			host.setStatus(SKILLS_SKIPPED, "notice");
+			host.scheduleStatusClear();
+			host.render();
+			return;
+		}
+		// 有文件被挡住：交给装配层说明原因，界面随即收尾退出
 		host.options.trustPrompt?.decline();
 		host.exit();
 		return;

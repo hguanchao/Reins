@@ -188,6 +188,37 @@ describe("启动信任页", () => {
 		}
 	});
 
+	it("只有技能目录时拒绝：不退出，进入对话流并说明少了什么", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 40;
+		const trust = fakeTrust({ files: [] });
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			trustPrompt: trust,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("n"));
+			await flush();
+
+			// 技能只是可选增强，拒绝后对话照常可用
+			assert.equal(trust.declined, 0);
+			const text = textOf(output);
+			assert.match(text, /Workspace skills skipped/);
+			assert.match(text, /v1\.2\.3/);
+			assert.equal(text.includes("Reins — workspace trust"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("记录期间重复按键不会再次触发记录", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();

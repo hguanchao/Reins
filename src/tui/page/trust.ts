@@ -23,7 +23,7 @@ const SKILLS_SECTION = "Skill directories scanned under this trust";
 const INTRO = "This workspace ships files that change how Reins behaves.";
 const TRUST_NOTE =
 	"Trusting lets those files take effect. Reins only reads them; commands still run under the sandbox and the approval rules.";
-const SKIP_NOTE = "Not trusting keeps the default: this workspace's configuration is ignored.";
+const SKIP_NOTE = "Not trusting keeps the default: nothing from this workspace is loaded.";
 const PENDING = "Recording the decision...";
 
 export interface TrustPageInput {
