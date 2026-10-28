@@ -152,14 +152,19 @@ async function loadEffectiveConfig(
 		hasProtectedResources: protectedResources.length > 0,
 	});
 
+	// 全屏界面自带信任页：启动期的说明写进 stderr 会直接毁掉那一屏，交给界面去问
+	const quiet = options.command === "tui";
+
 	if (decision.source === "flag") {
 		// 命令行给出的结论会被记下来，下次不必再给
 		recordTrust(workRoot, decision.trusted);
-		writeStderr(`Recorded ${workRoot} as ${decision.trusted ? "trusted" : "untrusted"}\n`);
+		if (!quiet) {
+			writeStderr(`Recorded ${workRoot} as ${decision.trusted ? "trusted" : "untrusted"}\n`);
+		}
 	}
 
 	if (!decision.trusted) {
-		if (protectedResources.length > 0) {
+		if (protectedResources.length > 0 && !quiet) {
 			writeStderr(
 				`Skipped the workspace config that needs trust: ${protectedResources.join(", ")}\nPass --trust to use them.\n`,
 			);

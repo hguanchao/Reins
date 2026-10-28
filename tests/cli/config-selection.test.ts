@@ -126,3 +126,62 @@ describe("工作区信任结论", () => {
 		}
 	});
 });
+
+describe("启动提示的去向", () => {
+	it("全屏界面不把跳过提示写进 stderr，交给信任页去问；非交互模式仍然提示", async () => {
+		const home = mkdtempSync(join(tmpdir(), "reins-home-"));
+		const project = mkdtempSync(join(tmpdir(), "reins-project-"));
+		const previousHome = process.env["REINS_HOME"];
+		const previousCwd = process.cwd();
+
+		writeFileSync(join(home, "config.toml"), 'provider = "fengshao"\nmodel = "deepseek-v4.1-flash"\n');
+		writeFileSync(join(home, "providers.json"), PROVIDERS);
+		writeFileSync(join(project, "AGENTS.md"), "# 项目规则\n");
+
+		process.env["REINS_HOME"] = home;
+		process.chdir(project);
+
+		const original = process.stderr.write.bind(process.stderr);
+		const captured: string[] = [];
+		const capture = (): void => {
+			captured.length = 0;
+			process.stderr.write = ((chunk: string | Uint8Array): boolean => {
+				captured.push(String(chunk));
+				return true;
+			}) as typeof process.stderr.write;
+		};
+
+		try {
+			capture();
+			await loadSelection({
+				command: "tui",
+				prompt: "",
+				configPath: undefined,
+				providersPath: undefined,
+				trust: undefined,
+				resume: undefined,
+				json: false,
+			});
+			assert.equal(captured.join("").includes("Skipped the workspace config"), false);
+
+			capture();
+			await loadSelection({
+				command: "print",
+				prompt: "",
+				configPath: undefined,
+				providersPath: undefined,
+				trust: undefined,
+				resume: undefined,
+				json: false,
+			});
+			assert.equal(captured.join("").includes("Skipped the workspace config"), true);
+		} finally {
+			process.stderr.write = original;
+			process.chdir(previousCwd);
+			if (previousHome === undefined) delete process.env["REINS_HOME"];
+			else process.env["REINS_HOME"] = previousHome;
+			rmSync(home, { recursive: true, force: true });
+			rmSync(project, { recursive: true, force: true });
+		}
+	});
+});

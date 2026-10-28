@@ -93,6 +93,8 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	 * 所以授予信任后下一轮就会带上项目里的内容，不必重启。
 	 */
 	let workspaceTrusted = "trusted" in loaded && loaded.trusted;
+	/** 还没有任何结论、需要界面先问一次；会话落盘与提示文案都看它 */
+	const needsTrust = "trust" in loaded && loaded.trust.source === "default";
 
 	// 技能与规则每轮重扫：改完 SKILL.md / AGENTS.md 下一轮就生效，不必重启
 	const skillRoots = () => defaultSkillRoots(workRoot, workspaceTrusted);
@@ -184,7 +186,9 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 							throw new Error("No session store; cannot resume this session");
 						})()
 					: resumeSession(workRoot, options.resume, store);
-		if (options.resume === undefined && loaded.ok) session.begin();
+		// 信任还没结论时先不落盘：拒绝就要退出，不该留下一个谁也没聊过的会话文件。
+		// 授予后由 markSessionReady 补建。
+		if (options.resume === undefined && loaded.ok && !needsTrust) session.begin();
 	} catch (error) {
 		await session?.close();
 		writeStderr(`reins: ${describeError(error)}\n`);
@@ -228,9 +232,10 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	};
 	startup.mark("checkpoints");
 
+	// path 在构造时就定下了，能不能接续要看文件是否真的写过头部：信任未决时还没 begin
 	let sessionPersisted =
-		options.resume !== undefined || (loaded.ok && activeSession.path !== null);
-	/** 从受限模式恢复后补建会话文件；失败只报告，不阻止本次使用。 */
+		options.resume !== undefined || (loaded.ok && !needsTrust && activeSession.path !== null);
+	/** 真正要开始对话时补建会话文件；失败只报告，不阻止本次使用。 */
 	const markSessionReady = (): void => {
 		if (sessionPersisted || activeSession.path === null) return;
 		try {
@@ -266,6 +271,8 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	const acceptTrust = async (remember: boolean): Promise<readonly string[]> => {
 		if (remember) recordTrust(workRoot, true);
 		workspaceTrusted = true;
+		// 现在才真正要开始对话：把先前压着的会话文件补上
+		markSessionReady();
 		const lines = [remember ? `Trusted ${workRoot}` : `Trusted ${workRoot} for this session`];
 
 		let next: Config;
@@ -296,8 +303,9 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	 */
 	/** 使用者在信任页拒绝了：界面会直接退出，这里记下原因以便收尾时说明。 */
 	let trustDeclined = false;
+	// 条件里保留 in 判断是为了让类型收窄到带 resources 的那两支
 	const trustPrompt =
-		"trust" in loaded && loaded.trust.source === "default"
+		"trust" in loaded && needsTrust
 			? {
 					root: workRoot,
 					files: loaded.resources.files,
