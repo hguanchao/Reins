@@ -62,17 +62,28 @@ const SHORT_LABELS: readonly TrustOption[] = [
 /**
  * 整屏内容。
  *
- * 返回的行数恰好等于 height：正文自上而下排，放不下就从底部截断，底部分隔线与选项行
- * 始终占满最后两行。
+ * 标题钉在首行，其余正文在「标题之下、底部分隔线之上」的区域里垂直居中；底部固定区
+ * 占最后三行（分隔线、一行留白、居中的选项），内容再长也只截正文，选项的位置不跳。
  */
 export function trustPageLines(input: TrustPageInput, width: number, height: number): readonly string[] {
 	const columns = Math.max(1, width);
 	const rows = Math.max(0, height);
 	const actions = actionLines(input, columns);
 	const contentHeight = Math.max(0, rows - actions.length);
-	const content = bodyLines(input, columns);
-	const body = Array.from({ length: contentHeight }, (_, index) => content[index] ?? "");
-	return [...body, ...actions].slice(0, rows);
+
+	const body = bodyLines(input, columns);
+	const title = body[0] ?? "";
+	const rest = body.slice(1);
+	// 标题之下还有多少行可用；正文在这个范围内居中
+	const available = Math.max(0, contentHeight - 1);
+	const top = Math.max(0, Math.floor((available - rest.length) / 2));
+
+	const lines: string[] = Array.from({ length: contentHeight }, () => "");
+	if (contentHeight > 0) lines[0] = title;
+	for (let index = 0; index < rest.length && 1 + top + index < contentHeight; index += 1) {
+		lines[1 + top + index] = rest[index] ?? "";
+	}
+	return [...lines, ...actions].slice(0, rows);
 }
 
 /** 标题左对齐，其余内容逐行水平居中。 */
@@ -100,14 +111,15 @@ function bodyLines(input: TrustPageInput, width: number): readonly string[] {
 
 function actionLines(input: TrustPageInput, width: number): readonly string[] {
 	const rule = `${THEME.border}${"─".repeat(width)}${RESET}`;
+	// 分隔线与选项之间留一行空白，否则选项像是贴在线上
 	if (input.pending) {
 		// 录入结论时把选项行换成进行中的说明：避免连按回车重复提交
-		return [rule, center(PENDING, width, THEME.textSecondary)];
+		return [rule, "", center(PENDING, width, THEME.textSecondary)];
 	}
-	return [rule, optionRow(input.selection, width)];
+	return [rule, "", optionRow(input.selection, width)];
 }
 
-/** 三档横排：当前档高亮加粗，拒绝档用失败色提示后果。 */
+/** 三档横排、整体水平居中：当前档高亮加粗，拒绝档用失败色提示后果。 */
 function optionRow(selection: TrustAnswer, width: number): string {
 	const options = layoutOptions(width, selection);
 	const plain = optionText(selection, options);
@@ -121,7 +133,8 @@ function optionRow(selection: TrustAnswer, width: number): string {
 			return `${BOLD}${color}${label}${BOLD_OFF}${THEME.textPrimary}`;
 		})
 		.join(GAP);
-	return `${styled}${" ".repeat(Math.max(0, width - displayWidth(plain)))}`;
+	const pad = Math.max(0, Math.floor((width - displayWidth(plain)) / 2));
+	return `${" ".repeat(pad)}${styled}`;
 }
 
 function layoutOptions(width: number, selection: TrustAnswer): readonly TrustOption[] {

@@ -54,15 +54,39 @@ describe("工作区信任页", () => {
 		}
 	});
 
-	it("底部固定两行：分隔线加三档横排", () => {
+	it("底部固定三行：分隔线、一行留白、三档横排", () => {
 		const lines = render(input(), 80, 24);
 		assert.equal(lines.length, 24);
-		const rule = lines.at(-2) ?? "";
-		assert.ok(rule.trim().startsWith("─"), "倒数第二行应是分隔线");
+		assert.ok((lines.at(-3) ?? "").trim().startsWith("─"), "倒数第三行应是分隔线");
+		assert.equal((lines.at(-2) ?? "").trim(), "", "分隔线与选项之间应留一行空白");
 		const options = lines.at(-1) ?? "";
 		assert.match(options, /› Trust this workspace/);
 		assert.match(options, /Trust for this session/);
 		assert.match(options, /Do not trust/);
+	});
+
+	it("选项整体水平居中，不贴着左边缘", () => {
+		const width = 80;
+		const options = render(input(), width, 24).at(-1) ?? "";
+		const left = options.length - options.trimStart().length;
+		const expected = Math.floor((width - displayWidth(options.trim())) / 2);
+		assert.ok(left > 0);
+		assert.equal(left, expected);
+	});
+
+	it("正文在标题与分隔线之间垂直居中：上下留白大致相等", () => {
+		const lines = render(input(), 80, 30);
+		// 标题占首行，正文从其后开始；分隔线在倒数第三行
+		const bodyEnd = lines.length - 3;
+		const first = lines.findIndex((line, index) => index > 0 && index < bodyEnd && line.trim().length > 0);
+		const last = lines.reduce(
+			(found, line, index) => (index > 0 && index < bodyEnd && line.trim().length > 0 ? index : found),
+			0,
+		);
+		assert.ok(first > 1, "标题之下应留出空白，正文才谈得上居中");
+		const above = first - 1;
+		const below = bodyEnd - 1 - last;
+		assert.ok(Math.abs(above - below) <= 1, `上下留白应大致相等，实际 ${above} / ${below}`);
 	});
 
 	it("当前档用标记高亮，移动后标记跟着走", () => {
