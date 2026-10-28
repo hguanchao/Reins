@@ -114,8 +114,9 @@ describe("终端启动与收尾", () => {
 			t.mock.timers.tick(BANNER_SWEEP_MS);
 			const settled = output.chunks.length;
 			const banner = frameLines(output).slice(0, 5).join("\n");
-			assert.ok(banner.includes(THEME.textSecondary));
-			assert.equal(banner.includes(THEME.accent), false);
+			const highlight = `\x1b[38;2;${THEME.bannerHighlightRgb.r};${THEME.bannerHighlightRgb.g};${THEME.bannerHighlightRgb.b}m`;
+			assert.ok(banner.includes(THEME.textSubtle));
+			assert.equal(banner.includes(highlight), false);
 
 			t.mock.timers.tick(BANNER_SWEEP_MS);
 			assert.equal(output.chunks.length, settled);
@@ -135,7 +136,7 @@ describe("终端启动与收尾", () => {
 			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
 			assert.equal(plain(lines[0] ?? "").trimEnd(), "    ████  █████  █████  █   █  █████");
-			assert.ok(lines[0]?.startsWith(`${" ".repeat(4)}${THEME.textSecondary}`));
+			assert.ok(lines[0]?.startsWith(`${" ".repeat(4)}${THEME.textSubtle}`));
 			assert.equal(plain(lines[5] ?? ""), `${" ".repeat(17)}v1.2.3`);
 			assert.ok(lines[5]?.startsWith(`${" ".repeat(17)}${THEME.textSubtle}`));
 			assert.equal(plain(lines[8] ?? ""), BORDER.repeat(40));

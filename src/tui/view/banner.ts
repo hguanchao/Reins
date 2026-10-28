@@ -32,10 +32,10 @@ export const BANNER_SWEEP_MS = 700;
 /**
  * 启动画面的内容行。
  *
- * `shine` 是 0..1 的扫光进度，undefined 表示停在静止状态。标志用次级文字色，版本号
- * 再弱一档；扫光以标志自身的颜色为底，只把经过的地方提亮到强调色，扫完回到静止色。
- * 光带整块共用一个相位，竖直地从左往右扫过。版本号不参与扫光：它只有一行，光带扫过
- * 只会闪一下，反而打断整块标志的节奏。
+ * `shine` 是 0..1 的扫光进度，undefined 表示停在静止状态。标志与版本号都用弱文字色；
+ * 扫光以标志自身的颜色为底，只把经过的地方提亮一档，扫完回到静止色。光带整块共用
+ * 一个相位，竖直地从左往右扫过。版本号不参与扫光：它只有一行，光带扫过只会闪一下，
+ * 反而打断整块标志的节奏。
  */
 export function bannerLines(
 	width: number,
@@ -50,12 +50,12 @@ export function bannerLines(
 		const art = padToWidth(MARK[row] ?? "", BLOCK_WIDTH);
 		const colored =
 			shine === undefined
-				? `${THEME.textSecondary}${art}${THEME.reset}`
+				? `${THEME.textSubtle}${art}${THEME.reset}`
 				: swept(
 						art,
 						Math.min(1, Math.max(0, shine)),
-						THEME.textSecondaryRgb,
-						THEME.accentRgb,
+						THEME.textSubtleRgb,
+						THEME.bannerHighlightRgb,
 					);
 		lines.push(`${" ".repeat(left)}${colored}`);
 	}

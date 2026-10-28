@@ -15,8 +15,8 @@ const ART = [
 ] as const;
 const BLOCK_WIDTH = Math.max(...ART.map((line) => line.length));
 
-const BASE = `${THEME.textSecondaryRgb.r};${THEME.textSecondaryRgb.g};${THEME.textSecondaryRgb.b}`;
-const HIGHLIGHT = `${THEME.accentRgb.r};${THEME.accentRgb.g};${THEME.accentRgb.b}`;
+const BASE = `${THEME.textSubtleRgb.r};${THEME.textSubtleRgb.g};${THEME.textSubtleRgb.b}`;
+const HIGHLIGHT = `${THEME.bannerHighlightRgb.r};${THEME.bannerHighlightRgb.g};${THEME.bannerHighlightRgb.b}`;
 
 function visible(line: string): string {
 	return stripVTControlCharacters(line);
@@ -28,13 +28,6 @@ function colors(line: string): string[] {
 		(match) => `${match[1]};${match[2]};${match[3]}`,
 	);
 }
-
-function colorOf(sgr: string): string {
-	const match = /\x1b\[38;2;(\d+);(\d+);(\d+)m/.exec(sgr);
-	return `${match?.[1] ?? ""};${match?.[2] ?? ""};${match?.[3] ?? ""}`;
-}
-
-const SUBTLE = colorOf(THEME.textSubtle);
 
 describe("启动标志", () => {
 	it("五行块字在上，版本号隔一空行居中", () => {
@@ -57,18 +50,16 @@ describe("启动标志", () => {
 		assert.ok(lefts.every((left) => left === 4), lefts.join(","));
 	});
 
-	it("静止时标志用次级文字色，版本号再弱一档", () => {
+	it("静止时标志与版本号都用弱文字色", () => {
 		const lines = bannerLines(40, "1.0.0", undefined);
 
-		for (const line of lines.slice(0, 5)) {
-			assert.ok(line.includes(THEME.textSecondary));
+		for (const line of lines.slice(0, 5).concat(lines[6] ?? "")) {
+			assert.ok(line.includes(THEME.textSubtle));
 			assert.deepEqual(new Set(colors(line)), new Set([BASE]));
 		}
-		assert.ok(lines[6]?.includes(THEME.textSubtle));
-		assert.deepEqual(new Set(colors(lines[6] ?? "")), new Set([SUBTLE]));
 	});
 
-	it("扫光以标志自身颜色为底，只把经过处提亮到强调色", () => {
+	it("扫光以标志自身颜色为底，只把经过处提亮一档", () => {
 		const lines = bannerLines(40, "1.0.0", 0.5);
 
 		for (const line of lines.slice(0, 5)) {
@@ -78,7 +69,7 @@ describe("启动标志", () => {
 			assert.equal(values.includes("47;125;109"), false);
 			assert.equal(values.includes("255;255;255"), false);
 		}
-		assert.deepEqual(new Set(colors(lines[6] ?? "")), new Set([SUBTLE]));
+		assert.deepEqual(new Set(colors(lines[6] ?? "")), new Set([BASE]));
 	});
 
 	it("整块共用一个相位，光带竖直从左往右", () => {
