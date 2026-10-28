@@ -328,7 +328,7 @@ describe("滚动与输入", () => {
 		}
 	});
 
-	it("还没输入就按退格，品牌名与版本号仍然显示", () => {
+	it("还没输入就按退格，启动标志与版本号仍然显示", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
@@ -340,7 +340,7 @@ describe("滚动与输入", () => {
 			assert.equal(output.chunks.length, written);
 			const lines = frameLines(output);
 			const main = lines.slice(0, 6).join("\n");
-			assert.ok(main.includes("Reins"));
+			assert.ok(main.includes("████  █████  █████"));
 			assert.ok(main.includes("v1.2.3"));
 		} finally {
 			exitTui(input);
@@ -363,7 +363,7 @@ describe("滚动与输入", () => {
 		}
 	});
 
-	it("退格清空输入后品牌名与版本号仍然隐藏", () => {
+	it("退格清空输入后启动标志与版本号仍然隐藏", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
@@ -374,14 +374,15 @@ describe("滚动与输入", () => {
 
 			const lines = frameLines(output);
 			assert.equal(plain(lines[9] ?? ""), " › ab");
-			assert.equal(lines.slice(0, 6).join("\n").includes("Reins"), false);
+			assert.equal(lines.slice(0, 6).join("\n").includes("v1.2.3"), false);
+			assert.equal(lines.slice(0, 6).join("\n").includes("████"), false);
 			assert.ok(cursorAt(output, 10, 6));
 
 			input.emit("data", Buffer.from([0x7f]));
 			input.emit("data", Buffer.from([0x7f]));
 			const cleared = frameLines(output);
-			assert.equal(cleared.slice(0, 6).join("\n").includes("Reins"), false);
 			assert.equal(cleared.slice(0, 6).join("\n").includes("v1.2.3"), false);
+			assert.equal(cleared.slice(0, 6).join("\n").includes("████"), false);
 			assert.equal(plain(cleared[9] ?? ""), " › ");
 			assert.ok(cursorAt(output, 10, 4));
 		} finally {

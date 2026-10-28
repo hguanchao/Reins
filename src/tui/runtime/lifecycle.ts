@@ -6,6 +6,7 @@ import {
 	LEAVE_ALTERNATE_SCREEN,
 	SHOW_CURSOR,
 } from "../terminal.ts";
+import { stopBannerShine } from "./banner-shine.ts";
 import type { TuiState } from "./types.ts";
 import type { TuiOptions } from "../options.ts";
 
@@ -59,6 +60,7 @@ export function cleanup(
 		clearInterval(state.jobTimer);
 		state.jobTimer = undefined;
 	}
+	stopBannerShine(state);
 	state.unsubscribeJobs();
 	options.jobs?.shutdown();
 	if (state.statusClearTimer !== undefined) {

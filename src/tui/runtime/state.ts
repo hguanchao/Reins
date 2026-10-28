@@ -99,6 +99,8 @@ export function createState(options: TuiOptions): TuiState {
 		pageCache: undefined,
 		spinnerTimer: undefined,
 		jobTimer: undefined,
+		bannerShine: undefined,
+		bannerTimer: undefined,
 		unsubscribeJobs: () => {},
 		statusClearTimer: undefined,
 		exitArmed: false,

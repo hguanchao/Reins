@@ -20,7 +20,8 @@ describe("焦点、状态与用量", () => {
 			const main = frameLines(output).slice(0, 6).map(plain).join("\n");
 			assert.ok(main.includes(" › old question"));
 			assert.ok(main.includes("old answer"));
-			assert.equal(main.includes("Reins"), false);
+			assert.equal(main.includes("v1.2.3"), false);
+			assert.equal(main.includes("████"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -38,7 +39,7 @@ describe("焦点、状态与用量", () => {
 
 			const lines = frameLines(output);
 			assert.equal(lines.length, 7);
-			assert.equal(lines[0], `${" ".repeat(7)}Reins`);
+			assert.equal(plain(lines[0] ?? "").trimEnd(), "████  █████  █████  █   █  █████");
 			assert.equal(lines.join("\n").includes("v1.2.3"), false);
 			assert.equal(plain(lines[3] ?? ""), BORDER.repeat(20));
 			assert.equal(plain(lines[4] ?? ""), " › ");
@@ -144,7 +145,7 @@ describe("焦点、状态与用量", () => {
 		}
 	});
 
-	it("输入框一有输入，品牌名与版本号就隐藏", () => {
+	it("输入框一有输入，启动标志与版本号就隐藏", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
@@ -154,8 +155,8 @@ describe("焦点、状态与用量", () => {
 
 			const typed = frameLines(output);
 			const main = typed.slice(0, 6).join("\n");
-			assert.equal(main.includes("Reins"), false);
 			assert.equal(main.includes("v1.2.3"), false);
+			assert.equal(main.includes("████"), false);
 			assert.equal(plain(typed[9] ?? ""), " › a");
 			assert.ok(cursorAt(output, 10, 5));
 		} finally {

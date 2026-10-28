@@ -748,7 +748,7 @@ describe("命令补全与选择面板", () => {
 			const lines = frameLines(output).map(plain);
 			assert.equal(calls, 0);
 			assert.equal(lines.some((line) => line.includes("Model switched")), false);
-			assert.ok(lines.some((line) => line.includes("Reins")));
+			assert.ok(lines.some((line) => line.includes("v1.2.3")));
 		} finally {
 			exitTui(input);
 		}

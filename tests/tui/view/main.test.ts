@@ -1,21 +1,52 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 
 import { renderMain } from "../../../src/tui/view/main.ts";
 
+const ART_TOP = "████  █████  █████  █   █  █████";
+
+function visible(line: string): string {
+	return stripVTControlCharacters(line);
+}
+
 describe("主区域启动画面", () => {
-	it("品牌名在上、版本号在下，整体居中", () => {
-		const pad = " ".repeat(7);
-		const lines = renderMain(20, 5, "1.2.3");
+	it("标志与版本号整体在给定区域内垂直居中", () => {
+		const lines = renderMain(40, 9, "1.2.3");
 
-		assert.deepEqual(lines, ["", `${pad}Reins`, `${pad}v1.2.3`, "", ""]);
+		assert.equal(lines.length, 9);
+		assert.equal(lines[0], "");
+		assert.equal(visible(lines[1] ?? "").trimEnd(), `${" ".repeat(4)}${ART_TOP}`);
+		assert.equal(lines[6], "");
+		assert.equal(visible(lines[7] ?? "").trimEnd(), `${" ".repeat(17)}v1.2.3`);
+		assert.equal(lines[8], "");
 	});
 
-	it("高度不足时先保住品牌名", () => {
-		assert.deepEqual(renderMain(10, 1, "1.0.0"), ["  Reins"]);
+	it("主区域放不下整块时先去掉空行，保住版本号", () => {
+		const lines = renderMain(40, 6, "1.2.3");
+
+		assert.equal(lines.length, 6);
+		assert.equal(visible(lines[5] ?? "").trimEnd(), `${" ".repeat(17)}v1.2.3`);
 	});
 
-	it("宽度不足时不产生负缩进", () => {
-		assert.deepEqual(renderMain(2, 2, "1.0.0"), ["Reins", "v1.0.0"]);
+	it("高度不足时先保住标志", () => {
+		const lines = renderMain(20, 1, "1.0.0");
+
+		assert.equal(lines.length, 1);
+		assert.equal(visible(lines[0] ?? "").trimEnd(), ART_TOP);
+	});
+
+	it("宽度不足时不产生负缩进也不截断", () => {
+		const lines = renderMain(2, 2, "1.0.0");
+
+		assert.equal(visible(lines[0] ?? "").trimEnd(), ART_TOP);
+		assert.equal(visible(lines[1] ?? "").trimEnd(), "█   █ █        █    ██  █  █");
+	});
+
+	it("扫光参数透传到标志", () => {
+		const still = renderMain(40, 6, "1.2.3");
+		const shining = renderMain(40, 6, "1.2.3", 0.5);
+
+		assert.notEqual(shining[0], still[0]);
 	});
 });

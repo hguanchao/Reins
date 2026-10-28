@@ -28,6 +28,10 @@ export const THEME = {
 	textSecondary: "\x1b[38;2;167;176;186m",
 	/** 更弱的文字：边框上的数量、状态行元信息 #6b7580 */
 	textSubtle: "\x1b[38;2;107;117;128m",
+	/** 弱文字的裸数值：扫光逐字符混色时只认数值，不能直接套 SGR */
+	textSubtleRgb: { r: 107, g: 117, b: 128 },
+	/** 主文字的裸数值：启动标志扫光的亮点 */
+	textPrimaryRgb: { r: 230, g: 233, b: 237 },
 	/** 不可用命令 #4a535d */
 	textDisabled: "\x1b[38;2;74;83;93m",
 	/** 强调色：焦点边框、选中标记、current #4ec9b0 */

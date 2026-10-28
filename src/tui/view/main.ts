@@ -1,32 +1,34 @@
+import { bannerLines } from "./banner.ts";
+
 /**
  * 主区域启动画面。
  *
- * 对话开始前只显示品牌名与版本号；对话开始后由 transcript 接管主区域。
+ * 对话开始前显示标志与版本号；对话开始后由 transcript 接管主区域。
  */
-
-const BRAND = "Reins";
 
 /**
- * 品牌名在上、版本号在下，整体在给定区域内居中。
+ * 标志、版本号整体在给定区域内居中。
  *
- * 返回的行数恰好等于 height，空行也一并返回，调用方按顺序逐行写出即可。终端比文字还窄时
- * 不做截断：截断会把品牌名或版本号变成半截，宁可让它超出边界。
+ * 返回的行数恰好等于 height，空行也一并返回，调用方按顺序逐行写出即可。主区域放不下
+ * 整块时先去掉标志与版本号之间的空行：版本号比留白重要。终端比标志还窄时不做截断：
+ * 截断会把标志切掉一半，宁可让它超出边界。
  */
-export function renderMain(width: number, height: number, version: string): readonly string[] {
-	const content = [BRAND, `v${version}`];
+export function renderMain(
+	width: number,
+	height: number,
+	version: string,
+	shine?: number,
+): readonly string[] {
+	const content = bannerLines(width, version, shine);
+	const fitted = content.length > height ? content.filter((line) => line !== "") : content;
 	const lines: string[] = Array.from({ length: Math.max(0, height) }, () => "");
-	const top = Math.max(0, Math.floor((lines.length - content.length) / 2));
+	const top = Math.max(0, Math.floor((lines.length - fitted.length) / 2));
 
-	for (let index = 0; index < content.length; index += 1) {
+	for (let index = 0; index < fitted.length; index += 1) {
 		const row = top + index;
 		if (row >= lines.length) break;
-		lines[row] = center(content[index], width);
+		lines[row] = fitted[index] ?? "";
 	}
 
 	return lines;
-}
-
-function center(text: string, width: number): string {
-	const padding = Math.max(0, Math.floor((width - text.length) / 2));
-	return " ".repeat(padding) + text;
 }
