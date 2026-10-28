@@ -79,6 +79,37 @@ export interface SessionMenuSource {
 	readonly fork?: (id: string) => SessionSwitchResult;
 }
 
+/** 回退到某条消息之前的结果：对话流换掉，被选中的原文回到输入框。 */
+export interface RewindResult {
+	/** false 表示选中的就是当前空会话的起点，界面不需要重放历史 */
+	readonly changed: boolean;
+	/** 回填输入框的正文；图片另走 images */
+	readonly prompt: string;
+	/** 原文里带的图片；界面重新挂成待发送附件 */
+	readonly images: readonly ImageAttachment[];
+	readonly history: readonly TranscriptTurn[];
+	readonly todo?: TranscriptTodo;
+	readonly plan?: TranscriptPlan;
+	readonly warnings: readonly string[];
+}
+
+/**
+ * 当前会话的分支与历史。
+ *
+ * 分支列表来自会话树里的叶子，历史列表来自当前路径上的用户消息；两者都只读当前会话，
+ * 不跨会话。切换与回退都通过追加分支标记完成，旧分支保留。
+ */
+export interface ConversationSource {
+	/** 当前会话的全部分支末尾；current 标记当前所在的那一条 */
+	readonly branches: () => readonly SessionMenuItem[];
+	/** 切到某个分支末尾；失败时抛错 */
+	readonly selectBranch: (id: string) => SessionSwitchResult;
+	/** 当前路径上的用户消息，按从新到旧排列 */
+	readonly messages: () => readonly SessionMenuItem[];
+	/** 回退到这条消息之前；失败时抛错 */
+	readonly rewind: (id: string) => RewindResult;
+}
+
 export interface EffortMenuSource {
 	/** 当前配置里的思考等级；切换后重新读取 */
 	readonly current: () => ThinkingLevel;
@@ -264,6 +295,8 @@ export interface TuiOptions {
 	readonly mcpServers?: () => readonly PageEntry[];
 	/** /session 菜单的数据来源；不提供时该命令不可用（没有会话存储时就是这种情况） */
 	readonly sessionMenu?: SessionMenuSource;
+	/** /rewind 与 /branches 的数据来源；不提供时两条命令都不可用 */
+	readonly conversation?: ConversationSource;
 	/** 一轮结束时的提醒方式；默认 auto（失焦时响铃） */
 	readonly notify?: NotifyMode;
 	/** 启动时回填的历史对话；续聊时使用 */

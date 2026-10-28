@@ -32,7 +32,7 @@ import {
 
 /** 历史工具行的首行上限；过长时截断加省略号。 */
 const MAX_LINE = 200;
-const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
+export const SUMMARY_PREFIX = "(Summary of the earlier conversation, kept so the work can continue)";
 
 interface MutableTurn extends TranscriptTurn {
 	response: TranscriptLine[];

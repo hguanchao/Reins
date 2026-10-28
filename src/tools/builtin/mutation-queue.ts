@@ -26,3 +26,21 @@ export function withFileMutation<T>(absolutePath: string, action: () => Promise<
 
 	return run;
 }
+
+/**
+ * 同时锁住多个路径。
+ *
+ * 多文件补丁要先锁住全部目标再读，否则读到一半可能被另一个写操作改掉。路径排序后再逐个
+ * 获取，两个补丁以不同顺序传入也不会互相等待成环；单文件写只持有一把锁，不参与这个环。
+ */
+export function withFileMutations<T>(
+	absolutePaths: readonly string[],
+	action: () => Promise<T>,
+): Promise<T> {
+	const ordered = [...new Set(absolutePaths)].sort();
+	const acquire = (index: number): Promise<T> => {
+		const path = ordered[index];
+		return path === undefined ? action() : withFileMutation(path, () => acquire(index + 1));
+	};
+	return acquire(0);
+}

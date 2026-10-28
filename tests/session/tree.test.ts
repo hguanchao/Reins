@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { leavesOf, pathTo } from "../../src/session/tree.ts";
+import { currentLeafOf, currentPathOf, leavesOf, pathTo } from "../../src/session/tree.ts";
 import type { SessionEntry } from "../../src/session/port.ts";
 
 const T = "2026-01-01T00:00:00Z";
@@ -41,5 +41,20 @@ describe("条目树", () => {
 	it("线性历史里叶子就是最后一条", () => {
 		const linear = [entry("a", null), entry("b", "a"), entry("c", "b")];
 		assert.deepEqual(leavesOf(linear).map((entry) => entry.id), ["c"]);
+	});
+
+	it("当前叶子是最后写下的那个叶子，当前路径沿它回溯", () => {
+		assert.equal(currentLeafOf(ENTRIES)?.id, "d");
+		assert.deepEqual(currentPathOf(ENTRIES).map((item) => item.id), ["a", "b", "d"]);
+	});
+
+	it("空会话没有叶子也没有路径", () => {
+		assert.equal(currentLeafOf([]), undefined);
+		assert.deepEqual(currentPathOf([]), []);
+	});
+
+	it("当前路径遇到成环时同样拒绝", () => {
+		const cyclic = [entry("a", "c"), entry("b", "a"), entry("c", "b")];
+		assert.throws(() => currentPathOf(cyclic), /cycle/);
 	});
 });

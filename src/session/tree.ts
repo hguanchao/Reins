@@ -40,3 +40,24 @@ export function leavesOf(entries: readonly SessionEntry[]): readonly SessionEntr
 	}
 	return entries.filter((entry) => !parents.has(entry.id));
 }
+
+/**
+ * 当前叶子。
+ *
+ * 文件是只追加的，所以最后一个叶子就是最后写下的那条条目。分支标记也参与这个判断：
+ * 回退或切换之后，新追加的标记成为叶子，旧分支的末尾仍是另一个叶子。
+ */
+export function currentLeafOf(entries: readonly SessionEntry[]): SessionEntry | undefined {
+	const leaves = leavesOf(entries);
+	// 有限的无环树至少有一个叶子；一个都没有说明 parentId 成环，不能当成「空会话」放过去
+	if (leaves.length === 0 && entries.length > 0) {
+		throw new Error("Session has no leaf; its parent links form a cycle");
+	}
+	return leaves.at(-1);
+}
+
+/** 从根到当前叶子的路径；空会话返回空数组。 */
+export function currentPathOf(entries: readonly SessionEntry[]): readonly SessionEntry[] {
+	const leaf = currentLeafOf(entries);
+	return leaf === undefined ? [] : pathTo(entries, leaf.id);
+}

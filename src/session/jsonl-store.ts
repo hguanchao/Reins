@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { describeError } from "../shared/describe-error.ts";
 import { firstLine } from "../shared/format.ts";
 
-import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "./port.ts";
+import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry, type SessionMessageEntry } from "./port.ts";
 import type {
 	SessionCreateOptions,
 	SessionFile,
@@ -13,6 +13,7 @@ import type {
 } from "./store.ts";
 import { splitLines } from "../tools/truncate.ts";
 import { SessionLock } from "./lock.ts";
+import { currentPathOf } from "./tree.ts";
 
 /**
  * 以 JSONL 保存会话。
@@ -47,6 +48,26 @@ function safeUserText(message: unknown): string {
 		)
 		.map((block) => block.text)
 		.join("\n\n");
+}
+
+/**
+ * 清单里的标题取当前分支的第一条用户消息。
+ *
+ * 回退之后文件里可能留着另一条分支的开头；直接取文件里第一条会把已经离开的分支当成这个
+ * 会话的主题。走不到叶子（手工改坏、成环）时退回全量条目，标题有偏差总比整份清单消失好。
+ */
+function currentTitle(entries: readonly SessionEntry[]): string | undefined {
+	let path: readonly SessionEntry[];
+	try {
+		path = currentPathOf(entries);
+	} catch {
+		path = entries;
+	}
+	const userTurn = path.find(
+		(entry): entry is SessionMessageEntry =>
+			entry.type === "message" && entry.message.role === "user",
+	);
+	return userTurn === undefined ? undefined : firstLine(safeUserText(userTurn.message), 60);
 }
 
 export class JsonlSessionStore implements SessionStore {
@@ -91,18 +112,13 @@ export class JsonlSessionStore implements SessionStore {
 				continue;
 			}
 			const header = parsed.header;
-			const userTurn = parsed.entries.find(
-				(entry) => entry.type === "message" && entry.message.role === "user",
-			);
+			const title = currentTitle(parsed.entries);
 			listings.push({
 				id: header?.id ?? name.slice(0, -FILE_SUFFIX.length),
 				file,
 				updatedAt: modifiedAt(file),
 				entryCount: parsed.entries.length,
-				title:
-					userTurn?.type === "message" && userTurn.message.role === "user"
-						? firstLine(safeUserText(userTurn.message), 60)
-						: undefined,
+				title,
 				forkedFrom: header?.forkedFrom,
 			});
 		}
@@ -275,6 +291,8 @@ function entryLooksIntact(parsed: Record<string, unknown>): boolean {
 			return typeof parsed["model"] === "string";
 		case "effort_change":
 			return typeof parsed["effort"] === "string";
+		case "branch":
+			return parsed["reason"] === "rewind" || parsed["reason"] === "switch";
 		case "usage":
 			return (
 				typeof parsed["model"] === "string" &&
@@ -294,6 +312,7 @@ function isEntryType(type: unknown): boolean {
 		type === "system" ||
 		type === "model_change" ||
 		type === "effort_change" ||
+		type === "branch" ||
 		type === "usage" ||
 		type === "compaction"
 	);

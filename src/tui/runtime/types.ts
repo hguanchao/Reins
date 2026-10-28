@@ -339,6 +339,10 @@ export interface TuiHost {
 	completeSessionMenu(): void;
 	cancelSessionMenu(): void;
 	forkSelectedSession(): void;
+	/** 切到当前会话的另一个分支末尾 */
+	switchBranch(id: string): void;
+	/** 回退到某条消息之前，并把原文放回输入框 */
+	rewindTo(id: string): void;
 	moveCommandMenu(delta: number): void;
 	moveFileMenu(delta: number): void;
 	executeCommand(command: CommandMenuItem, args?: string): void;

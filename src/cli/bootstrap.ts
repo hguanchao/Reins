@@ -4,6 +4,7 @@ import {
 	type PromptInstruction,
 } from "../agent/instructions.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
+import { TerminalManager } from "../tools/terminal.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { readVersion } from "../version.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
@@ -75,7 +76,14 @@ async function runPrint(options: CliOptions): Promise<number> {
 		reviewer:
 			config.approval === "auto" ? createReviewer(config, selection, workRoot) : undefined,
 	});
-	const pipeline = await assemblePipeline({ config, workRoot, policy, gate });
+	const terminals = new TerminalManager({ shellPath: config.shellPath });
+	const pipeline = await assemblePipeline({
+		config,
+		workRoot,
+		policy,
+		gate,
+		terminals,
+	});
 	if (pipeline === null) return 1;
 	const { registry, sandbox, sandboxWarnings } = pipeline;
 	const host = pipeline.host;
@@ -99,6 +107,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 			stderr: writeStderr,
 		});
 	} finally {
+		terminals.shutdown();
 		await session.close();
 	}
 }

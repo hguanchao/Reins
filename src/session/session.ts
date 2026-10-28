@@ -10,7 +10,7 @@ import {
 	type SessionState,
 } from "./port.ts";
 import type { SessionStore, SessionWriter } from "./store.ts";
-import { leavesOf, pathTo } from "./tree.ts";
+import { currentLeafOf, currentPathOf, pathTo } from "./tree.ts";
 
 /**
  * 会话。
@@ -40,7 +40,8 @@ export class Session implements SessionPort {
 	readonly path: string | null;
 
 	readonly #entries: SessionEntry[] = [];
-	readonly #folder = new SessionFolder();
+	/** 增量折叠；分支切换后整份重建，保证它只反映当前路径 */
+	#folder = new SessionFolder();
 	readonly #ids = new Set<string>();
 	readonly #writer: SessionWriter | undefined;
 	#leafId: string | null = null;
@@ -58,10 +59,10 @@ export class Session implements SessionPort {
 		for (const entry of options.entries ?? []) {
 			this.#entries.push(entry);
 			this.#ids.add(entry.id);
-			this.#folder.add(entry);
 		}
-		const leaves = leavesOf(this.#entries);
-		this.#leafId = leaves.length === 0 ? null : (leaves[leaves.length - 1]?.id ?? null);
+		this.#leafId = currentLeafOf(this.#entries)?.id ?? null;
+		// 文件里可能留着已经离开的分支；状态只能从当前叶子的路径重放
+		this.#rebuildFolder();
 	}
 
 	/** 接续一个既有会话文件。读出来的条目已经在文件里，不会再写一遍。 */
@@ -150,13 +151,46 @@ export class Session implements SessionPort {
 	}
 
 	async append(entry: NewSessionEntry): Promise<void> {
+		this.#appendAt(this.#leafId, entry);
+	}
+
+	/**
+	 * 回退到指定条目的后面。
+	 *
+	 * targetId 为 null 表示回到空会话。这里只追加一条分支标记，不删除也不改写任何条目：
+	 * 被回退掉的那段历史仍留在文件里，之后仍可作为另一条分支被切回来。
+	 */
+	rewindBefore(targetId: string | null): void {
+		this.#appendBranch(targetId, "rewind");
+	}
+
+	/** 切到某个分支的末尾；标记挂在目标条目之后，目标分支本身保持不变。 */
+	switchTo(leafId: string): void {
+		this.#appendBranch(leafId, "switch");
+	}
+
+	#appendBranch(targetId: string | null, reason: "rewind" | "switch"): void {
+		// 目标必须真实存在且能走到根：手工改坏的文件在这里就拒绝，而不是写出一个悬空分支
+		if (targetId !== null) pathTo(this.#entries, targetId);
+		this.#appendAt(targetId, { type: "branch", reason });
+		// 增量折叠里还留着旧分支的消息；换到新路径后必须整份重放
+		this.#rebuildFolder();
+	}
+
+	#rebuildFolder(): void {
+		const folder = new SessionFolder();
+		for (const entry of currentPathOf(this.#entries)) folder.add(entry);
+		this.#folder = folder;
+	}
+
+	#appendAt(parentId: string | null, entry: NewSessionEntry): void {
 		if (this.#closed) throw new Error("Session is closed");
 
 		const id = this.#nextId();
 		const complete = {
 			...entry,
 			id,
-			parentId: this.#leafId,
+			parentId,
 			timestamp: new Date().toISOString(),
 		} as SessionEntry;
 

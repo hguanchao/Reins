@@ -2,13 +2,15 @@ import { THINKING_LEVELS } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import type { CommandMenuItem } from "../panel/command-menu.ts";
 import type { SessionMenuItem } from "../panel/session-menu.ts";
-import type { SessionSwitchResult } from "../options.ts";
+import type { RewindResult, SessionSwitchResult } from "../options.ts";
 import { CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE, implementationPrompt } from "../render/status.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { closePlanReview, openPlanReview, showPage } from "./pages.ts";
 import {
+	openBranchMenu,
 	openEffortMenu,
 	openModelMenu,
+	openRewindMenu,
 	openSessionMenu,
 	selectEffort,
 	selectModel,
@@ -34,6 +36,8 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 		effort: () => executeEffortCommand(host, args),
 		session: () => executeSessionCommand(host, args),
 		fork: () => executeForkCommand(host),
+		rewind: () => executeRewindCommand(host),
+		branches: () => executeBranchesCommand(host),
 		compact: () => executeCompactCommand(host),
 		plan: () => executePlanCommand(host, args),
 		"view-plan": () => executeViewPlanCommand(host),
@@ -236,6 +240,146 @@ function executeForkCommand(host: TuiHost): void {
 		return;
 	}
 	host.switchSession(current.id, "fork");
+}
+
+/** /rewind:选择一条历史消息，回到它之前并把它放回输入框。 */
+function executeRewindCommand(host: TuiHost): void {
+	host.setInput("");
+	if (host.options.conversation === undefined) {
+		host.resetStatusMeta();
+		host.setStatus("Conversation history is unavailable in this session", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus("/rewind is unavailable while a turn is running", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	openRewindMenu(host);
+}
+
+/** /branches:在当前会话的各条分支之间切换。 */
+function executeBranchesCommand(host: TuiHost): void {
+	host.setInput("");
+	if (host.options.conversation === undefined) {
+		host.resetStatusMeta();
+		host.setStatus("Conversation history is unavailable in this session", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus("/branches is unavailable while a turn is running", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
+	openBranchMenu(host);
+}
+
+/**
+ * 用一段历史替换整段对话流。
+ *
+ * 切换会话、切换分支与回退都做同一件事；任务表、计划、查看目标与排队消息都属于旧位置，
+ * 必须一起换掉。图片附件由调用方决定是否重新挂上：回退要恢复原文，切换不要。
+ */
+function applyConversation(host: TuiHost, result: SessionSwitchResult): void {
+	const state = host.state;
+	state.turns.length = 0;
+	for (const turn of result.history) {
+		state.turns.push({ prompt: turn.prompt, response: [...turn.response] });
+	}
+	// 任务表与计划都属于会话:随历史一起换成新位置的内容
+	state.currentTodo = result.todo;
+	state.latestPlan = result.plan;
+	state.pendingPlan = undefined;
+	// Ctrl+G 的目标指向旧位置的工具行，留着只会打开一段已经不在界面上的内容
+	state.viewerTool = undefined;
+	state.selection = undefined;
+	if (state.openPage === "plan") closePlanReview(state);
+	else state.planReview = undefined;
+	host.closeCheckpointPage();
+	markTranscriptDirty(state);
+	state.initialScroll = false;
+	state.scrollTop = 0;
+	state.follow = true;
+	state.hasInput = state.turns.length > 0;
+	// 旧位置留下的状态/错误不该跟着出现在新位置
+	host.clearStatus();
+	// 排队消息是发给旧位置的，换位置后没有意义
+	state.queued.length = 0;
+	state.fileMenu = undefined;
+	state.fileFiles = undefined;
+	state.fileIndexStart = undefined;
+	host.clearAttachments();
+}
+
+/** 切到当前会话的另一个分支末尾。 */
+export function switchBranch(host: TuiHost, id: string): void {
+	const source = host.options.conversation;
+	if (source === undefined) return;
+
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus("/branches is unavailable while a turn is running", "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
+
+	let result: SessionSwitchResult;
+	try {
+		result = source.selectBranch(id);
+	} catch (error) {
+		host.state.follow = true;
+		host.appendCommandTurn("/branches", [
+			{ kind: "error", text: `Error: Failed to switch branch: ${describeError(error)}` },
+		]);
+		return;
+	}
+	if (!result.changed) {
+		host.render();
+		return;
+	}
+
+	applyConversation(host, result);
+	host.appendCommandTurn("/branches", ["Switched to another branch.", ...result.warnings]);
+}
+
+/** 回退到某条消息之前，并把那条消息的正文与图片放回输入框。 */
+export function rewindTo(host: TuiHost, id: string): void {
+	const source = host.options.conversation;
+	if (source === undefined) return;
+
+	if (host.state.activeTurn !== undefined) {
+		host.resetStatusMeta();
+		host.setStatus("/rewind is unavailable while a turn is running", "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
+
+	let result: RewindResult;
+	try {
+		result = source.rewind(id);
+	} catch (error) {
+		host.state.follow = true;
+		host.appendCommandTurn("/rewind", [
+			{ kind: "error", text: `Error: Failed to rewind: ${describeError(error)}` },
+		]);
+		return;
+	}
+
+	applyConversation(host, result);
+	host.setInput(result.prompt);
+	for (const image of result.images) host.insertImageMarker(image, host.state.input.length);
+	host.state.focused = true;
+	host.appendCommandTurn("/rewind", [
+		"Rewound to before the selected message. Files are unchanged; use /undo to restore them.",
+		...result.warnings,
+	]);
+	host.render();
 }
 
 /** /compact:立即压缩一轮上下文。 */
@@ -461,34 +605,7 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 		return;
 	}
 
-	const state = host.state;
-	state.turns.length = 0;
-	for (const turn of result.history) {
-		state.turns.push({ prompt: turn.prompt, response: [...turn.response] });
-	}
-	// 任务表与计划都属于会话:随历史一起换成新会话的内容
-	state.currentTodo = result.todo;
-	state.latestPlan = result.plan;
-	state.pendingPlan = undefined;
-	// Ctrl+G 的目标指向旧会话的工具行，留着只会打开一段已经不在界面上的内容
-	state.viewerTool = undefined;
-	state.selection = undefined;
-	if (state.openPage === "plan") closePlanReview(state);
-	else state.planReview = undefined;
-	host.closeCheckpointPage();
-	markTranscriptDirty(state);
-	state.initialScroll = false;
-	state.scrollTop = 0;
-	state.follow = true;
-	state.hasInput = state.turns.length > 0;
-	// 上一个会话留下的状态/错误不该跟着出现在新会话里
-	host.clearStatus();
-	// 排队消息是发给旧会话的，换会话后没有意义
-	state.queued.length = 0;
-	state.fileMenu = undefined;
-	state.fileFiles = undefined;
-	state.fileIndexStart = undefined;
-	host.clearAttachments();
+	applyConversation(host, result);
 	if (forking) {
 		const origin = result.fork?.sourceId ?? id;
 		const copied = result.fork?.copied ?? 0;

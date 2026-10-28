@@ -169,7 +169,7 @@ export function startShellProcess(input: StartShellProcessInput): ShellProcess {
 		output: () => ({ text: collector.text(), overflowed: collector.overflowed }),
 		overflowed: () => collector.overflowed,
 		wait: () => waitForExit(child),
-		kill: () => killTree(child),
+		kill: () => killProcessTree(child),
 	};
 }
 
@@ -218,7 +218,7 @@ class OutputCollector {
  * 命令输出会进入模型上下文：颜色码与光标控制对模型没有意义，二进制控制字符还可能破坏
  * 界面与统计。制表、换行、回车保留，它们是正文的一部分。
  */
-function sanitizeOutput(text: string): string {
+export function sanitizeOutput(text: string): string {
 	return stripVTControlCharacters(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "");
 }
 
@@ -236,7 +236,7 @@ function waitForExit(child: ChildProcess): Promise<ShellExit> {
 }
 
 /** 连同命令带出来的子进程一起结束。只杀直接子进程会留下孤儿进程继续占着端口或文件。 */
-function killTree(child: ChildProcess): void {
+export function killProcessTree(child: ChildProcess): void {
 	if (child.pid === undefined) return;
 	if (process.platform === "win32") {
 		// 用 System32 下的绝对路径，避免 PATH 上有同名程序时杀错东西

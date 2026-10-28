@@ -4,9 +4,9 @@ import { resolveToolPath, writeScope } from "../path.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import type { ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
-import { formatEditDiff, type AppliedEdit } from "./diff.ts";
 import { withFileMutation } from "./mutation-queue.ts";
 import { decodeTextFile, encodeTextFile } from "../text-file.ts";
+import { planTextEdits, type EditEntry } from "./text-edits.ts";
 
 /**
  * 精确修改文件。
@@ -39,11 +39,6 @@ const PARAMETERS = {
 	},
 	required: ["path", "edits"],
 } as const satisfies JsonSchema;
-
-interface EditEntry {
-	readonly oldText: string;
-	readonly newText: string;
-}
 
 type EditArgs = {
 	readonly path: string;
@@ -104,40 +99,9 @@ export const editTool: ToolDefinition<EditArgs> = {
 				};
 			}
 			const original = file.text;
-			if (args.edits.length === 0) {
-				return { content: "At least one edit is required", isError: true };
-			}
-
-			const located: (AppliedEdit & { readonly source: number })[] = [];
-			for (const [position, edit] of args.edits.entries()) {
-				const start = locateEdit(original, edit, position);
-				if (typeof start === "string") return { content: start, isError: true };
-				located.push({
-					start,
-					end: start + edit.oldText.length,
-					newText: edit.newText,
-					source: position + 1,
-				});
-			}
-
-			located.sort((left, right) => left.start - right.start);
-			for (let index = 1; index < located.length; index += 1) {
-				if (located[index].start < located[index - 1].end) {
-					// 报原始序号：模型按自己给的顺序去找这两条，排序后的位置对它没有意义
-					return {
-						content:
-							`Edits ${located[index - 1].source} and ${located[index].source} overlap and cannot be applied together. ` +
-							"Merge them into one edit, or make the fragments disjoint.",
-						isError: true,
-					};
-				}
-			}
-
-			// 从后往前替换：靠前的偏移因此不受影响，不必重新计算位置
-			let updated = original;
-			for (const edit of [...located].reverse()) {
-				updated = `${updated.slice(0, edit.start)}${edit.newText}${updated.slice(edit.end)}`;
-			}
+			const planned = planTextEdits(original, args.edits);
+			if (!planned.ok) return { content: planned.error, isError: true };
+			const { updated, located, diff } = planned.plan;
 
 			if (updated === original) {
 				return { content: `${displayPath} is unchanged`, details: { path: displayPath, changed: false } };
@@ -149,7 +113,6 @@ export const editTool: ToolDefinition<EditArgs> = {
 				return { content: `Failed to write ${displayPath}: ${describeError(error)}`, isError: true };
 			}
 
-			const diff = formatEditDiff(original, updated, located);
 			return {
 				content: `Updated ${displayPath}: ${located.length} edits applied\n\n${diff}`,
 				details: {
@@ -162,30 +125,4 @@ export const editTool: ToolDefinition<EditArgs> = {
 		});
 	},
 };
-
-/**
- * 定位一条修改,返回它在原文中的起点或拒绝理由。
- *
- * oldText 为空必须拒绝：`indexOf("")` 恒为 0，放过去会变成「在文件开头插入」，而使用者的
- * 本意绝不是这个。
- */
-function locateEdit(original: string, edit: EditEntry, position: number): number | string {
-	if (edit.oldText.length === 0) {
-		return `Edit ${position + 1} has an empty oldText. To delete content, set oldText to the text to delete and leave newText empty.`;
-	}
-
-	const first = original.indexOf(edit.oldText);
-	if (first === -1) {
-		return `Edit ${position + 1}: oldText was not found in the file. Use read to check the exact content and indentation.`;
-	}
-
-	const second = original.indexOf(edit.oldText, first + 1);
-	if (second !== -1) {
-		return (
-			`Edit ${position + 1}: oldText appears more than once in the file, so the target is ambiguous. ` +
-			"Extend oldText with enough context to make it unique."
-		);
-	}
-	return first;
-}
 

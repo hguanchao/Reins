@@ -221,8 +221,65 @@ export function openSessionMenu(host: TuiHost): void {
 	}
 
 	const current = items.findIndex((item) => item.current);
-	host.state.sessionMenu = { items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
+	host.state.sessionMenu = { kind: "sessions", items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
 	
+	host.render();
+}
+
+/** /branches:列出当前会话的全部分支末尾。 */
+export function openBranchMenu(host: TuiHost): void {
+	const source = host.options.conversation;
+	if (source === undefined) return;
+
+	closeAllMenus(host);
+	let items: readonly SessionMenuItem[];
+	try {
+		items = source.branches();
+	} catch (error) {
+		host.setInput("");
+		host.state.follow = true;
+		host.appendCommandTurn("/branches", [
+			{ kind: "error", text: `Error: Failed to list branches: ${describeError(error)}` },
+		]);
+		return;
+	}
+	if (items.length === 0) {
+		host.setInput("");
+		host.state.follow = true;
+		host.appendCommandTurn("/branches", ["This session has no branches yet."]);
+		return;
+	}
+
+	const current = items.findIndex((item) => item.current);
+	host.state.sessionMenu = { kind: "branches", items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
+	host.render();
+}
+
+/** /rewind:列出当前路径上的用户消息,从新到旧。 */
+export function openRewindMenu(host: TuiHost): void {
+	const source = host.options.conversation;
+	if (source === undefined) return;
+
+	closeAllMenus(host);
+	let items: readonly SessionMenuItem[];
+	try {
+		items = source.messages();
+	} catch (error) {
+		host.setInput("");
+		host.state.follow = true;
+		host.appendCommandTurn("/rewind", [
+			{ kind: "error", text: `Error: Failed to list messages: ${describeError(error)}` },
+		]);
+		return;
+	}
+	if (items.length === 0) {
+		host.setInput("");
+		host.state.follow = true;
+		host.appendCommandTurn("/rewind", ["There are no messages to rewind to."]);
+		return;
+	}
+
+	host.state.sessionMenu = { kind: "rewind", items, cursor: 0, scrollTop: 0 };
 	host.render();
 }
 
@@ -238,12 +295,21 @@ export function confirmSessionMenu(host: TuiHost): void {
 	if (menu === undefined) return;
 
 	const item = menu.items[menu.cursor];
+	const kind = menu.kind ?? "sessions";
 	closeAllMenus(host);
 	host.setInput("");
 
-	// 选中的就是当前会话：关掉面板即可，不必重放一遍历史
+	// 选中的就是当前会话/当前分支：关掉面板即可，不必重放一遍历史
 	if (item === undefined || item.current) {
 		host.render();
+		return;
+	}
+	if (kind === "branches") {
+		host.switchBranch(item.id);
+		return;
+	}
+	if (kind === "rewind") {
+		host.rewindTo(item.id);
 		return;
 	}
 	host.switchSession(item.id);
@@ -253,6 +319,7 @@ export function confirmSessionMenu(host: TuiHost): void {
 export function forkSelectedSession(host: TuiHost): void {
 	const menu = host.state.sessionMenu;
 	if (menu === undefined) return;
+	if ((menu.kind ?? "sessions") !== "sessions") return;
 
 	const item = menu.items[menu.cursor];
 	closeAllMenus(host);
@@ -269,6 +336,12 @@ export function completeSessionMenu(host: TuiHost): void {
 	const menu = host.state.sessionMenu;
 	const item = menu?.items[menu.cursor];
 	if (item === undefined) return;
+
+	// 分支与历史没有可补全的命令文本；Tab 直接当成确认，避免面板看起来没有反应
+	if ((menu?.kind ?? "sessions") !== "sessions") {
+		confirmSessionMenu(host);
+		return;
+	}
 
 	closeAllMenus(host);
 	host.setInput(`/session ${item.id}`);

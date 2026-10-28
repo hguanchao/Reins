@@ -76,6 +76,8 @@ import {
 	executeCommand,
 	leavePlan,
 	revisePlan,
+	rewindTo,
+	switchBranch,
 	switchSession,
 } from "./runtime/commands.ts";
 import {
@@ -232,6 +234,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		completeSessionMenu: () => completeSessionMenu(host),
 		cancelSessionMenu: () => cancelSessionMenu(host),
 		forkSelectedSession: () => forkSelectedSession(host),
+		switchBranch: (id) => switchBranch(host, id),
+		rewindTo: (id) => rewindTo(host, id),
 		moveCommandMenu: (delta) => moveCommandMenu(host, delta),
 		moveFileMenu: (delta) => moveFileMenu(host, delta),
 		executeCommand: (command, args) => executeCommand(host, command, args),

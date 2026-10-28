@@ -143,6 +143,35 @@ describe("JSONL 会话文件", () => {
 		assert.equal(typeof listing[0]!.updatedAt, "string");
 	});
 
+	it("list 的标题取当前分支的第一条用户消息", () => {
+		const dir = workdir("branch-title");
+		const file = join(dir, "branch.jsonl");
+		const store = new JsonlSessionStore();
+		const writer = store.create({ id: "b", cwd: dir, file });
+		writer.write(entry("m1", "old topic"));
+		writer.write({
+			type: "message",
+			id: "m2",
+			parentId: "m1",
+			timestamp: T,
+			message: { role: "user", content: "old follow-up" },
+		});
+		// 回到空会话后重新开始：文件里第一条用户消息仍属于旧分支
+		writer.write({ type: "branch", id: "br", parentId: null, timestamp: T, reason: "rewind" });
+		writer.write({
+			type: "message",
+			id: "m3",
+			parentId: "br",
+			timestamp: T,
+			message: { role: "user", content: "new topic" },
+		});
+		writer.end();
+
+		const listing = store.list(dir);
+		assert.equal(listing[0]!.title, "new topic");
+		assert.equal(listing[0]!.entryCount, 4);
+	});
+
 	it("不存在的目录 list 返回空", () => {
 		const dir = workdir("absent");
 		assert.deepEqual(new JsonlSessionStore().list(join(dir, "nothing-here")), []);
@@ -241,6 +270,17 @@ describe("会话条目的字段校验", () => {
 		const parsed = parseSessionText(bad.map((entry) => JSON.stringify(entry)).join("\n"));
 		assert.equal(parsed.entries.length, 0);
 		assert.equal(parsed.skippedLines, 5);
+	});
+
+	it("分支标记按 reason 校验", () => {
+		const good = { type: "branch", id: "b", parentId: "a", timestamp: T, reason: "switch" };
+		const parsed = parseSessionText(`${JSON.stringify(good)}\n`);
+		assert.equal(parsed.entries.length, 1);
+		assert.equal(parsed.skippedLines, 0);
+
+		const bad = parseSessionText(`${JSON.stringify({ ...good, reason: "other" })}\n`);
+		assert.equal(bad.entries.length, 0);
+		assert.equal(bad.skippedLines, 1);
 	});
 
 	it("会话头缺 id 或版本号按坏行拒收", () => {

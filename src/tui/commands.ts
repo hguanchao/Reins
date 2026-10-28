@@ -63,6 +63,24 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 			hidden: true,
 		},
 		{
+			name: "rewind",
+			description:
+				options.conversation === undefined
+					? "Conversation history is unavailable"
+					: "Go back to an earlier message and edit it",
+			enabled: options.conversation !== undefined,
+			hidden: options.conversation === undefined,
+		},
+		{
+			name: "branches",
+			description:
+				options.conversation === undefined
+					? "Conversation history is unavailable"
+					: "Switch between conversation branches",
+			enabled: options.conversation !== undefined,
+			hidden: options.conversation === undefined,
+		},
+		{
 			name: "help",
 			description: "Show the commands and keys",
 			enabled: true,

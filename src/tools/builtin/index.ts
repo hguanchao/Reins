@@ -1,10 +1,12 @@
 import type { AnyToolDefinition } from "../contract.ts";
 import { createJobOutputTool, createKillJobTool, type JobManager } from "../jobs.ts";
+import { createTerminalTools, type TerminalManager } from "../terminal.ts";
 import { createBashTool } from "./bash.ts";
 import { editTool } from "./edit.ts";
 import { findTool } from "./find.ts";
 import { grepTool } from "./grep.ts";
 import { lsTool } from "./ls.ts";
+import { patchTool } from "./patch.ts";
 import { presentPlanTool } from "./plan.ts";
 import { readTool } from "./read.ts";
 import { todoTool } from "./todo.ts";
@@ -20,13 +22,19 @@ import { writeTool } from "./write.ts";
  * 常规手段，缺了之后每一轮都得绕远路。它们与其余核心工具一样，不可被插件替换。
  */
 export function createCoreTools(
-	options: { readonly shellPath?: string; readonly jobs?: JobManager } = {},
+	options: {
+		readonly shellPath?: string;
+		readonly jobs?: JobManager;
+		readonly terminals?: TerminalManager;
+	} = {},
 ): readonly AnyToolDefinition[] {
 	return [
 		readTool,
 		writeTool,
 		editTool,
+		patchTool,
 		createBashTool(options.shellPath, options.jobs),
+		...(options.terminals === undefined ? [] : createTerminalTools(options.terminals)),
 		todoTool,
 		presentPlanTool,
 		lsTool,
@@ -38,4 +46,4 @@ export function createCoreTools(
 	];
 }
 
-export { createBashTool, editTool, findTool, grepTool, lsTool, presentPlanTool, readTool, todoTool, writeTool };
+export { createBashTool, editTool, findTool, grepTool, lsTool, patchTool, presentPlanTool, readTool, todoTool, writeTool };

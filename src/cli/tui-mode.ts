@@ -1,4 +1,5 @@
 import { describeError } from "../shared/describe-error.ts";
+import { firstLine } from "../shared/format.ts";
 import { CheckpointService } from "../checkpoint/service.ts";
 import type { AgentEventListener } from "../agent/events.ts";
 import {
@@ -15,21 +16,27 @@ import {
 } from "../config/paths.ts";
 import { applyLiveConfig, diffConfig } from "../config/reload.ts";
 import { lastContextTokens } from "../session/usage.ts";
+import { currentPathOf, leavesOf, pathTo } from "../session/tree.ts";
+import type { SessionEntry, SessionMessageEntry } from "../session/port.ts";
+import { userImages, userText, type LlmUserMessage } from "../llm/messages.ts";
 import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
 import { ApprovalBroker } from "../permission/approval.ts";
 import type { McpStatusSource } from "../mcp/service.ts";
 import { Session } from "../session/session.ts";
 import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
 import { imageBlock, type ImageAttachment } from "../tui/image.ts";
-import { buildTranscriptHistory } from "../tui/transcript/history.ts";
+import { buildTranscriptHistory, SUMMARY_PREFIX } from "../tui/transcript/history.ts";
 import { runTui } from "../tui/layout.ts";
 import type {
 	ApprovalModeSource,
 	CheckpointSource,
+	ConversationSource,
 	PlanModeSource,
 	SessionMenuSource,
+	SessionSwitchResult,
 } from "../tui/options.ts";
 import { JobManager } from "../tools/jobs.ts";
+import { TerminalManager } from "../tools/terminal.ts";
 import { fileEntries } from "../workspace/walk.ts";
 import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { recordTrust } from "../workspace/trust.ts";
@@ -61,6 +68,47 @@ import type { CliOptions } from "./args.ts";
 
 /** @ 补全一次最多索引的文件数；只影响补全，不影响 find/grep 自己的遍历上限。 */
 const MAX_FILE_COMPLETION_FILES = 20_000;
+
+type UserEntry = SessionMessageEntry & { readonly message: LlmUserMessage };
+
+/** 分支标题与回退列表只关心使用者说过的话。 */
+function isUserEntry(entry: SessionEntry): entry is UserEntry {
+	return entry.type === "message" && entry.message.role === "user";
+}
+
+/** 压缩摘要不是使用者说的话，回退列表里不该出现。 */
+function isSummaryEntry(entry: UserEntry): boolean {
+	return userText(entry.message).startsWith(SUMMARY_PREFIX);
+}
+
+/** 把消息里的图片还原成可重新发送的附件；字节数从 base64 反算。 */
+function imageAttachmentsOf(message: LlmUserMessage): readonly ImageAttachment[] {
+	return userImages(message).map((image) => ({
+		name: image.name ?? "image",
+		mimeType: image.mimeType,
+		data: image.data,
+		bytes: Buffer.byteLength(image.data, "base64"),
+	}));
+}
+
+/** 列表里的一行标题：控制字符压成空格，过长截断。 */
+function messageTitle(message: LlmUserMessage): string {
+	const text = userText(message).trim();
+	if (text.length > 0) return sessionTitle(firstLine(text, 60));
+	return userImages(message).length > 0 ? "[image]" : "(empty message)";
+}
+
+/** 当前会话的一段历史；切换分支与回退共用同一份重放规则。 */
+function conversationResult(session: Session, workRoot: string): SessionSwitchResult {
+	const history = buildTranscriptHistory(session.state().messages, workRoot);
+	return {
+		changed: true,
+		history: history.turns,
+		...(history.todo === undefined ? {} : { todo: history.todo }),
+		...(history.plan === undefined ? {} : { plan: history.plan }),
+		warnings: [],
+	};
+}
 
 /**
  * 启动全屏界面。
@@ -159,12 +207,14 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	/** MCP 连接清单由插件装载时交过来；插件缺席时保持 undefined，/mcps 也随之不可用。 */
 	let mcpStatus: McpStatusSource | undefined;
 	const jobs = new JobManager({ shellPath: config.shellPath });
+	const terminals = new TerminalManager({ shellPath: config.shellPath });
 	const pipeline = await assemblePipeline({
 		config,
 		workRoot,
 		policy,
 		gate,
 		jobs,
+		terminals,
 		onMcpStatus: (source) => {
 			mcpStatus = source;
 		},
@@ -609,6 +659,64 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 					},
 				};
 
+	/**
+	 * 当前会话的分支与历史。
+	 *
+	 * 分支列表来自会话树里的叶子，历史列表只取当前路径上的用户消息。切换与回退都通过追加
+	 * 分支标记完成，旧分支原样留在文件里，之后还能切回来。
+	 */
+	const conversation: ConversationSource | undefined =
+		store === undefined
+			? undefined
+			: {
+					branches: () => {
+						const entries = activeSession.entries();
+						return leavesOf(entries).map((leaf) => {
+							const path = pathTo(entries, leaf.id);
+							const lastUser = [...path].reverse().find(isUserEntry);
+							return {
+								id: leaf.id,
+								title: lastUser === undefined ? "(no messages)" : messageTitle(lastUser.message),
+								time: sessionAge(leaf.timestamp),
+								current: leaf.id === activeSession.leafId,
+							};
+						});
+					},
+					selectBranch: (id) => {
+						if (id === activeSession.leafId) return { changed: false, history: [], warnings: [] };
+						activeSession.switchTo(id);
+						return conversationResult(activeSession, workRoot);
+					},
+					messages: () => {
+						const path = currentPathOf(activeSession.entries())
+							.filter(isUserEntry)
+							.filter((entry) => !isSummaryEntry(entry));
+						return path
+							.map((entry, index) => ({ entry, turn: index + 1 }))
+							.reverse()
+							.map(({ entry, turn }) => ({
+								id: entry.id,
+								title: `#${turn} ${messageTitle(entry.message)}`,
+								time: sessionAge(entry.timestamp),
+								current: false,
+							}));
+					},
+					rewind: (id) => {
+						const path = currentPathOf(activeSession.entries());
+						const index = path.findIndex((entry) => entry.id === id);
+						const entry = index < 0 ? undefined : path[index];
+						if (entry === undefined || !isUserEntry(entry)) {
+							throw new Error("That message is not on the current branch");
+						}
+						activeSession.rewindBefore(index === 0 ? null : path[index - 1]!.id);
+						return {
+							...conversationResult(activeSession, workRoot),
+							prompt: userText(entry.message),
+							images: imageAttachmentsOf(entry.message),
+						};
+					},
+				};
+
 	try {
 		const code = await runTui({
 			version: readVersion(),
@@ -619,6 +727,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			skills: skillsPage,
 			mcpServers: mcpStatus === undefined ? undefined : mcpServerRows,
 			sessionMenu,
+			conversation,
 			agent: { runTurn, compact, refreshInfo },
 			approval: approvals,
 			approvalMode,
@@ -656,6 +765,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 		return 1;
 	} finally {
 		jobs.shutdown();
+		terminals.shutdown();
 		await activeSession.close();
 	}
 }

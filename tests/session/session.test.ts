@@ -64,6 +64,15 @@ function userEntry(id: string, text: string): SessionEntry {
 	return { type: "message", id, parentId: null, timestamp: T, message: { role: "user", content: text } };
 }
 
+/** 当前路径上的用户消息正文；分支测试只关心这一列。 */
+function contents(session: Session): readonly string[] {
+	return session
+		.state()
+		.messages.map((message) =>
+			message.role === "user" && typeof message.content === "string" ? message.content : "",
+		);
+}
+
 describe("会话对象", () => {
 	it("内存会话:追加与折叠状态", async () => {
 		const session = new Session({ id: "m", cwd: "/", file: null });
@@ -169,6 +178,79 @@ describe("会话对象", () => {
 		assert.equal(final.entryCount, 2);
 		assert.deepEqual(final.state().messages.map((message) => ("content" in message ? message.content : "")), ["opening", "follow-up"]);
 		rmSync(DIR, { recursive: true, force: true });
+	});
+
+	it("rewindBefore 只追加分支标记，当前路径回到目标之前", async () => {
+		const dir = DIR + "-rewind";
+		mkdirSync(dir, { recursive: true });
+		const store = new JsonlSessionStore();
+		const file = join(dir, "rewind.jsonl");
+		const session = new Session({ id: "rw", cwd: dir, file, writer: store.create({ id: "rw", cwd: dir, file }) });
+
+		await session.append({ type: "message", message: { role: "user", content: "one" } });
+		const first = session.leafId;
+		await session.append({ type: "message", message: { role: "user", content: "two" } });
+		const second = session.leafId;
+		assert.ok(first !== null && second !== null);
+
+		session.rewindBefore(first);
+		assert.deepEqual(contents(session), ["one"]);
+		// 旧消息一条都没删，分支标记只是接在第一条后面
+		assert.equal(session.entryCount, 3);
+		assert.notEqual(session.leafId, second);
+
+		await session.append({ type: "message", message: { role: "user", content: "replacement" } });
+		assert.deepEqual(contents(session), ["one", "replacement"]);
+		await session.close();
+
+		// 重启后仍停在最后写下的那条分支上
+		const resumed = Session.open(file, store);
+		assert.deepEqual(contents(resumed), ["one", "replacement"]);
+		await resumed.close();
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("rewindBefore(null) 回到空会话，之后可以重新开始", async () => {
+		const session = new Session({ id: "empty", cwd: "/", file: null });
+		await session.append({ type: "message", message: { role: "user", content: "gone" } });
+		session.rewindBefore(null);
+		assert.deepEqual(contents(session), []);
+
+		await session.append({ type: "message", message: { role: "user", content: "fresh" } });
+		assert.deepEqual(contents(session), ["fresh"]);
+		await session.close();
+	});
+
+	it("switchTo 切到另一条分支末尾，旧分支仍可切回", async () => {
+		const session = new Session({ id: "switch", cwd: "/", file: null });
+		await session.append({ type: "message", message: { role: "user", content: "one" } });
+		const first = session.leafId;
+		await session.append({ type: "message", message: { role: "user", content: "two" } });
+		const second = session.leafId;
+		assert.ok(first !== null && second !== null);
+
+		session.rewindBefore(first);
+		await session.append({ type: "message", message: { role: "user", content: "replacement" } });
+		const replacement = session.leafId;
+		assert.ok(replacement !== null);
+
+		session.switchTo(second);
+		assert.deepEqual(contents(session), ["one", "two"]);
+		await session.append({ type: "message", message: { role: "user", content: "three" } });
+		assert.deepEqual(contents(session), ["one", "two", "three"]);
+
+		session.switchTo(replacement);
+		assert.deepEqual(contents(session), ["one", "replacement"]);
+		await session.close();
+	});
+
+	it("回退与切换的目标不存在时拒绝，状态不变", async () => {
+		const session = new Session({ id: "bad", cwd: "/", file: null });
+		await session.append({ type: "message", message: { role: "user", content: "keep" } });
+		assert.throws(() => session.rewindBefore("missing"), /Session has no entry/);
+		assert.throws(() => session.switchTo("missing"), /Session has no entry/);
+		assert.deepEqual(contents(session), ["keep"]);
+		await session.close();
 	});
 
 	it("版本不匹配的文件拒绝接续", () => {
