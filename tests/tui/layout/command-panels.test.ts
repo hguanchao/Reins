@@ -1077,7 +1077,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 只补出模型命令，回车才打开面板", async () => {
+	it("命令补全里 Tab 补出模型命令并打开面板", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -1101,12 +1101,9 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("\t"));
 
 			assert.equal(calls, 0);
-			let lines = frameLines(output).map(plain);
+			const lines = frameLines(output).map(plain);
 			assert.ok(lines.some((line) => line === " › /model "));
-			assert.equal(lines.some((line) => line.includes("fengshao/deepseek-v4.1-flash")), false);
-
-			input.emit("data", Buffer.from("\r"));
-			lines = frameLines(output).map(plain);
+			// Tab 补全直接进入二级面板，不必再按一次回车
 			assert.ok(lines.some((line) => line.includes("fengshao/deepseek-v4.1-flash")));
 		} finally {
 			exitTui(input);
@@ -1115,7 +1112,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 只补出思考命令，回车才打开面板", async () => {
+	it("命令补全里 Tab 补出思考命令并打开面板", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -1134,12 +1131,8 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/effort"));
 			input.emit("data", Buffer.from("\t"));
 
-			let text = frameLines(output).map(plain).join("\n");
+			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes(" › /effort "));
-			assert.equal(text.includes("xhigh"), false);
-
-			input.emit("data", Buffer.from("\r"));
-			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("xhigh"));
 			assert.ok(text.includes("› medium"));
 		} finally {
@@ -1406,7 +1399,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("命令补全里 Tab 只补出会话命令，回车才打开菜单", async () => {
+	it("命令补全里 Tab 补出会话命令并打开菜单", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		output.columns = 80;
@@ -1425,12 +1418,9 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/session"));
 			input.emit("data", Buffer.from("\t"));
 
-			let text = frameLines(output).map(plain).join("\n");
+			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes(" › /session "));
-			assert.equal(text.includes("Fix the login flow"), false);
-
-			input.emit("data", Buffer.from("\r"));
-			text = frameLines(output).map(plain).join("\n");
+			// Tab 补全直接进入会话菜单
 			assert.ok(text.includes("Fix the login flow"));
 			assert.ok(text.includes("Write the release notes"));
 		} finally {

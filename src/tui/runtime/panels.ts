@@ -387,12 +387,12 @@ export function updateCommandMenu(host: TuiHost): void {
 }
 
 /**
- * Tab 或点击命令补全项：把选中命令补进输入框，不执行。
+ * 命令补全项：把选中命令补进输入框。
  *
- * 补完就收起面板；执行统一交给回车。有参数的命令由使用者继续输入参数，
- * 第二次回车才真正执行。
+ * Tab 补全时顺带打开有二级面板的命令（模型、思考等级、会话），使用者不必再按一次
+ * 回车；鼠标点击只回填、不执行，避免点一下就把面板弹出来。其余命令补完后仍由回车执行。
  */
-export function completeCommandMenu(host: TuiHost): void {
+export function completeCommandMenu(host: TuiHost, openSubmenu = false): void {
 	const state = host.state;
 	const menu = state.commandMenu;
 	const chosen = menu?.items[menu.cursor];
@@ -400,6 +400,11 @@ export function completeCommandMenu(host: TuiHost): void {
 
 	host.setInput(`/${chosen.name} `);
 	state.commandMenu = undefined;
+	if (openSubmenu) {
+		if (chosen.name === "model") openModelMenu(host);
+		else if (chosen.name === "effort") openEffortMenu(host);
+		else if (chosen.name === "session") openSessionMenu(host);
+	}
 	host.render();
 }
 

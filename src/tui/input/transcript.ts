@@ -236,7 +236,7 @@ export function handleTranscriptInput(
 			return;
 		}
 		if (key === "tab") {
-			completeCommandMenu(host);
+			completeCommandMenu(host, true);
 			return;
 		}
 		if (key === "escape") {
