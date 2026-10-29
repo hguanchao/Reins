@@ -411,9 +411,9 @@ export function handleTranscriptInput(
 		state.commandMenuDismissed = false;
 		state.fileMenuDismissed = false;
 	}
-	// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
-	// 命令补全面板相反，跟着新输入继续过滤
-	if (edit.text !== previous && host.modalMenuOpen()) {
+	// 去掉尾随空白后内容才真正变化时才收起选择面板：命令名后的空格只是分隔符，
+	// 多敲一个空格不该把已经打开的二级菜单关掉。命令补全面板相反，跟着新输入继续过滤
+	if (edit.text.trimEnd() !== previous.trimEnd() && host.modalMenuOpen()) {
 		state.modelMenu = undefined;
 		state.effortMenu = undefined;
 		state.sessionMenu = undefined;

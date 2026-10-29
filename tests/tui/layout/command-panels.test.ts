@@ -1180,6 +1180,41 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("命令名后连续空格不会收起二级菜单", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/session"));
+			input.emit("data", Buffer.from(" "));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Fix the login flow"));
+
+			// 多敲一个空格只是分隔符，菜单不该消失
+			input.emit("data", Buffer.from(" "));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Fix the login flow"));
+
+			// 输入真正的字符才收起面板
+			input.emit("data", Buffer.from("x"));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("Fix the login flow"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("会话菜单按 Tab 只补全，回车才切换并替换对话流", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -1454,13 +1489,16 @@ describe("命令补全与选择面板", () => {
 
 		try {
 			input.emit("data", Buffer.from("/model\r"));
+			// 第一次退格只删掉尾随空格，面板继续开着
 			input.emit("data", Buffer.from("\x7f"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("fengshao/"));
 
+			// 第二次退格删到命令名，面板才收起
+			input.emit("data", Buffer.from("\x7f"));
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
 			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
-			// 命令名后带一个空格；退格删掉空格，命令名本身仍在
-			assert.ok(lines.some((line) => line === " › /model"));
+			assert.ok(lines.some((line) => line === " › /mode"));
 		} finally {
 			exitTui(input);
 		}
