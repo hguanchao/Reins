@@ -246,9 +246,13 @@ describe("页脚输入框", () => {
 		assert.ok(plain(lines[5] ?? "").includes("📊 1M / 1M"));
 	});
 
-	it("输入超出宽度时保留尾部", () => {
+	it("输入超出宽度时自动换行，不再截断尾部", () => {
 		const lines = renderFooter(5, "abcdef", true);
-		assert.equal(plain(lines[3]), " › f");
+		// 每个可见行只放得下一个字符，六行正好显示完整输入
+		assert.deepEqual(
+			lines.slice(3, 9).map((line) => plain(line)),
+			[" › a", "   b", "   c", "   d", "   e", "   f"],
+		);
 	});
 
 	it("菜单打开时使用紧凑页脚，去掉空白与状态行", () => {
@@ -266,7 +270,11 @@ describe("页脚输入框", () => {
 
 	it("宽字符按两列计算，不留下半个字", () => {
 		const lines = renderFooter(6, "你好世界", true);
-		assert.equal(plain(lines[3]), " › 界");
+		// 每行正文只有两列，正好放一个汉字；四个字各占一行，不会被切成半个
+		assert.deepEqual(
+			lines.slice(3, 7).map((line) => plain(line)),
+			[" › 你", "   好", "   世", "   界"],
+		);
 	});
 
 	it("有运行时状态时显示加载符号与文字", () => {
@@ -416,6 +424,54 @@ describe("页脚输入框", () => {
 		assert.equal(lines.length, FOOTER_HEIGHT + 1);
 		assert.equal(plain(lines[3] ?? ""), " › abc");
 		assert.equal(plain(lines[4] ?? ""), "   def");
+	});
+
+	it("超宽输入自动软换行，不再横向滚动", () => {
+		const view = inputView("abcdefgh", 8);
+		assert.deepEqual(
+			view.lines.map((line) => `${line.prefix}${line.text}`),
+			[" › abcd", "   efgh"],
+		);
+		assert.equal(view.row, 1);
+		assert.equal(view.column, 8);
+	});
+
+	it("软换行不把宽字符切成两半", () => {
+		const view = inputView("你好世界", 8);
+		assert.deepEqual(
+			view.lines.map((line) => line.text),
+			["你好", "世界"],
+		);
+		assert.equal(view.row, 1);
+	});
+
+	it("光标正好在换行处时显示在下一行行首", () => {
+		const view = inputView("abcdef", 7, 3);
+		assert.deepEqual(
+			view.lines.map((line) => line.text),
+			["abc", "def"],
+		);
+		assert.equal(view.row, 1);
+		assert.equal(view.column, 4);
+	});
+
+	it("软换行超过可见行数时围绕光标滚动", () => {
+		const view = inputView("abcdefghij", 5);
+		assert.equal(view.lines.length, 6);
+		assert.deepEqual(
+			view.lines.map((line) => line.text),
+			["e", "f", "g", "h", "i", "j"],
+		);
+		assert.equal(view.row, 5);
+	});
+
+	it("显式换行与软换行混排时续行前缀对齐", () => {
+		const view = inputView("abcdefg\nxy", 8, 9);
+		assert.deepEqual(
+			view.lines.map((line) => `${line.prefix}${line.text}`),
+			[" › abcd", "   efg", "   xy"],
+		);
+		assert.equal(view.row, 2);
 	});
 
 	it("光标列跟着提示符和可见文字走", () => {

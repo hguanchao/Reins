@@ -30,7 +30,7 @@ interface InputView {
 	readonly text: string;
 	/** 光标所在列，从 1 起算 */
 	readonly column: number;
-	/** 可见的输入行（多行粘贴时可能多于一行） */
+	/** 可见的输入行：显式换行与软换行都会增加行数 */
 	readonly lines: readonly InputLine[];
 	/** 光标在 lines 里的下标 */
 	readonly row: number;
@@ -124,7 +124,7 @@ interface FooterLayout {
 	readonly queued?: readonly string[];
 }
 
-/** 多行输入最多同时显示几行，再多就围绕光标滚动。 */
+/** 输入最多同时显示几行（显式换行与软换行都算），再多就围绕光标滚动。 */
 const MAX_VISIBLE_INPUT_LINES = 6;
 
 /** 左侧留一列缩进，再放提示符，提示符与正文之间留一列。 */
@@ -154,8 +154,9 @@ const CACHE_ICON = "⚡";
 /**
  * 输入行的可见部分与光标列。
  *
- * 支持显式换行：多行粘贴后每行单独显示，最多同时显示 MAX_VISIBLE_INPUT_LINES 行，围绕
- * 光标滚动。光标所在行会横向滚动，保证光标始终可见。
+ * 支持两种换行：显式换行（Alt+Enter、多行粘贴）按 \n 分行；单个逻辑行超过可用宽度时按
+ * 显示宽度软换行，字素簇（宽字符、组合序列、emoji）不会被切到两行。最多同时显示
+ * MAX_VISIBLE_INPUT_LINES 行，围绕光标滚动，光标始终落在可见区内。
  */
 export function inputView(
 	input: string,
@@ -175,87 +176,108 @@ export function inputView(
 	}
 	offset = Math.min(offset, logical[lineIndex]?.length ?? 0);
 
-	const start = Math.max(0, Math.min(lineIndex, logical.length - 1) - (MAX_VISIBLE_INPUT_LINES - 1));
-	const visible = logical.slice(start, start + MAX_VISIBLE_INPUT_LINES);
-
+	const lines: InputLine[] = [];
 	let cursorLine: InputLine = { prefix: "", text: "" };
+	let cursorRow = 0;
 	let cursorWidth = 0;
 	let cursorPrefixWidth = 0;
 
-	const lines = visible.map((text, index) => {
-		const logicalIndex = start + index;
-		const prefix = truncateToWidth(
-			logicalIndex === 0 ? INPUT_PREFIX : INPUT_CONTINUATION,
-			Math.max(0, columns - 1),
-		);
-		const prefixWidth = displayWidth(prefix);
-		const textWidth = Math.max(0, columns - prefixWidth - 1);
-		// 命令只可能在输入的第一行开头，且不含换行
-		const commandChars = logicalIndex === 0 ? Math.min(commandLength, Array.from(text).length) : 0;
+	// 提示符与续行缩进等宽，正文可用宽度只需算一次；窄到放不下提示符时正文宽度为 0
+	const textWidth = Math.max(0, columns - displayWidth(INPUT_CONTINUATION) - 1);
 
-		if (logicalIndex !== lineIndex) {
-			const shown = truncateToWidth(text, textWidth);
-			return { prefix, text: shown, commandEnd: Math.min(commandChars, Array.from(shown).length) };
+	for (let index = 0; index < logical.length; index += 1) {
+		const text = logical[index] ?? "";
+		const segments = wrapLine(text, textWidth);
+		const cursorSegment = index === lineIndex ? segmentAt(segments, offset) : -1;
+
+		for (let part = 0; part < segments.length; part += 1) {
+			const segment = segments[part] as InputLineSegment;
+			// 整个输入的第一个可见行带提示符；显式换行与软换行的续行都用等宽缩进，正文对齐
+			const prefix = truncateToWidth(
+				lines.length === 0 ? INPUT_PREFIX : INPUT_CONTINUATION,
+				Math.max(0, columns - 1),
+			);
+			const prefixWidth = displayWidth(prefix);
+			// 段已经按宽度切好，再截一次只为兜住「单个字素比整行还宽」：放不下的字符只能不显示，
+			// 让它溢出会让终端自己折行，后续每一行的坐标都会错位
+			const shown = truncateToWidth(text.slice(segment.start, segment.end), textWidth);
+			// 命令只可能出现在整个输入的开头；软换行后它可能跨几行，每行各自高亮自己那段
+			const commandEnd =
+				index === 0
+					? Math.max(0, Math.min(commandLength, segment.endChar) - segment.startChar)
+					: 0;
+			const line: InputLine = { prefix, text: shown, commandEnd };
+			if (part === cursorSegment) {
+				cursorLine = line;
+				cursorRow = lines.length;
+				cursorPrefixWidth = prefixWidth;
+				cursorWidth = textWidth <= 0 ? 0 : displayWidth(text.slice(segment.start, offset));
+			}
+			lines.push(line);
 		}
+	}
 
-		const window = lineWindow(text, offset, textWidth);
-		cursorLine = { prefix, text: window.text };
-		cursorWidth = window.cursorWidth;
-		cursorPrefixWidth = prefixWidth;
-		return {
-			...cursorLine,
-			commandEnd: Math.max(0, Math.min(commandChars - window.start, Array.from(window.text).length)),
-		};
-	});
-
+	const start = Math.max(0, cursorRow - (MAX_VISIBLE_INPUT_LINES - 1));
 	return {
 		prefix: cursorLine.prefix,
 		text: cursorLine.text,
 		column: Math.min(Math.max(1, columns), cursorPrefixWidth + cursorWidth + 1),
-		lines,
-		row: lineIndex - start,
+		lines: lines.slice(start, start + MAX_VISIBLE_INPUT_LINES),
+		row: cursorRow - start,
 	};
 }
 
-/** 光标所在行的横向窗口：先保证光标之前的文字尽量完整，再向右填满。 */
-function lineWindow(
-	text: string,
-	cursorOffset: number,
-	width: number,
-): { readonly text: string; readonly cursorWidth: number; readonly start: number } {
+/** 软换行后的一段：start/end 是原行内的 UTF-16 偏移，startChar/endChar 是字素下标。 */
+interface InputLineSegment {
+	readonly start: number;
+	readonly end: number;
+	readonly startChar: number;
+	readonly endChar: number;
+}
+
+/**
+ * 把一个逻辑行按显示宽度切成若干段。
+ *
+ * 段边界只落在字素簇之间：宽字符、组合序列与 emoji 被劈开会在终端里错位。单个字素本身
+ * 比整行还宽时也让它独占一段，否则原地反复切不开。
+ */
+function wrapLine(text: string, limit: number): readonly InputLineSegment[] {
 	const chars = graphemes(text);
-	const cursorChars = graphemes(text.slice(0, cursorOffset)).length;
-	const widths = chars.map((char) => characterWidth(char));
-	const total = widths.reduce((sum, item) => sum + item, 0);
-	const cursorTotal = widths.slice(0, cursorChars).reduce((sum, item) => sum + item, 0);
+	if (limit <= 0 || chars.length === 0) {
+		return [{ start: 0, end: text.length, startChar: 0, endChar: chars.length }];
+	}
 
-	if (total <= width) return { text, cursorWidth: cursorTotal, start: 0 };
-
+	const segments: InputLineSegment[] = [];
 	let start = 0;
-	if (cursorTotal > width) {
-		let used = 0;
-		start = cursorChars;
-		while (start > 0) {
-			const charWidth = widths[start - 1] ?? 0;
-			if (used + charWidth > width) break;
-			used += charWidth;
-			start -= 1;
-		}
-	}
-
+	let startChar = 0;
 	let used = 0;
-	let end = start;
-	while (end < chars.length) {
-		const charWidth = widths[end] ?? 0;
-		if (used + charWidth > width) break;
+	let unit = 0;
+
+	for (let index = 0; index < chars.length; index += 1) {
+		const char = chars[index] ?? "";
+		const charWidth = characterWidth(char);
+		if (used + charWidth > limit && index > startChar) {
+			segments.push({ start, end: unit, startChar, endChar: index });
+			start = unit;
+			startChar = index;
+			used = 0;
+		}
 		used += charWidth;
-		end += 1;
+		unit += char.length;
 	}
 
-	const visibleCursor = widths
-		.slice(start, cursorChars)
-		.reduce((sum, item) => sum + item, 0);
-	return { text: chars.slice(start, end).join(""), cursorWidth: visibleCursor, start };
+	segments.push({ start, end: text.length, startChar, endChar: chars.length });
+	return segments;
+}
+
+/** 光标偏移落在哪一段；偏移正好在段边界上时归下一段，光标显示在下一行行首。 */
+function segmentAt(segments: readonly InputLineSegment[], offset: number): number {
+	let found = 0;
+	for (let index = 0; index < segments.length; index += 1) {
+		if ((segments[index] as InputLineSegment).start <= offset) found = index;
+		else break;
+	}
+	return found;
 }
 
 export function renderFooter(
