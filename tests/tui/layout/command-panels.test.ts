@@ -1180,6 +1180,36 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("命令名后一次输入多个空格仍打开二级菜单", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			sessionMenu: {
+				list: () => SESSION_ITEMS,
+				select: () => ({ changed: false, history: [], warnings: [] }),
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			// 快速连按空格会被终端合并成一块：不能因为不是「恰好一个空格」就丢掉面板
+			input.emit("data", Buffer.from("/session  "));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Fix the login flow"));
+
+			input.emit("data", Buffer.from("  "));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Fix the login flow"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("命令名后连续空格不会收起二级菜单", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();

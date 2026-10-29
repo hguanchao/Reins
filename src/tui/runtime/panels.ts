@@ -331,17 +331,21 @@ export function updateCommandMenu(host: TuiHost): void {
 	}
 
 	// 敲完命令名再按空格：有二级选择面板的直接打开它，没有的就把补全面板收掉。
-	// 这里只认「命令名 + 空格」本身，后面已经打了参数就不再插手
-	if (state.input.startsWith("/") && state.input.endsWith(" ") && !state.input.slice(1, -1).includes(" ")) {
-		const name = state.input.slice(1, -1).toLowerCase();
-		const command = host.commands().find((item) => item.name === name);
-		state.commandMenu = undefined;
-		if (command !== undefined) {
-			if (name === "model") openModelMenu(host);
-			else if (name === "effort") openEffortMenu(host);
-			else if (name === "session") openSessionMenu(host);
+	// 这里按去掉尾随空格后的内容判断：快速连按空格时终端会把多个空格合并成一块，
+	// 只认「恰好一个空格」会让 /session  + 空格 既不打开面板、也把补全菜单收掉。
+	if (state.input.startsWith("/") && state.input.endsWith(" ")) {
+		const trimmed = state.input.trimEnd();
+		if (!trimmed.slice(1).includes(" ")) {
+			const name = trimmed.slice(1).toLowerCase();
+			const command = host.commands().find((item) => item.name === name);
+			state.commandMenu = undefined;
+			if (command !== undefined) {
+				if (name === "model") openModelMenu(host);
+				else if (name === "effort") openEffortMenu(host);
+				else if (name === "session") openSessionMenu(host);
+			}
+			return;
 		}
-		return;
 	}
 
 	if (state.input.startsWith("/") && !state.input.slice(1).includes(" ")) {
