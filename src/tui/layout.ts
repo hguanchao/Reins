@@ -1,11 +1,17 @@
 import type { AgentEventListener } from "../agent/events.ts";
 import {
 	CURSOR_BLINKING_BAR,
+	CURSOR_DEFAULT,
+	DISABLE_BRACKETED_PASTE,
+	DISABLE_FOCUS_REPORTING,
+	DISABLE_MOUSE,
 	ENABLE_BRACKETED_PASTE,
 	ENABLE_FOCUS_REPORTING,
 	ENABLE_MOUSE,
 	ENTER_ALTERNATE_SCREEN,
 	HIDE_CURSOR,
+	LEAVE_ALTERNATE_SCREEN,
+	SHOW_CURSOR,
 } from "./terminal.ts";
 import { mergeCommands } from "./commands.ts";
 import type { TuiOptions } from "./options.ts";
@@ -13,7 +19,7 @@ import { createState } from "./runtime/state.ts";
 import { createInputHandler } from "./input/dispatch.ts";
 import { render } from "./runtime/render.ts";
 import { onCtrlC } from "./runtime/ctrl-c.ts";
-import { cleanup } from "./runtime/lifecycle.ts";
+import { EXIT_SIGNALS, cleanup } from "./runtime/lifecycle.ts";
 import { startRun } from "./runtime/run.ts";
 import { notify } from "./runtime/run.ts";
 import { drainQueue } from "./runtime/run.ts";
@@ -205,8 +211,31 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		// 箭头包一层：cleanUp 在装配完成时才指向真正实现，直接传值会捕获初始的空函数
 		cleanup: () => cleanUp(),
 	});
-	cleanUp = () =>
+	/**
+	 * 进程退出前把终端恢复原样。
+	 *
+	 * 收尾函数只在能走到的路径上执行；渲染抛错、插件同步异常、被别的进程终止都可能跳过
+	 * 它，而留下的 raw mode 与备用屏会让使用者的 shell 直接不可用。这里只写还原序列，
+	 * 不碰任何状态，重复执行也无害。
+	 */
+	const restoreTerminal = (): void => {
+		try {
+			state.stdout.write(
+				DISABLE_BRACKETED_PASTE +
+					DISABLE_MOUSE +
+					DISABLE_FOCUS_REPORTING +
+					CURSOR_DEFAULT +
+					SHOW_CURSOR +
+					LEAVE_ALTERNATE_SCREEN,
+			);
+		} catch {
+			// 退出阶段写不进去已经无可挽回，再抛一次只会把真正的原因盖掉
+		}
+	};
+	cleanUp = () => {
+		process.off("exit", restoreTerminal);
 		cleanup(state, options, { render: host.render, onData, onInterrupt: cleanUp });
+	};
 
 	state.unsubscribeJobs =
 		options.jobs?.subscribe((event) => {
@@ -233,7 +262,10 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		state.stdin.resume();
 		state.stdout.on("resize", host.render);
 		state.stdin.on("data", onData);
-		process.on("SIGINT", cleanUp);
+		// 关窗口（SIGHUP）与被 kill（SIGTERM）和 Ctrl+C 一样要把终端还原，否则 raw mode
+		// 与备用屏会留在使用者的 shell 上，必须手工 reset 才能恢复
+		for (const signal of EXIT_SIGNALS) process.on(signal, cleanUp);
+		process.on("exit", restoreTerminal);
 		host.render();
 	} catch (error) {
 		cleanUp();

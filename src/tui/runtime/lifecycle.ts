@@ -30,6 +30,9 @@ export function armExit(state: TuiState, disarmFn: () => void, windowMs: number)
 	state.exitTimer = setTimeout(disarmFn, windowMs);
 }
 
+/** 需要走同一套收尾流程的终止信号。SIGKILL 拦不住，其余常见的都在这里。 */
+export const EXIT_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+
 /** 释放所有定时器、订阅与终端状态，然后让 runTui 的 Promise 落定。 */
 export function cleanup(
 	state: TuiState,
@@ -43,44 +46,49 @@ export function cleanup(
 	if (state.finished) return;
 	state.finished = true;
 
-	if (state.activeTurn !== undefined) {
-		options.approval?.denyAll();
-		state.activeTurn.controller.abort();
+	try {
+		if (state.activeTurn !== undefined) {
+			options.approval?.denyAll();
+			state.activeTurn.controller.abort();
+		}
+		if (state.exitTimer !== undefined) {
+			clearTimeout(state.exitTimer);
+			state.exitTimer = undefined;
+		}
+		if (state.spinnerTimer !== undefined) {
+			clearInterval(state.spinnerTimer);
+			state.spinnerTimer = undefined;
+		}
+		if (state.jobTimer !== undefined) {
+			clearInterval(state.jobTimer);
+			state.jobTimer = undefined;
+		}
+		state.unsubscribeJobs();
+		options.jobs?.shutdown();
+		if (state.statusClearTimer !== undefined) {
+			clearTimeout(state.statusClearTimer);
+			state.statusClearTimer = undefined;
+		}
+		if (state.copyNoticeTimer !== undefined) {
+			clearTimeout(state.copyNoticeTimer);
+			state.copyNoticeTimer = undefined;
+		}
+		state.stdout.off("resize", deps.render);
+		state.stdin.off("data", deps.onData);
+		for (const signal of EXIT_SIGNALS) process.off(signal, deps.onInterrupt);
+		state.stdin.setRawMode?.(false);
+		state.stdin.pause();
+		state.stdout.write(
+			DISABLE_BRACKETED_PASTE +
+				DISABLE_MOUSE +
+				DISABLE_FOCUS_REPORTING +
+				CURSOR_DEFAULT +
+				SHOW_CURSOR +
+				LEAVE_ALTERNATE_SCREEN,
+		);
+	} finally {
+		// 收尾中途抛错（终端已关闭时的写失败、插件在 shutdown 里抛错）也必须让 runTui 落定，
+		// 否则进程会带着「已 finished」的状态挂住，调用方的 finally 也永远不执行
+		state.finish();
 	}
-	if (state.exitTimer !== undefined) {
-		clearTimeout(state.exitTimer);
-		state.exitTimer = undefined;
-	}
-	if (state.spinnerTimer !== undefined) {
-		clearInterval(state.spinnerTimer);
-		state.spinnerTimer = undefined;
-	}
-	if (state.jobTimer !== undefined) {
-		clearInterval(state.jobTimer);
-		state.jobTimer = undefined;
-	}
-	state.unsubscribeJobs();
-	options.jobs?.shutdown();
-	if (state.statusClearTimer !== undefined) {
-		clearTimeout(state.statusClearTimer);
-		state.statusClearTimer = undefined;
-	}
-	if (state.copyNoticeTimer !== undefined) {
-		clearTimeout(state.copyNoticeTimer);
-		state.copyNoticeTimer = undefined;
-	}
-	state.stdout.off("resize", deps.render);
-	state.stdin.off("data", deps.onData);
-	process.off("SIGINT", deps.onInterrupt);
-	state.stdin.setRawMode?.(false);
-	state.stdin.pause();
-	state.stdout.write(
-		DISABLE_BRACKETED_PASTE +
-			DISABLE_MOUSE +
-			DISABLE_FOCUS_REPORTING +
-			CURSOR_DEFAULT +
-			SHOW_CURSOR +
-			LEAVE_ALTERNATE_SCREEN,
-	);
-	state.finish();
 }
