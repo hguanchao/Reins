@@ -72,4 +72,47 @@ describe("TOML 文档", () => {
 		document.set(["a", "x"], { y: 2 });
 		assert.equal(document.source, `[a]\nx = { y = 2 }\n`);
 	});
+
+	it("父表是内联表时改写其中的键，不新增根级键", () => {
+		const document = new TomlDocument(`model = "m"\nui = { notify = "auto" }\n`);
+		document.set(["ui", "notify"], "bell");
+		assert.equal(document.source, `model = "m"\nui = { notify = "bell" }\n`);
+		assert.equal(document.get(["ui", "notify"]), "bell");
+		assert.equal(document.get(["notify"]), undefined);
+	});
+
+	it("父表是内联表时新键并进同一个值", () => {
+		const document = new TomlDocument(`ui = { notify = "auto" }\n`);
+		document.set(["ui", "bell"], true);
+		assert.equal(document.source, `ui = { notify = "auto", bell = true }\n`);
+		assert.equal(document.get(["ui", "bell"]), true);
+	});
+
+	it("空内联表同样可以写入，不会退化成根级键", () => {
+		const document = new TomlDocument(`plugins = {}\n`);
+		document.set(["plugins", "trusted"], ["/a"]);
+		assert.equal(document.source, `plugins = { trusted = ["/a"] }\n`);
+		assert.deepEqual(document.get(["plugins", "trusted"]), ["/a"]);
+	});
+
+	it("父表是点号键时沿用点号键追加，不补表头", () => {
+		const document = new TomlDocument(`plugins.disabled = []\n`);
+		document.set(["plugins", "trusted"], ["/a"]);
+		assert.equal(document.source, `plugins.disabled = []\nplugins.trusted = ["/a"]\n`);
+		assert.deepEqual(document.get(["plugins", "trusted"]), ["/a"]);
+	});
+
+	it("别名写法的内联表按别名写入，读路径仍能取到", () => {
+		const document = new TomlDocument(`mcpServers = { a = 1 }\n`);
+		document.set(["mcp_servers", "b"], 2);
+		assert.equal(document.source, `mcpServers = { a = 1, b = 2 }\n`);
+		assert.equal(document.get(["mcpServers", "b"]), 2);
+	});
+
+	it("父表不是表时拒绝写入，且不改动原文", () => {
+		const source = `ui = 1\n`;
+		const document = new TomlDocument(source);
+		assert.throws(() => document.set(["ui", "notify"], "bell"), /Duplicate definition|Cannot write/);
+		assert.equal(document.source, source);
+	});
 });

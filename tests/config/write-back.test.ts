@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
+import { parseConfig } from "../../src/config/file.ts";
 import { updateModelSelection, updateUserConfigValue } from "../../src/config/write-back.ts";
 
 const directory = mkdtempSync(join(tmpdir(), "reins-write-back-"));
@@ -96,5 +97,28 @@ describe("写回模型选择", () => {
 		const text = readFileSync(file, "utf8");
 		assert.doesNotMatch(text, /\[plugins\]/);
 		assert.match(text, /plugins\.disabled = \[/);
+	});
+
+	it("父表以点号键存在时新键沿用点号键，写回后仍可加载", () => {
+		const file = join(directory, "dotted-new.toml");
+		writeFileSync(file, 'provider = "p"\nmodel = "m"\nplugins.disabled = []\n', "utf8");
+
+		updateUserConfigValue(["plugins", "trusted"], () => ["/a"], file);
+
+		const text = readFileSync(file, "utf8");
+		assert.doesNotMatch(text, /\[plugins\]/);
+		assert.deepEqual(parseConfig(text, file).plugins.trusted, ["/a"]);
+	});
+
+	it("父表是内联表时把键写进那个值，写回后仍可加载", () => {
+		const file = join(directory, "inline.toml");
+		writeFileSync(file, 'provider = "p"\nmodel = "m"\nplugins = {}\n', "utf8");
+
+		updateUserConfigValue(["plugins", "trusted"], () => ["/a"], file);
+
+		const text = readFileSync(file, "utf8");
+		// 写到根级会让下次加载报「未知键」，整份配置失效
+		assert.doesNotMatch(text, /^trusted =/m);
+		assert.deepEqual(parseConfig(text, file).plugins.trusted, ["/a"]);
 	});
 });

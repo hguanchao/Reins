@@ -1,8 +1,9 @@
-import { offsetToLineColumn, type LineColumn } from "../error.ts";
+import { ConfigError, offsetToLineColumn, type LineColumn } from "../error.ts";
 import { aliasOf } from "../keys.ts";
 import type { ConfigSource } from "../reader.ts";
 import {
 	isConfigTable,
+	setTableValue,
 	tableValue,
 	type ConfigPath,
 	type ConfigTable,
@@ -15,6 +16,38 @@ function samePath(left: readonly string[] | null, right: ConfigPath): boolean {
 	if (left === null) return right.length === 0;
 	if (left.length !== right.length) return false;
 	return left.every((part, index) => part === right[index]);
+}
+
+/** 写入前后的深比较：回写是否真的落在目标路径上，只靠它判定。 */
+function sameValue(left: ConfigValue | undefined, right: ConfigValue): boolean {
+	if (left === right) return true;
+	if (Array.isArray(left) && Array.isArray(right)) {
+		return left.length === right.length && left.every((item, index) => sameValue(item, right[index]));
+	}
+	if (left !== undefined && isConfigTable(left) && isConfigTable(right)) {
+		const keys = Object.keys(left);
+		return (
+			keys.length === Object.keys(right).length &&
+			keys.every((key) => Object.hasOwn(right, key) && sameValue(left[key], right[key]))
+		);
+	}
+	return false;
+}
+
+/**
+ * 父表在原文里的存在形式。
+ *
+ * 内联表与点号键都没有自己的 [section] 表头，补一个会被解析器判成重复定义，所以只能按
+ * 原形式写入。actual 是原文里实际用的那种写法：混用两种写法会得到两个不同的表。
+ */
+type ParentForm =
+	| { readonly kind: "inline"; readonly assignment: TomlAssignment; readonly actual: readonly string[] }
+	| { readonly kind: "dotted"; readonly end: number; readonly actual: readonly string[] };
+
+/** 一次回写的结果：新文本，以及值实际落在哪个路径上。 */
+interface RenderedWrite {
+	readonly source: string;
+	readonly path: readonly string[];
 }
 
 /**
@@ -68,23 +101,36 @@ export class TomlDocument implements ConfigSource {
 	/**
 	 * 写入一个键。已有该键就只替换它的值；没有就插到所属表区段的末尾；
 	 * 整个表都不存在时在文件末尾补一个表头再写。
+	 *
+	 * 写完必须回读核对：写偏了（例如把表成员写成了根级键）在这里暴露，比等到下一次
+	 * 加载时整份配置报「未知键」要好得多——那时使用者已经不知道是哪次操作改坏的。
 	 */
 	set(path: readonly string[], value: ConfigValue): void {
 		if (path.length === 0) throw new Error("Key path for write must not be empty");
-		this.#load(this.#render(path, value));
+		const rendered = this.#render(path, value);
+		this.#load(rendered.source);
+		// 按实际落点回读：别名写法下写入路径与入参不同，用入参核对会把正确的写入判成失败
+		if (!sameValue(this.get(rendered.path), value)) {
+			throw new ConfigError(
+				`Cannot write ${path.join(".")} without moving it out of its table; ` +
+					"rewrite that table as a [section] and try again",
+			);
+		}
 	}
 
-	#render(path: readonly string[], value: ConfigValue): string {
+	#render(path: readonly string[], value: ConfigValue): RenderedWrite {
 		const newline = this.#lineEnding();
 		// 读路径同时认 snake_case 与 camelCase。写路径若只按精确路径找，使用者在配置里写了
 		// camelCase 时就会在文件末尾再补一条 snake_case，下次读出来两边冲突、整份配置失效。
 		const assignment = this.#assignments.find((item) => samePath(item.path, path) || samePath(item.path, this.#aliasPath(path)));
 		if (assignment !== undefined) {
-			return (
-				this.#source.slice(0, assignment.valueStart) +
-				serializeValue(value) +
-				this.#source.slice(assignment.valueEnd)
-			);
+			return {
+				source:
+					this.#source.slice(0, assignment.valueStart) +
+					serializeValue(value) +
+					this.#source.slice(assignment.valueEnd),
+				path: assignment.path,
+			};
 		}
 
 		const line = `${serializeKey(path[path.length - 1])} = ${serializeValue(value)}${newline}`;
@@ -93,17 +139,95 @@ export class TomlDocument implements ConfigSource {
 			(item) => samePath(item.path, tablePath) || samePath(item.path, this.#aliasPath(tablePath)),
 		);
 		if (section !== undefined) {
-			return this.#insertAfter(section.bodyEnd, line, newline);
+			return { source: this.#insertAfter(section.bodyEnd, line, newline), path };
 		}
 
-		// 父表可能以点号键（`plugins.disabled = []`）或内联表（`plugins = { ... }`）存在：
-		// 那种情况下没有对应的 [section]，再补一个表头会被解析器判为重复定义。
-		if (this.#hasImplicitTable(tablePath)) {
-			return this.#insertAfter(this.#implicitTableEnd(tablePath), line, newline);
+		// 父表以点号键（`plugins.disabled = []`）或内联表（`plugins = { ... }`）存在时都没有
+		// 自己的 [section] 表头，再补一个会被解析器判为重复定义。两种写法要分别处理：内联表
+		// 把键并进那个值，点号键沿用点号键继续追加——写错位置的话读的时候根本拿不到。
+		const parent = this.#parentForm(tablePath);
+		if (parent !== undefined) {
+			const target = [...parent.actual, path[path.length - 1]];
+			return {
+				source:
+					parent.kind === "inline"
+						? this.#mergeIntoInlineTable(parent.assignment, target, value)
+						: this.#appendDotted(parent.end, target, value, newline),
+				path: target,
+			};
 		}
 
 		const header = `[${tablePath.map(serializeKey).join(".")}]`;
-		return `${this.#withTrailingBlankLine()}${header}${newline}${line}`;
+		return { source: `${this.#withTrailingBlankLine()}${header}${newline}${line}`, path };
+	}
+
+	/**
+	 * 父表在原文里的存在形式。
+	 *
+	 * 别名一并认：写 `mcp_servers.x` 时，文件里可能是 `mcpServers = { ... }`。返回 actual
+	 * 是为了让追加的键沿用文件既有的写法——混用两种写法会得到两个不同的表，读的时候会
+	 * 撞上「只能写其中一个」。
+	 */
+	#parentForm(path: readonly string[]): ParentForm | undefined {
+		if (path.length === 0) return undefined;
+		const candidates = [path, this.#aliasPath(path)];
+
+		for (const candidate of candidates) {
+			const assignment = this.#assignments.find((item) => samePath(item.path, candidate));
+			if (assignment === undefined) continue;
+			const current = this.get(candidate);
+			// 只有值本身是表才算内联表：`plugins = 1` 是写错形式的配置，不该被当成表去合并
+			if (current !== undefined && isConfigTable(current)) {
+				return { kind: "inline", assignment, actual: assignment.path };
+			}
+		}
+
+		let end: number | undefined;
+		let actual: readonly string[] | undefined;
+		for (const assignment of this.#assignments) {
+			if (assignment.path.length <= path.length) continue;
+			const prefix = assignment.path.slice(0, path.length);
+			if (!candidates.some((candidate) => samePath(prefix, candidate))) continue;
+			if (end === undefined || assignment.valueEnd > end) {
+				end = assignment.valueEnd;
+				actual = prefix;
+			}
+		}
+		return end === undefined || actual === undefined ? undefined : { kind: "dotted", end, actual };
+	}
+
+	/** 把新键并进内联表：只替换值那一段，键的位置与上下文都不动。 */
+	#mergeIntoInlineTable(
+		assignment: TomlAssignment,
+		path: readonly string[],
+		value: ConfigValue,
+	): string {
+		const current = this.get(assignment.path);
+		const merged: ConfigTable = current !== undefined && isConfigTable(current) ? { ...current } : {};
+		setTableValue(merged, String(path[path.length - 1]), value);
+		return (
+			this.#source.slice(0, assignment.valueStart) +
+			serializeValue(merged) +
+			this.#source.slice(assignment.valueEnd)
+		);
+	}
+
+	/** 在点号键形式的父表末尾追加一条同样形式的点号键。 */
+	#appendDotted(
+		offset: number,
+		path: readonly string[],
+		value: ConfigValue,
+		newline: string,
+	): string {
+		const line = `${path.map(serializeKey).join(".")} = ${serializeValue(value)}${newline}`;
+		// 插在那一行的换行之后：插在值末尾会让结果多出一个空行
+		return this.#insertAfter(this.#lineEndAt(offset), line, newline);
+	}
+
+	/** 从偏移处跨过紧随的行尾，落到下一行的行首；没有行尾时原样返回。 */
+	#lineEndAt(offset: number): number {
+		const match = /^[ \t]*(\r\n|\n)/.exec(this.#source.slice(offset));
+		return match === null ? offset : offset + match[0].length;
 	}
 
 	/** 在某个偏移处插入一整行，并保证插入点前有换行。 */
@@ -112,21 +236,6 @@ export class TomlDocument implements ConfigSource {
 		// 文件末尾没有换行时直接拼上去会把两行粘成一行，重新解析就报错
 		const separator = before.length === 0 || before.endsWith(newline) ? "" : newline;
 		return `${before}${separator}${line}${this.#source.slice(offset)}`;
-	}
-
-	/** 路径上的键是否以点号键或内联表的形式存在（因而没有自己的 [section] 表头）。 */
-	#hasImplicitTable(path: readonly string[]): boolean {
-		if (path.length === 0) return false;
-		const assignment = this.#assignments.find((item) => samePath(item.path, path));
-		if (assignment === undefined) return false;
-		// 点号键与内联表在解析结果里都是一条赋值
-		return true;
-	}
-
-	/** 隐式表的结尾：紧跟在它那条赋值之后。 */
-	#implicitTableEnd(path: readonly string[]): number {
-		const assignment = this.#assignments.find((item) => samePath(item.path, path));
-		return assignment?.valueEnd ?? this.#source.length;
 	}
 
 	/** 主名称与别名互为替代写法；没有别名时返回原路径。 */
