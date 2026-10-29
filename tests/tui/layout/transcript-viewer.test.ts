@@ -110,6 +110,15 @@ describe("对话流长内容查看", () => {
 			});
 			t.mock.timers.tick(100);
 
+			// 组默认收起：先双击组头展开，才能点选到具体成员
+			const headerRow =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("› Ran 2 commands")) + 1;
+			assert.ok(headerRow > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+
 			// 点选较早的那条工具行；Ctrl+G 应该跟着它，而不是回到最新一条
 			const row = frameLines(output).map(plain).findIndex((line) => line.includes("first")) + 1;
 			assert.ok(row > 0);

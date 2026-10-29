@@ -109,6 +109,16 @@ describe("工具组", () => {
 		assert.equal(next.expanded, false);
 	});
 
+	it("新组默认收起，不传展开参数时也是折叠的", () => {
+		const lines: TranscriptLine[] = [];
+		appendToolLine(lines, read("a"));
+		appendToolLine(lines, read("b"));
+
+		const group = groupAt(lines, 0);
+		assert.equal(group.members.length, 2);
+		assert.equal(group.expanded, false);
+	});
+
 	it("组头可以命中，成员行不能", () => {
 		const group = groupOf([read("a.ts"), read("b.ts")], false);
 		const turn: TranscriptTurn = { prompt: "hi", response: [group] };

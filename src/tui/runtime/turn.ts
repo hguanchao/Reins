@@ -272,7 +272,7 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 				}
 				const tool = describeToolLine(event.name, event.args, event.callId, host.options.workspaceRoot);
 				closeText(active);
-				if (appendToolLine(active.lines, tool, true)) host.syncTurnFull(active);
+				if (appendToolLine(active.lines, tool)) host.syncTurnFull(active);
 				else host.syncTurn(active);
 				host.setStatus(`Running ${tool.name}...`);
 				break;

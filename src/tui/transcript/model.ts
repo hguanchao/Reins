@@ -31,8 +31,10 @@ export function describeToolLine(
  * 追加一条工具行。
  *
  * 连续两个可成组的工具就收进组：只读探索调用彼此成组，命令彼此成组，两类不混在一起；
- * 写操作、失败行和普通正文都会断开组。运行时传入 expanded=true 先展开，回合结束时由
- * 调用方统一收起。
+ * 写操作、失败行和普通正文都会断开组。
+ *
+ * 新组默认收起：组头已经说明在读什么、跑什么，运行期间逐个列出成员只会把整屏刷满。
+ * 要看细节双击组头展开。
  *
  * 返回 true 表示把上一条普通工具行换成了组对象；调用方如果维护了另一份行数组，需要整段
  * 同步一次，不能只追加新增行。
@@ -40,7 +42,7 @@ export function describeToolLine(
 export function appendToolLine(
 	lines: TranscriptLine[],
 	tool: TranscriptTool,
-	expanded: boolean,
+	expanded = false,
 ): boolean {
 	if (!isEagerGroup(tool.group) || tool.isError === true) {
 		lines.push(tool);

@@ -117,7 +117,7 @@ describe("对话流展开", () => {
 		}
 	});
 
-	it("连续命令在运行期成组，回合结束后收起", async (t) => {
+	it("连续命令成组，运行期就收起；展开后回合结束再收起", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -150,8 +150,21 @@ describe("对话流展开", () => {
 			});
 			t.mock.timers.tick(100);
 
-			// 运行期组头已经出现并展开；结果仍收在成员行里
+			// 运行期组头就已经出现并收起：成员不占屏，双击才展开
 			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("› Ran 2 commands"));
+			assert.equal(text.includes("Bash  first"), false);
+			assert.equal(text.includes("ONE"), false);
+
+			// 双击组头展开成员，结果仍收在成员行里
+			const headerRow =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("› Ran 2 commands")) + 1;
+			assert.ok(headerRow > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("◈ Ran 2 commands"));
 			assert.ok(text.includes("Bash  first"));
 			assert.ok(text.includes("Bash  second"));
@@ -246,6 +259,15 @@ describe("对话流展开", () => {
 			});
 			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "src/b.ts" } });
 			t.mock.timers.tick(100);
+
+			// 组头默认收起：先双击组头把成员展开出来
+			const headerRow =
+				frameLines(output)
+					.map(plain)
+					.findIndex((line) => line.includes("› Read 2 files")) + 1;
+			assert.ok(headerRow > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
 
 			const row =
 				frameLines(output)

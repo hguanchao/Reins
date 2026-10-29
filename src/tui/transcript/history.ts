@@ -112,7 +112,6 @@ export function buildTranscriptHistory(
 					appendToolLine(
 						currentTurn().response,
 						describeToolLine(call.name, call.arguments, call.id, workspaceRoot),
-						false,
 					);
 				}
 				break;

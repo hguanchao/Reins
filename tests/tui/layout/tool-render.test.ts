@@ -338,7 +338,7 @@ describe("工具行渲染", () => {
 		}
 	});
 
-	it("连续只读工具运行时展开，回合结束折叠", async (t) => {
+	it("连续只读工具默认收起，双击组头展开", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 
 		const input = new FakeInput();
@@ -355,17 +355,17 @@ describe("工具行渲染", () => {
 			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "b.ts" } });
 			t.mock.timers.tick(100);
 
+			// 运行期就收起：组头说明读了什么，成员不占屏
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("◈ Read 2 files"));
-			assert.ok(text.includes("› Read  a.ts"));
-			assert.ok(text.includes("› Read  b.ts"));
+			assert.ok(text.includes("› Read 2 files"));
+			assert.equal(text.includes("› Read  a.ts"), false);
+			assert.equal(text.includes("› Read  b.ts"), false);
 
 			await agent.finish();
 
 			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("› Read 2 files"));
 			assert.equal(text.includes("› Read  a.ts"), false);
-			assert.equal(text.includes("› Read  b.ts"), false);
 
 			// 双击组头展开，不必等下一轮
 			const headerRow = frameLines(output).map(plain).findIndex((line) => line.includes("› Read 2 files")) + 1;
