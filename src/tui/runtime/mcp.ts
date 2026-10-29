@@ -48,9 +48,8 @@ export function reconnectMcp(host: TuiHost): void {
 		.reconnect(name)
 		.then((message) => {
 			if (host.state.finished) return;
+			// 结果已经写进页面与对话流，不再额外占用状态行
 			host.state.mcpStatus = message;
-			host.setStatus(message, message.startsWith("Could not") ? "warning" : "notice");
-			host.scheduleStatusClear();
 			host.appendCommandTurn("/mcps", [message]);
 		})
 		.catch((error) => {
@@ -76,9 +75,8 @@ export function healthCheckMcp(host: TuiHost): void {
 		.healthCheck()
 		.then((results) => {
 			if (host.state.finished) return;
+			// 检查结果逐行写进对话流，页面标题下也有状态说明，状态行不再重复
 			host.state.mcpStatus = "MCP health check complete";
-			host.setStatus("MCP health check complete", "notice");
-			host.scheduleStatusClear();
 			host.appendCommandTurn(
 				"/mcps",
 				results.length === 0 ? ["No MCP servers configured."] : results,
