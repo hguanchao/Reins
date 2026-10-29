@@ -112,6 +112,70 @@ describe("子代理", () => {
 		assert.deepEqual(toolCalls, ["find"]);
 	});
 
+	it("并行跑两次时各写各的对话，工具结果不会串到对方", async () => {
+		const seen: { task: string; toolResultIds: string[] }[] = [];
+		const client: LlmClient = {
+			api: "fake",
+			stream(request: LlmRequest): LlmStream {
+				const first = request.messages[0];
+				const task = first !== undefined && typeof first.content === "string" ? first.content : "";
+				const toolResultIds = request.messages
+					.filter((message) => message.role === "toolResult")
+					.map((message) => message.toolCallId);
+				seen.push({ task, toolResultIds });
+
+				const stream = EventStream.incremental<LlmEvent, LlmResult>();
+				stream.close(
+					toolResultIds.length === 0
+						? {
+								stopReason: "toolUse",
+								content: [toolCall(`call-${task}`, "find", {})],
+								usage: undefined,
+								errorMessage: undefined,
+								model: "m1",
+							}
+						: {
+								stopReason: "stop",
+								content: text(`done ${task}`),
+								usage: undefined,
+								errorMessage: undefined,
+								model: "m1",
+							},
+				);
+				return stream;
+			},
+		};
+
+		const { deps } = makeDeps({ turns: [] });
+		const shared: SubagentDeps = {
+			...deps,
+			client,
+			// 工具慢一点，让两次运行的第一轮真正交错
+			tools: {
+				list: () => [{ name: "find", description: "", parameters: { type: "object", properties: {} } }],
+				call: async (request: { callId: string }) => {
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					return { content: `ok ${request.callId}`, isError: false };
+				},
+			} as never,
+		};
+
+		const subagent = new Subagent(shared);
+		const [a, b] = await Promise.all([
+			subagent.run("A", contextOf().context),
+			subagent.run("B", contextOf().context),
+		]);
+
+		assert.equal(a.report, "done A");
+		assert.equal(b.report, "done B");
+		// 每个运行的第二轮请求里，工具结果必须只属于它自己的那次调用
+		const withResults = seen.filter((entry) => entry.toolResultIds.length > 0);
+		assert.equal(withResults.length, 2);
+		for (const entry of withResults) {
+			assert.deepEqual(entry.toolResultIds, [`call-${entry.task}`]);
+		}
+	});
+
 	it("用满步数:汇报里带最后一次说的话与步数说明", async () => {
 		const { deps, toolCalls } = makeDeps({
 			turns: [0, 1, 2].map(() => ({ content: [toolCall("c", "find", {})] })),
