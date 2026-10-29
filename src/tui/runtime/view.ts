@@ -7,7 +7,7 @@ import {
 	toolGroupHeaderInView,
 	toolHeaderInView,
 } from "../transcript.ts";
-import { markTranscriptDirty } from "./transcript-state.ts";
+import { invalidateTranscriptPrefix, markTranscriptDirty } from "./transcript-state.ts";
 import { openPlanReview } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 
@@ -25,6 +25,11 @@ export function togglingTranscriptAt(
 	width: number,
 ): boolean {
 	const state = host.state;
+	// 展开状态是就地修改的：前缀缓存只比较回合引用，不会发现这种变化，必须显式失效
+	const refresh = (): void => {
+		invalidateTranscriptPrefix(state);
+		markTranscriptDirty(state);
+	};
 	if (row > mainHeight || column >= width - 1) return false;
 	const view = host.currentTranscript(width);
 
@@ -42,7 +47,7 @@ export function togglingTranscriptAt(
 	const block = thinkingHeaderInView(view, mainHeight, state.scrollTop, row);
 	if (block !== undefined) {
 		block.expanded = !block.expanded;
-		markTranscriptDirty(state);
+		refresh();
 		state.lastClick = undefined;
 		// 保持标题在点击时的屏幕位置：跟随到底部会让长内容直接跳到末尾
 		state.follow = false;
@@ -53,7 +58,7 @@ export function togglingTranscriptAt(
 	const group = toolGroupHeaderInView(view, mainHeight, state.scrollTop, row);
 	if (group !== undefined) {
 		group.expanded = !group.expanded;
-		markTranscriptDirty(state);
+		refresh();
 		state.lastClick = undefined;
 		state.follow = false;
 		host.render();
@@ -69,7 +74,7 @@ export function togglingTranscriptAt(
 		if (tool.fullDetail === undefined && tool.result !== undefined) {
 			tool.resultExpanded = !open;
 		}
-		markTranscriptDirty(state);
+		refresh();
 		state.lastClick = undefined;
 		state.follow = false;
 		host.render();
@@ -79,7 +84,7 @@ export function togglingTranscriptAt(
 	const todo = todoHeaderInView(view, mainHeight, state.scrollTop, row);
 	if (todo !== undefined) {
 		todo.collapsed = todo.collapsed !== true;
-		markTranscriptDirty(state);
+		refresh();
 		state.lastClick = undefined;
 		state.follow = false;
 		host.render();
@@ -89,7 +94,7 @@ export function togglingTranscriptAt(
 	const subagents = subagentGroupHeaderInView(view, mainHeight, state.scrollTop, row);
 	if (subagents !== undefined) {
 		subagents.expanded = subagents.expanded !== true;
-		markTranscriptDirty(state);
+		refresh();
 		state.lastClick = undefined;
 		state.follow = false;
 		host.render();
@@ -102,7 +107,7 @@ export function togglingTranscriptAt(
 		const member = failedRow.group.members.find((item) => item.callId === failedRow.callId);
 		if (member !== undefined) {
 			member.expanded = member.expanded !== true;
-			markTranscriptDirty(state);
+			refresh();
 			state.lastClick = undefined;
 			state.follow = false;
 			host.render();

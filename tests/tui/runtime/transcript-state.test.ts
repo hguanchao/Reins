@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { buildTranscriptView } from "../../../src/tui/transcript.ts";
-import type { TranscriptTurn } from "../../../src/tui/transcript.ts";
-import { currentTranscript, markTranscriptDirty } from "../../../src/tui/runtime/transcript-state.ts";
+import type { TranscriptThinking, TranscriptTurn } from "../../../src/tui/transcript.ts";
+import {
+	currentTranscript,
+	invalidateTranscriptPrefix,
+	markTranscriptDirty,
+} from "../../../src/tui/runtime/transcript-state.ts";
 import type { TuiState } from "../../../src/tui/runtime/types.ts";
 
 const WIDTH = 80;
@@ -91,5 +95,28 @@ describe("对话流视图缓存", () => {
 		(state as unknown as { activeWarning: string }).activeWarning = "sandbox is off";
 		markTranscriptDirty(state);
 		assertSameAsFull(state, turns, "sandbox is off");
+	});
+
+	it("较早回合的展开状态就地变化后，清掉前缀能重建出新内容", () => {
+		const block: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thought for 1s",
+			body: ["SECRET-BODY"],
+			partial: "",
+			running: false,
+			expanded: false,
+		};
+		const turns: TranscriptTurn[] = [
+			{ prompt: "q1", response: [block] },
+			turnOf("q2", "a2"),
+		];
+		const state = stateOf(turns);
+		assert.equal(currentTranscript(state, WIDTH).lines.join("\n").includes("SECRET-BODY"), false);
+
+		// 就地翻转：回合对象引用不变，前缀缓存本身发现不了
+		block.expanded = true;
+		invalidateTranscriptPrefix(state);
+		markTranscriptDirty(state);
+		assert.ok(currentTranscript(state, WIDTH).lines.join("\n").includes("SECRET-BODY"));
 	});
 });

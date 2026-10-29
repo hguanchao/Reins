@@ -1,5 +1,5 @@
 import { DOUBLE_CLICK_MS, WHEEL_STEP } from "../runtime/constants.ts";
-import { markTranscriptDirty } from "../runtime/transcript-state.ts";
+import { invalidateTranscriptPrefix, markTranscriptDirty } from "../runtime/transcript-state.ts";
 import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "../transcript.ts";
 import type { MouseInput } from "./keys.ts";
 import type { TuiHost, TuiState } from "../runtime/types.ts";
@@ -93,6 +93,7 @@ export function handleScrollKey(
 export function handleToggleKey(state: TuiState, text: string): boolean {
 	if (text === "\x05") {
 		if (toggleLastExpandable(state.turns)) {
+			invalidateTranscriptPrefix(state);
 			markTranscriptDirty(state);
 			state.follow = false;
 		}
@@ -103,6 +104,7 @@ export function handleToggleKey(state: TuiState, text: string): boolean {
 		if (tool !== undefined) {
 			// 刚展开的这条就是 Ctrl+G 要继续看的那条，别再跳回“最新”
 			state.viewerTool = tool;
+			invalidateTranscriptPrefix(state);
 			markTranscriptDirty(state);
 			state.follow = false;
 		}

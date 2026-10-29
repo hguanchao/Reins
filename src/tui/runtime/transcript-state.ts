@@ -9,6 +9,16 @@ export function markTranscriptDirty(state: TuiState): void {
 }
 
 /**
+ * 展开/收起后强制丢掉前缀缓存。
+ *
+ * 展开状态是就地修改的（行对象原地翻转），而前缀缓存只比较回合对象引用，看不见这种
+ * 变化。不清掉前缀的话，除最后一轮外的内容会一直显示旧状态，点了像没反应。
+ */
+export function invalidateTranscriptPrefix(state: TuiState): void {
+	state.transcriptPrefix = undefined;
+}
+
+/**
  * 宽度、警告或内容变化时重建；其余帧直接复用。
  *
  * 流式输出时内容每帧都在变，但真正变的只有最后一个回合。把前面那些已经写完的回合留在

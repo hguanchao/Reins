@@ -34,6 +34,52 @@ describe("对话流展开", () => {
 		}
 	});
 
+	it("双击较早回合里的工具行也能展开", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			// 第一轮：留下一条可展开的工具结果，回合结束后它成为「较早的回合」
+			input.emit("data", Buffer.from("first\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "old-command" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: false,
+				durationMs: 1,
+				summary: "OLD-BODY",
+				content: "OLD-BODY",
+			});
+			await agent.finish();
+			t.mock.timers.tick(100);
+
+			// 第二轮：让第一轮进入前缀缓存
+			input.emit("data", Buffer.from("second\r"));
+			agent.emit({ type: "text_delta", text: "second answer" });
+			await agent.finish();
+			t.mock.timers.tick(100);
+
+			let text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("OLD-BODY"), false);
+
+			const row = frameLines(output).map(plain).findIndex((line) => line.includes("Bash")) + 1;
+			assert.ok(row > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("OLD-BODY"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("Ctrl+O 展开最近成功工具结果", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
