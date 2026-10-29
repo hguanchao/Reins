@@ -69,6 +69,14 @@ export function cleanup(
 			clearTimeout(state.statusClearTimer);
 			state.statusClearTimer = undefined;
 		}
+		if (state.inputTailTimer !== undefined) {
+			clearTimeout(state.inputTailTimer);
+			state.inputTailTimer = undefined;
+		}
+		if (state.pastingTimer !== undefined) {
+			clearTimeout(state.pastingTimer);
+			state.pastingTimer = undefined;
+		}
 		if (state.copyNoticeTimer !== undefined) {
 			clearTimeout(state.copyNoticeTimer);
 			state.copyNoticeTimer = undefined;

@@ -1,5 +1,9 @@
 /** 第一次 Ctrl+C 之后等待第二次的时间；超过就回到未确认状态。 */
 export const EXIT_CONFIRM_WINDOW_MS = 2000;
+/** 未完成的转义序列最多等这么久；超过就按普通输入处理，避免按键被无限挂起。 */
+export const INPUT_TAIL_TIMEOUT_MS = 50;
+/** 粘贴态下长时间没有新数据就复位：终端丢了结束标记时不能把键盘永久锁死。 */
+export const PASTE_STALL_TIMEOUT_MS = 10_000;
 /** 运行时状态前的加载动画。 */
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 export const SPINNER_INTERVAL_MS = 100;

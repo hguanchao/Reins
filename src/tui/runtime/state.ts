@@ -24,6 +24,9 @@ export function createState(options: TuiOptions): TuiState {
 		historyIndex: -1,
 		historyDraft: "",
 		pasting: false,
+		inputTail: "",
+		inputTailTimer: undefined,
+		pastingTimer: undefined,
 		turns: (options.history ?? []).map((turn) => ({
 			prompt: turn.prompt,
 			response: [...turn.response],

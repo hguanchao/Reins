@@ -118,6 +118,11 @@ export interface TuiState {
 	historyDraft: string;
 	/** bracketed paste 可能跨多个数据块，记住是否还在粘贴中。 */
 	pasting: boolean;
+	/** 上一块末尾未完成的转义序列；与下一块拼接后再解析，避免标记被分块切断。 */
+	inputTail: string;
+	inputTailTimer: ReturnType<typeof setTimeout> | undefined;
+	/** 粘贴态的超时兜底；每次收到新数据重新计时。 */
+	pastingTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// —— 对话流 ——
 	readonly turns: LiveTurn[];
