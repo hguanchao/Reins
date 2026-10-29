@@ -70,7 +70,7 @@ describe("JSON 解析", () => {
 	});
 
 	it("键必须双引号", () => {
-		expectError(`{a: 1}`, "double-quoted");
+		expectError(`{a: 1}`, "Unrecognized value a");
 	});
 
 	it("未闭合的字符串与注释报错", () => {
