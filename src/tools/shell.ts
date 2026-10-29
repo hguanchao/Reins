@@ -286,7 +286,11 @@ export function killProcessTree(child: ChildProcess): void {
  *
  * taskkill 失败时只给一个非零退出码，不发 error：不看它，「没杀掉」就会被当成「杀掉了」，
  * 作业一直停在 running，退出清理也留下孤儿进程。失败就再试一次——机器繁忙时它偶尔会
- * 打不开进程——最后退回只结束直接子进程，至少不会什么都不做。
+ * 打不开进程——最后退回只结束直接子进程。
+ *
+ * 注意这条退路并不完整：Git Bash 执行一条外部命令时会 fork 出独立的进程（Windows 上
+ * 父子关系是真的，但 taskkill 偶尔枚举不到），此时只杀 bash 会留下孙进程继续跑。没有
+ * Job Object 之类的系统设施，纯 JS 这一侧拿不到孙进程的 pid，只能靠 taskkill 成功。
  */
 function taskkillTree(child: ChildProcess, attemptsLeft: number): void {
 	const pid = child.pid;

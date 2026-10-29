@@ -70,8 +70,9 @@ describe("后台作业", () => {
 		// 断言失败时也要收掉这个 sleep：它会把整个测试进程挂住，看起来像是测试卡死
 		try {
 			const job = jobs.start({
-				// 比等待时间长得多：进程只能因为 kill 结束，避免自然退出与收尾同时发生
-				command: "sleep 30",
+				// 比等待时间长，进程只能因为 kill 结束；但也别太长：Windows 上 taskkill 偶发
+				// 只杀掉 bash、留下 fork 出来的 sleep，那段时间会一直占着事件循环
+				command: "sleep 5",
 				workspace: WORKSPACE,
 				sandbox: SANDBOX,
 				session: SESSION,
