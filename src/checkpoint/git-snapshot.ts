@@ -6,6 +6,14 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 
 /**
+ * 单次 git 调用的时限。
+ *
+ * 没有超时的话，索引损坏、网络盘或超大仓库里的一次 `git add -A` 会永久不返回；而它被
+ * 串行化队列挡着，之后的 capture、changes、restore 全部阻塞，界面直接冻住。
+ */
+const GIT_TIMEOUT_MS = 60_000;
+
+/**
  * 两个路径是否指向同一个位置。
  *
  * Windows 的文件系统不区分大小写，而 realpathSync 不保证把大小写规范化成磁盘上的写法：
@@ -182,6 +190,22 @@ export class GitSnapshotStore {
 		}
 	}
 
+	/**
+	 * 回收不可达对象。
+	 *
+	 * `update-ref -d` 只删引用，对象本身仍留在库里。不主动回收的话，每个回合改过的文件都会
+	 * 变成永不释放的 blob——被忽略的文件不在快照里，但普通文件的每一版都在。
+	 */
+	async collect(): Promise<void> {
+		try {
+			// --auto 让 git 按自己的阈值判断要不要真的动，对象不多时几乎立即返回
+			await this.#git(["gc", "--auto", "--prune=now"]);
+		} catch (error) {
+			// 回收失败不影响检查点本身，记下来供下一次诊断
+			this.#lastError = messageOf(error);
+		}
+	}
+
 	async #writeTree(): Promise<string> {
 		await this.#git(["add", "-A"]);
 		return (await this.#git(["write-tree"])).trim();
@@ -227,6 +251,8 @@ export class GitSnapshotStore {
 				env: this.#baseEnv(),
 				windowsHide: true,
 				maxBuffer: 16 * 1024 * 1024,
+				timeout: GIT_TIMEOUT_MS,
+				killSignal: "SIGKILL",
 			},
 		);
 		return result.stdout;
@@ -238,6 +264,8 @@ export class GitSnapshotStore {
 			env: this.#baseEnv(),
 			windowsHide: true,
 			maxBuffer: 8 * 1024 * 1024,
+			timeout: GIT_TIMEOUT_MS,
+			killSignal: "SIGKILL",
 		});
 		return result.stdout;
 	}

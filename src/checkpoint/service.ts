@@ -304,6 +304,8 @@ export class CheckpointService {
 			await this.#store.forget(entry.id);
 		}
 		this.#save();
+		// 删完引用后回收一次：不回收的话对象库只增不减，长会话会把磁盘吃满
+		await this.#store.collect();
 	}
 
 	#save(): boolean {
