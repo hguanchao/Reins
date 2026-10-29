@@ -44,6 +44,7 @@ export function startRun(
 		textBlock: undefined,
 		thinkingStartedAt: undefined,
 		thinkingSecond: 0,
+		toolSecond: 0,
 		thinkingBlock: undefined,
 		tokensUsed: 0,
 		outcome: "done",

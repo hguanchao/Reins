@@ -94,6 +94,16 @@ export function collapseToolGroups(lines: TranscriptLine[]): void {
 }
 
 /**
+ * 这条工具调用是否还在跑。
+ *
+ * 成功结果由 attachToolResult 写入 result，失败由 attachToolFailure 写 isError，两者都没有
+ * 就说明结果还没回来。历史回填的行没有起点，一律按已结束处理——那些调用早就结束了。
+ */
+export function isRunningTool(tool: TranscriptTool): boolean {
+	return tool.result === undefined && tool.isError !== true && tool.startedAt !== undefined;
+}
+
+/**
  * 把成功结果挂回工具调用行。
  *
  * 实时路径与历史回填共用同一份规则:指标怎么取、详情怎么展开,改判定只改这一处。

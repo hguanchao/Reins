@@ -45,6 +45,13 @@ export interface ActiveTurn {
 	thinkingStartedAt: number | undefined;
 	/** 上一次已经按整秒画出的思考耗时；只在跨秒时重建对话流 */
 	thinkingSecond: number;
+	/**
+	 * 上一次按整秒重建工具耗时的时刻（绝对秒）。
+	 *
+	 * 记绝对秒而不是某个工具的耗时秒：并行执行时各工具的起点不同，逐条比对会在某些工具
+	 * 跨秒时漏掉重建；只要还有工具在跑，每秒重建一次就够了。
+	 */
+	toolSecond: number;
 	/** 当前正在写入的思考区块；结束后仍留在 lines 里供双击展开 */
 	thinkingBlock: TranscriptThinking | undefined;
 	/** 本轮已经产生的 token 消耗；每次请求回报后累加，压缩请求不计入 */

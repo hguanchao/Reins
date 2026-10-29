@@ -271,6 +271,8 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 					break;
 				}
 				const tool = describeToolLine(event.name, event.args, event.callId, host.options.workspaceRoot);
+				// 耗时从工具真正开始执行算起：状态行在等模型时也在走，那个时长不属于这条工具
+				tool.startedAt = Date.now();
 				closeText(active);
 				if (appendToolLine(active.lines, tool)) host.syncTurnFull(active);
 				else host.syncTurn(active);

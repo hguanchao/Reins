@@ -1,4 +1,6 @@
 import { markTranscriptDirty } from "./transcript-state.ts";
+import { isRunningTool } from "../transcript/model.ts";
+import type { TranscriptLine } from "../transcript/types.ts";
 import { STATUS_CLEAR_MS, SWEEP_STEP } from "./constants.ts";
 import type { TuiState, ActiveTurn } from "./types.ts";
 import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "./constants.ts";
@@ -117,4 +119,24 @@ function tickActiveStatus(
 		}
 	}
 	if (subagentsRunning) markTranscriptDirty(state);
+
+	// 运行中的工具行耗时同样按整秒变；不标脏的话数字会停在第一帧。这里记的是绝对秒：
+	// 并行工具各自起点不同，逐条比对耗时会在某些工具跨秒时漏掉重建
+	if (hasRunningTool(active.lines)) {
+		const second = Math.floor(now / 1000);
+		if (second !== active.toolSecond) {
+			active.toolSecond = second;
+			markTranscriptDirty(state);
+		}
+	}
+}
+
+/** 这一轮里是否还有工具没结束；组内的成员也要看，展开的组会显示它们。 */
+function hasRunningTool(lines: readonly TranscriptLine[]): boolean {
+	for (const line of lines) {
+		if (typeof line !== "object" || line === null) continue;
+		if (line.kind === "tool" && isRunningTool(line)) return true;
+		if (line.kind === "toolGroup" && line.members.some(isRunningTool)) return true;
+	}
+	return false;
 }

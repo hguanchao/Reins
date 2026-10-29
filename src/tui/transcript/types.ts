@@ -118,6 +118,13 @@ export interface TranscriptTool {
 	metric?: string;
 	isError?: boolean;
 	durationMs?: number;
+	/**
+	 * 运行中的计时起点。
+	 *
+	 * 结束后的耗时以 durationMs 为准；这个字段只在结果还没回来时参与显示，由视图按整秒
+	 * 现算，所以不必在结束时清理。历史回填的行没有起点，也不会显示运行态。
+	 */
+	startedAt?: number;
 	/** 工具调用 id，用于把成功结果挂回对应行 */
 	readonly callId?: string;
 	/** 工具分组类型：只读探索与命令在运行期成组；写操作与失败行没有 */

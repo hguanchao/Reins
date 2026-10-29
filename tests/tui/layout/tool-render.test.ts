@@ -449,4 +449,50 @@ describe("工具行渲染", () => {
 			exitTui(input);
 		}
 	});
+
+	it("运行中的命令行耗时逐秒递增，结束后定格", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		const commandLine = (): string =>
+			frameLines(output)
+				.map(plain)
+				.find((line) => line.includes("Bash  npm test")) ?? "";
+
+		try {
+			input.emit("data", Buffer.from("hi\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "npm test" } });
+			t.mock.timers.tick(100);
+			assert.ok(commandLine().includes("(0.0s)"));
+
+			// 长命令跑到一半就能看出用了多久，不必等结果回来
+			t.mock.timers.tick(2000);
+			assert.ok(commandLine().includes("(2.0s)"));
+
+			t.mock.timers.tick(3000);
+			assert.ok(commandLine().includes("(5.0s)"));
+
+			// 结果回来时按真实耗时定格，实时值不再参与
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: false,
+				durationMs: 4200,
+				summary: "ok",
+				content: "ok",
+			});
+			t.mock.timers.tick(100);
+			assert.ok(commandLine().includes("(4.2s)"));
+			assert.equal(commandLine().includes("(5.0s)"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
 });

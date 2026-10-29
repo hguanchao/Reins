@@ -15,6 +15,7 @@ import {
 	expandTabs,
 	stripTrailingBlank,
 } from "./detail.ts";
+import { isRunningTool } from "./model.ts";
 import {
 	DETAIL_BAND_LEFT,
 	DETAIL_RIGHT_PADDING,
@@ -152,6 +153,9 @@ export function toolLines(
 	const marker = tool.isError ? ERROR_MARKER : !finished || interactive ? TOOL_MARKER : "";
 	const prefix = marker.length === 0 ? baseIndent : `${baseIndent}${marker} `;
 	const limit = Math.max(0, width - displayWidth(prefix));
+	// 结果还没回来的行按起始时间现算：命令可能跑几十秒，等到结束才知道用了多久等于没有反馈
+	const metric =
+		tool.metric ?? (isRunningTool(tool) && tool.startedAt !== undefined ? liveDuration(tool.startedAt) : undefined);
 
 	if (tool.isError) {
 		const duration = tool.durationMs === undefined ? "" : ` (${formatDuration(tool.durationMs)})`;
@@ -174,13 +178,21 @@ export function toolLines(
 		return [expandedToolHead(tool, baseIndent, width)];
 	}
 
-	if (tool.detail.length === 0 && tool.metric === undefined) {
+	if (tool.detail.length === 0 && metric === undefined) {
 		return [coloredLine(`${prefix}${fitToWidth(tool.name, limit)}`, width, TOOL_NAME_COLOR)];
 	}
 
-	return [
-		toolSummaryLine(prefix, tool.name, tool.detail, tool.metric, tool.linkTarget, width, interactive),
-	];
+	return [toolSummaryLine(prefix, tool.name, tool.detail, metric, tool.linkTarget, width, interactive)];
+}
+
+/**
+ * 运行中的耗时。
+ *
+ * 与思考标题同一个口径：截到整秒再格式化，数字每秒才变一次——按毫秒现算会让对话流每帧
+ * 都因为一个新字符串而重排，而视觉上根本分辨不出 0.1 秒的差别。
+ */
+function liveDuration(startedAt: number): string {
+	return formatDuration(Math.floor(Math.max(0, Date.now() - startedAt) / 1000) * 1000);
 }
 
 /** 一行同时有两种颜色：标记与名称弱化，参数用正文色，结果指标再弱一档；指标放不下时省略。 */
