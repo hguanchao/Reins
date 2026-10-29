@@ -1,6 +1,12 @@
 import { APPROVAL_MODES } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
-import { mouseEvents, shiftTabKey, stripPasteContent, type MouseInput } from "./keys.ts";
+import {
+	mouseEvents,
+	pastingAfter,
+	shiftTabKey,
+	stripPasteContent,
+	type MouseInput,
+} from "./keys.ts";
 import { CTRL_C, FOCUS_IN, FOCUS_OUT } from "../terminal.ts";
 import { PASTE_END, PASTE_START } from "./keys.ts";
 import { handleApprovalInput } from "./approval.ts";
@@ -36,7 +42,7 @@ function focusOf(text: string): boolean | undefined {
  * stripPasteContent 防过一轮，鼠标与焦点解析也必须看同一份文本，否则一段剪贴板内容
  * 就能触发菜单点击或在审批卡上点到动作。跨数据块的粘贴由 pasting 记住。
  */
-function interactiveText(text: string, pasting: boolean): string {
+export function interactiveText(text: string, pasting: boolean): string {
 	if (!pasting) return stripPasteContent(text);
 	const end = text.indexOf(PASTE_END);
 	return end < 0 ? "" : stripPasteContent(text.slice(end + PASTE_END.length));
@@ -52,7 +58,12 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 	return (chunk: Buffer): void => {
 		const state = host.state;
 		const text = state.decoder.write(chunk);
-		const eventText = interactiveText(text, state.pasting);
+		// 粘贴状态在这里统一推进：模态分支也要用它，而它们不走编辑器那条路径。
+		// 只按当前块剥粘贴内容的话，跨块粘贴的后续块没有起始标记，会被原样当成按键——
+		// 审批卡上的一次换行就等于替使用者点了同意。
+		const pasting = state.pasting;
+		state.pasting = pastingAfter(text, pasting);
+		const eventText = interactiveText(text, pasting);
 		// 鼠标事件最多解析一次:同一条数据块会被多个面板分支检查,每次都跑一遍
 		// matchAll 是纯浪费;纯键盘块则一次也不解析
 		let mouseOfChunk: readonly MouseInput[] | undefined;
@@ -81,17 +92,17 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 		if (state.trustPrompt !== undefined) {
 			// 此时没有任何会话内容需要保护，Ctrl+C 直接退出。连按两次的确认在这里
 			// 不合适——信任页没有状态行可以显示，第一次按下看起来像没反应。
-			if (text.includes(CTRL_C) && !state.pasting && !text.includes(PASTE_START)) {
+			if (text.includes(CTRL_C) && !pasting && !text.includes(PASTE_START)) {
 				deps.cleanup();
 				return;
 			}
-			handleTrustInput(host, deps, stripPasteContent(text));
+			handleTrustInput(host, deps, eventText);
 			return;
 		}
 
 		// Ctrl+C 只认真实的按键块:粘贴的内容被括在粘贴标记里,其中的 \x03 是正文,
 		// 不能当成中断或退出
-		if (text.includes(CTRL_C) && !state.pasting && !text.includes(PASTE_START)) {
+		if (text.includes(CTRL_C) && !pasting && !text.includes(PASTE_START)) {
 			deps.onCtrlC();
 			return;
 		}
@@ -113,19 +124,19 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 
 		if (state.approvalPrompt !== undefined) {
 			// 审批卡只认按键：粘贴内容里的换行或字母不能被当成确认/允许
-			handleApprovalInput(host, deps, stripPasteContent(text), mouseOf);
+			handleApprovalInput(host, deps, eventText, mouseOf);
 			return;
 		}
 
 		if (host.modalMenuOpen()) {
-			if (handleModalMenuInput(host, stripPasteContent(text), mouseOf)) return;
+			if (handleModalMenuInput(host, eventText, mouseOf)) return;
 		}
 
 		if (state.openPage !== undefined) {
-			handlePageInput(host, deps, stripPasteContent(text), mouseOf);
+			handlePageInput(host, deps, eventText, mouseOf);
 			return;
 		}
 
-		handleTranscriptInput(host, deps, text, mouseOf);
+		handleTranscriptInput(host, deps, text, mouseOf, pasting);
 	};
 }

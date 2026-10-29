@@ -19,6 +19,7 @@ export function handleTranscriptInput(
 	deps: InputDeps,
 	text: string,
 	mouseOf: () => readonly MouseInput[],
+	pasting: boolean,
 ): void {
 	const state = host.state;
 	const width = host.terminalWidth();
@@ -290,7 +291,7 @@ export function handleTranscriptInput(
 	// Ctrl+G：把最近一块长内容（工具输出/详情、思考、提示）打开成整屏页
 	if (
 		withoutMouse === "\x07" &&
-		!state.pasting &&
+		!pasting &&
 		state.commandMenu === undefined &&
 		state.fileMenu === undefined &&
 		!host.modalMenuOpen()
@@ -308,13 +309,13 @@ export function handleTranscriptInput(
 	}
 	// Ctrl+V / Alt+V 读剪贴板里的图片；终端自己处理的文本粘贴不会走到这里
 	const clipboardKey = withoutMouse === "\x16" || withoutMouse === "\x1bv" || withoutMouse === "\x1bV";
-	if (clipboardKey && !state.pasting) {
+	if (clipboardKey && !pasting) {
 		focusInput();
 		host.attachClipboardImage();
 		return;
 	}
 	// 拖入终端只会得到一段路径文本：整段就是一个现有图片时插成正文标记，不填进输入框
-	if (state.commandMenu === undefined && !state.pasting) {
+	if (state.commandMenu === undefined && !pasting) {
 		const dragged = host.draggedImagePath(text);
 		if (dragged !== undefined) {
 			focusInput();
@@ -397,8 +398,8 @@ export function handleTranscriptInput(
 	// 否则文字能进输入框，边框与光标却还是失焦态，紧接着的回车也只被当成抢焦点。
 	if (withoutMouse.length > 0 && withoutMouse !== "\x1b") focusInput();
 
-	const edit = editInput(state.input, state.inputCursor, withoutMouse, state.pasting);
-	state.pasting = edit.pasting;
+	// 粘贴区间跨块时由调用方记着，这里只按传进来的状态处理本块
+	const edit = editInput(state.input, state.inputCursor, withoutMouse, pasting);
 	if (edit.text !== previous) {
 		state.historyIndex = -1;
 		// 输入变了，之前用 Esc 关掉补全面板的决定就作废：新内容该有自己的补全

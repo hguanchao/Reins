@@ -107,6 +107,21 @@ export function stripPasteContent(text: string): string {
 	return text.replace(/\x1b\[200~[\s\S]*?(?:\x1b\[201~|$)/g, "");
 }
 
+/**
+ * 这一块输入处理完之后是否仍处在粘贴区间内。
+ *
+ * 终端把一次粘贴拆成多块时，只有第一块带起始标记、最后一块带结束标记。按标记出现的
+ * 顺序翻转就能得到正确状态。状态必须由调用方记住并往下传：只剥当前块里的粘贴内容的话，
+ * 后续块没有起始标记，会被原样当成按键——审批卡上的一次换行就等于替使用者点了同意。
+ */
+export function pastingAfter(text: string, pasting: boolean): boolean {
+	let state = pasting;
+	for (const match of text.matchAll(/\x1b\[(200|201)~/g)) {
+		state = match[1] === "200";
+	}
+	return state;
+}
+
 export interface MouseInput {
 	readonly button: number;
 	readonly column: number;
