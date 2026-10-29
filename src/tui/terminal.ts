@@ -34,6 +34,14 @@ export const DISABLE_MOUSE = "\x1b[?1006l\x1b[?1003l\x1b[?1002l";
 export const ENABLE_BRACKETED_PASTE = "\x1b[?2004h";
 export const DISABLE_BRACKETED_PASTE = "\x1b[?2004l";
 /**
+ * kitty 键盘协议（disambiguate 档）：Shift+Enter 等带修饰键的按键才会以独立序列到达。
+ *
+ * 用压栈/出栈而不是直接设值：栈由终端按主屏/备用屏分别维护，退出时出栈就能还原，不影响
+ * 使用者原来的键盘模式。不支持的终端会忽略这两个序列。
+ */
+export const ENABLE_KEYBOARD_PROTOCOL = "\x1b[>1u";
+export const DISABLE_KEYBOARD_PROTOCOL = "\x1b[<u";
+/**
  * DEC 2026 同步输出：整帧写完才一次性呈现。
  *
  * 每帧重绘整屏，如果终端边解析边刷新，滚动和转圈时就会看到半帧旧内容、半帧新内容。

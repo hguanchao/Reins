@@ -4,9 +4,11 @@ import {
 	CURSOR_DEFAULT,
 	DISABLE_BRACKETED_PASTE,
 	DISABLE_FOCUS_REPORTING,
+	DISABLE_KEYBOARD_PROTOCOL,
 	DISABLE_MOUSE,
 	ENABLE_BRACKETED_PASTE,
 	ENABLE_FOCUS_REPORTING,
+	ENABLE_KEYBOARD_PROTOCOL,
 	ENABLE_MOUSE,
 	ENTER_ALTERNATE_SCREEN,
 	HIDE_CURSOR,
@@ -221,7 +223,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 	const restoreTerminal = (): void => {
 		try {
 			state.stdout.write(
-				DISABLE_BRACKETED_PASTE +
+				DISABLE_KEYBOARD_PROTOCOL +
+					DISABLE_BRACKETED_PASTE +
 					DISABLE_MOUSE +
 					DISABLE_FOCUS_REPORTING +
 					CURSOR_DEFAULT +
@@ -256,7 +259,8 @@ export async function runTui(options: TuiOptions): Promise<number> {
 				HIDE_CURSOR +
 				ENABLE_FOCUS_REPORTING +
 				ENABLE_MOUSE +
-				ENABLE_BRACKETED_PASTE,
+				ENABLE_BRACKETED_PASTE +
+				ENABLE_KEYBOARD_PROTOCOL,
 		);
 		state.stdin.setRawMode?.(true);
 		state.stdin.resume();

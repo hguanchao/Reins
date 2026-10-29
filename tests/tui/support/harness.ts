@@ -89,10 +89,10 @@ export function createFakeAgent(onRefresh: () => void = () => {}): FakeAgent {
 	};
 }
 
-export const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?2004h";
+export const ENTER = "\x1b[?1049h\x1b[5 q\x1b[?25l\x1b[?1004h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?2004h\x1b[>1u";
 export const SYNC_BEGIN = "\x1b[?2026h";
 export const SYNC_END = "\x1b[?2026l";
-export const LEAVE = "\x1b[?2004l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
+export const LEAVE = "\x1b[<u\x1b[?2004l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1004l\x1b[0 q\x1b[?25h\x1b[?1049l";
 export const FOCUS = "\x1b[38;2;78;201;176m";
 export const BLUR = "\x1b[38;2;42;49;56m";
 export const INFO = "\x1b[38;2;167;176;186m";

@@ -129,6 +129,138 @@ export function pastingAfter(text: string, pasting: boolean): boolean {
 	return state;
 }
 
+/** CSI-u 按键：`CSI 码位[:shifted[:base]][;修饰键[:事件]]u`。 */
+const KITTY_KEY = /\x1b\[(\d+)(?::\d+)*(?:;(\d+)(?::(\d+))?)?u/g;
+
+/** kitty 修饰键位；CapsLock/NumLock 位只影响大小写状态，比较前要掩掉。 */
+const KITTY_SHIFT = 1;
+const KITTY_ALT = 2;
+const KITTY_CTRL = 4;
+
+/**
+ * 把 kitty 键盘协议下的按键还原成传统编码。
+ *
+ * 开启 disambiguate 档位后，Esc、带 Ctrl/Alt 的按键、Shift+Enter/Tab/Backspace 以及小键盘
+ * 会以 CSI-u 到达，其余按键仍是传统编码。这里只改写协议序列，没开启协议的终端原样通过。
+ * 粘贴区间是正文而不是按键，里面的序列必须保持原样，所以按粘贴标记分段处理。
+ */
+export function decodeKittyKeys(text: string, pasting: boolean): string {
+	if (!text.includes("\x1b[")) return text;
+
+	let out = "";
+	let index = 0;
+	let inPaste = pasting;
+	while (index < text.length) {
+		if (inPaste) {
+			const end = text.indexOf(PASTE_END, index);
+			if (end < 0) {
+				out += text.slice(index);
+				break;
+			}
+			out += text.slice(index, end + PASTE_END.length);
+			index = end + PASTE_END.length;
+			inPaste = false;
+			continue;
+		}
+		const start = text.indexOf(PASTE_START, index);
+		const stop = start < 0 ? text.length : start;
+		out += text.slice(index, stop).replace(KITTY_KEY, decodeKittyMatch);
+		if (start < 0) break;
+		out += PASTE_START;
+		index = start + PASTE_START.length;
+		inPaste = true;
+	}
+	return out;
+}
+
+function decodeKittyMatch(
+	match: string,
+	codeText: string,
+	modifierText?: string,
+	eventText?: string,
+): string {
+	// 3 是松开事件：没有开启事件上报就不会出现，真出现也不能再输入一次
+	if (eventText === "3") return "";
+	const code = Number(codeText);
+	const modifiers = modifierText === undefined ? 1 : Number(modifierText);
+	const legacy = kittyKeyToLegacy(code, (modifiers - 1) & 0b11111);
+	return legacy === undefined ? match : legacy;
+}
+
+/** 返回传统编码；undefined 表示保持原序列（交给后续解析），空串表示丢弃。 */
+function kittyKeyToLegacy(code: number, mods: number): string | undefined {
+	const shift = (mods & KITTY_SHIFT) !== 0;
+	const alt = (mods & KITTY_ALT) !== 0;
+	const ctrl = (mods & KITTY_CTRL) !== 0;
+
+	if (code === 13) {
+		// Shift+Enter 留给编辑器当换行；其它修饰键组合不猜，吞掉以免误提交
+		if (shift && !alt && !ctrl) return undefined;
+		return ctrl || alt ? "" : "\r";
+	}
+	if (code === 9) {
+		if (shift && !alt && !ctrl) return undefined;
+		return alt ? "\x1b\t" : "\t";
+	}
+	if (code === 127) {
+		if (alt) return "\x1b\x7f";
+		return ctrl ? "\x08" : "\x7f";
+	}
+	if (code === 27) return "\x1b";
+
+	// 小键盘按键在协议下也走 CSI-u：数字与符号要还原成正文，方向键还原成传统序列
+	const keypad = keypadKey(code);
+	if (keypad !== undefined) return keypad;
+
+	if (code < 32 || code > 126) return undefined;
+
+	if (ctrl) {
+		const control = controlCharacter(code);
+		if (control === undefined) return undefined;
+		return alt ? `\x1b${control}` : control;
+	}
+	if (alt) {
+		const char = String.fromCharCode(code);
+		return `\x1b${shift ? char.toUpperCase() : char}`;
+	}
+	// 只有 Shift 的文本键在协议下仍直接发文本；这里兜底还原成字符
+	const char = String.fromCharCode(code);
+	return shift ? char.toUpperCase() : char;
+}
+
+/** Ctrl 与 ASCII 键的传统映射；没有对应控制字符时返回 undefined。 */
+function controlCharacter(code: number): string | undefined {
+	if (code === 32) return "\x00";
+	if (code === 63) return "\x7f";
+	if (code >= 64 && code <= 95) return String.fromCharCode(code & 0x1f);
+	if (code >= 97 && code <= 122) return String.fromCharCode(code & 0x1f);
+	return undefined;
+}
+
+/** 小键盘的固定码位；不是小键盘按键时返回 undefined。 */
+function keypadKey(code: number): string | undefined {
+	if (code >= 57399 && code <= 57408) return String.fromCharCode(48 + code - 57399);
+	if (code === 57409) return ".";
+	if (code === 57410) return "/";
+	if (code === 57411) return "*";
+	if (code === 57412) return "-";
+	if (code === 57413) return "+";
+	if (code === 57414) return "\r";
+	if (code === 57415) return "=";
+	if (code === 57416) return ",";
+	if (code === 57417) return "\x1b[D";
+	if (code === 57418) return "\x1b[C";
+	if (code === 57419) return "\x1b[A";
+	if (code === 57420) return "\x1b[B";
+	if (code === 57421) return "\x1b[5~";
+	if (code === 57422) return "\x1b[6~";
+	if (code === 57423) return "\x1b[H";
+	if (code === 57424) return "\x1b[F";
+	if (code === 57425) return "\x1b[2~";
+	if (code === 57426) return "\x1b[3~";
+	return undefined;
+}
+
 export interface MouseInput {
 	readonly button: number;
 	readonly column: number;
@@ -266,6 +398,9 @@ export function editInput(
 			const end = nextIndex(text, cursor);
 			if (end > cursor) text = text.slice(0, cursor) + text.slice(end);
 			handled = true;
+		} else if (sequence === "\x1b[13;2u" || sequence === "\x1b[27;2;13~") {
+			// Shift+Enter：kitty CSI-u 与 xterm modifyOtherKeys 两种说法
+			insert("\n");
 		} else {
 			return;
 		}
@@ -277,9 +412,8 @@ export function editInput(
 			const char = value[index] ?? "";
 			if (char === "\x1b") {
 				const rest = value.slice(index);
-				// Alt+Enter：ESC 后跟一个换行。普通回车才是提交，这里插入换行
+				// Alt+Enter 已不再作为换行键：吞掉这一对，避免它退化成一次误提交
 				if (rest.startsWith("\x1b\r") || rest.startsWith("\x1b\n")) {
-					insert("\n");
 					index += 1;
 					continue;
 				}

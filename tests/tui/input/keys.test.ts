@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { interactiveText } from "../../../src/tui/input/dispatch.ts";
-import { approvalKey, editInput, moveInputVertical, pastingAfter, stripPasteContent } from "../../../src/tui/input/keys.ts";
+import {
+	approvalKey,
+	decodeKittyKeys,
+	editInput,
+	moveInputVertical,
+	pastingAfter,
+	shiftTabKey,
+	stripPasteContent,
+} from "../../../src/tui/input/keys.ts";
 
 describe("粘贴区间", () => {
 	it("单块内起止标记被剥掉", () => {
@@ -73,8 +81,8 @@ describe("多行输入光标", () => {
 		assert.equal(moveInputVertical(text, 2, 1), 7);
 	});
 
-	it("Alt+Enter 插入换行而不是提交", () => {
-		for (const sequence of ["\x1b\r", "\x1b\n"]) {
+	it("Shift+Enter 插入换行而不是提交", () => {
+		for (const sequence of ["\x1b[13;2u", "\x1b[27;2;13~"]) {
 			const edit = editInput("ab", 2, sequence, false);
 			assert.equal(edit.text, "ab\n");
 			assert.equal(edit.cursor, 3);
@@ -82,9 +90,8 @@ describe("多行输入光标", () => {
 		}
 	});
 
-	it("Shift+Enter 的协议序列不再插入换行", () => {
-		// 没开键盘协议时它与普通回车不可区分；这里锁定的是不再单独处理这两种编码
-		for (const sequence of ["\x1b[13;2u", "\x1b[27;2;13~"]) {
+	it("Alt+Enter 不再插入换行，也不会退化成提交", () => {
+		for (const sequence of ["\x1b\r", "\x1b\n"]) {
 			const edit = editInput("ab", 2, sequence, false);
 			assert.equal(edit.text, "ab");
 			assert.equal(edit.submit, false);
@@ -93,5 +100,67 @@ describe("多行输入光标", () => {
 
 	it("普通回车仍然提交", () => {
 		assert.equal(editInput("ab", 2, "\r", false).submit, true);
+	});
+});
+
+describe("kitty 键盘协议解码", () => {
+	it("Ctrl 快捷键还原成控制字符", () => {
+		assert.equal(decodeKittyKeys("\x1b[99;5u", false), "\x03");
+		assert.equal(decodeKittyKeys("\x1b[101;5u", false), "\x05");
+		assert.equal(decodeKittyKeys("\x1b[103;5u", false), "\x07");
+		assert.equal(decodeKittyKeys("\x1b[111;5u", false), "\x0f");
+		assert.equal(decodeKittyKeys("\x1b[118;5u", false), "\x16");
+	});
+
+	it("CapsLock/NumLock 位不影响快捷键判定", () => {
+		// 修饰键值 = 1 + ctrl(4) + caps_lock(64)
+		assert.equal(decodeKittyKeys("\x1b[99;69u", false), "\x03");
+	});
+
+	it("Alt+字母还原成 ESC 前缀", () => {
+		assert.equal(decodeKittyKeys("\x1b[118;3u", false), "\x1bv");
+		assert.equal(decodeKittyKeys("\x1b[118;4u", false), "\x1bV");
+	});
+
+	it("Esc 与 Shift+Esc 都还原成单个 ESC", () => {
+		assert.equal(decodeKittyKeys("\x1b[27u", false), "\x1b");
+		assert.equal(decodeKittyKeys("\x1b[27;2u", false), "\x1b");
+	});
+
+	it("Shift+Enter 与 Shift+Tab 保持原序列交给后续解析", () => {
+		assert.equal(decodeKittyKeys("\x1b[13;2u", false), "\x1b[13;2u");
+		assert.equal(decodeKittyKeys("\x1b[9;2u", false), "\x1b[9;2u");
+		assert.equal(shiftTabKey(decodeKittyKeys("\x1b[9;2u", false)), true);
+	});
+
+	it("Alt+Enter 与 Ctrl+Enter 被吞掉，不提交也不换行", () => {
+		assert.equal(decodeKittyKeys("\x1b[13;3u", false), "");
+		assert.equal(decodeKittyKeys("\x1b[13;5u", false), "");
+	});
+
+	it("小键盘按键还原成正文与传统序列", () => {
+		assert.equal(decodeKittyKeys("\x1b[57399u", false), "0");
+		assert.equal(decodeKittyKeys("\x1b[57408u", false), "9");
+		assert.equal(decodeKittyKeys("\x1b[57414u", false), "\r");
+		assert.equal(decodeKittyKeys("\x1b[57417u", false), "\x1b[D");
+		assert.equal(decodeKittyKeys("\x1b[57426u", false), "\x1b[3~");
+	});
+
+	it("传统序列与普通文本原样通过", () => {
+		assert.equal(decodeKittyKeys("abc\r\t", false), "abc\r\t");
+		assert.equal(decodeKittyKeys("\x1b[A\x1b[1;5H", false), "\x1b[A\x1b[1;5H");
+	});
+
+	it("粘贴区间里的 CSI-u 是正文，不能被当成按键", () => {
+		assert.equal(
+			decodeKittyKeys("\x1b[200~\x1b[99;5u\x1b[201~", false),
+			"\x1b[200~\x1b[99;5u\x1b[201~",
+		);
+		// 跨块粘贴：起始标记在前一块，当前块整块都是正文
+		assert.equal(decodeKittyKeys("\x1b[99;5u\x1b[201~", true), "\x1b[99;5u\x1b[201~");
+	});
+
+	it("松开事件直接丢弃", () => {
+		assert.equal(decodeKittyKeys("\x1b[99;5:3u", false), "");
 	});
 });

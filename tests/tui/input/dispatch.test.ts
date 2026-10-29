@@ -112,15 +112,23 @@ describe("跨块输入", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("Alt+Enter 换行后回车才提交", async (t) => {
+	it("Shift+Enter 换行后回车才提交", async (t) => {
 		const { input, agent, running } = startTui(t);
 		try {
-			input.emit("data", Buffer.from("a\x1b\rb\r"));
+			input.emit("data", Buffer.from("a\x1b[13;2ub\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.deepEqual(agent.prompts, ["a\nb"]);
 		} finally {
 			exitTui(input);
 		}
+		assert.equal(await running, 0);
+	});
+
+	it("kitty 协议下的 Ctrl+C 仍然能退出", async (t) => {
+		const { input, running } = startTui(t);
+		input.emit("data", Buffer.from("\x1b[99;5u"));
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		input.emit("data", Buffer.from("\x1b[99;5u"));
 		assert.equal(await running, 0);
 	});
 });

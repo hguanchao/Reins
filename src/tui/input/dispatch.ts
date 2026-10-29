@@ -1,6 +1,7 @@
 import { APPROVAL_MODES } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import {
+	decodeKittyKeys,
 	mouseEvents,
 	pastingAfter,
 	shiftTabKey,
@@ -109,14 +110,17 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 		// 只按当前块剥粘贴内容的话，跨块粘贴的后续块没有起始标记，会被原样当成按键——
 		// 审批卡上的一次换行就等于替使用者点了同意。
 		const pasting = state.pasting;
-		state.pasting = pastingAfter(text, pasting);
+		// 开了键盘协议时 Shift+Enter、Ctrl+字母等以 CSI-u 到达；先还原成传统编码，
+		// 后续所有分支（Ctrl+C、Shift+Tab、编辑器、面板）就都只认一种形式
+		const decoded = decodeKittyKeys(text, pasting);
+		state.pasting = pastingAfter(decoded, pasting);
 		if (state.pasting) {
 			armPastingTimeout();
 		} else if (state.pastingTimer !== undefined) {
 			clearTimeout(state.pastingTimer);
 			state.pastingTimer = undefined;
 		}
-		const eventText = interactiveText(text, pasting);
+		const eventText = interactiveText(decoded, pasting);
 		// 鼠标事件最多解析一次:同一条数据块会被多个面板分支检查,每次都跑一遍
 		// matchAll 是纯浪费;纯键盘块则一次也不解析
 		let mouseOfChunk: readonly MouseInput[] | undefined;
@@ -145,7 +149,7 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 		if (state.trustPrompt !== undefined) {
 			// 此时没有任何会话内容需要保护，Ctrl+C 直接退出。连按两次的确认在这里
 			// 不合适——信任页没有状态行可以显示，第一次按下看起来像没反应。
-			if (text.includes(CTRL_C) && !pasting && !text.includes(PASTE_START)) {
+			if (decoded.includes(CTRL_C) && !pasting && !decoded.includes(PASTE_START)) {
 				deps.cleanup();
 				return;
 			}
@@ -155,12 +159,12 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 
 		// Ctrl+C 只认真实的按键块:粘贴的内容被括在粘贴标记里,其中的 \x03 是正文,
 		// 不能当成中断或退出
-		if (text.includes(CTRL_C) && !pasting && !text.includes(PASTE_START)) {
+		if (decoded.includes(CTRL_C) && !pasting && !decoded.includes(PASTE_START)) {
 			deps.onCtrlC();
 			return;
 		}
 
-		if (shiftTabKey(text) && host.options.approvalMode !== undefined) {
+		if (shiftTabKey(decoded) && host.options.approvalMode !== undefined) {
 			// 全局热键：任何面板下都先于其它分支处理，循环 ask → auto → yolo
 			const source = host.options.approvalMode;
 			const index = APPROVAL_MODES.indexOf(source.current());
@@ -190,7 +194,7 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 			return;
 		}
 
-		handleTranscriptInput(host, deps, text, mouseOf, pasting);
+		handleTranscriptInput(host, deps, decoded, mouseOf, pasting);
 	};
 
 	const flushTail = (): void => {
