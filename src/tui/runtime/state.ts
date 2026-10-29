@@ -97,6 +97,7 @@ export function createState(options: TuiOptions): TuiState {
 		restoringCheckpoint: false,
 		mcpCursor: 0,
 		mcpStatus: undefined,
+		mcpStatusTone: undefined,
 		pageCache: undefined,
 		spinnerTimer: undefined,
 		jobTimer: undefined,

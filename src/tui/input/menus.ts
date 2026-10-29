@@ -1,7 +1,8 @@
 import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, menuIndexAtRow, menuKey } from "./keys.ts";
 import type { MenuMouseTarget, MouseInput } from "./keys.ts";
-import { type MenuListState, menuListHeight, moveMenuSelection } from "../panel/menu-panel.ts";
+import { type MenuListState, MENU_MAX_VISIBLE, menuListHeight, moveMenuSelection } from "../panel/menu-panel.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
+import { menuVisibleLimit } from "../runtime/geometry.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
 /**
@@ -96,16 +97,18 @@ export function inlineMenuTarget(
 	panelTop: number,
 	panelHeight: number,
 	complete: () => void,
+	maxVisible = MENU_MAX_VISIBLE,
 ): MenuMouseTarget {
 	return {
-		hitItem: (row) => menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor),
+		hitItem: (row) =>
+			menuIndexAtRow(row, panelTop, menu.items.length, menu.scrollTop, menu.cursor, maxVisible),
 		contains: (row) => row >= panelTop && row < panelTop + panelHeight,
 		cursor: () => menu.cursor,
 		select: (index) => {
 			// 点击的是当前窗口里的条目：只移动光标，不把窗口整体滚到该条目的下标处
-			moveMenuSelection(menu, index - menu.cursor, menu.items.length, false);
+			moveMenuSelection(menu, index - menu.cursor, menu.items.length, false, maxVisible);
 		},
-		scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false),
+		scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false, maxVisible),
 		complete,
 		pressed: () => menu.pressed,
 		setPressed: (index) => {
@@ -131,10 +134,17 @@ export function handleModalMenuInput(
 
 	// 面板画在页脚区的第一行，命中判定只在这块窗口内有效
 	const panelTop = menuPanelTop(state, host.options);
+	const limit = menuVisibleLimit(state);
 	if (
 		handleMenuMouse(
 			mouseOf(),
-			inlineMenuTarget(menu, panelTop, menuListHeight(menu.items.length), () => host.completeMenu()),
+			inlineMenuTarget(
+				menu,
+				panelTop,
+				menuListHeight(menu.items.length, undefined, limit),
+				() => host.completeMenu(),
+				limit,
+			),
 			host.render,
 		)
 	) {

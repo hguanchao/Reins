@@ -208,6 +208,17 @@ describe("整屏页", () => {
 		assert.ok(empty.includes("mcp_servers"));
 	});
 
+	it("MCP 页的操作反馈按结果着色", () => {
+		const server = [{ name: "a", description: "connected" }];
+		const error = mcpsPageLines(80, server, 0, "MCP reconnect failed", "error");
+		const warning = mcpsPageLines(80, server, 0, "Could not connect", "warning");
+		const notice = mcpsPageLines(80, server, 0, "Reconnected a", "notice");
+
+		assert.ok(error[1]?.includes(THEME.error));
+		assert.ok(warning[1]?.includes(THEME.warning));
+		assert.ok(notice[1]?.includes(DESCRIPTION_COLOR));
+	});
+
 	it("MCP 页的超长 server 名不被截断，说明另起一行", () => {
 		const rows = mcpsPageLines(40, [
 			{ name: "my-company-internal-tools", description: "connected  2 tools: a, b" },

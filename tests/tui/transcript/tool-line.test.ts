@@ -331,7 +331,7 @@ describe("工具调用行", () => {
 
 		assert.ok(text.includes("line 60"));
 		assert.equal(text.includes("line 61"), false);
-		assert.ok(text.includes("… (140 more lines)"));
+		assert.ok(text.includes("… (140 more lines · Ctrl+G)"));
 	});
 
 	it("只读工具展开后显示结果内容，而不是参数清单", () => {

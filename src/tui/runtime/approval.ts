@@ -36,6 +36,11 @@ export function syncApprovalPrompt(host: TuiHost): boolean {
 		state.approvalExpanded = false;
 		state.approvalScrollTop = 0;
 	}
+	// 审批请求可能来自后台工具线程：窗口失焦时提醒一下，否则使用者看不到卡片、
+	// 工具会一直等。notify 的 auto 模式本来就只在失焦时响铃。
+	if (next !== undefined && state.approvalPrompt === undefined) {
+		host.notify(`Approval required: ${next.summary ?? next.tool}`);
+	}
 	state.approvalPrompt = next;
 	// 记下这份请求的标识：交回结论时要带上它，避免把按键记到另一个从未展示过的请求上
 	state.approvalPromptId = next === undefined ? undefined : source?.pendingId();

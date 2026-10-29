@@ -2,6 +2,7 @@ import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
 import { displayWidth } from "../render/text.ts";
 import {
 	type MenuListState,
+	MENU_MAX_VISIBLE,
 	menuListHeight,
 	menuListLines,
 	padEnd,
@@ -44,11 +45,15 @@ const EFFORT_DESCRIPTIONS: Readonly<Record<ThinkingLevel, string>> = {
 	max: "Hard problems that need sustained reasoning",
 };
 
-export function effortMenuHeight(): number {
-	return menuListHeight(THINKING_LEVELS.length);
+export function effortMenuHeight(maxVisible = MENU_MAX_VISIBLE): number {
+	return menuListHeight(THINKING_LEVELS.length, undefined, maxVisible);
 }
 
-export function renderEffortMenu(width: number, state: EffortMenuState): readonly string[] {
+export function renderEffortMenu(
+	width: number,
+	state: EffortMenuState,
+	maxVisible = MENU_MAX_VISIBLE,
+): readonly string[] {
 	const levelWidth = Math.max(...THINKING_LEVELS.map(displayWidth));
 	const currentWidth =
 		width >= PREFIX_WIDTH + levelWidth + GAP + CURRENT_WIDTH ? CURRENT_WIDTH : 0;
@@ -73,6 +78,8 @@ export function renderEffortMenu(width: number, state: EffortMenuState): readonl
 				layout.descriptionWidth >= 4 ? layout.descriptionWidth : 0,
 				layout.currentWidth,
 			),
+		undefined,
+		maxVisible,
 	);
 }
 

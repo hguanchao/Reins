@@ -42,6 +42,7 @@ export function reconnectMcp(host: TuiHost): void {
 
 	host.resetStatusMeta();
 	host.state.mcpStatus = `Reconnecting ${name}...`;
+	host.state.mcpStatusTone = undefined;
 	host.setStatus(`Reconnecting ${name}...`);
 	host.render();
 	void control
@@ -50,11 +51,13 @@ export function reconnectMcp(host: TuiHost): void {
 			if (host.state.finished) return;
 			// 结果已经写进页面与对话流，不再额外占用状态行
 			host.state.mcpStatus = message;
+			host.state.mcpStatusTone = message.startsWith("Could not") ? "warning" : "notice";
 			host.appendCommandTurn("/mcps", [message]);
 		})
 		.catch((error) => {
 			if (host.state.finished) return;
 			host.state.mcpStatus = "MCP reconnect failed";
+			host.state.mcpStatusTone = "error";
 			host.setStatus("MCP reconnect failed", "error");
 			host.appendCommandTurn("/mcps", [
 				{ kind: "error", text: `Error: ${describeError(error)}` },
@@ -69,6 +72,7 @@ export function healthCheckMcp(host: TuiHost): void {
 
 	host.resetStatusMeta();
 	host.state.mcpStatus = "Checking MCP servers...";
+	host.state.mcpStatusTone = undefined;
 	host.setStatus("Checking MCP servers...");
 	host.render();
 	void control
@@ -77,6 +81,7 @@ export function healthCheckMcp(host: TuiHost): void {
 			if (host.state.finished) return;
 			// 检查结果逐行写进对话流，页面标题下也有状态说明，状态行不再重复
 			host.state.mcpStatus = "MCP health check complete";
+			host.state.mcpStatusTone = "notice";
 			host.appendCommandTurn(
 				"/mcps",
 				results.length === 0 ? ["No MCP servers configured."] : results,
@@ -85,6 +90,7 @@ export function healthCheckMcp(host: TuiHost): void {
 		.catch((error) => {
 			if (host.state.finished) return;
 			host.state.mcpStatus = "MCP health check failed";
+			host.state.mcpStatusTone = "error";
 			host.setStatus("MCP health check failed", "error");
 			host.appendCommandTurn("/mcps", [
 				{ kind: "error", text: `Error: ${describeError(error)}` },

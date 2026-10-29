@@ -44,12 +44,16 @@ const GAP = 4;
 const CURRENT_WIDTH = 7;
 
 /** 面板总高度：上边框、可见行与下边框。 */
-export function modelMenuHeight(itemCount: number): number {
-	return menuListHeight(itemCount);
+export function modelMenuHeight(itemCount: number, maxVisible = MENU_MAX_VISIBLE): number {
+	return menuListHeight(itemCount, undefined, maxVisible);
 }
 
-export function renderModelMenu(width: number, state: ModelMenuState): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row);
+export function renderModelMenu(
+	width: number,
+	state: ModelMenuState,
+	maxVisible = MENU_MAX_VISIBLE,
+): readonly string[] {
+	return menuListLines(width, state.items, state, layoutColumns, row, undefined, maxVisible);
 }
 
 interface Columns {

@@ -47,7 +47,7 @@ export function detailBand(tool: TranscriptTool, baseIndent: string, width: numb
 		...(hidden === 0
 			? []
 			: detailBodyLines(
-					`… (${hidden} more lines)`,
+					`… (${hidden} more lines · Ctrl+G)`,
 					"text",
 					width,
 					bandStart,

@@ -12,6 +12,9 @@ import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selection
 import { scrollButtonPlacement } from "../view/scroll-button.ts";
 import { todoPanelLines } from "../view/todo-card.ts";
 import { trustPageLines } from "../page/trust.ts";
+import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
+import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
+import { VIEWER_ACTION_HEIGHT } from "../page/viewer.ts";
 import { truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import {
@@ -27,7 +30,7 @@ import {
 import type { AnimationFrame } from "../render/sweep.ts";
 import type { FooterInfo } from "../view/footer.ts";
 import { SPINNER_FRAMES } from "./constants.ts";
-import { menuOpen, terminalWidth, terminalRows } from "./geometry.ts";
+import { menuOpen, menuVisibleLimit, terminalWidth, terminalRows } from "./geometry.ts";
 import { framedPageFor } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 
@@ -191,6 +194,26 @@ export function render(host: TuiHost): void {
 			frame += `${moveCursor(row + 1, width)}${gutter[row]}`;
 		}
 	}
+	// 整屏页的滚动条：内容超出视口时在最后一列画出位置，和对话流保持同一套指示
+	if (state.openPage !== undefined && !state.layoutOverflow) {
+		const kind = state.openPage;
+		const actionHeight =
+			kind === "plan"
+				? PLAN_ACTION_HEIGHT
+				: kind === "mcps"
+					? MCP_ACTION_HEIGHT
+					: kind === "viewer"
+						? VIEWER_ACTION_HEIGHT
+						: 0;
+		const contentHeight = Math.max(0, mainHeight - actionHeight);
+		const content = host.pageLines(kind, width);
+		if (contentHeight > 0 && content.length > contentHeight) {
+			const gutter = scrollbarColumn(contentHeight, content.length, state.pageScrollTop);
+			for (let row = 0; row < gutter.length; row += 1) {
+				frame += `${moveCursor(row + 1, width)}${gutter[row]}`;
+			}
+		}
+	}
 	// 置底按钮同样单独定位：它盖在对话流最后一行中部，只在真的离开底部时出现
 	const showButton =
 		!state.layoutOverflow && transcriptShown && !menuOpen(state) && state.scrollTop < maxScroll;
@@ -221,13 +244,15 @@ function menuLinesOf(host: TuiHost, width: number, _metrics: unknown): readonly 
 			state.approvalScrollTop,
 		);
 	}
-	if (state.modelMenu !== undefined) return renderModelMenu(width, state.modelMenu);
-	if (state.effortMenu !== undefined) return renderEffortMenu(width, state.effortMenu);
+	if (state.modelMenu !== undefined) return renderModelMenu(width, state.modelMenu, menuVisibleLimit(state));
+	if (state.effortMenu !== undefined) return renderEffortMenu(width, state.effortMenu, menuVisibleLimit(state));
 	if (state.sessionMenu !== undefined) {
-		return renderSessionMenu(width, state.sessionMenu);
+		return renderSessionMenu(width, state.sessionMenu, menuVisibleLimit(state));
 	}
-	if (state.commandMenu !== undefined) return renderCommandMenu(width, state.commandMenu);
-	if (state.fileMenu !== undefined) return renderFileMenu(width, state.fileMenu);
+	if (state.commandMenu !== undefined) {
+		return renderCommandMenu(width, state.commandMenu, menuVisibleLimit(state));
+	}
+	if (state.fileMenu !== undefined) return renderFileMenu(width, state.fileMenu, menuVisibleLimit(state));
 	return [];
 }
 

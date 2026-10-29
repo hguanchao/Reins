@@ -32,6 +32,7 @@ export function handlePageInput(
 		if (key === "escape") {
 			state.openPage = undefined;
 			state.mcpStatus = undefined;
+			state.mcpStatusTone = undefined;
 			deps.render();
 			return;
 		}

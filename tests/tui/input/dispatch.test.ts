@@ -111,4 +111,16 @@ describe("跨块输入", () => {
 		}
 		assert.equal(await running, 0);
 	});
+
+	it("Alt+Enter 换行后回车才提交", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("a\x1b\rb\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["a\nb"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
 });

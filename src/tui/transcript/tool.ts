@@ -104,7 +104,7 @@ export function toolResultLines(
 		...(hidden === 0
 			? []
 			: bandedWrappedLines(
-					`… (${hidden} more lines)`,
+					`… (${hidden} more lines · Ctrl+G)`,
 					width,
 					THEME.textSubtle,
 					bandStart,

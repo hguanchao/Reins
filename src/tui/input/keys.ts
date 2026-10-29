@@ -189,12 +189,13 @@ export function menuIndexAtRow(
 	itemCount: number,
 	scrollTop: number,
 	cursor: number,
+	maxVisible = MENU_MAX_VISIBLE,
 ): number | undefined {
-	const visible = Math.min(Math.max(0, itemCount), MENU_MAX_VISIBLE);
+	const visible = Math.min(Math.max(0, itemCount), maxVisible);
 	if (visible === 0) return undefined;
 	const offset = row - panelTop - 1;
 	if (offset < 0 || offset >= visible) return undefined;
-	const index = keepVisible(scrollTop, cursor, itemCount) + offset;
+	const index = keepVisible(scrollTop, cursor, itemCount, maxVisible) + offset;
 	return index < itemCount ? index : undefined;
 }
 
@@ -265,6 +266,9 @@ export function editInput(
 			const end = nextIndex(text, cursor);
 			if (end > cursor) text = text.slice(0, cursor) + text.slice(end);
 			handled = true;
+		} else if (sequence === "\x1b[13;2u" || sequence === "\x1b[27;2;13~") {
+			// Shift+Enter：kitty CSI-u 与 xterm modifyOtherKeys 两种说法
+			insert("\n");
 		} else {
 			return;
 		}
@@ -276,6 +280,12 @@ export function editInput(
 			const char = value[index] ?? "";
 			if (char === "\x1b") {
 				const rest = value.slice(index);
+				// Alt+Enter：ESC 后跟一个换行。普通回车才是提交，这里插入换行
+				if (rest.startsWith("\x1b\r") || rest.startsWith("\x1b\n")) {
+					insert("\n");
+					index += 1;
+					continue;
+				}
 				const match = /^\x1b(?:\[[0-9;?]*[A-Za-z~]|O[A-Za-z])/.exec(rest);
 				if (match !== null) {
 					applyKey(match[0]);

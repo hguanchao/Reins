@@ -5,6 +5,7 @@ import type { MouseInput } from "./keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
 import { ABORTING } from "../render/status.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
+import { menuVisibleLimit } from "../runtime/geometry.ts";
 import { completeCommandMenu } from "../runtime/panels.ts";
 import { commandMenuHeight } from "../panel/command-menu.ts";
 import { fileMenuHeight } from "../panel/file-menu.ts";
@@ -24,6 +25,7 @@ export function handleTranscriptInput(
 	const state = host.state;
 	const width = host.terminalWidth();
 	const mainHeight = host.mainAreaHeight();
+	const menuLimit = menuVisibleLimit(state);
 	const beforeScroll = state.scrollTop;
 	const withoutMouse = stripMouseEvents(stripFocusEvents(text));
 	let focusChanged = false;
@@ -221,8 +223,9 @@ export function handleTranscriptInput(
 				inlineMenuTarget(
 					menu,
 					commandPanelTop,
-					commandMenuHeight(menu.items.length),
+					commandMenuHeight(menu.items.length, menuLimit),
 					() => completeCommandMenu(host),
+					menuLimit,
 				),
 				deps.render,
 			)
@@ -258,7 +261,7 @@ export function handleTranscriptInput(
 		if (
 			handleMenuMouse(
 				mouseOf(),
-				inlineMenuTarget(menu, filePanelTop, fileMenuHeight(menu.items.length), insert),
+				inlineMenuTarget(menu, filePanelTop, fileMenuHeight(menu.items.length, menuLimit), insert, menuLimit),
 				deps.render,
 			)
 		) {

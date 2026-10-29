@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, FOCUS, FOOTER_INFO, MODEL_ITEMS, exitTui, frameLines, plain } from "../support/harness.ts";
+import { FakeInput, FakeOutput, FOCUS, FOOTER_INFO, MODEL_ITEMS, exitTui, frameLines, plain, rawFrame } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
 import { THEME } from "../../../src/tui/render/theme.ts";
 
@@ -34,6 +34,26 @@ describe("帮助页与审批模式", () => {
 			// 一直滚回顶部后不再上移
 			for (let index = 0; index < 200; index += 1) input.emit("data", Buffer.from("\x1b[A"));
 			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("帮助页内容超出视口时在右侧画出滚动条", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 10;
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/help\r"));
+			const raw = rawFrame(output);
+			// 滚动条单独定位在最右列，按行重画
+			assert.ok(raw.includes("\x1b[1;80H"));
+			assert.ok(raw.includes("█"));
 		} finally {
 			exitTui(input);
 		}

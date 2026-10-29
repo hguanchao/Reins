@@ -150,6 +150,29 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("小终端下菜单按可用高度收缩，选中项不被裁掉", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 40;
+		output.rows = 8;
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			const lines = frameLines(output).map(plain);
+
+			assert.equal(lines.length, 8);
+			// 只显示放得下的条目，选中项仍在第一行
+			assert.ok(lines.some((line) => line.includes("› /model")));
+			assert.ok(lines.some((line) => line.includes("/effort")));
+			assert.equal(lines.some((line) => line.includes("/compact")), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("命令前缀只执行同名命令，不按描述命中执行别的命令", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -1074,6 +1097,27 @@ describe("命令补全与选择面板", () => {
 			// 回车才执行
 			input.emit("data", Buffer.from("\r"));
 			assert.ok(frameLines(output).map(plain).join("\n").includes("Reins — help"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("Tab 补全到不可用的二级菜单时说明原因", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/model"));
+			input.emit("data", Buffer.from("\t"));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes(" › /model "));
+			assert.ok(text.includes("Configuration required"));
 		} finally {
 			exitTui(input);
 		}

@@ -33,8 +33,12 @@ export interface MenuListOptions {
 }
 
 /** 面板总高度：上边框、可见行（或空态）与下边框。 */
-export function menuListHeight(itemCount: number, options: MenuListOptions = {}): number {
-	const visible = Math.min(Math.max(0, itemCount), MENU_MAX_VISIBLE);
+export function menuListHeight(
+	itemCount: number,
+	options: MenuListOptions = {},
+	maxVisible = MENU_MAX_VISIBLE,
+): number {
+	const visible = Math.min(Math.max(0, itemCount), maxVisible);
 	const empty = itemCount === 0 && options.empty !== undefined ? 1 : 0;
 	return visible + empty + 2;
 }
@@ -49,6 +53,7 @@ export function moveMenuSelection(
 	delta: number,
 	count: number,
 	wrap: boolean,
+	maxVisible = MENU_MAX_VISIBLE,
 ): void {
 	if (count <= 0) {
 		menu.cursor = 0;
@@ -59,13 +64,13 @@ export function moveMenuSelection(
 	menu.cursor = wrap
 		? ((next % count) + count) % count
 		: Math.min(count - 1, Math.max(0, next));
-	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, count);
+	menu.scrollTop = keepVisible(menu.scrollTop, menu.cursor, count, maxVisible);
 }
 
 /** 上边框右侧的数量；数量变化时只伸缩左侧长横线。 */
-function topBorder(width: number, position: number, count: number): string {
+function topBorder(width: number, position: number, count: number, maxVisible: number): string {
 	// 超过一屏时显示「当前位置/总数」，滚动后能看出自己在哪里
-	const label = count > MENU_MAX_VISIBLE ? ` ${position}/${count} ` : ` ${count} `;
+	const label = count > maxVisible ? ` ${position}/${count} ` : ` ${count} `;
 	const labelWidth = displayWidth(label);
 	const tail = Math.min(TAIL_DASHES, Math.max(0, width - labelWidth));
 	const left = Math.max(0, width - labelWidth - tail);
@@ -77,8 +82,13 @@ function bottomBorder(width: number): string {
 }
 
 /** 让光标始终落在可见窗口内。 */
-export function keepVisible(scrollTop: number, cursor: number, itemCount: number): number {
-	const visible = Math.min(Math.max(0, itemCount), MENU_MAX_VISIBLE);
+export function keepVisible(
+	scrollTop: number,
+	cursor: number,
+	itemCount: number,
+	maxVisible = MENU_MAX_VISIBLE,
+): number {
+	const visible = Math.min(Math.max(0, itemCount), maxVisible);
 	const maxTop = Math.max(0, itemCount - visible);
 	let top = Math.min(Math.max(0, scrollTop), maxTop);
 	if (cursor < top) top = cursor;
@@ -109,12 +119,13 @@ export function menuListLines<T, L>(
 	layout: (width: number, items: readonly T[]) => L,
 	row: (width: number, item: T, selected: boolean, hovered: boolean, layout: L) => string,
 	options: MenuListOptions = {},
+	maxVisible = MENU_MAX_VISIBLE,
 ): readonly string[] {
-	const visibleCount = Math.min(items.length, MENU_MAX_VISIBLE);
-	const top = keepVisible(state.scrollTop, state.cursor, items.length);
+	const visibleCount = Math.min(items.length, maxVisible);
+	const top = keepVisible(state.scrollTop, state.cursor, items.length, maxVisible);
 	const columns = layout(width, items);
 	const lines: string[] = [
-		topBorder(width, Math.min(state.cursor + 1, items.length), items.length),
+		topBorder(width, Math.min(state.cursor + 1, items.length), items.length, maxVisible),
 	];
 
 	if (visibleCount === 0) {

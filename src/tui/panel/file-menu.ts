@@ -4,6 +4,7 @@ import {
 	ACCENT_COLOR,
 	BOLD_OFF,
 	HOVER_BG,
+	MENU_MAX_VISIBLE,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
@@ -49,8 +50,8 @@ const MIN_PATH_WIDTH = 12;
 const EMPTY = "No matching files";
 
 /** 面板高度与条数一致：超过一屏时只画窗口内的行。 */
-export function fileMenuHeight(itemCount: number): number {
-	return menuListHeight(itemCount, { empty: EMPTY });
+export function fileMenuHeight(itemCount: number, maxVisible = MENU_MAX_VISIBLE): number {
+	return menuListHeight(itemCount, { empty: EMPTY }, maxVisible);
 }
 
 /**
@@ -123,7 +124,11 @@ export function formatFileReference(path: string): string {
 	return /\s/.test(path) ? `@"${path}"` : `@${path}`;
 }
 
-export function renderFileMenu(width: number, state: FileMenuState): readonly string[] {
+export function renderFileMenu(
+	width: number,
+	state: FileMenuState,
+	maxVisible = MENU_MAX_VISIBLE,
+): readonly string[] {
 	return menuListLines(
 		Math.max(0, width),
 		state.items,
@@ -131,6 +136,7 @@ export function renderFileMenu(width: number, state: FileMenuState): readonly st
 		() => undefined,
 		(columns, path, selected, hovered) => row(columns, path, selected, hovered),
 		{ empty: EMPTY },
+		maxVisible,
 	);
 }
 

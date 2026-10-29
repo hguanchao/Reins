@@ -73,6 +73,41 @@ describe("审批卡", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("审批请求出现时窗口失焦会响铃", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		const broker = new ApprovalBroker();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			approval: broker,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			t.mock.timers.tick(100);
+			// 窗口失焦：auto 模式只在看不到卡片时提醒
+			input.emit("data", Buffer.from("\x1b[O"));
+			output.chunks.length = 0;
+
+			void broker.request({ tool: "bash", risk: "destructive", detail: "npm test" });
+			t.mock.timers.tick(100);
+
+			assert.ok(output.chunks.some((chunk) => chunk.includes("\x07")));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("审批卡展开详情后可滚动，动作行随之下移仍可确认", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();

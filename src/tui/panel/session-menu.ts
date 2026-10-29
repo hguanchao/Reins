@@ -4,6 +4,7 @@ import {
 	ACCENT_COLOR,
 	BOLD_OFF,
 	HOVER_BG,
+	MENU_MAX_VISIBLE,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
@@ -55,15 +56,16 @@ const CURRENT_WIDTH = 7;
 /** 标题少于这么多列就不显示，把宽度还给标识与时间。 */
 const MIN_TITLE_WIDTH = 8;
 
-export function sessionMenuHeight(itemCount: number): number {
-	return menuListHeight(itemCount);
+export function sessionMenuHeight(itemCount: number, maxVisible = MENU_MAX_VISIBLE): number {
+	return menuListHeight(itemCount, undefined, maxVisible);
 }
 
 export function renderSessionMenu(
 	width: number,
 	state: SessionMenuState,
+	maxVisible = MENU_MAX_VISIBLE,
 ): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row);
+	return menuListLines(width, state.items, state, layoutColumns, row, undefined, maxVisible);
 }
 
 interface Columns {

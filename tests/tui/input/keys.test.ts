@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { interactiveText } from "../../../src/tui/input/dispatch.ts";
-import { approvalKey, moveInputVertical, pastingAfter, stripPasteContent } from "../../../src/tui/input/keys.ts";
+import { approvalKey, editInput, moveInputVertical, pastingAfter, stripPasteContent } from "../../../src/tui/input/keys.ts";
 
 describe("粘贴区间", () => {
 	it("单块内起止标记被剥掉", () => {
@@ -71,5 +71,18 @@ describe("多行输入光标", () => {
 		const text = "你好\nabcdef";
 		// 第一行两个汉字占 4 列；下移后应落在第 4 列（abcd 之后），而不是第 2 列
 		assert.equal(moveInputVertical(text, 2, 1), 7);
+	});
+
+	it("Alt+Enter 与 Shift+Enter 插入换行而不是提交", () => {
+		for (const sequence of ["\x1b\r", "\x1b\n", "\x1b[13;2u", "\x1b[27;2;13~"]) {
+			const edit = editInput("ab", 2, sequence, false);
+			assert.equal(edit.text, "ab\n");
+			assert.equal(edit.cursor, 3);
+			assert.equal(edit.submit, false);
+		}
+	});
+
+	it("普通回车仍然提交", () => {
+		assert.equal(editInput("ab", 2, "\r", false).submit, true);
 	});
 });

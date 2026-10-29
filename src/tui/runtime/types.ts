@@ -232,6 +232,8 @@ export interface TuiState {
 	mcpCursor: number;
 	/** /mcps 页上的操作反馈：整屏页没有状态行，结果必须画在页面里 */
 	mcpStatus: string | undefined;
+	/** 上面那条反馈的色调：失败要能和普通说明区分开 */
+	mcpStatusTone: "notice" | "warning" | "error" | undefined;
 	/** 排好版的页面内容；宽度不变就复用，滚动与重绘都不必重排。 */
 	pageCache:
 		| { readonly kind: PageKind; readonly width: number; readonly lines: readonly string[] }

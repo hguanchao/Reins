@@ -41,6 +41,7 @@ interface PageSection {
 /** 命令之外的固定内容。 */
 const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Enter", description: "Send the prompt; queue it while a turn is running" },
+	{ name: "Shift+Enter / Alt+Enter", description: "Insert a newline without sending" },
 	{ name: "Tab", description: "Complete the selected item into the prompt; switch the branch or rewind selection in those panels" },
 	{ name: "Shift+Tab", description: "Cycle the approval mode: ask, auto, yolo" },
 	{ name: "Esc", description: "Close a menu or this page; deny an approval; interrupt and send the first queued message" },
@@ -146,6 +147,7 @@ export function mcpsPageLines(
 	servers: readonly PageEntry[],
 	cursor = 0,
 	status?: string,
+	tone?: "notice" | "warning" | "error",
 ): readonly string[] {
 	const entries = servers.map((entry, index) => ({ ...entry, selected: index === cursor }));
 	const lines = sectionPageLines(
@@ -162,9 +164,11 @@ export function mcpsPageLines(
 	);
 	// 整屏页没有状态行：重连/健康检查的反馈直接画在标题下面，否则按 r/h 看起来毫无反应
 	if (status === undefined || status.length === 0) return lines;
+	const color =
+		tone === "error" ? THEME.error : tone === "warning" ? THEME.warning : DESCRIPTION_COLOR;
 	return [
 		lines[0] ?? "",
-		`${DESCRIPTION_COLOR}${fitToWidth(status, Math.max(0, width))}${RESET}`,
+		`${color}${fitToWidth(status, Math.max(0, width))}${RESET}`,
 		...lines.slice(1),
 	];
 }

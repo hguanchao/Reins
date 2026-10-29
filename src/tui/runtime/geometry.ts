@@ -5,6 +5,7 @@ import { effortMenuHeight } from "../panel/effort-menu.ts";
 import { fileMenuHeight } from "../panel/file-menu.ts";
 import { modelMenuHeight } from "../panel/model-menu.ts";
 import { sessionMenuHeight } from "../panel/session-menu.ts";
+import { MENU_MAX_VISIBLE } from "../panel/menu-panel.ts";
 import { DEFAULT_COLUMNS, terminalHeight } from "../terminal.ts";
 import { todoCardFinished, TODO_PANEL_MAX_ITEMS } from "../view/todo-card.ts";
 import type { JobView } from "../job.ts";
@@ -48,14 +49,28 @@ function approvalHeight(state: TuiState): number {
 /** 审批面板、选择面板占用的行数；没开面板为 0。 */
 export function menuHeight(state: TuiState): number {
 	if (state.approvalPrompt !== undefined) return approvalHeight(state);
-	if (state.modelMenu !== undefined) return modelMenuHeight(state.modelMenu.items.length);
-	if (state.effortMenu !== undefined) return effortMenuHeight();
+	const limit = menuVisibleLimit(state);
+	if (state.modelMenu !== undefined) return modelMenuHeight(state.modelMenu.items.length, limit);
+	if (state.effortMenu !== undefined) return effortMenuHeight(limit);
 	if (state.sessionMenu !== undefined) {
-		return sessionMenuHeight(state.sessionMenu.items.length);
+		return sessionMenuHeight(state.sessionMenu.items.length, limit);
 	}
-	if (state.commandMenu !== undefined) return commandMenuHeight(state.commandMenu.items.length);
-	if (state.fileMenu !== undefined) return fileMenuHeight(state.fileMenu.items.length);
+	if (state.commandMenu !== undefined) return commandMenuHeight(state.commandMenu.items.length, limit);
+	if (state.fileMenu !== undefined) return fileMenuHeight(state.fileMenu.items.length, limit);
 	return 0;
+}
+
+/**
+ * 小终端下菜单最多能显示几行。
+ *
+ * 菜单画在输入框上方，自身还有上下边框；终端高度不够时按可用行数收缩，
+ * 否则整帧会从顶部裁掉，连菜单的选中项都可能看不到。
+ */
+export function menuVisibleLimit(state: TuiState): number {
+	const rows = terminalRows(state);
+	const inputLines = inputView(state.input, terminalWidth(state), state.inputCursor).lines.length;
+	const available = rows - COMPACT_FOOTER_FIXED_LINES - inputLines - 2;
+	return Math.max(1, Math.min(MENU_MAX_VISIBLE, available));
 }
 
 export function menuOpen(state: TuiState): boolean {

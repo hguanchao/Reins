@@ -4,6 +4,7 @@ import {
 	BOLD_OFF,
 	DISABLED_COLOR,
 	HOVER_BG,
+	MENU_MAX_VISIBLE,
 	MUTED_COLOR,
 	PANEL_BG,
 	RESET,
@@ -43,12 +44,16 @@ const GAP = "    ";
 const GAP_WIDTH = displayWidth(GAP);
 const EMPTY = "No matching commands";
 
-export function commandMenuHeight(itemCount: number): number {
-	return menuListHeight(itemCount, { empty: EMPTY });
+export function commandMenuHeight(itemCount: number, maxVisible = MENU_MAX_VISIBLE): number {
+	return menuListHeight(itemCount, { empty: EMPTY }, maxVisible);
 }
 
-export function renderCommandMenu(width: number, state: CommandMenuState): readonly string[] {
-	return menuListLines(width, state.items, state, layoutColumns, row, { empty: EMPTY });
+export function renderCommandMenu(
+	width: number,
+	state: CommandMenuState,
+	maxVisible = MENU_MAX_VISIBLE,
+): readonly string[] {
+	return menuListLines(width, state.items, state, layoutColumns, row, { empty: EMPTY }, maxVisible);
 }
 
 interface Columns {

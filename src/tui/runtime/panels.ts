@@ -7,11 +7,11 @@ import { filterFiles, findAtToken, formatFileReference } from "../panel/file-men
 import { isImagePath } from "../image.ts";
 import type { ModelMenuItem, ModelMenuState } from "../panel/model-menu.ts";
 import type { SessionMenuItem, SessionMenuKind, SessionMenuState } from "../panel/session-menu.ts";
-import { errorLine } from "../render/status.ts";
+import { errorLine, CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE } from "../render/status.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import type { TranscriptLine } from "../transcript.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
-import { modalMenuOpen } from "./geometry.ts";
+import { modalMenuOpen, menuVisibleLimit } from "./geometry.ts";
 import type { TuiHost, TuiState } from "./types.ts";
 
 /**
@@ -35,8 +35,9 @@ function moveCursor(
 	menu: { cursor: number; scrollTop: number; hover?: number; pressed?: number },
 	delta: number,
 	count: number,
+	maxVisible: number,
 ): void {
-	moveMenuSelection(menu, delta, count, true);
+	moveMenuSelection(menu, delta, count, true, maxVisible);
 	// 键盘接管后，指针位置与旧的高亮/按下状态不再对应
 	menu.hover = undefined;
 	menu.pressed = undefined;
@@ -86,7 +87,7 @@ export function openModelMenu(host: TuiHost): void {
 export function moveMenu(host: TuiHost, delta: number): void {
 	const menu = openMenu(host.state);
 	if (menu === undefined) return;
-	moveCursor(menu, delta, menu.items.length);
+	moveCursor(menu, delta, menu.items.length, menuVisibleLimit(host.state));
 	host.render();
 }
 
@@ -405,9 +406,27 @@ export function completeCommandMenu(host: TuiHost, openSubmenu = false): void {
 	host.setInput(`/${chosen.name} `);
 	state.commandMenu = undefined;
 	if (openSubmenu) {
-		if (chosen.name === "model") openModelMenu(host);
-		else if (chosen.name === "effort") openEffortMenu(host);
-		else if (chosen.name === "session") openSessionMenu(host);
+		if (chosen.name === "model" || chosen.name === "effort") {
+			const source = chosen.name === "model" ? host.options.modelMenu : host.options.effortMenu;
+			if (source === undefined) {
+				// 补全成功但二级面板不可用：不解释的话看起来像按键没反应
+				host.resetStatusMeta();
+				host.setStatus(CONFIGURATION_REQUIRED, "notice");
+				host.scheduleStatusClear();
+			} else if (chosen.name === "model") {
+				openModelMenu(host);
+			} else {
+				openEffortMenu(host);
+			}
+		} else if (chosen.name === "session") {
+			if (host.options.sessionMenu === undefined) {
+				host.resetStatusMeta();
+				host.setStatus(SESSION_UNAVAILABLE, "notice");
+				host.scheduleStatusClear();
+			} else {
+				openSessionMenu(host);
+			}
+		}
 	}
 	host.render();
 }
