@@ -67,23 +67,27 @@ describe("后台作业", () => {
 
 	it("kill 结束进程并落成 killed", async () => {
 		const jobs = manager();
-		const job = jobs.start({
-			// 比等待时间长得多：进程只能因为 kill 结束，避免自然退出与收尾同时发生
-			command: "sleep 30",
-			workspace: WORKSPACE,
-			sandbox: SANDBOX,
-			session: SESSION,
-		});
-		const killed = jobs.kill(job.id);
-		assert.equal(killed?.status, "running");
-		// 全量测试并行跑时系统很忙，进程树终止可能比预想慢；等待窗口放宽到 15 秒
-		const done = await jobs.wait(job.id, 15000);
-		assert.equal(done?.status, "killed");
+		// 断言失败时也要收掉这个 sleep：它会把整个测试进程挂住，看起来像是测试卡死
+		try {
+			const job = jobs.start({
+				// 比等待时间长得多：进程只能因为 kill 结束，避免自然退出与收尾同时发生
+				command: "sleep 30",
+				workspace: WORKSPACE,
+				sandbox: SANDBOX,
+				session: SESSION,
+			});
+			const killed = jobs.kill(job.id);
+			assert.equal(killed?.status, "running");
+			// 全量测试并行跑时系统很忙，进程树终止可能比预想慢；等待窗口放宽到 15 秒
+			const done = await jobs.wait(job.id, 15000);
+			assert.equal(done?.status, "killed");
 
-		const tool = createKillJobTool(jobs);
-		const result = await tool.execute({ args: { id: job.id } } as never);
-		assert.match(result.content, /already killed/);
-		jobs.shutdown();
+			const tool = createKillJobTool(jobs);
+			const result = await tool.execute({ args: { id: job.id } } as never);
+			assert.match(result.content, /already killed/);
+		} finally {
+			jobs.shutdown();
+		}
 	});
 
 	it("bash 的 background 参数立即返回 job id，前台路径不受影响", async () => {

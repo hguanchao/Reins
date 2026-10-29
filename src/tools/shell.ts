@@ -222,40 +222,105 @@ export function sanitizeOutput(text: string): string {
 	return stripVTControlCharacters(text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "");
 }
 
+/**
+ * 进程退出后等这么久再判定结束。
+ *
+ * `close` 要等所有 stdio 都关掉才触发，而命令带出来的孙进程可能还握着管道：进程其实早就
+ * 结束了，`close` 却一直不来，调用方于是永远停在「运行中」。`exit` 一到就说明进程没了，
+ * 留一个短窗口让残余输出读完即可。
+ */
+const EXIT_GRACE_MS = 200;
+
 function waitForExit(child: ChildProcess): Promise<ShellExit> {
 	return new Promise((resolve) => {
+		let settled = false;
+		const settle = (result: ShellExit): void => {
+			if (settled) return;
+			settled = true;
+			resolve(result);
+		};
+
 		child.on("error", (error) => {
-			resolve({ started: false, code: null, signal: null, reason: error.message });
+			settle({ started: false, code: null, signal: null, reason: error.message });
 		});
 		// close 的第二个参数是终止信号：被 kill -9、SIGSEGV 或 OOM killer 结束时 code 为 null，
 		// 只看 code 会把「被杀」当成「正常结束」。
 		child.on("close", (code, signal) => {
-			resolve({ started: true, code, signal: signal ?? null, reason: "" });
+			settle({ started: true, code, signal: signal ?? null, reason: "" });
+		});
+		child.on("exit", (code, signal) => {
+			// 正常情况下 close 紧跟着 exit 到来，这个兜底不会生效；只在管道被孙进程占住时兜底
+			const timer = setTimeout(() => settle({ started: true, code, signal: signal ?? null, reason: "" }), EXIT_GRACE_MS);
+			timer.unref?.();
 		});
 	});
 }
 
+/** 结束进程树失败时的重试间隔与次数：系统繁忙时 taskkill 会短暂失败。 */
+const KILL_RETRY_DELAY_MS = 100;
+const KILL_ATTEMPTS = 3;
+
 /** 连同命令带出来的子进程一起结束。只杀直接子进程会留下孤儿进程继续占着端口或文件。 */
 export function killProcessTree(child: ChildProcess): void {
-	if (child.pid === undefined) return;
+	if (child.pid === undefined) {
+		// spawn 是异步的：pid 还没分配时 kill 会抛 EINVAL，直接返回则会让「请求终止」静默
+		// 失效——作业一直停在 running，退出清理也留下孤儿进程。等进程真的起来再杀。
+		child.once("spawn", () => killProcessTree(child));
+		// 起不来的进程没有可杀的东西；消费掉这个事件，避免变成未捕获异常
+		child.once("error", () => {});
+		return;
+	}
 	if (process.platform === "win32") {
-		// 用 System32 下的绝对路径，避免 PATH 上有同名程序时杀错东西
-		const taskkill = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "taskkill.exe");
-		try {
-			const killer = spawn(taskkill, ["/pid", String(child.pid), "/T", "/F"], {
-				stdio: "ignore",
-				windowsHide: true,
-			});
-			// spawn 失败只会发 error 事件；不消费就会变成未捕获异常
-			killer.on("error", () => child.kill());
-		} catch {
-			child.kill();
-		}
+		taskkillTree(child, KILL_ATTEMPTS);
 		return;
 	}
 	try {
 		process.kill(-child.pid, "SIGKILL");
 	} catch {
+		killDirect(child);
+	}
+}
+
+/**
+ * 用 taskkill 结束整棵进程树。
+ *
+ * taskkill 失败时只给一个非零退出码，不发 error：不看它，「没杀掉」就会被当成「杀掉了」，
+ * 作业一直停在 running，退出清理也留下孤儿进程。失败就再试一次——机器繁忙时它偶尔会
+ * 打不开进程——最后退回只结束直接子进程，至少不会什么都不做。
+ */
+function taskkillTree(child: ChildProcess, attemptsLeft: number): void {
+	const pid = child.pid;
+	if (pid === undefined) return;
+	// 用 System32 下的绝对路径，避免 PATH 上有同名程序时杀错东西
+	const taskkill = join(process.env["SystemRoot"] ?? "C:\\Windows", "System32", "taskkill.exe");
+
+	const retry = (): void => {
+		if (attemptsLeft > 1) setTimeout(() => taskkillTree(child, attemptsLeft - 1), KILL_RETRY_DELAY_MS);
+		else killDirect(child);
+	};
+
+	let killer: ChildProcess;
+	try {
+		killer = spawn(taskkill, ["/pid", String(pid), "/T", "/F"], {
+			stdio: "ignore",
+			windowsHide: true,
+		});
+	} catch {
+		killDirect(child);
+		return;
+	}
+	// spawn 失败只会发 error 事件；不消费就会变成未捕获异常
+	killer.on("error", retry);
+	killer.on("close", (code) => {
+		if (code !== 0) retry();
+	});
+}
+
+/** 只结束直接子进程；杀不掉就算了，调用方已经无从再做什么。 */
+function killDirect(child: ChildProcess): void {
+	try {
 		child.kill("SIGKILL");
+	} catch {
+		// pid 无效或进程已经退出：没有可杀的东西
 	}
 }
