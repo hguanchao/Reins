@@ -53,6 +53,24 @@ describe("插件宿主", () => {
 		assert.ok(host.sessionStore() !== undefined);
 	});
 
+	it("拒绝原型链名字与含控制字符的命令名", async () => {
+		const proto = await hostWith(
+			pluginOf("bad-proto", (api) => {
+				api.registerCommand({ name: "__proto__", description: "", run: async () => undefined });
+			}),
+		);
+		assert.equal(proto.failures.length, 1);
+		assert.deepEqual(proto.host.commands(), []);
+
+		const control = await hostWith(
+			pluginOf("bad-control", (api) => {
+				api.registerCommand({ name: "evil\u001b[2J", description: "", run: async () => undefined });
+			}),
+		);
+		assert.equal(control.failures.length, 1);
+		assert.deepEqual(control.host.commands(), []);
+	});
+
 	it("随包插件与外部插件的来源分开标记", async () => {
 		const registry = new ToolRegistry(noSpill(), ALLOW_GATE as never);
 		const host = new PluginHost(registry, new PermissionPolicy("ask"));

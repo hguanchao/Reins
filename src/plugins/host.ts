@@ -204,6 +204,10 @@ export class PluginHost {
 			},
 			registerCommand: (command) => {
 				assertLive();
+				// 命令名会进斜杠补全与分派表：只允许普通标识符，避免原型链名字或控制字符
+				if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(command.name)) {
+					throw new Error(`Invalid command name: ${command.name}`);
+				}
 				if (this.#commands.has(command.name) || pending.commands.some((item) => item.name === command.name)) {
 					throw new Error(`Command /${command.name} is already registered`);
 				}
