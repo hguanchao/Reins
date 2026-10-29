@@ -81,17 +81,21 @@ function subagentGroupHead(group: TranscriptSubagentGroup, width: number): strin
 	const marker = group.expanded === true ? TOOL_GROUP_EXPANDED_MARKER : TOOL_MARKER;
 	const prefix = `${RESPONSE_INDENT}${marker} `;
 	const counts = countSegments(group);
+	// 历史回填的组没有起点也没有定格耗时：不能拿 0 当起点现算，否则会显示成
+	// 自 1970 年以来的天数。没有耗时数据时只显示计数段。
 	const elapsed =
 		group.durationMs !== undefined
 			? formatDuration(group.durationMs)
-			: formatDuration(Math.max(0, Date.now() - group.startedAt));
+			: group.startedAt > 0
+				? formatDuration(Math.max(0, Date.now() - group.startedAt))
+				: undefined;
 	// token 合计只在全部结束时显示:运行中的组还没拿到各成员的用量
 	const tokens =
 		group.durationMs !== undefined && group.totalTokens !== undefined
 			? ` · ⇣${formatCompactTokens(group.totalTokens)}`
 			: "";
 	// 窄终端上先丢 token、再丢耗时，最后截断标签:整行不能超过内容宽度，否则终端自动折行错位。
-	const full = `  ${counts} (${elapsed}${tokens})`;
+	const full = elapsed === undefined ? `  ${counts}` : `  ${counts} (${elapsed}${tokens})`;
 	const brief = `  ${counts}`;
 	const available = Math.max(0, width - displayWidth(prefix));
 	const rest = displayWidth(full) <= available ? full : displayWidth(brief) <= available ? brief : "";
@@ -124,9 +128,9 @@ function subagentMemberLines(
 	if (member.steps !== undefined) stats.push(`${member.steps} steps`);
 	if (member.durationMs !== undefined) stats.push(formatDuration(member.durationMs));
 	const fullMetric = stats.length === 0 ? "" : ` (${stats.join(" · ")})`;
-	// 摘要与统计都要挤进一行：先按可用宽度收缩摘要，仍放不下就整段丢掉统计。
-	// 只保证「至少一个空格」的间隔会让整行超出内容宽度，终端折行后整屏错位。
-	const available = Math.max(0, width - displayWidth(indent) - 2);
+	// 摘要与统计都要挤进一行：行首还有「符号 + 空格 + 标签 + 两个空格」，
+	// 这部分必须先扣掉，否则整行会超出内容宽度，终端折行后整屏错位。
+	const available = Math.max(0, width - displayWidth(indent) - 2 - displayWidth(label) - 2);
 	const metricWidth = displayWidth(fullMetric);
 	const summaryBudget = Math.min(SUBAGENT_TASK_WIDTH, Math.max(0, available - metricWidth - 2));
 	const summary = truncateToWidth(sanitizeForDisplay(member.task), summaryBudget);

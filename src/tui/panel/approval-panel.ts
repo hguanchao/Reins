@@ -7,7 +7,7 @@ import {
 	PANEL_BG,
 	RESET,
 } from "./menu-panel.ts";
-import { characterWidth, displayWidth, fitToWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
+import { characterWidth, displayWidth, fitToWidth, graphemes, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
 /**
@@ -219,7 +219,7 @@ function wrapPreviewLine(text: string, width: number): readonly string[] {
 	const lines: string[] = [];
 	let line = "";
 	let used = 0;
-	for (const char of text) {
+	for (const char of graphemes(text)) {
 		const charWidth = characterWidth(char);
 		if (used + charWidth > width && line.length > 0) {
 			lines.push(line);

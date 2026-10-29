@@ -2,7 +2,7 @@ import type { ApprovalMode } from "../../config/file.ts";
 import { formatCompactTokens, formatDuration } from "../../shared/format.ts";
 import { highlightImageMarkers } from "../image.ts";
 import { swept } from "../render/sweep.ts";
-import { characterWidth, displayWidth, truncateToWidth } from "../render/text.ts";
+import { characterWidth, displayWidth, graphemes, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
 /**
@@ -223,8 +223,8 @@ function lineWindow(
 	cursorOffset: number,
 	width: number,
 ): { readonly text: string; readonly cursorWidth: number; readonly start: number } {
-	const chars = Array.from(text);
-	const cursorChars = Array.from(text.slice(0, cursorOffset)).length;
+	const chars = graphemes(text);
+	const cursorChars = graphemes(text.slice(0, cursorOffset)).length;
 	const widths = chars.map((char) => characterWidth(char));
 	const total = widths.reduce((sum, item) => sum + item, 0);
 	const cursorTotal = widths.slice(0, cursorChars).reduce((sum, item) => sum + item, 0);
@@ -318,7 +318,7 @@ function oneLine(text: string): string {
 function commandText(line: InputLine): string {
 	const end = line.commandEnd ?? 0;
 	if (end <= 0) return highlightImageMarkers(line.text, THEME.image, RESET);
-	const chars = Array.from(line.text);
+	const chars = graphemes(line.text);
 	if (end >= chars.length) return `${FOCUS_COLOR}${line.text}${RESET}`;
 	const rest = chars.slice(end).join("");
 	return `${FOCUS_COLOR}${chars.slice(0, end).join("")}${RESET}${highlightImageMarkers(rest, THEME.image, RESET)}`;

@@ -112,6 +112,13 @@ describe("Markdown 排版", () => {
 		assert.ok(rows.some((line) => line.includes("plain  text")));
 	});
 
+	it("代码块里的制表符展开成空格，缩进层级保留", () => {
+		const rows = texts(render("```py\n\tif x:\n\t\treturn 1\n```", 40));
+
+		assert.ok(rows.some((line) => line.includes("    if x:")));
+		assert.ok(rows.some((line) => line.includes("        return 1")));
+	});
+
 	it("引用内容每行带竖线，空行也带", () => {
 		const rows = texts(render("> 第一行\n>\n> 第二行", 40));
 

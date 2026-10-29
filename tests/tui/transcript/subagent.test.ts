@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { THEME } from "../../../src/tui/render/theme.ts";
-import { buildTranscriptView, renderTranscriptView, toggleLastExpandable } from "../../../src/tui/transcript.ts";
+import { displayWidth } from "../../../src/tui/render/text.ts";
+import { buildTranscriptView, renderTranscriptView, stripTerminalStyles, toggleLastExpandable } from "../../../src/tui/transcript.ts";
 import type { TranscriptSubagentGroup, TranscriptTurn } from "../../../src/tui/transcript.ts";
 
 
@@ -106,6 +107,31 @@ describe("子代理组", () => {
 		const text = view.lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
 		assert.ok(text.includes("1 done"));
 		assert.ok(!text.includes("running") && !text.includes("failed"));
+	});
+
+	it("展开的成员行不超过内容宽度", () => {
+		const expanded = group();
+		expanded.expanded = true;
+		for (const width of [40, 60, 80]) {
+			const view = buildTranscriptView(width, [{ prompt: "go", response: [expanded] }], undefined);
+			for (const line of view.lines) {
+				const visible = displayWidth(stripTerminalStyles(line));
+				assert.ok(visible <= width, `width ${width}: ${visible} > ${width}`);
+			}
+		}
+	});
+
+	it("没有耗时的历史组不显示括号统计", () => {
+		const restored: TranscriptSubagentGroup = {
+			kind: "subagentGroup",
+			members: [{ callId: "1", task: "t", status: "done" }],
+			startedAt: 0,
+			expanded: false,
+		};
+		const view = buildTranscriptView(60, [{ prompt: "go", response: [restored] }], undefined);
+		const text = view.lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
+		assert.ok(text.includes("1 done"));
+		assert.equal(/\(\d+d/.test(text), false);
 	});
 
 	it("Ctrl+E 切换最近一个子代理组的展开", () => {

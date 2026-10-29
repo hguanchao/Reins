@@ -3,7 +3,7 @@ import { lexer, type Token, type Tokens } from "marked";
 import { sanitizeDetail, sanitizeLine } from "../../tools/describe.ts";
 import { highlightCode, type SyntaxLines } from "./syntax.ts";
 import { syntaxColor } from "./syntax-style.ts";
-import { characterWidth, displayWidth, fitToWidth, truncateToWidth, wrapText } from "./text.ts";
+import { characterWidth, displayWidth, fitToWidth, graphemes, sanitizeForDisplay, truncateToWidth, wrapText } from "./text.ts";
 import { THEME } from "./theme.ts";
 
 /**
@@ -223,7 +223,8 @@ function withBar(row: Row, indent: number): Row {
 }
 
 function appendCode(token: Tokens.Code, context: Context, rows: Row[]): void {
-	const source = sanitizeDetail(token.text.replace(/\n$/, ""));
+	// 代码块必须保留制表符缩进：sanitizeDetail 会把 \t 压成一个空格，缩进层级全丢
+	const source = sanitizeForDisplay(token.text.replace(/\n$/, ""));
 	const codeLines = source.split("\n");
 	const highlighted = highlightFence(source, token.lang);
 	const bandStart = Math.min(context.indent, context.width);
@@ -333,7 +334,7 @@ function wrapPlainWords(text: string, limit: number): string[] {
 	let line = "";
 	let used = 0;
 
-	for (const char of text) {
+	for (const char of graphemes(text)) {
 		const charWidth = characterWidth(char);
 		if (used + charWidth > width && used > 0) {
 			const space = line.lastIndexOf(" ");
@@ -380,11 +381,11 @@ function htmlAtoms(line: string, base: string): Atom[] {
 	let buffer = "";
 	let inTag = false;
 	const flush = (style: string): void => {
-		for (const char of buffer) atoms.push({ text: char, style });
+		for (const char of graphemes(buffer)) atoms.push({ text: char, style });
 		buffer = "";
 	};
 
-	for (const char of line) {
+	for (const char of graphemes(line)) {
 		if (inTag) {
 			buffer += char;
 			if (char === ">") {
@@ -542,7 +543,7 @@ function wrapAtoms(atoms: readonly Atom[], limit: number): Span[][] {
 			used = 0;
 			continue;
 		}
-		for (const char of atom.text) {
+		for (const char of graphemes(atom.text)) {
 			const width = characterWidth(char);
 			if (used + width > limit && used > 0) {
 				const current = rows[rows.length - 1] ?? [];
@@ -556,7 +557,7 @@ function wrapAtoms(atoms: readonly Atom[], limit: number): Span[][] {
 				}
 				if (space > 0) {
 					const carry = current.slice(space + 1);
-					const carryWidth = carry.reduce((sum, item) => sum + characterWidth(item.text), 0);
+					const carryWidth = carry.reduce((sum, item) => sum + displayWidth(item.text), 0);
 					if (carryWidth + width <= limit) {
 						current.length = space;
 						rows.push(carry);

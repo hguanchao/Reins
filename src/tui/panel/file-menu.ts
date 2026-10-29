@@ -13,7 +13,7 @@ import {
 	menuListHeight,
 	menuListLines,
 } from "./menu-panel.ts";
-import { characterWidth, displayWidth, fitToWidth } from "../render/text.ts";
+import { characterWidth, displayWidth, fitToWidth, graphemes } from "../render/text.ts";
 
 /**
  * 输入框里的 `@` 文件补全。
@@ -188,8 +188,8 @@ function tailToWidth(text: string, width: number): string {
 	if (width <= 0) return "";
 	if (displayWidth(text) <= width) return text;
 
-	// 按码位从后往前取：按 UTF-16 码元倒序会把 emoji 的代理对拆开，留下半个字符
-	const chars = Array.from(text);
+	// 按字素簇从后往前取：按码元倒序会把 emoji 的代理对或 ZWJ 序列拆开
+	const chars = graphemes(text);
 	let tail = "";
 	let used = 0;
 	for (let index = chars.length - 1; index >= 0; index -= 1) {

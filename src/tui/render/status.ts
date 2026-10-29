@@ -1,4 +1,5 @@
 import { describeError } from "../../shared/describe-error.ts";
+import { graphemes } from "./text.ts";
 
 /**
  * 状态行文案与短提示格式化。
@@ -45,9 +46,9 @@ export function errorLine(error: unknown): string {
 	return truncateChars(clean, 80);
 }
 
-/** 按码位截断并补省略号：按码元切会把 emoji 之类的代理对劈成半个字符。 */
+/** 按字素簇截断并补省略号：按码元切会把 emoji 之类的代理对劈成半个字符。 */
 function truncateChars(text: string, limit: number): string {
-	const chars = Array.from(text);
+	const chars = graphemes(text);
 	if (chars.length <= limit) return text;
 	return `${chars.slice(0, limit - 1).join("")}…`;
 }

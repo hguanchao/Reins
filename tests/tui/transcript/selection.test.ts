@@ -11,7 +11,7 @@ import {
 	stripTerminalStyles,
 	visibleTextWidth,
 } from "../../../src/tui/transcript.ts";
-import type { TranscriptTool } from "../../../src/tui/transcript.ts";
+import type { TranscriptThinking, TranscriptTool } from "../../../src/tui/transcript.ts";
 import { THEME } from "../../../src/tui/render/theme.ts";
 
 describe("文本选区", () => {
@@ -197,5 +197,41 @@ describe("文本选区", () => {
 			view.lineMeta[middle]?.contentStart ?? 0,
 		);
 		assert.equal(range?.from, view.lineMeta[middle]?.contentStart);
+	});
+
+	it("提示块与思考正文里的数字开头行不被当成行号", () => {
+		const thinking: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thought for 1s",
+			body: ["12  body line", "tail line"],
+			partial: "",
+			running: false,
+			expanded: true,
+		};
+		const view = buildTranscriptView(40, [
+			{ prompt: "first line\n12  second line\nthird line", response: [thinking] },
+		]);
+		const indexOf = (needle: string): number =>
+			view.lines.findIndex((line) => stripTerminalStyles(line).includes(needle));
+
+		const promptFirst = indexOf("first line");
+		const promptLast = indexOf("third line");
+		assert.ok(promptFirst >= 0 && promptLast > promptFirst);
+		const promptCopy = selectionText(view, {
+			anchor: { line: promptFirst, cell: 0 },
+			focus: { line: promptLast, cell: 39 },
+		});
+		assert.ok(promptCopy.includes("12  second line"));
+		assert.ok(promptCopy.includes("third line"));
+
+		const bodyFirst = indexOf("12  body line");
+		const bodyLast = indexOf("tail line");
+		assert.ok(bodyFirst >= 0 && bodyLast > bodyFirst);
+		const bodyCopy = selectionText(view, {
+			anchor: { line: bodyFirst, cell: 0 },
+			focus: { line: bodyLast, cell: 39 },
+		});
+		assert.ok(bodyCopy.includes("12  body line"));
+		assert.ok(bodyCopy.includes("tail line"));
 	});
 });

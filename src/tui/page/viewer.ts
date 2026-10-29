@@ -1,5 +1,5 @@
 import { actionLines, pageTitle } from "./chrome.ts";
-import { characterWidth, displayWidth, sanitizeForDisplay } from "../render/text.ts";
+import { characterWidth, displayWidth, graphemes, sanitizeForDisplay } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import type { ViewerContent } from "../runtime/types.ts";
 
@@ -57,7 +57,7 @@ function wrapPreserving(text: string, width: number): readonly string[] {
 	const lines: string[] = [];
 	let line = "";
 	let used = 0;
-	for (const char of text) {
+	for (const char of graphemes(text)) {
 		const charWidth = characterWidth(char);
 		if (used + charWidth > columns && line.length > 0) {
 			lines.push(line);

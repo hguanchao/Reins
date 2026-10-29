@@ -1,4 +1,4 @@
-import { characterWidth, displayWidth } from "../render/text.ts";
+import { characterWidth, displayWidth, graphemes } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { lineIndexAtRow } from "./scroll.ts";
 import { PLAIN_LINE_META } from "./types.ts";
@@ -135,6 +135,10 @@ export function highlightSelection(
 	let active = false;
 	let foreground = DEFAULT_FG;
 	let background = DEFAULT_BG;
+	// 按字素簇推进：转义序列不占列，其余每个簇整体着色，emoji 不会被拆成两半
+	const segments = graphemes(line);
+	let segment = 0;
+	let segmentStart = 0;
 	let index = 0;
 	while (index < line.length) {
 		if (line[index] === "\x1b") {
@@ -147,9 +151,15 @@ export function highlightSelection(
 			if (nextBg !== undefined) background = nextBg;
 			if (active) out += THEME.selectionFg + THEME.selectionBg;
 			index += length;
+			// 跳过转义序列覆盖到的字素段，下一次取字符时仍落在完整簇边界上
+			while (segment < segments.length && segmentStart + (segments[segment] ?? "").length <= index) {
+				segmentStart += (segments[segment] ?? "").length;
+				segment += 1;
+			}
 			continue;
 		}
-		const char = String.fromCodePoint(line.codePointAt(index) ?? 0);
+		const char = segments[segment] ?? "";
+		if (char.length === 0) break;
 		const width = characterWidth(char);
 		const selected = cell >= range.from && cell <= range.to;
 		if (selected !== active) {
@@ -159,6 +169,8 @@ export function highlightSelection(
 		out += char;
 		cell += width;
 		index += char.length;
+		segmentStart += char.length;
+		segment += 1;
 	}
 	return active ? `${out}${foreground}${background}` : out;
 }
@@ -284,7 +296,7 @@ function escapeLength(line: string, index: number): number {
 function sliceCells(text: string, from: number, to: number): string {
 	let out = "";
 	let cell = 0;
-	for (const char of text) {
+	for (const char of graphemes(text)) {
 		const width = characterWidth(char);
 		if (cell >= from && cell <= to) out += char;
 		cell += width;

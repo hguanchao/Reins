@@ -401,6 +401,23 @@ describe("工具调用行", () => {
 		assert.ok(body.includes(THEME.detailBg));
 	});
 
+	it("详情里的 ANSI 序列被剥掉，不留下颜色残渣", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "app.log",
+			fullDetail: "1  \x1b[31mERROR\x1b[0m boom",
+			detailKind: "file",
+			detailExpanded: true,
+		};
+		const lines = renderTranscript(50, 12, [{ prompt: "hi", response: [tool] }], 0);
+		const text = lines.map(plain).join("\n");
+
+		assert.ok(text.includes("ERROR boom"));
+		assert.equal(text.includes("[31m"), false);
+		assert.equal(text.includes("[0m"), false);
+	});
+
 	it("详情里的回车被清掉，色带不会被打回终端底色", () => {
 		// Windows 命令输出与错误正文常带 CRLF：CR 被终端当成回车执行，其后的补齐空格
 		// 从行首重写，整条色带断开，这一行内容也会被覆盖成空白

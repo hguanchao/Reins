@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { sanitizeLine } from "../../tools/describe.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { highlightImageMarkers } from "../image.ts";
@@ -5,6 +7,7 @@ import { renderMarkdown } from "../render/markdown.ts";
 import {
 	characterWidth,
 	displayWidth,
+	graphemes,
 	truncateToWidth,
 	wrapText,
 	wrappedLines,
@@ -49,7 +52,7 @@ import {
 	THINKING_TAIL_LINES,
 } from "./style.ts";
 import { animatedSubagentLine, subagentGroupLines } from "./subagent.ts";
-import { stripLineControls } from "./detail.ts";
+import { expandTabs, stripLineControls } from "./detail.ts";
 import { hasExpandableDetail, toolGroupLines, toolLines, toolResultLines } from "./tool.ts";
 import { PLAIN_LINE_META } from "./types.ts";
 import type {
@@ -338,6 +341,8 @@ function build(
 	// 所有登记项（提示块、各卡片头行、子代理活动行）记的都是绝对行号，因此接着前缀往下排
 	// 不需要任何偏移换算：lines.length 已经包含了前缀的长度。
 	const lines: string[] = base === undefined ? [] : [...base.view.lines];
+	// 这些行有底色但没有行号列：复制时不能按详情色带的规则剥掉行首内容
+	const plainRows = new Set<number>();
 	const prompts: PromptRange[] = base === undefined ? [] : [...base.view.prompts];
 	const thinkingHeaders: { start: number; block: TranscriptThinking }[] =
 		base === undefined ? [] : [...base.view.thinkingHeaders];
@@ -373,6 +378,7 @@ function build(
 		const promptLines = promptBlock(turn.prompt, width);
 		const start = lines.length;
 		lines.push(...promptLines);
+		for (let offset = 0; offset < promptLines.length; offset += 1) plainRows.add(start + offset);
 		// 提示块自己带着一行底部留白，再补一行就会在视觉上变成两行空白
 		const responseStart = lines.length;
 		let previousLine: TranscriptLine | undefined;
@@ -391,7 +397,9 @@ function build(
 			}
 			if (line.kind === "thinkingBlock") {
 				const blockStart = lines.length;
-				lines.push(...thinkingBlockLines(line, width));
+				const blockLines = thinkingBlockLines(line, width);
+				lines.push(...blockLines);
+				for (let offset = 0; offset < blockLines.length; offset += 1) plainRows.add(blockStart + offset);
 				thinkingHeaders.push({ start: blockStart, block: line });
 				continue;
 			}
@@ -401,7 +409,12 @@ function build(
 				// 有命令全文或有结果，就有可展开的东西；两样都没有就不登记命中区
 				if (hasExpandableDetail(line)) toolHeaders.push({ start: toolStart, tool: line });
 				if (line.resultExpanded && line.result !== undefined) {
-					lines.push(...toolResultLines(line, width));
+					const resultStart = lines.length;
+					const resultLines = toolResultLines(line, width);
+					lines.push(...resultLines);
+					for (let offset = 0; offset < resultLines.length; offset += 1) {
+						plainRows.add(resultStart + offset);
+					}
 				}
 				continue;
 			}
@@ -456,7 +469,7 @@ function build(
 	return {
 		width,
 		lines,
-		lineMeta: buildLineMeta(lines),
+		lineMeta: buildLineMeta(lines, plainRows),
 		prompts,
 		thinkingHeaders,
 		groupHeaders,
@@ -476,14 +489,24 @@ function build(
  * 复制时也不该插换行。普通正文没有这些前缀，保持默认元数据。只认详情色带，避免把普通
  * 正文里的缩进当成行号。
  */
-function buildLineMeta(lines: readonly string[]): readonly LineMeta[] {
+function buildLineMeta(lines: readonly string[], plainRows: ReadonlySet<number>): readonly LineMeta[] {
 	const meta: LineMeta[] = [];
 	// 当前详情色带的内容起点；遇到非详情行、空行或新的行号时重置
 	let contentStart = 0;
 	let inDetail = false;
 	// diff 色带里带行号的上下文行与文件内容长得一样，靠前一条增删行/ hunk 头确认类型
 	let diffBand = false;
-	for (const line of lines) {
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		// 提示块、思考正文与工具结果预览也用同一个底色，但它们没有行号列：
+		// 一旦按「数字+两个空格」误判，复制时会把正文开头的数字吃掉并接错行
+		if (plainRows.has(index)) {
+			meta.push(PLAIN_LINE_META);
+			inDetail = false;
+			contentStart = 0;
+			diffBand = false;
+			continue;
+		}
 		const detail = line.includes(THEME.detailBg) || line.includes(THEME.diffInsertBg) || line.includes(THEME.diffDeleteBg);
 		if (!detail) {
 			meta.push(PLAIN_LINE_META);
@@ -568,7 +591,7 @@ function planTitle(text: string): string {
 		const line = sanitizeLine(row).trim();
 		if (line.length === 0 || line.startsWith("```")) continue;
 		const heading = line.replace(/^#{1,6}\s+/, "").replace(/\s+#+$/, "");
-		const chars = Array.from(heading);
+		const chars = graphemes(heading);
 		return chars.length > 72 ? `${chars.slice(0, 71).join("")}…` : heading;
 	}
 	return "";
@@ -639,8 +662,13 @@ function thinkingBodyLines(text: string, width: number): readonly string[] {
 	const inside = " ".repeat(insideWidth);
 	const contentWidth = Math.max(1, innerWidth - insideWidth - DETAIL_RIGHT_PADDING);
 
-	// 模型输出可能带 CR：终端执行回车后，补齐空格会从行首重写，整条色带被盖掉
-	return wrapText(stripLineControls(text), contentWidth).map((line) => {
+	// 模型输出可能带 CR 或 ANSI：终端执行回车/清屏后会把整条色带打乱；制表符先按
+	// 可见列展开，不能和其余控制字符一起删掉，否则缩进整段丢失
+	const cleaned = text
+		.split("\n")
+		.map((line) => stripLineControls(expandTabs(stripVTControlCharacters(line))))
+		.join("\n");
+	return wrapText(cleaned, contentWidth).map((line) => {
 		const content = `${inside}${truncateToWidth(line, contentWidth)}`;
 		const visible = truncateToWidth(content, innerWidth);
 		const padding = " ".repeat(Math.max(0, innerWidth - displayWidth(visible)));
@@ -686,7 +714,7 @@ function wrapPrompt(text: string, limit: number, maxLines: number): readonly str
 
 	const visible = lines.slice(0, maxLines);
 	const ellipsis = "…";
-	let last = Array.from(visible[maxLines - 1] ?? "");
+	let last = graphemes(visible[maxLines - 1] ?? "");
 	let used = displayWidth(last.join(""));
 
 	while (last.length > 0 && used + 1 > limit) {

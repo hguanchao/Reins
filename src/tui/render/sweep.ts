@@ -1,4 +1,5 @@
 import { THEME } from "./theme.ts";
+import { graphemes } from "./text.ts";
 
 /**
  * 运行行动画：盲文转圈与扫光。
@@ -31,9 +32,8 @@ export function swept(
 	highlight: Rgb,
 	radius: number = SWEEP_RADIUS,
 ): string {
-	// 按码位遍历而不是按 UTF-16 码元：emoji 等代理对若被拆开，着色序列会插在高低位之间，
-	// 终端拿到的就是两个无法解码的孤立代理项。
-	const chars = Array.from(text);
+	// 按字素簇遍历：emoji 的 ZWJ 序列与修饰符必须整体着色，拆开后终端会画成多个字形。
+	const chars = graphemes(text);
 	const center = -radius + phase * (chars.length + radius * 2);
 	let output = "";
 	for (let index = 0; index < chars.length; index += 1) {

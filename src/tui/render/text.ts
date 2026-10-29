@@ -10,18 +10,48 @@ import { THEME } from "./theme.ts";
  * 截断和补齐都只走这里，避免同一套规则散落在各处。
  */
 
-export function characterWidth(char: string): number {
-	return eastAsianWidth(char.codePointAt(0) ?? 0);
+const SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+/** 组合标记、格式字符与变体选择符本身不占列。 */
+const ZERO_WIDTH = /^[\p{Mn}\p{Me}\p{Cf}\uFE0E\uFE0F\p{Emoji_Modifier}]$/u;
+const ASCII_ONLY = /^[\x00-\x7f]*$/;
+
+/**
+ * 把文本切成字素簇。
+ *
+ * 终端把「一个用户看到的字符」当成一列单位：组合符、ZWJ 序列、肤色修饰符、
+ * 区域指示符都要整体计算，按码位遍历会把它们拆成多个字。
+ */
+export function graphemes(text: string): string[] {
+	return Array.from(SEGMENTER.segment(text), (item) => item.segment);
+}
+
+/**
+ * 一个字素簇占多少列。
+ *
+ * 单码位仍按 East Asian Width 判断；组合标记计 0；变体选择符要求 emoji 呈现、
+ * ZWJ 连接序列与区域指示符（国旗）整体按两列算。
+ */
+export function characterWidth(grapheme: string): number {
+	if (grapheme.length === 0) return 0;
+	if (ZERO_WIDTH.test(grapheme)) return 0;
+	if (grapheme.includes("\uFE0F")) return 2;
+	if (grapheme.includes("\u200D") || /\p{Regional_Indicator}/u.test(grapheme)) return 2;
+	if ([...grapheme].length === 1) return eastAsianWidth(grapheme.codePointAt(0) ?? 0);
+	// 基字符 + 组合符：宽度取基字符
+	const base = [...grapheme].find((char) => !ZERO_WIDTH.test(char));
+	return base === undefined ? 0 : eastAsianWidth(base.codePointAt(0) ?? 0);
 }
 
 export function displayWidth(text: string): number {
+	// 纯 ASCII 是绝大多数行的情况，省掉分段开销
+	if (ASCII_ONLY.test(text)) return text.length;
 	let width = 0;
-	for (const char of text) width += characterWidth(char);
+	for (const grapheme of graphemes(text)) width += characterWidth(grapheme);
 	return width;
 }
 
 export function truncateToWidth(text: string, width: number): string {
-	const chars = Array.from(text);
+	const chars = graphemes(text);
 	let used = 0;
 	let end = 0;
 
@@ -46,7 +76,7 @@ export function wrapText(text: string, limit: number): string[] {
 
 	const lines: string[] = [];
 	for (const paragraph of sanitizeForDisplay(text).split("\n")) {
-		const chars = Array.from(paragraph);
+		const chars = graphemes(paragraph);
 		let line = "";
 		let used = 0;
 
@@ -109,7 +139,7 @@ function wrapParagraph(text: string, limit: number, lines: string[]): void {
 			continue;
 		}
 
-		for (const char of word) {
+		for (const char of graphemes(word)) {
 			const charWidth = characterWidth(char);
 			if (used + charWidth > limit && line.length > 0) push();
 			line += char;
@@ -125,7 +155,7 @@ export function fitToWidth(text: string, width: number): string {
 	if (width <= 0) return "";
 	if (displayWidth(text) <= width) return text;
 
-	const chars = Array.from(text);
+	const chars = graphemes(text);
 	let used = 0;
 	let end = 0;
 	while (end < chars.length) {
@@ -172,5 +202,11 @@ export function wrappedLines(
  * 带 ESC 序列。它们能清屏、移动光标、改写剪贴板，让「看到的」与「实际的」不一致。
  */
 export function sanitizeForDisplay(text: string): string {
-	return stripVTControlCharacters(text).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+	return stripVTControlCharacters(text)
+		// CR 会让终端从行首重写整行，必须归一：CRLF 是换行，单独的 CR 当成空格
+		.replace(/\r\n?/g, (match) => (match.length === 2 ? "\n" : " "))
+		// 制表符的宽度取决于当前列，排版层拿不到真实列号；统一展开成空格，
+		// 否则宽度计算会把一个会跳格的控制字符当成零列，整行对齐全错
+		.replace(/\t/g, "    ")
+		.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
 }

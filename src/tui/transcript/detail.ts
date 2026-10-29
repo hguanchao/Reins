@@ -1,6 +1,8 @@
+import { stripVTControlCharacters } from "node:util";
+
 import type { ResultDetailKind } from "../../tools/result/detail.ts";
 import { highlightCode, type SyntaxSegment } from "../render/syntax.ts";
-import { characterWidth, displayWidth, truncateToWidth, wrapText } from "../render/text.ts";
+import { characterWidth, displayWidth, graphemes, truncateToWidth, wrapText } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { syntaxColor } from "../render/syntax-style.ts";
 import {
@@ -25,9 +27,11 @@ export function detailBand(tool: TranscriptTool, baseIndent: string, width: numb
 	const kind = tool.detailKind ?? "text";
 	// 工具结果普遍以换行结尾，直接切行会在详情末尾多出一个空行，与下边距叠成两行留白
 	const rows = stripTrailingBlank((tool.fullDetail ?? "").split("\n"));
-	// 只截显示不截数据：全文仍在 tool.fullDetail 里，展开多长都不会把这一轮的其他内容挤出屏幕
-	// 先展开制表符再清控制字符：顺序反了会把制表符当控制字符删掉，缩进整段丢失
-	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES).map((row) => stripLineControls(expandTabs(row)));
+	// 先剥 ANSI 再展开制表符，最后清剩余控制字符：顺序反了会让制表位按不可见的
+	// 转义序列宽度计算，缩进对不齐；文件内容里的颜色序列也会以 `[31m` 残渣上屏。
+	const visible = rows
+		.slice(0, DETAIL_BAND_MAX_LINES)
+		.map((row) => stripLineControls(expandTabs(stripVTControlCharacters(row))));
 	const syntax =
 		kind === "diff"
 			? diffSyntax(visible, tool.detail)
@@ -70,7 +74,7 @@ export function stripTrailingBlank(rows: readonly string[]): readonly string[] {
 export function expandTabs(text: string): string {
 	let column = 0;
 	let output = "";
-	for (const char of text) {
+	for (const char of graphemes(text)) {
 		if (char === "\t") {
 			const width = TAB_STOP - (column % TAB_STOP);
 			output += " ".repeat(width);
@@ -354,7 +358,7 @@ function wrapSegments(segments: readonly ColoredSegment[], limit: number): reado
 	let used = 0;
 
 	for (const segment of segments) {
-		for (const char of segment.text) {
+		for (const char of graphemes(segment.text)) {
 			const charWidth = characterWidth(char);
 			if (used + charWidth > limit && used > 0) {
 				lines.push([]);
