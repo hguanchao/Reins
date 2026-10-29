@@ -41,7 +41,7 @@ interface PageSection {
 /** 命令之外的固定内容。 */
 const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Enter", description: "Send the prompt; queue it while a turn is running" },
-	{ name: "Shift+Enter / Alt+Enter", description: "Insert a newline without sending" },
+	{ name: "Alt+Enter", description: "Insert a newline without sending" },
 	{ name: "Tab", description: "Complete the selected item into the prompt; switch the branch or rewind selection in those panels" },
 	{ name: "Shift+Tab", description: "Cycle the approval mode: ask, auto, yolo" },
 	{ name: "Esc", description: "Close a menu or this page; deny an approval; interrupt and send the first queued message" },

@@ -73,11 +73,20 @@ describe("多行输入光标", () => {
 		assert.equal(moveInputVertical(text, 2, 1), 7);
 	});
 
-	it("Alt+Enter 与 Shift+Enter 插入换行而不是提交", () => {
-		for (const sequence of ["\x1b\r", "\x1b\n", "\x1b[13;2u", "\x1b[27;2;13~"]) {
+	it("Alt+Enter 插入换行而不是提交", () => {
+		for (const sequence of ["\x1b\r", "\x1b\n"]) {
 			const edit = editInput("ab", 2, sequence, false);
 			assert.equal(edit.text, "ab\n");
 			assert.equal(edit.cursor, 3);
+			assert.equal(edit.submit, false);
+		}
+	});
+
+	it("Shift+Enter 的协议序列不再插入换行", () => {
+		// 没开键盘协议时它与普通回车不可区分；这里锁定的是不再单独处理这两种编码
+		for (const sequence of ["\x1b[13;2u", "\x1b[27;2;13~"]) {
+			const edit = editInput("ab", 2, sequence, false);
+			assert.equal(edit.text, "ab");
 			assert.equal(edit.submit, false);
 		}
 	});

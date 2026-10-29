@@ -266,9 +266,6 @@ export function editInput(
 			const end = nextIndex(text, cursor);
 			if (end > cursor) text = text.slice(0, cursor) + text.slice(end);
 			handled = true;
-		} else if (sequence === "\x1b[13;2u" || sequence === "\x1b[27;2;13~") {
-			// Shift+Enter：kitty CSI-u 与 xterm modifyOtherKeys 两种说法
-			insert("\n");
 		} else {
 			return;
 		}
