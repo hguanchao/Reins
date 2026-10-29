@@ -269,6 +269,7 @@ export function renderFooter(
 	const columns = Math.max(0, width);
 	const view = inputView(input, columns, layout?.cursor, layout?.commandLength ?? 0);
 	const lines: string[] = [];
+	const frame = frameColor(focused, info?.approval);
 	if (layout?.leadingGap !== false) lines.push("");
 	if (layout?.showStatus !== false) {
 		lines.push(statusLine(columns, status));
@@ -276,11 +277,11 @@ export function renderFooter(
 		// 面积让给菜单面板，两者一起收起。
 		lines.push(...queueLines(columns, layout?.queued ?? []));
 	}
-	lines.push(colored(horizontal(columns), focused));
+	lines.push(colored(horizontal(columns), frame));
 	for (const line of view.lines) {
-		lines.push(colored(line.prefix, focused) + commandText(line));
+		lines.push(colored(line.prefix, frame) + commandText(line, frame));
 	}
-	lines.push(colored(horizontal(columns), focused), infoLine(columns, info));
+	lines.push(colored(horizontal(columns), frame), infoLine(columns, info));
 	return lines;
 }
 
@@ -315,13 +316,13 @@ function oneLine(text: string): string {
  *
  * 只换颜色不改宽度，光标列与横向滚动的计算不受影响。
  */
-function commandText(line: InputLine): string {
+function commandText(line: InputLine, color: string): string {
 	const end = line.commandEnd ?? 0;
 	if (end <= 0) return highlightImageMarkers(line.text, THEME.image, RESET);
 	const chars = graphemes(line.text);
-	if (end >= chars.length) return `${FOCUS_COLOR}${line.text}${RESET}`;
+	if (end >= chars.length) return `${color}${line.text}${RESET}`;
 	const rest = chars.slice(end).join("");
-	return `${FOCUS_COLOR}${chars.slice(0, end).join("")}${RESET}${highlightImageMarkers(rest, THEME.image, RESET)}`;
+	return `${color}${chars.slice(0, end).join("")}${RESET}${highlightImageMarkers(rest, THEME.image, RESET)}`;
 }
 
 /** 审批徽标的配色按风险分级：逐次询问是安全默认，自动审查是「谨慎放行」，完全放行最刺眼。 */
@@ -471,8 +472,21 @@ function formatContext(used: number, total: number | undefined): string {
 }
 
 /** 按显示宽度截断，宽字符与 emoji 不会被切成半个。 */
-function colored(text: string, focused: boolean): string {
-	return `${focused ? FOCUS_COLOR : BLUR_COLOR}${text}${RESET}`;
+function colored(text: string, color: string): string {
+	return `${color}${text}${RESET}`;
+}
+
+/**
+ * 输入框边框与命令名颜色：聚焦时随审批模式变化。
+ *
+ * ask 用强调青、auto 用琥珀、yolo 用红色：输入框本身就能提示当前放行到哪一档，
+ * 不必只盯着右下角的徽标。失焦时统一用边框色，不参与风险提示。
+ */
+function frameColor(focused: boolean, approval: ApprovalMode | undefined): string {
+	if (!focused) return BLUR_COLOR;
+	if (approval === "auto") return THEME.warning;
+	if (approval === "yolo") return THEME.error;
+	return FOCUS_COLOR;
 }
 
 function horizontal(width: number): string {
