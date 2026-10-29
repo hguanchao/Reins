@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { interactiveText } from "../../../src/tui/input/dispatch.ts";
-import { pastingAfter, stripPasteContent } from "../../../src/tui/input/keys.ts";
+import { approvalKey, pastingAfter, stripPasteContent } from "../../../src/tui/input/keys.ts";
 
 describe("粘贴区间", () => {
 	it("单块内起止标记被剥掉", () => {
@@ -37,5 +37,31 @@ describe("粘贴区间", () => {
 	it("不在粘贴区间时正常返回按键", () => {
 		assert.equal(interactiveText("\r", false), "\r");
 		assert.equal(interactiveText("\x1b[A", false), "\x1b[A");
+	});
+});
+
+describe("审批按键", () => {
+	it("单键给出对应结论", () => {
+		assert.equal(approvalKey("y", true), "once");
+		assert.equal(approvalKey("Y", true), "once");
+		assert.equal(approvalKey("a", true), "always");
+		assert.equal(approvalKey("n", true), "deny");
+		assert.equal(approvalKey("\r", true), "enter");
+		assert.equal(approvalKey("\x1b", true), "escape");
+		assert.equal(approvalKey("\x1b[D", true), "left");
+		assert.equal(approvalKey("\x1b[C", true), "right");
+	});
+
+	it("多键块与含字母的文本不产生结论", () => {
+		// 使用者正在打自己的下一句话时审批卡弹出：整段文字不能被当成批准
+		assert.equal(approvalKey("add a test", true), undefined);
+		assert.equal(approvalKey("any", true), undefined);
+		assert.equal(approvalKey("ny", true), undefined);
+		assert.equal(approvalKey("y\r", true), undefined);
+		assert.equal(approvalKey("yes", true), undefined);
+	});
+
+	it("没有可记住的范围时 a 不生效", () => {
+		assert.equal(approvalKey("a", false), undefined);
 	});
 });

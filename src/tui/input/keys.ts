@@ -22,17 +22,23 @@ export const MOUSE_BUTTON_MASK = 3;
 
 type ApprovalKey = ApprovalAnswer | "left" | "right" | "enter" | "escape";
 
-/** 审批按键：左右移动、回车确认；y/a/n 仍可直接执行，Esc 拒绝。 */
+/**
+ * 审批按键：左右移动、回车确认；y/a/n 仍可直接执行，Esc 拒绝。
+ *
+ * 只认精确的单键：审批卡是异步弹出的，使用者很可能正在打字，一整段文字里只要
+ * 含 y/a/n 就放行，等于让「继续输入」替自己批准了工具调用。多键块一律忽略，
+ * 宁可让使用者再按一次，也不能凭猜测做出不可逆的结论。
+ */
 export function approvalKey(text: string, canAlways: boolean): ApprovalKey | undefined {
-	if (text.includes("\x1b[D") || text.includes("\x1bOD")) return "left";
-	if (text.includes("\x1b[C") || text.includes("\x1bOC")) return "right";
-	if (text.includes("\r") || text.includes("\n")) return "enter";
+	if (text === "\x1b[D" || text === "\x1bOD") return "left";
+	if (text === "\x1b[C" || text === "\x1bOC") return "right";
+	if (text === "\r" || text === "\n") return "enter";
 	if (text === "\x1b") return "escape";
 
 	const lower = text.toLowerCase();
-	if (lower.includes("y")) return "once";
-	if (canAlways && lower.includes("a")) return "always";
-	if (lower.includes("n")) return "deny";
+	if (lower === "y") return "once";
+	if (canAlways && lower === "a") return "always";
+	if (lower === "n") return "deny";
 	return undefined;
 }
 

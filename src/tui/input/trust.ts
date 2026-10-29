@@ -1,4 +1,4 @@
-import { approvalKey, menuKey } from "./keys.ts";
+import { approvalKey } from "./keys.ts";
 import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 import type { TrustAnswer } from "../page/trust.ts";
@@ -16,9 +16,10 @@ export function handleTrustInput(host: TuiHost, deps: InputDeps, text: string): 
 	const prompt = host.state.trustPrompt;
 	if (prompt === undefined || prompt.pending) return;
 
-	const nav = menuKey(text);
-	if (nav === "enter") return host.resolveTrust(prompt.selection);
-	if (nav === "escape") return host.resolveTrust("skip");
+	// 回车与 Esc 也必须精确匹配：多键块里混进一个回车时不能当成确认，
+	// 否则使用者的连续输入会被解释成「记住信任」这种不可逆结论
+	if (text === "\r" || text === "\n") return host.resolveTrust(prompt.selection);
+	if (text === "\x1b") return host.resolveTrust("skip");
 
 	// 精确匹配单个字母：粘贴或组合键里的零散字符不该触发结论
 	if (text.toLowerCase() === "s") return host.resolveTrust("session");
