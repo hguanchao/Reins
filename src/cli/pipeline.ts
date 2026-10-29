@@ -96,8 +96,8 @@ export function createCompactor(
 	});
 }
 
-/** Plan 模式下模型能看到的全部工具：只读探索加计划提交，没有 shell、编辑或子代理。 */
-const PLAN_TOOL_NAMES = ["read", "ls", "find", "grep", "present_plan"] as const;
+/** Plan 模式下模型能看到的全部工具：只读探索（含公网网页）加计划提交，没有 shell、编辑或子代理。 */
+const PLAN_TOOL_NAMES = ["read", "ls", "find", "grep", "web_fetch", "present_plan"] as const;
 
 /** 按白名单收窄注册表；工具名可能因外部插件注册失败而不存在，缺失的名字直接跳过。 */
 function planToolRegistry(registry: ToolRegistry): ToolRegistry {

@@ -10,6 +10,7 @@ import { patchTool } from "./patch.ts";
 import { presentPlanTool } from "./plan.ts";
 import { readTool } from "./read.ts";
 import { todoTool } from "./todo.ts";
+import { webFetchTool } from "./web-fetch.ts";
 import { writeTool } from "./write.ts";
 
 /**
@@ -40,10 +41,11 @@ export function createCoreTools(
 		lsTool,
 		findTool,
 		grepTool,
+		webFetchTool,
 		...(options.jobs === undefined
 			? []
 			: [createJobOutputTool(options.jobs), createKillJobTool(options.jobs)]),
 	];
 }
 
-export { createBashTool, editTool, findTool, grepTool, lsTool, patchTool, presentPlanTool, readTool, todoTool, writeTool };
+export { createBashTool, editTool, findTool, grepTool, lsTool, patchTool, presentPlanTool, readTool, todoTool, webFetchTool, writeTool };
