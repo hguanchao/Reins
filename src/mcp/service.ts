@@ -144,6 +144,10 @@ class McpConnection {
 			// 失败了就中止连接信号:不中止的话在途的 fetch 与 SSE 会一直挂到对端关闭
 			this.#connectionAbort?.abort();
 			this.#connectionAbort = undefined;
+			// 握手失败时子进程还活着：stdin 没人写、stdout 没人读，它只会占着资源，而反复
+			// 重连会一个个累积起来。close 会走到 transport.close()，stdio 那条路在那里杀进程。
+			this.#client?.close();
+			this.#client = undefined;
 		}
 	}
 

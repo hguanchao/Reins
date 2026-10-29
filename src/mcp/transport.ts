@@ -153,7 +153,12 @@ export function createStdioTransport(options: StdioTransportOptions): McpTranspo
 		close() {
 			process.removeListener("exit", onExit);
 			queue.close();
-			child.kill();
+			try {
+				child.kill();
+			} catch {
+				// pid 还没分配时 kill 会抛 EINVAL；这时进程要么还没起来，要么已经退出，
+				// 没有可杀的东西
+			}
 		},
 	};
 }
