@@ -65,17 +65,19 @@ describe("对话流", () => {
 		assert.ok(plain(lines[3] ?? "").includes("…"));
 	});
 
-	it("回复滚出视口后提示吸顶，下面固定一行 gap", () => {
+	it("回复滚出视口后提示吸顶，块底留白就是与正文的间隔", () => {
 		const response = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 		const lines = renderTranscript(40, 6, [{ prompt: "hello", response }], 6);
 
 		assert.ok(plain(lines[1] ?? "").startsWith(" › hello"));
 		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
-		assert.equal(plain(lines[3] ?? "").includes("›"), false);
+		// 吸顶块占满三行（上留白、内容、下留白），正文紧接着下留白开始
+		assert.equal(plain(lines[2] ?? "").includes("›"), false);
+		assert.ok((lines[2] ?? "").includes(PROMPT_BG));
+		assert.ok(plain(lines[3] ?? "").startsWith("  g"));
 		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
-		assert.ok(plain(lines[4] ?? "").startsWith("  g"));
-		assert.ok(plain(lines[5] ?? "").startsWith("  h"));
-		assert.ok((lines[4] ?? "").includes(MESSAGE_TEXT));
+		assert.ok(plain(lines[4] ?? "").startsWith("  h"));
+		assert.ok((lines[3] ?? "").includes(MESSAGE_TEXT));
 		assert.equal(plain(lines[0] ?? "").endsWith("│"), false);
 		assert.ok(plain(lines[0] ?? "").endsWith(" "));
 		assert.ok(plain(lines[3] ?? "").endsWith("█"));
@@ -86,27 +88,27 @@ describe("对话流", () => {
 			{ prompt: "one", response: ["x"] },
 			{ prompt: "two", response: ["a", "b", "c"] },
 		];
-		// 行：one 0-2，gap 3，x 4，轮间空行 5，two 6-8，gap 9，a 10…
+		// 行：one 0-2，x 3，轮间空行 4，two 5-7，a 8…
 		const render = (top: number): readonly string[] => renderTranscript(40, 8, turns, top);
 		const text = (line: string | undefined): string => plain(line ?? "").slice(0, -2);
 
+		const at2 = render(2);
 		const at3 = render(3);
-		const at4 = render(4);
 		const at5 = render(5);
-		assert.notEqual(at3.map(text).join("\n"), at4.map(text).join("\n"));
-		assert.notEqual(at4.map(text).join("\n"), at5.map(text).join("\n"));
+		assert.notEqual(at2.map(text).join("\n"), at3.map(text).join("\n"));
+		assert.notEqual(at3.map(text).join("\n"), at5.map(text).join("\n"));
 
-		// top=3：吸顶块只剩正文与下留白，two 的上留白、正文、下留白完整
-		assert.ok(text(at3[0]).startsWith(" › one"));
-		assert.ok((at3[1] ?? "").includes(PROMPT_BG));
-		assert.equal(text(at3[2]).trim(), "");
-		assert.ok((at3[3] ?? "").includes(PROMPT_BG));
-		assert.ok(text(at3[4]).startsWith(" › two"));
-		assert.ok((at3[5] ?? "").includes(PROMPT_BG));
+		// top=2：吸顶块只剩末尾两行，下一个提示块的上留白、正文、下留白完整可见
+		assert.ok(text(at2[0]).startsWith(" › one"));
+		assert.ok((at2[1] ?? "").includes(PROMPT_BG));
+		assert.equal(text(at2[2]).trim(), "");
+		assert.ok((at2[3] ?? "").includes(PROMPT_BG));
+		assert.ok(text(at2[4]).startsWith(" › two"));
+		assert.ok((at2[5] ?? "").includes(PROMPT_BG));
 
 		// 提示块完全被顶出去后不再吸顶，正常内容从头开始
 		assert.equal(at5.map(text).join("\n").includes(" › one"), false);
-		assert.ok(text(at5[2]).startsWith(" › two"));
+		assert.ok(text(at5[1]).startsWith(" › two"));
 		assert.ok(render(6).map(text).join("\n").includes("c"));
 	});
 
@@ -121,16 +123,16 @@ describe("对话流", () => {
 			0,
 		);
 
-		assert.ok(plain(lines[4] ?? "").includes("x"));
-		assert.equal((lines[5] ?? "").includes(PROMPT_BG), false);
-		assert.ok((lines[6] ?? "").includes(PROMPT_BG));
-		assert.ok(plain(lines[7] ?? "").startsWith(" › two"));
+		assert.ok(plain(lines[3] ?? "").includes("x"));
+		assert.equal((lines[4] ?? "").includes(PROMPT_BG), false);
+		assert.ok((lines[5] ?? "").includes(PROMPT_BG));
+		assert.ok(plain(lines[6] ?? "").startsWith(" › two"));
 	});
 
 	it("内容只超出少量行时，滚动仍然逐行移动内容", () => {
 		const turn: TranscriptTurn = {
 			prompt: "hello",
-			response: ["r1", "r2", "r3", "r4", "r5", "r6"],
+			response: ["r1", "r2", "r3", "r4", "r5", "r6", "r7"],
 		};
 		const at1 = renderTranscript(40, 8, [turn], 1)
 			.map((line) => plain(line).slice(0, -2))
@@ -169,9 +171,9 @@ describe("对话流", () => {
 			{ prompt: "b", response: [] },
 		]);
 
-		assert.equal(metrics.totalLines, 10);
-		assert.equal(metrics.scrollLines, 12);
-		assert.equal(metrics.lastPromptStart, 6);
+		assert.equal(metrics.totalLines, 8);
+		assert.equal(metrics.scrollLines, 11);
+		assert.equal(metrics.lastPromptStart, 5);
 	});
 
 	it("启动警告作为对话流顶部的系统消息显示", () => {

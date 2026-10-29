@@ -92,7 +92,6 @@ export const PLAN_TITLE_COLOR = THEME.textPrimary;
 export const PLAN_HINT_COLOR = THEME.textSubtle;
 export const PLAN_CARD_HINT = "  ·  double-click to view";
 export const PROMPT_MAX_LINES = 3;
-export const HEADER_GAP_LINES = 1;
 /** 右侧固定预留一列空隙和一列滚动条。 */
 export const GUTTER_WIDTH = 2;
 /** 展开详情右侧留出的内边距：正文不贴着色带右缘。 */

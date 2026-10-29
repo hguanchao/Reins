@@ -1,5 +1,4 @@
 import {
-	HEADER_GAP_LINES,
 	RESET,
 	SCROLLBAR_COLOR,
 	SCROLLBAR_THUMB,
@@ -55,7 +54,8 @@ export function visibleIndexes(
 ): readonly number[] {
 	const prompt = pinnedPrompt(view.prompts, top);
 	if (prompt !== undefined && top > prompt.start) {
-		const full = prompt.height + HEADER_GAP_LINES;
+		// 提示块自己带着上下留白，吸顶时整块钉住就够了，不再另加空行
+		const full = prompt.height;
 		// 下一条提示逼近时，吸顶块从自己的顶部收起，把下一个提示块完整让出来；
 		// 提示前固定留的那行空行留在正文里，块与块之间才不会贴在一起
 		const next = view.prompts.find((item) => item.start > prompt.start);
@@ -77,14 +77,12 @@ export function visibleIndexes(
 /**
  * 吸顶块显示提示的哪几行。
  *
- * 满高时连同提示后的空行一起显示；被下一条提示顶出去时只保留提示块末尾的几行，
- * 空行留在正文里给下一个提示块做间隔。
+ * 满高时整块显示；被下一条提示顶出去时只保留提示块末尾的几行，空行留在正文里给下一个
+ * 提示块做间隔。
  */
 function headerIndexes(prompt: PromptRange, count: number): readonly number[] {
 	const start =
-		count === prompt.height + HEADER_GAP_LINES
-			? prompt.start
-			: prompt.start + prompt.height - count;
+		count === prompt.height ? prompt.start : prompt.start + prompt.height - count;
 	return Array.from({ length: count }, (_, index) => start + index);
 }
 

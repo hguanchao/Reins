@@ -373,8 +373,7 @@ function build(
 		const promptLines = promptBlock(turn.prompt, width);
 		const start = lines.length;
 		lines.push(...promptLines);
-		// 吸顶 header 下方固定一行空隙
-		lines.push(" ".repeat(width));
+		// 提示块自己带着一行底部留白，再补一行就会在视觉上变成两行空白
 		const responseStart = lines.length;
 		let previousLine: TranscriptLine | undefined;
 		for (const line of turn.response) {
