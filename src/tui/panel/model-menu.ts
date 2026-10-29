@@ -1,5 +1,6 @@
 import { displayWidth } from "../render/text.ts";
 import {
+	type MenuListState,
 	ACCENT_COLOR,
 	BOLD_OFF,
 	HOVER_BG,
@@ -29,12 +30,8 @@ export interface ModelMenuItem {
 	readonly current: boolean;
 }
 
-export interface ModelMenuState {
+export interface ModelMenuState extends MenuListState {
 	readonly items: readonly ModelMenuItem[];
-	cursor: number;
-	scrollTop: number;
-	hover?: number;
-	pressed?: number;
 }
 
 /** 面板最多显示的模型行数；超出时用上下方向键滚动。 */

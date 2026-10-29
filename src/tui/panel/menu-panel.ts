@@ -86,12 +86,14 @@ export function keepVisible(scrollTop: number, cursor: number, itemCount: number
 	return top;
 }
 
-/** 面板列表的公共状态；各面板的条目状态都至少含这两个字段。 */
-interface MenuListState {
+/** 面板列表的公共状态；五种面板的条目状态都扩展这一份。 */
+export interface MenuListState {
 	cursor: number;
 	scrollTop: number;
 	/** 指针悬停的条目；只影响底色，不改变 cursor */
 	hover?: number;
+	/** 指针按下的条目；抬起时若仍落在同一项上才算一次点击 */
+	pressed?: number;
 }
 
 /**

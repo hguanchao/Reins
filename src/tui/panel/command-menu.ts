@@ -1,4 +1,5 @@
 import {
+	type MenuListState,
 	ACCENT_COLOR,
 	BOLD_OFF,
 	DISABLED_COLOR,
@@ -31,12 +32,8 @@ export interface CommandMenuItem {
 	readonly hidden?: boolean;
 }
 
-export interface CommandMenuState {
+export interface CommandMenuState extends MenuListState {
 	readonly items: readonly CommandMenuItem[];
-	cursor: number;
-	scrollTop: number;
-	hover?: number;
-	pressed?: number;
 }
 
 /** " › " 的显示宽度；未选中行用等宽空格占位，和输入框前缀对齐。 */

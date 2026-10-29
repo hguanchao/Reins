@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { THINKING_LEVELS } from "../../../src/config/file.ts";
 import { effortMenuHeight, renderEffortMenu } from "../../../src/tui/panel/effort-menu.ts";
 import { PANEL_BG, SELECTED_TEXT_COLOR, TEXT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
 
@@ -10,7 +11,7 @@ function plain(line: string): string {
 
 describe("思考等级面板", () => {
 	it("固定显示六个等级，上边框显示数量", () => {
-		const lines = renderEffortMenu(40, { current: "medium", cursor: 2, scrollTop: 0 });
+		const lines = renderEffortMenu(40, { items: THINKING_LEVELS, current: "medium", cursor: 2, scrollTop: 0 });
 		const rows = lines.map(plain);
 
 		assert.equal(effortMenuHeight(), 8);
@@ -23,7 +24,7 @@ describe("思考等级面板", () => {
 	});
 
 	it("每个等级都有使用场景说明，当前等级和光标分别标记", () => {
-		const lines = renderEffortMenu(80, { current: "medium", cursor: 2, scrollTop: 0 });
+		const lines = renderEffortMenu(80, { items: THINKING_LEVELS, current: "medium", cursor: 2, scrollTop: 0 });
 		const rows = lines.map(plain);
 
 		assert.equal(rows[1]?.indexOf("No reasoning; fastest responses"), 13);
@@ -40,7 +41,7 @@ describe("思考等级面板", () => {
 	});
 
 	it("移动光标只改变选中行", () => {
-		const lines = renderEffortMenu(40, { current: "medium", cursor: 3, scrollTop: 0 });
+		const lines = renderEffortMenu(40, { items: THINKING_LEVELS, current: "medium", cursor: 3, scrollTop: 0 });
 
 		assert.ok((lines[4] ?? "").startsWith(PANEL_BG + SELECTED_TEXT_COLOR));
 		assert.ok((lines[3] ?? "").startsWith(PANEL_BG + TEXT_COLOR));

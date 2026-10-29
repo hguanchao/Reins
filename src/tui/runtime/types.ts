@@ -301,28 +301,19 @@ export interface TuiHost {
 	updateCommandMenu(): void;
 	updateFileMenu(): void;
 	insertFileReference(): void;
+	/** 五种选择面板互斥，下面这组方法作用于当前打开的那一个。 */
 	openModelMenu(): void;
+	openEffortMenu(): void;
+	openSessionMenu(): void;
 	moveMenu(delta: number): void;
 	confirmMenu(): void;
-	completeModelMenu(): void;
+	completeMenu(): void;
 	cancelMenu(): void;
-	openEffortMenu(): void;
-	moveEffortMenu(delta: number): void;
-	confirmEffortMenu(): void;
-	completeEffortMenu(): void;
-	cancelEffortMenu(): void;
-	openSessionMenu(): void;
-	moveSessionMenu(delta: number): void;
-	confirmSessionMenu(): void;
-	completeSessionMenu(): void;
-	cancelSessionMenu(): void;
 	forkSelectedSession(): void;
 	/** 切到当前会话的另一个分支末尾 */
 	switchBranch(id: string): void;
 	/** 回退到某条消息之前，并把原文放回输入框 */
 	rewindTo(id: string): void;
-	moveCommandMenu(delta: number): void;
-	moveFileMenu(delta: number): void;
 	executeCommand(command: CommandMenuItem, args?: string): void;
 	submit(): boolean;
 	/** 收尾退出整个界面；用于拒绝信任这类「不再继续」的结论。 */

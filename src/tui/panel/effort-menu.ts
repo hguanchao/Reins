@@ -1,6 +1,11 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
 import { displayWidth } from "../render/text.ts";
 import {
+	type MenuListState,
+	menuListHeight,
+	menuListLines,
+	padEnd,
+	padStart,
 	ACCENT_COLOR,
 	BOLD_OFF,
 	HOVER_BG,
@@ -9,10 +14,6 @@ import {
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-	menuListHeight,
-	menuListLines,
-	padEnd,
-	padStart,
 } from "./menu-panel.ts";
 
 /**
@@ -22,12 +23,10 @@ import {
  * 一致，只保留级别名与 current 标记。
  */
 
-export interface EffortMenuState {
+export interface EffortMenuState extends MenuListState {
 	readonly current: ThinkingLevel;
-	cursor: number;
-	scrollTop: number;
-	hover?: number;
-	pressed?: number;
+	/** 级别清单与 THINKING_LEVELS 相同；收进状态让五种面板的公共操作不必特判 */
+	readonly items: readonly ThinkingLevel[];
 }
 
 const PREFIX_WIDTH = 3;

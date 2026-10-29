@@ -1,10 +1,6 @@
-import { THINKING_LEVELS } from "../../config/file.ts";
 import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, menuIndexAtRow, menuKey } from "./keys.ts";
 import type { MenuMouseTarget, MouseInput } from "./keys.ts";
-import { moveMenuSelection } from "../panel/menu-panel.ts";
-import { effortMenuHeight } from "../panel/effort-menu.ts";
-import { modelMenuHeight } from "../panel/model-menu.ts";
-import { sessionMenuHeight } from "../panel/session-menu.ts";
+import { type MenuListState, menuListHeight, moveMenuSelection } from "../panel/menu-panel.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
 import type { TuiHost } from "../runtime/types.ts";
 
@@ -92,17 +88,11 @@ export function handleMenuMouse(
 	return handled;
 }
 
-/** 行内补全面板（命令、文件）的鼠标目标：光标直接落在菜单状态上，补全交给宿主。 */
-interface InlineMenuState {
-	readonly items: readonly unknown[];
-	cursor: number;
-	scrollTop: number;
-	hover?: number;
-	pressed?: number;
-}
+/** 行内补全面板（命令、文件）与模态面板共用的列表状态：光标直接落在菜单状态上。 */
+type MenuTargetState = MenuListState & { readonly items: readonly unknown[] };
 
 export function inlineMenuTarget(
-	menu: InlineMenuState,
+	menu: MenuTargetState,
 	panelTop: number,
 	panelHeight: number,
 	complete: () => void,
@@ -128,132 +118,23 @@ export function inlineMenuTarget(
 	};
 }
 
-/** 一个模态菜单的鼠标与键盘回调；三种面板只有这些动作不同。 */
-interface ModalMenuActions {
-	readonly items: readonly unknown[];
-	readonly cursor: () => number;
-	readonly scrollTop: () => number;
-	readonly select: (index: number) => void;
-	readonly move: (delta: number) => void;
-	readonly scroll: (delta: number) => void;
-	readonly height: () => number;
-	readonly confirm: () => void;
-	readonly complete: () => void;
-	readonly cancel: () => void;
-	readonly hover: () => number | undefined;
-	readonly setHover: (index: number | undefined) => void;
-	readonly pressed: () => number | undefined;
-	readonly setPressed: (index: number | undefined) => void;
-}
-
-/** 当前打开的是哪个模态菜单；三者互斥，返回 undefined 表示没有。 */
-function activeModalMenu(host: TuiHost): ModalMenuActions | undefined {
-	const state = host.state;
-	if (state.modelMenu !== undefined) {
-		const menu = state.modelMenu;
-		return {
-			items: menu.items,
-			cursor: () => menu.cursor,
-			scrollTop: () => menu.scrollTop,
-			select: (index) => {
-				moveMenuSelection(menu, index - menu.cursor, menu.items.length, false);
-			},
-			move: (delta) => host.moveMenu(delta),
-			scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false),
-			height: () => modelMenuHeight(menu.items.length),
-			confirm: () => host.confirmMenu(),
-			complete: () => host.completeModelMenu(),
-			cancel: () => host.cancelMenu(),
-			hover: () => menu.hover,
-			setHover: (index) => {
-				menu.hover = index;
-			},
-			pressed: () => menu.pressed,
-			setPressed: (index) => {
-				menu.pressed = index;
-			},
-		};
-	}
-	if (state.effortMenu !== undefined) {
-		const menu = state.effortMenu;
-		return {
-			items: THINKING_LEVELS,
-			cursor: () => menu.cursor,
-			scrollTop: () => menu.scrollTop,
-			select: (index) => {
-				moveMenuSelection(menu, index - menu.cursor, THINKING_LEVELS.length, false);
-			},
-			move: (delta) => host.moveEffortMenu(delta),
-			scroll: (delta) => moveMenuSelection(menu, delta, THINKING_LEVELS.length, false),
-			height: () => effortMenuHeight(),
-			confirm: () => host.confirmEffortMenu(),
-			complete: () => host.completeEffortMenu(),
-			cancel: () => host.cancelEffortMenu(),
-			hover: () => menu.hover,
-			setHover: (index) => {
-				menu.hover = index;
-			},
-			pressed: () => menu.pressed,
-			setPressed: (index) => {
-				menu.pressed = index;
-			},
-		};
-	}
-	if (state.sessionMenu !== undefined) {
-		const menu = state.sessionMenu;
-		return {
-			items: menu.items,
-			cursor: () => menu.cursor,
-			scrollTop: () => menu.scrollTop,
-			select: (index) => {
-				moveMenuSelection(menu, index - menu.cursor, menu.items.length, false);
-			},
-			move: (delta) => host.moveSessionMenu(delta),
-			scroll: (delta) => moveMenuSelection(menu, delta, menu.items.length, false),
-			height: () => sessionMenuHeight(menu.items.length),
-			confirm: () => host.confirmSessionMenu(),
-			complete: () => host.completeSessionMenu(),
-			cancel: () => host.cancelSessionMenu(),
-			hover: () => menu.hover,
-			setHover: (index) => {
-				menu.hover = index;
-			},
-			pressed: () => menu.pressed,
-			setPressed: (index) => {
-				menu.pressed = index;
-			},
-		};
-	}
-	return undefined;
-}
-
 /** 模态选择面板：只接管选择相关按键，其余放行给输入框。 */
 export function handleModalMenuInput(
 	host: TuiHost,
 	text: string,
 	mouseOf: () => readonly MouseInput[],
 ): boolean {
-	const panel = activeModalMenu(host);
-	if (panel === undefined) return false;
+	const state = host.state;
+	// 三种模态面板互斥，列表状态是同一份；鼠标与键盘动作统一走宿主的面板方法
+	const menu: MenuTargetState | undefined = state.modelMenu ?? state.effortMenu ?? state.sessionMenu;
+	if (menu === undefined) return false;
 
 	// 面板画在页脚区的第一行，命中判定只在这块窗口内有效
-	const panelTop = menuPanelTop(host.state, host.options);
+	const panelTop = menuPanelTop(state, host.options);
 	if (
 		handleMenuMouse(
 			mouseOf(),
-			{
-				hitItem: (row) =>
-					menuIndexAtRow(row, panelTop, panel.items.length, panel.scrollTop(), panel.cursor()),
-				contains: (row) => row >= panelTop && row < panelTop + panel.height(),
-				cursor: panel.cursor,
-				select: panel.select,
-				scroll: panel.scroll,
-				complete: panel.complete,
-				pressed: panel.pressed,
-				setPressed: panel.setPressed,
-				hover: panel.hover,
-				setHover: panel.setHover,
-			},
+			inlineMenuTarget(menu, panelTop, menuListHeight(menu.items.length), () => host.completeMenu()),
 			host.render,
 		)
 	) {
@@ -268,20 +149,20 @@ export function handleModalMenuInput(
 
 	const key = menuKey(text);
 	if (key === "up" || key === "down") {
-		panel.move(key === "up" ? -1 : 1);
+		host.moveMenu(key === "up" ? -1 : 1);
 		return true;
 	}
 	if (key === "enter") {
-		panel.confirm();
+		host.confirmMenu();
 		return true;
 	}
 	if (key === "tab") {
 		// 最后一级面板没有更深的选择：Tab 只补进输入框，不代替回车执行
-		panel.complete();
+		host.completeMenu();
 		return true;
 	}
 	if (key === "escape") {
-		panel.cancel();
+		host.cancelMenu();
 		return true;
 	}
 	// 其余按键放行：打字的瞬间面板会随输入变化收掉

@@ -231,7 +231,7 @@ export function handleTranscriptInput(
 
 		const key = menuKey(text);
 		if (key === "up" || key === "down") {
-			host.moveCommandMenu(key === "up" ? -1 : 1);
+			host.moveMenu(key === "up" ? -1 : 1);
 			return;
 		}
 		if (key === "tab") {
@@ -266,7 +266,7 @@ export function handleTranscriptInput(
 
 		const key = menuKey(text);
 		if (key === "up" || key === "down") {
-			host.moveFileMenu(key === "up" ? -1 : 1);
+			host.moveMenu(key === "up" ? -1 : 1);
 			return;
 		}
 		if (key === "tab" || key === "enter") {

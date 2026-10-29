@@ -1,5 +1,6 @@
 import { displayWidth, fitToWidth } from "../render/text.ts";
 import {
+	type MenuListState,
 	ACCENT_COLOR,
 	BOLD_OFF,
 	HOVER_BG,
@@ -34,14 +35,10 @@ export interface SessionMenuItem {
 /** 面板当前在选什么：会话文件、当前会话的分支，还是可回退的历史消息。 */
 export type SessionMenuKind = "sessions" | "branches" | "rewind";
 
-export interface SessionMenuState {
+export interface SessionMenuState extends MenuListState {
 	/** 省略按会话列表处理，旧调用点不需要跟着改 */
 	readonly kind?: SessionMenuKind;
 	readonly items: readonly SessionMenuItem[];
-	cursor: number;
-	scrollTop: number;
-	hover?: number;
-	pressed?: number;
 }
 
 /** " › " 的显示宽度；未选中行用等宽空格占位。 */

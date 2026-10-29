@@ -1,5 +1,6 @@
 import { isImagePath } from "../image.ts";
 import {
+	type MenuListState,
 	ACCENT_COLOR,
 	BOLD_OFF,
 	HOVER_BG,
@@ -36,13 +37,9 @@ interface AtToken {
 	readonly query: string;
 }
 
-export interface FileMenuState {
+export interface FileMenuState extends MenuListState {
 	readonly items: readonly string[];
 	readonly token: AtToken;
-	cursor: number;
-	scrollTop: number;
-	hover?: number;
-	pressed?: number;
 }
 
 const MAX_RESULTS = 200;
