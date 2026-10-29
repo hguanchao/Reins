@@ -75,13 +75,26 @@ export function transcriptMetrics(
 	return measureTranscriptView(buildTranscriptView(terminalWidth, turns, notice), height);
 }
 
+/**
+ * 增量构建的起点。
+ *
+ * 已经写完的回合不会再变，把它们排好的行原样接在新内容前面，就不必每帧重新解析整份历史
+ * 的 markdown。前缀最后一个回合有没有回复要单独给出：它决定下一个回合前是否留空行，
+ * 而从行数组本身看不出来。
+ */
+export interface TranscriptBuildBase {
+	readonly view: TranscriptView;
+	readonly previousHadResponse: boolean;
+}
+
 /** 按当前宽度构建一次；调用方可以缓存它，供测量、绘制和命中复用。 */
 export function buildTranscriptView(
 	terminalWidth: number,
 	turns: readonly TranscriptTurn[],
 	notice?: string,
+	base?: TranscriptBuildBase,
 ): TranscriptView {
-	return build(contentWidth(terminalWidth), turns, notice);
+	return build(contentWidth(terminalWidth), turns, notice, base);
 }
 
 export function measureTranscriptView(view: TranscriptView, height: number): TranscriptMetrics {
@@ -316,20 +329,38 @@ function isToolFailure(previous: TranscriptLine, current: TranscriptLine): boole
 	);
 }
 
-function build(width: number, turns: readonly TranscriptTurn[], notice: string | undefined): TranscriptView {
-	const lines: string[] = [];
-	const prompts: PromptRange[] = [];
-	const thinkingHeaders: { start: number; block: TranscriptThinking }[] = [];
-	const groupHeaders: { start: number; group: TranscriptToolGroup }[] = [];
-	const toolHeaders: { start: number; tool: TranscriptTool }[] = [];
-	const liveLines = new Map<number, LiveSubagentLine>();
-	const todoHeaders: { start: number; card: TranscriptView["todoHeaders"][number]["card"] }[] = [];
-	const planHeaders: { start: number; plan: TranscriptPlan }[] = [];
-	const subagentHeaders: { start: number; group: TranscriptView["subagentHeaders"][number]["group"] }[] = [];
-	const subagentFailureRows: { start: number; group: TranscriptView["subagentHeaders"][number]["group"]; callId: string }[] = [];
-	let previousHadResponse = false;
+function build(
+	width: number,
+	turns: readonly TranscriptTurn[],
+	notice: string | undefined,
+	base?: TranscriptBuildBase,
+): TranscriptView {
+	// 所有登记项（提示块、各卡片头行、子代理活动行）记的都是绝对行号，因此接着前缀往下排
+	// 不需要任何偏移换算：lines.length 已经包含了前缀的长度。
+	const lines: string[] = base === undefined ? [] : [...base.view.lines];
+	const prompts: PromptRange[] = base === undefined ? [] : [...base.view.prompts];
+	const thinkingHeaders: { start: number; block: TranscriptThinking }[] =
+		base === undefined ? [] : [...base.view.thinkingHeaders];
+	const groupHeaders: { start: number; group: TranscriptToolGroup }[] =
+		base === undefined ? [] : [...base.view.groupHeaders];
+	const toolHeaders: { start: number; tool: TranscriptTool }[] =
+		base === undefined ? [] : [...base.view.toolHeaders];
+	const liveLines = base === undefined ? new Map<number, LiveSubagentLine>() : new Map(base.view.liveLines);
+	const todoHeaders: { start: number; card: TranscriptView["todoHeaders"][number]["card"] }[] =
+		base === undefined ? [] : [...base.view.todoHeaders];
+	const planHeaders: { start: number; plan: TranscriptPlan }[] =
+		base === undefined ? [] : [...base.view.planHeaders];
+	const subagentHeaders: { start: number; group: TranscriptView["subagentHeaders"][number]["group"] }[] =
+		base === undefined ? [] : [...base.view.subagentHeaders];
+	const subagentFailureRows: {
+		start: number;
+		group: TranscriptView["subagentHeaders"][number]["group"];
+		callId: string;
+	}[] = base === undefined ? [] : [...base.view.subagentFailureRows];
+	let previousHadResponse = base?.previousHadResponse ?? false;
 
-	if (notice !== undefined && notice.length > 0) {
+	// 警告只排在最前面一次：接着前缀往下排时它已经在里面了
+	if (base === undefined && notice !== undefined && notice.length > 0) {
 		lines.push(...noticeLines(notice, width));
 		// 警告和第一轮对话之间留一行间距，避免系统消息贴住提示块
 		if (turns.length > 0) lines.push(" ".repeat(width));

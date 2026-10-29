@@ -64,6 +64,23 @@ export interface TrustPromptState {
 }
 
 /**
+ * 已稳定回合的渲染缓存。
+ *
+ * 流式输出时每一帧都会让整份对话流失效，而真正变的只有最后一个回合；不缓存前缀的话，
+ * 每 100 毫秒都要把全部历史重新解析一遍 markdown 与折行，长会话下帧率守不住。
+ * 回合对象是整体替换的，引用相等就说明没变，因此判定不需要深比较。
+ */
+export interface TranscriptPrefix {
+	/** 缓存建立时那份 turns 的引用，用来逐项核对前缀没被换掉 */
+	readonly turns: readonly TranscriptTurn[];
+	/** 前多少个回合已经被 view 覆盖 */
+	readonly count: number;
+	readonly width: number;
+	readonly notice: string | undefined;
+	readonly view: TranscriptView;
+}
+
+/**
  * 界面运行期的全部可变状态。
  *
  * 字段按所属的交互域分段；`layout` 只负责创建它并把装配好的依赖交给各域模块，
@@ -122,6 +139,8 @@ export interface TuiState {
 	transcriptViewWidth: number;
 	transcriptViewNotice: string | undefined;
 	transcriptDirty: boolean;
+	/** 已经写完的那几个回合的渲染结果；流式输出时只重排最后一个回合。 */
+	transcriptPrefix: TranscriptPrefix | undefined;
 	/** 是否正按住滚动条拖动。 */
 	draggingScrollbar: boolean;
 	/** 当前帧内容是否超出终端高度；超出时鼠标命中不可靠，先停用鼠标交互。 */

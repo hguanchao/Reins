@@ -42,6 +42,7 @@ export function createState(options: TuiOptions): TuiState {
 		transcriptViewWidth: -1,
 		transcriptViewNotice: undefined,
 		transcriptDirty: true,
+		transcriptPrefix: undefined,
 		draggingScrollbar: false,
 		layoutOverflow: false,
 		buttonHovered: false,
