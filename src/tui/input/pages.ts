@@ -31,6 +31,7 @@ export function handlePageInput(
 		if (text === "h") return host.healthCheckMcp();
 		if (key === "escape") {
 			state.openPage = undefined;
+			state.mcpStatus = undefined;
 			deps.render();
 			return;
 		}

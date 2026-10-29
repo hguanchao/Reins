@@ -155,7 +155,11 @@ export function renderTranscriptView(
 		return range === undefined ? line : highlightSelection(line, range);
 	});
 
-	const gutter = scrollbarColumn(rows, view.lines.length, top);
+	const gutter = scrollbarColumn(
+		rows,
+		scrollableLines(view.lines.length, view.prompts.at(-1)?.start ?? 0, rows),
+		top,
+	);
 	return visible.map((line, index) => `${line} ${gutter[index]}`);
 }
 

@@ -20,6 +20,13 @@ export function executeUndo(host: TuiHost): void {
 		return;
 	}
 	if (state.restoringCheckpoint) return;
+	if (state.reviewing) {
+		// 审查子代理正在读工作区：此时恢复文件会让结论建立在变动中的内容上
+		host.resetStatusMeta();
+		host.setStatus("A review is running; wait for it to finish before restoring files", "notice");
+		host.scheduleStatusClear();
+		return;
+	}
 
 	state.restoringCheckpoint = true;
 	host.resetStatusMeta();
@@ -30,7 +37,7 @@ export function executeUndo(host: TuiHost): void {
 		.then((preview) => {
 			if (state.finished) return;
 			// 读检查点要跑 git，期间使用者可能已经提交了新的一轮；回合在改文件时也不能恢复
-			if (state.activeTurn !== undefined || preview === undefined || preview.changes.length === 0) {
+			if (state.activeTurn !== undefined || state.reviewing || preview === undefined || preview.changes.length === 0) {
 				state.restoringCheckpoint = false;
 				host.setStatus(
 					preview === undefined || preview.changes.length === 0

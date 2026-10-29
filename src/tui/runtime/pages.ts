@@ -29,6 +29,8 @@ export function showPage(state: TuiState, kind: PageKind): void {
 	state.fileMenu = undefined;
 	state.fileFiles = undefined;
 	state.fileIndexStart = undefined;
+	// 上一次打开 MCP 页留下的操作反馈不属于这一次
+	if (kind === "mcps") state.mcpStatus = undefined;
 	// 整屏页里没有对话流选区；留着只会在返回时闪出一块旧高亮
 	state.selection = undefined;
 }
@@ -63,7 +65,7 @@ function buildPage(host: TuiHost, kind: PageKind, width: number): readonly strin
 	if (kind === "mcps") {
 		const servers = host.options.mcpServers?.() ?? [];
 		state.mcpCursor = Math.min(state.mcpCursor, Math.max(0, servers.length - 1));
-		return mcpsPageLines(width, servers, state.mcpCursor);
+		return mcpsPageLines(width, servers, state.mcpCursor, state.mcpStatus);
 	}
 	return [];
 }

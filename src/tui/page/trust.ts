@@ -59,6 +59,12 @@ const SHORT_LABELS: readonly TrustOption[] = [
 	{ answer: "session", label: "[s] Session" },
 	{ answer: "skip", label: "[n] Skip" },
 ];
+/** 再窄就只剩按键本身：三个选项仍然完整可见，不会把 [n] 截掉。 */
+const MIN_LABELS: readonly TrustOption[] = [
+	{ answer: "trust", label: "[y]" },
+	{ answer: "session", label: "[s]" },
+	{ answer: "skip", label: "[n]" },
+];
 
 /**
  * 整屏内容。
@@ -66,7 +72,12 @@ const SHORT_LABELS: readonly TrustOption[] = [
  * 标题钉在首行，其余正文在「标题之下、底部分隔线之上」的区域里垂直居中；底部固定区
  * 占最后四行（分隔线、留白、居中的选项、留白），内容再长也只截正文，选项的位置不跳。
  */
-export function trustPageLines(input: TrustPageInput, width: number, height: number): readonly string[] {
+export function trustPageLines(
+	input: TrustPageInput,
+	width: number,
+	height: number,
+	scrollTop = 0,
+): readonly string[] {
 	const columns = Math.max(1, width);
 	const rows = Math.max(0, height);
 	const actions = actionLines(input, columns);
@@ -75,14 +86,18 @@ export function trustPageLines(input: TrustPageInput, width: number, height: num
 	const body = bodyLines(input, columns);
 	const title = body[0] ?? "";
 	const rest = body.slice(1);
-	// 标题之下还有多少行可用；正文在这个范围内居中
+	// 标题之下还有多少行可用；放得下时居中，放不下时按 scrollTop 开窗
 	const available = Math.max(0, contentHeight - 1);
-	const top = Math.max(0, Math.floor((available - rest.length) / 2));
+	const fits = rest.length <= available;
+	const margin = fits ? Math.max(0, Math.floor((available - rest.length) / 2)) : 0;
+	const start = fits
+		? 0
+		: Math.min(Math.max(0, scrollTop), Math.max(0, rest.length - available));
 
 	const lines: string[] = Array.from({ length: contentHeight }, () => "");
 	if (contentHeight > 0) lines[0] = title;
-	for (let index = 0; index < rest.length && 1 + top + index < contentHeight; index += 1) {
-		lines[1 + top + index] = rest[index] ?? "";
+	for (let index = 0; index < available && start + index < rest.length; index += 1) {
+		lines[1 + margin + index] = rest[start + index] ?? "";
 	}
 	return [...lines, ...actions].slice(0, rows);
 }
@@ -139,7 +154,9 @@ function optionRow(selection: TrustAnswer, width: number): string {
 }
 
 function layoutOptions(width: number, selection: TrustAnswer): readonly TrustOption[] {
-	return displayWidth(optionText(selection, FULL_LABELS)) <= width ? FULL_LABELS : SHORT_LABELS;
+	if (displayWidth(optionText(selection, FULL_LABELS)) <= width) return FULL_LABELS;
+	if (displayWidth(optionText(selection, SHORT_LABELS)) <= width) return SHORT_LABELS;
+	return MIN_LABELS;
 }
 
 function optionText(selection: TrustAnswer, options: readonly TrustOption[]): string {

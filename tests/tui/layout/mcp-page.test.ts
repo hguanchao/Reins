@@ -58,6 +58,8 @@ describe("MCP 管理页", () => {
 			input.emit("data", Buffer.from("r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.deepEqual(calls, ["beta"]);
+			// 整屏页没有状态行：结果必须画在页面上，否则按 r 看起来毫无反应
+			assert.ok(screen(output).includes("Reconnected beta: 2 tools"), screen(output));
 			input.emit("data", Buffer.from("\x1b"));
 			assert.ok(screen(output).includes("Reconnected beta: 2 tools"), screen(output));
 
@@ -68,6 +70,40 @@ describe("MCP 管理页", () => {
 			text = screen(output);
 			assert.ok(text.includes("alpha: ok"));
 			assert.ok(text.includes("beta: failed"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("长清单移动选中项时页面跟着滚动", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 16;
+		const rows = Array.from({ length: 30 }, (_, index) => ({
+			name: `server-${String(index).padStart(2, "0")}`,
+			description: "connected",
+		}));
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			mcpServers: () => rows,
+			mcpControl: {
+				reconnect: async (name) => `Reconnected ${name}`,
+				healthCheck: async () => [],
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/mcps\r"));
+			for (let index = 0; index < 20; index += 1) {
+				input.emit("data", Buffer.from("\x1b[B"));
+			}
+			assert.ok(screen(output).includes("› server-20"), screen(output));
 		} finally {
 			exitTui(input);
 		}

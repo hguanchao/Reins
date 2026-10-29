@@ -1,4 +1,4 @@
-import { approvalKey } from "./keys.ts";
+import { approvalKey, menuKey, scrollKey } from "./keys.ts";
 import type { InputDeps } from "./deps.ts";
 import type { TuiHost } from "../runtime/types.ts";
 import type { TrustAnswer } from "../page/trust.ts";
@@ -15,6 +15,24 @@ const ORDER: readonly TrustAnswer[] = ["trust", "session", "skip"];
 export function handleTrustInput(host: TuiHost, deps: InputDeps, text: string): void {
 	const prompt = host.state.trustPrompt;
 	if (prompt === undefined || prompt.pending) return;
+
+	// 文件清单很长时正文放不下：上下键与翻页键滚动，不改变选项高亮
+	const nav = menuKey(text);
+	if (nav === "up" || nav === "down") {
+		host.state.trustScrollTop = Math.max(0, host.state.trustScrollTop + (nav === "up" ? -1 : 1));
+		deps.render();
+		return;
+	}
+	const scroll = scrollKey(text);
+	if (scroll === "pageUp" || scroll === "pageDown") {
+		const step = Math.max(1, host.mainAreaHeight() - 4);
+		host.state.trustScrollTop = Math.max(
+			0,
+			host.state.trustScrollTop + (scroll === "pageUp" ? -step : step),
+		);
+		deps.render();
+		return;
+	}
 
 	// 回车与 Esc 也必须精确匹配：多键块里混进一个回车时不能当成确认，
 	// 否则使用者的连续输入会被解释成「记住信任」这种不可逆结论

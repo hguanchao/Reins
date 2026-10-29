@@ -62,10 +62,14 @@ function layoutColumns(width: number, items: readonly CommandMenuItem[]): Column
 		1,
 		...items.map((item) => displayWidth(`/${item.name}`)),
 	);
-	// 命令名之后留出间距，再给说明至少留 4 列；放不下时命令名先被截
-	const nameWidth = Math.min(longestName, Math.max(1, width - PREFIX_WIDTH - GAP_WIDTH - 4));
-	const remaining = width - PREFIX_WIDTH - nameWidth - GAP_WIDTH;
-	const descriptionWidth = remaining >= 4 ? remaining : 0;
+	const available = Math.max(1, width - PREFIX_WIDTH);
+	// 说明列只在确实放得下时保留；窄终端把宽度全给命令名，否则命令名只剩省略号
+	const canShowDescription = available - longestName >= GAP_WIDTH + 4;
+	const nameWidth = canShowDescription
+		? Math.min(longestName, Math.max(1, available - GAP_WIDTH - 4))
+		: Math.min(longestName, available);
+	const remaining = available - nameWidth - GAP_WIDTH;
+	const descriptionWidth = canShowDescription && remaining >= 4 ? remaining : 0;
 	return { nameWidth, descriptionWidth };
 }
 

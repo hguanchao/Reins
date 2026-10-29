@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { isRunningTool } from "../transcript/model.ts";
 import type { TranscriptLine } from "../transcript/types.ts";
@@ -22,7 +24,7 @@ export function setStatus(
 		clearTimeout(state.statusClearTimer);
 		state.statusClearTimer = undefined;
 	}
-	state.statusText = text;
+	state.statusText = stripVTControlCharacters(text).replace(/[\r\n\t]+/g, " ").trim();
 	state.statusTone = tone;
 	// 新状态属于新的阶段，上一条留下的定格值不再适用；运行中的耗时与用量由渲染现算
 	state.statusElapsedMs = 0;
@@ -45,7 +47,7 @@ export function resetStatusMeta(state: TuiState): void {
 		clearTimeout(state.copyNoticeTimer);
 		state.copyNoticeTimer = undefined;
 	}
-	state.copyNotice = false;
+	state.copyNotice = undefined;
 }
 
 export function scheduleStatusClear(state: TuiState, render: () => void): void {

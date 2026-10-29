@@ -173,7 +173,7 @@ export interface TuiState {
 	/** 回合结束时的定格用量；运行中由渲染按 active.tokensUsed 现算。 */
 	statusTokens: number;
 	/** 复制成功后的短暂提示：优先占用 token 位置，超时后回显 token 数 */
-	copyNotice: boolean;
+	copyNotice: string | undefined;
 	copyNoticeTimer: ReturnType<typeof setTimeout> | undefined;
 	spinnerFrame: number;
 	sweepPhase: number;
@@ -185,6 +185,8 @@ export interface TuiState {
 	reviewAbort: AbortController | undefined;
 	/** 启动信任确认；非空时界面只画这一页，不接受对话输入 */
 	trustPrompt: TrustPromptState | undefined;
+	/** 信任页正文滚动位置；文件清单很长时不至于把说明整段截掉 */
+	trustScrollTop: number;
 	approvalPrompt: ApprovalPrompt | undefined;
 	/** 界面上这份审批请求的标识；交回结论时带上，防止回答落到另一个请求上 */
 	approvalPromptId: number | undefined;
@@ -228,6 +230,8 @@ export interface TuiState {
 	restoringCheckpoint: boolean;
 	/** /mcps 页的选中项；重连与健康检查作用在它上面 */
 	mcpCursor: number;
+	/** /mcps 页上的操作反馈：整屏页没有状态行，结果必须画在页面里 */
+	mcpStatus: string | undefined;
 	/** 排好版的页面内容；宽度不变就复用，滚动与重绘都不必重排。 */
 	pageCache:
 		| { readonly kind: PageKind; readonly width: number; readonly lines: readonly string[] }

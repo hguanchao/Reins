@@ -94,7 +94,11 @@ export function renderMarkdown(text: string, width: number): readonly string[] {
 		return text
 			.split("\n")
 			.flatMap((line) => wrapText(line, Math.max(1, width - INDENT)))
-			.map((line: string) => `${" ".repeat(INDENT)}${line}`);
+			.map((line: string) => {
+				// 兜底路径也要补齐到内容宽：滚动条紧贴最后一行文字会让整帧宽度忽长忽短
+				const visible = truncateToWidth(`${" ".repeat(INDENT)}${line}`, width);
+				return `${visible}${" ".repeat(Math.max(0, width - displayWidth(visible)))}`;
+			});
 	}
 	const rows: Row[] = [];
 	for (const token of tokens) appendBlock(token, { width, indent: INDENT }, rows, true);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { interactiveText } from "../../../src/tui/input/dispatch.ts";
-import { approvalKey, pastingAfter, stripPasteContent } from "../../../src/tui/input/keys.ts";
+import { approvalKey, moveInputVertical, pastingAfter, stripPasteContent } from "../../../src/tui/input/keys.ts";
 
 describe("粘贴区间", () => {
 	it("单块内起止标记被剥掉", () => {
@@ -63,5 +63,13 @@ describe("审批按键", () => {
 
 	it("没有可记住的范围时 a 不生效", () => {
 		assert.equal(approvalKey("a", false), undefined);
+	});
+});
+
+describe("多行输入光标", () => {
+	it("上下移动按显示列对齐，不按码位数", () => {
+		const text = "你好\nabcdef";
+		// 第一行两个汉字占 4 列；下移后应落在第 4 列（abcd 之后），而不是第 2 列
+		assert.equal(moveInputVertical(text, 2, 1), 7);
 	});
 });

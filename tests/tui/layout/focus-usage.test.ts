@@ -39,7 +39,7 @@ describe("焦点、状态与用量", () => {
 
 			const lines = frameLines(output);
 			assert.equal(lines.length, 7);
-			assert.equal(plain(lines[0] ?? "").trimEnd(), "████  █████  █████  █   █  █████");
+			assert.equal(plain(lines[0] ?? "").trimEnd(), "████  █████  █████");
 			assert.equal(lines.join("\n").includes("v1.2.3"), false);
 			assert.equal(plain(lines[3] ?? ""), BORDER.repeat(20));
 			assert.equal(plain(lines[4] ?? ""), " › ");

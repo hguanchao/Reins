@@ -12,12 +12,16 @@ import type { TuiHost } from "./types.ts";
 export function copyText(host: TuiHost, text: string): void {
 	if (text.trim().length === 0) return;
 	let copied = false;
+	let viaTerminal = false;
 	try {
 		copied = host.options.clipboard?.copy(text) ?? false;
 	} catch {
 		copied = false;
 	}
-	if (!copied) copied = writeOsc52(host.state.stdout, text);
+	if (!copied) {
+		viaTerminal = writeOsc52(host.state.stdout, text);
+		copied = viaTerminal;
+	}
 
 	if (!copied) {
 		host.setStatus("Copy failed", "warning");
@@ -26,18 +30,20 @@ export function copyText(host: TuiHost, text: string): void {
 	}
 
 	const state = host.state;
+	// OSC 52 只是把序列写进终端，终端是否真的接住无法确认；不能承诺「已复制」
+	const label = viaTerminal ? "Copy sent to terminal" : "Copied!";
 	// 没有运行时状态行就没有 token 位置可占，退成一条短暂提示
 	if (state.statusText === undefined) {
-		host.setStatus("Copied!", "notice");
+		host.setStatus(label, "notice");
 		host.scheduleStatusClear();
 		return;
 	}
 
-	state.copyNotice = true;
+	state.copyNotice = label;
 	if (state.copyNoticeTimer !== undefined) clearTimeout(state.copyNoticeTimer);
 	state.copyNoticeTimer = setTimeout(() => {
 		state.copyNoticeTimer = undefined;
-		state.copyNotice = false;
+		state.copyNotice = undefined;
 		host.render();
 	}, STATUS_CLEAR_MS);
 	host.render();

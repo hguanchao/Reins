@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 
 import { MENU_MAX_VISIBLE, keepVisible } from "../panel/menu-panel.ts";
+import { characterWidth } from "../render/text.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
 
 /**
@@ -378,18 +379,23 @@ export function moveInputVertical(text: string, cursor: number, delta: number): 
 	return columnToOffset(text, nextStart, end, column);
 }
 
-/** 从 start 到 end 之间的码位列数（把光标所在位置换算成列）。 */
+/** 从 start 到 end 之间的显示列数（把光标所在位置换算成列）。 */
 function codePointColumn(text: string, start: number, cursor: number): number {
 	let column = 0;
-	for (let index = start; index < cursor; index = nextIndex(text, index)) column += 1;
+	for (let index = start; index < cursor; index = nextIndex(text, index)) {
+		column += characterWidth(text.slice(index, nextIndex(text, index)));
+	}
 	return column;
 }
 
-/** 把码位列换算成某个区间内的偏移；列超出该行长度时停在行尾。 */
+/** 把显示列换算成某个区间内的偏移；列超出该行宽度时停在行尾。 */
 function columnToOffset(text: string, start: number, end: number, column: number): number {
 	let offset = start;
-	for (let used = 0; used < column && offset < end; used += 1) {
-		offset = nextIndex(text, offset);
+	let used = 0;
+	for (; used < column && offset < end; ) {
+		const next = nextIndex(text, offset);
+		used += characterWidth(text.slice(offset, next));
+		offset = next;
 	}
 	return Math.min(offset, end);
 }

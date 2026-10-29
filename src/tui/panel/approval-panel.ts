@@ -252,10 +252,16 @@ interface ActionRow {
 function actionRow(width: number, prompt: ApprovalPrompt, selected: ApprovalAnswer): ActionRow {
 	const options = layoutActions(width, prompt);
 	const plain = options.map((option) => option.label).join("   ");
+	// 最窄档位里标签不带选中标记，未选中项也不能再占两列槽位，否则拒绝键仍会被挤出屏幕
+	const bare = options.every((option) => !option.label.startsWith(ACTION_MARKER));
+	const slot = bare ? "" : ACTION_SLOT;
 	const styled = options
 		.map((option) => {
 			if (option.action !== selected) {
-				return `${ACTION_SLOT}${option.label.slice(ACTION_MARKER.length)}`;
+				const label = option.label.startsWith(ACTION_MARKER)
+					? option.label.slice(ACTION_MARKER.length)
+					: option.label;
+				return `${slot}${label}`;
 			}
 			// 拒绝用危险色，其余用强调色：选到拒绝时一眼能看出这是危险动作
 			const color = option.action === "deny" ? THEME.error : ACCENT_COLOR;
@@ -272,7 +278,8 @@ export function approvalActionAt(
 	column: number,
 ): ApprovalAnswer | undefined {
 	const options = layoutActions(Math.max(1, width), prompt);
-	let start = 2;
+	const bare = options.every((option) => !option.label.startsWith(ACTION_MARKER));
+	let start = bare ? 0 : 2;
 	for (const option of options) {
 		const end = start + displayWidth(option.label);
 		if (column >= start && column < end) return option.action;
@@ -333,9 +340,9 @@ function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOp
 	if (rowWidth(shortest) <= available) return shortest;
 
 	return [
-		{ action: "once", label: `${ACTION_MARKER}[y]` },
-		{ action: "always", label: `${ACTION_MARKER}[a]` },
-		{ action: "deny", label: `${ACTION_MARKER}[n]` },
+		{ action: "once", label: "[y]" },
+		{ action: "always", label: "[a]" },
+		{ action: "deny", label: "[n]" },
 	];
 }
 

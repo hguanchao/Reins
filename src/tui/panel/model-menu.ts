@@ -71,6 +71,14 @@ function layoutColumns(width: number, items: readonly ModelMenuItem[]): Columns 
 		...items.map((item) => displayWidth(`${item.provider}/${item.model}`)),
 	);
 	const keyWidth = Math.min(longestKey, Math.max(1, width - PREFIX_WIDTH - currentSegmentWidth));
+	// 为了保住 current 把模型 id 压到几个字符，反而认不出是哪个模型：这时先舍 current
+	if (keyWidth < Math.min(longestKey, 8)) {
+		return {
+			keyWidth: Math.min(longestKey, Math.max(1, width - PREFIX_WIDTH)),
+			nameWidth: 0,
+			currentWidth: 0,
+		};
+	}
 	const remaining = width - PREFIX_WIDTH - keyWidth - currentSegmentWidth;
 	const nameWidth = remaining >= GAP + 4 ? remaining - GAP : 0;
 	return { keyWidth, nameWidth, currentWidth: CURRENT_WIDTH };

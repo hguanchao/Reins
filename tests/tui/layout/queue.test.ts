@@ -46,6 +46,11 @@ describe("排队消息", () => {
 			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
 			input.emit("data", Buffer.from("\x1b"));
 
+			// /skills 只是只读页面，运行中也该放行
+			input.emit("data", Buffer.from("/skills\r"));
+			assert.ok((frameLines(output).map(plain)[0] ?? "").includes("skills"));
+			input.emit("data", Buffer.from("\x1b"));
+
 			// /compact 会另起一轮，运行中仍然挡掉：对话流里不该出现这条提示，
 			// 状态行要说明为什么没执行，而不是静默丢弃
 			input.emit("data", Buffer.from("/compact\r"));

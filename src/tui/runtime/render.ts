@@ -60,15 +60,15 @@ export function render(host: TuiHost): void {
 	const active = state.activeTurn;
 	// 状态行里的耗时与用量每帧现算；回合结束后沿用收尾时定格的快照
 	const ongoing = state.statusTone === undefined || state.statusTone === "warning";
+	// 转圈与扫光都表示「还在动」：重试仍在进行，失败、阻断与提示都是静止的。
+	// 空闲期的警告没有刷新帧，画一个转圈符号只会冻在某一帧，看起来像卡住了。
+	const spinning =
+		state.statusTone === undefined || (state.statusTone === "warning" && active !== undefined);
 	const status =
 		state.statusText === undefined
 			? undefined
 			: {
-					// 转圈与扫光都表示「还在动」：重试仍在进行，失败、阻断与提示都是静止的
-					symbol:
-						state.statusTone === "error" || state.statusTone === "notice"
-							? ""
-							: (SPINNER_FRAMES[state.spinnerFrame] ?? ""),
+					symbol: spinning ? (SPINNER_FRAMES[state.spinnerFrame] ?? "") : "",
 					text: state.statusText,
 					sweep: state.statusTone === undefined ? state.sweepPhase : undefined,
 					tone: state.statusTone,
@@ -81,14 +81,14 @@ export function render(host: TuiHost): void {
 								? state.statusElapsedMs
 								: undefined,
 					tokens:
-						state.copyNotice === true
+						state.copyNotice !== undefined
 							? undefined
 							: active !== undefined
 								? active.tokensUsed
 								: state.statusTokens > 0
 									? state.statusTokens
 									: undefined,
-					tokenLabel: state.copyNotice === true ? "Copied!" : undefined,
+					tokenLabel: state.copyNotice,
 				};
 	const menuLines = menuLinesOf(host, width, metrics);
 	const inputLines = inputView(state.input, width, state.inputCursor);
@@ -131,7 +131,7 @@ export function render(host: TuiHost): void {
 		state.selection !== undefined && selectionSpans(state.selection) ? state.selection : undefined;
 	const main =
 		trust !== undefined
-			? trustPageLines(trust, width, mainHeight)
+			? trustPageLines(trust, width, mainHeight, state.trustScrollTop)
 			: state.openPage !== undefined
 				? framedPageFor(host, state.openPage, width, mainHeight)
 				: transcriptShown

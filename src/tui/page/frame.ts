@@ -41,7 +41,7 @@ interface PageSection {
 /** 命令之外的固定内容。 */
 const KEY_ENTRIES: readonly PageEntry[] = [
 	{ name: "Enter", description: "Send the prompt; queue it while a turn is running" },
-	{ name: "Tab", description: "Complete the selected item into the prompt" },
+	{ name: "Tab", description: "Complete the selected item into the prompt; switch the branch or rewind selection in those panels" },
 	{ name: "Shift+Tab", description: "Cycle the approval mode: ask, auto, yolo" },
 	{ name: "Esc", description: "Close a menu or this page; deny an approval; interrupt and send the first queued message" },
 	{ name: "Ctrl+C twice", description: "Exit the interface" },
@@ -145,9 +145,10 @@ export function mcpsPageLines(
 	width: number,
 	servers: readonly PageEntry[],
 	cursor = 0,
+	status?: string,
 ): readonly string[] {
 	const entries = servers.map((entry, index) => ({ ...entry, selected: index === cursor }));
-	return sectionPageLines(
+	const lines = sectionPageLines(
 		MCPS_TITLE,
 		[
 			{
@@ -159,6 +160,13 @@ export function mcpsPageLines(
 		["Add [mcp_servers.<name>] to config.toml to connect one."],
 		width,
 	);
+	// 整屏页没有状态行：重连/健康检查的反馈直接画在标题下面，否则按 r/h 看起来毫无反应
+	if (status === undefined || status.length === 0) return lines;
+	return [
+		lines[0] ?? "",
+		`${DESCRIPTION_COLOR}${fitToWidth(status, Math.max(0, width))}${RESET}`,
+		...lines.slice(1),
+	];
 }
 
 /** MCP 页底部的操作条：选中一个 server 后重连，或检查全部连接。 */

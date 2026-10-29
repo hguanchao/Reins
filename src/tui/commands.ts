@@ -4,11 +4,17 @@ import type { TuiOptions } from "./options.ts";
 /**
  * 一轮进行中也能执行的命令。
  *
- * 它们只影响界面（帮助页、选择面板）或下一轮，不碰正在跑的那一轮：模型与思考等级在
- * startRun 时就已交给客户端，改的是下一轮。/compact 会另起一轮，插件命令由插件自己决定，
- * 都等这一轮结束。
+ * 它们只影响界面（帮助页、技能与 MCP 清单、选择面板）或下一轮，不碰正在跑的那一轮：
+ * 模型与思考等级在 startRun 时就已交给客户端，改的是下一轮。/compact 会另起一轮，
+ * 插件命令由插件自己决定，都等这一轮结束。
  */
-export const TURN_SAFE_COMMANDS: ReadonlySet<string> = new Set(["help", "model", "effort"]);
+export const TURN_SAFE_COMMANDS: ReadonlySet<string> = new Set([
+	"help",
+	"model",
+	"effort",
+	"skills",
+	"mcps",
+]);
 
 /** 命令补全列表：配置不可用时仍然显示，但标成不可执行；隐藏项只在完整输入时执行。 */
 export function createBuiltinCommands(options: TuiOptions): readonly CommandMenuItem[] {

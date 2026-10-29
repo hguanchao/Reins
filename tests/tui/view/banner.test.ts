@@ -58,12 +58,12 @@ describe("启动标志", () => {
 		}
 	});
 
-	it("终端比整块窄时不缩进也不截断", () => {
+	it("终端比整块窄时按宽度截断，版本号仍在屏幕内", () => {
 		const lines = bannerLines(20, "1.0.0");
 
 		for (let row = 0; row < ART.length; row += 1) {
-			assert.equal(visible(lines[row] ?? "").trimEnd(), ART[row]);
+			assert.equal(visible(lines[row] ?? "").trimEnd(), ART[row]?.slice(0, 20).trimEnd());
 		}
-		assert.equal(visible(lines[6] ?? "").trimEnd(), `${" ".repeat(13)}v1.0.0`);
+		assert.ok(visible(lines[6] ?? "").includes("v1.0.0"));
 	});
 });

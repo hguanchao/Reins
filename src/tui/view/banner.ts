@@ -1,4 +1,4 @@
-import { displayWidth } from "../render/text.ts";
+import { displayWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 
 /**
@@ -30,18 +30,24 @@ const BLOCK_WIDTH = Math.max(...MARK.map((line) => displayWidth(line)));
  */
 export function bannerLines(width: number, version: string): readonly string[] {
 	const columns = Math.max(0, width);
-	const left = Math.max(0, Math.floor((columns - BLOCK_WIDTH) / 2));
+	// 窄终端放不下整块标志：按终端宽度截断，不能指望终端自动折行把版式兜住
+	const left = columns >= BLOCK_WIDTH ? Math.max(0, Math.floor((columns - BLOCK_WIDTH) / 2)) : 0;
 	const lines: string[] = [];
 
 	for (const row of MARK) {
-		const art = padToWidth(row, BLOCK_WIDTH);
+		const art = truncateToWidth(padToWidth(row, BLOCK_WIDTH), Math.max(0, columns - left));
 		lines.push(`${" ".repeat(left)}${THEME.textSubtle}${art}${THEME.reset}`);
 	}
 
 	lines.push(...Array.from({ length: GAP }, () => ""));
 	const label = `v${version}`;
-	const labelLeft = left + Math.max(0, Math.floor((BLOCK_WIDTH - displayWidth(label)) / 2));
-	lines.push(`${" ".repeat(labelLeft)}${THEME.textSubtle}${label}${THEME.reset}`);
+	if (displayWidth(label) <= columns) {
+		const labelLeft = Math.min(
+			left + Math.max(0, Math.floor((BLOCK_WIDTH - displayWidth(label)) / 2)),
+			Math.max(0, columns - displayWidth(label)),
+		);
+		lines.push(`${" ".repeat(labelLeft)}${THEME.textSubtle}${label}${THEME.reset}`);
+	}
 	return lines;
 }
 

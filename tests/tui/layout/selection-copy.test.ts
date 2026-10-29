@@ -121,7 +121,8 @@ describe("鼠标拖选复制", () => {
 				),
 			);
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Copied!"));
+			// OSC 52 只是把序列写给终端，终端是否接住无法确认，不能承诺「已复制」
+			assert.ok(text.includes("Copy sent to terminal"));
 		} finally {
 			exitTui(input);
 		}

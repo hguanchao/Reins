@@ -126,6 +126,26 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("空闲期的警告状态不带冻结的转圈符号", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("/nope\r"));
+			const status =
+				frameLines(output)
+					.map(plain)
+					.find((line) => line.includes("Unknown command")) ?? "";
+			assert.ok(status.length > 0);
+			assert.equal(status.includes("⠋"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("命令前缀只执行同名命令，不按描述命中执行别的命令", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();

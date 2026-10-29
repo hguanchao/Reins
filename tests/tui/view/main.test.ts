@@ -29,17 +29,17 @@ describe("主区域启动画面", () => {
 		assert.equal(visible(lines[5] ?? "").trimEnd(), `${" ".repeat(17)}v1.2.3`);
 	});
 
-	it("高度不足时先保住标志", () => {
+	it("高度不足时先保住标志，按终端宽度截断", () => {
 		const lines = renderMain(20, 1, "1.0.0");
 
 		assert.equal(lines.length, 1);
-		assert.equal(visible(lines[0] ?? "").trimEnd(), ART_TOP);
+		assert.equal(visible(lines[0] ?? "").trimEnd(), ART_TOP.slice(0, 20).trimEnd());
 	});
 
-	it("宽度不足时不产生负缩进也不截断", () => {
+	it("宽度不足时不产生负缩进，标志按宽度截断", () => {
 		const lines = renderMain(2, 2, "1.0.0");
 
-		assert.equal(visible(lines[0] ?? "").trimEnd(), ART_TOP);
-		assert.equal(visible(lines[1] ?? "").trimEnd(), "█   █ █        █    ██  █  █");
+		assert.equal(visible(lines[0] ?? "").trimEnd(), "██");
+		assert.equal(visible(lines[1] ?? "").trimEnd(), "█");
 	});
 });

@@ -266,6 +266,19 @@ describe("审批面板的内容净化", () => {
 		assert.equal(joined.includes("\u001b[1G"), false);
 	});
 
+	it("20 列终端也能看到拒绝键", () => {
+		const lines = render(20, {
+			tool: "bash",
+			risk: "destructive",
+			detail: "npm test",
+			saveShort: "npm test",
+		});
+		const action = lines.map(plain).find((row) => row.includes("[y]")) ?? "";
+
+		assert.ok(action.includes("[n]"));
+		assert.ok(displayWidth(action) <= 20);
+	});
+
 	it("可记住范围里的转义序列不会进入动作行", () => {
 		const lines = render(80, {
 			tool: "bash",

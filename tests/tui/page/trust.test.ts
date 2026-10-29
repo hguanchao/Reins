@@ -40,6 +40,21 @@ describe("工作区信任页", () => {
 		assert.equal(text.includes("/work/project/.reins"), false);
 	});
 
+	it("文件清单超出高度时按 scrollTop 开窗，说明仍然可达", () => {
+		const files = Array.from({ length: 40 }, (_, index) => `/work/project/f${index}.ts`);
+		const view = input({ files, skillDirectories: [] });
+		const top = trustPageLines(view, 60, 20, 0)
+			.map(plain)
+			.join("\n");
+		const bottom = trustPageLines(view, 60, 20, 10_000)
+			.map(plain)
+			.join("\n");
+
+		assert.ok(top.includes("f0.ts"));
+		assert.equal(top.includes("Not trusting keeps the default"), false);
+		assert.ok(bottom.includes("Not trusting keeps the default"));
+	});
+
 	it("正文逐行水平居中：行首缩进等于剩余宽度的一半", () => {
 		const width = 80;
 		const lines = render(input(), width, 24);
