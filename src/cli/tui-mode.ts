@@ -135,9 +135,27 @@ function conversationResult(session: Session, workRoot: string): SessionSwitchRe
  *
  * 会话文件在配置正常时启动即建立；受限模式下等到选型成功后再建立，避免留下一个空会话。
  */
+/**
+ * 全屏界面需要的终端能力。
+ *
+ * `TERM=dumb` 明确表示终端不解释 ANSI 转义序列：继续进入备用屏只会把光标定位序列
+ * 原样打出来。与其画出一屏乱码，不如提前说明并让使用者改用非交互模式。
+ */
+export function terminalUnsupportedReason(env: NodeJS.ProcessEnv): string | undefined {
+	if (env["TERM"] === "dumb") {
+		return "the full-screen interface needs a terminal that supports ANSI escape sequences (TERM=dumb)";
+	}
+	return undefined;
+}
+
 export async function runTuiMode(options: CliOptions): Promise<number> {
 	if (!process.stdin.isTTY || !process.stdout.isTTY) {
 		writeStderr("reins: the full-screen interface needs an interactive terminal; pass a prompt to run non-interactively\n");
+		return 1;
+	}
+	const unsupported = terminalUnsupportedReason(process.env);
+	if (unsupported !== undefined) {
+		writeStderr(`reins: ${unsupported}; pass a prompt to run non-interactively\n`);
 		return 1;
 	}
 
