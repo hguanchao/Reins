@@ -32,9 +32,13 @@ describe("排队消息", () => {
 			assert.ok(frameLines(output).map(plain).some((line) => line.includes("fengshao/")));
 			input.emit("data", Buffer.from("\x1b"));
 
-			// /effort 同理
+			// /effort 同理：面板打开，命令名不留在输入框
 			input.emit("data", Buffer.from("/effort\r"));
-			assert.ok(frameLines(output).map(plain).some((line) => line.includes("› /effort")));
+			assert.ok(
+				frameLines(output)
+					.map(plain)
+					.some((line) => line.includes("medium") && line.includes("current")),
+			);
 			input.emit("data", Buffer.from("\x1b"));
 
 			// /help 打开整屏帮助页

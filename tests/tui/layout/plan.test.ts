@@ -86,6 +86,119 @@ describe("Plan 模式", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("审批页关闭后排队消息继续发送", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		let planMode = false;
+		const agent = createFakeAgent();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			planMode: {
+				current: () => planMode,
+				select: (enabled) => {
+					planMode = enabled;
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/plan\r"));
+			input.emit("data", Buffer.from("plan it\r"));
+			agent.emit({
+				type: "tool_start",
+				callId: "p1",
+				name: "present_plan",
+				args: { plan: "# Queued plan\n\n1. Do it." },
+			});
+			agent.emit({
+				type: "tool_end",
+				callId: "p1",
+				name: "present_plan",
+				isError: false,
+				durationMs: 1,
+				summary: "Plan submitted for review.",
+			});
+			// 本轮运行中再提交一条：进入队列，审批页打开时先暂停
+			input.emit("data", Buffer.from("queued later\r"));
+			await agent.finish();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			assert.ok(frameLines(output).map(plain).join("\n").includes("approve & implement"));
+			assert.deepEqual(agent.prompts, ["plan it"]);
+
+			input.emit("data", Buffer.from("q"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			// 离开审批页后队列接上，排队消息进入下一轮
+			assert.deepEqual(agent.prompts, ["plan it", "queued later"]);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("输入框有草稿时不自动打开审批页，草稿保留", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 30;
+		let planMode = false;
+		const agent = createFakeAgent();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			planMode: {
+				current: () => planMode,
+				select: (enabled) => {
+					planMode = enabled;
+				},
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/plan\r"));
+			input.emit("data", Buffer.from("plan it\r"));
+			// 回合运行中继续写草稿：整屏审批页不该把它抢走
+			input.emit("data", Buffer.from("my draft"));
+			agent.emit({
+				type: "tool_start",
+				callId: "p1",
+				name: "present_plan",
+				args: { plan: "# Draft plan\n\n1. Do it." },
+			});
+			agent.emit({
+				type: "tool_end",
+				callId: "p1",
+				name: "present_plan",
+				isError: false,
+				durationMs: 1,
+				summary: "Plan submitted for review.",
+			});
+			await agent.finish();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("Reins — plan"), false);
+			assert.ok(text.includes("my draft"));
+			assert.ok(text.includes("Plan ready; double-click the plan card"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("历史计划可以重新打开，双击计划卡与 q 退出都生效", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();

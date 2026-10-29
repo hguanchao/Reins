@@ -55,7 +55,18 @@ export function onCtrlC(
 		deps.cleanup();
 		return;
 	}
-	armExit(state, () => disarm(state), EXIT_CONFIRM_WINDOW_MS);
+	// 空闲时第一次按下没有任何界面变化，使用者会以为按键没生效；明说要再按一次
+	armExit(
+		state,
+		() => {
+			disarm(state);
+			host.clearStatus();
+			deps.render();
+		},
+		EXIT_CONFIRM_WINDOW_MS,
+	);
+	host.setStatus("Press Ctrl+C again to exit", "notice");
+	deps.render();
 }
 
 export { cleanup };

@@ -508,6 +508,34 @@ describe("整屏页与图片附件", () => {
 		}
 	});
 
+	it("@ 补全无匹配时回车仍然发送消息", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			files: { list: () => ["README.md"] },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("看一下 @zzz"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("No matching files"));
+
+			// 补全没命中时回车不能被吞掉：这只是一条带 @ 的普通消息
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["看一下 @zzz"]);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("@ 面板里回车只插入路径，不发送", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();

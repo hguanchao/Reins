@@ -44,7 +44,7 @@ import {
 	resolveApproval,
 	syncApprovalPrompt,
 } from "./runtime/approval.ts";
-import { closePlanReview, openPlanReview, pageLines } from "./runtime/pages.ts";
+import { closePlanReviewAndResume, openPlanReview, pageLines } from "./runtime/pages.ts";
 import { setStatus, clearStatus, resetStatusMeta, scheduleStatusClear } from "./runtime/status.ts";
 import { copyText } from "./runtime/copy.ts";
 import { closeThinking, appendLine, syncTurn, syncTurnFull } from "./runtime/turn.ts";
@@ -151,7 +151,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		closeThinking: (active) => closeThinking(host, active),
 		appendCommandTurn: (prompt, response) => appendCommandTurn(host, prompt, response),
 		openPlanReview: (plan) => openPlanReview(host, plan),
-		closePlanReview: () => closePlanReview(state),
+		closePlanReview: () => closePlanReviewAndResume(host),
 		clearAttachments: () => clearAttachments(host),
 		syncApprovalPrompt: () => syncApprovalPrompt(host),
 		resolveApproval: (answer) => resolveApproval(host, answer),

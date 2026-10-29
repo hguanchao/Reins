@@ -71,9 +71,8 @@ export function togglingTranscriptAt(
 		// （文件类工具的结果、或被截短的命令），不再另铺一遍原始结果
 		const open = tool.detailExpanded === true || tool.resultExpanded === true;
 		tool.detailExpanded = !open;
-		if (tool.fullDetail === undefined && tool.result !== undefined) {
-			tool.resultExpanded = !open;
-		}
+		// 两个展开标志互斥：有完整详情时只展开详情，否则结果色带会被追加第二遍
+		tool.resultExpanded = !open && tool.fullDetail === undefined && tool.result !== undefined;
 		refresh();
 		state.lastClick = undefined;
 		state.follow = false;

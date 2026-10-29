@@ -20,7 +20,9 @@ describe("终端启动与收尾", () => {
 			const written = output.chunks.length;
 			pressCtrlC(input);
 			assert.equal(input.rawMode, true);
-			assert.equal(output.chunks.length, written);
+			// 第一次按下要给出明确反馈，否则使用者会以为按键没生效
+			assert.ok(output.chunks.length > written);
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Press Ctrl+C again to exit"));
 			assert.equal(
 				output.chunks.some((chunk) => chunk.includes(LEAVE)),
 				false,

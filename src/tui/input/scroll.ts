@@ -61,7 +61,8 @@ export function handleScrollKey(
 ): boolean {
 	if (text === "\x1b[5~") {
 		state.scrollTop = Math.max(0, state.scrollTop - mainHeight);
-		state.follow = false;
+		// 已经到顶时不要取消跟随：内容本来就没超出屏幕，之后的新输出仍应自动可见
+		state.follow = state.scrollTop >= host.maxScroll();
 		return true;
 	}
 	if (text === "\x1b[6~") {
@@ -72,7 +73,7 @@ export function handleScrollKey(
 	}
 	if (text === "\x1b[1;5H") {
 		state.scrollTop = 0;
-		state.follow = false;
+		state.follow = host.maxScroll() <= 0;
 		return true;
 	}
 	// Ctrl+End：跳到最新。帮助页承诺了它，终端发出的序列是 CSI 1;5F

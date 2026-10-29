@@ -266,6 +266,20 @@ describe("审批面板的内容净化", () => {
 		assert.equal(joined.includes("\u001b[1G"), false);
 	});
 
+	it("可记住范围里的转义序列不会进入动作行", () => {
+		const lines = render(80, {
+			tool: "bash",
+			risk: "destructive",
+			detail: "npm test",
+			saveShort: "npm\u001b[2Jtest",
+		});
+		const joined = lines.join("");
+		const rows = lines.map(plain);
+
+		assert.equal(joined.includes("\u001b[2J"), false);
+		assert.ok(rows.some((row) => row.includes('always for "npmtest"')));
+	});
+
 	it("超长工具名不会让整行溢出面板宽度", () => {
 		const width = 40;
 		const lines = render(width, {

@@ -5,7 +5,7 @@ import type { CommandMenuItem } from "../panel/command-menu.ts";
 import type { RewindResult, SessionSwitchResult } from "../options.ts";
 import { CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE, implementationPrompt } from "../render/status.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
-import { closePlanReview, showPage } from "./pages.ts";
+import { closePlanReview, closePlanReviewAndResume, showPage } from "./pages.ts";
 import {
 	openBranchMenu,
 	openEffortMenu,
@@ -46,7 +46,7 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 		skills: () => showPage(state, "skills"),
 		mcps: () => showPage(state, "mcps"),
 	};
-	const handler = handlers[command.name];
+	const handler = Object.hasOwn(handlers, command.name) ? handlers[command.name] : undefined;
 	if (handler !== undefined) {
 		// 整屏页期间输入框不接受按键，命令名一律不留在输入框里
 		if (
@@ -138,6 +138,8 @@ function executeModelCommand(host: TuiHost, args: string): void {
 
 	const target = args.trim();
 	if (target.length === 0) {
+		// 面板打开后输入框不该还留着命令名：接着打字会拼成 /modelxyz 这种伪命令
+		host.setInput("");
 		openModelMenu(host);
 		return;
 	}
@@ -171,6 +173,7 @@ function executeEffortCommand(host: TuiHost, args: string): void {
 
 	const target = args.trim();
 	if (target.length === 0) {
+		host.setInput("");
 		openEffortMenu(host);
 		return;
 	}
@@ -201,6 +204,7 @@ function executeSessionCommand(host: TuiHost, args: string): void {
 
 	const target = args.trim();
 	if (target.length === 0) {
+		host.setInput("");
 		openSessionMenu(host);
 		return;
 	}
@@ -525,7 +529,7 @@ function executeUndoCommand(host: TuiHost): void {
 export function approvePlan(host: TuiHost): void {
 	const plan = host.state.planReview ?? host.state.latestPlan;
 	if (plan === undefined) {
-		closePlanReview(host.state);
+		closePlanReviewAndResume(host);
 		host.render();
 		return;
 	}
@@ -533,7 +537,7 @@ export function approvePlan(host: TuiHost): void {
 	// 一轮还在跑时不能再起一轮：历史里的计划卡随时可以双击打开，否则第二个驱动会与
 	// 正在跑的那个同时写同一个会话，旧 turn 的流式内容还会被写进新 turn。
 	if (host.state.activeTurn !== undefined) {
-		closePlanReview(host.state);
+		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
 		host.setStatus("A turn is still running; wait for it to finish before approving the plan", "notice");
 		host.scheduleStatusClear();
@@ -544,6 +548,7 @@ export function approvePlan(host: TuiHost): void {
 	const agent = host.options.agent;
 	closePlanReview(host.state);
 	if (agent === undefined) {
+		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
 		host.setStatus("Agent unavailable", "notice");
 		host.scheduleStatusClear();
@@ -554,6 +559,7 @@ export function approvePlan(host: TuiHost): void {
 	try {
 		if (host.planning()) host.options.planMode?.select(false);
 	} catch (error) {
+		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
 		host.setStatus(`Failed to leave Plan mode: ${describeError(error)}`, "error");
 		host.scheduleStatusClear();
@@ -603,7 +609,7 @@ export function revisePlan(host: TuiHost): void {
 export function leavePlan(host: TuiHost): void {
 	// 同 /plan：一轮进行中切换会让这一轮后续的工具立刻越过只读闸门
 	if (host.state.activeTurn !== undefined) {
-		closePlanReview(host.state);
+		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
 		host.setStatus("Plan mode cannot change while a turn is running", "notice");
 		host.scheduleStatusClear();
@@ -611,7 +617,7 @@ export function leavePlan(host: TuiHost): void {
 		return;
 	}
 	const wasPlanning = host.planning();
-	closePlanReview(host.state);
+	closePlanReviewAndResume(host);
 	try {
 		if (wasPlanning) host.options.planMode?.select(false);
 	} catch (error) {

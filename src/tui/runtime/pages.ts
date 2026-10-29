@@ -8,6 +8,7 @@ import {
 } from "../page/frame.ts";
 import { planActionLines, planReviewLines } from "../page/plan.ts";
 import { viewerActionLines, viewerPageLines } from "../page/viewer.ts";
+import { drainQueue } from "./run.ts";
 import type { PageKind } from "../options.ts";
 import type { TranscriptPlan } from "../transcript.ts";
 import type { TuiHost, TuiState } from "./types.ts";
@@ -24,6 +25,10 @@ export function showPage(state: TuiState, kind: PageKind): void {
 	state.openPage = kind;
 	state.pageScrollTop = 0;
 	state.pageCache = undefined;
+	// 整屏页是模态视图：@ 补全还开着的话，它的面板会盖在页面上，页面也会被挤出屏幕
+	state.fileMenu = undefined;
+	state.fileFiles = undefined;
+	state.fileIndexStart = undefined;
 	// 整屏页里没有对话流选区；留着只会在返回时闪出一块旧高亮
 	state.selection = undefined;
 }
@@ -81,6 +86,18 @@ export function closePlanReview(state: TuiState): void {
 	if (state.openPage === "plan") state.openPage = undefined;
 	state.planReview = undefined;
 	state.pageScrollTop = 0;
+}
+
+/**
+ * 使用者主动离开审批页：关闭后把停住的队列接上。
+ *
+ * 审批页打开时队列被刻意暂停，避免排队消息越过审批；离开页面后界面回到空闲，
+ * 队列不该继续停着。修改计划与 Ctrl+C 退出不走这里——前者要等使用者写修改意见，
+ * 后者正在离开程序。
+ */
+export function closePlanReviewAndResume(host: TuiHost): void {
+	closePlanReview(host.state);
+	if (host.state.activeTurn === undefined && host.state.queued.length > 0) drainQueue(host);
 }
 
 /** 按页面类型给整屏内容加动作条。 */

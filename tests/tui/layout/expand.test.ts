@@ -118,6 +118,75 @@ describe("对话流展开", () => {
 		}
 	});
 
+	it("空结果按 Ctrl+O 不打开空色带", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "true" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "bash",
+				isError: false,
+				durationMs: 1,
+				summary: "",
+				content: "",
+			});
+			t.mock.timers.tick(100);
+
+			input.emit("data", Buffer.from("\x0f"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("(no output)"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("双击展开后再按 Ctrl+O，内容不会铺两遍", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		const count = (text: string): number => text.split("ONLY-ONCE").length - 1;
+		try {
+			input.emit("data", Buffer.from("hello\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "ONLY-ONCE",
+				content: "ONLY-ONCE",
+			});
+			t.mock.timers.tick(100);
+
+			const row = frameLines(output).map(plain).findIndex((line) => line.includes("Read")) + 1;
+			assert.ok(row > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			assert.equal(count(frameLines(output).map(plain).join("\n")), 1);
+
+			// 再按 Ctrl+O：切到结果色带，同一份内容仍然只出现一次
+			input.emit("data", Buffer.from("\x0f"));
+			assert.equal(count(frameLines(output).map(plain).join("\n")), 1);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("Ctrl+O 可展开收起工具组里的结果", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();

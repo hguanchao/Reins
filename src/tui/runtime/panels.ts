@@ -354,20 +354,23 @@ export function updateCommandMenu(host: TuiHost): void {
 					command.description.toLowerCase().includes(query)),
 		);
 		if (items.length > 0) {
-			// 输入完整命令名时，光标落到这条命令上：描述里含同一个词的其他命令
-			// 也匹配得上，不这样做，敲完 /session 回车会先执行排在前面的 /model
-			const exact = items.findIndex((item) => item.name === query);
+			// 命令名前缀命中排在描述命中之前：否则敲 /e 回车会执行描述里含 e 的 /model。
+			// 光标默认落在第一个前缀命中项上，回车执行的就是使用者正在拼的命令。
+			const prefix = items.filter((item) => item.name.toLowerCase().startsWith(query));
+			const rest = items.filter((item) => !item.name.toLowerCase().startsWith(query));
+			const ordered = [...prefix, ...rest];
+			const exact = ordered.findIndex((item) => item.name.toLowerCase() === query);
 			const previous = state.commandMenu?.items[state.commandMenu.cursor]?.name;
 			const cursor =
 				exact >= 0
 					? exact
 					: previous === undefined
 						? 0
-						: Math.max(0, items.findIndex((item) => item.name === previous));
+						: Math.max(0, ordered.findIndex((item) => item.name === previous));
 			state.commandMenu = {
-				items,
+				items: ordered,
 				cursor,
-				scrollTop: keepVisible(0, cursor, items.length),
+				scrollTop: keepVisible(0, cursor, ordered.length),
 			};
 			return;
 		}

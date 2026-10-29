@@ -101,7 +101,6 @@ export function startRun(
 			disarm(state);
 			const completedPlan = active.outcome === "done" ? state.pendingPlan : undefined;
 			state.pendingPlan = undefined;
-			if (completedPlan !== undefined) host.openPlanReview(completedPlan);
 			options.agent?.refreshInfo();
 			if (active.outcome === "aborted") {
 				// 主动停下由对话流里的 Interrupted 说明，状态行不再留结局
@@ -114,6 +113,16 @@ export function startRun(
 				state.statusElapsedMs = Math.max(0, Date.now() - active.startedAt);
 				state.statusTokens = active.tokensUsed;
 				host.scheduleStatusClear();
+			}
+			if (completedPlan !== undefined) {
+				if (state.input.length === 0) {
+					host.openPlanReview(completedPlan);
+				} else {
+					// 输入框里还有草稿：整屏页会把使用者正在写的内容连同下一次按键一起抢走。
+					// 计划卡已经留在对话流里，双击即可打开审批页。
+					host.setStatus("Plan ready; double-click the plan card to review", "notice");
+					host.scheduleStatusClear();
+				}
 			}
 			host.render();
 			if (active.outcome !== "aborted") {

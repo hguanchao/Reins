@@ -207,6 +207,8 @@ export function render(host: TuiHost): void {
 
 function menuLinesOf(host: TuiHost, width: number, _metrics: unknown): readonly string[] {
 	const state = host.state;
+	// 整屏页独占主区域：页脚高度为 0 时再叠一块菜单会把页面顶部挤出屏幕
+	if (state.openPage !== undefined) return [];
 	if (state.approvalPrompt !== undefined) {
 		return renderApprovalPanel(
 			width,

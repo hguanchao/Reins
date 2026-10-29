@@ -284,9 +284,13 @@ export function approvalActionAt(
 /** 可记住范围的文案：文件类不重复路径，Bash 保留具体命令前缀。 */
 function alwaysLabel(prompt: ApprovalPrompt): string | undefined {
 	if (prompt.saveShort === undefined) return undefined;
+	// 命令前缀来自模型生成的参数，可能夹带转义序列：动作行必须和详情走同一套清洗，
+	// 否则审批卡本身就能被命令内容改写屏幕
+	const short = sanitizeLine(prompt.saveShort).trim();
+	if (short.length === 0) return undefined;
 	if (prompt.tool === "edit" || prompt.tool === "write") return "always for this file";
-	if (prompt.tool === "bash") return `always for "${prompt.saveShort}"`;
-	return `always: "${prompt.saveShort}"`;
+	if (prompt.tool === "bash") return `always for "${short}"`;
+	return `always: "${short}"`;
 }
 
 function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOption[] {

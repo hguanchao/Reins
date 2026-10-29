@@ -254,14 +254,16 @@ export function toggleLastToolResult(turns: readonly TranscriptTurn[]): Transcri
 		for (let index = response.length - 1; index >= 0; index -= 1) {
 			const line = response[index];
 			if (typeof line !== "object" || line === null) continue;
-			if (line.kind === "tool" && line.result !== undefined) {
+			if (line.kind === "tool" && line.result !== undefined && line.result.trim().length > 0) {
 				line.resultExpanded = !line.resultExpanded;
+				// 结果色带与完整详情互斥：同时打开会把同一份内容铺两遍
+				if (line.resultExpanded) line.detailExpanded = false;
 				return line;
 			}
 			if (line.kind === "toolGroup") {
 				for (let member = line.members.length - 1; member >= 0; member -= 1) {
 					const item = line.members[member];
-					if (item?.result === undefined) continue;
+					if (item?.result === undefined || item.result.trim().length === 0) continue;
 					// 组收起时结果也被组头盖住：第一次 Ctrl+O 先把组和结果一起打开
 					if (!line.expanded) {
 						line.expanded = true;
@@ -269,6 +271,7 @@ export function toggleLastToolResult(turns: readonly TranscriptTurn[]): Transcri
 					} else {
 						item.resultExpanded = !item.resultExpanded;
 					}
+					if (item.resultExpanded) item.detailExpanded = false;
 					return item;
 				}
 			}

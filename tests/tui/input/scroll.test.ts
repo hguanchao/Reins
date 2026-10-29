@@ -88,6 +88,19 @@ describe("滚动键", () => {
 		assert.equal(state.scrollTop, 0);
 	});
 
+	it("已经到顶时 PageUp 与 Ctrl+Home 不取消跟随", () => {
+		const fits = stateOf({ scrollTop: 0, follow: true });
+		assert.equal(handleScrollKey(hostOf(0), fits, "\x1b[5~", 5), true);
+		assert.equal(fits.follow, true);
+		assert.equal(handleScrollKey(hostOf(0), fits, "\x1b[1;5H", 5), true);
+		assert.equal(fits.follow, true);
+
+		// 内容超出屏幕时回到顶部才是「离开底部」，跟随要关掉
+		const overflowing = stateOf({ scrollTop: 0, follow: true });
+		assert.equal(handleScrollKey(hostOf(30), overflowing, "\x1b[5~", 5), true);
+		assert.equal(overflowing.follow, false);
+	});
+
 	it("其它按键不消费", () => {
 		assert.equal(handleScrollKey(hostOf(10), stateOf(), "a", 5), false);
 	});

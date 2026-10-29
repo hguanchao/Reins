@@ -115,9 +115,35 @@ describe("命令补全与选择面板", () => {
 			const lines = frameLines(output).map(plain);
 			assert.ok(lines.some((line) => line.endsWith(" 3 ────")));
 			assert.ok(lines.some((line) => line.includes("fengshao/")));
-			assert.ok(lines.some((line) => line.includes("› /model")));
+			// 面板打开后命令名不留在输入框：接着打字不会拼成 /modelxyz
+			assert.ok(lines.some((line) => line.trimEnd() === " ›"));
 			// 面板只盖在输入框上方，输入行仍然可编辑，光标照常显示
 			assert.equal(CURSOR_SUFFIX.test(rawFrame(output)), true);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("命令前缀只执行同名命令，不按描述命中执行别的命令", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			effortMenu: { current: () => "medium", select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/e\r"));
+			const text = frameLines(output).map(plain).join("\n");
+			// /e 的命令名前缀命中是 /effort；/model 只是描述里含 e，不能被执行
+			assert.equal(text.includes("fengshao/"), false);
+			assert.ok(text.includes("medium") && text.includes("current"));
 		} finally {
 			exitTui(input);
 		}
@@ -920,7 +946,8 @@ describe("命令补全与选择面板", () => {
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
 			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
-			assert.ok(lines.some((line) => line.includes("/modelx")));
+			// 输入框只剩使用者新敲的字符，不会和命令名拼在一起
+			assert.ok(lines.some((line) => line.trimEnd() === " › x"));
 		} finally {
 			exitTui(input);
 		}
@@ -1341,8 +1368,8 @@ describe("命令补全与选择面板", () => {
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
 			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
-			// 补全面板里也有 `/model`，只有整行匹配输入框才能确认退格真的删掉了字符
-			assert.ok(lines.some((line) => line === " › /mode"));
+			// 输入框在命令执行时已经清空，退格后仍为空
+			assert.ok(lines.some((line) => line.trimEnd() === " ›"));
 		} finally {
 			exitTui(input);
 		}

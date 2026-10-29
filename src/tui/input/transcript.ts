@@ -29,6 +29,7 @@ export function handleTranscriptInput(
 	let focusChanged = false;
 	let hoverChanged = false;
 	let selectionChanged = false;
+	let menuClosed = false;
 	// 键盘输入说明已经离开鼠标拖选；松开事件丢失时不能把高亮留在屏幕上
 	if (withoutMouse.length > 0 && state.selection !== undefined) {
 		state.selection = undefined;
@@ -271,8 +272,13 @@ export function handleTranscriptInput(
 			return;
 		}
 		if (key === "tab" || key === "enter") {
-			insert();
-			return;
+			if (menu.items.length > 0) {
+				insert();
+				return;
+			}
+			// 没有匹配时 Tab 仍然吞掉（补全无事可做），回车放行给提交：
+			// 使用者写的是一条带 @ 的普通消息，不该因为补全没命中就发不出去
+			if (key === "tab") return;
 		}
 		if (key === "escape") {
 			host.closeFileMenu(true);
@@ -407,11 +413,13 @@ export function handleTranscriptInput(
 		state.fileMenuDismissed = false;
 	}
 	// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
-	// 命令补全面板相反，跟着新输入继续过滤
-	if (edit.text !== previous && host.modalMenuOpen()) {
+	// 命令补全面板相反，跟着新输入继续过滤。退格在空输入上不会改变文字，但它同样是
+	// 编辑动作，面板也不该继续挡着。
+	if (withoutMouse.length > 0 && host.modalMenuOpen()) {
 		state.modelMenu = undefined;
 		state.effortMenu = undefined;
 		state.sessionMenu = undefined;
+		menuClosed = true;
 	}
 	host.setInput(edit.text, edit.cursor);
 	host.updateCommandMenu();
@@ -431,6 +439,7 @@ export function handleTranscriptInput(
 		edit.handled ||
 		focusChanged ||
 		hoverChanged ||
+		menuClosed ||
 		scrollChanged ||
 		selectionChanged
 	) {

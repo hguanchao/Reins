@@ -47,7 +47,14 @@ export function submit(host: TuiHost): boolean {
 
 	const message = state.input.trim();
 	if (message.length === 0) return false;
-	const selected = state.commandMenu?.items[state.commandMenu.cursor];
+	// 补全面板的选中项只有在这个命令确实以输入的字母开头时才执行：
+	// 描述命中的项只是「可能相关」，不能因为排在第一位就替使用者执行
+	const typed = message.startsWith("/") ? message.slice(1).toLowerCase() : "";
+	const highlighted = state.commandMenu?.items[state.commandMenu.cursor];
+	const selected =
+		typed.length > 0 && highlighted !== undefined && highlighted.name.toLowerCase().startsWith(typed)
+			? highlighted
+			: undefined;
 	// 只有一个斜杠、又没有选中项：还不算命令，也不该当成提问发给模型
 	if (message === "/" && selected === undefined) return false;
 	const command = selected ?? findCommand(message, host.commands());

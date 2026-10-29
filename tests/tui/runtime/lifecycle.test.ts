@@ -50,4 +50,18 @@ describe("TUI 收尾", () => {
 		cleanup(state as never, { approval: undefined, jobs: undefined } as never, DEPS);
 		assert.equal(finishCount(), 1);
 	});
+
+	it("收尾时中止正在运行的审查", () => {
+		let aborted = false;
+		const { state } = stateOf({
+			reviewAbort: {
+				abort: () => {
+					aborted = true;
+				},
+			},
+		});
+
+		cleanup(state as never, { approval: undefined, jobs: undefined } as never, DEPS);
+		assert.equal(aborted, true);
+	});
 });
