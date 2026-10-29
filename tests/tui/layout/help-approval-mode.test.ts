@@ -104,7 +104,7 @@ describe("帮助页与审批模式", () => {
 			const frame = frameLines(output).map(plain);
 			// 面板还在：Shift+Tab 不代替 Tab 补全，也不收起菜单；徽标行跟着换档
 			assert.ok(frame.some((line) => line.includes("openai/")));
-			assert.ok(frame.some((line) => line.trimEnd() === " ›"));
+			assert.ok(frame.some((line) => line.includes(" › /model")));
 			assert.ok(frame.some((line) => line.trimEnd().endsWith("AUTO")));
 		} finally {
 			exitTui(input);

@@ -138,8 +138,6 @@ function executeModelCommand(host: TuiHost, args: string): void {
 
 	const target = args.trim();
 	if (target.length === 0) {
-		// 面板打开后输入框不该还留着命令名：接着打字会拼成 /modelxyz 这种伪命令
-		host.setInput("");
 		openModelMenu(host);
 		return;
 	}
@@ -173,7 +171,6 @@ function executeEffortCommand(host: TuiHost, args: string): void {
 
 	const target = args.trim();
 	if (target.length === 0) {
-		host.setInput("");
 		openEffortMenu(host);
 		return;
 	}
@@ -204,7 +201,6 @@ function executeSessionCommand(host: TuiHost, args: string): void {
 
 	const target = args.trim();
 	if (target.length === 0) {
-		host.setInput("");
 		openSessionMenu(host);
 		return;
 	}

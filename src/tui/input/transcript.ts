@@ -29,7 +29,6 @@ export function handleTranscriptInput(
 	let focusChanged = false;
 	let hoverChanged = false;
 	let selectionChanged = false;
-	let menuClosed = false;
 	// 键盘输入说明已经离开鼠标拖选；松开事件丢失时不能把高亮留在屏幕上
 	if (withoutMouse.length > 0 && state.selection !== undefined) {
 		state.selection = undefined;
@@ -413,13 +412,11 @@ export function handleTranscriptInput(
 		state.fileMenuDismissed = false;
 	}
 	// 文字一变，选择面板就收掉：面板由命令打开，输入一旦不再是那条命令它就失去意义；
-	// 命令补全面板相反，跟着新输入继续过滤。退格在空输入上不会改变文字，但它同样是
-	// 编辑动作，面板也不该继续挡着。
-	if (withoutMouse.length > 0 && host.modalMenuOpen()) {
+	// 命令补全面板相反，跟着新输入继续过滤
+	if (edit.text !== previous && host.modalMenuOpen()) {
 		state.modelMenu = undefined;
 		state.effortMenu = undefined;
 		state.sessionMenu = undefined;
-		menuClosed = true;
 	}
 	host.setInput(edit.text, edit.cursor);
 	host.updateCommandMenu();
@@ -439,7 +436,6 @@ export function handleTranscriptInput(
 		edit.handled ||
 		focusChanged ||
 		hoverChanged ||
-		menuClosed ||
 		scrollChanged ||
 		selectionChanged
 	) {

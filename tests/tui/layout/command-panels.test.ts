@@ -115,8 +115,8 @@ describe("命令补全与选择面板", () => {
 			const lines = frameLines(output).map(plain);
 			assert.ok(lines.some((line) => line.endsWith(" 3 ────")));
 			assert.ok(lines.some((line) => line.includes("fengshao/")));
-			// 面板打开后命令名不留在输入框：接着打字不会拼成 /modelxyz
-			assert.ok(lines.some((line) => line.trimEnd() === " ›"));
+			// 命令名留在输入框，面板打开期间仍然可见可编辑
+			assert.ok(lines.some((line) => line.includes("› /model")));
 			// 面板只盖在输入框上方，输入行仍然可编辑，光标照常显示
 			assert.equal(CURSOR_SUFFIX.test(rawFrame(output)), true);
 		} finally {
@@ -1038,14 +1038,13 @@ describe("命令补全与选择面板", () => {
 
 		try {
 			input.emit("data", Buffer.from("/model\r"));
-			// `/model` 不再是当前输入的内容，面板失去意义
+			// 输入一变（/model → /modelx），面板失去意义
 			input.emit("data", Buffer.from("x"));
 
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
 			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
-			// 输入框只剩使用者新敲的字符，不会和命令名拼在一起
-			assert.ok(lines.some((line) => line.trimEnd() === " › x"));
+			assert.ok(lines.some((line) => line.includes("/modelx")));
 		} finally {
 			exitTui(input);
 		}
@@ -1466,8 +1465,8 @@ describe("命令补全与选择面板", () => {
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
 			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
-			// 输入框在命令执行时已经清空，退格后仍为空
-			assert.ok(lines.some((line) => line.trimEnd() === " ›"));
+			// 补全面板里也有 `/model`，只有整行匹配输入框才能确认退格真的删掉了字符
+			assert.ok(lines.some((line) => line === " › /mode"));
 		} finally {
 			exitTui(input);
 		}
