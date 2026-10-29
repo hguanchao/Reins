@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 import type { ClipboardSource } from "../tui/options.ts";
 
@@ -18,7 +18,7 @@ export type ClipboardCommand = (
 	command: string,
 	args: readonly string[],
 	input: string,
-) => ClipboardCommandResult;
+) => ClipboardCommandResult | Promise<ClipboardCommandResult>;
 
 export interface ClipboardSourceOptions {
 	readonly platform?: NodeJS.Platform;
@@ -39,7 +39,13 @@ export function createClipboardSource(options: ClipboardSourceOptions = {}): Cli
 	const command = options.command ?? runClipboardCommand;
 	const candidates = nativeCommands(platform, env);
 	return {
-		copy: (text) => candidates.some(([name, args]) => command(name, args, text).exitCode === 0),
+		copy: async (text) => {
+			for (const [name, args] of candidates) {
+				const result = await command(name, args, text);
+				if (result.exitCode === 0) return true;
+			}
+			return false;
+		},
 	};
 }
 
@@ -65,18 +71,39 @@ function nativeCommands(
 	}
 }
 
+/**
+ * 写剪贴板的子进程。
+ *
+ * 异步 spawn：同步等待会让整个界面在命令慢或挂住时一起冻住，最长 2 秒看不到任何反馈。
+ * 超时就杀掉子进程并按失败处理，交给界面退到 OSC 52。
+ */
 function runClipboardCommand(
 	command: string,
 	args: readonly string[],
 	input: string,
-): ClipboardCommandResult {
-	const result = spawnSync(command, [...args], {
-		input,
-		encoding: "utf8",
-		timeout: COMMAND_TIMEOUT_MS,
-		windowsHide: true,
+): Promise<ClipboardCommandResult> {
+	return new Promise((resolve) => {
+		const child = spawn(command, [...args], {
+			windowsHide: true,
+			stdio: ["pipe", "ignore", "ignore"],
+		});
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const finish = (result: ClipboardCommandResult): void => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimeout(timer);
+			resolve(result);
+		};
+		timer = setTimeout(() => {
+			child.kill();
+			finish({ exitCode: null });
+		}, COMMAND_TIMEOUT_MS);
+		timer.unref();
+		child.on("error", () => finish({ exitCode: null }));
+		child.on("close", (code) => finish({ exitCode: code }));
+		child.stdin.end(input);
 	});
-	return { exitCode: result.error === undefined ? result.status : null };
 }
 
 function hasValue(value: string | undefined): boolean {

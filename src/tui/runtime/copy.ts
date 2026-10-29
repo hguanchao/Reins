@@ -9,12 +9,12 @@ import type { TuiHost } from "./types.ts";
  * 剪贴板命令时还有这一条路）。成功提示只占用状态行里 token 计量的位置，超时后 token 数
  * 自动回来，不打断当前正在显示的状态文字。
  */
-export function copyText(host: TuiHost, text: string): void {
+export async function copyText(host: TuiHost, text: string): Promise<void> {
 	if (text.trim().length === 0) return;
 	let copied = false;
 	let viaTerminal = false;
 	try {
-		copied = host.options.clipboard?.copy(text) ?? false;
+		copied = (await host.options.clipboard?.copy(text)) ?? false;
 	} catch {
 		copied = false;
 	}

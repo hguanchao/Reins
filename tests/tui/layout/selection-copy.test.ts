@@ -29,7 +29,7 @@ function locate(
 }
 
 describe("鼠标拖选复制", () => {
-	it("拖动一段文字，松开后复制到系统剪贴板", (t) => {
+	it("拖动一段文字，松开后复制到系统剪贴板", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -67,6 +67,8 @@ describe("鼠标拖选复制", () => {
 
 			input.emit("data", Buffer.from(`\x1b[<0;${span.end};${span.row}m`));
 			t.mock.timers.tick(100);
+			// 复制走异步剪贴板：让出一次事件循环再断言状态行
+			await new Promise<void>((resolve) => setImmediate(resolve));
 
 			assert.deepEqual(copied, ["hello world"]);
 			let text = frameLines(output).map(plain).join("\n");
@@ -84,7 +86,7 @@ describe("鼠标拖选复制", () => {
 		}
 	});
 
-	it("没有系统剪贴板写入时退到 OSC 52", (t) => {
+	it("没有系统剪贴板写入时退到 OSC 52", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -114,6 +116,7 @@ describe("鼠标拖选复制", () => {
 				),
 			);
 			t.mock.timers.tick(100);
+			await new Promise<void>((resolve) => setImmediate(resolve));
 
 			assert.ok(
 				output.chunks.some((chunk) =>

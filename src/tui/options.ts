@@ -262,7 +262,7 @@ export interface TrustPromptSource {
 /** 文本剪贴板；由装配处提供，界面不直接碰平台命令。 */
 export interface ClipboardSource {
 	/** 写入系统剪贴板；成功返回 true，失败时由界面退到 OSC 52 */
-	copy(text: string): boolean;
+	copy(text: string): boolean | Promise<boolean>;
 }
 
 export interface TuiOptions {

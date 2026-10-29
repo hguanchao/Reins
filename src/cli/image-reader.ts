@@ -4,15 +4,13 @@ import {
 	closeSync,
 	existsSync,
 	openSync,
-	readFileSync,
 	readSync,
-	rmSync,
 	statSync,
 } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 import {
 	MAX_IMAGE_BYTES,
@@ -145,7 +143,7 @@ async function readClipboardImage(): Promise<ImageAttachment> {
 	return readLinuxClipboard();
 }
 
-function readWindowsClipboard(): ImageAttachment {
+function readWindowsClipboard(): Promise<ImageAttachment> {
 	const file = join(tmpdir(), `reins-clipboard-${randomBytes(6).toString("hex")}.png`);
 	const script = [
 		"Add-Type -AssemblyName System.Windows.Forms",
@@ -154,61 +152,126 @@ function readWindowsClipboard(): ImageAttachment {
 		"if ($null -eq $image) { exit 2 }",
 		`$image.Save('${escapePowerShell(file)}', [System.Drawing.Imaging.ImageFormat]::Png)`,
 	].join("; ");
-	const result = spawnSync(
-		"powershell.exe",
-		["-NoProfile", "-NonInteractive", "-STA", "-Command", script],
-		{ timeout: CLIPBOARD_TIMEOUT_MS, windowsHide: true, encoding: "utf8" },
-	);
-	try {
-		if (result.error !== undefined) {
-			throw new Error(`Could not run PowerShell to read the clipboard: ${result.error.message}`);
+	return (async (): Promise<ImageAttachment> => {
+		try {
+			const code = await runCommand("powershell.exe", [
+				"-NoProfile",
+				"-NonInteractive",
+				"-STA",
+				"-Command",
+				script,
+			]);
+			if (code !== 0 || !existsSync(file)) {
+				throw new Error("Clipboard does not contain an image");
+			}
+			return clipboardAttachment(await readFile(file));
+		} finally {
+			await rm(file, { force: true }).catch(() => {});
 		}
-		if (result.status !== 0 || !existsSync(file)) {
-			throw new Error("Clipboard does not contain an image");
-		}
-		const bytes = readFileSync(file);
-		return clipboardAttachment(bytes);
-	} finally {
-		rmSync(file, { force: true });
-	}
+	})();
 }
 
-function readDarwinClipboard(): ImageAttachment {
-	const result = spawnSync("pngpaste", ["-"], {
-		timeout: CLIPBOARD_TIMEOUT_MS,
-		maxBuffer: MAX_CLIPBOARD_BUFFER,
-	});
-	if (result.error !== undefined) {
+async function readDarwinClipboard(): Promise<ImageAttachment> {
+	let bytes: Buffer;
+	try {
+		bytes = await captureCommand("pngpaste", ["-"]);
+	} catch {
 		throw new Error("Reading clipboard images on macOS needs pngpaste on PATH");
 	}
-	if (result.status !== 0 || result.stdout.length === 0) {
-		throw new Error("Clipboard does not contain an image");
-	}
-	return clipboardAttachment(result.stdout);
+	if (bytes.length === 0) throw new Error("Clipboard does not contain an image");
+	return clipboardAttachment(bytes);
 }
 
-function readLinuxClipboard(): ImageAttachment {
+async function readLinuxClipboard(): Promise<ImageAttachment> {
 	const attempts: readonly (readonly [string, readonly string[]])[] = [
 		["wl-paste", ["--no-newline", "--type", "image/png"]],
 		["xclip", ["-selection", "clipboard", "-t", "image/png", "-o"]],
 	];
 	let foundCommand = false;
 	for (const [command, args] of attempts) {
-		const result = spawnSync(command, args, {
-			timeout: CLIPBOARD_TIMEOUT_MS,
-			maxBuffer: MAX_CLIPBOARD_BUFFER,
-		});
-		if (result.error !== undefined) continue;
-		foundCommand = true;
-		if (result.status === 0 && result.stdout.length > 0) {
-			return clipboardAttachment(result.stdout);
+		let bytes: Buffer;
+		try {
+			bytes = await captureCommand(command, args);
+			foundCommand = true;
+		} catch {
+			continue;
 		}
+		if (bytes.length > 0) return clipboardAttachment(bytes);
 	}
 	throw new Error(
 		foundCommand
 			? "Clipboard does not contain an image"
 			: "Reading clipboard images on Linux needs wl-paste or xclip on PATH",
 	);
+}
+
+/**
+ * 等待外部命令退出。
+ *
+ * 用异步 spawn 而不是 spawnSync：读剪贴板最长等 15 秒，同步等待会把整个事件循环连同
+ * 渲染与 Ctrl+C 一起冻住。超时就杀掉子进程，绝不无限等。
+ */
+function runCommand(command: string, args: readonly string[]): Promise<number | null> {
+	return new Promise((resolve) => {
+		const child = spawn(command, [...args], { windowsHide: true, stdio: "ignore" });
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const finish = (code: number | null): void => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimeout(timer);
+			resolve(code);
+		};
+		timer = setTimeout(() => {
+			child.kill();
+			finish(null);
+		}, CLIPBOARD_TIMEOUT_MS);
+		timer.unref();
+		child.on("error", () => finish(null));
+		child.on("close", (code) => finish(code));
+	});
+}
+
+/** 执行命令并收集标准输出；超过缓冲区上限或超时都失败。 */
+function captureCommand(command: string, args: readonly string[]): Promise<Buffer> {
+	return new Promise((resolve, reject) => {
+		const child = spawn(command, [...args], {
+			windowsHide: true,
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+		const chunks: Buffer[] = [];
+		let size = 0;
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const fail = (error: Error): void => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimeout(timer);
+			child.kill();
+			reject(error);
+		};
+		const succeed = (): void => {
+			if (settled) return;
+			settled = true;
+			if (timer !== undefined) clearTimeout(timer);
+			resolve(Buffer.concat(chunks));
+		};
+		timer = setTimeout(() => fail(new Error(`${command} timed out`)), CLIPBOARD_TIMEOUT_MS);
+		timer.unref();
+		child.stdout.on("data", (chunk: Buffer) => {
+			size += chunk.length;
+			if (size > MAX_CLIPBOARD_BUFFER) {
+				fail(new Error(`${command} returned too much data`));
+				return;
+			}
+			chunks.push(chunk);
+		});
+		child.on("error", (error) => fail(error));
+		child.on("close", (code) => {
+			if (code === 0) succeed();
+			else fail(new Error(`${command} exited with code ${code ?? "null"}`));
+		});
+	});
 }
 
 function clipboardAttachment(bytes: Buffer): ImageAttachment {
