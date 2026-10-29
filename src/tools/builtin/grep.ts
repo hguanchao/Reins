@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 
 import { resolveToolPath } from "../path.ts";
 import { describeError } from "../../shared/describe-error.ts";
@@ -103,7 +103,11 @@ export const grepTool: ToolDefinition<GrepArgs> = {
 /** 读文本；二进制或过大的文件跳过，返回 undefined。 */
 function readTextOrSkip(path: string): string | undefined {
 	try {
+		// 先看大小再读：readFileSync 会把整份文件读进内存，一个几 GB 的日志足以把进程撑爆，
+		// 而这里本来就要跳过它
+		if (statSync(path).size > MAX_FILE_BYTES) return undefined;
 		const buffer = readFileSync(path);
+		// 两次调用之间文件可能被追加过，读到的长度仍要再判一次
 		if (buffer.length > MAX_FILE_BYTES) return undefined;
 		if (looksBinary(buffer, BINARY_PROBE_BYTES)) return undefined;
 		// 与 read 共用同一套解码：UTF-16 文件按 UTF-8 解出来会是一串乱码
