@@ -3,7 +3,6 @@ import {
 	SANDBOX_MODES,
 	type ApprovalMode,
 	type Config,
-	type McpServerConfig,
 	type SandboxMode,
 } from "./file.ts";
 import { ConfigFile } from "./file.ts";
@@ -22,6 +21,10 @@ import type { ProvidersConfig, ProviderEntry } from "./providers-file.ts";
  *
  * 三、信任清单只在用户级生效。让项目声明自己可信，「不受信任的目录影响不了程序」这句话就
  *     不成立了。
+ *
+ * 四、能启动本地进程的项只在用户级生效。MCP server 与 shellPath 决定的是「启动哪个程序」，
+ *     与审批和沙箱是两回事：信任一个目录的本意是「让它的设置影响这个会话」，不是「让它
+ *     在启动时运行自己指定的二进制」。信任页对使用者的承诺也只有读文件。
  *
  * 判断「项目写没写某项」用的是原文里有没有这个键，而不是最终值：只看最终值会把「项目没写、
  * 取了默认值」误当成「项目要求用默认值」，从而盖掉用户的设置。
@@ -51,7 +54,8 @@ export function mergeConfigs(user: ConfigFile, project: ConfigFile): Config {
 			project.config.streamIdleTimeout,
 		),
 		httpProxy: pick(["httpProxy"], user.config.httpProxy, project.config.httpProxy),
-		shellPath: pick(["shellPath"], user.config.shellPath, project.config.shellPath),
+		// shellPath 决定 bash 工具用哪个二进制，项目配置不能改它
+		shellPath: user.config.shellPath,
 		compactModel: pick(["compact_model"], user.config.compactModel, project.config.compactModel),
 		reviewModel: pick(["review_model"], user.config.reviewModel, project.config.reviewModel),
 		approval: pickStricterApproval(user, project),
@@ -78,7 +82,8 @@ export function mergeConfigs(user: ConfigFile, project: ConfigFile): Config {
 		ui: {
 			notify: pick(["ui", "notify"], user.config.ui.notify, project.config.ui.notify),
 		},
-		mcpServers: mergeMcpServers(user.config.mcpServers, project.config.mcpServers),
+		// MCP server 是本程序启动的本地进程，项目配置不能新增或替换它们
+		mcpServers: user.config.mcpServers,
 		plugins: {
 			// 两边都列出的都停用：项目可以多关掉一个插件，但不能把用户关掉的重新打开
 			disabled: unique([...user.config.plugins.disabled, ...project.config.plugins.disabled]),
@@ -109,18 +114,6 @@ function pickStricterSandbox(user: ConfigFile, project: ConfigFile): SandboxMode
 		);
 	}
 	return wanted;
-}
-
-/** 同名条目以项目为准，其余按名字补上。 */
-function mergeMcpServers(
-	user: readonly McpServerConfig[],
-	project: readonly McpServerConfig[],
-): readonly McpServerConfig[] {
-	const merged = user.map((server) => project.find((item) => item.name === server.name) ?? server);
-	for (const server of project) {
-		if (!merged.some((item) => item.name === server.name)) merged.push(server);
-	}
-	return merged;
 }
 
 /**

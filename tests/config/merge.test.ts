@@ -44,15 +44,19 @@ describe("配置合并", () => {
 		assert.equal(parseConfig(`${BASE}shellPath = ""\n`, "c").shellPath, undefined);
 	});
 
-	it("shellPath 由项目覆盖用户，两种写法都算", () => {
+	it("shellPath 只在用户级生效，项目写的被忽略", () => {
+		// 它决定 bash 工具用哪个二进制：项目配置能改它，等于让一个目录指定要运行的程序
 		const merged = mergeConfigs(
 			get(`${BASE}shell_path = "C:/user/bash.exe"\n`),
 			get(`${BASE}shellPath = "C:/project/bash.exe"\n`),
 		);
-		assert.equal(merged.shellPath, "C:/project/bash.exe");
+		assert.equal(merged.shellPath, "C:/user/bash.exe");
 
 		const inherited = mergeConfigs(get(`${BASE}shell_path = "C:/user/bash.exe"\n`), get(BASE));
 		assert.equal(inherited.shellPath, "C:/user/bash.exe");
+
+		const none = mergeConfigs(get(BASE), get(`${BASE}shellPath = "C:/project/bash.exe"\n`));
+		assert.equal(none.shellPath, undefined);
 	});
 
 	it("所有多词配置项都支持 camelCase 与 snake_case", () => {
@@ -172,13 +176,14 @@ timeout = 120
 		assert.deepEqual(merged.plugins.disabled, ["a"]);
 	});
 
-	it("MCP server:同名以项目为准，其余补上", () => {
+	it("MCP server 只在用户级生效，项目既不能覆盖也不能新增", () => {
+		// 这些是本程序启动的本地进程：项目配置能声明它们，等于让一个目录决定启动什么程序
 		const user = get(`${BASE}[mcp_servers.fs]\ncommand = "old"\n[mcp_servers.old]\ncommand = "keep"\n`);
 		const project = get(`${BASE}[mcp_servers.fs]\ncommand = "new"\n[mcp_servers.added]\nurl = "http://x"\n`);
 		const merged = mergeConfigs(user, project);
 		assert.deepEqual(
 			merged.mcpServers.map((server) => `${server.name}:${server.url ?? server.command}`),
-			["fs:new", "old:keep", "added:http://x"],
+			["fs:old", "old:keep"],
 		);
 	});
 

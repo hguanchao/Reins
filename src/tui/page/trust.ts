@@ -22,7 +22,8 @@ const FILES_SECTION = "Files read under this trust";
 const SKILLS_SECTION = "Skill directories scanned under this trust";
 const INTRO = "This workspace ships files that change how Reins behaves.";
 const TRUST_NOTE =
-	"Trusting lets those files take effect. Reins only reads them; commands still run under the sandbox and the approval rules.";
+	"Trusting lets those files take effect. They configure this session and their instructions enter the prompt. " +
+	"Commands still run under the sandbox and the approval rules, and this workspace cannot add local processes to start.";
 const SKIP_NOTE = "Not trusting keeps the default: nothing from this workspace is loaded.";
 const PENDING = "Recording the decision...";
 
