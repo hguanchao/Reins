@@ -1,6 +1,6 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
 import { keepVisible, moveMenuSelection } from "../panel/menu-panel.ts";
-import type { CommandMenuState } from "../panel/command-menu.ts";
+import type { CommandMenuItem, CommandMenuState } from "../panel/command-menu.ts";
 import type { EffortMenuState } from "../panel/effort-menu.ts";
 import type { FileMenuState } from "../panel/file-menu.ts";
 import { filterFiles, findAtToken, formatFileReference } from "../panel/file-menu.ts";
@@ -346,31 +346,34 @@ export function updateCommandMenu(host: TuiHost): void {
 
 	if (state.input.startsWith("/") && !state.input.slice(1).includes(" ")) {
 		const query = state.input.slice(1).toLowerCase();
-		const items = host.commands().filter(
-			(command) =>
-				// 隐藏命令只在完整输入命令名时出现，避免塞满补全列表
-				(command.hidden !== true || command.name.toLowerCase() === query) &&
-				(command.name.toLowerCase().startsWith(query) ||
-					command.description.toLowerCase().includes(query)),
+		const visible = (command: CommandMenuItem): boolean =>
+			// 隐藏命令只在完整输入命令名时出现，避免塞满补全列表
+			command.hidden !== true || command.name.toLowerCase() === query;
+		// 命令名前缀是精确意图：只要有一个前缀命中，就不再混入描述命中。
+		// 否则敲 /e 时几乎每条英文说明都含 e，整张命令表都会留在列表里。
+		const prefixMatches = host.commands().filter(
+			(command) => visible(command) && command.name.toLowerCase().startsWith(query),
 		);
+		const descriptionMatches = host.commands().filter(
+			(command) =>
+				visible(command) &&
+				!command.name.toLowerCase().startsWith(query) &&
+				command.description.toLowerCase().includes(query),
+		);
+		const items = prefixMatches.length > 0 ? prefixMatches : descriptionMatches;
 		if (items.length > 0) {
-			// 命令名前缀命中排在描述命中之前：否则敲 /e 回车会执行描述里含 e 的 /model。
-			// 光标默认落在第一个前缀命中项上，回车执行的就是使用者正在拼的命令。
-			const prefix = items.filter((item) => item.name.toLowerCase().startsWith(query));
-			const rest = items.filter((item) => !item.name.toLowerCase().startsWith(query));
-			const ordered = [...prefix, ...rest];
-			const exact = ordered.findIndex((item) => item.name.toLowerCase() === query);
+			const exact = items.findIndex((item) => item.name.toLowerCase() === query);
 			const previous = state.commandMenu?.items[state.commandMenu.cursor]?.name;
 			const cursor =
 				exact >= 0
 					? exact
 					: previous === undefined
 						? 0
-						: Math.max(0, ordered.findIndex((item) => item.name === previous));
+						: Math.max(0, items.findIndex((item) => item.name === previous));
 			state.commandMenu = {
-				items: ordered,
+				items,
 				cursor,
-				scrollTop: keepVisible(0, cursor, ordered.length),
+				scrollTop: keepVisible(0, cursor, items.length),
 			};
 			return;
 		}

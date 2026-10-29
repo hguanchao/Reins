@@ -171,6 +171,57 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("命令前缀命中时列表不再混入描述命中", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			effortMenu: { current: () => "medium", select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			exportSession: { export: async () => "" },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/e"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("/effort"));
+			assert.ok(text.includes("/export"));
+			// 描述里含 e 的其它命令不该留在列表里，否则整张命令表都像没过滤
+			assert.equal(text.includes("/model"), false);
+			assert.equal(text.includes("/plan"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
+	it("没有命令名前缀命中时退回描述模糊搜索", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			effortMenu: { current: () => "medium", select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/reason"));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("/effort"));
+			assert.equal(text.includes("/model"), false);
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("会话面板的鼠标点击把选中项补进输入框，回车才切换", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
