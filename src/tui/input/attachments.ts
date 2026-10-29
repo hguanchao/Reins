@@ -60,10 +60,8 @@ export function insertImageMarker(host: TuiHost, image: ImageAttachment, at: num
 			`Attached ${name}; this model does not declare image input, so it will receive a placeholder`,
 			"warning",
 		);
-	} else {
-		host.setStatus(`Attached ${name}`, "notice");
+		host.scheduleStatusClear();
 	}
-	host.scheduleStatusClear();
 	host.render();
 }
 

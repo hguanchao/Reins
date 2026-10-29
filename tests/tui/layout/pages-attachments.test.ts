@@ -229,6 +229,8 @@ describe("整屏页与图片附件", () => {
 			let text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("[image: screenshot.png]"));
 			assert.equal(text.includes("[img]"), false);
+			// 图片标记本身就是附件提示，状态行不再额外写一行 Attached
+			assert.equal(text.includes("Attached"), false);
 
 			input.emit("data", Buffer.from("这个间距为什么不对\r"));
 			assert.deepEqual(agent.prompts, ["[image: screenshot.png] 这个间距为什么不对"]);
