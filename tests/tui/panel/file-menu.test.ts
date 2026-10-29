@@ -8,6 +8,7 @@ import {
 	formatFileReference,
 	renderFileMenu,
 } from "../../../src/tui/panel/file-menu.ts";
+import { BOLD_OFF, MUTED_COLOR, SELECTED_TEXT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
 import { displayWidth } from "../../../src/tui/render/text.ts";
 
 const FILES = [
@@ -86,6 +87,24 @@ describe("@ 补全面板", () => {
 		assert.ok(lines[1]?.includes("› src/tui/layout.ts"));
 		assert.ok(lines.join("\n").includes("[image]"));
 		for (const line of lines) assert.ok(displayWidth(line) <= 80);
+	});
+
+	it("选中行只加粗文件名，目录保持弱色", () => {
+		const row =
+			renderFileMenu(80, {
+				items: ["src/tui/layout.ts"],
+				token: { start: 0, end: 1, query: "" },
+				cursor: 0,
+				scrollTop: 0,
+			})[1] ?? "";
+		const dirAt = row.indexOf("src/tui/");
+		const nameAt = row.indexOf("layout.ts");
+		const boldOffAt = row.lastIndexOf(BOLD_OFF);
+
+		assert.ok(dirAt > 0 && nameAt > dirAt);
+		assert.ok(row.lastIndexOf(MUTED_COLOR, dirAt) >= 0, "目录用弱色");
+		assert.ok(row.lastIndexOf(SELECTED_TEXT_COLOR, nameAt) >= 0, "文件名用选中色");
+		assert.ok(boldOffAt > nameAt, "加粗在文件名之后结束");
 	});
 
 	it("长路径保留文件名，目录从左侧截断", () => {

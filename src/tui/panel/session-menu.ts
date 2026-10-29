@@ -141,10 +141,11 @@ function row(
 	const padding = " ".repeat(Math.max(0, width - displayWidth(plain)));
 
 	const prefixOutput = selected ? ` ${ACCENT_COLOR}›${primaryColor} ` : prefix;
-	const id = `${MUTED_COLOR}${idText}`;
-	const title = titleText.length > 0 ? `${GAP}${primaryColor}${titleText}` : "";
+	// 与模型面板一致：标识是主列，加粗只覆盖它；标题、时间、current 保持各自的弱色
+	const id = `${primaryColor}${idText}${boldOff}`;
+	const title = titleText.length > 0 ? `${GAP}${MUTED_COLOR}${titleText}` : "";
 	const time = timeText.length > 0 ? `${GAP}${MUTED_COLOR}${timeText}` : "";
 	const current = currentText.length > 0 ? `${GAP}${ACCENT_COLOR}${currentText}` : "";
 
-	return `${background}${primaryColor}${prefixOutput}${id}${title}${time}${current}${boldOff}${padding}${RESET}`;
+	return `${background}${primaryColor}${prefixOutput}${id}${title}${time}${current}${padding}${RESET}`;
 }

@@ -153,16 +153,17 @@ function row(width: number, path: string, selected: boolean, hovered: boolean): 
 	const plain = `${selected ? " › " : "   "}${pathText}${showBadge ? badge : ""}`;
 	const padding = " ".repeat(Math.max(0, columns - displayWidth(plain)));
 	const prefix = selected ? ` ${ACCENT_COLOR}›${SELECTED_TEXT_COLOR} ` : "   ";
+	// 与其它面板一致：只加粗文件名这一主列，目录与图片标记保持弱色
 	const dir =
 		parts.dir.length === 0
 			? ""
-			: `${selected ? SELECTED_TEXT_COLOR : MUTED_COLOR}${parts.dir}/`;
+			: `${selected ? `${BOLD_OFF}${MUTED_COLOR}` : MUTED_COLOR}${parts.dir}/`;
 	const name = `${selected ? SELECTED_TEXT_COLOR : TEXT_COLOR}${parts.name}`;
 	const badgeText = showBadge
-		? `${selected ? SELECTED_TEXT_COLOR : SUBTLE_COLOR}${badge}`
+		? `${selected ? MUTED_COLOR : SUBTLE_COLOR}${badge}`
 		: "";
 	const boldOff = selected ? BOLD_OFF : "";
-	return `${background}${prefix}${dir}${name}${badgeText}${boldOff}${padding}${RESET}`;
+	return `${background}${prefix}${dir}${name}${boldOff}${badgeText}${padding}${RESET}`;
 }
 
 /**

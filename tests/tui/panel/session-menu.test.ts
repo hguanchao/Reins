@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { displayWidth } from "../../../src/tui/render/text.ts";
+import { BOLD_OFF, MUTED_COLOR, SELECTED_TEXT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
 import {
 	renderSessionMenu,
 	sessionMenuHeight,
@@ -82,6 +83,22 @@ describe("会话选择面板", () => {
 
 		assert.ok(row.includes("0123456789abcdef    Fix the login flow"), "标识与标题间隔四列");
 		assert.ok(row.includes("2 hours ago    current"), "时间与 current 间隔四列");
+	});
+
+	it("选中行只加粗标识列，标题与时间保持弱色", () => {
+		const row = renderSessionMenu(100, { items: ITEMS, cursor: 0, scrollTop: 0 })[1] ?? "";
+		const idAt = row.indexOf("0123456789abcdef");
+		const titleAt = row.indexOf("Fix the login flow");
+		const boldOffAt = row.indexOf(BOLD_OFF);
+
+		assert.ok(idAt > 0 && titleAt > idAt);
+		// 标识用选中色（加粗白），加粗在标识之后结束
+		assert.ok(row.lastIndexOf(SELECTED_TEXT_COLOR, idAt) >= 0);
+		assert.ok(boldOffAt > idAt && boldOffAt < titleAt, "加粗不能漏到标题");
+		// 标题与时间用弱色，current 用强调色
+		assert.ok(row.lastIndexOf(MUTED_COLOR, titleAt) >= 0);
+		assert.ok(row.lastIndexOf(MUTED_COLOR, row.indexOf("2 hours ago")) >= 0);
+		assert.equal(row.slice(boldOffAt + BOLD_OFF.length).includes(BOLD_OFF), false, JSON.stringify(row));
 	});
 
 	it("没有标题的会话仍然排在时间列之前", () => {
