@@ -394,6 +394,33 @@ describe("命令补全与选择面板", () => {
 		}
 	});
 
+	it("只输入斜杠时回车执行高亮命令", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const running = runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			modelMenu: { list: () => MODEL_ITEMS, select: () => ({ warnings: [], ready: true, warning: undefined }) },
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("/"));
+			assert.ok(frameLines(output).map(plain).some((line) => line.includes("› /model")));
+
+			// 菜单已经高亮 /model，回车就应该执行它，而不是静默不动
+			input.emit("data", Buffer.from("\r"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("fengshao/"));
+		} finally {
+			exitTui(input);
+		}
+
+		assert.equal(await running, 0);
+	});
+
 	it("只有斜杠时回车不发送也不入队", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 
