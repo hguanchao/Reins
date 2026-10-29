@@ -117,6 +117,10 @@ describe("命令补全与选择面板", () => {
 			assert.ok(lines.some((line) => line.includes("fengshao/")));
 			// 命令名留在输入框，面板打开期间仍然可见可编辑
 			assert.ok(lines.some((line) => line.includes("› /model")));
+			// 模态面板打开时输入框仍显示焦点样式
+			assert.ok(
+				frameLines(output).some((line) => line.startsWith(FOCUS) && line.includes("/model")),
+			);
 			// 面板只盖在输入框上方，输入行仍然可编辑，光标照常显示
 			assert.equal(CURSOR_SUFFIX.test(rawFrame(output)), true);
 		} finally {

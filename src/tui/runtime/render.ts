@@ -106,7 +106,9 @@ export function render(host: TuiHost): void {
 				? renderFooter(
 						width,
 						state.input,
-						state.focused && !host.modalMenuOpen() && state.openPage === undefined,
+						// 模态面板只是浮在输入框上方，输入框仍是使用者正在编辑的地方：
+						// 保留焦点样式，不要因为面板抢走按键就把边框变灰
+						state.focused,
 						undefined,
 						currentInfo(host),
 						{ leadingGap: false, showStatus: false, cursor: state.inputCursor, commandLength },
