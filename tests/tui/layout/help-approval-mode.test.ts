@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, FOOTER_INFO, MODEL_ITEMS, exitTui, frameLines, plain } from "../support/harness.ts";
+import { FakeInput, FakeOutput, FOCUS, FOOTER_INFO, MODEL_ITEMS, exitTui, frameLines, plain } from "../support/harness.ts";
 import { runTui } from "../../../src/tui/layout.ts";
 
 describe("帮助页与审批模式", () => {
@@ -60,16 +60,24 @@ describe("帮助页与审批模式", () => {
 		});
 
 		try {
+			// 输入框上下边框与输入行只跟焦点有关，不随审批模式变色
+			const inputBoxFocused = (): boolean =>
+				[8, 9, 10].every((row) => (frameLines(output)[row] ?? "").startsWith(FOCUS));
+
 			// 首帧徽标是启动档位
 			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("ASK"));
+			assert.ok(inputBoxFocused());
 
 			// 循环顺序与配置清单一致：ask → auto → yolo → 回到 ask
 			input.emit("data", Buffer.from("\x1b[Z"));
 			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("AUTO"));
+			assert.ok(inputBoxFocused());
 			input.emit("data", Buffer.from("\x1b[Z"));
 			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("YOLO"));
+			assert.ok(inputBoxFocused());
 			input.emit("data", Buffer.from("\x1b[Z"));
 			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("ASK"));
+			assert.ok(inputBoxFocused());
 			assert.deepEqual(selected, ["auto", "yolo", "ask"]);
 
 			// 热键被吞掉，不会把序列拆成文字插进输入行
