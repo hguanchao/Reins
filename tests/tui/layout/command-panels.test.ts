@@ -1038,13 +1038,13 @@ describe("命令补全与选择面板", () => {
 
 		try {
 			input.emit("data", Buffer.from("/model\r"));
-			// 输入一变（/model → /modelx），面板失去意义
+			// 输入一变（/model → /model x），面板失去意义
 			input.emit("data", Buffer.from("x"));
 
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
 			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
-			assert.ok(lines.some((line) => line.includes("/modelx")));
+			assert.ok(lines.some((line) => line.includes("/model x")));
 		} finally {
 			exitTui(input);
 		}
@@ -1465,8 +1465,8 @@ describe("命令补全与选择面板", () => {
 			assert.equal(calls, 0);
 			const lines = frameLines(output).map(plain);
 			assert.equal(lines.some((line) => line.includes("fengshao/")), false);
-			// 补全面板里也有 `/model`，只有整行匹配输入框才能确认退格真的删掉了字符
-			assert.ok(lines.some((line) => line === " › /mode"));
+			// 命令名后带一个空格；退格删掉空格，命令名本身仍在
+			assert.ok(lines.some((line) => line === " › /model"));
 		} finally {
 			exitTui(input);
 		}

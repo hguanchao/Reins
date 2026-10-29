@@ -28,8 +28,9 @@ import type { TuiHost } from "./types.ts";
 export function executeCommand(host: TuiHost, command: CommandMenuItem, args = ""): void {
 	const state = host.state;
 	state.commandMenu = undefined;
-	// 从补全面板执行时把输入补全成完整命令，面板打开期间看得清当前在做什么
-	host.setInput(`/${command.name}`);
+	// 与 Tab 补全保持一致：命令名后留一个空格，方便继续输入参数；
+	// 面板打开期间也看得清当前执行的是哪条命令
+	host.setInput(`/${command.name} `);
 
 	const handlers: Readonly<Record<string, () => void>> = {
 		model: () => executeModelCommand(host, args),
