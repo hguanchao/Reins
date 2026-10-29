@@ -119,7 +119,10 @@ export class TurnDriver {
 		// 监听者抛错时要能中止这次请求：给它一个自己的中止器，与调用方的 signal 串联。
 		const stop = new AbortController();
 		const onOuterAbort = (): void => stop.abort();
-		signal.addEventListener("abort", onOuterAbort, { once: true });
+		// 已经中止的 signal 不会再触发监听器。不先看一眼，这一次请求会照常发出去——
+		// 使用者按了中断，却仍然花掉一次完整的模型调用。
+		if (signal.aborted) stop.abort();
+		else signal.addEventListener("abort", onOuterAbort, { once: true });
 		const stream = this.#deps.client.stream(this.#buildRequest(stop.signal));
 		try {
 			for await (const event of stream) {

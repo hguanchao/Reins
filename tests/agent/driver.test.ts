@@ -362,6 +362,22 @@ describe("回合驱动", () => {
 		assert.ok(abortHooks.events.some((event) => event.type === "aborted"));
 	});
 
+	it("外部信号已中止时，本次请求的信号一开始就是中止的", async () => {
+		const hooks = {
+			events: [] as AgentEvent[],
+			session: new MemorySession(),
+			tools: makeTools(),
+			requests: [] as LlmRequest[],
+		};
+		const controller = new AbortController();
+		controller.abort();
+
+		await depsOf([{ content: [], stopReason: "aborted" }], hooks).run("x", controller.signal);
+
+		// 监听器不会为已经中止的 signal 触发，不先看一眼的话这一次请求会照常发出去
+		assert.equal(hooks.requests[0]?.signal.aborted, true);
+	});
+
 	it("中断前已经收到的回答写进会话,并说明它是断的", async () => {
 		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools() };
 		await depsOf(
