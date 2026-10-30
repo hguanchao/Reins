@@ -121,7 +121,7 @@ async function installNpm(packageName: string, target: string, runner: CommandRu
 		mkdirSync(staging, { recursive: true });
 		const install = await runner(
 			npmCommand(),
-			["install", packageName, "--omit=dev", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund"],
+			["install", packageName, "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"],
 			staging,
 		);
 		if (install.code !== 0) return `npm install failed: ${install.stderr.trim() || "unknown error"}`;
@@ -161,7 +161,7 @@ async function installDependencies(target: string, runner: CommandRunner): Promi
 
 	const install = await runner(
 		npmCommand(),
-		["install", "--omit=dev", "--ignore-scripts", "--legacy-peer-deps", "--no-audit", "--no-fund"],
+		["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"],
 		target,
 	);
 	if (install.code !== 0) return `npm install failed: ${install.stderr.trim() || "unknown error"}`;
