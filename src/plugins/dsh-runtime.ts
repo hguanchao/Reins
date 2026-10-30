@@ -37,6 +37,10 @@ export interface DshLoadOutcome {
 	readonly tools: readonly string[];
 	/** 注册的投影键；数据仅存内存，不写入会话文件 */
 	readonly projections: readonly string[];
+	/** 登记了但不会派发的事件名 */
+	readonly handlers: readonly string[];
+	/** 插件登记的系统提示词段；只登记名字，正文未接入 */
+	readonly promptSections: readonly string[];
 	readonly unavailable: readonly string[];
 }
 
@@ -76,6 +80,7 @@ function createDshRuntime(input: {
 }): { readonly ctx: unknown; readonly outcome: () => DshLoadOutcome } {
 	const tools: string[] = [];
 	const projections: string[] = [];
+	const handlers: string[] = [];
 	const unavailable = new Set<string>();
 	const events: { readonly type: string; readonly data: unknown }[] = [];
 	const context = input.context;
@@ -95,13 +100,50 @@ function createDshRuntime(input: {
 
 	// inject 的回调以当前 ctx 立即执行：宿主的服务在构造时就绪，没有 Cordis 的异步装配阶段
 	let ctxRef: unknown;
+	/** effect 注册的清理函数；宿主进程退出即结束，无独立卸载时机 */
+	const cleanups: (() => unknown)[] = [];
+	/** 插件登记的提示词段；第一轮只登记，不接入系统提示词 */
+	const promptSections: string[] = [];
+
 	const base: Record<PropertyKey, unknown> = {
 		inject: (_names: readonly string[], callback: (injected: unknown) => unknown): unknown => callback(ctxRef),
+		// Cordis 的 effect：立即执行 setup，返回值（清理函数）留到卸载时跑——宿主没有卸载时机
+		effect: (setup: unknown): unknown => {
+			if (typeof setup !== "function") return undefined;
+			const cleanup = (setup as () => unknown)();
+			if (typeof cleanup === "function") cleanups.push(cleanup as () => unknown);
+			return cleanup;
+		},
+		// 事件只登记不派发：宿主没有 agent/事件点，这条边界进装载结果
+		on: (event: unknown, handler: unknown): void => {
+			if (typeof handler !== "function") throw new Error("ctx.on expects an event handler function");
+			handlers.push(typeof event === "string" ? event : String(event));
+		},
+		// 宿主已有的服务按名返回，没有的返回 undefined——dsh 插件惯用 `?.` 兜底
+		get: (name: unknown): unknown => {
+			const service = typeof name === "string" ? base[name] : undefined;
+			if (service !== undefined) return service;
+			markUnavailable(`ctx.get('${String(name)}')`);
+			return undefined;
+		},
+		// 提示词段只登记：段名进报告，正文不接入系统提示词
+		systemPrompt: {
+			section: (spec: unknown): (() => void) => {
+				const name = isObject(spec) && typeof spec["name"] === "string" ? spec["name"] : "(unnamed)";
+				promptSections.push(name);
+				return () => {};
+			},
+		},
 		tools: {
 			register: (candidate: unknown): void => {
 				const tool = dshToolToReins(candidate, agent);
 				input.api.registerTool(tool);
 				tools.push(tool.name);
+			},
+			// 工具执行守卫：dsh 语义是注册一个拦截器并返回反注册函数；宿主没有拦截点
+			guard: (_interceptor: unknown): (() => void) => {
+				markUnavailable("ctx.tools.guard");
+				return () => {};
 			},
 		},
 		sessionProjections: {
@@ -127,6 +169,8 @@ function createDshRuntime(input: {
 		outcome: () => ({
 			tools: [...tools],
 			projections: [...projections],
+			handlers: [...handlers],
+			promptSections: [...promptSections],
 			unavailable: [...unavailable].sort(),
 		}),
 	};
@@ -259,6 +303,14 @@ export function describeDshOutcomes(
 			if (outcome.tools.length > 0) parts.push(`tools: ${outcome.tools.join(", ")}`);
 			if (outcome.projections.length > 0) {
 				parts.push(`in-memory projections: ${outcome.projections.join(", ")}`);
+			}
+			if (outcome.handlers.length > 0) {
+				parts.push(
+					`${outcome.handlers.length} event(s) registered but not dispatched: ${outcome.handlers.join(", ")}`,
+				);
+			}
+			if (outcome.promptSections.length > 0) {
+				parts.push(`prompt sections (registered, not applied): ${outcome.promptSections.join(", ")}`);
 			}
 			lines.push(
 				`dsh plugin ${collector.plugin.name}: ${
