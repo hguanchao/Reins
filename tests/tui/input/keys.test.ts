@@ -6,7 +6,6 @@ import {
 	approvalKey,
 	decodeKittyKeys,
 	editInput,
-	moveInputVertical,
 	pastingAfter,
 	shiftTabKey,
 	stripPasteContent,
@@ -75,12 +74,6 @@ describe("审批按键", () => {
 });
 
 describe("多行输入光标", () => {
-	it("上下移动按显示列对齐，不按码位数", () => {
-		const text = "你好\nabcdef";
-		// 第一行两个汉字占 4 列；下移后应落在第 4 列（abcd 之后），而不是第 2 列
-		assert.equal(moveInputVertical(text, 2, 1), 7);
-	});
-
 	it("Shift+Enter 插入换行而不是提交", () => {
 		for (const sequence of ["\x1b[13;2u", "\x1b[27;2;13~"]) {
 			const edit = editInput("ab", 2, sequence, false);

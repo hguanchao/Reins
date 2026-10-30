@@ -4,7 +4,9 @@ import { describe, it } from "node:test";
 import {
 	COMPACT_FOOTER_HEIGHT,
 	FOOTER_HEIGHT,
+	inputRowSpans,
 	inputView,
+	moveInputRow,
 	queueHeight,
 	renderFooter,
 	type FooterInfo,
@@ -472,6 +474,33 @@ describe("页脚输入框", () => {
 			[" › abcd", "   efg", "   xy"],
 		);
 		assert.equal(view.row, 2);
+	});
+
+	it("软换行按可视行上下移动，不整段跳过去", () => {
+		const text = "abcdefgh";
+		assert.deepEqual(inputRowSpans(text, 8), [
+			{ start: 0, end: 4 },
+			{ start: 4, end: 8 },
+		]);
+
+		// 光标在末尾：上移一行落在第一行最后一个能显示的位置（行尾会画到下一行，退一个字）
+		assert.equal(moveInputRow(text, 8, -1, 8), 3);
+		assert.equal(moveInputRow(text, 3, 1, 8), 7);
+	});
+
+	it("显式换行按行对齐，列按显示宽度算", () => {
+		const text = "你好\nabcdef";
+		// 两个汉字占 4 列；下移落在第 4 列（abcd 之后），不是第 2 列
+		assert.equal(moveInputRow(text, 2, 1, 80), 7);
+	});
+
+	it("宽字符行尾退到最后一个完整字", () => {
+		assert.equal(moveInputRow("你好世界", 4, -1, 8), 1);
+	});
+
+	it("首行再往上、末行再往下都没有移动", () => {
+		assert.equal(moveInputRow("abc\ndef", 1, -1, 80), undefined);
+		assert.equal(moveInputRow("abc\ndef", 6, 1, 80), undefined);
 	});
 
 	it("光标列跟着提示符和可见文字走", () => {

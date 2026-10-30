@@ -507,7 +507,7 @@ export const KEY_HINTS: readonly KeyHintCopy[] = [
 	{ keys: "Esc", description: "Interrupt the turn · send the first queued message" },
 	{ keys: "Esc twice", description: "Clear the input · Ctrl+Z brings it back" },
 	{ keys: "Ctrl+C twice", description: "Exit the interface · a draft is cleared first" },
-	{ keys: "Up / Down", description: "Prompt history, menu navigation, or page scrolling" },
+	{ keys: "Up / Down", description: "Prompt cursor or history, menu navigation, or page scrolling" },
 	{ keys: "Left / Right", description: "Move the prompt cursor or approval selection" },
 	{ keys: "Home / End", description: "Move to the start or end of the input line" },
 	{ keys: "Alt+Up", description: "Take the last queued message back into the prompt" },

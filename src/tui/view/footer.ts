@@ -237,6 +237,78 @@ interface InputLineSegment {
 	readonly endChar: number;
 }
 
+/** 一个可视行在输入文本里的绝对偏移。 */
+export interface InputRowSpan {
+	readonly start: number;
+	readonly end: number;
+}
+
+/**
+ * 把输入拆成可视行。
+ *
+ * 与 inputView 共用同一套折行规则：显式换行各占一行，一个逻辑行超过可用宽度时按显示
+ * 宽度软换行。返回的是整段输入，不像 inputView 那样只留光标周围的六行——上下移动要
+ * 知道全局的行号。
+ */
+export function inputRowSpans(input: string, width: number): readonly InputRowSpan[] {
+	const columns = Math.max(0, width);
+	const textWidth = Math.max(0, columns - displayWidth(INPUT_CONTINUATION) - 1);
+	const rows: InputRowSpan[] = [];
+	let offset = 0;
+	for (const line of input.split("\n")) {
+		for (const segment of wrapLine(line, textWidth)) {
+			rows.push({ start: offset + segment.start, end: offset + segment.end });
+		}
+		offset += line.length + 1;
+	}
+	return rows;
+}
+
+/**
+ * 上下键沿可视行移动光标。
+ *
+ * 软换行也算一行：长段落能一行一行地走，不会跳过整段、也不会被当成「单行」去翻历史。
+ * 目标列落在宽字符中间时停在它前面——宁可左一列，也不要为了对齐跳过整个字。
+ * 已经在首行/末行时返回 undefined，由调用方决定是否退回翻历史。
+ */
+export function moveInputRow(
+	input: string,
+	cursor: number,
+	delta: -1 | 1,
+	width: number,
+): number | undefined {
+	const rows = inputRowSpans(input, width);
+	// 光标正好落在软换行边界时归下一行：与 inputView 的 segmentAt 一致，
+	// 屏幕上它画在下一行行首，上下键也要从那一行算起
+	let index = 0;
+	for (let row = 0; row < rows.length; row += 1) {
+		if ((rows[row] as InputRowSpan).start <= cursor) index = row;
+		else break;
+	}
+	const target = index + delta;
+	if (target < 0 || target >= rows.length) return undefined;
+
+	const current = rows[index] as InputRowSpan;
+	const column = displayWidth(input.slice(current.start, cursor));
+	const row = rows[target] as InputRowSpan;
+	let offset = row.start;
+	let used = 0;
+	for (const grapheme of graphemes(input.slice(row.start, row.end))) {
+		const widthOf = characterWidth(grapheme);
+		if (used + widthOf > column) break;
+		used += widthOf;
+		offset += grapheme.length;
+	}
+	// 软换行的行尾与下一行行首是同一个偏移，渲染会把光标画到下一行：直接停在行尾，
+	// 上移看起来就只是「左移了一格」。退一个字，光标才真正落在目标行里。
+	const next = rows[target + 1];
+	if (offset === row.end && offset > row.start && next !== undefined && next.start === row.end) {
+		const last = graphemes(input.slice(row.start, row.end)).at(-1);
+		if (last !== undefined) offset -= last.length;
+	}
+	return Math.min(offset, row.end);
+}
+
 /**
  * 把一个逻辑行按显示宽度切成若干段。
  *

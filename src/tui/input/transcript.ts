@@ -1,6 +1,6 @@
-import { inputView } from "#src/tui/view/footer.ts";
+import { inputRowSpans, inputView, moveInputRow } from "#src/tui/view/footer.ts";
 import { imageMarker } from "#src/tui/image.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripFocusEvents, stripMouseEvents } from "#src/tui/input/keys.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, queuedEditKey, stripFocusEvents, stripMouseEvents } from "#src/tui/input/keys.ts";
 import type { MouseInput } from "#src/tui/input/keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
 import { STATUS } from "#src/tui/copy.ts";
@@ -434,10 +434,14 @@ export function handleTranscriptInput(
 
 	const step = historyKey(withoutMouse);
 	if (step !== undefined && state.commandMenu === undefined) {
-		if (state.input.includes("\n")) {
-			// 多行时方向键只做光标移动：到首/末行的边界就停住，不翻历史——
-			// 长草稿不会在按一下 ↑ 后被一条历史记录意外替换；要翻历史先退回单行
-			const moved = moveInputVertical(state.input, state.inputCursor, step);
+		const rows = inputRowSpans(state.input, width);
+		const atEdge = state.inputCursor === 0 || state.inputCursor === state.input.length;
+		// 正在翻历史、且光标还在首/末位置：继续翻，哪怕这一条是多行消息——
+		// 否则翻到一条多行记录就再也退不回草稿。草稿里则方向键只走光标：
+		// 长段落不会被一下 ↑ 换成上一条历史。
+		const browsingHistory = state.historyIndex !== -1;
+		if (rows.length > 1 && !(browsingHistory && atEdge)) {
+			const moved = moveInputRow(state.input, state.inputCursor, step < 0 ? -1 : 1, width);
 			if (moved === undefined) return;
 			if (moved !== state.inputCursor) {
 				focusInput();
@@ -446,6 +450,9 @@ export function handleTranscriptInput(
 			}
 			return;
 		}
+		// 单行、光标又已经移进历史记录中间：没有可移动的行，也不该换掉这条记录
+		if (browsingHistory && !atEdge) return;
+
 		const consumed = host.recallHistory(step);
 		if (consumed) {
 			if (!state.focused) {

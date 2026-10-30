@@ -159,6 +159,35 @@ describe("多行输入与翻历史的分派", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("翻到多行历史记录后仍能继续翻，也能退回草稿", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("older\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await agent.finish();
+
+			// 更近的一条是多行消息
+			input.emit("data", Buffer.from("a"));
+			input.emit("data", Buffer.from("\x1b[13;2u"));
+			input.emit("data", Buffer.from("b\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await agent.finish();
+
+			input.emit("data", Buffer.from("draft"));
+			input.emit("data", Buffer.from("\x1b[A")); // a\nb
+			input.emit("data", Buffer.from("\x1b[A")); // older
+			input.emit("data", Buffer.from("\x1b[B")); // 回到 a\nb
+			input.emit("data", Buffer.from("\x1b[B")); // 退回草稿
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			// 若卡在多行记录里，这里提交的会是 a\nb
+			assert.deepEqual(agent.prompts, ["older", "a\nb", "draft"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
 	it("多行中间按方向键移动光标后可继续编辑", async (t) => {
 		const { input, agent, running } = startTui(t);
 		try {
@@ -170,6 +199,30 @@ describe("多行输入与翻历史的分派", () => {
 			input.emit("data", Buffer.from("\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.deepEqual(agent.prompts, ["x!\ny"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("软换行的长输入按上下键只移动光标，不会被历史替换", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("旧消息\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await agent.finish();
+
+			const long = "这是一段很长的中文输入".repeat(3);
+			input.emit("data", Buffer.from(long));
+			input.emit("data", Buffer.from("\x1b[A"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			// 输入框里仍是这段长文本：以前单行输入会直接翻成历史里的「旧消息」
+			assert.ok(screenText(output).includes(long.slice(0, 10)));
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["旧消息", long]);
 		} finally {
 			exitTui(input);
 		}

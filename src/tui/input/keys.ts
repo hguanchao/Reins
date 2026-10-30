@@ -1,7 +1,6 @@
 import { stripVTControlCharacters } from "node:util";
 
 import { MENU_MAX_VISIBLE, keepVisible } from "#src/tui/panel/menu-panel.ts";
-import { characterWidth } from "#src/tui/render/text.ts";
 import type { ApprovalAnswer } from "#src/permission/policy.ts";
 
 /**
@@ -515,48 +514,4 @@ function nextIndex(text: string, index: number): number {
 		if (low >= 0xdc00 && low <= 0xdfff) return index + 2;
 	}
 	return index + 1;
-}
-
-/**
- * 多行输入里上下移动光标；单行输入交给历史。
- *
- * 列按码位算而不是按码元：上一行含 emoji 时按码元取列会落进代理对中间，接着输入字符就会
- * 写出一个非法序列。
- */
-export function moveInputVertical(text: string, cursor: number, delta: number): number | undefined {
-	const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
-	const column = codePointColumn(text, lineStart, cursor);
-	if (delta < 0) {
-		if (lineStart === 0) return undefined;
-		const previousEnd = lineStart - 1;
-		const previousStart = text.lastIndexOf("\n", Math.max(0, previousEnd - 1)) + 1;
-		return columnToOffset(text, previousStart, previousEnd, column);
-	}
-	const lineEnd = text.indexOf("\n", cursor);
-	if (lineEnd < 0) return undefined;
-	const nextStart = lineEnd + 1;
-	const nextEnd = text.indexOf("\n", nextStart);
-	const end = nextEnd < 0 ? text.length : nextEnd;
-	return columnToOffset(text, nextStart, end, column);
-}
-
-/** 从 start 到 end 之间的显示列数（把光标所在位置换算成列）。 */
-function codePointColumn(text: string, start: number, cursor: number): number {
-	let column = 0;
-	for (let index = start; index < cursor; index = nextIndex(text, index)) {
-		column += characterWidth(text.slice(index, nextIndex(text, index)));
-	}
-	return column;
-}
-
-/** 把显示列换算成某个区间内的偏移；列超出该行宽度时停在行尾。 */
-function columnToOffset(text: string, start: number, end: number, column: number): number {
-	let offset = start;
-	let used = 0;
-	for (; used < column && offset < end; ) {
-		const next = nextIndex(text, offset);
-		used += characterWidth(text.slice(offset, next));
-		offset = next;
-	}
-	return Math.min(offset, end);
 }
