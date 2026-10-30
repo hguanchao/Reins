@@ -57,11 +57,17 @@ async function add(source: string, directory: string, runner: CommandRunner): Pr
 	let failure: string | undefined;
 	try {
 		if (kind === "git") {
-			failure = await installGit(source, target, directory, runner);
+			mkdirSync(directory, { recursive: true });
+			const clone = await runner("git", ["clone", "--depth", "1", source, target], directory);
+			failure = clone.code !== 0 ? `git clone failed: ${clone.stderr.trim() || "unknown error"}` : undefined;
 		} else if (kind === "npm") {
 			failure = await installNpm(source, target, runner);
 		} else {
 			failure = installLocal(source, target);
+		}
+		// npm 来源在临时目录安装时依赖已经就位；本地与 git 来源的依赖现在补装
+		if (failure === undefined && kind !== "npm") {
+			failure = await installDependencies(target, runner);
 		}
 	} catch (error) {
 		failure = String(error);
@@ -106,18 +112,6 @@ function installLocal(source: string, target: string): string | undefined {
 	if (!isDirectory(origin)) return `not a directory: ${source}`;
 	copyPlugin(origin, target);
 	return undefined;
-}
-
-async function installGit(
-	url: string,
-	target: string,
-	directory: string,
-	runner: CommandRunner,
-): Promise<string | undefined> {
-	mkdirSync(directory, { recursive: true });
-	const clone = await runner("git", ["clone", "--depth", "1", url, target], directory);
-	if (clone.code !== 0) return `git clone failed: ${clone.stderr.trim() || "unknown error"}`;
-	return installDependencies(target, runner);
 }
 
 async function installNpm(packageName: string, target: string, runner: CommandRunner): Promise<string | undefined> {
