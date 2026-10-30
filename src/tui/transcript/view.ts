@@ -307,15 +307,19 @@ function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
 /**
  * 相邻两条内容之间是否需要空行。
  *
- * 连续正文和连续工具调用各自属于同一块，保持紧凑；思考区块与失败、警告各自独立成块，
- * 即使前后同类也要分开，否则流式输出读起来会糊成一片。工具调用的失败原因紧跟在调用行
+ * 一轮调用批次（思考摘要与工具调用交替）是同一块，保持紧凑——工具调用收起后只剩摘要行，
+ * 组内空行会把批次打散；正文、失败、警告各自独立成块。工具调用的失败原因紧跟在调用行
  * 之后，是同一件事的两半，不能被空行拆开。
  */
 function needsBlockGap(previous: TranscriptLine, current: TranscriptLine): boolean {
 	if (isToolFailure(previous, current)) return false;
 	const previousKind = responseBlockKind(previous);
 	const currentKind = responseBlockKind(current);
-	if (previousKind !== currentKind) return true;
+	if (previousKind !== currentKind) {
+		// 思考摘要与工具调用的交替属于同一轮批次
+		const pair = `${previousKind}/${currentKind}`;
+		return pair !== "thinking/tools" && pair !== "tools/thinking";
+	}
 	// 思考、任务卡、计划卡与失败、警告各自独立成块：即使前后同类也要分开
 	return (
 		currentKind === "thinking" ||
