@@ -32,6 +32,8 @@ import {
 	scanDeclarativePlugins,
 	type DeclarativeScan,
 } from "../plugins/declarative.ts";
+import { describePiOutcomes, piExtensionPlugin, type PiExtensionCollector } from "../plugins/pi-runtime.ts";
+import { getAgentDir } from "../plugins/pi-shim/api.ts";
 import { writeStderr } from "./output.ts";
 
 /**
@@ -216,6 +218,8 @@ export async function assemblePipeline(options: {
 	readonly workRoot: string;
 	readonly policy: PermissionPolicy;
 	readonly gate: PermissionGate;
+	/** pi 扩展的运行上下文：模式与信任状态由入口决定 */
+	readonly extensionContext?: { readonly mode: "tui" | "print"; readonly projectTrusted: boolean };
 	readonly onMcpStatus?: (source: McpStatusSource) => void;
 	readonly onMcpControl?: (control: McpControl) => void;
 	readonly onStage?: (stage: string) => void;
@@ -258,6 +262,23 @@ export async function assemblePipeline(options: {
 	options.onStage?.("mcp");
 
 	reportExternalFailures(await loadExternalPlugins(host, disabledPlugins(config)));
+
+	// pi 扩展走同一条外部插件管线：同一信任级别、同一失败收集。装载结论并入报告。
+	const collectors: PiExtensionCollector[] =
+		options.extensionContext === undefined
+			? []
+			: declarative.plugins
+					.filter((plugin) => plugin.extensions.length > 0)
+					.map((plugin) =>
+						piExtensionPlugin(plugin, {
+							cwd: workRoot,
+							mode: options.extensionContext!.mode,
+							projectTrusted: options.extensionContext!.projectTrusted,
+							sessionDir: getAgentDir(),
+							notify: (message) => writeStderr(`${message}\n`),
+						}),
+					);
+	const piFailures = collectors.length === 0 ? [] : await host.loadExternal(collectors.map((item) => item.plugin));
 	options.onStage?.("external");
 
 	try {
@@ -271,7 +292,10 @@ export async function assemblePipeline(options: {
 			sandboxInfo: info,
 			sandboxWarnings: warnings,
 			declarative,
-			pluginReport: describeDeclarativeScan(declarative, mcp.warnings),
+			pluginReport: [
+				...describeDeclarativeScan(declarative, mcp.warnings),
+				...describePiOutcomes(collectors, piFailures),
+			],
 		};
 	} catch (error) {
 		writeStderr(`${describeError(error)}\n`);

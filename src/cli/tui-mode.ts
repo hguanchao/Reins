@@ -199,6 +199,7 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 		workRoot,
 		policy,
 		gate,
+		extensionContext: { mode: "tui", projectTrusted: workspaceTrusted },
 		onMcpStatus: (source) => {
 			mcpStatus = source;
 		},

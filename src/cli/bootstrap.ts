@@ -80,6 +80,7 @@ async function runPrint(options: CliOptions): Promise<number> {
 		workRoot,
 		policy,
 		gate,
+		extensionContext: { mode: "print", projectTrusted: "trusted" in loaded && loaded.trusted },
 	});
 	if (pipeline === null) return 1;
 	const { registry, sandbox, sandboxWarnings } = pipeline;

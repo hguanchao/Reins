@@ -74,7 +74,7 @@ describe("声明式插件发现", () => {
 		]);
 	});
 
-	it("pi 清单：单个技能目录按 single 收，没有对应机制的部件逐条列出", () => {
+	it("pi 清单：单个技能目录按 single 收，扩展入口单独列出，其余部件报不支持", () => {
 		const base = workspace();
 		const root = pluginOf(base, "pi-pack", "package.json", {
 			name: "pi-pack",
@@ -86,12 +86,13 @@ describe("声明式插件发现", () => {
 			},
 		});
 		skillAt(root, join("skills", "pdf"));
+		writeFileSync(join(root, "ext.ts"), "export default function () {}\n", "utf8");
 
 		const plugin = scanDeclarativePlugins(base).plugins[0]!;
 		assert.equal(plugin.manifest, "package.json#pi");
 		assert.deepEqual(plugin.skillDirectories, [{ directory: join(root, "skills", "pdf"), single: true }]);
-		assert.equal(plugin.unsupported.length, 3);
-		assert.ok(plugin.unsupported.some((item) => item.startsWith("extensions")));
+		assert.deepEqual(plugin.extensions, [join(root, "ext.ts")]);
+		assert.equal(plugin.unsupported.length, 2);
 		assert.ok(plugin.unsupported.some((item) => item.startsWith("prompts")));
 		assert.ok(plugin.unsupported.some((item) => item.startsWith("themes")));
 	});
@@ -198,6 +199,7 @@ describe("插件 MCP 合并", () => {
 			manifest: "plugin.json",
 			skillDirectories: [],
 			mcpServers: [{ ...configured, command: "from-plugin" }],
+			extensions: [],
 			unsupported: [],
 			warnings: [],
 		};
@@ -215,6 +217,7 @@ describe("插件 MCP 合并", () => {
 			manifest: "plugin.json",
 			skillDirectories: [],
 			mcpServers: [{ ...configured, name: "extra" }],
+			extensions: [],
 			unsupported: [],
 			warnings: [],
 		};
@@ -239,6 +242,7 @@ describe("装载报告", () => {
 						manifest: "plugin.json",
 						skillDirectories: [{ directory: "/p/skills", single: false }],
 						mcpServers: [],
+						extensions: [],
 						unsupported: ["hooks: Reins has no hook event points"],
 						warnings: [],
 					},
@@ -263,6 +267,7 @@ describe("装载报告", () => {
 					manifest: "convention",
 					skillDirectories: [],
 					mcpServers: [],
+					extensions: [],
 					unsupported: [],
 					warnings: [],
 				},

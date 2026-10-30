@@ -31,6 +31,8 @@ export interface DeclarativePlugin {
 	readonly manifest: string;
 	readonly skillDirectories: readonly PluginSkillDirectory[];
 	readonly mcpServers: readonly McpServerConfig[];
+	/** pi 扩展的入口文件（绝对路径）；由 pi-runtime 装载 */
+	readonly extensions: readonly string[];
 	/** 已识别但没有对应机制的部件，一句人话 */
 	readonly unsupported: readonly string[];
 	readonly warnings: readonly string[];
@@ -112,6 +114,7 @@ interface Manifest {
 	readonly skills: readonly string[];
 	readonly commands: readonly string[];
 	readonly agents: readonly string[];
+	readonly extensions: readonly string[];
 	readonly mcpFile: string | undefined;
 	readonly mcpInline: unknown;
 	readonly unsupported: readonly string[];
@@ -142,6 +145,7 @@ function readPlugin(root: string, directoryName: string): DeclarativePlugin | un
 
 	const warnings: string[] = [];
 	const skills = resolveSkillDirectories(root, manifest.skills, warnings);
+	const extensions = resolveExtensionFiles(root, manifest.extensions, warnings);
 	const mcp = readMcpServers(manifest, root, warnings);
 	const unsupported = [...manifest.unsupported];
 
@@ -158,6 +162,7 @@ function readPlugin(root: string, directoryName: string): DeclarativePlugin | un
 		manifest: manifest.file,
 		skillDirectories: skills,
 		mcpServers: mcp,
+		extensions,
 		unsupported,
 		warnings,
 	};
@@ -215,6 +220,7 @@ function claudeManifest(document: Record<string, unknown>, file: string, fallbac
 		skills: paths(document["skills"]),
 		commands: paths(document["commands"]),
 		agents: paths(document["agents"]),
+		extensions: [],
 		mcpFile,
 		mcpInline: typeof mcp === "string" ? undefined : mcp,
 		unsupported,
@@ -224,10 +230,6 @@ function claudeManifest(document: Record<string, unknown>, file: string, fallbac
 /** pi 包的清单：`package.json` 里的 `pi` 字段，全是相对包根的路径。 */
 function piManifest(pi: Record<string, unknown>, file: string, fallbackName: string): Manifest {
 	const unsupported: string[] = [];
-	const extensions = paths(pi["extensions"]);
-	if (extensions.length > 0) {
-		unsupported.push(`extensions (${extensions.length}): pi extension modules need the pi runtime API`);
-	}
 	const prompts = paths(pi["prompts"]);
 	if (prompts.length > 0) unsupported.push(`prompts (${prompts.length}): Reins has no prompt templates`);
 	const themes = paths(pi["themes"]);
@@ -239,6 +241,7 @@ function piManifest(pi: Record<string, unknown>, file: string, fallbackName: str
 		skills: paths(pi["skills"]),
 		commands: [],
 		agents: [],
+		extensions: paths(pi["extensions"]),
 		mcpFile: undefined,
 		mcpInline: undefined,
 		unsupported,
@@ -264,6 +267,7 @@ function conventionManifest(root: string, directoryName: string): Manifest | und
 		skills: hasSkills ? ["skills"] : [],
 		commands: hasCommands ? ["commands"] : [],
 		agents: hasAgents ? ["agents"] : [],
+		extensions: [],
 		mcpFile: hasMcp ? ".mcp.json" : undefined,
 		mcpInline: undefined,
 		unsupported,
@@ -297,6 +301,24 @@ function resolveSkillDirectories(
 		directories.push({ directory: absolute, single: isFile(join(absolute, "SKILL.md")) });
 	}
 	return directories;
+}
+
+/** 把声明里的扩展入口解析成文件；路径逃出根或不是文件时跳过并告警。 */
+function resolveExtensionFiles(root: string, paths: readonly string[], warnings: string[]): readonly string[] {
+	const files: string[] = [];
+	for (const path of paths) {
+		const absolute = contained(root, path);
+		if (absolute === undefined) {
+			warnings.push(`Extension path ${path} escapes the plugin root; skipped`);
+			continue;
+		}
+		if (!isFile(absolute)) {
+			warnings.push(`Extension path ${path} is not a file; skipped`);
+			continue;
+		}
+		files.push(absolute);
+	}
+	return files;
 }
 
 function readMcpServers(manifest: Manifest, root: string, warnings: string[]): readonly McpServerConfig[] {
@@ -378,6 +400,7 @@ export function describeDeclarativeScan(
 		const parts: string[] = [];
 		if (plugin.skillDirectories.length > 0) parts.push(`${plugin.skillDirectories.length} skill dir(s)`);
 		if (plugin.mcpServers.length > 0) parts.push(`${plugin.mcpServers.length} MCP server(s)`);
+		if (plugin.extensions.length > 0) parts.push(`${plugin.extensions.length} extension(s)`);
 		lines.push(
 			`plugin ${plugin.name} (${plugin.manifest}): ${parts.length === 0 ? "nothing usable" : parts.join(", ")}`,
 		);
