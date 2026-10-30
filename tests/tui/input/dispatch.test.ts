@@ -193,3 +193,48 @@ describe("多行输入与翻历史的分派", () => {
 		assert.equal(await running, 0);
 	});
 });
+
+describe("Esc 清空输入框", () => {
+	it("有内容时 Esc 清空，后续输入从空白开始", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("hi\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			// 若 Esc 没清空，提交的会是 "abchi"
+			assert.deepEqual(agent.prompts, ["hi"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("输入为空时 Esc 不产生副作用", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("ok\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["ok"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("菜单打开时 Esc 先关菜单，第二次才清空", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("/he"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("hi\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["hi"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+});

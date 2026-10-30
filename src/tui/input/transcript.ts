@@ -353,6 +353,17 @@ export function handleTranscriptInput(
 			deps.render();
 			return;
 		}
+		// 空闲时 Esc 清空输入框（含多行与图片附件）；回合中的 Esc 属于中止语义，不在这里抢。
+		// 输入框本来为空时 Esc 无事可做，落到后面的编辑路径也等于空操作。
+		if (withoutMouse === "\x1b" && state.activeTurn === undefined && state.input.length > 0) {
+			host.setInput("", 0);
+			state.pendingImages = [];
+			state.historyIndex = -1;
+			host.updateCommandMenu();
+			host.updateFileMenu();
+			deps.render();
+			return;
+		}
 
 		const queueKey = queuedEditKey(withoutMouse);
 		// 撤回与编辑是同一条路径：取回即出队，清掉文字就是取消
