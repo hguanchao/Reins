@@ -387,7 +387,9 @@ function build(
 		const start = lines.length;
 		lines.push(...promptLines);
 		for (let offset = 0; offset < promptLines.length; offset += 1) plainRows.add(start + offset);
-		// 提示块自己带着一行底部留白，再补一行就会在视觉上变成两行空白
+		// 提示块自带的底部留白是提示底色，不是空行：回复紧贴上去会和输入框粘成一块。
+		// 有回复时补一行默认背景，让提问与回答之间留出真正的间距。
+		if (turn.response.length > 0) lines.push(" ".repeat(width));
 		const responseStart = lines.length;
 		let previousLine: TranscriptLine | undefined;
 		for (const line of turn.response) {

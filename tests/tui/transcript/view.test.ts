@@ -71,12 +71,13 @@ describe("对话流", () => {
 
 		assert.ok(plain(lines[1] ?? "").startsWith(" › hello"));
 		assert.ok((lines[1] ?? "").includes(PROMPT_BG));
-		// 吸顶块占满三行（上留白、内容、下留白），正文紧接着下留白开始
+		// 吸顶块占满三行（上留白、内容、下留白），正文紧接着下留白开始；
+		// 提示块与回复之间的空行属于正文侧，吸顶时不占位置
 		assert.equal(plain(lines[2] ?? "").includes("›"), false);
 		assert.ok((lines[2] ?? "").includes(PROMPT_BG));
-		assert.ok(plain(lines[3] ?? "").startsWith("  g"));
+		assert.ok(plain(lines[3] ?? "").startsWith("  f"));
 		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
-		assert.ok(plain(lines[4] ?? "").startsWith("  h"));
+		assert.ok(plain(lines[4] ?? "").startsWith("  g"));
 		assert.ok((lines[3] ?? "").includes(MESSAGE_TEXT));
 		assert.equal(plain(lines[0] ?? "").endsWith("│"), false);
 		assert.ok(plain(lines[0] ?? "").endsWith(" "));
@@ -88,7 +89,7 @@ describe("对话流", () => {
 			{ prompt: "one", response: ["x"] },
 			{ prompt: "two", response: ["a", "b", "c"] },
 		];
-		// 行：one 0-2，x 3，轮间空行 4，two 5-7，a 8…
+		// 行：one 0-2、与回复的空行 3、x 4、轮间空行 5、two 6-8、与回复的空行 9、a 10…
 		const render = (top: number): readonly string[] => renderTranscript(40, 8, turns, top);
 		const text = (line: string | undefined): string => plain(line ?? "").slice(0, -2);
 
@@ -98,18 +99,32 @@ describe("对话流", () => {
 		assert.notEqual(at2.map(text).join("\n"), at3.map(text).join("\n"));
 		assert.notEqual(at3.map(text).join("\n"), at5.map(text).join("\n"));
 
-		// top=2：吸顶块只剩末尾两行，下一个提示块的上留白、正文、下留白完整可见
-		assert.ok(text(at2[0]).startsWith(" › one"));
-		assert.ok((at2[1] ?? "").includes(PROMPT_BG));
-		assert.equal(text(at2[2]).trim(), "");
-		assert.ok((at2[3] ?? "").includes(PROMPT_BG));
-		assert.ok(text(at2[4]).startsWith(" › two"));
-		assert.ok((at2[5] ?? "").includes(PROMPT_BG));
+		// top=2：吸顶块占满三行，下一个提示块的上留白、正文、下留白完整可见
+		assert.ok(text(at2[1]).startsWith(" › one"));
+		assert.ok((at2[2] ?? "").includes(PROMPT_BG));
+		assert.equal(text(at2[3]).trim(), "");
+		assert.ok((at2[4] ?? "").includes(PROMPT_BG));
+		assert.ok(text(at2[5]).startsWith(" › two"));
+		assert.ok((at2[6] ?? "").includes(PROMPT_BG));
 
 		// 提示块完全被顶出去后不再吸顶，正常内容从头开始
 		assert.equal(at5.map(text).join("\n").includes(" › one"), false);
-		assert.ok(text(at5[1]).startsWith(" › two"));
+		assert.ok(text(at5[2]).startsWith(" › two"));
 		assert.ok(render(6).map(text).join("\n").includes("c"));
+	});
+
+	it("提示块与回复之间留一行空行", () => {
+		const lines = renderTranscript(40, 10, [{ prompt: "hi", response: ["answer"] }], 0);
+
+		// 提示块的三行都带底色，第四行才是默认背景的空行，回复从第五行开始
+		assert.ok((lines[2] ?? "").includes(PROMPT_BG));
+		assert.equal((lines[3] ?? "").includes(PROMPT_BG), false);
+		assert.equal(plain(lines[3] ?? "").trim(), "");
+		assert.ok(plain(lines[4] ?? "").includes("answer"));
+		// 没有回复时不补空行，避免提示块下面拖着一行空白
+		const pending = renderTranscript(40, 10, [{ prompt: "hi", response: [] }], 0);
+		assert.equal(pending.length, 10);
+		assert.equal(pending.every((line, index) => index < 3 || plain(line).trim() === ""), true);
 	});
 
 	it("上一条回复和下一条提示之间留一行间距", () => {
@@ -123,10 +138,10 @@ describe("对话流", () => {
 			0,
 		);
 
-		assert.ok(plain(lines[3] ?? "").includes("x"));
-		assert.equal((lines[4] ?? "").includes(PROMPT_BG), false);
-		assert.ok((lines[5] ?? "").includes(PROMPT_BG));
-		assert.ok(plain(lines[6] ?? "").startsWith(" › two"));
+		assert.ok(plain(lines[4] ?? "").includes("x"));
+		assert.equal((lines[5] ?? "").includes(PROMPT_BG), false);
+		assert.ok((lines[6] ?? "").includes(PROMPT_BG));
+		assert.ok(plain(lines[7] ?? "").startsWith(" › two"));
 	});
 
 	it("内容只超出少量行时，滚动仍然逐行移动内容", () => {
@@ -142,10 +157,11 @@ describe("对话流", () => {
 			.join("\n");
 
 		assert.notEqual(at1, at2);
-		// 提示吸顶后，第一行内容被盖住，视口里从第二行开始
-		assert.equal(at1.includes("r1"), false);
-		assert.ok(at1.includes("r2"));
+		// 提示吸顶后，提示块与正文之间的空行先被盖住，视口从正文第一行开始
+		assert.ok(at1.includes("r1"));
+		assert.equal(at1.includes("r6"), false);
 		assert.ok(at2.includes("r3"));
+		assert.equal(at2.includes("r1"), false);
 	});
 
 	it("内容未超出视口时不显示滚动条，也不留可滚的空白", () => {
@@ -171,9 +187,9 @@ describe("对话流", () => {
 			{ prompt: "b", response: [] },
 		]);
 
-		assert.equal(metrics.totalLines, 8);
-		assert.equal(metrics.scrollLines, 11);
-		assert.equal(metrics.lastPromptStart, 5);
+		assert.equal(metrics.totalLines, 9);
+		assert.equal(metrics.scrollLines, 12);
+		assert.equal(metrics.lastPromptStart, 6);
 	});
 
 	it("启动警告作为对话流顶部的系统消息显示", () => {
