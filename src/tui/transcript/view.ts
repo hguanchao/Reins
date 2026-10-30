@@ -191,6 +191,18 @@ export function thinkingHeaderInView(
 	return view.thinkingHeaders.find((header) => header.start === lineIndex)?.block;
 }
 
+/** 命中整个思考区块：标题与展开后的正文都算。 */
+export function thinkingBlockInView(
+	view: TranscriptView,
+	height: number,
+	scrollTop: number,
+	row: number,
+): TranscriptThinking | undefined {
+	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
+	if (lineIndex === undefined) return undefined;
+	return view.thinkingHeaders.find((entry) => lineIndex >= entry.start && lineIndex < entry.end)?.block;
+}
+
 /** 命中工具组头；成员行和普通工具行都不算。 */
 export function toolGroupHeaderAtRow(
 	terminalWidth: number,
@@ -235,6 +247,18 @@ export function toolHeaderInView(
 	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
 	if (lineIndex === undefined) return undefined;
 	return view.toolHeaders.find((header) => header.start === lineIndex)?.tool;
+}
+
+/** 命中整条工具：标题与展开后的详情/结果都算。 */
+export function toolBlockInView(
+	view: TranscriptView,
+	height: number,
+	scrollTop: number,
+	row: number,
+): TranscriptTool | undefined {
+	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
+	if (lineIndex === undefined) return undefined;
+	return view.toolHeaders.find((entry) => lineIndex >= entry.start && lineIndex < entry.end)?.tool;
 }
 
 /** 命中收尾任务卡的头行；双击在收起与展开之间切换。 */
@@ -282,7 +306,7 @@ export function subagentFailureRowInView(
 ): { readonly group: TranscriptView["subagentHeaders"][number]["group"]; readonly callId: string } | undefined {
 	const lineIndex = lineIndexAtRow(view, height, scrollTop, row);
 	if (lineIndex === undefined) return undefined;
-	return view.subagentFailureRows.find((entry) => entry.start === lineIndex);
+	return view.subagentFailureRows.find((entry) => lineIndex >= entry.start && lineIndex < entry.end);
 }
 
 function contentWidth(terminalWidth: number): number {
@@ -364,11 +388,11 @@ function build(
 	// 这些行有底色但没有行号列：复制时不能按详情色带的规则剥掉行首内容
 	const plainRows = new Set<number>();
 	const prompts: PromptRange[] = base === undefined ? [] : [...base.view.prompts];
-	const thinkingHeaders: { start: number; block: TranscriptThinking }[] =
+	const thinkingHeaders: { start: number; end: number; block: TranscriptThinking }[] =
 		base === undefined ? [] : [...base.view.thinkingHeaders];
 	const groupHeaders: { start: number; group: TranscriptToolGroup }[] =
 		base === undefined ? [] : [...base.view.groupHeaders];
-	const toolHeaders: { start: number; tool: TranscriptTool }[] =
+	const toolHeaders: { start: number; end: number; tool: TranscriptTool }[] =
 		base === undefined ? [] : [...base.view.toolHeaders];
 	const liveLines = base === undefined ? new Map<number, LiveSubagentLine>() : new Map(base.view.liveLines);
 	const todoHeaders: { start: number; card: TranscriptView["todoHeaders"][number]["card"] }[] =
@@ -379,6 +403,7 @@ function build(
 		base === undefined ? [] : [...base.view.subagentHeaders];
 	const subagentFailureRows: {
 		start: number;
+		end: number;
 		group: TranscriptView["subagentHeaders"][number]["group"];
 		callId: string;
 	}[] = base === undefined ? [] : [...base.view.subagentFailureRows];
@@ -422,14 +447,12 @@ function build(
 				const blockLines = thinkingBlockLines(line, width);
 				lines.push(...blockLines);
 				for (let offset = 0; offset < blockLines.length; offset += 1) plainRows.add(blockStart + offset);
-				thinkingHeaders.push({ start: blockStart, block: line });
+				thinkingHeaders.push({ start: blockStart, end: lines.length, block: line });
 				continue;
 			}
 			if (line.kind === "tool") {
 				const toolStart = lines.length;
 				lines.push(...toolLines(line, width));
-				// 有命令全文或有结果，就有可展开的东西；两样都没有就不登记命中区
-				if (hasExpandableDetail(line)) toolHeaders.push({ start: toolStart, tool: line });
 				if (line.resultExpanded && line.result !== undefined) {
 					const resultStart = lines.length;
 					const resultLines = toolResultLines(line, width);
@@ -437,6 +460,11 @@ function build(
 					for (let offset = 0; offset < resultLines.length; offset += 1) {
 						plainRows.add(resultStart + offset);
 					}
+				}
+				// 有命令全文或有结果，就有可展开的东西；区间要等详情/结果行都排完再登记，
+				// 展开后点正文里的任意一行都能收起
+				if (hasExpandableDetail(line)) {
+					toolHeaders.push({ start: toolStart, end: lines.length, tool: line });
 				}
 				continue;
 			}
@@ -446,9 +474,13 @@ function build(
 				lines.push(...rendered.lines);
 				// 单个成员直接按普通工具行渲染，没有组头可点
 				if (line.members.length >= 2) groupHeaders.push({ start: groupStart, group: line });
-				for (const member of rendered.memberStarts) {
+				for (const member of rendered.memberSpans) {
 					if (hasExpandableDetail(member.tool)) {
-						toolHeaders.push({ start: groupStart + member.start, tool: member.tool });
+						toolHeaders.push({
+							start: groupStart + member.start,
+							end: groupStart + member.end,
+							tool: member.tool,
+						});
 					}
 				}
 				continue;
@@ -473,7 +505,12 @@ function build(
 				// 失败行登记双击命中:展开/收起失败原因。failure.start 已经是绝对行号
 				// （subagentGroupLines 内部用传入的 groupStart 算过），不能再加一次偏移。
 				for (const failure of rendered.failureRows) {
-					subagentFailureRows.push({ start: failure.start, group: line, callId: failure.callId });
+					subagentFailureRows.push({
+						start: failure.start,
+						end: failure.end,
+						group: line,
+						callId: failure.callId,
+					});
 				}
 				continue;
 			}

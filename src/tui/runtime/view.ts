@@ -2,10 +2,10 @@ import {
 	planHeaderInView,
 	subagentFailureRowInView,
 	subagentGroupHeaderInView,
-	thinkingHeaderInView,
+	thinkingBlockInView,
 	todoHeaderInView,
+	toolBlockInView,
 	toolGroupHeaderInView,
-	toolHeaderInView,
 } from "#src/tui/transcript.ts";
 import { invalidateTranscriptPrefix, markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
 import { openPlanReview } from "#src/tui/runtime/pages.ts";
@@ -44,7 +44,7 @@ export function togglingTranscriptAt(
 		return true;
 	}
 
-	const block = thinkingHeaderInView(view, mainHeight, state.scrollTop, row);
+	const block = thinkingBlockInView(view, mainHeight, state.scrollTop, row);
 	if (block !== undefined) {
 		block.expanded = !block.expanded;
 		refresh();
@@ -58,6 +58,13 @@ export function togglingTranscriptAt(
 	const group = toolGroupHeaderInView(view, mainHeight, state.scrollTop, row);
 	if (group !== undefined) {
 		group.expanded = !group.expanded;
+		// 组头收起后下级也收起：重新展开时成员不会留着上一次摊开的详情
+		if (!group.expanded) {
+			for (const member of group.members) {
+				member.detailExpanded = false;
+				member.resultExpanded = false;
+			}
+		}
 		refresh();
 		state.lastClick = undefined;
 		state.follow = false;
@@ -65,7 +72,7 @@ export function togglingTranscriptAt(
 		return true;
 	}
 
-	const tool = toolHeaderInView(view, mainHeight, state.scrollTop, row);
+	const tool = toolBlockInView(view, mainHeight, state.scrollTop, row);
 	if (tool !== undefined) {
 		// 一次双击把这一行藏着的东西打开。有 fullDetail 时展开的就是它本身
 		// （文件类工具的结果、或被截短的命令），不再另铺一遍原始结果
@@ -93,6 +100,10 @@ export function togglingTranscriptAt(
 	const subagents = subagentGroupHeaderInView(view, mainHeight, state.scrollTop, row);
 	if (subagents !== undefined) {
 		subagents.expanded = subagents.expanded !== true;
+		// 与工具组一致：组收起时把成员的失败详情也收起
+		if (!subagents.expanded) {
+			for (const member of subagents.members) member.expanded = false;
+		}
 		refresh();
 		state.lastClick = undefined;
 		state.follow = false;

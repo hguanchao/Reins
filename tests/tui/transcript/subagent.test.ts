@@ -68,8 +68,11 @@ describe("子代理组", () => {
 	it("失败的清单行双击展开原因色带,耗时隐藏", () => {
 		const failed = group({ expanded: true });
 		const view = buildTranscriptView(60, [{ prompt: "go", response: [failed] }], undefined);
-		// 命中登记在失败行首
+		// 收起时命中区间只有失败行本身
 		assert.equal(view.subagentFailureRows.length, 1);
+		const collapsedFailure = view.subagentFailureRows[0];
+		assert.ok(collapsedFailure !== undefined);
+		assert.equal(collapsedFailure.end, collapsedFailure.start + 1);
 
 		const member = failed.members[2];
 		if (member === undefined || member.status !== "failed") throw new Error("expected a failed member");
@@ -79,8 +82,12 @@ describe("子代理组", () => {
 		const headIndex = lines.findIndex((line) => line.includes("× Subagent 3"));
 		assert.ok(headIndex >= 0);
 		// 展开后:色带里是原因全文,且失败行不再显示耗时
-		const band = lines.slice(headIndex + 1).find((line) => line.includes("upstream 500"));
-		assert.ok(band !== undefined);
+		const bandIndex = lines.findIndex((line) => line.includes("upstream 500"));
+		assert.ok(bandIndex > headIndex);
+		// 展开后的原因色带也在命中区间里：点正文任意一行都能收起
+		const expandedFailure = view2.subagentFailureRows[0];
+		assert.ok(expandedFailure !== undefined);
+		assert.ok(bandIndex >= expandedFailure.start && bandIndex < expandedFailure.end);
 		// 整行失败色:未剥色的行头带失败色码
 		assert.ok((view2.lines[headIndex] ?? "").includes(THEME.error));
 		assert.equal(lines[headIndex]?.includes("22.6s"), false);

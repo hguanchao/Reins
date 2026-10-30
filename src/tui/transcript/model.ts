@@ -95,6 +95,11 @@ export function collapseToolGroups(lines: TranscriptLine[]): void {
 	for (const line of lines) {
 		if (typeof line === "object" && line !== null && line.kind === "toolGroup") {
 			line.expanded = false;
+			// 组收起后下级也收起：重新展开时成员回到折叠态，不保留上一次摊开的详情
+			for (const member of line.members) {
+				member.detailExpanded = false;
+				member.resultExpanded = false;
+			}
 		}
 	}
 }

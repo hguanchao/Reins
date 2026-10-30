@@ -109,6 +109,22 @@ describe("工具组", () => {
 		assert.equal(next.expanded, false);
 	});
 
+	it("收起组时把成员的展开状态一并清掉", () => {
+		const lines: TranscriptLine[] = [];
+		appendToolLine(lines, read("a"), true);
+		appendToolLine(lines, read("b"), true);
+		const group = groupAt(lines, 0);
+		const [first, second] = group.members;
+		assert.ok(first !== undefined && second !== undefined);
+		first.resultExpanded = true;
+		second.detailExpanded = true;
+
+		collapseToolGroups(lines);
+		assert.equal(group.expanded, false);
+		assert.equal(first.resultExpanded, false);
+		assert.equal(second.detailExpanded, false);
+	});
+
 	it("新组默认收起，不传展开参数时也是折叠的", () => {
 		const lines: TranscriptLine[] = [];
 		appendToolLine(lines, read("a"));

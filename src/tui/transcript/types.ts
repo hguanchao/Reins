@@ -193,12 +193,16 @@ export interface TranscriptView {
 	/** 每行在选区里的行为，与 lines 一一对应 */
 	readonly lineMeta: readonly LineMeta[];
 	readonly prompts: PromptRange[];
-	/** 每个思考区块标题在 lines 里的起点，双击命中使用 */
-	readonly thinkingHeaders: readonly { readonly start: number; readonly block: TranscriptThinking }[];
+	/** 每个思考区块在 lines 里的行区间，双击命中使用（展开后点正文也能收起） */
+	readonly thinkingHeaders: readonly {
+		readonly start: number;
+		readonly end: number;
+		readonly block: TranscriptThinking;
+	}[];
 	/** 每个工具组头在 lines 里的起点，双击命中使用 */
 	readonly groupHeaders: readonly { readonly start: number; readonly group: TranscriptToolGroup }[];
-	/** 每条可展开的工具行在 lines 里的起点，双击命中使用 */
-	readonly toolHeaders: readonly { readonly start: number; readonly tool: TranscriptTool }[];
+	/** 每条可展开的工具在 lines 里的行区间，双击命中使用（展开后点详情也能收起） */
+	readonly toolHeaders: readonly { readonly start: number; readonly end: number; readonly tool: TranscriptTool }[];
 	/**
 	 * 运行中子代理清单行的动画原料：lines 行号 → 重建所需的内容。
 	 *
@@ -215,9 +219,10 @@ export interface TranscriptView {
 		readonly start: number;
 		readonly group: TranscriptSubagentGroup;
 	}[];
-	/** 每条失败的子代理清单行在 lines 里的起点，双击展开/收起失败原因使用 */
+	/** 每条失败的子代理清单行在 lines 里的行区间，双击展开/收起失败原因使用 */
 	readonly subagentFailureRows: readonly {
 		readonly start: number;
+		readonly end: number;
 		readonly group: TranscriptSubagentGroup;
 		readonly callId: string;
 	}[];

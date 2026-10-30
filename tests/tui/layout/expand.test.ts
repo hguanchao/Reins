@@ -349,6 +349,134 @@ describe("对话流展开", () => {
 		}
 	});
 
+	it("双击展开后的思考正文也能收起", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		const plainLines = (): string[] => frameLines(output).map(plain);
+		const rowOf = (needle: string): number =>
+			plainLines().findIndex((line) => line.includes(needle)) + 1;
+
+		try {
+			input.emit("data", Buffer.from("你好\r"));
+			agent.emit({ type: "reasoning_delta", text: "line1\nline2\nline3\nline4\nline5\nline6" });
+			t.mock.timers.tick(100);
+
+			const headerRow = rowOf("Thinking…");
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headerRow}M`));
+			assert.ok(plainLines().join("\n").includes("line1"));
+
+			// 双击正文里的任意一行：整块收起，而不是只能点标题
+			const bodyRow = rowOf("line1");
+			input.emit("data", Buffer.from(`\x1b[<0;5;${bodyRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${bodyRow}M`));
+			assert.equal(plainLines().join("\n").includes("line1"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("双击展开后的工具详情也能收起", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		const plainLines = (): string[] => frameLines(output).map(plain);
+		const rowOf = (needle: string): number =>
+			plainLines().findIndex((line) => line.includes(needle)) + 1;
+
+		try {
+			input.emit("data", Buffer.from("读一下\r"));
+			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
+			agent.emit({
+				type: "tool_end",
+				callId: "c1",
+				name: "read",
+				isError: false,
+				durationMs: 1,
+				summary: "A-BODY",
+				content: "A-BODY",
+				details: { startLine: 1, endLine: 1, totalLines: 1 },
+			});
+			t.mock.timers.tick(100);
+
+			const headRow = rowOf("Read  a.ts");
+			assert.ok(headRow > 0);
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${headRow}M`));
+			assert.ok(plainLines().join("\n").includes("A-BODY"));
+
+			// 双击详情正文：整条工具收起
+			const bodyRow = rowOf("A-BODY");
+			input.emit("data", Buffer.from(`\x1b[<0;5;${bodyRow}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${bodyRow}M`));
+			assert.equal(plainLines().join("\n").includes("A-BODY"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("组头收起后成员的详情也收起", (t) => {
+		t.mock.timers.enable({ apis: ["setInterval"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
+
+		const plainLines = (): string[] => frameLines(output).map(plain);
+		const rowOf = (needle: string): number =>
+			plainLines().findIndex((line) => line.includes(needle)) + 1;
+		const doubleClick = (row: number): void => {
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
+		};
+
+		try {
+			input.emit("data", Buffer.from("看看两个文件\r"));
+			for (const [callId, path, body] of [
+				["c1", "src/a.ts", "A-BODY"],
+				["c2", "src/b.ts", "B-BODY"],
+			] as const) {
+				agent.emit({ type: "tool_start", callId, name: "read", args: { path } });
+				agent.emit({
+					type: "tool_end",
+					callId,
+					name: "read",
+					isError: false,
+					durationMs: 1,
+					summary: body,
+					content: body,
+					details: { startLine: 1, endLine: 1, totalLines: 1 },
+				});
+			}
+			t.mock.timers.tick(100);
+
+			// 展开组，再展开第一个成员
+			doubleClick(rowOf("Read 2 files"));
+			doubleClick(rowOf("Read  a.ts"));
+			assert.ok(plainLines().join("\n").includes("A-BODY"));
+
+			// 收起组头，再展开：成员的详情不该留着
+			doubleClick(rowOf("Read 2 files"));
+			doubleClick(rowOf("Read 2 files"));
+			assert.equal(plainLines().join("\n").includes("A-BODY"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
 	it("双击展开的工具组成员，显示该成员的完整参数", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 

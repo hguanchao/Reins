@@ -39,17 +39,20 @@ export function subagentGroupLines(
 	width: number,
 	live: Map<number, LiveSubagentLine>,
 	start: number,
-): { readonly lines: readonly string[]; readonly failureRows: readonly { readonly start: number; readonly callId: string }[] } {
+): {
+	readonly lines: readonly string[];
+	readonly failureRows: readonly { readonly start: number; readonly end: number; readonly callId: string }[];
+} {
 	const lines: string[] = [subagentGroupHead(group, width)];
-	const failureRows: { start: number; callId: string }[] = [];
+	const failureRows: { start: number; end: number; callId: string }[] = [];
 
 	if (group.expanded !== true) return { lines, failureRows };
 	group.members.forEach((member, index) => {
 		const memberStart = start + lines.length;
 		lines.push(...subagentMemberLines(member, width, index + 1));
-		// 失败行登记双击命中(行首,续行不参与)
+		// 失败行登记整段区间:展开后的原因色带也要能双击收起
 		if (member.status === "failed" && member.failure !== undefined) {
-			failureRows.push({ start: memberStart, callId: member.callId });
+			failureRows.push({ start: memberStart, end: start + lines.length, callId: member.callId });
 		}
 		// 运行中的清单行登记动画原料:渲染期换转圈与扫光
 		if (member.status === "running") {

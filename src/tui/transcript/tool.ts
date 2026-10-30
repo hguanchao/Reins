@@ -39,27 +39,32 @@ import type { TranscriptTool, TranscriptToolGroup } from "#src/tui/transcript/ty
  * 工具组的屏幕行。
  *
  * 两个以上成员才有组头：运行时展开，回合结束收起；单个成员直接按普通工具行渲染。
- * 同时给出成员标题行在返回行数组里的偏移，供双击命中注册。
+ * 同时给出每个成员占用的行区间，供双击命中注册——成员展开后的详情行也要能双击收起。
  */
 export function toolGroupLines(
 	group: TranscriptToolGroup,
 	width: number,
 ): {
 	readonly lines: readonly string[];
-	readonly memberStarts: readonly { readonly start: number; readonly tool: TranscriptTool }[];
+	readonly memberSpans: readonly {
+		readonly start: number;
+		readonly end: number;
+		readonly tool: TranscriptTool;
+	}[];
 } {
 	const lines: string[] = [];
-	const memberStarts: { start: number; tool: TranscriptTool }[] = [];
+	const memberSpans: { start: number; end: number; tool: TranscriptTool }[] = [];
 
 	if (group.members.length < 2) {
 		const [tool] = group.members;
-		if (tool === undefined) return { lines, memberStarts };
-		memberStarts.push({ start: lines.length, tool });
+		if (tool === undefined) return { lines, memberSpans };
+		const start = lines.length;
 		lines.push(...toolLines(tool, width));
 		if (tool.resultExpanded && tool.result !== undefined) {
 			lines.push(...toolResultLines(tool, width));
 		}
-		return { lines, memberStarts };
+		memberSpans.push({ start, end: lines.length, tool });
+		return { lines, memberSpans };
 	}
 
 	const marker = group.expanded ? TOOL_GROUP_EXPANDED_MARKER : TOOL_MARKER;
@@ -69,14 +74,15 @@ export function toolGroupLines(
 
 	if (group.expanded) {
 		for (const member of group.members) {
-			memberStarts.push({ start: lines.length, tool: member });
+			const start = lines.length;
 			lines.push(...toolLines(member, width, TOOL_GROUP_MEMBER_INDENT));
 			if (member.resultExpanded && member.result !== undefined) {
 				lines.push(...toolResultLines(member, width, TOOL_GROUP_MEMBER_INDENT));
 			}
+			memberSpans.push({ start, end: lines.length, tool: member });
 		}
 	}
-	return { lines, memberStarts };
+	return { lines, memberSpans };
 }
 
 /**
