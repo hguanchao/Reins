@@ -161,6 +161,7 @@ describe("pi 扩展装载", () => {
 				skillDirectories: [],
 				mcpServers: [],
 				extensions: ["index.ts"],
+				cordis: false,
 				unsupported: [],
 				warnings: [],
 			},

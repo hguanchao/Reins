@@ -154,7 +154,7 @@ describe("声明式插件发现", () => {
 		assert.match(scan.failures[0]!.message, /needs either command or url/);
 	});
 
-	it("Cordis 代码插件明确报为不支持，而不是当成没装", () => {
+	it("Cordis 插件按 dsh 语义识别，交给 dsh 运行时而不是报错", () => {
 		const base = workspace();
 		pluginOf(base, "dsh-tool", "package.json", {
 			name: "@deepseek-ai/dsh-tool-todo",
@@ -162,9 +162,11 @@ describe("声明式插件发现", () => {
 		});
 
 		const scan = scanDeclarativePlugins(base);
-		assert.deepEqual(scan.plugins, []);
-		assert.equal(scan.failures.length, 1);
-		assert.match(scan.failures[0]!.message, /Cordis code plugin/);
+		assert.deepEqual(scan.failures, []);
+		const plugin = scan.plugins[0]!;
+		assert.equal(plugin.cordis, true);
+		assert.equal(plugin.name, "@deepseek-ai/dsh-tool-todo");
+		assert.deepEqual(plugin.extensions, []);
 	});
 
 	it("同名插件只收第一个，其余报冲突", () => {
@@ -200,6 +202,7 @@ describe("插件 MCP 合并", () => {
 			skillDirectories: [],
 			mcpServers: [{ ...configured, command: "from-plugin" }],
 			extensions: [],
+			cordis: false,
 			unsupported: [],
 			warnings: [],
 		};
@@ -218,6 +221,7 @@ describe("插件 MCP 合并", () => {
 			skillDirectories: [],
 			mcpServers: [{ ...configured, name: "extra" }],
 			extensions: [],
+			cordis: false,
 			unsupported: [],
 			warnings: [],
 		};
@@ -243,6 +247,7 @@ describe("装载报告", () => {
 						skillDirectories: [{ directory: "/p/skills", single: false }],
 						mcpServers: [],
 						extensions: [],
+						cordis: false,
 						unsupported: ["hooks: Reins has no hook event points"],
 						warnings: [],
 					},
@@ -268,6 +273,7 @@ describe("装载报告", () => {
 					skillDirectories: [],
 					mcpServers: [],
 					extensions: [],
+					cordis: false,
 					unsupported: [],
 					warnings: [],
 				},

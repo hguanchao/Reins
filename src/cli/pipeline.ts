@@ -33,7 +33,8 @@ import {
 	type DeclarativeScan,
 } from "../plugins/declarative.ts";
 import { describePiOutcomes, piExtensionPlugin, type PiExtensionCollector } from "../plugins/pi-runtime.ts";
-import { getAgentDir } from "../plugins/pi-shim/api.ts";
+import { describeDshOutcomes, dshExtensionPlugin, type DshExtensionCollector } from "../plugins/dsh-runtime.ts";
+import { getAgentDir as getDshAgentDir } from "../plugins/pi-shim/api.ts";
 import { writeStderr } from "./output.ts";
 
 /**
@@ -263,22 +264,30 @@ export async function assemblePipeline(options: {
 
 	reportExternalFailures(await loadExternalPlugins(host, disabledPlugins(config)));
 
-	// pi 扩展走同一条外部插件管线：同一信任级别、同一失败收集。装载结论并入报告。
-	const collectors: PiExtensionCollector[] =
+	// pi 扩展与 dsh 插件走同一条外部插件管线：同一信任级别、同一失败收集。装载结论并入报告。
+	const extensionContext =
 		options.extensionContext === undefined
+			? undefined
+			: {
+					...options.extensionContext,
+					cwd: workRoot,
+					sessionDir: getDshAgentDir(),
+					notify: (message: string) => writeStderr(`${message}\n`),
+				};
+	const piCollectors: PiExtensionCollector[] =
+		extensionContext === undefined
 			? []
 			: declarative.plugins
-					.filter((plugin) => plugin.extensions.length > 0)
-					.map((plugin) =>
-						piExtensionPlugin(plugin, {
-							cwd: workRoot,
-							mode: options.extensionContext!.mode,
-							projectTrusted: options.extensionContext!.projectTrusted,
-							sessionDir: getAgentDir(),
-							notify: (message) => writeStderr(`${message}\n`),
-						}),
-					);
-	const piFailures = collectors.length === 0 ? [] : await host.loadExternal(collectors.map((item) => item.plugin));
+					.filter((plugin) => !plugin.cordis && plugin.extensions.length > 0)
+					.map((plugin) => piExtensionPlugin(plugin, extensionContext));
+	const dshCollectors: DshExtensionCollector[] =
+		extensionContext === undefined
+			? []
+			: declarative.plugins
+					.filter((plugin) => plugin.cordis && plugin.extensions.length > 0)
+					.map((plugin) => dshExtensionPlugin(plugin, extensionContext));
+	const piFailures = piCollectors.length === 0 ? [] : await host.loadExternal(piCollectors.map((item) => item.plugin));
+	const dshFailures = dshCollectors.length === 0 ? [] : await host.loadExternal(dshCollectors.map((item) => item.plugin));
 	options.onStage?.("external");
 
 	try {
@@ -294,7 +303,8 @@ export async function assemblePipeline(options: {
 			declarative,
 			pluginReport: [
 				...describeDeclarativeScan(declarative, mcp.warnings),
-				...describePiOutcomes(collectors, piFailures),
+				...describePiOutcomes(piCollectors, piFailures),
+				...describeDshOutcomes(dshCollectors, dshFailures),
 			],
 		};
 	} catch (error) {

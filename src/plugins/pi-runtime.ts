@@ -1,6 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
+
+import { writeForwarders } from "./shims.ts";
+import { contextProxy } from "./missing.ts";
 
 import type { JsonSchema } from "../tools/schema.ts";
 import type { ToolResult } from "../tools/contract.ts";
@@ -50,32 +52,11 @@ const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 /**
  * 在插件根下铺好包名解析用的转发文件。
  *
- * 转发文件必须是 `.js`：Node 拒绝对 node_modules 下的 TypeScript 做类型剥离，而它们指向的
- * 替身文件在宿主源码目录里，不受这个限制。幂等：内容没变就不写。
+ * npm 安装落盘的真包优先（转发只补缺失）；转发文件是 `.js`——Node 拒绝对 node_modules 下的
+ * TypeScript 做类型剥离，而替身文件在宿主源码目录里，不受这个限制。内容幂等：没变就不写。
  */
 export function ensureShimPackages(root: string, shimDir: string = join(import.meta.dirname ?? ".", "pi-shim")): void {
-	for (const shim of SHIM_PACKAGES) {
-		const directory = join(root, "node_modules", shim.name);
-		const forwarder = `export * from ${JSON.stringify(pathToFileURL(join(shimDir, shim.module)).href)};\n`;
-		const manifest = `${JSON.stringify(
-			{ name: shim.name, version: "0.0.0-reins", type: "module", exports: { ".": "./index.js" } },
-			null,
-			2,
-		)}\n`;
-
-		writeIfChanged(join(directory, "index.js"), forwarder);
-		writeIfChanged(join(directory, "package.json"), manifest);
-	}
-}
-
-function writeIfChanged(path: string, contents: string): void {
-	try {
-		if (readFileSync(path, "utf8") === contents) return;
-	} catch {
-		// 文件不存在：往下写
-	}
-	mkdirSync(join(path, ".."), { recursive: true });
-	writeFileSync(path, contents, "utf8");
+	writeForwarders(root, shimDir, SHIM_PACKAGES);
 }
 
 /** 加载一个 pi 扩展：构造 `pi` 对象、执行默认导出、返回注册到了什么。 */
@@ -289,23 +270,7 @@ function blockText(block: unknown): string | undefined {
 }
 
 /** 缺失成员的统一处理：访问即返回「调用就报错」的函数，完整名字记进装载结果。 */
-function contextProxy(
-	base: Record<PropertyKey, unknown>,
-	prefix: string,
-	markUnavailable: (name: string) => void,
-): unknown {
-	return new Proxy(base, {
-		get(target, property) {
-			if (property === "then") return undefined;
-			if (property in target) return target[property];
-			const fullName = prefix === "" ? String(property) : `${prefix}.${String(property)}`;
-			return (..._args: unknown[]): never => {
-				markUnavailable(fullName);
-				throw new Error(`${fullName} is not available in Reins`);
-			};
-		},
-	});
-}
+
 
 function isObject(value: unknown): value is Record<PropertyKey, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);

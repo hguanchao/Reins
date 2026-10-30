@@ -33,6 +33,8 @@ export interface DeclarativePlugin {
 	readonly mcpServers: readonly McpServerConfig[];
 	/** pi 扩展的入口文件（绝对路径）；由 pi-runtime 装载 */
 	readonly extensions: readonly string[];
+	/** 依赖 @deepseek-ai/cordis 的 dsh 插件；由 dsh-runtime 装载 */
+	readonly cordis: boolean;
 	/** 已识别但没有对应机制的部件，一句人话 */
 	readonly unsupported: readonly string[];
 	readonly warnings: readonly string[];
@@ -138,14 +140,29 @@ const CONVENTIONS: readonly { readonly path: string; readonly label: string }[] 
 
 function readPlugin(root: string, directoryName: string): DeclarativePlugin | undefined {
 	const packageJson = readJsonFile(join(root, "package.json"));
-	assertNotCodePlugin(packageJson, directoryName);
+	const cordis = isCordisPlugin(packageJson);
 
 	const manifest = readManifest(root, directoryName, packageJson);
-	if (manifest === undefined) return undefined;
+	if (manifest === undefined) {
+		// Cordis 包不写 plugin.json 也不带约定目录：package.json 本身就是它的清单
+		if (!cordis) return undefined;
+		return {
+			name: text(packageJson?.["name"]) ?? directoryName,
+			root,
+			manifest: "package.json",
+			skillDirectories: [],
+			mcpServers: [],
+			extensions: entryFiles(packageJson, root, []),
+			cordis,
+			unsupported: [],
+			warnings: [],
+		};
+	}
 
 	const warnings: string[] = [];
 	const skills = resolveSkillDirectories(root, manifest.skills, warnings);
-	const extensions = resolveExtensionFiles(root, manifest.extensions, warnings);
+	const declaredExtensions = manifest.extensions.length > 0 ? manifest.extensions : entryFiles(packageJson, root, manifest.extensions);
+	const extensions = resolveExtensionFiles(root, declaredExtensions, warnings);
 	const mcp = readMcpServers(manifest, root, warnings);
 	const unsupported = [...manifest.unsupported];
 
@@ -163,28 +180,36 @@ function readPlugin(root: string, directoryName: string): DeclarativePlugin | un
 		skillDirectories: skills,
 		mcpServers: mcp,
 		extensions,
+		cordis,
 		unsupported,
 		warnings,
 	};
 }
 
-/**
- * Cordis 代码插件不是声明式插件。
- *
- * 它的能力写在 TS 模块里，靠依赖注入容器提供 shell、jobs、会话投影等服务；宿主没有这套容器，
- * 装上也跑不起来。这里明确报错而不是当成「不是插件」跳过——使用者需要知道为什么没生效。
- */
-function assertNotCodePlugin(packageJson: Record<string, unknown> | undefined, directoryName: string): void {
-	if (packageJson === undefined) return;
+/** Cordos 包的入口：main 字段，缺省时按 index 的常见名字找。 */
+function entryFiles(
+	packageJson: Record<string, unknown> | undefined,
+	root: string,
+	fallback: readonly string[],
+): readonly string[] {
+	if (fallback.length > 0) return fallback;
+	if (packageJson === undefined) return [];
+	const main = text(packageJson["main"]) ?? text((packageJson["exports"] as Record<string, unknown> | undefined)?.["."]);
+	if (main !== undefined) return [main];
+	for (const candidate of ["index.js", "index.ts"]) {
+		if (isFile(join(root, candidate))) return [candidate];
+	}
+	return [];
+}
+
+/** 是否依赖 Cordis 容器：这类插件按 dsh 语义装载，由 dsh-runtime 提供 ctx。 */
+function isCordisPlugin(packageJson: Record<string, unknown> | undefined): boolean {
+	if (packageJson === undefined) return false;
 	for (const field of ["peerDependencies", "dependencies"] as const) {
 		const dependencies = packageJson[field];
-		if (isObject(dependencies) && "@deepseek-ai/cordis" in dependencies) {
-			throw new Error(
-				`${directoryName} is a Cordis code plugin (it depends on @deepseek-ai/cordis); ` +
-					"Reins only loads declarative plugins (skills, MCP servers, commands, agents)",
-			);
-		}
+		if (isObject(dependencies) && "@deepseek-ai/cordis" in dependencies) return true;
 	}
+	return false;
 }
 
 function readManifest(
