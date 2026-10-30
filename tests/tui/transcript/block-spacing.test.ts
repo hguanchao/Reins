@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { renderTranscript } from "#src/tui/transcript.ts";
-import type { TranscriptLine, TranscriptThinking, TranscriptTool } from "#src/tui/transcript.ts";
+import type { TranscriptLine, TranscriptThinking, TranscriptTool, TranscriptToolGroup } from "#src/tui/transcript.ts";
 
 
 function plain(line: string): string {
@@ -110,6 +110,75 @@ describe("块级间距", () => {
 		assert.equal(text.includes("\u001b"), false);
 		assert.ok(text.includes("first"));
 		assert.ok(text.includes("red"));
+	});
+
+	it("展开的思考块下方空一行，收起的保持紧凑", () => {
+		const expanded: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thought for 1.2s",
+			body: ["先读文件"],
+			partial: "",
+			running: false,
+			expanded: true,
+		};
+		const collapsed: TranscriptThinking = { ...expanded, expanded: false };
+		const tool: TranscriptTool = { kind: "tool", name: "Read", detail: "a" };
+
+		const expandedRows = rowsOf([expanded, tool]);
+		const bodyRow = expandedRows.findIndex((line) => line.includes("先读文件"));
+		const toolRow = expandedRows.findIndex((line) => line.includes("› Read"));
+		// 正文、色带下留白、块间距、下一条工具
+		assert.equal(expandedRows[bodyRow + 1], "");
+		assert.equal(expandedRows[bodyRow + 2], "");
+		assert.equal(toolRow, bodyRow + 3);
+
+		const collapsedRows = rowsOf([collapsed, tool]);
+		const headerRow = collapsedRows.findIndex((line) => line.includes("Thought for 1.2s"));
+		const collapsedToolRow = collapsedRows.findIndex((line) => line.includes("› Read"));
+		assert.equal(collapsedToolRow, headerRow + 1);
+	});
+
+	it("展开的工具详情下方空一行", () => {
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a",
+			fullDetail: "a\nb",
+			detailExpanded: true,
+		};
+		const next: TranscriptTool = { kind: "tool", name: "Read", detail: "c" };
+		const rows = rowsOf([tool, next]);
+
+		const detailRow = rows.findIndex((line) => line.includes("b"));
+		const nextRow = rows.findIndex((line, index) => index > detailRow && line.includes("› Read") && line.includes("c"));
+		assert.equal(rows[detailRow + 2], "");
+		assert.equal(nextRow, detailRow + 3);
+	});
+
+	it("展开的工具组下方空一行", () => {
+		const group: TranscriptToolGroup = {
+			kind: "toolGroup",
+			expanded: true,
+			members: [
+				{ kind: "tool", name: "List", detail: "." },
+				{ kind: "tool", name: "Find", detail: "a" },
+			],
+		};
+		const thinking: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thought for 0.4s",
+			body: [],
+			partial: "",
+			running: false,
+			expanded: false,
+		};
+		const rows = rowsOf([group, thinking]);
+		const groupRow = rows.findIndex((line) => line.includes("◈"));
+		const thinkingRow = rows.findIndex((line) => line.includes("Thought for 0.4s"));
+
+		// 组头、两个成员、空行、下一条思考
+		assert.equal(rows[groupRow + 3], "");
+		assert.equal(thinkingRow, groupRow + 4);
 	});
 
 	it("思考块与正文之间空一行，标题与思考正文之间留一行色带", () => {

@@ -314,6 +314,8 @@ function responseBlockKind(line: TranscriptLine): ResponseBlockKind {
  */
 function needsBlockGap(previous: TranscriptLine, current: TranscriptLine): boolean {
 	if (isToolFailure(previous, current)) return false;
+	// 展开的块摊开了多行内容，紧接下一批会粘成一片：下面留一行默认背景再走类型判断
+	if (isExpandedBlock(previous)) return true;
 	const previousKind = responseBlockKind(previous);
 	const currentKind = responseBlockKind(current);
 	if (previousKind !== currentKind) {
@@ -328,6 +330,15 @@ function needsBlockGap(previous: TranscriptLine, current: TranscriptLine): boole
 		currentKind === "plan" ||
 		currentKind === "notice"
 	);
+}
+
+/** 这一行是否已经展开：思考全文、工具详情/结果、展开的组都算。 */
+function isExpandedBlock(line: TranscriptLine): boolean {
+	if (typeof line === "string") return false;
+	if (line.kind === "thinkingBlock") return line.expanded;
+	if (line.kind === "toolGroup" || line.kind === "subagentGroup") return line.expanded;
+	if (line.kind === "tool") return line.detailExpanded === true || line.resultExpanded === true;
+	return false;
 }
 
 /** 失败行是否属于上一条工具调用。 */
