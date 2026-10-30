@@ -6,7 +6,7 @@ import { after, describe, it } from "node:test";
 
 import type { AnyToolDefinition } from "../../src/tools/contract.ts";
 import type { PluginApi, PluginCommand } from "../../src/plugins/host.ts";
-import { dshExtensionPlugin, loadDshPlugin } from "../../src/plugins/dsh-runtime.ts";
+import { dshExtensionPlugin, loadDshPlugin, type DshExtensionContext } from "../../src/plugins/dsh-runtime.ts";
 
 const created: string[] = [];
 
@@ -59,11 +59,12 @@ const DSH_PLUGIN = [
 	"",
 ].join("\n");
 
-const CONTEXT = {
+const CONTEXT: DshExtensionContext = {
 	cwd: "C:\\work",
 	mode: "print" as const,
 	projectTrusted: false,
 	sessionDir: "C:\\sessions",
+	policyMode: "workspace-write",
 	notify: () => {},
 };
 
