@@ -1600,7 +1600,7 @@ describe("命令补全与选择面板", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("面板打开时连按两次 Ctrl+C 仍能退出", async () => {
+	it("面板打开时连按 Ctrl+C 仍能退出", async () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		const running = runTui({
@@ -1613,8 +1613,11 @@ describe("命令补全与选择面板", () => {
 
 		try {
 			input.emit("data", Buffer.from("/model\r"));
+			// 命令执行后输入框还留着 "/model "：第一次只清空，不该退出备用屏
 			pressCtrlC(input);
-			// 第一次只进入待确认状态，不该退出备用屏
+			assert.equal(output.chunks.some((chunk) => chunk.includes(LEAVE)), false);
+			// 第二次进入退出确认，仍然不离开
+			pressCtrlC(input);
 			assert.equal(output.chunks.some((chunk) => chunk.includes(LEAVE)), false);
 			pressCtrlC(input);
 			assert.ok(output.chunks.some((chunk) => chunk.includes(LEAVE)));

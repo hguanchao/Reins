@@ -50,7 +50,11 @@ export function resetStatusMeta(state: TuiState): void {
 	state.copyNotice = undefined;
 }
 
-export function scheduleStatusClear(state: TuiState, render: () => void): void {
+export function scheduleStatusClear(
+	state: TuiState,
+	render: () => void,
+	delayMs = STATUS_CLEAR_MS,
+): void {
 	// 错误与警告留给使用者读完：1.5 秒往往不够，而且不少错误只写状态行、不落对话流。
 	// 下一条状态或回合收尾会覆盖它，不会永久占位；提示类（notice）仍按原节奏消失。
 	if (state.statusTone === "warning" || state.statusTone === "error") return;
@@ -59,7 +63,7 @@ export function scheduleStatusClear(state: TuiState, render: () => void): void {
 		state.statusClearTimer = undefined;
 		clearStatus(state);
 		render();
-	}, STATUS_CLEAR_MS);
+	}, delayMs);
 }
 
 export function stopSpinner(state: TuiState): void {

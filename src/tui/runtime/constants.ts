@@ -1,5 +1,7 @@
 /** 第一次 Ctrl+C 之后等待第二次的时间；超过就回到未确认状态。 */
 export const EXIT_CONFIRM_WINDOW_MS = 2000;
+/** 第一次 Esc 之后等待第二次的时间；超过就重新计数，草稿不会被一下按掉。 */
+export const CLEAR_CONFIRM_WINDOW_MS = 800;
 /** 未完成的转义序列最多等这么久；超过就按普通输入处理，避免按键被无限挂起。 */
 export const INPUT_TAIL_TIMEOUT_MS = 50;
 /** 粘贴态下长时间没有新数据就复位：终端丢了结束标记时不能把键盘永久锁死。 */
@@ -23,3 +25,5 @@ export const WHEEL_STEP = 3;
 export const DOUBLE_CLICK_MS = 400;
 /** 一轮结束后状态行停留的时间。 */
 export const STATUS_CLEAR_MS = 1500;
+/** 清空后「可以撤销」的提示停留时间：比普通状态久一点，但也不能一直占着状态行。 */
+export const UNDO_HINT_MS = 4000;

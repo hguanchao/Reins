@@ -70,6 +70,11 @@ export const STATUS = {
 	checkpointsUnavailable: "Checkpoints aren't available in this workspace",
 	/** 计划已就绪但这一轮还没跑完，先把顺序说清楚。 */
 	approveWhileTurn: "Wait for the running turn to finish, then approve the plan",
+	/** 第一次 Esc 只是武装：整段草稿不该被一下按掉。 */
+	clearArmed: "Esc again to clear",
+	/** 清空之后给出撤销路径，否则使用者只会以为字丢了。 */
+	cleared: "Input cleared · Ctrl+Z to undo",
+	restored: "Input restored",
 } as const;
 
 /** 中断说明：先分类再出句子，拿不准就中性，绝不默认成「是你停的」。 */
@@ -500,7 +505,8 @@ export const KEY_HINTS: readonly KeyHintCopy[] = [
 	{ keys: "Shift+Tab", description: "Cycle the approval mode: ask, auto, yolo" },
 	{ keys: "Esc", description: "Close a menu or this page, or deny an approval" },
 	{ keys: "Esc", description: "Interrupt the turn · send the first queued message" },
-	{ keys: "Ctrl+C twice", description: "Exit the interface" },
+	{ keys: "Esc twice", description: "Clear the input · Ctrl+Z brings it back" },
+	{ keys: "Ctrl+C twice", description: "Exit the interface · a draft is cleared first" },
 	{ keys: "Up / Down", description: "Prompt history, menu navigation, or page scrolling" },
 	{ keys: "Left / Right", description: "Move the prompt cursor or approval selection" },
 	{ keys: "Home / End", description: "Move to the start or end of the input line" },

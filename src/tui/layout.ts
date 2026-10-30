@@ -115,7 +115,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		setStatus: (text, tone) => setStatus(state, text, tone),
 		clearStatus: () => clearStatus(state),
 		resetStatusMeta: () => resetStatusMeta(state),
-		scheduleStatusClear: () => scheduleStatusClear(state, host.render),
+		scheduleStatusClear: (delayMs) => scheduleStatusClear(state, host.render, delayMs),
 		markTranscriptDirty: () => markTranscriptDirty(state),
 		showPage: (kind) => {
 			state.openPage = kind;

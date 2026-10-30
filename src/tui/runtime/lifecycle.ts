@@ -58,6 +58,10 @@ export function cleanup(
 			clearTimeout(state.exitTimer);
 			state.exitTimer = undefined;
 		}
+		if (state.escClearTimer !== undefined) {
+			clearTimeout(state.escClearTimer);
+			state.escClearTimer = undefined;
+		}
 		if (state.spinnerTimer !== undefined) {
 			clearInterval(state.spinnerTimer);
 			state.spinnerTimer = undefined;

@@ -4,6 +4,7 @@ import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN,
 import type { MouseInput } from "#src/tui/input/keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
 import { STATUS } from "#src/tui/copy.ts";
+import { armClear, clearDraft, disarmClear, restoreDraft } from "#src/tui/input/draft.ts";
 import { pasteInsertion } from "#src/tui/paste.ts";
 import { menuPanelTop } from "#src/tui/runtime/approval.ts";
 import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
@@ -309,6 +310,12 @@ export function handleTranscriptInput(
 		return;
 	}
 
+	// Ctrl+Z：撤销上一次清空；清空之后又打了字就不动，免得覆盖更新的内容
+	if (withoutMouse === "\x1a" && !pasting && restoreDraft(host, state)) {
+		deps.render();
+		return;
+	}
+
 	// 输入框失焦后，回车只负责把焦点抢回来：这一下不提交，避免误发已经打好的内容。
 	// 只认单独的换行块，粘贴进来的多行内容不会被当成聚焦键吞掉。
 	if (!state.focused && (withoutMouse === "\r" || withoutMouse === "\n")) {
@@ -354,16 +361,24 @@ export function handleTranscriptInput(
 			deps.render();
 			return;
 		}
-		// 空闲时 Esc 清空输入框（含多行与图片附件）；回合中的 Esc 属于中止语义，不在这里抢。
-		// 输入框本来为空时 Esc 无事可做，落到后面的编辑路径也等于空操作。
-		if (withoutMouse === "\x1b" && state.activeTurn === undefined && state.input.length > 0) {
-			host.setInput("", 0);
-			state.pendingImages = [];
-			state.historyIndex = -1;
-			host.updateCommandMenu();
-			host.updateFileMenu();
-			deps.render();
-			return;
+		// 空闲时连按两次 Esc 才清空（含多行与图片附件）：整段草稿不该被一下按掉。
+		// 回合中的 Esc 属于中止语义，不在这里抢；输入框为空时 Esc 无事可做。
+		if (withoutMouse === "\x1b" && state.activeTurn === undefined) {
+			if (state.input.length > 0 || state.pendingImages.length > 0) {
+				if (state.escClearArmed) {
+					clearDraft(host, state);
+				} else {
+					armClear(state, () => {
+						disarmClear(state);
+						// 只收起自己那条提示：期间可能已有别的状态写进来，不能一并抹掉
+						if (state.statusText === STATUS.clearArmed) host.clearStatus();
+						deps.render();
+					});
+					host.setStatus(STATUS.clearArmed, "notice");
+				}
+				deps.render();
+				return;
+			}
 		}
 
 		const queueKey = queuedEditKey(withoutMouse);
@@ -427,6 +442,8 @@ export function handleTranscriptInput(
 	);
 	if (edit.text !== previous) {
 		state.historyIndex = -1;
+		// 已经重新开始打字，Ctrl+Z 不会再覆盖新内容，那条撤销提示别再挂着
+		if (state.statusText === STATUS.cleared) host.clearStatus();
 		// 输入变了，之前用 Esc 关掉补全面板的决定就作废：新内容该有自己的补全
 		state.commandMenuDismissed = false;
 		state.fileMenuDismissed = false;

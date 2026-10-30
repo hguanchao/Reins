@@ -10,6 +10,7 @@ import {
 	exitTui,
 	frameLines,
 	plain,
+	pressCtrlC,
 } from "#tests/tui/support/harness.ts";
 import { runTui } from "#src/tui/layout.ts";
 import { incompleteEscapeStart } from "#src/tui/input/dispatch.ts";
@@ -195,14 +196,52 @@ describe("多行输入与翻历史的分派", () => {
 });
 
 describe("Esc 清空输入框", () => {
-	it("有内容时 Esc 清空，后续输入从空白开始", async (t) => {
+	it("第一次 Esc 只提示再按一次，草稿不会直接消失", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\x1b"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(screenText(output).includes("Esc again to clear"));
+
+			// 没有第二次 Esc：继续输入应该接在 abc 后面，而不是从空白开始
+			input.emit("data", Buffer.from("hi\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["abchi"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("两次 Esc 超过确认窗口就重新计数", async (t) => {
 		const { input, agent, running } = startTui(t);
 		try {
 			input.emit("data", Buffer.from("abc"));
 			input.emit("data", Buffer.from("\x1b"));
+			t.mock.timers.tick(900);
+			input.emit("data", Buffer.from("\x1b"));
 			input.emit("data", Buffer.from("hi\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			// 若 Esc 没清空，提交的会是 "abchi"
+			// 第二次只是重新武装：输入框里还是 abc 加 hi
+			assert.deepEqual(agent.prompts, ["abchi"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("连按两次 Esc 清空输入框，并给出撤销路径", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("\x1b"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(screenText(output).includes("Input cleared · Ctrl+Z to undo"));
+
+			input.emit("data", Buffer.from("hi\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.deepEqual(agent.prompts, ["hi"]);
 		} finally {
 			exitTui(input);
@@ -223,15 +262,87 @@ describe("Esc 清空输入框", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("菜单打开时 Esc 先关菜单，第二次才清空", async (t) => {
+	it("菜单打开时 Esc 先关菜单，再按两次才清空", async (t) => {
 		const { input, agent, running } = startTui(t);
 		try {
 			input.emit("data", Buffer.from("/he"));
 			input.emit("data", Buffer.from("\x1b"));
 			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("\x1b"));
 			input.emit("data", Buffer.from("hi\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.deepEqual(agent.prompts, ["hi"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("Ctrl+Z 把刚清空的草稿放回来", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("\x1a"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(screenText(output).includes("Input restored"));
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["abc"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("清空后又打了字，Ctrl+Z 不覆盖新内容", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("abc"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("\x1b"));
+			input.emit("data", Buffer.from("hi"));
+			input.emit("data", Buffer.from("\x1a"));
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["hi"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+});
+
+describe("Ctrl+C 清空输入框", () => {
+	it("有草稿时只清空，不进入退出确认", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("abc"));
+			pressCtrlC(input);
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.ok(screenText(output).includes("Input cleared · Ctrl+Z to undo"));
+
+			// 仍在这个界面里：继续输入能正常提交
+			input.emit("data", Buffer.from("hi\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["hi"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("清空后 Ctrl+Z 取回原文", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("abc"));
+			pressCtrlC(input);
+			input.emit("data", Buffer.from("\x1a"));
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["abc"]);
 		} finally {
 			exitTui(input);
 		}

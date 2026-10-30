@@ -155,8 +155,9 @@ export function pressCtrlC(input: FakeInput): void {
 	input.emit("data", Buffer.from([3]));
 }
 
-/** 连按两次；测试失败时也要保证界面收尾。 */
+/** 连按三次：有草稿时第一次只清空，第二次才进入退出确认，第三次才离开。 */
 export function exitTui(input: FakeInput): void {
+	pressCtrlC(input);
 	pressCtrlC(input);
 	pressCtrlC(input);
 }

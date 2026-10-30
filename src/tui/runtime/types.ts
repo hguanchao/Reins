@@ -33,6 +33,13 @@ interface QueuedPrompt {
 	readonly images: readonly ImageAttachment[];
 }
 
+/** 被清空的草稿：撤销时原样放回，连光标位置与当时的图片一起。 */
+export interface ClearedDraft {
+	readonly text: string;
+	readonly cursor: number;
+	readonly images: readonly PendingImage[];
+}
+
 /** 一轮正在进行的对话。 */
 export interface ActiveTurn {
 	readonly turn: LiveTurn;
@@ -119,6 +126,11 @@ export interface TuiState {
 	historyDraft: string;
 	/** 折叠起来的大段粘贴原文；输入框里只留标记，发送时换回。 */
 	readonly pastes: PasteStore;
+	/** 第一次 Esc 的确认：窗口内再按一次才真的清空，一下按掉整段草稿代价太大。 */
+	escClearArmed: boolean;
+	escClearTimer: ReturnType<typeof setTimeout> | undefined;
+	/** 最近一次清空的草稿；Ctrl+Z 放回去，只留一份。 */
+	clearedDraft: ClearedDraft | undefined;
 	/** bracketed paste 可能跨多个数据块，记住是否还在粘贴中。 */
 	pasting: boolean;
 	/** 上一块末尾未完成的转义序列；与下一块拼接后再解析，避免标记被分块切断。 */
@@ -266,7 +278,7 @@ export interface TuiHost {
 	setStatus(text: string, tone?: "warning" | "error" | "notice"): void;
 	clearStatus(): void;
 	resetStatusMeta(): void;
-	scheduleStatusClear(): void;
+	scheduleStatusClear(delayMs?: number): void;
 	/** 复制一段文本并在状态行报告结果 */
 	copyText(text: string): void;
 	markTranscriptDirty(): void;

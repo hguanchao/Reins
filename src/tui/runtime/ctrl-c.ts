@@ -1,4 +1,5 @@
 import { STATUS, pendingConfirm } from "#src/tui/copy.ts";
+import { clearDraft } from "#src/tui/input/draft.ts";
 import { cleanup } from "#src/tui/runtime/lifecycle.ts";
 import { closePlanReview } from "#src/tui/runtime/pages.ts";
 import { armExit, disarm } from "#src/tui/runtime/lifecycle.ts";
@@ -48,6 +49,14 @@ export function onCtrlC(
 			state.openPage = undefined;
 		}
 		armExit(state, () => disarm(state), EXIT_CONFIRM_WINDOW_MS);
+		deps.render();
+		return;
+	}
+	// 有草稿时第一次 Ctrl+C 只清空：中断键顺手扔掉整段草稿太容易误伤。
+	// 清空后状态行给出 Ctrl+Z，再按一次才进入退出确认。
+	if (state.input.length > 0 || state.pendingImages.length > 0) {
+		disarm(state);
+		clearDraft(host, state);
 		deps.render();
 		return;
 	}
