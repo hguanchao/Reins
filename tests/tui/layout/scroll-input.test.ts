@@ -316,8 +316,11 @@ describe("滚动与输入", () => {
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
-			const text = Array.from({ length: 7 }, (_, index) => `long-line-${index + 1}`).join("\n");
-			input.emit("data", Buffer.from(`\x1b[200~${text}\x1b[201~`));
+			// 用 Shift+Enter 逐行输入而不是粘贴：多行粘贴会被折叠成一行标记，撑不出溢出
+			for (let line = 1; line <= 7; line += 1) {
+				input.emit("data", Buffer.from(`long-line-${line}`));
+				if (line < 7) input.emit("data", Buffer.from("\x1b[13;2u"));
+			}
 			t.mock.timers.tick(100);
 
 			const frame = frameLines(output).map(plain).join("\n");

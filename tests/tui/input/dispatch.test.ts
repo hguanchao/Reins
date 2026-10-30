@@ -238,3 +238,63 @@ describe("Esc 清空输入框", () => {
 		assert.equal(await running, 0);
 	});
 });
+
+describe("折叠粘贴", () => {
+	const text = "l1\nl2\nl3\nl4\nl5";
+
+	it("多行粘贴折成标记，回车把原文发给模型", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from(`\x1b[200~${text}\x1b[201~`));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const screen = screenText(output);
+			assert.ok(screen.includes("[Pasted #1: 5 lines]"));
+			// 正文不进输入框：否则每帧都要重排整段粘贴
+			assert.equal(screen.includes("l5"), false);
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, [text]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("紧贴标记再贴同一段内容就展开，发送的仍是原文", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from(`\x1b[200~${text}\x1b[201~`));
+			input.emit("data", Buffer.from(`\x1b[200~${text}\x1b[201~`));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const screen = screenText(output);
+			assert.equal(screen.includes("[Pasted #"), false);
+			assert.ok(screen.includes("l5"));
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, [text]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("短粘贴不折叠，按原样进输入框", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("\x1b[200~x\ny\x1b[201~"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			assert.equal(screenText(output).includes("[Pasted #"), false);
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["x\ny"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+});

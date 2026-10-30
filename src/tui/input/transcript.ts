@@ -4,6 +4,7 @@ import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN,
 import type { MouseInput } from "#src/tui/input/keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
 import { STATUS } from "#src/tui/copy.ts";
+import { pasteInsertion } from "#src/tui/paste.ts";
 import { menuPanelTop } from "#src/tui/runtime/approval.ts";
 import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
 import { completeCommandMenu } from "#src/tui/runtime/panels.ts";
@@ -421,7 +422,9 @@ export function handleTranscriptInput(
 	if (withoutMouse.length > 0 && withoutMouse !== "\x1b") focusInput();
 
 	// 粘贴区间跨块时由调用方记着，这里只按传进来的状态处理本块
-	const edit = editInput(state.input, state.inputCursor, withoutMouse, pasting);
+	const edit = editInput(state.input, state.inputCursor, withoutMouse, pasting, (text, before) =>
+		pasteInsertion(state.pastes, text, before),
+	);
 	if (edit.text !== previous) {
 		state.historyIndex = -1;
 		// 输入变了，之前用 Esc 关掉补全面板的决定就作废：新内容该有自己的补全

@@ -2,6 +2,7 @@ import type { ApprovalMode } from "#src/config/file.ts";
 import { formatCompactTokens, formatDuration } from "#src/shared/format.ts";
 import { highlightImageMarkers } from "#src/tui/image.ts";
 import { queueMore } from "#src/tui/copy.ts";
+import { highlightPasteMarkers } from "#src/tui/paste.ts";
 import { swept } from "#src/tui/render/sweep.ts";
 import { characterWidth, displayWidth, graphemes, truncateToWidth } from "#src/tui/render/text.ts";
 import { THEME } from "#src/tui/render/theme.ts";
@@ -341,11 +342,16 @@ function oneLine(text: string): string {
  */
 function commandText(line: InputLine, color: string): string {
 	const end = line.commandEnd ?? 0;
-	if (end <= 0) return highlightImageMarkers(line.text, THEME.image, RESET);
+	if (end <= 0) return decorated(line.text);
 	const chars = graphemes(line.text);
 	if (end >= chars.length) return `${color}${line.text}${RESET}`;
 	const rest = chars.slice(end).join("");
-	return `${color}${chars.slice(0, end).join("")}${RESET}${highlightImageMarkers(rest, THEME.image, RESET)}`;
+	return `${color}${chars.slice(0, end).join("")}${RESET}${decorated(rest)}`;
+}
+
+/** 输入行里的两类标记各自上色：图片用引用蓝，折叠粘贴用强调色，都只换色不改宽度。 */
+function decorated(text: string): string {
+	return highlightPasteMarkers(highlightImageMarkers(text, THEME.image, RESET), THEME.accent, RESET);
 }
 
 /** 审批徽标的配色按风险分级：逐次询问是安全默认，自动审查是「谨慎放行」，完全放行最刺眼。 */

@@ -342,17 +342,30 @@ interface InputEdit {
 export const PASTE_START = "\x1b[200~";
 export const PASTE_END = "\x1b[201~";
 
+/** 一次粘贴要写进输入框的内容，以及光标前需要先删掉的字符数。 */
+export interface PasteInsertion {
+	readonly insert: string;
+	readonly removeBefore: number;
+}
+
+/** 粘贴的落点决定：原样插入，或折叠成标记；调用方持有原文，编辑器只拿结果。 */
+export type PastePort = (text: string, before: string) => PasteInsertion;
+
 /**
  * 把终端读到的一段字符并进输入框。
  *
  * 支持光标移动、行内 Home/End、删除、bracketed paste 多行粘贴；历史上下键由调用方处理。
  * 转义序列通常在一次读取里完整到达，未识别的序列整段丢弃，不能当成文字填进去。
+ *
+ * 粘贴原文要不要折叠由 paste 端口决定：编辑器不关心折叠阈值与原文存在哪，只按它给的结果
+ * 插入。默认不折叠，测试与其它调用方可以省略。
  */
 export function editInput(
 	current: string,
 	currentCursor: number,
 	chunk: string,
 	pasting: boolean,
+	paste?: PastePort,
 ): InputEdit {
 	let text = current;
 	let cursor = Math.min(Math.max(0, currentCursor), current.length);
@@ -371,7 +384,14 @@ export function editInput(
 		const cleaned = stripVTControlCharacters(
 			value.replace(/\r\n?/g, "\n").replace(/\t/g, "    "),
 		).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
-		insert(cleaned);
+		const insertion = paste?.(cleaned, text.slice(0, cursor));
+		if (insertion !== undefined && insertion.removeBefore > 0) {
+			// 同一段内容贴在已有标记后面：把那行标记换回正文，这也是折叠唯一的展开手势
+			const start = Math.max(0, cursor - insertion.removeBefore);
+			text = text.slice(0, start) + text.slice(cursor);
+			cursor = start;
+		}
+		insert(insertion?.insert ?? cleaned);
 	};
 
 	const applyKey = (sequence: string): void => {

@@ -233,6 +233,29 @@ export function attachedWithoutVision(name: string): string {
 /** 还在读上一张图，先别发。 */
 export const IMAGE_STILL_READING = "Still reading an image; try again in a moment";
 
+// ── 折叠粘贴 ──────────────────────────────────────────────────────────────
+
+/**
+ * 大段粘贴折叠成一行标记后的显示文字。
+ *
+ * 行数优先：多行粘贴用行数更好懂；体积大到行数已经失去意义时（上万行日志）改用大小。
+ */
+export function pasteChipLines(lines: number): string {
+	return `${lines} ${lines === 1 ? "line" : "lines"}`;
+}
+
+/** 体积标签按十进制单位，与文件大小一致。 */
+export function pasteChipBytes(bytes: number): string {
+	if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+	if (bytes >= 1000) return `${Math.floor(bytes / 1000)} KB`;
+	return `${bytes} bytes`;
+}
+
+/** 输入框里的折叠标记：带序号，便于同一段内容贴多次时区分与定位。 */
+export function pasteMarker(id: number, label: string): string {
+	return `[Pasted #${id}: ${label}]`;
+}
+
 // ── 对话流 ────────────────────────────────────────────────────────────────
 
 /** 对话流里的标签、空态与折叠提示。 */

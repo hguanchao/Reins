@@ -3,6 +3,7 @@ import { StringDecoder } from "node:string_decoder";
 import { createBuiltinCommands } from "#src/tui/commands.ts";
 import type { TuiOptions } from "#src/tui/options.ts";
 import type { TuiState } from "#src/tui/runtime/types.ts";
+import { createPasteStore } from "#src/tui/paste.ts";
 
 /** 按启动选项造出初始状态；历史与任务表由调用方先行灌入。 */
 export function createState(options: TuiOptions): TuiState {
@@ -23,6 +24,7 @@ export function createState(options: TuiOptions): TuiState {
 		inputHistory: [],
 		historyIndex: -1,
 		historyDraft: "",
+		pastes: createPasteStore(),
 		pasting: false,
 		inputTail: "",
 		inputTailTimer: undefined,

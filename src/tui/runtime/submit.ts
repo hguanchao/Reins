@@ -2,6 +2,7 @@ import { findCommand } from "#src/tui/commands.ts";
 import { TURN_SAFE_COMMANDS } from "#src/tui/commands.ts";
 import { commandArgs } from "#src/tui/commands.ts";
 import { IMAGE_STILL_READING, STATUS, queuedOverflow, unknownCommand, waitForTurn } from "#src/tui/copy.ts";
+import { expandPastes } from "#src/tui/paste.ts";
 import { attachmentLimit, clearAttachments, imagesOf } from "#src/tui/input/attachments.ts";
 import { QUEUE_MAX_VISIBLE } from "#src/tui/view/footer.ts";
 import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
@@ -47,6 +48,8 @@ export function submit(host: TuiHost): boolean {
 
 	const message = state.input.trim();
 	if (message.length === 0) return false;
+	// 折叠的粘贴在发送这一刻才换回原文：输入框与历史里留标记，模型拿到全文
+	const expanded = expandPastes(state.pastes, message);
 	// 补全面板已经明确高亮了一项，回车就执行它：只输入 "/" 时使用者看到的也是
 	// 「/model 被选中」，此时回车没有反应会让人以为按键失灵。过滤层已经保证有命令名
 	// 前缀命中时不会混入描述命中，所以这里不需要再按输入前缀二次校验。
@@ -92,7 +95,7 @@ export function submit(host: TuiHost): boolean {
 		clearAttachments(host);
 		state.commandMenu = undefined;
 		host.setInput("");
-		state.queued.push({ text: message, images });
+		state.queued.push({ text: expanded, images });
 		// 队列越多，页脚越高，对话流就越矮。超过能显示的行数之后照收不误，但要当场说一句：
 		// 静默接受会让人以为消息丢了，而它其实排在后面。
 		if (state.queued.length > QUEUE_MAX_VISIBLE) {
@@ -114,7 +117,7 @@ export function submit(host: TuiHost): boolean {
 
 	clearAttachments(host);
 	host.setInput("");
-	host.launch(message, images);
+	host.launch(expanded, images);
 	return true;
 }
 

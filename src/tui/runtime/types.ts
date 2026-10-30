@@ -3,6 +3,7 @@ import type { ApprovalPrompt } from "#src/permission/approval.ts";
 import type { ApprovalAnswer } from "#src/permission/policy.ts";
 import type { TrustAnswer } from "#src/tui/page/trust.ts";
 import type { ImageAttachment, PendingImage } from "#src/tui/image.ts";
+import type { PasteStore } from "#src/tui/paste.ts";
 import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "#src/tui/options.ts";
 import type { CommandMenuState, CommandMenuItem } from "#src/tui/panel/command-menu.ts";
 import type { EffortMenuState } from "#src/tui/panel/effort-menu.ts";
@@ -116,6 +117,8 @@ export interface TuiState {
 	readonly inputHistory: string[];
 	historyIndex: number;
 	historyDraft: string;
+	/** 折叠起来的大段粘贴原文；输入框里只留标记，发送时换回。 */
+	readonly pastes: PasteStore;
 	/** bracketed paste 可能跨多个数据块，记住是否还在粘贴中。 */
 	pasting: boolean;
 	/** 上一块末尾未完成的转义序列；与下一块拼接后再解析，避免标记被分块切断。 */
