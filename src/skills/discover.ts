@@ -3,7 +3,9 @@ import { basename, join } from "node:path";
 
 import {
 	agentsSkillsDir,
+	dshSkillsDir,
 	projectAgentsSkillsDir,
+	projectDshSkillsDir,
 	projectSkillsDir,
 	skillsDir,
 } from "../config/paths.ts";
@@ -65,11 +67,14 @@ export function defaultSkillRoots(workRoot: string, trusted: boolean): readonly 
 	const roots: SkillRoot[] = [
 		{ directory: skillsDir(), scope: "user" },
 		{ directory: agentsSkillsDir(), scope: "user" },
+		// dsh 与 .agents 同理：同一份 SKILL.md 规范，认它等于白捡 dsh 使用者装好的技能
+		{ directory: dshSkillsDir(), scope: "user" },
 	];
 	if (trusted) {
 		roots.push(
 			{ directory: projectSkillsDir(workRoot), scope: "project" },
 			{ directory: projectAgentsSkillsDir(workRoot), scope: "project" },
+			{ directory: projectDshSkillsDir(workRoot), scope: "project" },
 		);
 	}
 	return roots;

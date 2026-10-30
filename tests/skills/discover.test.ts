@@ -179,23 +179,28 @@ describe("技能发现", () => {
 		assert.equal(skills[0]?.description, "项目版");
 	});
 
-	it("默认根：用户级总是两根，项目级只在受信任时加进来", () => {
+	it("默认根：用户级三根，项目级只在受信任时加进来", () => {
 		const untrusted = defaultSkillRoots("/repo", false);
 		assert.deepEqual(
 			untrusted.map((root) => root.scope),
-			["user", "user"],
+			["user", "user", "user"],
 		);
-		// 用户级两根：Reins 自己的目录 + 跨工具的 .agents/skills
+		// 用户级三根：Reins 自己的目录 + 跨工具的 .agents/skills + dsh 的 .dsh/skills
 		assert.ok(untrusted.some((root) => root.directory.endsWith(join(".agents", "skills"))));
+		assert.ok(untrusted.some((root) => root.directory.endsWith(join(".dsh", "skills"))));
 
 		const trusted = defaultSkillRoots("/repo", true);
 		assert.deepEqual(
 			trusted.map((root) => root.scope),
-			["user", "user", "project", "project"],
+			["user", "user", "user", "project", "project", "project"],
 		);
 		assert.deepEqual(
-			trusted.slice(2).map((root) => root.directory),
-			[join("/repo", ".reins", "skills"), join("/repo", ".agents", "skills")],
+			trusted.slice(3).map((root) => root.directory),
+			[
+				join("/repo", ".reins", "skills"),
+				join("/repo", ".agents", "skills"),
+				join("/repo", ".dsh", "skills"),
+			],
 		);
 	});
 

@@ -72,6 +72,16 @@ export function agentsSkillsDir(): string {
 	return join(homedir(), ".agents", "skills");
 }
 
+/**
+ * dsh 的用户级技能目录。
+ *
+ * dsh 也实现 Agent Skills 规范，用户级技能放在 `~/.dsh/skills`：同一份 SKILL.md，认它就能
+ * 直接用上 dsh 使用者已经装好的技能。
+ */
+export function dshSkillsDir(): string {
+	return join(homedir(), ".dsh", "skills");
+}
+
 /** 工作区里的技能目录，与 `.reins/config.toml` 同级。 */
 export function projectSkillsDir(workRoot: string): string {
 	return join(projectDirPath(workRoot), "skills");
@@ -80,6 +90,11 @@ export function projectSkillsDir(workRoot: string): string {
 /** 工作区里的跨工具技能目录。 */
 export function projectAgentsSkillsDir(workRoot: string): string {
 	return join(workRoot, ".agents", "skills");
+}
+
+/** 工作区里的 dsh 技能目录。 */
+export function projectDshSkillsDir(workRoot: string): string {
+	return join(workRoot, ".dsh", "skills");
 }
 
 /**
