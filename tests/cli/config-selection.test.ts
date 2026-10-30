@@ -30,6 +30,8 @@ function options(configPath: string, providersPath: string): CliOptions {
 		trust: undefined,
 		resume: undefined,
 		json: false,
+		pluginAction: undefined,
+		pluginSource: undefined,
 	};
 }
 
@@ -105,6 +107,8 @@ describe("工作区信任结论", () => {
 				trust: undefined,
 				resume: undefined,
 				json: false,
+				pluginAction: undefined,
+				pluginSource: undefined,
 			});
 
 			assert.equal(result.ok, true);
@@ -161,6 +165,8 @@ describe("启动提示的去向", () => {
 				trust: undefined,
 				resume: undefined,
 				json: false,
+				pluginAction: undefined,
+				pluginSource: undefined,
 			});
 			assert.equal(captured.join("").includes("Skipped the workspace config"), false);
 
@@ -173,6 +179,8 @@ describe("启动提示的去向", () => {
 				trust: undefined,
 				resume: undefined,
 				json: false,
+				pluginAction: undefined,
+				pluginSource: undefined,
 			});
 			assert.equal(captured.join("").includes("Skipped the workspace config"), true);
 		} finally {

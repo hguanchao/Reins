@@ -107,3 +107,28 @@ describe("parseArgs 的 --json", () => {
 		);
 	});
 });
+
+describe("parseArgs 的插件子命令", () => {
+	it("plugin add 解析出动作与来源，来源可以含空格", () => {
+		const options = parseArgs(["plugin", "add", "@scope/some-pkg"]);
+		assert.equal(options.command, "plugin");
+		assert.equal(options.pluginAction, "add");
+		assert.equal(options.pluginSource, "@scope/some-pkg");
+	});
+
+	it("plugin list 不带参数", () => {
+		const options = parseArgs(["plugin", "list"]);
+		assert.equal(options.command, "plugin");
+		assert.equal(options.pluginAction, "list");
+		assert.equal(options.pluginSource, undefined);
+	});
+
+	it("动作缺失或未知时报错", () => {
+		assert.throws(() => parseArgs(["plugin"]), /add <source> or list/);
+		assert.throws(() => parseArgs(["plugin", "remove"]), /add <source> or list/);
+	});
+
+	it("add 缺来源报错", () => {
+		assert.throws(() => parseArgs(["plugin", "add"]), /requires a source/);
+	});
+});

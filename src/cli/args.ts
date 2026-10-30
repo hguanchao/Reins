@@ -6,8 +6,8 @@ export class UsageError extends Error {
 	}
 }
 
-/** CLI 有两种运行方式：启动全屏界面，或一次提问把答案写到标准输出。 */
-type CliCommand = "tui" | "print" | "help" | "version";
+/** CLI 的运行方式：启动界面、一次提问、帮助、版本，或管理插件。 */
+type CliCommand = "tui" | "print" | "help" | "version" | "plugin";
 
 export interface CliOptions {
 	readonly command: CliCommand;
@@ -21,6 +21,10 @@ export interface CliOptions {
 	readonly resume: string | undefined;
 	/** print 模式把事件流写成 JSONL，而不是把回答写到标准输出 */
 	readonly json: boolean;
+	/** 插件子命令的动作；仅 command 为 plugin 时有值 */
+	readonly pluginAction: "add" | "list" | undefined;
+	/** add 的来源：npm 包名、git 仓库地址或本地目录 */
+	readonly pluginSource: string | undefined;
 }
 
 /**
@@ -43,6 +47,17 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 
 		if (argument === "--help" || argument === "-h") return optionsOf("help");
 		if (argument === "--version" || argument === "-v") return optionsOf("version");
+
+		// 插件子命令先于其余参数处理：来源本身可能是任意文本，不再当选项或句子解析
+		if (argument === "plugin") {
+			return parsePluginCommand(argv.slice(index + 1), {
+				configPath,
+				providersPath,
+				trust,
+				resume,
+				json,
+			});
+		}
 
 		if (argument === "--print" || argument === "-p") {
 			explicitPrint = true;
@@ -114,6 +129,8 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		trust,
 		resume,
 		json,
+		pluginAction: undefined,
+		pluginSource: undefined,
 	};
 }
 
@@ -126,6 +143,33 @@ function optionsOf(command: CliCommand): CliOptions {
 		trust: undefined,
 		resume: undefined,
 		json: false,
+		pluginAction: undefined,
+		pluginSource: undefined,
+	};
+}
+
+/** `reins plugin add|list` 子命令；来源是剩余的位置参数。 */
+function parsePluginCommand(
+	rest: readonly string[],
+	shared: Pick<CliOptions, "configPath" | "providersPath" | "trust" | "resume" | "json">,
+): CliOptions {
+	const action = rest[0];
+	if (action !== "add" && action !== "list") {
+		throw new UsageError("plugin requires an action: add <source> or list");
+	}
+	if (action === "list" && rest.length > 1) throw new UsageError("plugin list takes no arguments");
+
+	const source = action === "add" ? rest.slice(1).join(" ") : undefined;
+	if (action === "add" && (source === undefined || source.length === 0)) {
+		throw new UsageError("plugin add requires a source: an npm package, a git URL, or a local directory");
+	}
+
+	return {
+		command: "plugin",
+		prompt: "",
+		...shared,
+		pluginAction: action,
+		pluginSource: source,
 	};
 }
 
@@ -143,6 +187,8 @@ Usage:
   reins <prompt>              Run one prompt, write the answer to stdout
   reins -p <prompt>           Same, explicitly non-interactive
   reins -p --json <prompt>    Write a JSONL event stream to stdout instead
+  reins plugin add <source>   Install a plugin (npm package, git URL, or local directory)
+  reins plugin list           Show installed plugins and what each one provides
   reins --help                Show this help
   reins --version             Show the version
 

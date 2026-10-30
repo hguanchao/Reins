@@ -18,6 +18,7 @@ import {
 } from "./pipeline.ts";
 import { runPrintMode } from "./print-mode.ts";
 import { createSessionFor } from "./session/factory.ts";
+import { runPluginCommand } from "./plugin-command.ts";
 import { runTuiMode } from "./tui-mode.ts";
 
 /**
@@ -46,6 +47,9 @@ export async function main(argv: readonly string[]): Promise<number> {
 		case "version":
 			writeStdout(`${readVersion()}\n`);
 			return 0;
+		case "plugin":
+			// 插件管理不读配置也不建会话：它只操作插件目录本身
+			return runPluginCommand(options);
 		case "print":
 			initializeConfig(options);
 			return runPrint(options);
