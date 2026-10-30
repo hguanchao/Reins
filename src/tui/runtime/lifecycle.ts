@@ -6,9 +6,9 @@ import {
 	DISABLE_MOUSE,
 	LEAVE_ALTERNATE_SCREEN,
 	SHOW_CURSOR,
-} from "../terminal.ts";
-import type { TuiState } from "./types.ts";
-import type { TuiOptions } from "../options.ts";
+} from "#src/tui/terminal.ts";
+import type { TuiState } from "#src/tui/runtime/types.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
 
 /**
  * 退出确认与收尾。

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { describeError } from "../shared/describe-error.ts";
+import { describeError } from "#src/shared/describe-error.ts";
 import {
 	closeSync,
 	existsSync,
@@ -18,7 +18,7 @@ import {
 	isImagePath,
 	type ImageAttachment,
 	type ImageSource,
-} from "../tui/image.ts";
+} from "#src/tui/image.ts";
 
 /**
  * 读取图片附件。

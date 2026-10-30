@@ -5,13 +5,13 @@ import {
 	helpPageLines,
 	framedPage,
 	renderPage,
-} from "../page/frame.ts";
-import { planActionLines, planReviewLines } from "../page/plan.ts";
-import { viewerActionLines, viewerPageLines } from "../page/viewer.ts";
-import { drainQueue } from "./run.ts";
-import type { PageKind } from "../options.ts";
-import type { TranscriptPlan } from "../transcript.ts";
-import type { TuiHost, TuiState } from "./types.ts";
+} from "#src/tui/page/frame.ts";
+import { planActionLines, planReviewLines } from "#src/tui/page/plan.ts";
+import { viewerActionLines, viewerPageLines } from "#src/tui/page/viewer.ts";
+import { drainQueue } from "#src/tui/runtime/run.ts";
+import type { PageKind } from "#src/tui/options.ts";
+import type { TranscriptPlan } from "#src/tui/transcript.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 整屏页。

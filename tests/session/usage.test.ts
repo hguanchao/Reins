@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { cacheHitRate, contextTokens, describeUsage, lastContextTokens, sumUsage } from "../../src/session/usage.ts";
-import type { SessionEntry } from "../../src/session/port.ts";
+import { cacheHitRate, contextTokens, describeUsage, lastContextTokens, sumUsage } from "#src/session/usage.ts";
+import type { SessionEntry } from "#src/session/port.ts";
 
 const T = "2026-01-01T00:00:00Z";
 

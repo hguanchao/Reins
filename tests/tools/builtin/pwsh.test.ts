@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { commandScope, createPwshTool } from "../../../src/tools/builtin/pwsh.ts";
+import { commandScope, createPwshTool } from "#src/tools/builtin/pwsh.ts";
 
 describe("pwsh 会话放行范围", () => {
 	it("简单命令取前两个词作为前缀", () => {

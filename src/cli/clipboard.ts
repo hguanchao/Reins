@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-import type { ClipboardSource } from "../tui/options.ts";
+import type { ClipboardSource } from "#src/tui/options.ts";
 
 /**
  * 写系统剪贴板。

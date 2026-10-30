@@ -1,8 +1,8 @@
 import { extname } from "node:path";
 
-import type { LlmImageBlock } from "../llm/messages.ts";
-import { formatBytes } from "../shared/format.ts";
-import { imageTooLarge, imagesTooLarge, tooManyImages } from "./copy.ts";
+import type { LlmImageBlock } from "#src/llm/messages.ts";
+import { formatBytes } from "#src/shared/format.ts";
+import { imageTooLarge, imagesTooLarge, tooManyImages } from "#src/tui/copy.ts";
 
 /**
  * 输入框里的图片附件。

@@ -1,7 +1,7 @@
-import type { SandboxView } from "../sandbox/policy.ts";
-import type { SessionReadView } from "../session/port.ts";
-import type { WorkspaceBoundary } from "../workspace/boundary.ts";
-import type { JsonSchema } from "./schema.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { SessionReadView } from "#src/session/port.ts";
+import type { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
 
 /**
  * 工具契约。

@@ -1,43 +1,43 @@
-import { describeError } from "../shared/describe-error.ts";
-import { TurnDriver } from "../agent/driver.ts";
-import type { AgentEventListener } from "../agent/events.ts";
-import type { PromptSkill } from "../agent/prompt.ts";
-import { Compactor, compactionWindow } from "../agent/compactor.ts";
-import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "../agent/subagent.ts";
-import type { PromptInstruction } from "../agent/instructions.ts";
-import type { Config } from "../config/file.ts";
-import { pluginsDir, spillDir } from "../config/paths.ts";
-import { createBuiltinLlmRegistry, type LlmRegistry } from "../llm/registry.ts";
-import { DEFAULT_RETRY_BASE_DELAY_MS } from "../llm/retry.ts";
-import { startMcpServers, type McpControl, type McpStatusSource } from "../mcp/service.ts";
-import { ModelReviewer } from "../permission/reviewer.ts";
-import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
-import { ExternalPlugins } from "../plugins/external.ts";
-import { PluginHost, type PluginFailure } from "../plugins/host.ts";
-import { builtinSandboxBackends, builtinSessionStore } from "../plugins/registry.ts";
-import { createSandbox, type SandboxInfo } from "../sandbox/setup.ts";
-import type { SandboxView } from "../sandbox/policy.ts";
-import type { Session } from "../session/session.ts";
-import type { ModelSelection } from "../config/selection.ts";
-import { createCoreTools } from "../tools/builtin/index.ts";
-import { ToolRegistry } from "../tools/registry.ts";
-import { ResultSpiller } from "../tools/spill.ts";
-import { WorkspaceBoundary } from "../workspace/boundary.ts";
-import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
-import { readVersion } from "../version.ts";
-import { disabledPlugins, warnUnsandboxedMcpServers } from "./config-selection.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { TurnDriver } from "#src/agent/driver.ts";
+import type { AgentEventListener } from "#src/agent/events.ts";
+import type { PromptSkill } from "#src/agent/prompt.ts";
+import { Compactor, compactionWindow } from "#src/agent/compactor.ts";
+import { DEFAULT_SUBAGENT_STEPS, createSubagentTool } from "#src/agent/subagent.ts";
+import type { PromptInstruction } from "#src/agent/instructions.ts";
+import type { Config } from "#src/config/file.ts";
+import { pluginsDir, spillDir } from "#src/config/paths.ts";
+import { createBuiltinLlmRegistry, type LlmRegistry } from "#src/llm/registry.ts";
+import { DEFAULT_RETRY_BASE_DELAY_MS } from "#src/llm/retry.ts";
+import { startMcpServers, type McpControl, type McpStatusSource } from "#src/mcp/service.ts";
+import { ModelReviewer } from "#src/permission/reviewer.ts";
+import { PermissionGate, PermissionPolicy } from "#src/permission/policy.ts";
+import { ExternalPlugins } from "#src/plugins/external.ts";
+import { PluginHost, type PluginFailure } from "#src/plugins/host.ts";
+import { builtinSandboxBackends, builtinSessionStore } from "#src/plugins/registry.ts";
+import { createSandbox, type SandboxInfo } from "#src/sandbox/setup.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { Session } from "#src/session/session.ts";
+import type { ModelSelection } from "#src/config/selection.ts";
+import { createCoreTools } from "#src/tools/builtin/index.ts";
+import { ToolRegistry } from "#src/tools/registry.ts";
+import { ResultSpiller } from "#src/tools/spill.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import type { ModelEntry, ProviderEntry } from "#src/config/providers-file.ts";
+import { readVersion } from "#src/version.ts";
+import { disabledPlugins, warnUnsandboxedMcpServers } from "#src/cli/config-selection.ts";
 import {
 	describeDeclarativeScan,
 	mergeMcpServers,
 	scanDeclarativePlugins,
 	type DeclarativeScan,
-} from "../plugins/declarative.ts";
-import { describePiOutcomes, piExtensionPlugin, type PiExtensionCollector } from "../plugins/pi-runtime.ts";
-import { describeDshOutcomes, dshExtensionPlugin, type DshExtensionCollector } from "../plugins/dsh-runtime.ts";
-import { getAgentDir as getDshAgentDir } from "../plugins/pi-shim/api.ts";
-import { DEFAULT_WEB_FETCH_LIMITS, fetchWebPage } from "../tools/web-fetch.ts";
-import { defaultSkillRoots, discoverSkills } from "../skills/discover.ts";
-import { writeStderr } from "./output.ts";
+} from "#src/plugins/declarative.ts";
+import { describePiOutcomes, piExtensionPlugin, type PiExtensionCollector } from "#src/plugins/pi-runtime.ts";
+import { describeDshOutcomes, dshExtensionPlugin, type DshExtensionCollector } from "#src/plugins/dsh-runtime.ts";
+import { getAgentDir as getDshAgentDir } from "#src/plugins/pi-shim/api.ts";
+import { DEFAULT_WEB_FETCH_LIMITS, fetchWebPage } from "#src/tools/web-fetch.ts";
+import { defaultSkillRoots, discoverSkills } from "#src/skills/discover.ts";
+import { writeStderr } from "#src/cli/output.ts";
 
 /**
  * 流式读取的静默上限（毫秒）。

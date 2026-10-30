@@ -2,8 +2,8 @@ import { readdirSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { describeError } from "../shared/describe-error.ts";
-import type { Plugin, PluginFailure, PluginHost } from "./host.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { Plugin, PluginFailure, PluginHost } from "#src/plugins/host.ts";
 
 /**
  * 外部插件。

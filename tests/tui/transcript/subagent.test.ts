@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { THEME } from "../../../src/tui/render/theme.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
-import { buildTranscriptView, renderTranscriptView, stripTerminalStyles, toggleLastExpandable } from "../../../src/tui/transcript.ts";
-import type { TranscriptSubagentGroup, TranscriptTurn } from "../../../src/tui/transcript.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { buildTranscriptView, renderTranscriptView, stripTerminalStyles, toggleLastExpandable } from "#src/tui/transcript.ts";
+import type { TranscriptSubagentGroup, TranscriptTurn } from "#src/tui/transcript.ts";
 
 
 

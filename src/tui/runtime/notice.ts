@@ -1,4 +1,4 @@
-import type { TuiState } from "./types.ts";
+import type { TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 启动警告与平台说明。

@@ -1,7 +1,7 @@
-import { resolveToolPath } from "../path.ts";
-import type { ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
-import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "../../workspace/walk.ts";
+import { resolveToolPath } from "#src/tools/path.ts";
+import type { ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "#src/workspace/walk.ts";
 
 /** 按通配模式查找文件路径。 */
 

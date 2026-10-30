@@ -2,7 +2,7 @@ import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 
-import { projectInstructionFiles, userInstructionFiles } from "../config/paths.ts";
+import { projectInstructionFiles, userInstructionFiles } from "#src/config/paths.ts";
 
 /**
  * 规则文件（AGENTS.md）的发现与读取。

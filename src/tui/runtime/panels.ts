@@ -1,13 +1,13 @@
-import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
-import { keepVisible, moveMenuSelection } from "../panel/menu-panel.ts";
-import type { CommandMenuItem, CommandMenuState } from "../panel/command-menu.ts";
-import type { EffortMenuState } from "../panel/effort-menu.ts";
-import type { FileMenuState } from "../panel/file-menu.ts";
-import { filterFiles, findAtToken, formatFileReference } from "../panel/file-menu.ts";
-import { isImagePath } from "../image.ts";
-import type { ModelMenuItem, ModelMenuState } from "../panel/model-menu.ts";
-import type { SessionMenuItem, SessionMenuState } from "../panel/session-menu.ts";
-import { errorLine } from "../render/status.ts";
+import { THINKING_LEVELS, type ThinkingLevel } from "#src/config/file.ts";
+import { keepVisible, moveMenuSelection } from "#src/tui/panel/menu-panel.ts";
+import type { CommandMenuItem, CommandMenuState } from "#src/tui/panel/command-menu.ts";
+import type { EffortMenuState } from "#src/tui/panel/effort-menu.ts";
+import type { FileMenuState } from "#src/tui/panel/file-menu.ts";
+import { filterFiles, findAtToken, formatFileReference } from "#src/tui/panel/file-menu.ts";
+import { isImagePath } from "#src/tui/image.ts";
+import type { ModelMenuItem, ModelMenuState } from "#src/tui/panel/model-menu.ts";
+import type { SessionMenuItem, SessionMenuState } from "#src/tui/panel/session-menu.ts";
+import { errorLine } from "#src/tui/render/status.ts";
 import {
 	FAILURE_ACTIONS,
 	NO_MODELS,
@@ -16,12 +16,12 @@ import {
 	effortSet,
 	failure,
 	modelSwitched,
-} from "../copy.ts";
-import { describeError } from "../../shared/describe-error.ts";
-import type { TranscriptLine } from "../transcript.ts";
-import { markTranscriptDirty } from "./transcript-state.ts";
-import { modalMenuOpen, menuVisibleLimit } from "./geometry.ts";
-import type { TuiHost, TuiState } from "./types.ts";
+} from "#src/tui/copy.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { TranscriptLine } from "#src/tui/transcript.ts";
+import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { modalMenuOpen, menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 输入框上方的选择面板。

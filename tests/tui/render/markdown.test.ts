@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderMarkdown } from "../../../src/tui/render/markdown.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+import { renderMarkdown } from "#src/tui/render/markdown.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 function plain(line: string): string {
 	return line

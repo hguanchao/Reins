@@ -1,9 +1,9 @@
-import type { CommandMenuItem } from "../panel/command-menu.ts";
-import { padEnd } from "../panel/menu-panel.ts";
-import { displayWidth, fitToWidth, wrapWords } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { actionLines } from "./chrome.ts";
-import { ACTIONS, KEY_HINTS, PAGE, scanningDirectory } from "../copy.ts";
+import type { CommandMenuItem } from "#src/tui/panel/command-menu.ts";
+import { padEnd } from "#src/tui/panel/menu-panel.ts";
+import { displayWidth, fitToWidth, wrapWords } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { actionLines } from "#src/tui/page/chrome.ts";
+import { ACTIONS, KEY_HINTS, PAGE, scanningDirectory } from "#src/tui/copy.ts";
 
 /**
  * 整屏页。

@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { describe, it } from "node:test";
 
-import { expandHome, resolveWorkRoot, toAbsolutePath } from "../../src/workspace/root.ts";
+import { expandHome, resolveWorkRoot, toAbsolutePath } from "#src/workspace/root.ts";
 
 describe("工作根", () => {
 	it("resolveWorkRoot 归一化", () => {

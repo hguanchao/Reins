@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { grepTool } from "../../../src/tools/builtin/grep.ts";
-import { WorkspaceBoundary } from "../../../src/workspace/boundary.ts";
+import { grepTool } from "#src/tools/builtin/grep.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 async function grep(root: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
 	const result = await grepTool.execute({

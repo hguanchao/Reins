@@ -1,6 +1,6 @@
-import { APPROVAL_MODES } from "../../config/file.ts";
-import { describeError } from "../../shared/describe-error.ts";
-import { FAILURE_ACTIONS, failure } from "../copy.ts";
+import { APPROVAL_MODES } from "#src/config/file.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { FAILURE_ACTIONS, failure } from "#src/tui/copy.ts";
 import {
 	decodeKittyKeys,
 	mouseEvents,
@@ -8,19 +8,19 @@ import {
 	shiftTabKey,
 	stripPasteContent,
 	type MouseInput,
-} from "./keys.ts";
-import { CTRL_C, FOCUS_IN, FOCUS_OUT } from "../terminal.ts";
-import { PASTE_END, PASTE_START } from "./keys.ts";
-import { handleApprovalInput } from "./approval.ts";
-import { handleModalMenuInput } from "./menus.ts";
-import { handlePageInput } from "./pages.ts";
-import { handleTranscriptInput } from "./transcript.ts";
-import { handleTrustInput } from "./trust.ts";
-import type { InputDeps } from "./deps.ts";
-import type { TuiHost } from "../runtime/types.ts";
-import { INPUT_TAIL_TIMEOUT_MS, PASTE_STALL_TIMEOUT_MS } from "../runtime/constants.ts";
+} from "#src/tui/input/keys.ts";
+import { CTRL_C, FOCUS_IN, FOCUS_OUT } from "#src/tui/terminal.ts";
+import { PASTE_END, PASTE_START } from "#src/tui/input/keys.ts";
+import { handleApprovalInput } from "#src/tui/input/approval.ts";
+import { handleModalMenuInput } from "#src/tui/input/menus.ts";
+import { handlePageInput } from "#src/tui/input/pages.ts";
+import { handleTranscriptInput } from "#src/tui/input/transcript.ts";
+import { handleTrustInput } from "#src/tui/input/trust.ts";
+import type { InputDeps } from "#src/tui/input/deps.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
+import { INPUT_TAIL_TIMEOUT_MS, PASTE_STALL_TIMEOUT_MS } from "#src/tui/runtime/constants.ts";
 
-export type { InputDeps } from "./deps.ts";
+export type { InputDeps } from "#src/tui/input/deps.ts";
 
 /**
  * 从一块输入里取出焦点上报的结果。

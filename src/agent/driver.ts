@@ -1,24 +1,24 @@
-import { requestOptions, requestTools } from "./request.ts";
-import { rejectToolCalls, runToolCalls, type ToolRunDeps } from "./tool-run.ts";
-import type { Config } from "../config/file.ts";
-import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
-import type { LlmClient, LlmResult } from "../llm/client.ts";
+import { requestOptions, requestTools } from "#src/agent/request.ts";
+import { rejectToolCalls, runToolCalls, type ToolRunDeps } from "#src/agent/tool-run.ts";
+import type { Config } from "#src/config/file.ts";
+import { computeCost, type ModelEntry, type ProviderEntry } from "#src/config/providers-file.ts";
+import type { LlmClient, LlmResult } from "#src/llm/client.ts";
 import {
 	assistantToolCalls,
 	type LlmAssistantMessage,
 	type LlmTextBlock,
 	type LlmThinkingBlock,
 	type LlmUserContentBlock,
-} from "../llm/messages.ts";
-import type { SandboxView } from "../sandbox/policy.ts";
-import type { SessionPort } from "../session/port.ts";
-import { contextTokens } from "../session/usage.ts";
-import type { ToolRegistry } from "../tools/registry.ts";
-import type { WorkspaceBoundary } from "../workspace/boundary.ts";
-import { estimateTokens, type Compactor } from "./compactor.ts";
-import type { AgentEvent, AgentEventListener, AbortCause } from "./events.ts";
-import type { PromptInstruction } from "./instructions.ts";
-import { buildPromptSections, renderSystemPrompt, toSessionTools, type PromptSkill } from "./prompt.ts";
+} from "#src/llm/messages.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { SessionPort } from "#src/session/port.ts";
+import { contextTokens } from "#src/session/usage.ts";
+import type { ToolRegistry } from "#src/tools/registry.ts";
+import type { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import { estimateTokens, type Compactor } from "#src/agent/compactor.ts";
+import type { AgentEvent, AgentEventListener, AbortCause } from "#src/agent/events.ts";
+import type { PromptInstruction } from "#src/agent/instructions.ts";
+import { buildPromptSections, renderSystemPrompt, toSessionTools, type PromptSkill } from "#src/agent/prompt.ts";
 
 /** 工具结果摘要的首行上限；完整结果另存，摘要只用于界面一行显示。 */
 const SUMMARY_LIMIT = 200;

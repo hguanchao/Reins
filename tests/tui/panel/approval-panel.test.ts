@@ -6,11 +6,11 @@ import {
 	approvalPanelHeight,
 	approvalPreviewScrollLimit,
 	renderApprovalPanel,
-} from "../../../src/tui/panel/approval-panel.ts";
-import { ACCENT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
-import type { ApprovalAnswer, ApprovalRequest } from "../../../src/permission/policy.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
+} from "#src/tui/panel/approval-panel.ts";
+import { ACCENT_COLOR } from "#src/tui/panel/menu-panel.ts";
+import type { ApprovalAnswer, ApprovalRequest } from "#src/permission/policy.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
 
 const ROWS = 24;
 

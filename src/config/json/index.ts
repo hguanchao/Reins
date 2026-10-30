@@ -1,1 +1,1 @@
-export { JsonDocument } from "./document.ts";
+export { JsonDocument } from "#src/config/json/document.ts";

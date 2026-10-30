@@ -1,25 +1,25 @@
 import { statSync } from "node:fs";
 
-import { ConfigError } from "../config/error.ts";
-import { ConfigFile, type Config, type McpServerConfig, type SandboxMode } from "../config/file.ts";
-import { mergeConfigs, mergeProviders } from "../config/merge.ts";
-import { loadProviders, type ProvidersConfig } from "../config/providers-file.ts";
+import { ConfigError } from "#src/config/error.ts";
+import { ConfigFile, type Config, type McpServerConfig, type SandboxMode } from "#src/config/file.ts";
+import { mergeConfigs, mergeProviders } from "#src/config/merge.ts";
+import { loadProviders, type ProvidersConfig } from "#src/config/providers-file.ts";
 import {
 	configFilePath,
 	projectConfigFilePath,
 	projectProvidersFilePath,
 	providersFilePath,
-} from "../config/paths.ts";
-import { resolveSelection, type ModelSelection } from "../config/selection.ts";
+} from "#src/config/paths.ts";
+import { resolveSelection, type ModelSelection } from "#src/config/selection.ts";
 import {
 	findProjectResources,
 	recordTrust,
 	resolveTrust,
 	type ProjectResources,
 	type TrustDecision,
-} from "../workspace/trust.ts";
-import type { CliOptions } from "./args.ts";
-import { writeStderr } from "./output.ts";
+} from "#src/workspace/trust.ts";
+import type { CliOptions } from "#src/cli/args.ts";
+import { writeStderr } from "#src/cli/output.ts";
 
 /**
  * 读出生效配置并解析出所使用的模型。

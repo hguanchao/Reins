@@ -3,12 +3,12 @@ import {
 	isCommandTool,
 	type ToolDescription,
 	type ToolGroupKind,
-} from "../../tools/describe.ts";
-import { formatDuration } from "../../shared/format.ts";
-import { backgroundJob } from "../copy.ts";
-import { resultDetail } from "../../tools/result/detail.ts";
-import { resultMetric } from "../../tools/result/metric.ts";
-import type { TranscriptLine, TranscriptTool, TranscriptTurn } from "./types.ts";
+} from "#src/tools/describe.ts";
+import { formatDuration } from "#src/shared/format.ts";
+import { backgroundJob } from "#src/tui/copy.ts";
+import { resultDetail } from "#src/tools/result/detail.ts";
+import { resultMetric } from "#src/tools/result/metric.ts";
+import type { TranscriptLine, TranscriptTool, TranscriptTurn } from "#src/tui/transcript/types.ts";
 
 /** 把一条工具调用的描述变成对话流行；可选的展开字段缺省时不写入。 */
 export function toolLineOf(described: ToolDescription, callId: string): TranscriptTool {

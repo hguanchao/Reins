@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { THEME } from "../../../src/tui/render/theme.ts";
-import { renderTranscript, transcriptMetrics } from "../../../src/tui/transcript.ts";
-import type { TranscriptThinking, TranscriptTurn } from "../../../src/tui/transcript.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { renderTranscript, transcriptMetrics } from "#src/tui/transcript.ts";
+import type { TranscriptThinking, TranscriptTurn } from "#src/tui/transcript.ts";
 
 const PROMPT_BG = "\x1b[48;2;22;25;29m";
 const MESSAGE_TEXT = "\x1b[38;2;230;233;237m";

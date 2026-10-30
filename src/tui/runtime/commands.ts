@@ -1,8 +1,8 @@
-import { THINKING_LEVELS } from "../../config/file.ts";
-import { describeError } from "../../shared/describe-error.ts";
-import type { CommandMenuItem } from "../panel/command-menu.ts";
-import type { SessionSwitchResult } from "../options.ts";
-import { implementationPrompt } from "../render/status.ts";
+import { THINKING_LEVELS } from "#src/config/file.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { CommandMenuItem } from "#src/tui/panel/command-menu.ts";
+import type { SessionSwitchResult } from "#src/tui/options.ts";
+import { implementationPrompt } from "#src/tui/render/status.ts";
 import {
 	FAILURE_ACTIONS,
 	FORK_WORKSPACE_NOTE,
@@ -20,18 +20,18 @@ import {
 	unknownEffort,
 	unknownModel,
 	waitForTurn,
-} from "../copy.ts";
-import { markTranscriptDirty } from "./transcript-state.ts";
-import { closePlanReview, closePlanReviewAndResume, showPage } from "./pages.ts";
+} from "#src/tui/copy.ts";
+import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { closePlanReview, closePlanReviewAndResume, showPage } from "#src/tui/runtime/pages.ts";
 import {
 	openEffortMenu,
 	openModelMenu,
 	openSessionMenu,
 	selectEffort,
 	selectModel,
-} from "./panels.ts";
-import { startRun } from "./run.ts";
-import type { TuiHost } from "./types.ts";
+} from "#src/tui/runtime/panels.ts";
+import { startRun } from "#src/tui/runtime/run.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 斜杠命令的执行。
@@ -104,7 +104,7 @@ function runPluginCommand(host: TuiHost, command: CommandMenuItem, args: string)
 	if (source === undefined) return;
 
 	const state = host.state;
-	const turn = { prompt: `/${command.name}`, response: [] as import("../transcript.ts").TranscriptLine[] };
+	const turn = { prompt: `/${command.name}`, response: [] as import("#src/tui/transcript.ts").TranscriptLine[] };
 	state.turns.push(turn);
 	markTranscriptDirty(state);
 	state.hasInput = true;

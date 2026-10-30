@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { swept } from "../../../src/tui/render/sweep.ts";
+import { swept } from "#src/tui/render/sweep.ts";
 
 describe("扫光", () => {
 	const base = { r: 47, g: 125, b: 109 };

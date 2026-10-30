@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 
-import { describeError } from "../shared/describe-error.ts";
-import { ConfigError } from "./error.ts";
-import { aliasOf } from "./keys.ts";
-import { configFilePath } from "./paths.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { ConfigError } from "#src/config/error.ts";
+import { aliasOf } from "#src/config/keys.ts";
+import { configFilePath } from "#src/config/paths.ts";
 import {
 	assertNoUnknownKeys,
 	describePath,
@@ -16,8 +16,8 @@ import {
 	readStringArray,
 	readStringMap,
 	readTable,
-} from "./reader.ts";
-import { TomlDocument } from "./toml/index.ts";
+} from "#src/config/reader.ts";
+import { TomlDocument } from "#src/config/toml/index.ts";
 
 /**
  * 配置文件的词汇表。

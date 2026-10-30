@@ -1,5 +1,5 @@
-import type { SandboxMode } from "../config/file.ts";
-import { isPathInside, resolveRealPath } from "../workspace/boundary.ts";
+import type { SandboxMode } from "#src/config/file.ts";
+import { isPathInside, resolveRealPath } from "#src/workspace/boundary.ts";
 
 /**
  * 沙箱接缝与判定。

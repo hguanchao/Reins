@@ -1,6 +1,6 @@
-import type { CommandMenuItem } from "./panel/command-menu.ts";
-import type { TuiOptions } from "./options.ts";
-import { commandDescription } from "./copy.ts";
+import type { CommandMenuItem } from "#src/tui/panel/command-menu.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
+import { commandDescription } from "#src/tui/copy.ts";
 
 /**
  * 一轮进行中也能执行的命令。

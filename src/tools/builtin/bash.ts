@@ -1,10 +1,10 @@
-import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
-import { prefixScope, runCommand } from "../command-run.ts";
-import { resolveShell } from "../shell.ts";
-import { DEFAULT_LIMITS } from "../truncate.ts";
+import type { PermissionScope, ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { prefixScope, runCommand } from "#src/tools/command-run.ts";
+import { resolveShell } from "#src/tools/shell.ts";
+import { DEFAULT_LIMITS } from "#src/tools/truncate.ts";
 
-export { resolveShell } from "../shell.ts";
+export { resolveShell } from "#src/tools/shell.ts";
 
 /**
  * 执行 shell 命令。

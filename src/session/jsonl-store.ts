@@ -1,19 +1,19 @@
 import { appendFileSync, closeSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { describeError } from "../shared/describe-error.ts";
-import { firstLine } from "../shared/format.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { firstLine } from "#src/shared/format.ts";
 
-import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry, type SessionMessageEntry } from "./port.ts";
+import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry, type SessionMessageEntry } from "#src/session/port.ts";
 import type {
 	SessionCreateOptions,
 	SessionFile,
 	SessionListing,
 	SessionStore,
 	SessionWriter,
-} from "./store.ts";
-import { splitLines } from "../tools/truncate.ts";
-import { SessionLock } from "./lock.ts";
-import { currentPathOf } from "./tree.ts";
+} from "#src/session/store.ts";
+import { splitLines } from "#src/tools/truncate.ts";
+import { SessionLock } from "#src/session/lock.ts";
+import { currentPathOf } from "#src/session/tree.ts";
 
 /**
  * 以 JSONL 保存会话。

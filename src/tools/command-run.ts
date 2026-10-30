@@ -1,14 +1,14 @@
-import type { SandboxView } from "../sandbox/policy.ts";
-import type { SessionReadView } from "../session/port.ts";
-import type { PermissionScope, ToolResult } from "./contract.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { SessionReadView } from "#src/session/port.ts";
+import type { PermissionScope, ToolResult } from "#src/tools/contract.ts";
 import {
 	MAX_CAPTURED_BYTES,
 	startShellProcess,
 	type Shell,
 	type ShellProcess,
 	type StartShellProcessInput,
-} from "./shell.ts";
-import { DEFAULT_LIMITS, truncateTail } from "./truncate.ts";
+} from "#src/tools/shell.ts";
+import { DEFAULT_LIMITS, truncateTail } from "#src/tools/truncate.ts";
 
 /**
  * 命令类工具的共享部分。

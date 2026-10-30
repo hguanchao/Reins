@@ -18,7 +18,7 @@ import {
 	taskLabel,
 	toolGroupSummary,
 	waitForTurn,
-} from "../../src/tui/copy.ts";
+} from "#src/tui/copy.ts";
 
 describe("界面文案", () => {
 	it("中断说明先分类再出句子，拿不到原因时保持中性", () => {

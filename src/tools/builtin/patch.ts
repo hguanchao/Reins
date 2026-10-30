@@ -1,12 +1,12 @@
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { resolveToolPath, writeScope } from "../path.ts";
-import { describeError } from "../../shared/describe-error.ts";
-import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
-import { decodeTextFile, encodeTextFile, type TextFile } from "../text-file.ts";
-import { withFileMutations } from "./mutation-queue.ts";
-import { planTextEdits, type EditEntry, type PlannedEdit } from "./text-edits.ts";
+import { resolveToolPath, writeScope } from "#src/tools/path.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { PermissionScope, ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { decodeTextFile, encodeTextFile, type TextFile } from "#src/tools/text-file.ts";
+import { withFileMutations } from "#src/tools/builtin/mutation-queue.ts";
+import { planTextEdits, type EditEntry, type PlannedEdit } from "#src/tools/builtin/text-edits.ts";
 
 /**
  * 多文件补丁。

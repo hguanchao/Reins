@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { copyText } from "../../../src/tui/runtime/copy.ts";
-import type { TuiHost, TuiState } from "../../../src/tui/runtime/types.ts";
+import { copyText } from "#src/tui/runtime/copy.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
 /** 最小宿主：剪贴板必成功，渲染计数只用于确认刷新发生。 */
 function fakeHost(state: TuiState): TuiHost & { readonly renders: number } {

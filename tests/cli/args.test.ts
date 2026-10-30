@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parseArgs } from "../../src/cli/args.ts";
+import { parseArgs } from "#src/cli/args.ts";
 
 describe("parseArgs 命令", () => {
 	it("帮助与版本", () => {

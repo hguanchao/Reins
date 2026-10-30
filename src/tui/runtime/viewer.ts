@@ -1,7 +1,7 @@
-import type { TranscriptTool, TranscriptTurn } from "../transcript.ts";
-import { showPage } from "./pages.ts";
-import { STATUS, VIEWER_TITLE, toolDetailsTitle, toolOutputTitle } from "../copy.ts";
-import type { TuiHost, ViewerContent } from "./types.ts";
+import type { TranscriptTool, TranscriptTurn } from "#src/tui/transcript.ts";
+import { showPage } from "#src/tui/runtime/pages.ts";
+import { STATUS, VIEWER_TITLE, toolDetailsTitle, toolOutputTitle } from "#src/tui/copy.ts";
+import type { TuiHost, ViewerContent } from "#src/tui/runtime/types.ts";
 
 /**
  * Ctrl+G：把使用者选中的工具或最近一块可能被折叠/截断的内容打开成整屏页。

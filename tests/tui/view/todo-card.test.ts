@@ -8,9 +8,9 @@ import {
 	todoPanelLines,
 	TODO_PANEL_MAX_ITEMS,
 	type TranscriptTodo,
-} from "../../../src/tui/view/todo-card.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+} from "#src/tui/view/todo-card.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;:]*m/g, "");

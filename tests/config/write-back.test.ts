@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { parseConfig } from "../../src/config/file.ts";
-import { updateModelSelection, updateUserConfigValue } from "../../src/config/write-back.ts";
+import { parseConfig } from "#src/config/file.ts";
+import { updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
 
 const directory = mkdtempSync(join(tmpdir(), "reins-write-back-"));
 after(() => rmSync(directory, { recursive: true, force: true }));

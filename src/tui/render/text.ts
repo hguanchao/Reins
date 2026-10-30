@@ -1,7 +1,7 @@
 import { eastAsianWidth } from "get-east-asian-width";
 import { stripVTControlCharacters } from "node:util";
 
-import { THEME } from "./theme.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /**
  * 终端文本的宽度计算与基础排版。

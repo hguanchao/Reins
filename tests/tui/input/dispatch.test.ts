@@ -10,9 +10,9 @@ import {
 	exitTui,
 	frameLines,
 	plain,
-} from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import { incompleteEscapeStart } from "../../../src/tui/input/dispatch.ts";
+} from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import { incompleteEscapeStart } from "#src/tui/input/dispatch.ts";
 
 /** 起一套最小界面：只关心输入框里的文字与提交结果。 */
 function startTui(t: TestContext): {

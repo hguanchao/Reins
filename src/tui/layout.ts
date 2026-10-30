@@ -1,5 +1,5 @@
-import type { AgentEventListener } from "../agent/events.ts";
-import { STATUS, UNTITLED_SESSION } from "./copy.ts";
+import type { AgentEventListener } from "#src/agent/events.ts";
+import { STATUS, UNTITLED_SESSION } from "#src/tui/copy.ts";
 import {
 	CURSOR_BLINKING_BAR,
 	CURSOR_DEFAULT,
@@ -15,17 +15,17 @@ import {
 	HIDE_CURSOR,
 	LEAVE_ALTERNATE_SCREEN,
 	SHOW_CURSOR,
-} from "./terminal.ts";
-import { mergeCommands } from "./commands.ts";
-import type { TuiOptions } from "./options.ts";
-import { createState } from "./runtime/state.ts";
-import { createInputHandler } from "./input/dispatch.ts";
-import { render } from "./runtime/render.ts";
-import { onCtrlC } from "./runtime/ctrl-c.ts";
-import { EXIT_SIGNALS, cleanup } from "./runtime/lifecycle.ts";
-import { startRun } from "./runtime/run.ts";
-import { notify } from "./runtime/run.ts";
-import { drainQueue } from "./runtime/run.ts";
+} from "#src/tui/terminal.ts";
+import { mergeCommands } from "#src/tui/commands.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
+import { createState } from "#src/tui/runtime/state.ts";
+import { createInputHandler } from "#src/tui/input/dispatch.ts";
+import { render } from "#src/tui/runtime/render.ts";
+import { onCtrlC } from "#src/tui/runtime/ctrl-c.ts";
+import { EXIT_SIGNALS, cleanup } from "#src/tui/runtime/lifecycle.ts";
+import { startRun } from "#src/tui/runtime/run.ts";
+import { notify } from "#src/tui/runtime/run.ts";
+import { drainQueue } from "#src/tui/runtime/run.ts";
 import {
 	compactFooter,
 	footerHeight,
@@ -37,20 +37,20 @@ import {
 	terminalRows,
 	terminalWidth,
 	todoPanelHeight,
-} from "./runtime/geometry.ts";
-import { currentTranscript, markTranscriptDirty } from "./runtime/transcript-state.ts";
-import { noticeText } from "./runtime/notice.ts";
+} from "#src/tui/runtime/geometry.ts";
+import { currentTranscript, markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { noticeText } from "#src/tui/runtime/notice.ts";
 import {
 	approvalPanelTop,
 	moveApprovalSelection,
 	resolveApproval,
 	syncApprovalPrompt,
-} from "./runtime/approval.ts";
-import { closePlanReviewAndResume, openPlanReview, pageLines } from "./runtime/pages.ts";
-import { setStatus, clearStatus, resetStatusMeta, scheduleStatusClear } from "./runtime/status.ts";
-import { copyText } from "./runtime/copy.ts";
-import { closeThinking, appendLine, syncTurn, syncTurnFull } from "./runtime/turn.ts";
-import { executeUndo } from "./runtime/checkpoints.ts";
+} from "#src/tui/runtime/approval.ts";
+import { closePlanReviewAndResume, openPlanReview, pageLines } from "#src/tui/runtime/pages.ts";
+import { setStatus, clearStatus, resetStatusMeta, scheduleStatusClear } from "#src/tui/runtime/status.ts";
+import { copyText } from "#src/tui/runtime/copy.ts";
+import { closeThinking, appendLine, syncTurn, syncTurnFull } from "#src/tui/runtime/turn.ts";
+import { executeUndo } from "#src/tui/runtime/checkpoints.ts";
 import {
 	attachClipboardImage,
 	attachImagePath,
@@ -59,16 +59,16 @@ import {
 	imagesOf,
 	insertImageMarker,
 	readAndInsertImage,
-} from "./input/attachments.ts";
-import { recallHistory, rememberInput } from "./input/history.ts";
-import { healthCheckMcp, moveMcpCursor, reconnectMcp } from "./runtime/mcp.ts";
+} from "#src/tui/input/attachments.ts";
+import { recallHistory, rememberInput } from "#src/tui/input/history.ts";
+import { healthCheckMcp, moveMcpCursor, reconnectMcp } from "#src/tui/runtime/mcp.ts";
 import {
 	approvePlan,
 	executeCommand,
 	leavePlan,
 	revisePlan,
 	switchSession,
-} from "./runtime/commands.ts";
+} from "#src/tui/runtime/commands.ts";
 import {
 	cancelMenu,
 	closeFileMenu,
@@ -82,15 +82,15 @@ import {
 	openSessionMenu,
 	updateCommandMenu,
 	updateFileMenu,
-} from "./runtime/panels.ts";
-import { submit } from "./runtime/submit.ts";
-import { resolveTrust } from "./runtime/trust.ts";
-import { togglingTranscriptAt } from "./runtime/view.ts";
-import { openLatestViewer } from "./runtime/viewer.ts";
-import type { ActiveTurn, TuiHost } from "./runtime/types.ts";
-import type { ImageAttachment } from "./image.ts";
-import { measureTranscriptView, scrollTopForRow as scrollTopForRowImpl, type TranscriptMetrics } from "./transcript.ts";
-import type { TranscriptLine } from "./transcript.ts";
+} from "#src/tui/runtime/panels.ts";
+import { submit } from "#src/tui/runtime/submit.ts";
+import { resolveTrust } from "#src/tui/runtime/trust.ts";
+import { togglingTranscriptAt } from "#src/tui/runtime/view.ts";
+import { openLatestViewer } from "#src/tui/runtime/viewer.ts";
+import type { ActiveTurn, TuiHost } from "#src/tui/runtime/types.ts";
+import type { ImageAttachment } from "#src/tui/image.ts";
+import { measureTranscriptView, scrollTopForRow as scrollTopForRowImpl, type TranscriptMetrics } from "#src/tui/transcript.ts";
+import type { TranscriptLine } from "#src/tui/transcript.ts";
 
 /**
  * 全屏界面入口。

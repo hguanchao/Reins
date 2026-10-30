@@ -6,10 +6,10 @@ import {
 	todoHeaderInView,
 	toolGroupHeaderInView,
 	toolHeaderInView,
-} from "../transcript.ts";
-import { invalidateTranscriptPrefix, markTranscriptDirty } from "./transcript-state.ts";
-import { openPlanReview } from "./pages.ts";
-import type { TuiHost } from "./types.ts";
+} from "#src/tui/transcript.ts";
+import { invalidateTranscriptPrefix, markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { openPlanReview } from "#src/tui/runtime/pages.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 双击对话流里的可展开行。

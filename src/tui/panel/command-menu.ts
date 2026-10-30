@@ -13,9 +13,9 @@ import {
 	menuListHeight,
 	menuListLines,
 	padEnd,
-} from "./menu-panel.ts";
-import { displayWidth } from "../render/text.ts";
-import { PANEL } from "../copy.ts";
+} from "#src/tui/panel/menu-panel.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { PANEL } from "#src/tui/copy.ts";
 
 /**
  * 斜杠命令补全面板。

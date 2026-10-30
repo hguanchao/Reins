@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { hostOf, webFetchTool } from "../../../src/tools/builtin/web-fetch.ts";
-import { validateToolArguments } from "../../../src/tools/schema.ts";
+import { hostOf, webFetchTool } from "#src/tools/builtin/web-fetch.ts";
+import { validateToolArguments } from "#src/tools/schema.ts";
 
 /** 工具定义的静态契约；抓取行为本身在 tests/tools/web-fetch.test.ts 覆盖。 */
 

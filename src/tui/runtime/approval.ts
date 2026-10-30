@@ -1,9 +1,9 @@
-import type { ApprovalAnswer } from "../../permission/policy.ts";
-import { terminalHeight } from "../terminal.ts";
-import type { TuiOptions } from "../options.ts";
-import { footerHeight } from "./geometry.ts";
-import { approvalActions } from "./state.ts";
-import type { TuiHost, TuiState } from "./types.ts";
+import type { ApprovalAnswer } from "#src/permission/policy.ts";
+import { terminalHeight } from "#src/tui/terminal.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
+import { footerHeight } from "#src/tui/runtime/geometry.ts";
+import { approvalActions } from "#src/tui/runtime/state.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 审批卡与面板几何。

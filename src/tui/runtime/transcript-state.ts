@@ -1,7 +1,7 @@
-import { buildTranscriptView } from "../transcript.ts";
-import type { TranscriptTurn, TranscriptView } from "../transcript.ts";
-import { noticeText } from "./notice.ts";
-import type { TranscriptPrefix, TuiState } from "./types.ts";
+import { buildTranscriptView } from "#src/tui/transcript.ts";
+import type { TranscriptTurn, TranscriptView } from "#src/tui/transcript.ts";
+import { noticeText } from "#src/tui/runtime/notice.ts";
+import type { TranscriptPrefix, TuiState } from "#src/tui/runtime/types.ts";
 
 /** 对话流缓存失效：内容、宽度或警告变化时才重排。 */
 export function markTranscriptDirty(state: TuiState): void {

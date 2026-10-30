@@ -1,5 +1,5 @@
-import { displayWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /**
  * 对话流底部居中的置底按钮。

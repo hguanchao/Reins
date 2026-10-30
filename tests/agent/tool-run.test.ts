@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { rejectToolCalls, runToolCalls, type ToolRunDeps, type ToolRunEnd } from "../../src/agent/tool-run.ts";
-import type { LlmToolCallBlock } from "../../src/llm/messages.ts";
-import { ResultSpiller } from "../../src/tools/spill.ts";
-import { ToolRegistry } from "../../src/tools/registry.ts";
-import type { AnyToolDefinition, ToolResult } from "../../src/tools/contract.ts";
-import { TRUNCATED_TOOL_ARGUMENTS } from "../../src/agent/request.ts";
+import { rejectToolCalls, runToolCalls, type ToolRunDeps, type ToolRunEnd } from "#src/agent/tool-run.ts";
+import type { LlmToolCallBlock } from "#src/llm/messages.ts";
+import { ResultSpiller } from "#src/tools/spill.ts";
+import { ToolRegistry } from "#src/tools/registry.ts";
+import type { AnyToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import { TRUNCATED_TOOL_ARGUMENTS } from "#src/agent/request.ts";
 
 const SIGNAL = new AbortController().signal;
 

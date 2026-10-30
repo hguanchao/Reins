@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { actionLines, pageTitle, subtleLine } from "../../../src/tui/page/chrome.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+import { actionLines, pageTitle, subtleLine } from "#src/tui/page/chrome.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");

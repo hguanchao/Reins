@@ -5,12 +5,12 @@ import {
 	imagesInPrompt,
 	uniqueImageName,
 	type ImageAttachment,
-} from "../image.ts";
-import { PASTE_END, PASTE_START } from "./keys.ts";
-import { STATUS, attachedWithoutVision, imageError } from "../copy.ts";
-import { errorLine } from "../render/status.ts";
-import { closeFileMenu } from "../runtime/panels.ts";
-import type { TuiHost } from "../runtime/types.ts";
+} from "#src/tui/image.ts";
+import { PASTE_END, PASTE_START } from "#src/tui/input/keys.ts";
+import { STATUS, attachedWithoutVision, imageError } from "#src/tui/copy.ts";
+import { errorLine } from "#src/tui/render/status.ts";
+import { closeFileMenu } from "#src/tui/runtime/panels.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 输入框里的图片。
@@ -143,7 +143,7 @@ export function draggedImagePath(host: TuiHost, chunk: string): string | undefin
 }
 
 /** 提交时按还留在正文里的标记取出图片；标记被删掉的图片不再发送。 */
-export function imagesOf(state: { readonly input: string; readonly pendingImages: import("../image.ts").PendingImage[] }): readonly ImageAttachment[] {
+export function imagesOf(state: { readonly input: string; readonly pendingImages: import("#src/tui/image.ts").PendingImage[] }): readonly ImageAttachment[] {
 	return imagesInPrompt(state.input, state.pendingImages);
 }
 

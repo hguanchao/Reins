@@ -1,8 +1,8 @@
 import { StringDecoder } from "node:string_decoder";
 
-import { createBuiltinCommands } from "../commands.ts";
-import type { TuiOptions } from "../options.ts";
-import type { TuiState } from "./types.ts";
+import { createBuiltinCommands } from "#src/tui/commands.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
+import type { TuiState } from "#src/tui/runtime/types.ts";
 
 /** 按启动选项造出初始状态；历史与任务表由调用方先行灌入。 */
 export function createState(options: TuiOptions): TuiState {

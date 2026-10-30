@@ -8,7 +8,7 @@ import {
 	defaultInstructionSources,
 	MAX_INSTRUCTION_BYTES,
 	readInstructions,
-} from "../../src/agent/instructions.ts";
+} from "#src/agent/instructions.ts";
 
 const created: string[] = [];
 const previousHome = process.env["REINS_HOME"];

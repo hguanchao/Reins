@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { builtinSandboxBackends, builtinSessionStore } from "../../src/plugins/registry.ts";
+import { builtinSandboxBackends, builtinSessionStore } from "#src/plugins/registry.ts";
 
 /**
  * 内置能力的装配。

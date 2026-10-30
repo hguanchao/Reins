@@ -1,5 +1,5 @@
-import type { SyntaxToken } from "./syntax.ts";
-import { THEME } from "./theme.ts";
+import type { SyntaxToken } from "#src/tui/render/syntax.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /** 语法角色到颜色；无角色表示普通正文。 */
 export function syntaxColor(token: SyntaxToken | undefined): string {

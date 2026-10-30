@@ -1,6 +1,6 @@
 import { parseTree, type Node, type ParseError } from "jsonc-parser";
-import { ConfigError, offsetToLineColumn, type LineColumn } from "../error.ts";
-import { setTableValue, type ConfigTable, type ConfigValue } from "../value.ts";
+import { ConfigError, offsetToLineColumn, type LineColumn } from "#src/config/error.ts";
+import { setTableValue, type ConfigTable, type ConfigValue } from "#src/config/value.ts";
 
 /**
  * jsonc-parser 的错误码数值。

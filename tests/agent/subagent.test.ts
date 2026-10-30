@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createSubagentTool, Subagent, type SubagentContext, type SubagentDeps } from "../../src/agent/subagent.ts";
-import { EventStream } from "../../src/llm/event-stream.ts";
-import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../../src/llm/client.ts";
-import type { LlmContentBlock, LlmToolCallBlock, LlmUsage } from "../../src/llm/messages.ts";
+import { createSubagentTool, Subagent, type SubagentContext, type SubagentDeps } from "#src/agent/subagent.ts";
+import { EventStream } from "#src/llm/event-stream.ts";
+import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "#src/llm/client.ts";
+import type { LlmContentBlock, LlmToolCallBlock, LlmUsage } from "#src/llm/messages.ts";
 
 const SIGNAL = new AbortController().signal;
 const STOP_USAGE: LlmUsage = { input: 10, output: 2, cacheRead: 0, cacheWrite: 0, total: 12 };

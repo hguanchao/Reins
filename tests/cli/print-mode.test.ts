@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { runPrintMode } from "../../src/cli/print-mode.ts";
+import { runPrintMode } from "#src/cli/print-mode.ts";
 
 describe("非交互模式", () => {
 	it("工具调用用可读摘要，答案与过程分开输出", async () => {

@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
+import type { AgentEvent, AgentEventListener } from "#src/agent/events.ts";
 
 /**
  * 事件流的 JSONL 出口。

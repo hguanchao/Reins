@@ -1,4 +1,4 @@
-import { ConfigError, offsetToLineColumn } from "../error.ts";
+import { ConfigError, offsetToLineColumn } from "#src/config/error.ts";
 import {
 	hasTableKey,
 	isConfigTable,
@@ -6,7 +6,7 @@ import {
 	tableValue,
 	type ConfigTable,
 	type ConfigValue,
-} from "../value.ts";
+} from "#src/config/value.ts";
 
 /** 一条赋值在原文中的位置。回写单个键时只替换 [valueStart, valueEnd) 这一段。 */
 export interface TomlAssignment {

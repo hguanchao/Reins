@@ -1,4 +1,4 @@
-import { isObject } from "./shared.ts";
+import { isObject } from "#src/plugins/dsh-shim/shared.ts";
 
 /**
  * `@deepseek-ai/dsh-tools` 的替身。

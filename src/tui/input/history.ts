@@ -1,4 +1,4 @@
-import type { TuiState } from "../runtime/types.ts";
+import type { TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 输入历史。

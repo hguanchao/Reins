@@ -1,7 +1,7 @@
-import { readFooterRange } from "../builtin/read.ts";
-import { sanitizeDetail, toolPresentation } from "../describe.ts";
-import { numberField, record, stringField } from "./fields.ts";
-import { hasSpillFooter, stripSpillFooter } from "../spill.ts";
+import { readFooterRange } from "#src/tools/builtin/read.ts";
+import { sanitizeDetail, toolPresentation } from "#src/tools/describe.ts";
+import { numberField, record, stringField } from "#src/tools/result/fields.ts";
+import { hasSpillFooter, stripSpillFooter } from "#src/tools/spill.ts";
 
 export type ResultDetailKind = "text" | "file" | "diff";
 

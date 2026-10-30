@@ -1,11 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
 
-import { markTranscriptDirty } from "./transcript-state.ts";
-import { isRunningTool } from "../transcript/model.ts";
-import type { TranscriptLine } from "../transcript/types.ts";
-import { STATUS_CLEAR_MS, SWEEP_STEP } from "./constants.ts";
-import type { TuiState, ActiveTurn } from "./types.ts";
-import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "./constants.ts";
+import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { isRunningTool } from "#src/tui/transcript/model.ts";
+import type { TranscriptLine } from "#src/tui/transcript/types.ts";
+import { STATUS_CLEAR_MS, SWEEP_STEP } from "#src/tui/runtime/constants.ts";
+import type { TuiState, ActiveTurn } from "#src/tui/runtime/types.ts";
+import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "#src/tui/runtime/constants.ts";
 
 /**
  * 状态行与转圈。

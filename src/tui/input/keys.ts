@@ -1,8 +1,8 @@
 import { stripVTControlCharacters } from "node:util";
 
-import { MENU_MAX_VISIBLE, keepVisible } from "../panel/menu-panel.ts";
-import { characterWidth } from "../render/text.ts";
-import type { ApprovalAnswer } from "../../permission/policy.ts";
+import { MENU_MAX_VISIBLE, keepVisible } from "#src/tui/panel/menu-panel.ts";
+import { characterWidth } from "#src/tui/render/text.ts";
+import type { ApprovalAnswer } from "#src/permission/policy.ts";
 
 /**
  * 终端输入解析与单行/多行编辑器。

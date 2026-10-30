@@ -1,5 +1,5 @@
-import { isImagePath } from "../image.ts";
-import { PANEL } from "../copy.ts";
+import { isImagePath } from "#src/tui/image.ts";
+import { PANEL } from "#src/tui/copy.ts";
 import {
 	type MenuListState,
 	ACCENT_COLOR,
@@ -14,8 +14,8 @@ import {
 	TEXT_COLOR,
 	menuListHeight,
 	menuListLines,
-} from "./menu-panel.ts";
-import { characterWidth, displayWidth, fitToWidth, graphemes } from "../render/text.ts";
+} from "#src/tui/panel/menu-panel.ts";
+import { characterWidth, displayWidth, fitToWidth, graphemes } from "#src/tui/render/text.ts";
 
 /**
  * 输入框里的 `@` 文件补全。

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, ENTER, SYNC_BEGIN, SYNC_END, LEAVE, FOCUS, INFO, BORDER, FOOTER_INFO, WARNING, pressCtrlC, exitTui, rawFrame, frameLines, cursorAt, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+import { FakeInput, FakeOutput, ENTER, SYNC_BEGIN, SYNC_END, LEAVE, FOCUS, INFO, BORDER, FOOTER_INFO, WARNING, pressCtrlC, exitTui, rawFrame, frameLines, cursorAt, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 describe("终端启动与收尾", () => {
 	it("进入备用屏，按当前尺寸绘制，连按两次 Ctrl+C 后恢复", async () => {

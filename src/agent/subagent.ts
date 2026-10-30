@@ -1,23 +1,23 @@
-import type { Config } from "../config/file.ts";
-import { computeCost, type ModelEntry, type ProviderEntry } from "../config/providers-file.ts";
-import type { LlmClient, LlmResult } from "../llm/client.ts";
-import { requestOptions, requestTools } from "./request.ts";
-import { rejectToolCalls, runToolCalls, type ToolRunDeps } from "./tool-run.ts";
+import type { Config } from "#src/config/file.ts";
+import { computeCost, type ModelEntry, type ProviderEntry } from "#src/config/providers-file.ts";
+import type { LlmClient, LlmResult } from "#src/llm/client.ts";
+import { requestOptions, requestTools } from "#src/agent/request.ts";
+import { rejectToolCalls, runToolCalls, type ToolRunDeps } from "#src/agent/tool-run.ts";
 import {
 	assistantText,
 	assistantToolCalls,
 	type LlmAssistantMessage,
 	type LlmMessage,
-} from "../llm/messages.ts";
-import type { SandboxView } from "../sandbox/policy.ts";
-import type { SessionPort } from "../session/port.ts";
-import type { AnyToolDefinition, ToolDefinition, ToolResult } from "../tools/contract.ts";
-import type { ToolRegistry } from "../tools/registry.ts";
-import type { JsonSchema } from "../tools/schema.ts";
-import type { WorkspaceBoundary } from "../workspace/boundary.ts";
-import { estimateTokens } from "./compactor.ts";
-import type { PromptInstruction } from "./instructions.ts";
-import { buildSubagentPrompt } from "./prompt.ts";
+} from "#src/llm/messages.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { SessionPort } from "#src/session/port.ts";
+import type { AnyToolDefinition, ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { ToolRegistry } from "#src/tools/registry.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import type { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import { estimateTokens } from "#src/agent/compactor.ts";
+import type { PromptInstruction } from "#src/agent/instructions.ts";
+import { buildSubagentPrompt } from "#src/agent/prompt.ts";
 
 /**
  * 子代理。

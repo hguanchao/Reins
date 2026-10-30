@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { assistantText, assistantToolCalls, userImages, userText } from "../../src/llm/messages.ts";
+import { assistantText, assistantToolCalls, userImages, userText } from "#src/llm/messages.ts";
 
 describe("助手消息取内容", () => {
 	it("文本块之间用空行连接,忽略其它块", () => {

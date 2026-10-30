@@ -9,8 +9,8 @@ import {
 	exitTui,
 	frameLines,
 	plain,
-} from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+} from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 describe("对话流长内容查看", () => {
 	it("Ctrl+G 打开最近工具输出的整屏页，Esc 返回", (t) => {

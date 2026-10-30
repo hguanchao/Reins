@@ -1,10 +1,10 @@
-import { MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, menuKey, scrollKey } from "./keys.ts";
-import type { MouseInput } from "./keys.ts";
-import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
-import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
-import { VIEWER_ACTION_HEIGHT } from "../page/viewer.ts";
-import type { InputDeps } from "./deps.ts";
-import type { TuiHost } from "../runtime/types.ts";
+import { MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, menuKey, scrollKey } from "#src/tui/input/keys.ts";
+import type { MouseInput } from "#src/tui/input/keys.ts";
+import { MCP_ACTION_HEIGHT } from "#src/tui/page/frame.ts";
+import { PLAN_ACTION_HEIGHT } from "#src/tui/page/plan.ts";
+import { VIEWER_ACTION_HEIGHT } from "#src/tui/page/viewer.ts";
+import type { InputDeps } from "#src/tui/input/deps.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 export function handlePageInput(
 	host: TuiHost,

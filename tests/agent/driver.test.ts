@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { TurnDriver } from "../../src/agent/driver.ts";
-import { EventStream } from "../../src/llm/event-stream.ts";
-import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../../src/llm/client.ts";
-import type { LlmContentBlock, LlmMessage, LlmToolCallBlock, LlmUsage } from "../../src/llm/messages.ts";
-import type { AgentEvent } from "../../src/agent/events.ts";
-import type { CompactionResult, Compactor } from "../../src/agent/compactor.ts";
-import type { PromptInstruction } from "../../src/agent/instructions.ts";
-import type { SessionEntry, SessionState, SessionToolDeclaration } from "../../src/session/port.ts";
+import { TurnDriver } from "#src/agent/driver.ts";
+import { EventStream } from "#src/llm/event-stream.ts";
+import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "#src/llm/client.ts";
+import type { LlmContentBlock, LlmMessage, LlmToolCallBlock, LlmUsage } from "#src/llm/messages.ts";
+import type { AgentEvent } from "#src/agent/events.ts";
+import type { CompactionResult, Compactor } from "#src/agent/compactor.ts";
+import type { PromptInstruction } from "#src/agent/instructions.ts";
+import type { SessionEntry, SessionState, SessionToolDeclaration } from "#src/session/port.ts";
 
 const STOP: LlmUsage = { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, total: 15 };
 const SIGNAL = new AbortController().signal;

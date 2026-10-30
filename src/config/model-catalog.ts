@@ -1,6 +1,6 @@
-import type { Config } from "./file.ts";
-import type { ModelEntry, ProviderEntry, ProvidersConfig } from "./providers-file.ts";
-import type { ModelSelection } from "./selection.ts";
+import type { Config } from "#src/config/file.ts";
+import type { ModelEntry, ProviderEntry, ProvidersConfig } from "#src/config/providers-file.ts";
+import type { ModelSelection } from "#src/config/selection.ts";
 
 /**
  * 会话内的模型目录。

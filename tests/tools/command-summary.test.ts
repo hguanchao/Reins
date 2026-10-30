@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { commandCore } from "../../src/tools/command-summary.ts";
+import { commandCore } from "#src/tools/command-summary.ts";
 
 /**
  * 命令折叠摘要。

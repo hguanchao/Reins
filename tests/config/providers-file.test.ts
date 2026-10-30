@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parseProviders } from "../../src/config/providers-file.ts";
+import { parseProviders } from "#src/config/providers-file.ts";
 
 /** 只关心模型条目本身的用例：provider 层的必填项照最小形状填上。 */
 function providersWith(model: string): string {

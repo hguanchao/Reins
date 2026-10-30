@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { sessionDirectories, sessionsDir } from "../../src/config/paths.ts";
+import { sessionDirectories, sessionsDir } from "#src/config/paths.ts";
 
 describe("会话目录编码", () => {
 	it("不同工作区不会映射到同一个目录", () => {

@@ -1,5 +1,5 @@
-import type { LlmMessage, LlmUserMessage } from "../llm/messages.ts";
-import type { SessionEntry, SessionState, SessionToolDeclaration } from "./port.ts";
+import type { LlmMessage, LlmUserMessage } from "#src/llm/messages.ts";
+import type { SessionEntry, SessionState, SessionToolDeclaration } from "#src/session/port.ts";
 
 /**
  * 会话条目的折叠。

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { loadSelection } from "../../src/cli/config-selection.ts";
-import type { CliOptions } from "../../src/cli/args.ts";
+import { loadSelection } from "#src/cli/config-selection.ts";
+import type { CliOptions } from "#src/cli/args.ts";
 
 const directory = mkdtempSync(join(tmpdir(), "reins-selection-"));
 after(() => rmSync(directory, { recursive: true, force: true }));

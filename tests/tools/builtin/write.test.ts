@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { writeTool } from "../../../src/tools/builtin/write.ts";
-import { WorkspaceBoundary } from "../../../src/workspace/boundary.ts";
+import { writeTool } from "#src/tools/builtin/write.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 function context(root: string) {
 	return {

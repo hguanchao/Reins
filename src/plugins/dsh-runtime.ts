@@ -3,14 +3,14 @@ import { spawn } from "node:child_process";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { isObject } from "./dsh-shim/shared.ts";
-import type { DeclarativePlugin } from "./declarative.ts";
-import type { Plugin, PluginApi, PluginFailure } from "./host.ts";
-import type { ToolContext, ToolResult } from "../tools/contract.ts";
-import type { JsonSchema } from "../tools/schema.ts";
-import { writeForwarders } from "./shims.ts";
-import { describeError } from "../shared/describe-error.ts";
-import { contextProxy } from "./missing.ts";
+import { isObject } from "#src/plugins/dsh-shim/shared.ts";
+import type { DeclarativePlugin } from "#src/plugins/declarative.ts";
+import type { Plugin, PluginApi, PluginFailure } from "#src/plugins/host.ts";
+import type { ToolContext, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { writeForwarders } from "#src/plugins/shims.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { contextProxy } from "#src/plugins/missing.ts";
 
 /**
  * dsh 插件的装载器。

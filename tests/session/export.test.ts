@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { renderSessionMarkdown, writeSessionExport } from "../../src/session/export.ts";
-import { summaryMessage } from "../../src/session/fold.ts";
-import { JsonlSessionStore } from "../../src/session/jsonl-store.ts";
-import { Session } from "../../src/session/session.ts";
+import { renderSessionMarkdown, writeSessionExport } from "#src/session/export.ts";
+import { summaryMessage } from "#src/session/fold.ts";
+import { JsonlSessionStore } from "#src/session/jsonl-store.ts";
+import { Session } from "#src/session/session.ts";
 
 function workdir(name: string): string {
 	const directory = join(tmpdir(), `reins-export-${name}-${Math.random().toString(16).slice(2)}`);

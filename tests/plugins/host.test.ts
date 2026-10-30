@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { PluginHost, type Plugin, type PluginApi } from "../../src/plugins/host.ts";
-import { PermissionPolicy } from "../../src/permission/policy.ts";
-import { ResultSpiller } from "../../src/tools/spill.ts";
-import { ToolRegistry } from "../../src/tools/registry.ts";
-import type { ToolDefinition } from "../../src/tools/contract.ts";
+import { PluginHost, type Plugin, type PluginApi } from "#src/plugins/host.ts";
+import { PermissionPolicy } from "#src/permission/policy.ts";
+import { ResultSpiller } from "#src/tools/spill.ts";
+import { ToolRegistry } from "#src/tools/registry.ts";
+import type { ToolDefinition } from "#src/tools/contract.ts";
 
 function noSpill(): ResultSpiller {
 	return new ResultSpiller(0, "");

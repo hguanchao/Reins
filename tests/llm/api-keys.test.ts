@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { resolveApiKey } from "../../src/llm/api-keys.ts";
+import { resolveApiKey } from "#src/llm/api-keys.ts";
 
 const SIGNAL = new AbortController().signal;
 

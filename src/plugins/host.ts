@@ -1,9 +1,9 @@
-import { describeError } from "../shared/describe-error.ts";
-import type { PermissionPolicy, PermissionRule } from "../permission/policy.ts";
-import type { SandboxBackend } from "../sandbox/policy.ts";
-import type { SessionStore } from "../session/store.ts";
-import type { AnyToolDefinition } from "../tools/contract.ts";
-import type { ToolRegistry, ToolSource } from "../tools/registry.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { PermissionPolicy, PermissionRule } from "#src/permission/policy.ts";
+import type { SandboxBackend } from "#src/sandbox/policy.ts";
+import type { SessionStore } from "#src/session/store.ts";
+import type { AnyToolDefinition } from "#src/tools/contract.ts";
+import type { ToolRegistry, ToolSource } from "#src/tools/registry.ts";
 
 /**
  * 插件宿主。

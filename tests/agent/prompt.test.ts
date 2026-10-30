@@ -6,8 +6,8 @@ import {
 	buildSubagentPrompt,
 	renderSystemPrompt,
 	toSessionTools,
-} from "../../src/agent/prompt.ts";
-import type { ToolDeclaration } from "../../src/tools/contract.ts";
+} from "#src/agent/prompt.ts";
+import type { ToolDeclaration } from "#src/tools/contract.ts";
 
 const PARAMETERS = { type: "object", properties: {} } as const;
 

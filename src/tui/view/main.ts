@@ -1,4 +1,4 @@
-import { bannerLines } from "./banner.ts";
+import { bannerLines } from "#src/tui/view/banner.ts";
 
 /**
  * 主区域启动画面。

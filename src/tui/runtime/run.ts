@@ -1,14 +1,14 @@
-import { describeError } from "../../shared/describe-error.ts";
-import type { AgentEventListener } from "../../agent/events.ts";
-import { collapseToolGroups, measureTranscriptView } from "../transcript.ts";
-import { desktopNotify } from "../terminal.ts";
-import { NOTIFY, STATUS } from "../copy.ts";
-import type { ImageAttachment } from "../image.ts";
-import { markTranscriptDirty } from "./transcript-state.ts";
-import { closeThinking, closeText, createEventTarget, freezeSubagentGroups } from "./turn.ts";
-import { startSpinner, stopSpinner } from "./status.ts";
-import { disarm } from "./lifecycle.ts";
-import type { ActiveTurn, LiveTurn, TuiHost } from "./types.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { AgentEventListener } from "#src/agent/events.ts";
+import { collapseToolGroups, measureTranscriptView } from "#src/tui/transcript.ts";
+import { desktopNotify } from "#src/tui/terminal.ts";
+import { NOTIFY, STATUS } from "#src/tui/copy.ts";
+import type { ImageAttachment } from "#src/tui/image.ts";
+import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { closeThinking, closeText, createEventTarget, freezeSubagentGroups } from "#src/tui/runtime/turn.ts";
+import { startSpinner, stopSpinner } from "#src/tui/runtime/status.ts";
+import { disarm } from "#src/tui/runtime/lifecycle.ts";
+import type { ActiveTurn, LiveTurn, TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 启动一次由事件驱动的运行。

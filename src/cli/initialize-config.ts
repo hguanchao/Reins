@@ -1,7 +1,7 @@
-import { describeError } from "../shared/describe-error.ts";
-import { initializeConfigFiles } from "../config/initialize.ts";
-import type { CliOptions } from "./args.ts";
-import { writeStderr } from "./output.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { initializeConfigFiles } from "#src/config/initialize.ts";
+import type { CliOptions } from "#src/cli/args.ts";
+import { writeStderr } from "#src/cli/output.ts";
 
 /**
  * 补齐缺失的配置模板。

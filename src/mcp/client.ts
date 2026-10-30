@@ -1,5 +1,5 @@
-import type { JsonSchema } from "../tools/schema.ts";
-import type { JsonRpcMessage, McpTransport } from "./transport.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import type { JsonRpcMessage, McpTransport } from "#src/mcp/transport.ts";
 
 /**
  * MCP 客户端。

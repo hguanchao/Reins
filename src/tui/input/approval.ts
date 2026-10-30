@@ -1,22 +1,22 @@
-import type { ApprovalPrompt } from "../../permission/approval.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, approvalKey, dragMotion, menuKey, scrollKey } from "./keys.ts";
-import type { MouseInput } from "./keys.ts";
+import type { ApprovalPrompt } from "#src/permission/approval.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, approvalKey, dragMotion, menuKey, scrollKey } from "#src/tui/input/keys.ts";
+import type { MouseInput } from "#src/tui/input/keys.ts";
 import {
 	APPROVAL_PANEL_BASE_HEIGHT,
 	approvalActionAt,
 	approvalPanelHeight,
 	approvalPreviewScrollLimit,
-} from "../panel/approval-panel.ts";
-import { WHEEL_STEP } from "../runtime/constants.ts";
+} from "#src/tui/panel/approval-panel.ts";
+import { WHEEL_STEP } from "#src/tui/runtime/constants.ts";
 import {
 	applyDragScroll,
 	applyWheelScroll,
 	handleScrollKey,
 	handleToggleKey,
 	trackClick,
-} from "./scroll.ts";
-import type { InputDeps } from "./deps.ts";
-import type { TuiHost, TuiState } from "../runtime/types.ts";
+} from "#src/tui/input/scroll.ts";
+import type { InputDeps } from "#src/tui/input/deps.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
 export function handleApprovalInput(
 	host: TuiHost,

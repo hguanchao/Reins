@@ -1,5 +1,5 @@
-import { ConfigError, type LineColumn } from "./error.ts";
-import { isConfigTable, type ConfigPath, type ConfigTable, type ConfigValue } from "./value.ts";
+import { ConfigError, type LineColumn } from "#src/config/error.ts";
+import { isConfigTable, type ConfigPath, type ConfigTable, type ConfigValue } from "#src/config/value.ts";
 
 /**
  * 配置读取器。

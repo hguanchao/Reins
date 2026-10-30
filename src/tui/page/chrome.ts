@@ -1,5 +1,5 @@
-import { displayWidth, truncateToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
+import { displayWidth, truncateToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /**
  * 整屏页的公共排版件。

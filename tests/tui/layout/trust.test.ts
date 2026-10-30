@@ -9,9 +9,9 @@ import {
 	frameLines,
 	plain,
 	pressCtrlC,
-} from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import type { TrustPromptSource } from "../../../src/tui/options.ts";
+} from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import type { TrustPromptSource } from "#src/tui/options.ts";
 
 /** 让 accept 的 Promise 与随后的重绘跑到下一轮事件循环。 */
 function flush(): Promise<void> {

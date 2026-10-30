@@ -1,13 +1,13 @@
-import { describeError } from "../shared/describe-error.ts";
-import type { McpServerConfig } from "../config/file.ts";
-import type { AnyToolDefinition, ToolResult } from "../tools/contract.ts";
-import { CONTROL_TIMEOUT_MS, DEFAULT_CALL_TIMEOUT_MS, McpClient, type McpToolInfo } from "./client.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { McpServerConfig } from "#src/config/file.ts";
+import type { AnyToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import { CONTROL_TIMEOUT_MS, DEFAULT_CALL_TIMEOUT_MS, McpClient, type McpToolInfo } from "#src/mcp/client.ts";
 import {
 	createHttpTransport,
 	createSseTransport,
 	createStdioTransport,
 	type McpTransport,
-} from "./transport.ts";
+} from "#src/mcp/transport.ts";
 
 /**
  * MCP 客户端。

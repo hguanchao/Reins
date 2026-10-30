@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
-import { currentBranch } from "../../src/workspace/git.ts";
+import { currentBranch } from "#src/workspace/git.ts";
 
 const HAS_GIT = ((): boolean => {
 	try {

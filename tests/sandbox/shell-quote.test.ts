@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { quoteForShell } from "../../src/sandbox/shell-quote.ts";
+import { quoteForShell } from "#src/sandbox/shell-quote.ts";
 
 describe("shell 引用", () => {
 	it("普通文本用单引号包起来", () => {

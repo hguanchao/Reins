@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { runTui } from "../../../src/tui/layout.ts";
-import type { McpControl } from "../../../src/mcp/service.ts";
+import { runTui } from "#src/tui/layout.ts";
+import type { McpControl } from "#src/mcp/service.ts";
 import {
 	FakeInput,
 	FakeOutput,
@@ -10,7 +10,7 @@ import {
 	exitTui,
 	frameLines,
 	plain,
-} from "../support/harness.ts";
+} from "#tests/tui/support/harness.ts";
 
 const ROWS = [
 	{ name: "alpha", description: "connected  2 tools" },

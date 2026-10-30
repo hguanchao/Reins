@@ -1,8 +1,8 @@
 import { eastAsianWidth } from "get-east-asian-width";
 
-import { computeCost, type ModelEntry } from "../config/providers-file.ts";
-import type { LlmClient } from "../llm/client.ts";
-import { assistantText, userImages, userText, type LlmMessage, type LlmUsage } from "../llm/messages.ts";
+import { computeCost, type ModelEntry } from "#src/config/providers-file.ts";
+import type { LlmClient } from "#src/llm/client.ts";
+import { assistantText, userImages, userText, type LlmMessage, type LlmUsage } from "#src/llm/messages.ts";
 
 /**
  * 上下文压缩。

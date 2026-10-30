@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 describe("子代理组", () => {
 	it("subagent 调用归组,结束翻新成员与计数,冻结后落终态", async (t) => {

@@ -1,5 +1,5 @@
-import { displayWidth, fitToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
+import { displayWidth, fitToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /**
  * 菜单面板的公共排版。

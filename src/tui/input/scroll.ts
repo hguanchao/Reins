@@ -1,8 +1,8 @@
-import { DOUBLE_CLICK_MS, WHEEL_STEP } from "../runtime/constants.ts";
-import { invalidateTranscriptPrefix, markTranscriptDirty } from "../runtime/transcript-state.ts";
-import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "../transcript.ts";
-import type { MouseInput } from "./keys.ts";
-import type { TuiHost, TuiState } from "../runtime/types.ts";
+import { DOUBLE_CLICK_MS, WHEEL_STEP } from "#src/tui/runtime/constants.ts";
+import { invalidateTranscriptPrefix, markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "#src/tui/transcript.ts";
+import type { MouseInput } from "#src/tui/input/keys.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 对话流指针与滚动键处理。

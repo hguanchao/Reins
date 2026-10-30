@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { validateToolArguments, type JsonSchema } from "../../src/tools/schema.ts";
+import { validateToolArguments, type JsonSchema } from "#src/tools/schema.ts";
 
 const STRING_SCHEMA: JsonSchema = {
 	type: "object",

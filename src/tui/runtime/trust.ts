@@ -1,7 +1,7 @@
-import { describeError } from "../../shared/describe-error.ts";
-import type { TrustAnswer } from "../page/trust.ts";
-import { FAILURE_ACTIONS, STATUS, failure } from "../copy.ts";
-import type { TuiHost } from "./types.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { TrustAnswer } from "#src/tui/page/trust.ts";
+import { FAILURE_ACTIONS, STATUS, failure } from "#src/tui/copy.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 信任页的结论落地。

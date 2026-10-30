@@ -11,7 +11,7 @@ import {
 	isPublicAddress,
 	validateFetchUrl,
 	type WebFetchLimits,
-} from "../../src/tools/web-fetch.ts";
+} from "#src/tools/web-fetch.ts";
 
 /** 测试里允许连到 127.0.0.1 的本地服务；生产路径默认策略的拒绝行为由单独用例覆盖。 */
 const LOOPBACK_FETCH = { addressFilter: () => true, signal: AbortSignal.timeout(10_000) } as const;

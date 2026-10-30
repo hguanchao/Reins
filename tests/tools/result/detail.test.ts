@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { resultDetail } from "../../../src/tools/result/detail.ts";
+import { resultDetail } from "#src/tools/result/detail.ts";
 
 describe("工具结果呈现", () => {
 	it("read 展开为带行号的文件内容", () => {

@@ -1,5 +1,5 @@
-import type { SandboxView } from "../sandbox/policy.ts";
-import type { WorkspaceBoundary } from "../workspace/boundary.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 /**
  * 文件工具的路径前奏:解析到工作区内、过沙箱边界、换成人可读的显示路径。

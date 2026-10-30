@@ -1,21 +1,21 @@
-import { inputView, renderFooter } from "../view/footer.ts";
-import { renderMain } from "../view/main.ts";
-import { commandNameOf } from "../commands.ts";
-import { renderApprovalPanel } from "../panel/approval-panel.ts";
-import { renderCommandMenu } from "../panel/command-menu.ts";
-import { renderEffortMenu } from "../panel/effort-menu.ts";
-import { renderFileMenu } from "../panel/file-menu.ts";
-import { renderModelMenu } from "../panel/model-menu.ts";
-import { renderSessionMenu } from "../panel/session-menu.ts";
-import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "../transcript.ts";
-import { scrollButtonPlacement } from "../view/scroll-button.ts";
-import { todoPanelLines } from "../view/todo-card.ts";
-import { trustPageLines } from "../page/trust.ts";
-import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
-import { PLAN_ACTION_HEIGHT } from "../page/plan.ts";
-import { VIEWER_ACTION_HEIGHT } from "../page/viewer.ts";
-import { truncateToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
+import { inputView, renderFooter } from "#src/tui/view/footer.ts";
+import { renderMain } from "#src/tui/view/main.ts";
+import { commandNameOf } from "#src/tui/commands.ts";
+import { renderApprovalPanel } from "#src/tui/panel/approval-panel.ts";
+import { renderCommandMenu } from "#src/tui/panel/command-menu.ts";
+import { renderEffortMenu } from "#src/tui/panel/effort-menu.ts";
+import { renderFileMenu } from "#src/tui/panel/file-menu.ts";
+import { renderModelMenu } from "#src/tui/panel/model-menu.ts";
+import { renderSessionMenu } from "#src/tui/panel/session-menu.ts";
+import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "#src/tui/transcript.ts";
+import { scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
+import { todoPanelLines } from "#src/tui/view/todo-card.ts";
+import { trustPageLines } from "#src/tui/page/trust.ts";
+import { MCP_ACTION_HEIGHT } from "#src/tui/page/frame.ts";
+import { PLAN_ACTION_HEIGHT } from "#src/tui/page/plan.ts";
+import { VIEWER_ACTION_HEIGHT } from "#src/tui/page/viewer.ts";
+import { truncateToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 import {
 	BEGIN_SYNCHRONIZED_UPDATE,
 	END_SYNCHRONIZED_UPDATE,
@@ -25,14 +25,14 @@ import {
 	RESET,
 	SHOW_CURSOR,
 	moveCursor,
-} from "../terminal.ts";
-import type { AnimationFrame } from "../render/sweep.ts";
-import type { FooterInfo } from "../view/footer.ts";
-import { SPINNER_FRAMES } from "./constants.ts";
-import { TRANSCRIPT } from "../copy.ts";
-import { menuOpen, menuVisibleLimit, terminalWidth, terminalRows } from "./geometry.ts";
-import { framedPageFor } from "./pages.ts";
-import type { TuiHost } from "./types.ts";
+} from "#src/tui/terminal.ts";
+import type { AnimationFrame } from "#src/tui/render/sweep.ts";
+import type { FooterInfo } from "#src/tui/view/footer.ts";
+import { SPINNER_FRAMES } from "#src/tui/runtime/constants.ts";
+import { TRANSCRIPT } from "#src/tui/copy.ts";
+import { menuOpen, menuVisibleLimit, terminalWidth, terminalRows } from "#src/tui/runtime/geometry.ts";
+import { framedPageFor } from "#src/tui/runtime/pages.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 const OVERFLOW_NOTICE = TRANSCRIPT.terminalTooSmall;
 

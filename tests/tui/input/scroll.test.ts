@@ -7,11 +7,11 @@ import {
 	handleScrollKey,
 	handleToggleKey,
 	trackClick,
-} from "../../../src/tui/input/scroll.ts";
-import { DOUBLE_CLICK_MS, WHEEL_STEP } from "../../../src/tui/runtime/constants.ts";
-import type { TuiHost, TuiState } from "../../../src/tui/runtime/types.ts";
-import type { TranscriptTool } from "../../../src/tui/transcript.ts";
-import { toggleLastExpandable } from "../../../src/tui/transcript.ts";
+} from "#src/tui/input/scroll.ts";
+import { DOUBLE_CLICK_MS, WHEEL_STEP } from "#src/tui/runtime/constants.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
+import type { TranscriptTool } from "#src/tui/transcript.ts";
+import { toggleLastExpandable } from "#src/tui/transcript.ts";
 
 function stateOf(overrides: Partial<TuiState> = {}): TuiState {
 	return {

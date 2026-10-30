@@ -4,11 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { Session } from "../../src/session/session.ts";
-import { JsonlSessionStore } from "../../src/session/jsonl-store.ts";
-import type { SessionEntry, SessionHeaderEntry } from "../../src/session/port.ts";
-import type { SessionStore, SessionWriter } from "../../src/session/store.ts";
-import { SESSION_VERSION } from "../../src/session/port.ts";
+import { Session } from "#src/session/session.ts";
+import { JsonlSessionStore } from "#src/session/jsonl-store.ts";
+import type { SessionEntry, SessionHeaderEntry } from "#src/session/port.ts";
+import type { SessionStore, SessionWriter } from "#src/session/store.ts";
+import { SESSION_VERSION } from "#src/session/port.ts";
 
 const T = "2026-01-01T00:00:00Z";
 

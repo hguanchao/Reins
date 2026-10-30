@@ -9,7 +9,7 @@ import {
 	wrapText,
 	wrapWords,
 	wrappedLines,
-} from "../../../src/tui/render/text.ts";
+} from "#src/tui/render/text.ts";
 
 describe("显示宽度", () => {
 	it("中文与 emoji 占两列", () => {

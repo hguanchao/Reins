@@ -7,7 +7,7 @@
  * 工具调用可能并行发起，所以请求必须排队，一次只向使用者展示一个，避免多个确认框互相覆盖。
  */
 
-import type { ApprovalAnswer, ApprovalRequest } from "./policy.ts";
+import type { ApprovalAnswer, ApprovalRequest } from "#src/permission/policy.ts";
 
 export type ApprovalPrompt = ApprovalRequest;
 

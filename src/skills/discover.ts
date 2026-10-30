@@ -8,7 +8,7 @@ import {
 	projectDshSkillsDir,
 	projectSkillsDir,
 	skillsDir,
-} from "../config/paths.ts";
+} from "#src/config/paths.ts";
 
 /**
  * 技能发现。

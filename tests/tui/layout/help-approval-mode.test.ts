@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, FOCUS, FOOTER_INFO, MODEL_ITEMS, exitTui, frameLines, plain, rawFrame } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+import { FakeInput, FakeOutput, FOCUS, FOOTER_INFO, MODEL_ITEMS, exitTui, frameLines, plain, rawFrame } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 describe("帮助页与审批模式", () => {
 	it("帮助页用方向键与滚轮滚动，两端收敛", async () => {

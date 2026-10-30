@@ -1,5 +1,5 @@
-import { describeError } from "../../shared/describe-error.ts";
-import type { LlmContentBlock, LlmToolCallBlock } from "../messages.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { LlmContentBlock, LlmToolCallBlock } from "#src/llm/messages.ts";
 
 /**
  * 把流式分块拼成完整的内容。

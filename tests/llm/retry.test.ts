@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { backoffDelay, DEFAULT_RETRY_BASE_DELAY_MS, delay, isRetryableStatus, retryDelay } from "../../src/llm/retry.ts";
+import { backoffDelay, DEFAULT_RETRY_BASE_DELAY_MS, delay, isRetryableStatus, retryDelay } from "#src/llm/retry.ts";
 
 /** 抖动后的取值应当在基准的 ±20% 之内。 */
 function withinJitter(value: number, base: number): boolean {

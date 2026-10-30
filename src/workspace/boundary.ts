@@ -1,7 +1,7 @@
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { toAbsolutePath } from "./root.ts";
+import { toAbsolutePath } from "#src/workspace/root.ts";
 
 /**
  * 判断一个绝对路径是否落在某个根之内。

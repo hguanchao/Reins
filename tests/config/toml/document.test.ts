@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { TomlDocument } from "../../../src/config/toml/document.ts";
+import { TomlDocument } from "#src/config/toml/document.ts";
 
 describe("TOML 文档", () => {
 	it("按键路径取值", () => {

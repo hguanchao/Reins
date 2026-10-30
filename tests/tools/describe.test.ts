@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { pathToFileURL } from "node:url";
 
-import { describeApprovalPresentation, describeToolCall, displayToolName } from "../../src/tools/describe.ts";
+import { describeApprovalPresentation, describeToolCall, displayToolName } from "#src/tools/describe.ts";
 
 describe("工具调用摘要", () => {
 	it("工具名首字母大写，带命名空间的名称保持原样", () => {

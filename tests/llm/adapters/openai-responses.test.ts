@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
-import { OpenAiResponsesClient } from "../../../src/llm/adapters/openai-responses.ts";
-import type { LlmEvent, LlmRequest, LlmResult } from "../../../src/llm/client.ts";
-import type { ModelEntry, ProviderEntry } from "../../../src/config/providers-file.ts";
-import type { RetryPolicy } from "../../../src/llm/retry.ts";
+import { OpenAiResponsesClient } from "#src/llm/adapters/openai-responses.ts";
+import type { LlmEvent, LlmRequest, LlmResult } from "#src/llm/client.ts";
+import type { ModelEntry, ProviderEntry } from "#src/config/providers-file.ts";
+import type { RetryPolicy } from "#src/llm/retry.ts";
 
 const POLICY: RetryPolicy = { maxRetries: 0, baseDelayMs: 1 };
 const REAL_FETCH = globalThis.fetch;

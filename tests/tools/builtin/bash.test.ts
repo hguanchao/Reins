@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { commandScope, resolveShell } from "../../../src/tools/builtin/bash.ts";
+import { commandScope, resolveShell } from "#src/tools/builtin/bash.ts";
 
 function windows(overrides: {
 	readonly env?: NodeJS.ProcessEnv;

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { readFooterRange, readTool } from "../../../src/tools/builtin/read.ts";
-import { WorkspaceBoundary } from "../../../src/workspace/boundary.ts";
+import { readFooterRange, readTool } from "#src/tools/builtin/read.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 async function read(root: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
 	const result = await readTool.execute({

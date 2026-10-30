@@ -1,6 +1,6 @@
-import { ConfigError } from "./error.ts";
-import type { Config } from "./file.ts";
-import type { ModelEntry, ProvidersConfig, ProviderEntry } from "./providers-file.ts";
+import { ConfigError } from "#src/config/error.ts";
+import type { Config } from "#src/config/file.ts";
+import type { ModelEntry, ProvidersConfig, ProviderEntry } from "#src/config/providers-file.ts";
 
 /**
  * 把 config.toml 选的 provider 与模型对应到 providers.json 里的具体条目。

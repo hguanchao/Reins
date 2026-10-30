@@ -1,6 +1,6 @@
-import { ConfigError, offsetToLineColumn, type LineColumn } from "../error.ts";
-import { aliasOf } from "../keys.ts";
-import type { ConfigSource } from "../reader.ts";
+import { ConfigError, offsetToLineColumn, type LineColumn } from "#src/config/error.ts";
+import { aliasOf } from "#src/config/keys.ts";
+import type { ConfigSource } from "#src/config/reader.ts";
 import {
 	isConfigTable,
 	setTableValue,
@@ -8,9 +8,9 @@ import {
 	type ConfigPath,
 	type ConfigTable,
 	type ConfigValue,
-} from "../value.ts";
-import { TomlParser, type TomlAssignment, type TomlSection } from "./parser.ts";
-import { serializeKey, serializeValue } from "./serialize.ts";
+} from "#src/config/value.ts";
+import { TomlParser, type TomlAssignment, type TomlSection } from "#src/config/toml/parser.ts";
+import { serializeKey, serializeValue } from "#src/config/toml/serialize.ts";
 
 function samePath(left: readonly string[] | null, right: ConfigPath): boolean {
 	if (left === null) return right.length === 0;

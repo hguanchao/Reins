@@ -1,5 +1,5 @@
-import { describeError } from "../../shared/describe-error.ts";
-import { graphemes } from "./text.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { graphemes } from "#src/tui/render/text.ts";
 
 /**
  * 状态行的格式化。

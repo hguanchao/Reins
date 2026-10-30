@@ -1,5 +1,5 @@
-import type { AbortCause } from "../agent/events.ts";
-import { formatDuration } from "../shared/format.ts";
+import type { AbortCause } from "#src/agent/events.ts";
+import { formatDuration } from "#src/shared/format.ts";
 
 /**
  * 界面文案的唯一出处。

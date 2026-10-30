@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import { ApprovalBroker } from "../../../src/permission/approval.ts";
-import type { ApprovalAnswer } from "../../../src/permission/policy.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import { ApprovalBroker } from "#src/permission/approval.ts";
+import type { ApprovalAnswer } from "#src/permission/policy.ts";
 
 describe("审批卡", () => {
 	it("审批面板替换输入区与页脚，结束后恢复", async (t) => {

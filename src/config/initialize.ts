@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 
-import { configDir, configFilePath, providersFilePath } from "./paths.ts";
+import { configDir, configFilePath, providersFilePath } from "#src/config/paths.ts";
 
 /**
  * 首次启动时补齐配置模板。

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import type { AnyToolDefinition } from "../../src/tools/contract.ts";
-import type { PluginApi, PluginCommand } from "../../src/plugins/host.ts";
-import { ensureShimPackages, loadPiExtension, piExtensionPlugin } from "../../src/plugins/pi-runtime.ts";
+import type { AnyToolDefinition } from "#src/tools/contract.ts";
+import type { PluginApi, PluginCommand } from "#src/plugins/host.ts";
+import { ensureShimPackages, loadPiExtension, piExtensionPlugin } from "#src/plugins/pi-runtime.ts";
 
 const created: string[] = [];
 

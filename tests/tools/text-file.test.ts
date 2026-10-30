@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { describe, it } from "node:test";
 
-import { decodeTextFile, encodeTextFile, looksBinary } from "../../src/tools/text-file.ts";
+import { decodeTextFile, encodeTextFile, looksBinary } from "#src/tools/text-file.ts";
 
 const PROBE = 8192;
 

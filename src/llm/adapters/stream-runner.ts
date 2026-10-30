@@ -1,6 +1,6 @@
-import { describeError } from "../../shared/describe-error.ts";
-import type { LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
-import { EventStream } from "../event-stream.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { LlmEvent, LlmRequest, LlmResult, LlmStream } from "#src/llm/client.ts";
+import { EventStream } from "#src/llm/event-stream.ts";
 
 /**
  * 图片降级的两条占位文案，三家协议适配器共用。

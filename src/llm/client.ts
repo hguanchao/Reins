@@ -1,5 +1,5 @@
-import type { ReasoningEffort } from "./effort.ts";
-import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage } from "./messages.ts";
+import type { ReasoningEffort } from "#src/llm/effort.ts";
+import type { LlmContentBlock, LlmMessage, LlmStopReason, LlmUsage } from "#src/llm/messages.ts";
 
 /**
  * 模型客户端接缝。

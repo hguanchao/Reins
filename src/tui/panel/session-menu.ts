@@ -1,5 +1,5 @@
-import { displayWidth, fitToWidth } from "../render/text.ts";
-import { PANEL, forkOf } from "../copy.ts";
+import { displayWidth, fitToWidth } from "#src/tui/render/text.ts";
+import { PANEL, forkOf } from "#src/tui/copy.ts";
 import {
 	type MenuListState,
 	ACCENT_COLOR,
@@ -14,7 +14,7 @@ import {
 	menuListHeight,
 	menuListLines,
 	padEnd,
-} from "./menu-panel.ts";
+} from "#src/tui/panel/menu-panel.ts";
 
 /**
  * 会话选择面板。

@@ -1,7 +1,7 @@
-import { readFooterRange } from "../builtin/read.ts";
-import { formatBytes } from "../../shared/format.ts";
-import { booleanField, numberField, record, stringField } from "./fields.ts";
-import { stripSpillFooter } from "../spill.ts";
+import { readFooterRange } from "#src/tools/builtin/read.ts";
+import { formatBytes } from "#src/shared/format.ts";
+import { booleanField, numberField, record, stringField } from "#src/tools/result/fields.ts";
+import { stripSpillFooter } from "#src/tools/spill.ts";
 
 /**
  * 工具结果在对话流里的折叠指标。

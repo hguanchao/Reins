@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { JsonlSessionStore, parseSessionText } from "../../src/session/jsonl-store.ts";
-import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "../../src/session/port.ts";
-import type { SessionWriter } from "../../src/session/store.ts";
+import { JsonlSessionStore, parseSessionText } from "#src/session/jsonl-store.ts";
+import { SESSION_VERSION, type SessionEntry, type SessionHeaderEntry } from "#src/session/port.ts";
+import type { SessionWriter } from "#src/session/store.ts";
 
 const T = "2026-01-01T00:00:00Z";
 

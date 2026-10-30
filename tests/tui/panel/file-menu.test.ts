@@ -7,9 +7,9 @@ import {
 	findAtToken,
 	formatFileReference,
 	renderFileMenu,
-} from "../../../src/tui/panel/file-menu.ts";
-import { BOLD_OFF, MUTED_COLOR, SELECTED_TEXT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
+} from "#src/tui/panel/file-menu.ts";
+import { BOLD_OFF, MUTED_COLOR, SELECTED_TEXT_COLOR } from "#src/tui/panel/menu-panel.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
 
 const FILES = [
 	"src/tui/layout.ts",

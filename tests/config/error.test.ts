@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ConfigError, offsetToLineColumn } from "../../src/config/error.ts";
+import { ConfigError, offsetToLineColumn } from "#src/config/error.ts";
 
 describe("配置错误", () => {
 	it("display: 无位置时只给消息", () => {

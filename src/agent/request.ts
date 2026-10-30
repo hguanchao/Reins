@@ -1,7 +1,7 @@
-import type { Config } from "../config/file.ts";
-import type { ModelEntry } from "../config/providers-file.ts";
-import type { LlmToolDeclaration } from "../llm/client.ts";
-import { clampEffort } from "../llm/effort.ts";
+import type { Config } from "#src/config/file.ts";
+import type { ModelEntry } from "#src/config/providers-file.ts";
+import type { LlmToolDeclaration } from "#src/llm/client.ts";
+import { clampEffort } from "#src/llm/effort.ts";
 
 /**
  * 主对话与子代理共用的请求拼装件。

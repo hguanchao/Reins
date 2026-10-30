@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { JsonStream, serializeEvent } from "../../src/cli/json-stream.ts";
-import { runPrintMode } from "../../src/cli/print-mode.ts";
+import { JsonStream, serializeEvent } from "#src/cli/json-stream.ts";
+import { runPrintMode } from "#src/cli/print-mode.ts";
 
 function linesOf(text: string): readonly Record<string, unknown>[] {
 	return text

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { renderTranscript } from "../../../src/tui/transcript.ts";
-import type { TranscriptThinking, TranscriptLine, TranscriptTool } from "../../../src/tui/transcript.ts";
+import { renderTranscript } from "#src/tui/transcript.ts";
+import type { TranscriptThinking, TranscriptLine, TranscriptTool } from "#src/tui/transcript.ts";
 
 function plain(line: string): string {
 	return line

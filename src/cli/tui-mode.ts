@@ -1,39 +1,39 @@
 import { isAbsolute, join } from "node:path";
 
-import { describeError } from "../shared/describe-error.ts";
-import { formatBytes } from "../shared/format.ts";
-import { CheckpointService } from "../checkpoint/service.ts";
-import type { AgentEventListener } from "../agent/events.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { formatBytes } from "#src/shared/format.ts";
+import { CheckpointService } from "#src/checkpoint/service.ts";
+import type { AgentEventListener } from "#src/agent/events.ts";
 import {
 	defaultInstructionSources,
 	readInstructions,
 	type PromptInstruction,
-} from "../agent/instructions.ts";
-import type { ApprovalMode, Config } from "../config/file.ts";
-import { ModelCatalog } from "../config/model-catalog.ts";
+} from "#src/agent/instructions.ts";
+import type { ApprovalMode, Config } from "#src/config/file.ts";
+import { ModelCatalog } from "#src/config/model-catalog.ts";
 import {
 	configFilePath,
 	projectConfigFilePath,
 	providersFilePath,
-} from "../config/paths.ts";
-import { applyLiveConfig, diffConfig } from "../config/reload.ts";
-import { lastContextTokens } from "../session/usage.ts";
-import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
-import { ApprovalBroker } from "../permission/approval.ts";
-import type { McpControl, McpStatusSource } from "../mcp/service.ts";
-import { Session } from "../session/session.ts";
-import { writeSessionExport } from "../session/export.ts";
-import { Subagent } from "../agent/subagent.ts";
+} from "#src/config/paths.ts";
+import { applyLiveConfig, diffConfig } from "#src/config/reload.ts";
+import { lastContextTokens } from "#src/session/usage.ts";
+import { PermissionGate, PermissionPolicy } from "#src/permission/policy.ts";
+import { ApprovalBroker } from "#src/permission/approval.ts";
+import type { McpControl, McpStatusSource } from "#src/mcp/service.ts";
+import { Session } from "#src/session/session.ts";
+import { writeSessionExport } from "#src/session/export.ts";
+import { Subagent } from "#src/agent/subagent.ts";
 import {
 	DEFAULT_REVIEW_STEPS,
 	buildReviewTask,
 	collectReviewContext,
 	parseReviewTarget,
-} from "../agent/review.ts";
-import { defaultSkillRoots, discoverSkills, type SkillInfo, type SkillRoot } from "../skills/discover.ts";
-import { imageBlock, type ImageAttachment } from "../tui/image.ts";
-import { buildTranscriptHistory } from "../tui/transcript/history.ts";
-import { runTui } from "../tui/layout.ts";
+} from "#src/agent/review.ts";
+import { defaultSkillRoots, discoverSkills, type SkillInfo, type SkillRoot } from "#src/skills/discover.ts";
+import { imageBlock, type ImageAttachment } from "#src/tui/image.ts";
+import { buildTranscriptHistory } from "#src/tui/transcript/history.ts";
+import { runTui } from "#src/tui/layout.ts";
 import type {
 	ApprovalModeSource,
 	CheckpointSource,
@@ -41,26 +41,26 @@ import type {
 	PlanModeSource,
 	ReviewSource,
 	SessionMenuSource,
-} from "../tui/options.ts";
-import { fileEntries } from "../workspace/walk.ts";
-import { WorkspaceBoundary } from "../workspace/boundary.ts";
-import { recordTrust } from "../workspace/trust.ts";
-import { readVersion } from "../version.ts";
-import { sessionAge } from "./session/age.ts";
+} from "#src/tui/options.ts";
+import { fileEntries } from "#src/workspace/walk.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import { recordTrust } from "#src/workspace/trust.ts";
+import { readVersion } from "#src/version.ts";
+import { sessionAge } from "#src/cli/session/age.ts";
 import {
 	configFileStamp,
 	loadSelection,
 	readConfigQuietly,
-} from "./config-selection.ts";
-import { createClipboardSource } from "./clipboard.ts";
-import { createImageSource } from "./image-reader.ts";
-import { initializeConfig } from "./initialize-config.ts";
-import { writeStderr, writeStdout } from "./output.ts";
-import { assemblePipeline, createCompactor, createDriverFor, createLlmClient } from "./pipeline.ts";
-import { createSessionFor, sessionTitle } from "./session/factory.ts";
-import { createSession, forkSession, listSessions, resumeCommand, resumeSession } from "./session/target.ts";
-import { openSessionForSwitch } from "./session/switch.ts";
-import { createStartupTimer } from "./startup-timer.ts";
+} from "#src/cli/config-selection.ts";
+import { createClipboardSource } from "#src/cli/clipboard.ts";
+import { createImageSource } from "#src/cli/image-reader.ts";
+import { initializeConfig } from "#src/cli/initialize-config.ts";
+import { writeStderr, writeStdout } from "#src/cli/output.ts";
+import { assemblePipeline, createCompactor, createDriverFor, createLlmClient } from "#src/cli/pipeline.ts";
+import { createSessionFor, sessionTitle } from "#src/cli/session/factory.ts";
+import { createSession, forkSession, listSessions, resumeCommand, resumeSession } from "#src/cli/session/target.ts";
+import { openSessionForSwitch } from "#src/cli/session/switch.ts";
+import { createStartupTimer } from "#src/cli/startup-timer.ts";
 import {
 	abbreviateHome,
 	createDynamicReviewer,
@@ -68,8 +68,8 @@ import {
 	createFooterInfo,
 	createModelMenuSource,
 	createUnavailableFooterInfo,
-} from "./tui-sources.ts";
-import type { CliOptions } from "./args.ts";
+} from "#src/cli/tui-sources.ts";
+import type { CliOptions } from "#src/cli/args.ts";
 
 /** @ 补全一次最多索引的文件数；只影响补全，不影响 find/grep 自己的遍历上限。 */
 const MAX_FILE_COMPLETION_FILES = 20_000;

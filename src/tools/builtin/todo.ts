@@ -1,5 +1,5 @@
-import type { ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
+import type { ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
 
 /**
  * 任务列表工具。

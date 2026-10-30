@@ -1,4 +1,4 @@
-import { isConfigArray, isConfigTable, type ConfigValue } from "../value.ts";
+import { isConfigArray, isConfigTable, type ConfigValue } from "#src/config/value.ts";
 
 /** 基本字符串需要转义的字符。字面量字符串里出现的这些字符只能靠转义表达，所以统一用基本字符串输出。 */
 const ESCAPES: ReadonlyMap<string, string> = new Map([

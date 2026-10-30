@@ -1,12 +1,12 @@
-import { ConfigError } from "./error.ts";
+import { ConfigError } from "#src/config/error.ts";
 import {
 	readTextFile,
 	THINKING_LEVELS,
 	wrapParseErrors,
 	type ThinkingLevel,
-} from "./file.ts";
-import { JsonDocument } from "./json/index.ts";
-import { providersFilePath } from "./paths.ts";
+} from "#src/config/file.ts";
+import { JsonDocument } from "#src/config/json/index.ts";
+import { providersFilePath } from "#src/config/paths.ts";
 import {
 	assertNoUnknownKeys,
 	describePath,
@@ -18,9 +18,9 @@ import {
 	readStringMap,
 	readTable,
 	type ConfigSource,
-} from "./reader.ts";
-import { isConfigTable, type ConfigPath } from "./value.ts";
-import type { LlmUsage } from "../llm/messages.ts";
+} from "#src/config/reader.ts";
+import { isConfigTable, type ConfigPath } from "#src/config/value.ts";
+import type { LlmUsage } from "#src/llm/messages.ts";
 
 /**
  * 端点与模型的声明。

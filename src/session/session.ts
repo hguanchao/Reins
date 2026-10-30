@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import { SessionFolder } from "./fold.ts";
+import { SessionFolder } from "#src/session/fold.ts";
 import {
 	SESSION_VERSION,
 	type ForkOrigin,
@@ -8,9 +8,9 @@ import {
 	type SessionEntry,
 	type SessionPort,
 	type SessionState,
-} from "./port.ts";
-import type { SessionStore, SessionWriter } from "./store.ts";
-import { currentLeafOf, currentPathOf, pathTo } from "./tree.ts";
+} from "#src/session/port.ts";
+import type { SessionStore, SessionWriter } from "#src/session/store.ts";
+import { currentLeafOf, currentPathOf, pathTo } from "#src/session/tree.ts";
 
 /**
  * 会话。

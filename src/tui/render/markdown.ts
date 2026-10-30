@@ -1,10 +1,10 @@
 import { lexer, type Token, type Tokens } from "marked";
 
-import { sanitizeDetail, sanitizeLine } from "../../tools/describe.ts";
-import { highlightCode, type SyntaxLines } from "./syntax.ts";
-import { syntaxColor } from "./syntax-style.ts";
-import { characterWidth, displayWidth, fitToWidth, graphemes, sanitizeForDisplay, truncateToWidth, wrapText } from "./text.ts";
-import { THEME } from "./theme.ts";
+import { sanitizeDetail, sanitizeLine } from "#src/tools/describe.ts";
+import { highlightCode, type SyntaxLines } from "#src/tui/render/syntax.ts";
+import { syntaxColor } from "#src/tui/render/syntax-style.ts";
+import { characterWidth, displayWidth, fitToWidth, graphemes, sanitizeForDisplay, truncateToWidth, wrapText } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /**
  * 助手回复的 Markdown 排版。

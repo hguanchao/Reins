@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { foldEntries, SessionFolder, summaryMessage } from "../../src/session/fold.ts";
-import type { SessionEntry } from "../../src/session/port.ts";
-import { userText, type LlmMessage } from "../../src/llm/messages.ts";
+import { foldEntries, SessionFolder, summaryMessage } from "#src/session/fold.ts";
+import type { SessionEntry } from "#src/session/port.ts";
+import { userText, type LlmMessage } from "#src/llm/messages.ts";
 
 const T = "2026-01-01T00:00:00Z";
 

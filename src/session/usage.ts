@@ -1,5 +1,5 @@
-import type { LlmUsage } from "../llm/messages.ts";
-import type { SessionEntry } from "./port.ts";
+import type { LlmUsage } from "#src/llm/messages.ts";
+import type { SessionEntry } from "#src/session/port.ts";
 
 /**
  * 会话的用量统计。

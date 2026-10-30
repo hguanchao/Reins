@@ -1,9 +1,9 @@
-import type { Session } from "../../session/session.ts";
-import type { SessionStore } from "../../session/store.ts";
-import { buildTranscriptHistory } from "../../tui/transcript/history.ts";
-import type { TranscriptTodo } from "../../tui/view/todo-card.ts";
-import type { TranscriptPlan, TranscriptTurn } from "../../tui/transcript.ts";
-import { resumeSession } from "./target.ts";
+import type { Session } from "#src/session/session.ts";
+import type { SessionStore } from "#src/session/store.ts";
+import { buildTranscriptHistory } from "#src/tui/transcript/history.ts";
+import type { TranscriptTodo } from "#src/tui/view/todo-card.ts";
+import type { TranscriptPlan, TranscriptTurn } from "#src/tui/transcript.ts";
+import { resumeSession } from "#src/cli/session/target.ts";
 
 interface SwitchedSession {
 	readonly session: Session;

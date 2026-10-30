@@ -1,12 +1,12 @@
 import { readFileSync, statSync } from "node:fs";
 
-import { resolveToolPath } from "../path.ts";
-import { describeError } from "../../shared/describe-error.ts";
-import type { ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
-import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "../text-file.ts";
-import { MAX_LINE_LENGTH, truncateLine } from "../truncate.ts";
-import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "../../workspace/walk.ts";
+import { resolveToolPath } from "#src/tools/path.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary } from "#src/tools/text-file.ts";
+import { MAX_LINE_LENGTH, truncateLine } from "#src/tools/truncate.ts";
+import { fileEntries, globToRegExp, MAX_WALK_ENTRIES } from "#src/workspace/walk.ts";
 
 /**
  * 按内容检索。

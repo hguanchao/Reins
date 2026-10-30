@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { currentLeafOf, currentPathOf, leavesOf, pathTo } from "../../src/session/tree.ts";
-import type { SessionEntry } from "../../src/session/port.ts";
+import { currentLeafOf, currentPathOf, leavesOf, pathTo } from "#src/session/tree.ts";
+import type { SessionEntry } from "#src/session/port.ts";
 
 const T = "2026-01-01T00:00:00Z";
 

@@ -1,11 +1,11 @@
 import { stripVTControlCharacters } from "node:util";
 
-import type { ResultDetailKind } from "../../tools/result/detail.ts";
-import { hiddenLines } from "../copy.ts";
-import { highlightCode, type SyntaxSegment } from "../render/syntax.ts";
-import { characterWidth, displayWidth, graphemes, truncateToWidth, wrapText } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { syntaxColor } from "../render/syntax-style.ts";
+import type { ResultDetailKind } from "#src/tools/result/detail.ts";
+import { hiddenLines } from "#src/tui/copy.ts";
+import { highlightCode, type SyntaxSegment } from "#src/tui/render/syntax.ts";
+import { characterWidth, displayWidth, graphemes, truncateToWidth, wrapText } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { syntaxColor } from "#src/tui/render/syntax-style.ts";
 import {
 	DETAIL_BAND_MAX_LINES,
 	DETAIL_BAND_LEFT,
@@ -13,8 +13,8 @@ import {
 	MIN_DETAIL_CONTENT,
 	RESET,
 	TAB_STOP,
-} from "./style.ts";
-import type { TranscriptTool } from "./types.ts";
+} from "#src/tui/transcript/style.ts";
+import type { TranscriptTool } from "#src/tui/transcript/types.ts";
 
 /** 一段带颜色的文本；着色只到这一段为止，渲染完要回到调用方给的颜色。 */
 interface ColoredSegment {

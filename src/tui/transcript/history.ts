@@ -4,13 +4,13 @@ import {
 	userImages,
 	userText,
 	type LlmMessage,
-} from "../../llm/messages.ts";
-import { firstLine } from "../../shared/format.ts";
-import { SUMMARY_PREFIX } from "../../session/fold.ts";
-import { displayToolName, sanitizeDetail } from "../../tools/describe.ts";
-import { imageMarker } from "../image.ts";
-import { TRANSCRIPT } from "../copy.ts";
-import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "../view/todo-card.ts";
+} from "#src/llm/messages.ts";
+import { firstLine } from "#src/shared/format.ts";
+import { SUMMARY_PREFIX } from "#src/session/fold.ts";
+import { displayToolName, sanitizeDetail } from "#src/tools/describe.ts";
+import { imageMarker } from "#src/tui/image.ts";
+import { TRANSCRIPT } from "#src/tui/copy.ts";
+import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "#src/tui/view/todo-card.ts";
 import {
 	appendToolLine,
 	attachToolFailure,
@@ -22,7 +22,7 @@ import {
 	type TranscriptLine,
 	type TranscriptPlan,
 	type TranscriptTurn,
-} from "../transcript.ts";
+} from "#src/tui/transcript.ts";
 
 /**
  * 把会话消息折叠成对话流。

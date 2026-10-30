@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { computeCost, parseProviders } from "../../src/config/providers-file.ts";
-import { resolveSelection } from "../../src/config/selection.ts";
-import { parseConfig } from "../../src/config/file.ts";
-import { ConfigError } from "../../src/config/error.ts";
+import { computeCost, parseProviders } from "#src/config/providers-file.ts";
+import { resolveSelection } from "#src/config/selection.ts";
+import { parseConfig } from "#src/config/file.ts";
+import { ConfigError } from "#src/config/error.ts";
 
 const FULL = `{
 	"providers": {

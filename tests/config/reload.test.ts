@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import type { Config } from "../../src/config/file.ts";
-import { applyLiveConfig, diffConfig } from "../../src/config/reload.ts";
+import type { Config } from "#src/config/file.ts";
+import { applyLiveConfig, diffConfig } from "#src/config/reload.ts";
 
 const BASE: Config = {
 	provider: "p",

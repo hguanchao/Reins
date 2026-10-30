@@ -1,10 +1,10 @@
 import { createParser } from "eventsource-parser";
 import { ProxyAgent } from "undici";
 
-import { describeError } from "../shared/describe-error.ts";
-import { readVersion } from "../version.ts";
-import { describeFailure } from "./failure.ts";
-import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "./retry.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { readVersion } from "#src/version.ts";
+import { describeFailure } from "#src/llm/failure.ts";
+import { delay, isRetryableStatus, retryDelay, type RetryPolicy } from "#src/llm/retry.ts";
 
 /** 服务端返回非成功状态。带上响应体片段，否则只能看到一行状态码。 */
 class LlmHttpError extends Error {

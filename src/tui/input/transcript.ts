@@ -1,19 +1,19 @@
-import { inputView } from "../view/footer.ts";
-import { imageMarker } from "../image.ts";
-import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripFocusEvents, stripMouseEvents } from "./keys.ts";
-import type { MouseInput } from "./keys.ts";
-import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
-import { STATUS } from "../copy.ts";
-import { menuPanelTop } from "../runtime/approval.ts";
-import { menuVisibleLimit } from "../runtime/geometry.ts";
-import { completeCommandMenu } from "../runtime/panels.ts";
-import { commandMenuHeight } from "../panel/command-menu.ts";
-import { fileMenuHeight } from "../panel/file-menu.ts";
-import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "./scroll.ts";
-import type { InputDeps } from "./deps.ts";
-import { handleMenuMouse, inlineMenuTarget } from "./menus.ts";
-import { selectionPoint, selectionSpans, selectionText, toolHeaderInView } from "../transcript.ts";
-import type { TuiHost } from "../runtime/types.ts";
+import { inputView } from "#src/tui/view/footer.ts";
+import { imageMarker } from "#src/tui/image.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripFocusEvents, stripMouseEvents } from "#src/tui/input/keys.ts";
+import type { MouseInput } from "#src/tui/input/keys.ts";
+import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
+import { STATUS } from "#src/tui/copy.ts";
+import { menuPanelTop } from "#src/tui/runtime/approval.ts";
+import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
+import { completeCommandMenu } from "#src/tui/runtime/panels.ts";
+import { commandMenuHeight } from "#src/tui/panel/command-menu.ts";
+import { fileMenuHeight } from "#src/tui/panel/file-menu.ts";
+import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "#src/tui/input/scroll.ts";
+import type { InputDeps } from "#src/tui/input/deps.ts";
+import { handleMenuMouse, inlineMenuTarget } from "#src/tui/input/menus.ts";
+import { selectionPoint, selectionSpans, selectionText, toolHeaderInView } from "#src/tui/transcript.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 export function handleTranscriptInput(
 	host: TuiHost,

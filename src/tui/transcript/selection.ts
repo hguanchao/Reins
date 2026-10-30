@@ -1,8 +1,8 @@
-import { characterWidth, displayWidth, graphemes } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { lineIndexAtRow } from "./scroll.ts";
-import { PLAIN_LINE_META } from "./types.ts";
-import type { TranscriptView } from "./types.ts";
+import { characterWidth, displayWidth, graphemes } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { lineIndexAtRow } from "#src/tui/transcript/scroll.ts";
+import { PLAIN_LINE_META } from "#src/tui/transcript/types.ts";
+import type { TranscriptView } from "#src/tui/transcript/types.ts";
 
 /**
  * 对话流里的文本选区。

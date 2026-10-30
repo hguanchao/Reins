@@ -9,8 +9,8 @@ import {
 	type ApprovalReviewer,
 	type Confirmer,
 	type PermissionRule,
-} from "../../src/permission/policy.ts";
-import type { ToolAnnotations } from "../../src/tools/contract.ts";
+} from "#src/permission/policy.ts";
+import type { ToolAnnotations } from "#src/tools/contract.ts";
 
 const READ_ONLY: ToolAnnotations = { readOnly: true, destructive: false, openWorld: false };
 const WRITES: ToolAnnotations = { readOnly: false, destructive: false, openWorld: false };

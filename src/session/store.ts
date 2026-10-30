@@ -1,4 +1,4 @@
-import type { ForkOrigin, SessionEntry, SessionHeaderEntry } from "./port.ts";
+import type { ForkOrigin, SessionEntry, SessionHeaderEntry } from "#src/session/port.ts";
 
 /**
  * 会话存储的接缝。

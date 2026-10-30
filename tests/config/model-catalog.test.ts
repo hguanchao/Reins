@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { parseConfig } from "../../src/config/file.ts";
-import { ModelCatalog } from "../../src/config/model-catalog.ts";
-import { parseProviders } from "../../src/config/providers-file.ts";
-import { resolveSelection } from "../../src/config/selection.ts";
+import { parseConfig } from "#src/config/file.ts";
+import { ModelCatalog } from "#src/config/model-catalog.ts";
+import { parseProviders } from "#src/config/providers-file.ts";
+import { resolveSelection } from "#src/config/selection.ts";
 
 const PROVIDERS = `{
 	"providers": {

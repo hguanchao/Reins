@@ -1,1 +1,1 @@
-export { TomlDocument } from "./document.ts";
+export { TomlDocument } from "#src/config/toml/document.ts";

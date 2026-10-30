@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { resultMetric } from "../../../src/tools/result/metric.ts";
+import { resultMetric } from "#src/tools/result/metric.ts";
 
 describe("工具结果指标", () => {
 	it("read 显示行数或已读范围", () => {

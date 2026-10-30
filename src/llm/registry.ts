@@ -1,9 +1,9 @@
-import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
-import { AnthropicMessagesClient } from "./adapters/anthropic-messages.ts";
-import { OpenAiCompletionsClient } from "./adapters/openai-completions.ts";
-import { OpenAiResponsesClient } from "./adapters/openai-responses.ts";
-import type { LlmClient } from "./client.ts";
-import type { RetryPolicy } from "./retry.ts";
+import type { ModelEntry, ProviderEntry } from "#src/config/providers-file.ts";
+import { AnthropicMessagesClient } from "#src/llm/adapters/anthropic-messages.ts";
+import { OpenAiCompletionsClient } from "#src/llm/adapters/openai-completions.ts";
+import { OpenAiResponsesClient } from "#src/llm/adapters/openai-responses.ts";
+import type { LlmClient } from "#src/llm/client.ts";
+import type { RetryPolicy } from "#src/llm/retry.ts";
 
 /**
  * 线上协议适配器的注册表。

@@ -1,9 +1,9 @@
-import { STATUS, pendingConfirm } from "../copy.ts";
-import { cleanup } from "./lifecycle.ts";
-import { closePlanReview } from "./pages.ts";
-import { armExit, disarm } from "./lifecycle.ts";
-import { EXIT_CONFIRM_WINDOW_MS } from "./constants.ts";
-import type { TuiHost } from "./types.ts";
+import { STATUS, pendingConfirm } from "#src/tui/copy.ts";
+import { cleanup } from "#src/tui/runtime/lifecycle.ts";
+import { closePlanReview } from "#src/tui/runtime/pages.ts";
+import { armExit, disarm } from "#src/tui/runtime/lifecycle.ts";
+import { EXIT_CONFIRM_WINDOW_MS } from "#src/tui/runtime/constants.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /** Ctrl+C 的三种上下文：运行中中止、整屏页返回、空闲时连按退出。 */
 export function onCtrlC(

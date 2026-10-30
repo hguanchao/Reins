@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { describeError } from "../shared/describe-error.ts";
-import { ConfigError } from "./error.ts";
-import { configFilePath } from "./paths.ts";
-import { TomlDocument } from "./toml/index.ts";
-import type { ConfigValue } from "./value.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { ConfigError } from "#src/config/error.ts";
+import { configFilePath } from "#src/config/paths.ts";
+import { TomlDocument } from "#src/config/toml/index.ts";
+import type { ConfigValue } from "#src/config/value.ts";
 
 /**
  * 用户级配置的定点回写。

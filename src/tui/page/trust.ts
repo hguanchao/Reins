@@ -1,9 +1,9 @@
 import { isAbsolute, relative } from "node:path";
 
-import { displayWidth, fitToWidth, truncateToWidth, wrapWords } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { pageTitle } from "./chrome.ts";
-import { PAGE, STATUS, TRUST_LABELS } from "../copy.ts";
+import { displayWidth, fitToWidth, truncateToWidth, wrapWords } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { pageTitle } from "#src/tui/page/chrome.ts";
+import { PAGE, STATUS, TRUST_LABELS } from "#src/tui/copy.ts";
 
 /**
  * 工作区信任页。

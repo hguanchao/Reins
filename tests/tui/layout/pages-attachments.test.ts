@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, LEAVE, CURSOR_SUFFIX, FOOTER_INFO, IMAGE_ATTACHMENT, fakeImageSource, pressCtrlC, exitTui, rawFrame, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import type { ImageAttachment } from "../../../src/tui/image.ts";
+import { FakeInput, FakeOutput, createFakeAgent, LEAVE, CURSOR_SUFFIX, FOOTER_INFO, IMAGE_ATTACHMENT, fakeImageSource, pressCtrlC, exitTui, rawFrame, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import type { ImageAttachment } from "#src/tui/image.ts";
 
 describe("整屏页与图片附件", () => {
 	it("插件命令出现在补全里并能执行，参数原样传入", async () => {

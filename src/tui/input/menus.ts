@@ -1,9 +1,9 @@
-import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, menuIndexAtRow, menuKey } from "./keys.ts";
-import type { MenuMouseTarget, MouseInput } from "./keys.ts";
-import { type MenuListState, MENU_MAX_VISIBLE, menuListHeight, moveMenuSelection } from "../panel/menu-panel.ts";
-import { menuPanelTop } from "../runtime/approval.ts";
-import { menuVisibleLimit } from "../runtime/geometry.ts";
-import type { TuiHost } from "../runtime/types.ts";
+import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, menuIndexAtRow, menuKey } from "#src/tui/input/keys.ts";
+import type { MenuMouseTarget, MouseInput } from "#src/tui/input/keys.ts";
+import { type MenuListState, MENU_MAX_VISIBLE, menuListHeight, moveMenuSelection } from "#src/tui/panel/menu-panel.ts";
+import { menuPanelTop } from "#src/tui/runtime/approval.ts";
+import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 菜单面板的鼠标交互：悬停高亮、按下选中、松开补全。

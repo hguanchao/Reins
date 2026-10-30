@@ -4,10 +4,10 @@ import {
 	type ApprovalMode,
 	type Config,
 	type SandboxMode,
-} from "./file.ts";
-import { ConfigFile } from "./file.ts";
-import { ConfigError } from "./error.ts";
-import type { ProvidersConfig, ProviderEntry } from "./providers-file.ts";
+} from "#src/config/file.ts";
+import { ConfigFile } from "#src/config/file.ts";
+import { ConfigError } from "#src/config/error.ts";
+import type { ProvidersConfig, ProviderEntry } from "#src/config/providers-file.ts";
 
 /**
  * 合并用户级与项目级配置。

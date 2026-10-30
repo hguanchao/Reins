@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { scrollButtonHit, scrollButtonPlacement } from "../../../src/tui/view/scroll-button.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 describe("置底按钮", () => {
 	it("贴在对话流最后一行底部居中，最后一列留给滚动条", () => {

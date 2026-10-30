@@ -1,8 +1,8 @@
-import { describeError } from "../../shared/describe-error.ts";
-import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
-import { stripTerminalStyles } from "../transcript/selection.ts";
-import { FAILURE_ACTIONS, STATUS, failure, reconnecting } from "../copy.ts";
-import type { TuiHost } from "./types.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { MCP_ACTION_HEIGHT } from "#src/tui/page/frame.ts";
+import { stripTerminalStyles } from "#src/tui/transcript/selection.ts";
+import { FAILURE_ACTIONS, STATUS, failure, reconnecting } from "#src/tui/copy.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * `/mcps` 页的操作。

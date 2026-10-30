@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ApprovalBroker } from "../../src/permission/approval.ts";
+import { ApprovalBroker } from "#src/permission/approval.ts";
 
 describe("审批桥接", () => {
 	it("请求排队，一次只暴露一个", async () => {

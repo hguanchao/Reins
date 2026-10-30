@@ -4,12 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import type { McpServerConfig } from "../../src/config/file.ts";
+import type { McpServerConfig } from "#src/config/file.ts";
 import {
 	describeDeclarativeScan,
 	mergeMcpServers,
 	scanDeclarativePlugins,
-} from "../../src/plugins/declarative.ts";
+} from "#src/plugins/declarative.ts";
 
 const created: string[] = [];
 

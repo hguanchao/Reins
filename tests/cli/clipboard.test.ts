@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createClipboardSource, type ClipboardCommand } from "../../src/cli/clipboard.ts";
+import { createClipboardSource, type ClipboardCommand } from "#src/cli/clipboard.ts";
 
 describe("文本剪贴板", () => {
 	interface Call {

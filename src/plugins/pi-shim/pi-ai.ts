@@ -1,4 +1,4 @@
-import { stringEnum, Type } from "./typebox.ts";
+import { stringEnum, Type } from "#src/plugins/pi-shim/typebox.ts";
 
 // pi-ai 的 Type 就是 typebox 的再导出，扩展会直接 import 它
 export { Type };

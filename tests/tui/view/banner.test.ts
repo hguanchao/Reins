@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 
-import { THEME } from "../../../src/tui/render/theme.ts";
-import { bannerLines } from "../../../src/tui/view/banner.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { bannerLines } from "#src/tui/view/banner.ts";
 
 /** 五行块字，与视图里的标志逐字一致；测试直接比对，防止改坏笔画。 */
 const ART = [

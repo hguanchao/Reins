@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import type { CliOptions } from "../../src/cli/args.ts";
-import type { CommandRunner } from "../../src/cli/plugin-command.ts";
-import { runPluginCommand } from "../../src/cli/plugin-command.ts";
+import type { CliOptions } from "#src/cli/args.ts";
+import type { CommandRunner } from "#src/cli/plugin-command.ts";
+import { runPluginCommand } from "#src/cli/plugin-command.ts";
 
 const created: string[] = [];
 

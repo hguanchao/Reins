@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { describeToolLine, isRunningTool } from "../../../src/tui/transcript/model.ts";
+import { describeToolLine, isRunningTool } from "#src/tui/transcript/model.ts";
 
 describe("工具行构造", () => {
 	it("带上调用 id 与有值的可选字段", () => {

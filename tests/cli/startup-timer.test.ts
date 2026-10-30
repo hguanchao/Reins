@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createStartupTimer } from "../../src/cli/startup-timer.ts";
+import { createStartupTimer } from "#src/cli/startup-timer.ts";
 
 /** 按顺序吐出预置时间戳的假时钟；用完之后一直返回最后一个值 */
 function clock(...ticks: readonly number[]): () => number {

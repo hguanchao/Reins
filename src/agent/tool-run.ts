@@ -1,7 +1,7 @@
-import type { LlmToolCallBlock } from "../llm/messages.ts";
-import { describeError } from "../shared/describe-error.ts";
-import type { ToolRegistry, ToolRunContext } from "../tools/registry.ts";
-import { TRUNCATED_TOOL_ARGUMENTS } from "./request.ts";
+import type { LlmToolCallBlock } from "#src/llm/messages.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { ToolRegistry, ToolRunContext } from "#src/tools/registry.ts";
+import { TRUNCATED_TOOL_ARGUMENTS } from "#src/agent/request.ts";
 
 /**
  * 一次模型响应的工具编排。

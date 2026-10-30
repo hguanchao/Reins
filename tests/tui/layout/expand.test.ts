@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 describe("对话流展开", () => {
 	it("Ctrl+E 展开最近思考区块", (t) => {

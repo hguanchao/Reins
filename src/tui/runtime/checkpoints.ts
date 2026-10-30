@@ -1,6 +1,6 @@
-import { describeError } from "../../shared/describe-error.ts";
-import { STATUS, failure, FAILURE_ACTIONS, undoResult } from "../copy.ts";
-import type { TuiHost } from "./types.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { STATUS, failure, FAILURE_ACTIONS, undoResult } from "#src/tui/copy.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * /undo:恢复最近一个与当前工作区有差异的回合检查点。

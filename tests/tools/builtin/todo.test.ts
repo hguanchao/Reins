@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { todoTool } from "../../../src/tools/builtin/todo.ts";
+import { todoTool } from "#src/tools/builtin/todo.ts";
 
 describe("任务列表工具", () => {
 	const run = (args: unknown) =>

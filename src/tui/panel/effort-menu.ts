@@ -1,6 +1,6 @@
-import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
-import { displayWidth } from "../render/text.ts";
-import { EFFORT_DESCRIPTIONS as EFFORT_DESCRIPTIONS_COPY } from "../copy.ts";
+import { THINKING_LEVELS, type ThinkingLevel } from "#src/config/file.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { EFFORT_DESCRIPTIONS as EFFORT_DESCRIPTIONS_COPY } from "#src/tui/copy.ts";
 import {
 	type MenuListState,
 	MENU_MAX_VISIBLE,
@@ -16,7 +16,7 @@ import {
 	RESET,
 	SELECTED_TEXT_COLOR,
 	TEXT_COLOR,
-} from "./menu-panel.ts";
+} from "#src/tui/panel/menu-panel.ts";
 
 /**
  * 思考等级选择面板。

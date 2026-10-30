@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { EventStream } from "../../src/llm/event-stream.ts";
+import { EventStream } from "#src/llm/event-stream.ts";
 
 describe("事件流", () => {
 	it("事件按序供迭代,有等待者直接交付", async () => {

@@ -9,9 +9,9 @@ import {
 	exitTui,
 	frameLines,
 	plain,
-} from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+} from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /** 在对话流里找到一段文字，返回它的屏幕行与起止列（1 基）。 */
 function locate(

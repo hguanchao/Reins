@@ -1,8 +1,8 @@
-import { actionLines, pageTitle } from "./chrome.ts";
-import { characterWidth, displayWidth, graphemes, sanitizeForDisplay } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { ACTIONS, PAGE, PANEL } from "../copy.ts";
-import type { ViewerContent } from "../runtime/types.ts";
+import { actionLines, pageTitle } from "#src/tui/page/chrome.ts";
+import { characterWidth, displayWidth, graphemes, sanitizeForDisplay } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { ACTIONS, PAGE, PANEL } from "#src/tui/copy.ts";
+import type { ViewerContent } from "#src/tui/runtime/types.ts";
 
 /**
  * 长内容整屏查看页。

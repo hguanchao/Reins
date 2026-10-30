@@ -6,8 +6,8 @@ import {
 	modelMenuHeight,
 	renderModelMenu,
 	type ModelMenuItem,
-} from "../../../src/tui/panel/model-menu.ts";
-import { PANEL_BG, SELECTED_TEXT_COLOR, TEXT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
+} from "#src/tui/panel/model-menu.ts";
+import { PANEL_BG, SELECTED_TEXT_COLOR, TEXT_COLOR } from "#src/tui/panel/menu-panel.ts";
 
 const BORDER = "─";
 

@@ -1,8 +1,8 @@
-import { BubblewrapBackend } from "../sandbox/backends/bubblewrap.ts";
-import { SeatbeltBackend } from "../sandbox/backends/seatbelt.ts";
-import type { SandboxBackend } from "../sandbox/policy.ts";
-import { JsonlSessionStore } from "../session/jsonl-store.ts";
-import type { SessionStore } from "../session/store.ts";
+import { BubblewrapBackend } from "#src/sandbox/backends/bubblewrap.ts";
+import { SeatbeltBackend } from "#src/sandbox/backends/seatbelt.ts";
+import type { SandboxBackend } from "#src/sandbox/policy.ts";
+import { JsonlSessionStore } from "#src/session/jsonl-store.ts";
+import type { SessionStore } from "#src/session/store.ts";
 
 /**
  * 产品自带的实现。

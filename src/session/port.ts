@@ -1,4 +1,4 @@
-import type { LlmMessage, LlmUsage } from "../llm/messages.ts";
+import type { LlmMessage, LlmUsage } from "#src/llm/messages.ts";
 
 /**
  * 会话端口的契约。

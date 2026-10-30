@@ -9,7 +9,7 @@ import {
 	buildReviewTask,
 	collectReviewContext,
 	parseReviewTarget,
-} from "../../src/agent/review.ts";
+} from "#src/agent/review.ts";
 
 function workdir(name: string): string {
 	const directory = join(tmpdir(), `reins-review-${name}-${Math.random().toString(16).slice(2)}`);

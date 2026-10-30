@@ -1,5 +1,5 @@
-import { displayWidth } from "../render/text.ts";
-import { PANEL } from "../copy.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { PANEL } from "#src/tui/copy.ts";
 import {
 	type MenuListState,
 	ACCENT_COLOR,
@@ -15,7 +15,7 @@ import {
 	menuListLines,
 	padEnd,
 	padStart,
-} from "./menu-panel.ts";
+} from "#src/tui/panel/menu-panel.ts";
 
 /**
  * 模型选择面板。

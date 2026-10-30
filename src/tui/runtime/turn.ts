@@ -1,8 +1,8 @@
-import { displayToolName, sanitizeDetail } from "../../tools/describe.ts";
-import { formatDuration } from "../../shared/format.ts";
-import type { AgentEvent } from "../../agent/events.ts";
-import { todoCardFinished, todoCardFromArgs } from "../view/todo-card.ts";
-import type { TranscriptLine, TranscriptPlan, TranscriptThinking } from "../transcript.ts";
+import { displayToolName, sanitizeDetail } from "#src/tools/describe.ts";
+import { formatDuration } from "#src/shared/format.ts";
+import type { AgentEvent } from "#src/agent/events.ts";
+import { todoCardFinished, todoCardFromArgs } from "#src/tui/view/todo-card.ts";
+import type { TranscriptLine, TranscriptPlan, TranscriptThinking } from "#src/tui/transcript.ts";
 import {
 	appendToolLine,
 	attachToolFailure,
@@ -13,10 +13,10 @@ import {
 	hasRunningSubagent,
 	isSubagentCall,
 	takeToolForFailure,
-} from "../transcript.ts";
-import { shortReason } from "../render/status.ts";
-import { STATUS, TRANSCRIPT, cancelPhrase, retryStatus } from "../copy.ts";
-import type { ActiveTurn, TuiHost, TuiState } from "./types.ts";
+} from "#src/tui/transcript.ts";
+import { shortReason } from "#src/tui/render/status.ts";
+import { STATUS, TRANSCRIPT, cancelPhrase, retryStatus } from "#src/tui/copy.ts";
+import type { ActiveTurn, TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 一轮进行中的事件处理。

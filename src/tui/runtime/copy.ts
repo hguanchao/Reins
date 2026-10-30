@@ -1,8 +1,8 @@
-import type { TuiOutput } from "../options.ts";
-import { STATUS_CLEAR_MS } from "./constants.ts";
-import { clearStatus } from "./status.ts";
-import { STATUS } from "../copy.ts";
-import type { TuiHost } from "./types.ts";
+import type { TuiOutput } from "#src/tui/options.ts";
+import { STATUS_CLEAR_MS } from "#src/tui/runtime/constants.ts";
+import { clearStatus } from "#src/tui/runtime/status.ts";
+import { STATUS } from "#src/tui/copy.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 复制一段文本。

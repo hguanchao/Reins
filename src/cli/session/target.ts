@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
-import { sessionDirectories, sessionsDir } from "../../config/paths.ts";
-import { Session } from "../../session/session.ts";
-import type { SessionListing, SessionStore } from "../../session/store.ts";
+import { sessionDirectories, sessionsDir } from "#src/config/paths.ts";
+import { Session } from "#src/session/session.ts";
+import type { SessionListing, SessionStore } from "#src/session/store.ts";
 
 /**
  * 新建一个会话。

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { interactiveText } from "../../../src/tui/input/dispatch.ts";
+import { interactiveText } from "#src/tui/input/dispatch.ts";
 import {
 	approvalKey,
 	decodeKittyKeys,
@@ -10,7 +10,7 @@ import {
 	pastingAfter,
 	shiftTabKey,
 	stripPasteContent,
-} from "../../../src/tui/input/keys.ts";
+} from "#src/tui/input/keys.ts";
 
 describe("粘贴区间", () => {
 	it("单块内起止标记被剥掉", () => {

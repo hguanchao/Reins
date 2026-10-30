@@ -8,7 +8,7 @@ import {
 	truncateHead,
 	truncateLine,
 	truncateTail,
-} from "../../src/tools/truncate.ts";
+} from "#src/tools/truncate.ts";
 
 describe("工具输出截断", () => {
 	it("splitLines:末尾换行不产生空行", () => {

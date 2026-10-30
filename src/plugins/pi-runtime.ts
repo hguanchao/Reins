@@ -1,14 +1,14 @@
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { writeForwarders } from "./shims.ts";
-import { contextProxy } from "./missing.ts";
+import { writeForwarders } from "#src/plugins/shims.ts";
+import { contextProxy } from "#src/plugins/missing.ts";
 
-import type { JsonSchema } from "../tools/schema.ts";
-import type { ToolResult } from "../tools/contract.ts";
-import type { Plugin, PluginApi, PluginFailure } from "./host.ts";
-import type { DeclarativePlugin } from "./declarative.ts";
-import { CONFIG_DIR_NAME, getAgentDir, isToolCallEventType, withFileMutationQueue } from "./pi-shim/api.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import type { ToolResult } from "#src/tools/contract.ts";
+import type { Plugin, PluginApi, PluginFailure } from "#src/plugins/host.ts";
+import type { DeclarativePlugin } from "#src/plugins/declarative.ts";
+import { CONFIG_DIR_NAME, getAgentDir, isToolCallEventType, withFileMutationQueue } from "#src/plugins/pi-shim/api.ts";
 
 /**
  * pi 扩展的装载器。

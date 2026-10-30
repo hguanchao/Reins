@@ -1,4 +1,4 @@
-import type { LlmStopReason } from "../llm/messages.ts";
+import type { LlmStopReason } from "#src/llm/messages.ts";
 
 /**
  * 这一轮是被谁停下的。

@@ -8,8 +8,8 @@ import {
 	queueHeight,
 	renderFooter,
 	type FooterInfo,
-} from "../../../src/tui/view/footer.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+} from "#src/tui/view/footer.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 const BORDER = "─";
 const FOCUS = "\x1b[38;2;78;201;176m";

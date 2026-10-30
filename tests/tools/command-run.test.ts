@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { describe, it } from "node:test";
 
-import type { SandboxView } from "../../src/sandbox/policy.ts";
-import type { SessionReadView } from "../../src/session/port.ts";
-import { prefixScope, runCommand } from "../../src/tools/command-run.ts";
-import type { Shell, ShellExit, ShellProcess, StartShellProcessInput } from "../../src/tools/shell.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { SessionReadView } from "#src/session/port.ts";
+import { prefixScope, runCommand } from "#src/tools/command-run.ts";
+import type { Shell, ShellExit, ShellProcess, StartShellProcessInput } from "#src/tools/shell.ts";
 
 /** 假进程：输出与退出状态由用例给定；没有退出状态时一直挂着，用来测超时与中止。 */
 function fakeProcess(options: {

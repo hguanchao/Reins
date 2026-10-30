@@ -1,10 +1,10 @@
-import { sanitizeLine } from "../../tools/describe.ts";
-import { formatCompactTokens, formatDuration } from "../../shared/format.ts";
-import { TRANSCRIPT, countSegments, hiddenLines, subagentLabel, subagentMetric } from "../copy.ts";
-import { displayWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { swept, type AnimationFrame } from "../render/sweep.ts";
-import { bandBlankLine, bandedWrappedLines } from "./detail.ts";
+import { sanitizeLine } from "#src/tools/describe.ts";
+import { formatCompactTokens, formatDuration } from "#src/shared/format.ts";
+import { TRANSCRIPT, countSegments, hiddenLines, subagentLabel, subagentMetric } from "#src/tui/copy.ts";
+import { displayWidth, sanitizeForDisplay, truncateToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { swept, type AnimationFrame } from "#src/tui/render/sweep.ts";
+import { bandBlankLine, bandedWrappedLines } from "#src/tui/transcript/detail.ts";
 import {
 	DETAIL_BAND_LEFT,
 	DETAIL_BAND_MAX_LINES,
@@ -23,8 +23,8 @@ import {
 	SUBAGENT_TEXT_COLOR,
 	TOOL_GROUP_EXPANDED_MARKER,
 	TOOL_MARKER,
-} from "./style.ts";
-import type { LiveSubagentLine, SubagentRunView, TranscriptSubagentGroup } from "./types.ts";
+} from "#src/tui/transcript/style.ts";
+import type { LiveSubagentLine, SubagentRunView, TranscriptSubagentGroup } from "#src/tui/transcript/types.ts";
 
 /**
  * 子代理组的屏幕行。

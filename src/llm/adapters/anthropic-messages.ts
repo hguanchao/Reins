@@ -1,13 +1,13 @@
-import type { LlmEvent, LlmRequest, LlmResult } from "../client.ts";
-import { resolveApiKey } from "../api-keys.ts";
-import { providerEffortValue } from "../effort.ts";
-import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "../messages.ts";
-import { ContentAccumulator } from "./content-accumulator.ts";
-import { ProtocolClient } from "./protocol-client.ts";
+import type { LlmEvent, LlmRequest, LlmResult } from "#src/llm/client.ts";
+import { resolveApiKey } from "#src/llm/api-keys.ts";
+import { providerEffortValue } from "#src/llm/effort.ts";
+import type { LlmContentBlock, LlmStopReason, LlmUsage, LlmUserMessage } from "#src/llm/messages.ts";
+import { ContentAccumulator } from "#src/llm/adapters/content-accumulator.ts";
+import { ProtocolClient } from "#src/llm/adapters/protocol-client.ts";
 import {
 	IMAGE_ATTACHMENT_NOTICE,
 	IMAGE_OMITTED_PLACEHOLDER,
-} from "./stream-runner.ts";
+} from "#src/llm/adapters/stream-runner.ts";
 
 /**
  * Anthropic 的 Messages 协议。

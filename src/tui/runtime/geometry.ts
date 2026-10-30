@@ -1,21 +1,21 @@
-import { inputView, queueHeight } from "../view/footer.ts";
-import { approvalPanelHeight } from "../panel/approval-panel.ts";
-import { commandMenuHeight } from "../panel/command-menu.ts";
-import { effortMenuHeight } from "../panel/effort-menu.ts";
-import { fileMenuHeight } from "../panel/file-menu.ts";
-import { modelMenuHeight } from "../panel/model-menu.ts";
-import { sessionMenuHeight } from "../panel/session-menu.ts";
-import { MENU_MAX_VISIBLE } from "../panel/menu-panel.ts";
-import { DEFAULT_COLUMNS, terminalHeight } from "../terminal.ts";
-import { todoCardFinished, TODO_PANEL_MAX_ITEMS } from "../view/todo-card.ts";
-import type { TuiOptions } from "../options.ts";
+import { inputView, queueHeight } from "#src/tui/view/footer.ts";
+import { approvalPanelHeight } from "#src/tui/panel/approval-panel.ts";
+import { commandMenuHeight } from "#src/tui/panel/command-menu.ts";
+import { effortMenuHeight } from "#src/tui/panel/effort-menu.ts";
+import { fileMenuHeight } from "#src/tui/panel/file-menu.ts";
+import { modelMenuHeight } from "#src/tui/panel/model-menu.ts";
+import { sessionMenuHeight } from "#src/tui/panel/session-menu.ts";
+import { MENU_MAX_VISIBLE } from "#src/tui/panel/menu-panel.ts";
+import { DEFAULT_COLUMNS, terminalHeight } from "#src/tui/terminal.ts";
+import { todoCardFinished, TODO_PANEL_MAX_ITEMS } from "#src/tui/view/todo-card.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
 import {
 	COMPACT_FOOTER_FIXED_LINES,
 	COMPACT_FOOTER_INPUT_ROW,
 	FULL_FOOTER_FIXED_LINES,
 	FULL_FOOTER_INPUT_ROW,
-} from "./constants.ts";
-import type { TuiState } from "./types.ts";
+} from "#src/tui/runtime/constants.ts";
+import type { TuiState } from "#src/tui/runtime/types.ts";
 
 /**
  * 终端几何与页脚高度。

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ModelReviewer, parseVerdict } from "../../src/permission/reviewer.ts";
-import { EventStream } from "../../src/llm/event-stream.ts";
-import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../../src/llm/client.ts";
+import { ModelReviewer, parseVerdict } from "#src/permission/reviewer.ts";
+import { EventStream } from "#src/llm/event-stream.ts";
+import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "#src/llm/client.ts";
 
 /** 不发真实请求的假客户端：返回预置的最终文本。 */
 function fakeStream(text: string, stopReason: LlmResult["stopReason"] = "stop"): LlmStream {

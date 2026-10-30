@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, SESSION_ITEMS, exitTui, rawFrame, frameLines, cursorAt, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, SESSION_ITEMS, exitTui, rawFrame, frameLines, cursorAt, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 describe("任务面板", () => {
 	it("tool_start 只更新常驻面板,运行行转圈与扫光,回合结束回静态", async (t) => {

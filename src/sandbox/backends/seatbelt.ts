@@ -1,6 +1,6 @@
-import { quoteForShell } from "../shell-quote.ts";
+import { quoteForShell } from "#src/sandbox/shell-quote.ts";
 
-import type { SandboxBackend, SandboxPolicy } from "../policy.ts";
+import type { SandboxBackend, SandboxPolicy } from "#src/sandbox/policy.ts";
 
 /**
  * macOS 的 seatbelt（sandbox-exec）。

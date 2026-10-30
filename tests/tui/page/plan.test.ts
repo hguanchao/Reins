@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { planActionLines, planReviewLines, PLAN_ACTION_HEIGHT } from "../../../src/tui/page/plan.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
-import type { TranscriptPlan } from "../../../src/tui/transcript.ts";
+import { planActionLines, planReviewLines, PLAN_ACTION_HEIGHT } from "#src/tui/page/plan.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import type { TranscriptPlan } from "#src/tui/transcript.ts";
 
 const PLAN: TranscriptPlan = {
 	kind: "plan",

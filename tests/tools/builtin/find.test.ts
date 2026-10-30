@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { findTool } from "../../../src/tools/builtin/find.ts";
-import { WorkspaceBoundary } from "../../../src/workspace/boundary.ts";
+import { findTool } from "#src/tools/builtin/find.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 describe("查找文件", () => {
 	it("返回相对工作根的路径，而不是相对搜索起点", async () => {

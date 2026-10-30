@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { displayWidth } from "../../../src/tui/render/text.ts";
-import { BOLD_OFF, MUTED_COLOR, SELECTED_TEXT_COLOR } from "../../../src/tui/panel/menu-panel.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
+import { BOLD_OFF, MUTED_COLOR, SELECTED_TEXT_COLOR } from "#src/tui/panel/menu-panel.ts";
 import {
 	renderSessionMenu,
 	sessionMenuHeight,
 	type SessionMenuItem,
-} from "../../../src/tui/panel/session-menu.ts";
+} from "#src/tui/panel/session-menu.ts";
 
 const ITEMS: readonly SessionMenuItem[] = [
 	{ id: "0123456789abcdef", title: "Fix the login flow", time: "2 hours ago", current: true },

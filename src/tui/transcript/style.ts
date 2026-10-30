@@ -1,5 +1,5 @@
-import { THEME } from "../render/theme.ts";
-import { TRANSCRIPT } from "../copy.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { TRANSCRIPT } from "#src/tui/copy.ts";
 
 /** 用户提示背景，与菜单面板使用同一档浮起表面。 */
 export const PROMPT_BG = THEME.surface;

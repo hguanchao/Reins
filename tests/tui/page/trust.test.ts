@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { trustPageLines, type TrustPageInput } from "../../../src/tui/page/trust.ts";
-import { displayWidth } from "../../../src/tui/render/text.ts";
+import { trustPageLines, type TrustPageInput } from "#src/tui/page/trust.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");

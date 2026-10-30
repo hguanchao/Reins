@@ -2,24 +2,24 @@ import {
 	defaultInstructionSources,
 	readInstructions,
 	type PromptInstruction,
-} from "../agent/instructions.ts";
-import { PermissionGate, PermissionPolicy } from "../permission/policy.ts";
-import { WorkspaceBoundary } from "../workspace/boundary.ts";
-import { readVersion } from "../version.ts";
-import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "./args.ts";
-import { loadSelection } from "./config-selection.ts";
-import { initializeConfig } from "./initialize-config.ts";
-import { writeStderr, writeStdout } from "./output.ts";
+} from "#src/agent/instructions.ts";
+import { PermissionGate, PermissionPolicy } from "#src/permission/policy.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import { readVersion } from "#src/version.ts";
+import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "#src/cli/args.ts";
+import { loadSelection } from "#src/cli/config-selection.ts";
+import { initializeConfig } from "#src/cli/initialize-config.ts";
+import { writeStderr, writeStdout } from "#src/cli/output.ts";
 import {
 	assemblePipeline,
 	createCompactor,
 	createDriverFor,
 	createReviewer,
-} from "./pipeline.ts";
-import { runPrintMode } from "./print-mode.ts";
-import { createSessionFor } from "./session/factory.ts";
-import { runPluginCommand } from "./plugin-command.ts";
-import { runTuiMode } from "./tui-mode.ts";
+} from "#src/cli/pipeline.ts";
+import { runPrintMode } from "#src/cli/print-mode.ts";
+import { createSessionFor } from "#src/cli/session/factory.ts";
+import { runPluginCommand } from "#src/cli/plugin-command.ts";
+import { runTuiMode } from "#src/cli/tui-mode.ts";
 
 /**
  * 运行时装配入口。

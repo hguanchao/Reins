@@ -1,10 +1,10 @@
-import { prefixScope, runCommand } from "../command-run.ts";
-import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
-import { resolvePowerShell } from "../shell.ts";
-import { DEFAULT_LIMITS } from "../truncate.ts";
+import { prefixScope, runCommand } from "#src/tools/command-run.ts";
+import type { PermissionScope, ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { resolvePowerShell } from "#src/tools/shell.ts";
+import { DEFAULT_LIMITS } from "#src/tools/truncate.ts";
 
-export { resolvePowerShell } from "../shell.ts";
+export { resolvePowerShell } from "#src/tools/shell.ts";
 
 /**
  * 执行 PowerShell 命令。

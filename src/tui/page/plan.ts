@@ -1,8 +1,8 @@
-import { renderMarkdown } from "../render/markdown.ts";
-import { displayWidth, truncateToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import type { TranscriptPlan } from "../transcript.ts";
-import { ACTIONS, PAGE } from "../copy.ts";
+import { renderMarkdown } from "#src/tui/render/markdown.ts";
+import { displayWidth, truncateToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import type { TranscriptPlan } from "#src/tui/transcript.ts";
+import { ACTIONS, PAGE } from "#src/tui/copy.ts";
 
 /**
  * 计划审批页。

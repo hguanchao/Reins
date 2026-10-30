@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { describe, it } from "node:test";
 
-import { killProcessTree, resolvePowerShell, resolveShell, startShellProcess } from "../../src/tools/shell.ts";
+import { killProcessTree, resolvePowerShell, resolveShell, startShellProcess } from "#src/tools/shell.ts";
 
 describe("进程树终止", () => {
 	it("spawn 之后立刻请求终止也能杀掉进程", async () => {

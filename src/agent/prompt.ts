@@ -1,6 +1,6 @@
-import type { ToolDeclaration } from "../tools/contract.ts";
-import type { SessionToolDeclaration } from "../session/port.ts";
-import type { PromptInstruction } from "./instructions.ts";
+import type { ToolDeclaration } from "#src/tools/contract.ts";
+import type { SessionToolDeclaration } from "#src/session/port.ts";
+import type { PromptInstruction } from "#src/agent/instructions.ts";
 
 /**
  * 系统提示词的组装与渲染。

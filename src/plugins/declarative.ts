@@ -1,9 +1,9 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
-import type { McpServerConfig } from "../config/file.ts";
-import { pluginsDir } from "../config/paths.ts";
-import { describeError } from "../shared/describe-error.ts";
+import type { McpServerConfig } from "#src/config/file.ts";
+import { pluginsDir } from "#src/config/paths.ts";
+import { describeError } from "#src/shared/describe-error.ts";
 
 /**
  * 声明式插件。

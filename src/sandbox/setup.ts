@@ -1,7 +1,7 @@
-import type { SandboxMode } from "../config/file.ts";
-import { describeError } from "../shared/describe-error.ts";
-import { Sandbox, type SandboxBackend, type SandboxView } from "./policy.ts";
-import { verifyCommandIsolation } from "./verify.ts";
+import type { SandboxMode } from "#src/config/file.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import { Sandbox, type SandboxBackend, type SandboxView } from "#src/sandbox/policy.ts";
+import { verifyCommandIsolation } from "#src/sandbox/verify.ts";
 
 /**
  * 沙箱当前的实际情况。

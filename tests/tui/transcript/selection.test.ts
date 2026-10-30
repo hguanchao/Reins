@@ -10,9 +10,9 @@ import {
 	selectionText,
 	stripTerminalStyles,
 	visibleTextWidth,
-} from "../../../src/tui/transcript.ts";
-import type { TranscriptThinking, TranscriptTool } from "../../../src/tui/transcript.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+} from "#src/tui/transcript.ts";
+import type { TranscriptThinking, TranscriptTool } from "#src/tui/transcript.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 describe("文本选区", () => {
 	function viewOf() {

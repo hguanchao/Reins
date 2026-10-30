@@ -1,11 +1,11 @@
 import { readFileSync, statSync } from "node:fs";
 
-import { resolveToolPath } from "../path.ts";
-import { describeError } from "../../shared/describe-error.ts";
-import type { ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
-import { DEFAULT_LIMITS, splitLines, truncateHead } from "../truncate.ts";
-import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary, type TextFile } from "../text-file.ts";
+import { resolveToolPath } from "#src/tools/path.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { DEFAULT_LIMITS, splitLines, truncateHead } from "#src/tools/truncate.ts";
+import { BINARY_PROBE_BYTES, decodeTextFile, looksBinary, type TextFile } from "#src/tools/text-file.ts";
 
 /**
  * 读取文件。

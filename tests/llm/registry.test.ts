@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createBuiltinLlmRegistry, LlmRegistry, type LlmClientFactory } from "../../src/llm/registry.ts";
-import type { LlmClient, LlmEvent, LlmResult } from "../../src/llm/client.ts";
-import type { ModelEntry, ProviderEntry } from "../../src/config/providers-file.ts";
-import type { RetryPolicy } from "../../src/llm/retry.ts";
-import { EventStream } from "../../src/llm/event-stream.ts";
+import { createBuiltinLlmRegistry, LlmRegistry, type LlmClientFactory } from "#src/llm/registry.ts";
+import type { LlmClient, LlmEvent, LlmResult } from "#src/llm/client.ts";
+import type { ModelEntry, ProviderEntry } from "#src/config/providers-file.ts";
+import type { RetryPolicy } from "#src/llm/retry.ts";
+import { EventStream } from "#src/llm/event-stream.ts";
 
 const POLICY: RetryPolicy = { maxRetries: 1, baseDelayMs: 1 };
 

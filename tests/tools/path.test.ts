@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { resolve } from "node:path";
 
-import { writeScope } from "../../src/tools/path.ts";
-import type { WorkspaceBoundary } from "../../src/workspace/boundary.ts";
+import { writeScope } from "#src/tools/path.ts";
+import type { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 const ROOT = resolve("work");
 

@@ -1,10 +1,10 @@
 import { readdirSync, statSync } from "node:fs";
 
-import { resolveToolPath } from "../path.ts";
-import { describeError } from "../../shared/describe-error.ts";
-import type { ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
-import { walk, type WalkEntry } from "../../workspace/walk.ts";
+import { resolveToolPath } from "#src/tools/path.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
+import { walk, type WalkEntry } from "#src/workspace/walk.ts";
 
 /**
  * 列出一层目录。

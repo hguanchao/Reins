@@ -1,20 +1,20 @@
-import type { AgentEventListener } from "../agent/events.ts";
+import type { AgentEventListener } from "#src/agent/events.ts";
 import type {
 	CheckpointPreview,
 	CheckpointRestoreResult,
-} from "../checkpoint/service.ts";
-import type { ApprovalMode, NotifyMode, ThinkingLevel } from "../config/file.ts";
-import type { McpControl } from "../mcp/service.ts";
-import type { ApprovalBroker } from "../permission/approval.ts";
-import type { CommandMenuItem } from "./panel/command-menu.ts";
-import type { FileSource } from "./panel/file-menu.ts";
-import type { FooterInfo } from "./view/footer.ts";
-import type { ImageAttachment, ImageSource } from "./image.ts";
-import type { ModelMenuItem } from "./panel/model-menu.ts";
-import type { PageEntry, SkillPageEntry } from "./page/frame.ts";
-import type { SessionMenuItem } from "./panel/session-menu.ts";
-import type { TranscriptPlan, TranscriptTurn } from "./transcript.ts";
-import type { TranscriptTodo } from "./view/todo-card.ts";
+} from "#src/checkpoint/service.ts";
+import type { ApprovalMode, NotifyMode, ThinkingLevel } from "#src/config/file.ts";
+import type { McpControl } from "#src/mcp/service.ts";
+import type { ApprovalBroker } from "#src/permission/approval.ts";
+import type { CommandMenuItem } from "#src/tui/panel/command-menu.ts";
+import type { FileSource } from "#src/tui/panel/file-menu.ts";
+import type { FooterInfo } from "#src/tui/view/footer.ts";
+import type { ImageAttachment, ImageSource } from "#src/tui/image.ts";
+import type { ModelMenuItem } from "#src/tui/panel/model-menu.ts";
+import type { PageEntry, SkillPageEntry } from "#src/tui/page/frame.ts";
+import type { SessionMenuItem } from "#src/tui/panel/session-menu.ts";
+import type { TranscriptPlan, TranscriptTurn } from "#src/tui/transcript.ts";
+import type { TranscriptTodo } from "#src/tui/view/todo-card.ts";
 
 /** 界面只依赖终端的这几个能力，测试因此可以交进假终端。 */
 export interface TuiInput {

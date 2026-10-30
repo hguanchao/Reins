@@ -1,11 +1,11 @@
-import { describeError } from "../../shared/describe-error.ts";
-import type { ToolDefinition, ToolResult } from "../contract.ts";
-import type { JsonSchema } from "../schema.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { ToolDefinition, ToolResult } from "#src/tools/contract.ts";
+import type { JsonSchema } from "#src/tools/schema.ts";
 import {
 	DEFAULT_WEB_FETCH_LIMITS,
 	fetchWebPage,
 	formatFetchedPage,
-} from "../web-fetch.ts";
+} from "#src/tools/web-fetch.ts";
 
 /**
  * 抓取网页。

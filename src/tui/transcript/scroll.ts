@@ -3,8 +3,8 @@ import {
 	SCROLLBAR_COLOR,
 	SCROLLBAR_THUMB,
 	SCROLLBAR_TRACK,
-} from "./style.ts";
-import type { PromptRange, TranscriptView } from "./types.ts";
+} from "#src/tui/transcript/style.ts";
+import type { PromptRange, TranscriptView } from "#src/tui/transcript/types.ts";
 
 /**
  * 可滚动的总行数。

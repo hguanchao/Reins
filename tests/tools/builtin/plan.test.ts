@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { presentPlanTool } from "../../../src/tools/builtin/plan.ts";
+import { presentPlanTool } from "#src/tools/builtin/plan.ts";
 
 function context(plan: string): Parameters<typeof presentPlanTool.execute>[0] {
 	return { args: { plan } } as never;

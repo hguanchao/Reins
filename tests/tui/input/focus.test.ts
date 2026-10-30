@@ -11,8 +11,8 @@ import {
 	exitTui,
 	frameLines,
 	plain,
-} from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+} from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 /**
  * 输入框焦点的多场景覆盖。

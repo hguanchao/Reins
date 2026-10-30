@@ -1,4 +1,4 @@
-import type { SessionEntry } from "./port.ts";
+import type { SessionEntry } from "#src/session/port.ts";
 
 /**
  * 条目树的查询。

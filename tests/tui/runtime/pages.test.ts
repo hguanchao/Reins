@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { showPage } from "../../../src/tui/runtime/pages.ts";
-import type { TuiState } from "../../../src/tui/runtime/types.ts";
+import { showPage } from "#src/tui/runtime/pages.ts";
+import type { TuiState } from "#src/tui/runtime/types.ts";
 
 describe("整屏页", () => {
 	it("打开整屏页会收掉 @ 补全面板与选区", () => {

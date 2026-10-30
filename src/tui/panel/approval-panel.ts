@@ -1,15 +1,15 @@
-import type { ApprovalPrompt } from "../../permission/approval.ts";
-import type { ApprovalAnswer } from "../../permission/policy.ts";
-import { displayToolName, sanitizeLine } from "../../tools/describe.ts";
+import type { ApprovalPrompt } from "#src/permission/approval.ts";
+import type { ApprovalAnswer } from "#src/permission/policy.ts";
+import { displayToolName, sanitizeLine } from "#src/tools/describe.ts";
 import {
 	ACCENT_COLOR,
 	BORDER_COLOR,
 	PANEL_BG,
 	RESET,
-} from "./menu-panel.ts";
-import { characterWidth, displayWidth, fitToWidth, graphemes, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { APPROVAL, PANEL, alwaysAllowFile, alwaysAllowScope } from "../copy.ts";
+} from "#src/tui/panel/menu-panel.ts";
+import { characterWidth, displayWidth, fitToWidth, graphemes, sanitizeForDisplay, truncateToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { APPROVAL, PANEL, alwaysAllowFile, alwaysAllowScope } from "#src/tui/copy.ts";
 
 /**
  * 工具审批面板。

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
-import { ResultSpiller, stripSpillFooter } from "../../src/tools/spill.ts";
+import { ResultSpiller, stripSpillFooter } from "#src/tools/spill.ts";
 
 describe("结果落盘", () => {
 	const directory = join(tmpdir(), `reins-spill-${Date.now()}`);

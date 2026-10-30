@@ -1,6 +1,6 @@
-import type { ApprovalMode } from "../config/file.ts";
-import type { GateOutcome, GateRequest, PermissionScope, ToolAnnotations } from "../tools/contract.ts";
-import { describeApprovalPresentation, isCommandTool, type ApprovalPresentation } from "../tools/describe.ts";
+import type { ApprovalMode } from "#src/config/file.ts";
+import type { GateOutcome, GateRequest, PermissionScope, ToolAnnotations } from "#src/tools/contract.ts";
+import { describeApprovalPresentation, isCommandTool, type ApprovalPresentation } from "#src/tools/describe.ts";
 
 /**
  * 审批判定。

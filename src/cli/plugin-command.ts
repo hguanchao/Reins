@@ -3,10 +3,10 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statS
 import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 
-import type { CliOptions } from "./args.ts";
-import { pluginsDir } from "../config/paths.ts";
-import { describeDeclarativeScan, scanDeclarativePlugins } from "../plugins/declarative.ts";
-import { writeStderr, writeStdout } from "./output.ts";
+import type { CliOptions } from "#src/cli/args.ts";
+import { pluginsDir } from "#src/config/paths.ts";
+import { describeDeclarativeScan, scanDeclarativePlugins } from "#src/plugins/declarative.ts";
+import { writeStderr, writeStdout } from "#src/cli/output.ts";
 
 /**
  * 插件管理子命令。

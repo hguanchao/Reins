@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOCUS, BLUR, INFO, BORDER, FOOTER_INFO, exitTui, rawFrame, frameLines, cursorAt, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOCUS, BLUR, INFO, BORDER, FOOTER_INFO, exitTui, rawFrame, frameLines, cursorAt, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 describe("焦点、状态与用量", () => {
 	it("启动时回填历史并隐藏启动画面", () => {

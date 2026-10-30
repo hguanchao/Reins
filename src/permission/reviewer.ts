@@ -1,7 +1,7 @@
-import { describeError } from "../shared/describe-error.ts";
-import type { LlmClient } from "../llm/client.ts";
-import { assistantText } from "../llm/messages.ts";
-import type { ApprovalReviewer, ReviewOutcome } from "./policy.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { LlmClient } from "#src/llm/client.ts";
+import { assistantText } from "#src/llm/messages.ts";
+import type { ApprovalReviewer, ReviewOutcome } from "#src/permission/policy.ts";
 
 /**
  * 由模型审查一次工具调用是否可以自动放行。

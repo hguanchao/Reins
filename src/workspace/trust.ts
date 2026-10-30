@@ -1,14 +1,14 @@
 import { existsSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { updateUserConfigValue } from "../config/write-back.ts";
+import { updateUserConfigValue } from "#src/config/write-back.ts";
 import {
 	projectAgentsSkillsDir,
 	projectConfigFilePath,
 	projectDirPath,
 	projectInstructionFiles,
 	projectSkillsDir,
-} from "../config/paths.ts";
+} from "#src/config/paths.ts";
 
 /**
  * 工作区信任。

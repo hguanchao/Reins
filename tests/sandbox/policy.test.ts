@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { Sandbox, type SandboxBackend, type SandboxPolicy } from "../../src/sandbox/policy.ts";
+import { Sandbox, type SandboxBackend, type SandboxPolicy } from "#src/sandbox/policy.ts";
 
 const ROOT = process.platform === "win32" ? "E:\\w" : "/tmp/w";
 

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
-import { CheckpointService } from "../../src/checkpoint/service.ts";
+import { CheckpointService } from "#src/checkpoint/service.ts";
 
 const roots: string[] = [];
 

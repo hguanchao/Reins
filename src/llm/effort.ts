@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "../config/file.ts";
-import type { ThinkingLevelMap } from "../config/providers-file.ts";
+import type { ThinkingLevel } from "#src/config/file.ts";
+import type { ThinkingLevelMap } from "#src/config/providers-file.ts";
 
 /**
  * 思考等级在请求层的形态。

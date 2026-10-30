@@ -1,4 +1,4 @@
-import { formatEditDiff, type AppliedEdit } from "./diff.ts";
+import { formatEditDiff, type AppliedEdit } from "#src/tools/builtin/diff.ts";
 
 /**
  * 文本替换的匹配与规划。

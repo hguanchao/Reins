@@ -3,10 +3,10 @@ import { accessSync, constants, existsSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { resolveShell, type Shell } from "../tools/shell.ts";
-import { isPathInside } from "../workspace/boundary.ts";
-import type { SandboxView } from "./policy.ts";
-import { quoteForShell } from "./shell-quote.ts";
+import { resolveShell, type Shell } from "#src/tools/shell.ts";
+import { isPathInside } from "#src/workspace/boundary.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import { quoteForShell } from "#src/sandbox/shell-quote.ts";
 
 /** 一次探针的执行时限:挂住的沙箱说明配置有问题,等更久没有意义。 */
 const PROBE_TIMEOUT_MS = 10_000;

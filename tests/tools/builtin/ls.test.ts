@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { lsTool } from "../../../src/tools/builtin/ls.ts";
-import { WorkspaceBoundary } from "../../../src/workspace/boundary.ts";
+import { lsTool } from "#src/tools/builtin/ls.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 function context(root: string) {
 	return {

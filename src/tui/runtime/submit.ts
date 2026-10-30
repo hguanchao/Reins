@@ -1,13 +1,13 @@
-import { findCommand } from "../commands.ts";
-import { TURN_SAFE_COMMANDS } from "../commands.ts";
-import { commandArgs } from "../commands.ts";
-import { IMAGE_STILL_READING, STATUS, queuedOverflow, unknownCommand, waitForTurn } from "../copy.ts";
-import { attachmentLimit, clearAttachments, imagesOf } from "../input/attachments.ts";
-import { QUEUE_MAX_VISIBLE } from "../view/footer.ts";
-import { markTranscriptDirty } from "./transcript-state.ts";
-import { drainQueue } from "./run.ts";
-import { executeCommand } from "./commands.ts";
-import type { TuiHost } from "./types.ts";
+import { findCommand } from "#src/tui/commands.ts";
+import { TURN_SAFE_COMMANDS } from "#src/tui/commands.ts";
+import { commandArgs } from "#src/tui/commands.ts";
+import { IMAGE_STILL_READING, STATUS, queuedOverflow, unknownCommand, waitForTurn } from "#src/tui/copy.ts";
+import { attachmentLimit, clearAttachments, imagesOf } from "#src/tui/input/attachments.ts";
+import { QUEUE_MAX_VISIBLE } from "#src/tui/view/footer.ts";
+import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
+import { drainQueue } from "#src/tui/runtime/run.ts";
+import { executeCommand } from "#src/tui/runtime/commands.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 回车提交。

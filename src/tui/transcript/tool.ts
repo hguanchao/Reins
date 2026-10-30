@@ -1,22 +1,22 @@
-import { sanitizeLine } from "../../tools/describe.ts";
-import { TRANSCRIPT, hiddenLines, toolGroupSummary } from "../copy.ts";
-import { formatDuration } from "../../shared/format.ts";
+import { sanitizeLine } from "#src/tools/describe.ts";
+import { TRANSCRIPT, hiddenLines, toolGroupSummary } from "#src/tui/copy.ts";
+import { formatDuration } from "#src/shared/format.ts";
 import {
 	coloredLine,
 	displayWidth,
 	fitToWidth,
 	truncateToWidth,
 	wrappedLines,
-} from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
+} from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 import {
 	bandBlankLine,
 	bandedWrappedLines,
 	detailBand,
 	expandTabs,
 	stripTrailingBlank,
-} from "./detail.ts";
-import { isRunningTool } from "./model.ts";
+} from "#src/tui/transcript/detail.ts";
+import { isRunningTool } from "#src/tui/transcript/model.ts";
 import {
 	DETAIL_BAND_LEFT,
 	DETAIL_RIGHT_PADDING,
@@ -32,8 +32,8 @@ import {
 	TOOL_RESULT_PREVIEW_LINES,
 	RESET,
 	UNDERLINE,
-} from "./style.ts";
-import type { TranscriptTool, TranscriptToolGroup } from "./types.ts";
+} from "#src/tui/transcript/style.ts";
+import type { TranscriptTool, TranscriptToolGroup } from "#src/tui/transcript/types.ts";
 
 /**
  * 工具组的屏幕行。

@@ -1,16 +1,16 @@
-import type { AnyToolDefinition } from "../contract.ts";
-import { createBashTool } from "./bash.ts";
-import { editTool } from "./edit.ts";
-import { findTool } from "./find.ts";
-import { grepTool } from "./grep.ts";
-import { lsTool } from "./ls.ts";
-import { patchTool } from "./patch.ts";
-import { presentPlanTool } from "./plan.ts";
-import { createPwshTool } from "./pwsh.ts";
-import { readTool } from "./read.ts";
-import { todoTool } from "./todo.ts";
-import { webFetchTool } from "./web-fetch.ts";
-import { writeTool } from "./write.ts";
+import type { AnyToolDefinition } from "#src/tools/contract.ts";
+import { createBashTool } from "#src/tools/builtin/bash.ts";
+import { editTool } from "#src/tools/builtin/edit.ts";
+import { findTool } from "#src/tools/builtin/find.ts";
+import { grepTool } from "#src/tools/builtin/grep.ts";
+import { lsTool } from "#src/tools/builtin/ls.ts";
+import { patchTool } from "#src/tools/builtin/patch.ts";
+import { presentPlanTool } from "#src/tools/builtin/plan.ts";
+import { createPwshTool } from "#src/tools/builtin/pwsh.ts";
+import { readTool } from "#src/tools/builtin/read.ts";
+import { todoTool } from "#src/tools/builtin/todo.ts";
+import { webFetchTool } from "#src/tools/builtin/web-fetch.ts";
+import { writeTool } from "#src/tools/builtin/write.ts";
 
 /**
  * 宿主自带的核心工具。

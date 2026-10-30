@@ -1,10 +1,10 @@
-import type { ApprovalMode } from "../../config/file.ts";
-import { formatCompactTokens, formatDuration } from "../../shared/format.ts";
-import { highlightImageMarkers } from "../image.ts";
-import { queueMore } from "../copy.ts";
-import { swept } from "../render/sweep.ts";
-import { characterWidth, displayWidth, graphemes, truncateToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
+import type { ApprovalMode } from "#src/config/file.ts";
+import { formatCompactTokens, formatDuration } from "#src/shared/format.ts";
+import { highlightImageMarkers } from "#src/tui/image.ts";
+import { queueMore } from "#src/tui/copy.ts";
+import { swept } from "#src/tui/render/sweep.ts";
+import { characterWidth, displayWidth, graphemes, truncateToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /**
  * 页脚输入框。

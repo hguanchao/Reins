@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { ContentAccumulator, parseToolArguments } from "../../../src/llm/adapters/content-accumulator.ts";
+import { ContentAccumulator, parseToolArguments } from "#src/llm/adapters/content-accumulator.ts";
 
 describe("内容累积器", () => {
 	it("文本按下标拼接,乱序下标按出现顺序排列", () => {

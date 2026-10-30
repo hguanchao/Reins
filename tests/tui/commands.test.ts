@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createBuiltinCommands, findCommand } from "../../src/tui/commands.ts";
-import type { TuiOptions } from "../../src/tui/options.ts";
+import { createBuiltinCommands, findCommand } from "#src/tui/commands.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
 
 describe("内置斜杠命令", () => {
 	const commands = createBuiltinCommands({} as TuiOptions);

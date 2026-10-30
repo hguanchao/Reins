@@ -9,7 +9,7 @@ import {
 	findSavedDecision,
 	readTrustedRoots,
 	resolveTrust,
-} from "../../src/workspace/trust.ts";
+} from "#src/workspace/trust.ts";
 
 const created: string[] = [];
 

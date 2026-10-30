@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { runTui } from "../../../src/tui/layout.ts";
-import type { ExportSource } from "../../../src/tui/options.ts";
+import { runTui } from "#src/tui/layout.ts";
+import type { ExportSource } from "#src/tui/options.ts";
 import {
 	FakeInput,
 	FakeOutput,
@@ -11,7 +11,7 @@ import {
 	exitTui,
 	frameLines,
 	plain,
-} from "../support/harness.ts";
+} from "#tests/tui/support/harness.ts";
 
 function screen(output: FakeOutput): string {
 	return frameLines(output).map(plain).join("\n");

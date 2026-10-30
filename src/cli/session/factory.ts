@@ -1,7 +1,7 @@
-import { Session } from "../../session/session.ts";
-import type { SessionStore } from "../../session/store.ts";
-import { writeStderr } from "../output.ts";
-import { createSession } from "./target.ts";
+import { Session } from "#src/session/session.ts";
+import type { SessionStore } from "#src/session/store.ts";
+import { writeStderr } from "#src/cli/output.ts";
+import { createSession } from "#src/cli/session/target.ts";
 
 /**
  * 新建本次会话。

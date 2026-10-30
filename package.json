@@ -6,6 +6,10 @@
 	"bin": {
 		"reins": "./src/cli/index.ts"
 	},
+	"imports": {
+		"#src/*": "./src/*",
+		"#tests/*": "./tests/*"
+	},
 	"engines": {
 		"node": ">=22.18"
 	},

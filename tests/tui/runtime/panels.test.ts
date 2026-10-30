@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { createBuiltinCommands } from "../../../src/tui/commands.ts";
-import { updateCommandMenu } from "../../../src/tui/runtime/panels.ts";
-import type { TuiHost, TuiState } from "../../../src/tui/runtime/types.ts";
-import type { TuiOptions } from "../../../src/tui/options.ts";
+import { createBuiltinCommands } from "#src/tui/commands.ts";
+import { updateCommandMenu } from "#src/tui/runtime/panels.ts";
+import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
+import type { TuiOptions } from "#src/tui/options.ts";
 
 function stateOf(input: string): TuiState {
 	return {

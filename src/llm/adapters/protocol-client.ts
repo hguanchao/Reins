@@ -1,9 +1,9 @@
-import type { ModelEntry, ProviderEntry } from "../../config/providers-file.ts";
-import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "../client.ts";
-import { postSse } from "../http.ts";
-import type { RetryPolicy } from "../retry.ts";
-import { ContentAccumulator } from "./content-accumulator.ts";
-import { createLlmStream, joinUrl } from "./stream-runner.ts";
+import type { ModelEntry, ProviderEntry } from "#src/config/providers-file.ts";
+import type { LlmClient, LlmEvent, LlmRequest, LlmResult, LlmStream } from "#src/llm/client.ts";
+import { postSse } from "#src/llm/http.ts";
+import type { RetryPolicy } from "#src/llm/retry.ts";
+import { ContentAccumulator } from "#src/llm/adapters/content-accumulator.ts";
+import { createLlmStream, joinUrl } from "#src/llm/adapters/stream-runner.ts";
 
 /**
  * 三家协议适配器的公共骨架。

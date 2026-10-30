@@ -1,16 +1,16 @@
-import { describeError } from "../shared/describe-error.ts";
-import type { SandboxView } from "../sandbox/policy.ts";
-import type { SessionReadView } from "../session/port.ts";
-import type { WorkspaceBoundary } from "../workspace/boundary.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import type { SessionReadView } from "#src/session/port.ts";
+import type { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 import type {
 	AnyToolDefinition,
 	GateOutcome,
 	GateRequest,
 	PermissionScope,
 	ToolResult,
-} from "./contract.ts";
-import { validateToolArguments } from "./schema.ts";
-import type { ResultSpiller } from "./spill.ts";
+} from "#src/tools/contract.ts";
+import { validateToolArguments } from "#src/tools/schema.ts";
+import type { ResultSpiller } from "#src/tools/spill.ts";
 
 /**
  * 工具注册表与调用管线。

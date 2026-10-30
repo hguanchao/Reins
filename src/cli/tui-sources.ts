@@ -1,21 +1,21 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
-import { describeError } from "../shared/describe-error.ts";
+import { describeError } from "#src/shared/describe-error.ts";
 
-import { estimateTokens } from "../agent/compactor.ts";
-import type { Config } from "../config/file.ts";
-import { ModelCatalog } from "../config/model-catalog.ts";
-import type { ProvidersConfig } from "../config/providers-file.ts";
-import { resolveSelection, type ModelSelection } from "../config/selection.ts";
-import { updateModelSelection, updateUserConfigValue } from "../config/write-back.ts";
-import { clampEffort } from "../llm/effort.ts";
-import type { ApprovalReviewer } from "../permission/policy.ts";
-import type { Session } from "../session/session.ts";
-import { cacheHitRate, lastContextTokens, sumUsage } from "../session/usage.ts";
-import type { FooterInfo } from "../tui/view/footer.ts";
-import type { EffortMenuSource, ModelMenuSource } from "../tui/options.ts";
-import { currentBranch } from "../workspace/git.ts";
-import { createReviewer } from "./pipeline.ts";
+import { estimateTokens } from "#src/agent/compactor.ts";
+import type { Config } from "#src/config/file.ts";
+import { ModelCatalog } from "#src/config/model-catalog.ts";
+import type { ProvidersConfig } from "#src/config/providers-file.ts";
+import { resolveSelection, type ModelSelection } from "#src/config/selection.ts";
+import { updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
+import { clampEffort } from "#src/llm/effort.ts";
+import type { ApprovalReviewer } from "#src/permission/policy.ts";
+import type { Session } from "#src/session/session.ts";
+import { cacheHitRate, lastContextTokens, sumUsage } from "#src/session/usage.ts";
+import type { FooterInfo } from "#src/tui/view/footer.ts";
+import type { EffortMenuSource, ModelMenuSource } from "#src/tui/options.ts";
+import { currentBranch } from "#src/workspace/git.ts";
+import { createReviewer } from "#src/cli/pipeline.ts";
 
 /**
  * 主目录缩写成 `~`：整屏页展示来源用。

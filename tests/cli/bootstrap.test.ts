@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { main } from "../../src/cli/bootstrap.ts";
+import { main } from "#src/cli/bootstrap.ts";
 
 describe("启动全屏界面", () => {
 	it("起不来界面时不补配置模板，也不留下文件", async () => {

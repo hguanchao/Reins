@@ -1,7 +1,7 @@
-import { approvalKey, menuKey, scrollKey } from "./keys.ts";
-import type { InputDeps } from "./deps.ts";
-import type { TuiHost } from "../runtime/types.ts";
-import type { TrustAnswer } from "../page/trust.ts";
+import { approvalKey, menuKey, scrollKey } from "#src/tui/input/keys.ts";
+import type { InputDeps } from "#src/tui/input/deps.ts";
+import type { TuiHost } from "#src/tui/runtime/types.ts";
+import type { TrustAnswer } from "#src/tui/page/trust.ts";
 
 /** 选项顺序：左右键按它移动，最后一项是不信任。 */
 const ORDER: readonly TrustAnswer[] = ["trust", "session", "skip"];

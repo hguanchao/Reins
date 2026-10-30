@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import type { SandboxView } from "../../../src/sandbox/policy.ts";
-import { patchTool } from "../../../src/tools/builtin/patch.ts";
-import { WorkspaceBoundary } from "../../../src/workspace/boundary.ts";
+import type { SandboxView } from "#src/sandbox/policy.ts";
+import { patchTool } from "#src/tools/builtin/patch.ts";
+import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 const SANDBOX: SandboxView = {
 	assertPathAllowed: () => undefined,

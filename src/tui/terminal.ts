@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 
-import type { TuiOutput } from "./options.ts";
+import type { TuiOutput } from "#src/tui/options.ts";
 
 /**
  * 终端控制序列与环境默认值。

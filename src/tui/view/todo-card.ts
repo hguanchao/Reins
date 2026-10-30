@@ -1,8 +1,8 @@
-import { formatDuration } from "../../shared/format.ts";
-import { countSegments, moreItems, taskLabel } from "../copy.ts";
-import { swept, type AnimationFrame } from "../render/sweep.ts";
-import { displayWidth, fitToWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
+import { formatDuration } from "#src/shared/format.ts";
+import { countSegments, moreItems, taskLabel } from "#src/tui/copy.ts";
+import { swept, type AnimationFrame } from "#src/tui/render/sweep.ts";
+import { displayWidth, fitToWidth, sanitizeForDisplay, truncateToWidth } from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 /**
  * 任务卡片：类型、参数解析与两种排版。

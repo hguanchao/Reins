@@ -9,7 +9,7 @@ import {
 	discoverSkills,
 	type SkillRoot,
 	type SkillScope,
-} from "../../src/skills/discover.ts";
+} from "#src/skills/discover.ts";
 
 const created: string[] = [];
 

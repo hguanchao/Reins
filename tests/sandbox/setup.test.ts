@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import type { SandboxBackend } from "../../src/sandbox/policy.ts";
-import { createSandbox } from "../../src/sandbox/setup.ts";
+import type { SandboxBackend } from "#src/sandbox/policy.ts";
+import { createSandbox } from "#src/sandbox/setup.ts";
 
 const unavailable: SandboxBackend = {
 	id: "missing",

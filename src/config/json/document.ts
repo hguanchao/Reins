@@ -1,7 +1,7 @@
-import type { LineColumn } from "../error.ts";
-import type { ConfigSource } from "../reader.ts";
-import { isConfigTable, tableValue, type ConfigPath, type ConfigValue } from "../value.ts";
-import { JsonParser, jsonPathKey } from "./parser.ts";
+import type { LineColumn } from "#src/config/error.ts";
+import type { ConfigSource } from "#src/config/reader.ts";
+import { isConfigTable, tableValue, type ConfigPath, type ConfigValue } from "#src/config/value.ts";
+import { JsonParser, jsonPathKey } from "#src/config/json/parser.ts";
 
 /**
  * 带位置索引的 JSON 文档。

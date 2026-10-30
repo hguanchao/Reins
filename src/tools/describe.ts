@@ -2,9 +2,9 @@ import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { stripVTControlCharacters } from "node:util";
 
-import { firstLine } from "../shared/format.ts";
-import { expandHome, toAbsolutePath } from "../workspace/root.ts";
-import { commandCore } from "./command-summary.ts";
+import { firstLine } from "#src/shared/format.ts";
+import { expandHome, toAbsolutePath } from "#src/workspace/root.ts";
+import { commandCore } from "#src/tools/command-summary.ts";
 
 /**
  * 工具调用的可读摘要。

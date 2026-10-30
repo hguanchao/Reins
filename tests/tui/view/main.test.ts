@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 
-import { renderMain } from "../../../src/tui/view/main.ts";
+import { renderMain } from "#src/tui/view/main.ts";
 
 const ART_TOP = "████  █████  █████  █   █  █████";
 

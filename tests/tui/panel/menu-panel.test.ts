@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { MENU_MAX_VISIBLE, menuListLines } from "../../../src/tui/panel/menu-panel.ts";
+import { MENU_MAX_VISIBLE, menuListLines } from "#src/tui/panel/menu-panel.ts";
 
 function plain(line: string): string {
 	return line.replace(/\x1b\[[0-9;]*m/g, "");

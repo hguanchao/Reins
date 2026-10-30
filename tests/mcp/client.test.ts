@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { McpClient } from "../../src/mcp/client.ts";
-import type { JsonRpcMessage, McpTransport } from "../../src/mcp/transport.ts";
+import { McpClient } from "#src/mcp/client.ts";
+import type { JsonRpcMessage, McpTransport } from "#src/mcp/transport.ts";
 
 interface Reply {
 	readonly result?: unknown;

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { afterEach, describe, it } from "node:test";
 
-import { OpenAiCompletionsClient } from "../../../src/llm/adapters/openai-completions.ts";
-import type { LlmRequest, LlmResult } from "../../../src/llm/client.ts";
-import { assistantText } from "../../../src/llm/messages.ts";
-import type { ModelEntry, ProviderEntry } from "../../../src/config/providers-file.ts";
-import type { RetryPolicy } from "../../../src/llm/retry.ts";
+import { OpenAiCompletionsClient } from "#src/llm/adapters/openai-completions.ts";
+import type { LlmRequest, LlmResult } from "#src/llm/client.ts";
+import { assistantText } from "#src/llm/messages.ts";
+import type { ModelEntry, ProviderEntry } from "#src/config/providers-file.ts";
+import type { RetryPolicy } from "#src/llm/retry.ts";
 
 const POLICY: RetryPolicy = { maxRetries: 0, baseDelayMs: 1 };
 const REAL_FETCH = globalThis.fetch;

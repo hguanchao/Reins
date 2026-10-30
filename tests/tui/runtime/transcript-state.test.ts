@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildTranscriptView } from "../../../src/tui/transcript.ts";
-import type { TranscriptThinking, TranscriptTurn } from "../../../src/tui/transcript.ts";
+import { buildTranscriptView } from "#src/tui/transcript.ts";
+import type { TranscriptThinking, TranscriptTurn } from "#src/tui/transcript.ts";
 import {
 	currentTranscript,
 	invalidateTranscriptPrefix,
 	markTranscriptDirty,
-} from "../../../src/tui/runtime/transcript-state.ts";
-import type { TuiState } from "../../../src/tui/runtime/types.ts";
+} from "#src/tui/runtime/transcript-state.ts";
+import type { TuiState } from "#src/tui/runtime/types.ts";
 
 const WIDTH = 80;
 

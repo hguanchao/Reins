@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { planTextEdits } from "../../../src/tools/builtin/text-edits.ts";
+import { planTextEdits } from "#src/tools/builtin/text-edits.ts";
 
 describe("文本替换规划", () => {
 	it("多处不重叠的替换按原文位置应用", () => {

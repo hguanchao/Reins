@@ -1,14 +1,14 @@
-import type { AgentEventListener } from "../../agent/events.ts";
-import type { ApprovalPrompt } from "../../permission/approval.ts";
-import type { ApprovalAnswer } from "../../permission/policy.ts";
-import type { TrustAnswer } from "../page/trust.ts";
-import type { ImageAttachment, PendingImage } from "../image.ts";
-import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "../options.ts";
-import type { CommandMenuState, CommandMenuItem } from "../panel/command-menu.ts";
-import type { EffortMenuState } from "../panel/effort-menu.ts";
-import type { FileMenuState } from "../panel/file-menu.ts";
-import type { ModelMenuState } from "../panel/model-menu.ts";
-import type { SessionMenuState } from "../panel/session-menu.ts";
+import type { AgentEventListener } from "#src/agent/events.ts";
+import type { ApprovalPrompt } from "#src/permission/approval.ts";
+import type { ApprovalAnswer } from "#src/permission/policy.ts";
+import type { TrustAnswer } from "#src/tui/page/trust.ts";
+import type { ImageAttachment, PendingImage } from "#src/tui/image.ts";
+import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "#src/tui/options.ts";
+import type { CommandMenuState, CommandMenuItem } from "#src/tui/panel/command-menu.ts";
+import type { EffortMenuState } from "#src/tui/panel/effort-menu.ts";
+import type { FileMenuState } from "#src/tui/panel/file-menu.ts";
+import type { ModelMenuState } from "#src/tui/panel/model-menu.ts";
+import type { SessionMenuState } from "#src/tui/panel/session-menu.ts";
 import type {
 	SelectionRegion,
 	TranscriptLine,
@@ -18,8 +18,8 @@ import type {
 	TranscriptTool,
 	TranscriptTurn,
 	TranscriptView,
-} from "../transcript.ts";
-import type { TranscriptTodo } from "../view/todo-card.ts";
+} from "#src/tui/transcript.ts";
+import type { TranscriptTodo } from "#src/tui/view/todo-card.ts";
 
 /** 对话流里的一条真实回合；response 可变，流式文本和工具行持续追加。 */
 export interface LiveTurn extends TranscriptTurn {

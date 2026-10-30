@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { describeFailure } from "../../src/llm/failure.ts";
+import { describeFailure } from "#src/llm/failure.ts";
 
 describe("上游失败的翻译", () => {
 	it("按状态码给一句概括", () => {

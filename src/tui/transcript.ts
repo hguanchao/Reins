@@ -18,7 +18,7 @@ export {
 	takeToolForFailure,
 	toggleLastExpandable,
 	toggleLastToolResult,
-} from "./transcript/model.ts";
+} from "#src/tui/transcript/model.ts";
 export {
 	highlightSelection,
 	orderedSelection,
@@ -28,12 +28,12 @@ export {
 	selectionText,
 	stripTerminalStyles,
 	visibleTextWidth,
-} from "./transcript/selection.ts";
+} from "#src/tui/transcript/selection.ts";
 export {
 	scrollbarColumn,
 	scrollbarThumb,
 	scrollTopForRow,
-} from "./transcript/scroll.ts";
+} from "#src/tui/transcript/scroll.ts";
 export {
 	buildTranscriptView,
 	measureTranscriptView,
@@ -50,9 +50,9 @@ export {
 	toolHeaderAtRow,
 	toolHeaderInView,
 	transcriptMetrics,
-} from "./transcript/view.ts";
-export type { SelectionPoint, SelectionRegion } from "./transcript/selection.ts";
-export { PLAIN_LINE_META } from "./transcript/types.ts";
+} from "#src/tui/transcript/view.ts";
+export type { SelectionPoint, SelectionRegion } from "#src/tui/transcript/selection.ts";
+export { PLAIN_LINE_META } from "#src/tui/transcript/types.ts";
 export type {
 	LineMeta,
 	PromptRange,
@@ -68,4 +68,4 @@ export type {
 	TranscriptToolGroup,
 	TranscriptTurn,
 	TranscriptView,
-} from "./transcript/types.ts";
+} from "#src/tui/transcript/types.ts";

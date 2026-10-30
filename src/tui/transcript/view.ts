@@ -1,10 +1,10 @@
 import { stripVTControlCharacters } from "node:util";
 
-import { sanitizeLine } from "../../tools/describe.ts";
-import { TRANSCRIPT } from "../copy.ts";
-import { formatDuration } from "../../shared/format.ts";
-import { highlightImageMarkers } from "../image.ts";
-import { renderMarkdown } from "../render/markdown.ts";
+import { sanitizeLine } from "#src/tools/describe.ts";
+import { TRANSCRIPT } from "#src/tui/copy.ts";
+import { formatDuration } from "#src/shared/format.ts";
+import { highlightImageMarkers } from "#src/tui/image.ts";
+import { renderMarkdown } from "#src/tui/render/markdown.ts";
 import {
 	characterWidth,
 	displayWidth,
@@ -12,19 +12,19 @@ import {
 	truncateToWidth,
 	wrapText,
 	wrappedLines,
-} from "../render/text.ts";
-import { THEME } from "../render/theme.ts";
-import { todoCardLines } from "../view/todo-card.ts";
-import type { AnimationFrame } from "../render/sweep.ts";
+} from "#src/tui/render/text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { todoCardLines } from "#src/tui/view/todo-card.ts";
+import type { AnimationFrame } from "#src/tui/render/sweep.ts";
 import {
 	lineIndexAtRow,
 	scrollState,
 	scrollableLines,
 	scrollbarColumn,
 	visibleIndexes,
-} from "./scroll.ts";
-import { highlightSelection, selectionRange, stripTerminalStyles, visibleTextWidth } from "./selection.ts";
-import type { SelectionRegion } from "./selection.ts";
+} from "#src/tui/transcript/scroll.ts";
+import { highlightSelection, selectionRange, stripTerminalStyles, visibleTextWidth } from "#src/tui/transcript/selection.ts";
+import type { SelectionRegion } from "#src/tui/transcript/selection.ts";
 import {
 	DETAIL_BAND_LEFT,
 	DETAIL_RIGHT_PADDING,
@@ -51,11 +51,11 @@ import {
 	THINKING_PADDING,
 	THINKING_PREFIX,
 	THINKING_TAIL_LINES,
-} from "./style.ts";
-import { animatedSubagentLine, subagentGroupLines } from "./subagent.ts";
-import { expandTabs, stripLineControls } from "./detail.ts";
-import { hasExpandableDetail, toolGroupLines, toolLines, toolResultLines } from "./tool.ts";
-import { PLAIN_LINE_META } from "./types.ts";
+} from "#src/tui/transcript/style.ts";
+import { animatedSubagentLine, subagentGroupLines } from "#src/tui/transcript/subagent.ts";
+import { expandTabs, stripLineControls } from "#src/tui/transcript/detail.ts";
+import { hasExpandableDetail, toolGroupLines, toolLines, toolResultLines } from "#src/tui/transcript/tool.ts";
+import { PLAIN_LINE_META } from "#src/tui/transcript/types.ts";
 import type {
 	LineMeta,
 	LiveSubagentLine,
@@ -68,7 +68,7 @@ import type {
 	TranscriptToolGroup,
 	TranscriptTurn,
 	TranscriptView,
-} from "./types.ts";
+} from "#src/tui/transcript/types.ts";
 
 export function transcriptMetrics(
 	terminalWidth: number,

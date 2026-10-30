@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, exitTui, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 /** 双击历史里的计划卡：没有 /view-plan 之后，这是重新打开计划的入口。 */
 async function openPlanCard(input: FakeInput, output: FakeOutput): Promise<void> {

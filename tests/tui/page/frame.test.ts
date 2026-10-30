@@ -3,9 +3,9 @@ import { describe, it } from "node:test";
 
 import { eastAsianWidth } from "get-east-asian-width";
 
-import type { CommandMenuItem } from "../../../src/tui/panel/command-menu.ts";
-import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines } from "../../../src/tui/page/frame.ts";
-import { THEME } from "../../../src/tui/render/theme.ts";
+import type { CommandMenuItem } from "#src/tui/panel/command-menu.ts";
+import { helpPageLines, mcpsPageLines, renderPage, skillsPageLines } from "#src/tui/page/frame.ts";
+import { THEME } from "#src/tui/render/theme.ts";
 
 const NAME_COLOR = THEME.textPrimary;
 const DESCRIPTION_COLOR = THEME.textSecondary;

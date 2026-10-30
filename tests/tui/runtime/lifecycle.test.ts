@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { EXIT_SIGNALS, cleanup } from "../../../src/tui/runtime/lifecycle.ts";
+import { EXIT_SIGNALS, cleanup } from "#src/tui/runtime/lifecycle.ts";
 
 /** 只填 cleanup 真正会碰到的字段；其余用不到，交给类型断言。 */
 function stateOf(overrides: Record<string, unknown> = {}) {

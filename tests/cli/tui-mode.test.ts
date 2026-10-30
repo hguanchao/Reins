@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { terminalUnsupportedReason } from "../../src/cli/tui-mode.ts";
+import { terminalUnsupportedReason } from "#src/cli/tui-mode.ts";
 
 describe("终端能力", () => {
 	it("TERM=dumb 时拒绝进入全屏界面", () => {

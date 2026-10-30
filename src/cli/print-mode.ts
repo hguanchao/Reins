@@ -1,9 +1,9 @@
-import { describeError } from "../shared/describe-error.ts";
-import type { TurnDriver } from "../agent/driver.ts";
-import type { AgentEvent, AgentEventListener } from "../agent/events.ts";
-import { describeToolCall, displayToolName } from "../tools/describe.ts";
-import { formatDuration } from "../shared/format.ts";
-import { JsonStream, type JsonRunResult } from "./json-stream.ts";
+import { describeError } from "#src/shared/describe-error.ts";
+import type { TurnDriver } from "#src/agent/driver.ts";
+import type { AgentEvent, AgentEventListener } from "#src/agent/events.ts";
+import { describeToolCall, displayToolName } from "#src/tools/describe.ts";
+import { formatDuration } from "#src/shared/format.ts";
+import { JsonStream, type JsonRunResult } from "#src/cli/json-stream.ts";
 
 /**
  * 非交互模式。

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { clampEffort, isReasoningEffort, providerEffortValue, supportedEfforts } from "../../src/llm/effort.ts";
+import { clampEffort, isReasoningEffort, providerEffortValue, supportedEfforts } from "#src/llm/effort.ts";
 
 describe("思考等级", () => {
 	it("isReasoningEffort 认真实等级,不认 off", () => {

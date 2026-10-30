@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, WARNING, exitTui, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
-import type { AgentRuntime } from "../../../src/tui/options.ts";
-import type { AgentEventListener } from "../../../src/agent/events.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, WARNING, exitTui, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
+import type { AgentRuntime } from "#src/tui/options.ts";
+import type { AgentEventListener } from "#src/agent/events.ts";
 
 describe("回合状态行", () => {
 	it("/compact 立即压缩上下文，进度与结果进入对话流", async (t) => {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { isPathInside, resolveRealPath, WorkspaceBoundary } from "../../src/workspace/boundary.ts";
+import { isPathInside, resolveRealPath, WorkspaceBoundary } from "#src/workspace/boundary.ts";
 
 describe("路径在根内", () => {
 	it("根自身算在根内", () => {

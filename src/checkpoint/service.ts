@@ -1,14 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describeError } from "../shared/describe-error.ts";
+import { describeError } from "#src/shared/describe-error.ts";
 
-import { checkpointsDir } from "../config/paths.ts";
+import { checkpointsDir } from "#src/config/paths.ts";
 import {
 	GitSnapshotStore,
 	type ChangeStatus,
 	type SnapshotChange,
-} from "./git-snapshot.ts";
+} from "#src/checkpoint/git-snapshot.ts";
 
 /**
  * 检查点服务。

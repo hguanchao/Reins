@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, MODEL_ITEMS, SESSION_ITEMS, pressCtrlC, exitTui, rawFrame, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+import { FakeInput, FakeOutput, createFakeAgent, FOOTER_INFO, MODEL_ITEMS, SESSION_ITEMS, pressCtrlC, exitTui, rawFrame, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 describe("排队消息", () => {
 	it("一轮进行中只放行 /help、/model、/effort", async (t) => {

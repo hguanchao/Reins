@@ -1,5 +1,5 @@
-import { THEME } from "./theme.ts";
-import { graphemes } from "./text.ts";
+import { THEME } from "#src/tui/render/theme.ts";
+import { graphemes } from "#src/tui/render/text.ts";
 
 /**
  * 运行行动画：盲文转圈与扫光。

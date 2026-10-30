@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import type { LlmMessage } from "../../../src/llm/messages.ts";
-import { buildTranscriptHistory } from "../../../src/tui/transcript/history.ts";
+import type { LlmMessage } from "#src/llm/messages.ts";
+import { buildTranscriptHistory } from "#src/tui/transcript/history.ts";
 
 describe("会话历史回填", () => {
 	it("把用户、助手与工具结果折叠成回合", () => {

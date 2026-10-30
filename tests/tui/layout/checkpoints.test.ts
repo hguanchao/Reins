@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, FOOTER_INFO, exitTui, frameLines, plain } from "../support/harness.ts";
-import { runTui } from "../../../src/tui/layout.ts";
+import { FakeInput, FakeOutput, FOOTER_INFO, exitTui, frameLines, plain } from "#tests/tui/support/harness.ts";
+import { runTui } from "#src/tui/layout.ts";
 
 describe("检查点与撤销", () => {
 	function makeSource(
@@ -12,7 +12,7 @@ describe("检查点与撤销", () => {
 			restoreError?: string;
 		} = {},
 	): {
-		source: import("../../../src/tui/options.ts").CheckpointSource;
+		source: import("#src/tui/options.ts").CheckpointSource;
 		readonly restored: string[];
 	} {
 		const preview = {
