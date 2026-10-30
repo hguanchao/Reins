@@ -384,13 +384,16 @@ export function handleTranscriptInput(
 	const step = historyKey(withoutMouse);
 	if (step !== undefined && state.commandMenu === undefined) {
 		if (state.input.includes("\n")) {
+			// 多行时方向键只做光标移动：到首/末行的边界就停住，不翻历史——
+			// 长草稿不会在按一下 ↑ 后被一条历史记录意外替换；要翻历史先退回单行
 			const moved = moveInputVertical(state.input, state.inputCursor, step);
-			if (moved !== undefined && moved !== state.inputCursor) {
+			if (moved === undefined) return;
+			if (moved !== state.inputCursor) {
 				focusInput();
 				host.setInput(state.input, moved);
 				deps.render();
-				return;
 			}
+			return;
 		}
 		const consumed = host.recallHistory(step);
 		if (consumed) {
