@@ -48,3 +48,13 @@ export function isToolCallEventType(name: string | readonly string[], event: Too
 export function createBashTool(_options?: unknown): never {
 	throw new Error("createBashTool is not available in Reins");
 }
+
+/**
+ * pi 的 defineTool：上游就是恒等包装，这里同样如此。
+ *
+ * 扩展用它声明工具再交给 registerTool；pi-runtime 的适配层读的是定义对象的字段，恒等返回
+ * 即可对上。
+ */
+export function defineTool(tool: Record<PropertyKey, unknown>): Record<PropertyKey, unknown> {
+	return tool;
+}

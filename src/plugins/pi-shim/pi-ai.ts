@@ -1,4 +1,7 @@
-import { stringEnum } from "./typebox.ts";
+import { stringEnum, Type } from "./typebox.ts";
+
+// pi-ai 的 Type 就是 typebox 的再导出，扩展会直接 import 它
+export { Type };
 
 /**
  * `@deepseek-ai/pi-ai`（上游为 `@earendil-works/pi-ai`）的工具参数辅助函数。

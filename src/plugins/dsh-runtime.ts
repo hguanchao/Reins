@@ -74,7 +74,15 @@ export async function loadDshPlugin(input: {
 	}
 
 	const runtime = createDshRuntime(input);
-	await (apply as (ctx: unknown, config: unknown) => Promise<void> | void)(runtime.ctx, {});
+	// 插件导出的 schemastery Config 能从空对象解析出默认值；解析失败（必填未提供）则保持空
+	let config: Record<string, unknown> = {};
+	try {
+		const parsed = (module["Config"] as unknown as ((input: unknown) => unknown) | undefined)?.({});
+		if (isObject(parsed)) config = parsed;
+	} catch {
+		// 必填项缺失：config 保持空，插件按 undefined 运行
+	}
+	await (apply as (ctx: unknown, config: unknown) => Promise<void> | void)(runtime.ctx, config);
 	// dsh 的工具按会话生命周期发布：装载完成后以「agent 已创建」派发一次，让发布逻辑跑起来，
 	// 再等发布收敛（worker 启动与注册是异步的）。派发失败只记警告，不杀整个装载。
 	runtime.dispatchAgentCreated();
