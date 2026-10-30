@@ -74,6 +74,9 @@ export function orderedSelection(selection: SelectionRegion): {
  *
  * 每行从内容起点开始取，跳过详情色带的行号与缩进；软换行出来的续行直接接回上一条逻辑行，
  * 不因为终端宽度插进换行。每行末尾补齐的空白同样清掉，但行首缩进保留。
+ *
+ * 「还有 N 行未显示」这类省略提示不是内容本身：它只是屏幕放不下的记号，复制时跳过，
+ * 免得粘到别处还要手动删一行。
  */
 export function selectionText(view: TranscriptView, selection: SelectionRegion): string {
 	const { start, end } = orderedSelection(selection);
@@ -88,12 +91,16 @@ export function selectionText(view: TranscriptView, selection: SelectionRegion):
 		const piece = from > to ? "" : sliceCells(plain, from, to);
 		if (meta.softWrap && lines.length > 0) {
 			lines[lines.length - 1] += piece;
-		} else {
-			lines.push(piece);
+			continue;
 		}
+		if (ELLIPSIS_ROW.test(piece.trim())) continue;
+		lines.push(piece);
 	}
 	return lines.map((line) => line.replace(/[ \t]+$/u, "")).join("\n");
 }
+
+/** 折叠块末尾的省略提示：`… (12 more lines · Ctrl+G)`。 */
+const ELLIPSIS_ROW = /^… \(\d+ more lines(?: · .+)?\)$/u;
 
 /**
  * 某一行与选区的交集；不在选区里或这一行没有文字时返回 undefined。

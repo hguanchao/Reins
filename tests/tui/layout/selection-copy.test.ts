@@ -73,13 +73,13 @@ describe("鼠标拖选复制", () => {
 			assert.deepEqual(copied, ["hello world"]);
 			let text = frameLines(output).map(plain).join("\n");
 			// 提示占用 token 位置，期间不显示 token 计量
-			assert.ok(text.includes("Copied!"));
+			assert.ok(text.includes("Copied 11 chars"));
 			assert.equal(text.includes("⇣"), false);
 
 			// 自动消失后 token 计量回显
 			t.mock.timers.tick(1_500);
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("Copied!"), false);
+			assert.equal(text.includes("Copied 11 chars"), false);
 			assert.ok(text.includes("⇣0"));
 		} finally {
 			exitTui(input);
@@ -210,6 +210,100 @@ describe("鼠标拖选复制", () => {
 			t.mock.timers.tick(100);
 
 			assert.deepEqual(copied, []);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("松开后选区高亮保留，下一次按下才清", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+			clipboard: { copy: () => true },
+		});
+
+		try {
+			input.emit("data", Buffer.from("说点话\r"));
+			agent.emit({ type: "text_delta", text: "AA hello world BB" });
+			t.mock.timers.tick(100);
+
+			const span = locate(output, "hello world", 0);
+			input.emit(
+				"data",
+				Buffer.from(`\x1b[<0;${span.start};${span.row}M\x1b[<32;${span.end};${span.row}M`),
+			);
+			input.emit("data", Buffer.from(`\x1b[<0;${span.end};${span.row}m`));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			// 松手之后仍能看见刚才复制的是哪一段
+			assert.ok(frameLines(output).some((line) => line.includes(THEME.selectionBg)));
+
+			// 再按一下：新的一次点击把旧选区换掉，松开时没有跨度，高亮消失
+			input.emit("data", Buffer.from("\x1b[<0;3;2M\x1b[<0;3;2m"));
+			t.mock.timers.tick(100);
+			assert.equal(frameLines(output).some((line) => line.includes(THEME.selectionBg)), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("拖到内容区底边时自动滚动，能选到屏幕外的内容", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const copied: string[] = [];
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+			clipboard: {
+				copy: (text) => {
+					copied.push(text);
+					return true;
+				},
+			},
+		});
+
+		try {
+			input.emit("data", Buffer.from("说点话\r"));
+			// 用长到折行的正文：软换行才会真的把内容顶出屏幕，一行一个词时凑不满一屏
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 400 }, (_, index) => `word-${index + 1}`).join(" "),
+			});
+			t.mock.timers.tick(100);
+
+			// 先跳到顶部：跟随底部时画面本来就在最末，往下拖没有可滚的余量
+			input.emit("data", Buffer.from("\x1b[1;5H"));
+			t.mock.timers.tick(100);
+
+			// 只看内容区：状态行的耗时每帧都在变，拿整屏比较会把「没滚动」判成滚动
+			const content = (): string => frameLines(output).map(plain).slice(0, 14).join("\n");
+			const before = content();
+
+			// 从内容区顶部拖到底边：边缘滚动把画面往上推，否则后面的行永远选不到
+			input.emit("data", Buffer.from("\x1b[<0;3;2M\x1b[<32;3;14M"));
+			t.mock.timers.tick(100);
+			assert.notEqual(content(), before);
+
+			input.emit("data", Buffer.from("\x1b[<0;3;14m"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(copied.length, 1);
+			assert.ok((copied[0] ?? "").includes("word-1"));
 		} finally {
 			exitTui(input);
 		}

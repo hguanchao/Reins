@@ -49,6 +49,10 @@ export function render(host: TuiHost): void {
 	const width = terminalWidth(state);
 	const height = terminalRows(state);
 	const mainHeight = host.mainAreaHeight();
+	// 宽度一变，折行与行号全部重排：旧选区已经指不回原来那段文字，先清掉再重画
+	if (state.transcriptViewWidth !== -1 && state.transcriptViewWidth !== width) {
+		state.selection = undefined;
+	}
 	const view = host.currentTranscript(width);
 	const metrics = measureTranscriptView(view, mainHeight);
 	const maxScroll = Math.max(0, metrics.scrollLines - mainHeight);

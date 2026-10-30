@@ -234,4 +234,29 @@ describe("文本选区", () => {
 		assert.ok(bodyCopy.includes("12  body line"));
 		assert.ok(bodyCopy.includes("tail line"));
 	});
+
+	it("折叠块的省略提示不进复制文本", () => {
+		const body = Array.from({ length: 70 }, (_, index) => `line-${index + 1}`).join("\n");
+		const tool: TranscriptTool = {
+			kind: "tool",
+			name: "Read",
+			detail: "a.ts",
+			result: body,
+			resultExpanded: true,
+		};
+		const view = buildTranscriptView(60, [{ prompt: "hi", response: [tool] }]);
+		const indexOf = (needle: string): number =>
+			view.lines.findIndex((line) => stripTerminalStyles(line).includes(needle));
+
+		const ellipsis = indexOf("more lines");
+		assert.ok(ellipsis > 0);
+		const copy = selectionText(view, {
+			anchor: { line: ellipsis - 2, cell: 0 },
+			focus: { line: ellipsis, cell: 59 },
+		});
+		// 省略提示只是屏幕放不下的记号，粘到别处还要手动删一行
+		assert.equal(copy.includes("more lines"), false);
+		assert.ok(copy.includes("line-19"));
+		assert.ok(copy.includes("line-20"));
+	});
 });

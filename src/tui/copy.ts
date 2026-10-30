@@ -1,5 +1,5 @@
 import type { AbortCause } from "#src/agent/events.ts";
-import { formatDuration } from "#src/shared/format.ts";
+import { formatCount, formatDuration } from "#src/shared/format.ts";
 
 /**
  * 界面文案的唯一出处。
@@ -56,7 +56,6 @@ export const STATUS = {
 	reviewFailed: "Review failed",
 	copyFailed: "Copy failed",
 	copySentToTerminal: "Copy sent to terminal",
-	copied: "Copied!",
 	nothingToView: "Nothing to view yet",
 	planReady: "Plan ready · double-click the plan card to review",
 	reviewAlreadyRunning: "A review is already running",
@@ -113,6 +112,21 @@ export function reconnecting(name: string): string {
 /** 插件命令正在执行。 */
 export function commandRunning(name: string): string {
 	return `Running /${name}…`;
+}
+
+/**
+ * 复制成功的提示：带上字符数。
+ *
+ * 只说「已复制」看不出复制到了什么；一个数字既能证明不是空内容，也能一眼看出选少了
+ * （想复制一整段，结果只有 12 个字符）。
+ */
+export function copiedNotice(chars: number): string {
+	return `Copied ${formatCount(chars)} chars`;
+}
+
+/** 剪贴板两条路都没走通、内容落到文件时：给出路径，别让人以为白复制了一次。 */
+export function copySavedTo(path: string): string {
+	return `Clipboard unavailable · saved to ${path}`;
 }
 
 /** 桌面通知：命令结束。 */

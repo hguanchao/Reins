@@ -11,6 +11,7 @@ import { menuPanelTop } from "#src/tui/runtime/approval.ts";
 import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
 import { completeCommandMenu } from "#src/tui/runtime/panels.ts";
 import { commandMenuHeight } from "#src/tui/panel/command-menu.ts";
+import { SELECT_EDGE_SCROLL } from "#src/tui/runtime/constants.ts";
 import { fileMenuHeight } from "#src/tui/panel/file-menu.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "#src/tui/input/scroll.ts";
 import type { InputDeps } from "#src/tui/input/deps.ts";
@@ -200,6 +201,16 @@ export function handleTranscriptInput(
 			if (state.draggingScrollbar) {
 				dragRow = event.row;
 			} else if (state.selection !== undefined) {
+				// 拖到内容区上下边缘就先滚动：屏幕外的内容否则永远选不到
+				const edge = event.row <= 1 ? -1 : event.row >= mainHeight ? 1 : 0;
+				if (edge !== 0) {
+					const limit = host.maxScroll();
+					const next = Math.max(0, Math.min(limit, state.scrollTop + edge * SELECT_EDGE_SCROLL));
+					if (next !== state.scrollTop) {
+						state.scrollTop = next;
+						state.follow = next >= limit;
+					}
+				}
 				const point = selectionPoint(
 					host.currentTranscript(width),
 					mainHeight,
@@ -219,22 +230,19 @@ export function handleTranscriptInput(
 			state.draggingScrollbar = false;
 			if (state.selection !== undefined) {
 				const selection = state.selection;
-				state.selection = undefined;
-				selectionChanged = true;
-				// 只有真的拖过一段才复制；原地点击与双击不该带走任何文字
+				// 拖过一段就复制，并保留高亮：松手后还能看清复制了哪一段，下一次按下才清。
+				// 原地点击没有跨度，直接清掉，不留下一个字符大小的亮点。
 				if (selectionSpans(selection)) {
 					const text = selectionText(host.currentTranscript(width), selection);
 					if (text.trim().length > 0) host.copyText(text);
+				} else {
+					state.selection = undefined;
+					selectionChanged = true;
 				}
 			}
 		}
 	}
 
-	// 滚轮一旦滚动，选区的行号就不在同一屏上了；残留高亮跟着清掉
-	if (wheelSteps !== 0 && state.selection !== undefined) {
-		state.selection = undefined;
-		selectionChanged = true;
-	}
 	applyWheelScroll(host, state, wheelSteps);
 	if (dragRow !== undefined) applyDragScroll(host, state, dragRow, mainHeight);
 	const scrollChanged = state.scrollTop !== beforeScroll;
