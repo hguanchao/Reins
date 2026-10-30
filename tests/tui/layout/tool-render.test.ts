@@ -396,14 +396,14 @@ describe("工具行渲染", () => {
 
 			const frame = frameLines(output);
 			const text = frame.map(plain).join("\n");
-			// 主动停下由对话流说明，状态行不再保留 Stopped 结局，也不再转圈
-			assert.equal(text.includes("Stopped"), false);
+			// 主动停下由对话流说明，状态行不再保留结局，也不再转圈
 			assert.equal(text.includes("Stopping..."), false);
 			assert.equal(text.includes("⠋"), false);
 
-			// 对话流里留一条弱化色的说明，标出回答在这里被截断
-			const note = frame.find((line) => plain(line).includes("Interrupted"));
+			// 对话流里留一条弱化色的说明，标出回答在这里被截断，且是使用者自己停下的
+			const note = frame.find((line) => plain(line).includes("Stopped by you"));
 			assert.ok(note);
+			assert.equal(text.split("Stopped by you").length - 1, 1);
 			assert.ok(note.includes(THEME.textSubtle));
 			assert.equal(plain(note).includes("Error"), false);
 			assert.equal(frame.some((line) => plain(line).includes("×")), false);

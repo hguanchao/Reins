@@ -102,7 +102,7 @@ async function runText(deps: PrintModeDeps, signal: AbortSignal): Promise<number
 				return;
 			case "aborted":
 				// 中断是使用者主动停下，不是错误；退出码仍为非零，脚本据此判断这一轮没跑完
-				deps.stderr("\n· Interrupted\n");
+				deps.stderr("\n· stopped by you\n");
 				state.failed = true;
 				return;
 			default:

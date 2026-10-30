@@ -23,8 +23,8 @@ export const CONFIGURATION_REQUIRED = "Configuration required";
 export const SESSION_UNAVAILABLE = "Session storage is unavailable";
 /** 使用者按下中断之后的状态。主动停下不是错误，用中性措辞，不染错误色。 */
 export const ABORTING = "Stopping...";
-/** 对话流里的中断标记：说明这一轮的回答在这里被截断了。 */
-export const INTERRUPTED = "Interrupted";
+/** 对话流里的中断标记：说明这一轮的回答在这里被截断了，且是使用者自己停下的。 */
+export const INTERRUPTED = "Stopped by you";
 export const ERROR_STATUS = "Error";
 
 /**
