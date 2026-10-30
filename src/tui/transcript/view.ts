@@ -558,7 +558,19 @@ function build(
 function plainRowContentStart(line: string): number {
 	if (line.startsWith(PROMPT_BG)) return displayWidth(PROMPT_PREFIX);
 	const band = bandStartColumn(line);
-	return band === undefined ? 0 : band + 1;
+	return band === undefined ? bodyContentStart(line) : band + 1;
+}
+
+/**
+ * 正文类行的内容起点：所有块都从正文缩进起排，再往里的空格属于内容。
+ *
+ * 思考标题、工具行、列表项、代码块都以两列缩进开头，那是排版；列表的第二层、
+ * 代码自己的缩进则要保留，所以这里只剥掉公共的两列。
+ */
+function bodyContentStart(line: string): number {
+	const plain = stripTerminalStyles(line);
+	const lead = plain.length - plain.trimStart().length;
+	return Math.min(lead, displayWidth(RESPONSE_INDENT));
 }
 
 /** 行首色带的起始显示列；整行从头就有底色、或前缀里夹着内容时返回 undefined。 */
@@ -591,7 +603,8 @@ function buildLineMeta(lines: readonly string[], plainRows: ReadonlySet<number>)
 		}
 		const detail = line.includes(THEME.detailBg) || line.includes(THEME.diffInsertBg) || line.includes(THEME.diffDeleteBg);
 		if (!detail) {
-			meta.push(PLAIN_LINE_META);
+			// 正文类行同样有排版缩进：高亮与复制都从两列之后开始，行首空白不该被选中
+			meta.push({ contentStart: bodyContentStart(line), softWrap: false });
 			inDetail = false;
 			contentStart = 0;
 			diffBand = false;

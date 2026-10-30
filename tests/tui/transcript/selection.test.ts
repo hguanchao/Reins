@@ -48,7 +48,8 @@ describe("文本选区", () => {
 		const secondPlain = stripTerminalStyles(view.lines[second] ?? "");
 		const startCell = firstPlain.indexOf("hello");
 		const endCell = secondPlain.indexOf("second") + "second".length - 1;
-		const expected = `hello world\n${secondPlain.slice(0, endCell + 1)}`;
+		// 行首两列是正文缩进（排版），复制从它之后开始；原文自带的两格缩进保留
+		const expected = `hello world\n${secondPlain.slice(2, endCell + 1)}`;
 
 		const forward = {
 			anchor: { line: first, cell: startCell },
@@ -233,6 +234,28 @@ describe("文本选区", () => {
 		});
 		assert.ok(bodyCopy.includes("12  body line"));
 		assert.ok(bodyCopy.includes("tail line"));
+	});
+
+	it("正文类行的高亮同样跳过两列排版缩进", () => {
+		const thinking: TranscriptThinking = {
+			kind: "thinkingBlock",
+			header: "Thought for 2.7s",
+			body: ["先看一眼"],
+			partial: "",
+			running: false,
+			expanded: true,
+		};
+		const view = buildTranscriptView(70, [{ prompt: "hi", response: [thinking, "回复正文"] }]);
+		const indexOf = (needle: string): number =>
+			view.lines.findIndex((line) => stripTerminalStyles(line).includes(needle));
+		const whole = { anchor: { line: 0, cell: 0 }, focus: { line: view.lines.length - 1, cell: 69 } };
+		const fromOf = (index: number): number | undefined =>
+			selectionRange(index, whole, visibleTextWidth(view.lines[index] ?? ""), view.lineMeta[index]?.contentStart)
+				?.from;
+
+		// 标题与工具行都以两列缩进开头：高亮从符号起，不盖住行首空白
+		assert.equal(fromOf(indexOf("Thought for")), 2);
+		assert.equal(fromOf(indexOf("回复正文")), 2);
 	});
 
 	it("复制跳过提示块与工具结果的排版前缀，保留内容自身缩进", () => {
