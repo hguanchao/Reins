@@ -1,4 +1,5 @@
 import type { AgentEventListener } from "../agent/events.ts";
+import { STATUS, UNTITLED_SESSION } from "./copy.ts";
 import {
 	CURSOR_BLINKING_BAR,
 	CURSOR_DEFAULT,
@@ -286,7 +287,7 @@ function launch(host: TuiHost, prompt: string, images: readonly ImageAttachment[
 	if (agent === undefined) {
 		host.state.commandMenu = undefined;
 		host.resetStatusMeta();
-		host.setStatus("Agent unavailable", "notice");
+		host.setStatus(STATUS.agentNotConnected, "notice");
 		host.render();
 		return;
 	}
@@ -315,7 +316,7 @@ function appendCommandTurn(host: TuiHost, prompt: string, response: readonly Tra
 /** 会话菜单里的一行标题：控制字符会弄乱面板，统一换成空格。 */
 function sessionTitle(title: string | undefined): string {
 	const text = (title ?? "").replaceAll(/[\u0000-\u001f\u007f]/g, " ").trim();
-	return text.length === 0 ? "(no conversation yet)" : text;
+	return text.length === 0 ? UNTITLED_SESSION : text;
 }
 
 export type { ActiveTurn, AgentEventListener, ImageAttachment, TranscriptLine };

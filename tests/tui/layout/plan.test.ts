@@ -65,7 +65,7 @@ describe("Plan 模式", () => {
 			await new Promise<void>((resolve) => setImmediate(resolve));
 
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — plan"));
+			assert.ok(text.includes("Reins · plan"));
 			assert.ok(text.includes("Add Plan mode"));
 			assert.ok(text.includes("approve & implement"));
 
@@ -78,7 +78,7 @@ describe("Plan 模式", () => {
 			assert.ok(agent.prompts[1]?.includes("Add the gate."));
 			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("› Implement this plan:"));
-			assert.equal(text.includes("Reins — plan"), false);
+			assert.equal(text.includes("Reins · plan"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -189,9 +189,9 @@ describe("Plan 模式", () => {
 			await new Promise<void>((resolve) => setImmediate(resolve));
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("Reins — plan"), false);
+			assert.equal(text.includes("Reins · plan"), false);
 			assert.ok(text.includes("my draft"));
-			assert.ok(text.includes("Plan ready; double-click the plan card"));
+			assert.ok(text.includes("Plan ready · double-click the plan card"));
 		} finally {
 			exitTui(input);
 		}
@@ -231,7 +231,7 @@ describe("Plan 模式", () => {
 			await openPlanCard(input, output);
 
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — plan"));
+			assert.ok(text.includes("Reins · plan"));
 			assert.ok(text.includes("Saved plan"));
 
 			// Esc 只关页面，Plan 模式仍然开着
@@ -239,17 +239,17 @@ describe("Plan 模式", () => {
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.equal(planMode, true);
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("Reins — plan"), false);
+			assert.equal(text.includes("Reins · plan"), false);
 
 			// 再次双击计划卡重新打开
 			await openPlanCard(input, output);
-			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — plan"));
+			assert.ok(plain(frameLines(output).join("\n")).includes("Reins · plan"));
 
 			// q 退出 Plan 模式
 			input.emit("data", Buffer.from("q"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			assert.equal(planMode, false);
-			assert.equal(plain(frameLines(output).join("\n")).includes("Reins — plan"), false);
+			assert.equal(plain(frameLines(output).join("\n")).includes("Reins · plan"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -289,7 +289,7 @@ describe("Plan 模式", () => {
 
 			assert.equal(called, false);
 			assert.ok(
-				plain(frameLines(output).join("\n")).includes("Plugin commands are unavailable in Plan mode"),
+				plain(frameLines(output).join("\n")).includes("Plugin commands don't run in Plan mode"),
 			);
 		} finally {
 			exitTui(input);
@@ -322,14 +322,14 @@ describe("Plan 模式", () => {
 
 		try {
 			await openPlanCard(input, output);
-			assert.ok(plain(frameLines(output).join("\n")).includes("Reins — plan"));
+			assert.ok(plain(frameLines(output).join("\n")).includes("Reins · plan"));
 
 			input.emit("data", Buffer.from("r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 
 			assert.equal(planMode, true);
 			const text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("Reins — plan"), false);
+			assert.equal(text.includes("Reins · plan"), false);
 			assert.ok(text.includes("Revise the plan:"));
 			assert.ok(text.includes("PLAN"));
 		} finally {

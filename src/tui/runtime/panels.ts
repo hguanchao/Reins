@@ -7,7 +7,16 @@ import { filterFiles, findAtToken, formatFileReference } from "../panel/file-men
 import { isImagePath } from "../image.ts";
 import type { ModelMenuItem, ModelMenuState } from "../panel/model-menu.ts";
 import type { SessionMenuItem, SessionMenuState } from "../panel/session-menu.ts";
-import { errorLine, CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE } from "../render/status.ts";
+import { errorLine } from "../render/status.ts";
+import {
+	FAILURE_ACTIONS,
+	NO_MODELS,
+	PANEL,
+	STATUS,
+	effortSet,
+	failure,
+	modelSwitched,
+} from "../copy.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import type { TranscriptLine } from "../transcript.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
@@ -70,7 +79,7 @@ export function openModelMenu(host: TuiHost): void {
 	const items = source.list();
 	if (items.length === 0) {
 		host.setInput("");
-		host.state.turns.push({ prompt: "/model", response: ["No models are available."] });
+		host.state.turns.push({ prompt: "/model", response: [NO_MODELS] });
 		markTranscriptDirty(host.state);
 		host.state.hasInput = true;
 		host.render();
@@ -102,14 +111,14 @@ export function selectModel(host: TuiHost, item: ModelMenuItem): void {
 		host.state.ready = result.ready;
 		host.state.activeWarning = result.warning;
 		response = [
-			`Model switched to ${item.provider}/${item.model}${host.state.activeTurn === undefined ? "." : " (from the next turn)."}`,
+			modelSwitched(`${item.provider}/${item.model}`, host.state.activeTurn !== undefined),
 			...result.warnings.map((text) => ({ kind: "warning" as const, text })),
 		];
 	} catch (error) {
 		response = [
 			{
 				kind: "error",
-				text: `Error: Failed to switch model: ${describeError(error)}`,
+				text: failure(FAILURE_ACTIONS.modelSwitch, describeError(error)),
 			},
 		];
 	}
@@ -210,13 +219,13 @@ export function selectEffort(host: TuiHost, level: ThinkingLevel): void {
 	try {
 		source.select(level);
 		response = [
-			`Effort set to ${level}${host.state.activeTurn === undefined ? "." : " (from the next turn)."}`,
+			effortSet(level, host.state.activeTurn !== undefined),
 		];
 	} catch (error) {
 		response = [
 			{
 				kind: "error",
-				text: `Error: Failed to set effort: ${describeError(error)}`,
+				text: failure(FAILURE_ACTIONS.effortSet, describeError(error)),
 			},
 		];
 	}
@@ -239,14 +248,14 @@ function openSessionKindMenu(host: TuiHost, list: () => readonly SessionMenuItem
 		host.setInput("");
 		host.state.follow = true;
 		host.appendCommandTurn("/session", [
-			{ kind: "error", text: `Error: Failed to list sessions: ${describeError(error)}` },
+			{ kind: "error", text: failure(FAILURE_ACTIONS.sessionsList, describeError(error)) },
 		]);
 		return;
 	}
 	if (items.length === 0) {
 		host.setInput("");
 		host.state.follow = true;
-		host.appendCommandTurn("/session", ["No sessions in this project yet."]);
+		host.appendCommandTurn("/session", [PANEL.noSessions]);
 		return;
 	}
 
@@ -360,7 +369,7 @@ export function completeCommandMenu(host: TuiHost, openSubmenu = false): void {
 			if (source === undefined) {
 				// 补全成功但二级面板不可用：不解释的话看起来像按键没反应
 				host.resetStatusMeta();
-				host.setStatus(CONFIGURATION_REQUIRED, "notice");
+				host.setStatus(STATUS.configurationInvalid, "notice");
 				host.scheduleStatusClear();
 			} else if (chosen.name === "model") {
 				openModelMenu(host);
@@ -370,7 +379,7 @@ export function completeCommandMenu(host: TuiHost, openSubmenu = false): void {
 		} else if (chosen.name === "session") {
 			if (host.options.sessionMenu === undefined) {
 				host.resetStatusMeta();
-				host.setStatus(SESSION_UNAVAILABLE, "notice");
+				host.setStatus(STATUS.sessionStorageUnavailable, "notice");
 				host.scheduleStatusClear();
 			} else {
 				openSessionMenu(host);
@@ -422,7 +431,7 @@ export function updateFileMenu(host: TuiHost): void {
 			state.fileFiles = source.list().filter((path) => !/[\u0000-\u001f\u007f]/.test(path));
 		} catch (error) {
 			state.fileFiles = [];
-			host.setStatus(`Could not list files: ${errorLine(error)}`, "error");
+			host.setStatus(failure(FAILURE_ACTIONS.listFiles, errorLine(error)), "error");
 			host.scheduleStatusClear();
 		}
 	}

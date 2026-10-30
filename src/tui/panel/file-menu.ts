@@ -1,4 +1,5 @@
 import { isImagePath } from "../image.ts";
+import { PANEL } from "../copy.ts";
 import {
 	type MenuListState,
 	ACCENT_COLOR,
@@ -47,7 +48,7 @@ const MAX_RESULTS = 200;
 const PREFIX_WIDTH = 3;
 const IMAGE_BADGE = "  [image]";
 const MIN_PATH_WIDTH = 12;
-const EMPTY = "No matching files";
+const EMPTY = PANEL.noMatchingFiles;
 
 /** 面板高度与条数一致：超过一屏时只画窗口内的行。 */
 export function fileMenuHeight(itemCount: number, maxVisible = MENU_MAX_VISIBLE): number {

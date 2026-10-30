@@ -430,7 +430,7 @@ describe("回合驱动", () => {
 			{ type: "text", text: "让我读一下" },
 			{
 				type: "text",
-				text: "[the response was cut off: the user interrupted the response; 1 tool request(s) in it were not executed]",
+				text: "[the response was cut off: the response stopped; 1 tool request(s) in it were not executed]",
 			},
 		]);
 	});

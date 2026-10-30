@@ -61,7 +61,7 @@ describe("审查命令", () => {
 
 		try {
 			input.emit("data", Buffer.from("/review\r"));
-			assert.ok(screen(output).includes("Code review is unavailable"));
+			assert.ok(screen(output).includes("Code review isn't available"));
 		} finally {
 			exitTui(input);
 		}
@@ -90,7 +90,7 @@ describe("审查命令", () => {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(50);
 			input.emit("data", Buffer.from("/review\r"));
-			assert.ok(screen(output).includes("/review is unavailable while a turn is running"), screen(output));
+			assert.ok(screen(output).includes("/review: wait for the running turn to finish"), screen(output));
 			await agent.finish();
 		} finally {
 			exitTui(input);

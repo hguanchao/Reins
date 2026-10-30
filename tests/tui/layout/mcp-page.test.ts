@@ -47,7 +47,7 @@ describe("MCP 管理页", () => {
 		try {
 			input.emit("data", Buffer.from("/mcps\r"));
 			let text = screen(output);
-			assert.ok(text.includes("Reins — MCP servers"));
+			assert.ok(text.includes("Reins · MCP servers"));
 			assert.ok(text.includes("› alpha"), "第一项默认选中");
 			assert.ok(text.includes("r reconnect"));
 			assert.ok(text.includes("h health check"));

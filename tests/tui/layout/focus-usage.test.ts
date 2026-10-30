@@ -208,7 +208,7 @@ describe("焦点、状态与用量", () => {
 			assert.ok((lines[1] ?? "").includes("\x1b[38;2;230;233;237m"));
 			assert.equal((lines[3] ?? "").includes("\x1b[48;2;22;25;29m"), false);
 			const status = plain(lines[7] ?? "");
-			assert.ok(status.startsWith(" ⠋ Waiting for model...  0.0s"));
+			assert.ok(status.startsWith(" ⠋ Waiting for model…  0.0s"));
 			assert.ok(status.endsWith("0.0s  ⇣0"));
 			assert.equal(status.length, 58);
 			assert.ok((lines[7] ?? "").includes("\x1b[38;2;"));
@@ -273,21 +273,21 @@ describe("焦点、状态与用量", () => {
 
 			t.mock.timers.tick(300);
 			let status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Waiting for model..."));
+			assert.ok(status.includes("Waiting for model…"));
 			assert.ok(status.includes("0.3s"));
 			assert.ok(status.endsWith("0.3s  ⇣0"));
 
 			agent.emit({ type: "reasoning_delta", text: "thinking" });
 			t.mock.timers.tick(100);
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Thinking..."));
+			assert.ok(status.includes("Thinking…"));
 			assert.ok(status.includes("0.1s"));
 			assert.ok(status.endsWith("0.4s  ⇣0"));
 
 			agent.emit({ type: "text_delta", text: "hello from the model" });
 			t.mock.timers.tick(100);
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Writing response..."));
+			assert.ok(status.includes("Writing response…"));
 			assert.ok(status.includes("0.1s"));
 			assert.ok(status.includes("0.5s  ⇣"));
 		} finally {
@@ -307,7 +307,7 @@ describe("焦点、状态与用量", () => {
 			agent.emit({ type: "retrying", attempt: 2, maxAttempts: 5, reason: "connection reset" });
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Retrying (2/5): connection reset..."));
+			assert.ok(text.includes("Retrying 2/5 · connection reset"));
 			assert.equal(text.includes("connection reset · Retrying"), false);
 		} finally {
 			exitTui(input);
@@ -429,7 +429,7 @@ describe("焦点、状态与用量", () => {
 			const after = frameLines(output).map(plain).join("\n");
 			assert.ok(after.includes("440K / 1M"));
 			assert.ok(after.includes("⚡ 75%"));
-			assert.ok(after.includes("Waiting for model..."));
+			assert.ok(after.includes("Waiting for model…"));
 		} finally {
 			exitTui(input);
 		}

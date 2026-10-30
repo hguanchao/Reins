@@ -1,5 +1,6 @@
 import { sanitizeLine } from "../../tools/describe.ts";
 import { formatCompactTokens, formatDuration } from "../../shared/format.ts";
+import { TRANSCRIPT, countSegments, hiddenLines, subagentLabel, subagentMetric } from "../copy.ts";
 import { displayWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { swept, type AnimationFrame } from "../render/sweep.ts";
@@ -55,7 +56,7 @@ export function subagentGroupLines(
 			const budget = Math.max(0, width - displayWidth(SUBAGENT_ITEM_INDENT) - 2);
 			live.set(memberStart, {
 				indent: SUBAGENT_ITEM_INDENT,
-				label: truncateToWidth(`Subagent${index + 1}`, budget),
+				label: truncateToWidth(subagentLabel(index + 1), budget),
 				summary: truncateToWidth(member.task, Math.min(SUBAGENT_TASK_WIDTH, budget)),
 			});
 		}
@@ -80,7 +81,7 @@ export function animatedSubagentLine(
 function subagentGroupHead(group: TranscriptSubagentGroup, width: number): string {
 	const marker = group.expanded === true ? TOOL_GROUP_EXPANDED_MARKER : TOOL_MARKER;
 	const prefix = `${RESPONSE_INDENT}${marker} `;
-	const counts = countSegments(group);
+	const counts = groupCounts(group);
 	// 历史回填的组没有起点也没有定格耗时：不能拿 0 当起点现算，否则会显示成
 	// 自 1970 年以来的天数。没有耗时数据时只显示计数段。
 	const elapsed =
@@ -104,15 +105,11 @@ function subagentGroupHead(group: TranscriptSubagentGroup, width: number): strin
 	return `${prefix}${SUBAGENT_HEAD_COLOR}${label}${RESET}${SUBAGENT_COUNT_COLOR}${rest}${RESET}${padding}`;
 }
 
-/** 计数段:全部灰色,只有组头标签是青;没有的段不显示。 */
-function countSegments(group: TranscriptSubagentGroup): string {
+/** 组内各状态的成员数;文案由文案模块统一拼接,这里只做计数。 */
+function groupCounts(group: TranscriptSubagentGroup): string {
 	const counts = { running: 0, done: 0, failed: 0 };
 	for (const member of group.members) counts[member.status] += 1;
-	const parts: string[] = [];
-	if (counts.running > 0) parts.push(`${counts.running} running`);
-	if (counts.done > 0) parts.push(`${counts.done} done`);
-	if (counts.failed > 0) parts.push(`${counts.failed} failed`);
-	return parts.join(" · ");
+	return countSegments(counts);
 }
 
 /** 组清单的一条:四态符号 + 任务摘要 + 右对齐统计段(steps · 耗时);失败行正文位是任务名。 */
@@ -122,12 +119,9 @@ function subagentMemberLines(
 	position: number,
 ): readonly string[] {
 	const indent = SUBAGENT_ITEM_INDENT;
-	const label = `Subagent${position}`;
+	const label = subagentLabel(position);
 	// 统计段:步数与耗时都进同一括号,段内 · 分隔(通用工具套规则)
-	const stats: string[] = [];
-	if (member.steps !== undefined) stats.push(`${member.steps} steps`);
-	if (member.durationMs !== undefined) stats.push(formatDuration(member.durationMs));
-	const fullMetric = stats.length === 0 ? "" : ` (${stats.join(" · ")})`;
+	const fullMetric = subagentMetric(member.steps, member.durationMs);
 	// 摘要与统计都要挤进一行：行首还有「符号 + 空格 + 标签 + 两个空格」，
 	// 这部分必须先扣掉，否则整行会超出内容宽度，终端折行后整屏错位。
 	const available = Math.max(0, width - displayWidth(indent) - 2 - displayWidth(label) - 2);
@@ -160,7 +154,7 @@ function subagentMemberLines(
 /** 失败原因色带:上下留白的 banded 形态,与工具详情同款;全文都在 member.failure 里。 */
 function subagentFailureBand(member: SubagentRunView, width: number): readonly string[] {
 	const bandStart = displayWidth(SUBAGENT_ITEM_INDENT) + DETAIL_BAND_LEFT;
-	const rows = (member.failure ?? "unknown failure").split("\n");
+	const rows = (member.failure ?? TRANSCRIPT.unknownFailure).split("\n");
 	const visible = rows.slice(0, DETAIL_BAND_MAX_LINES);
 	const hidden = rows.length - visible.length;
 	return [
@@ -170,7 +164,7 @@ function subagentFailureBand(member: SubagentRunView, width: number): readonly s
 		),
 		...(hidden === 0
 			? []
-			: bandedWrappedLines(`… (${hidden} more lines)`, width, THEME.textSubtle, bandStart, DETAIL_RIGHT_PADDING)),
+			: bandedWrappedLines(hiddenLines(hidden), width, THEME.textSubtle, bandStart, DETAIL_RIGHT_PADDING)),
 		bandBlankLine(width, bandStart),
 	];
 }

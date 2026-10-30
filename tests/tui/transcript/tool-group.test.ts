@@ -47,7 +47,7 @@ describe("工具组", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("  › Read 2 files, Listed 1 dir"));
+		assert.ok(text.includes("  › Read 2 files, Listed 1 folder"));
 		assert.equal(text.includes("a.ts"), false);
 	});
 
@@ -57,7 +57,7 @@ describe("工具组", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("  ◈ Read 2 files, Listed 1 dir"));
+		assert.ok(text.includes("  ◈ Read 2 files, Listed 1 folder"));
 		assert.ok(text.includes("    › Read  a.ts"));
 		assert.ok(text.includes("    › Read  b.ts"));
 		assert.ok(text.includes("    › List  src"));
@@ -69,7 +69,7 @@ describe("工具组", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("Read 1 file, Listed 1 dir, Searched 2 patterns"));
+		assert.ok(text.includes("Read 1 file, Listed 1 folder, Searched 2 patterns"));
 	});
 
 	it("只有一个成员时仍按普通工具行显示", () => {

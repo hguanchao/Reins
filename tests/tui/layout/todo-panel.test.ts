@@ -41,19 +41,19 @@ describe("任务面板", () => {
 			let text = frameLines(output).map(plain).join("\n");
 			// 卡片只在常驻面板出现一次;头行汇总计数,不再重复当前任务名
 			assert.equal(text.split("› Tasks  1 running · 1 done").length - 1, 1);
-			assert.ok(text.includes("● Task1  写工具"));
-			assert.ok(text.includes("⠋ Task2  渲染卡片"));
+			assert.ok(text.includes("● Task 1  写工具"));
+			assert.ok(text.includes("⠋ Task 2  渲染卡片"));
 			assert.equal(text.includes("开工"), false);
 
 			// 运行期间:转圈与扫光落在当前任务行
-			const runningRaw = frameLines(output).find((line) => plain(line).includes("Task2")) ?? "";
+			const runningRaw = frameLines(output).find((line) => plain(line).includes("Task 2")) ?? "";
 			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(plain(runningRaw)));
 			assert.ok((runningRaw.match(/\x1b\[38;2;/g) ?? []).length > 1);
 
 			await agent.finish();
 
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("◐ Task2  渲染卡片"));
+			assert.ok(text.includes("◐ Task 2  渲染卡片"));
 			assert.equal(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(text), false);
 		} finally {
 			exitTui(input);
@@ -119,7 +119,7 @@ describe("任务面板", () => {
 
 			let text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("› Tasks  1 running · 5 pending"));
-			assert.equal(text.includes("○ Task1"), false);
+			assert.equal(text.includes("○ Task 1"), false);
 			// 运行中的折叠头行带转圈任务名
 			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] 任务3/.test(text));
 
@@ -133,16 +133,16 @@ describe("任务面板", () => {
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("○ Task1  任务1"));
+			assert.ok(text.includes("○ Task 1  任务1"));
 			// 展开态的进行中行仍是转圈(回合还在运行)
-			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Task3  任务3/.test(text));
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Task 3  任务3/.test(text));
 
 			// 面板变高后头行上移,重新取行号再双击
 			row = headerRow();
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("○ Task1"), false);
+			assert.equal(text.includes("○ Task 1"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -236,7 +236,7 @@ describe("任务面板", () => {
 			let text = frameLines(output).map(plain).join("\n");
 			// 卡片只在面板出现:头行唯一,条目也跟着面板走
 			assert.equal(text.split("› Tasks  1 running · 1 done").length - 1, 1);
-			assert.equal(text.split("● Task1  写工具").length - 1, 1);
+			assert.equal(text.split("● Task 1  写工具").length - 1, 1);
 
 			await agent.finish();
 
@@ -274,7 +274,7 @@ describe("任务面板", () => {
 		try {
 			const text = frameLines(output).map(plain).join("\n");
 			assert.equal(text.split("› Tasks  1 done · 1 pending").length - 1, 1);
-			assert.ok(text.includes("● Task1  写工具"));
+			assert.ok(text.includes("● Task 1  写工具"));
 		} finally {
 			exitTui(input);
 		}
@@ -313,7 +313,7 @@ describe("任务面板", () => {
 			input.emit("data", Buffer.from("\r"));
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("○ Task1  新任务"));
+			assert.ok(text.includes("○ Task 1  新任务"));
 			assert.equal(text.includes("旧任务"), false);
 		} finally {
 			exitTui(input);
@@ -344,8 +344,8 @@ describe("任务面板", () => {
 			let text = frameLines(output).map(plain).join("\n");
 			// 收尾卡只在对话流出现一次,面板同时退出
 			assert.equal(text.split("› Tasks  2 done").length - 1, 1);
-			assert.equal(text.split("● Task1  写工具").length - 1, 1);
-			assert.ok(text.includes("● Task2  渲染卡片"));
+			assert.equal(text.split("● Task 1  写工具").length - 1, 1);
+			assert.ok(text.includes("● Task 2  渲染卡片"));
 
 			// 新任务开始后,历史里的收尾卡仍在;面板换成新的未收尾表
 			agent.emit({
@@ -359,7 +359,7 @@ describe("任务面板", () => {
 			text = frameLines(output).map(plain).join("\n");
 			assert.equal(text.split("› Tasks  2 done").length - 1, 1);
 			assert.ok(text.includes("› Tasks  1 running"));
-			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Task1  下一步/.test(text));
+			assert.ok(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Task 1  下一步/.test(text));
 		} finally {
 			exitTui(input);
 		}

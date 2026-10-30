@@ -1,6 +1,7 @@
 import { describeError } from "../../shared/describe-error.ts";
 import { MCP_ACTION_HEIGHT } from "../page/frame.ts";
 import { stripTerminalStyles } from "../transcript/selection.ts";
+import { FAILURE_ACTIONS, STATUS, failure, reconnecting } from "../copy.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
@@ -41,9 +42,9 @@ export function reconnectMcp(host: TuiHost): void {
 	if (control === undefined || name === undefined) return;
 
 	host.resetStatusMeta();
-	host.state.mcpStatus = `Reconnecting ${name}...`;
+	host.state.mcpStatus = reconnecting(name);
 	host.state.mcpStatusTone = undefined;
-	host.setStatus(`Reconnecting ${name}...`);
+	host.setStatus(reconnecting(name));
 	host.render();
 	void control
 		.reconnect(name)
@@ -56,11 +57,11 @@ export function reconnectMcp(host: TuiHost): void {
 		})
 		.catch((error) => {
 			if (host.state.finished) return;
-			host.state.mcpStatus = "MCP reconnect failed";
+			host.state.mcpStatus = STATUS.mcpReconnectFailed;
 			host.state.mcpStatusTone = "error";
-			host.setStatus("MCP reconnect failed", "error");
+			host.setStatus(STATUS.mcpReconnectFailed, "error");
 			host.appendCommandTurn("/mcps", [
-				{ kind: "error", text: `Error: ${describeError(error)}` },
+				{ kind: "error", text: failure(FAILURE_ACTIONS.mcpReconnect, describeError(error)) },
 			]);
 		});
 }
@@ -71,16 +72,16 @@ export function healthCheckMcp(host: TuiHost): void {
 	if (control === undefined) return;
 
 	host.resetStatusMeta();
-	host.state.mcpStatus = "Checking MCP servers...";
+	host.state.mcpStatus = STATUS.checkingMcp;
 	host.state.mcpStatusTone = undefined;
-	host.setStatus("Checking MCP servers...");
+	host.setStatus(STATUS.checkingMcp);
 	host.render();
 	void control
 		.healthCheck()
 		.then((results) => {
 			if (host.state.finished) return;
 			// 检查结果逐行写进对话流，页面标题下也有状态说明，状态行不再重复
-			host.state.mcpStatus = "MCP health check complete";
+			host.state.mcpStatus = STATUS.mcpHealthCheckComplete;
 			host.state.mcpStatusTone = "notice";
 			host.appendCommandTurn(
 				"/mcps",
@@ -89,11 +90,11 @@ export function healthCheckMcp(host: TuiHost): void {
 		})
 		.catch((error) => {
 			if (host.state.finished) return;
-			host.state.mcpStatus = "MCP health check failed";
+			host.state.mcpStatus = STATUS.mcpHealthCheckFailed;
 			host.state.mcpStatusTone = "error";
-			host.setStatus("MCP health check failed", "error");
+			host.setStatus(STATUS.mcpHealthCheckFailed, "error");
 			host.appendCommandTurn("/mcps", [
-				{ kind: "error", text: `Error: ${describeError(error)}` },
+				{ kind: "error", text: failure(FAILURE_ACTIONS.mcpHealthCheck, describeError(error)) },
 			]);
 		});
 }

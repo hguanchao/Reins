@@ -75,7 +75,7 @@ describe("整屏页与图片附件", () => {
 
 			const help = frameLines(output).map(plain);
 			const text = help.join("\n");
-			assert.equal(help[0], "Reins — help");
+			assert.equal(help[0], "Reins · help");
 			assert.ok(text.includes("Commands"));
 			assert.ok(text.includes("/model"));
 			// 帮助页顶掉启动画面，并且不再画光标
@@ -87,7 +87,7 @@ describe("整屏页与图片附件", () => {
 
 			const back = frameLines(output).map(plain);
 			assert.ok(back.join("\n").includes("v1.2.3"));
-			assert.equal(back.join("\n").includes("Reins — help"), false);
+			assert.equal(back.join("\n").includes("Reins · help"), false);
 			assert.equal(back[9], " › ");
 		} finally {
 			exitTui(input);
@@ -103,12 +103,12 @@ describe("整屏页与图片附件", () => {
 
 		try {
 			input.emit("data", Buffer.from("/help\r"));
-			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
+			assert.equal(frameLines(output).map(plain)[0], "Reins · help");
 
 			pressCtrlC(input);
 			const back = frameLines(output).map(plain);
 			assert.ok(back.join("\n").includes("v1.2.3"));
-			assert.equal(back.join("\n").includes("Reins — help"), false);
+			assert.equal(back.join("\n").includes("Reins · help"), false);
 			// 第一次只返回对话流，不退出备用屏
 			assert.equal(output.chunks.some((chunk) => chunk.includes(LEAVE)), false);
 
@@ -148,14 +148,14 @@ describe("整屏页与图片附件", () => {
 		try {
 			input.emit("data", Buffer.from("/skills\r"));
 			const skills = frameLines(output).map(plain);
-			assert.equal(skills[0], "Reins — skills");
+			assert.equal(skills[0], "Reins · skills");
 			assert.ok(skills.join("\n").includes("writer"));
 			assert.ok(skills.join("\n").includes("SKILL.md"));
 
 			input.emit("data", Buffer.from("\x1b"));
 			input.emit("data", Buffer.from("/mcps\r"));
 			const mcps = frameLines(output).map(plain);
-			assert.equal(mcps[0], "Reins — MCP servers");
+			assert.equal(mcps[0], "Reins · MCP servers");
 			assert.ok(mcps.join("\n").includes("context7"));
 			assert.ok(mcps.join("\n").includes("2 tools"));
 
@@ -298,7 +298,7 @@ describe("整屏页与图片附件", () => {
 			input.emit("data", Buffer.from("\x16"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("does not declare image input"));
+			assert.ok(text.includes("can't read images"));
 
 			input.emit("data", Buffer.from("\r"));
 			assert.deepEqual(agent.prompts, ["[image: screenshot.png]"]);
@@ -500,11 +500,11 @@ describe("整屏页与图片附件", () => {
 		try {
 			input.emit("data", Buffer.from("看一下 @zzz"));
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("No matching files"));
+			assert.ok(text.includes("No matching files."));
 
 			input.emit("data", Buffer.from("\x1b"));
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("No matching files"), false);
+			assert.equal(text.includes("No matching files."), false);
 		} finally {
 			exitTui(input);
 		}
@@ -527,7 +527,7 @@ describe("整屏页与图片附件", () => {
 
 		try {
 			input.emit("data", Buffer.from("看一下 @zzz"));
-			assert.ok(frameLines(output).map(plain).join("\n").includes("No matching files"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("No matching files."));
 
 			// 补全没命中时回车不能被吞掉：这只是一条带 @ 的普通消息
 			input.emit("data", Buffer.from("\r"));

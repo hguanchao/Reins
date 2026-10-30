@@ -50,7 +50,7 @@ describe("对话流长内容查看", () => {
 			input.emit("data", Buffer.from("\x07"));
 			t.mock.timers.tick(100);
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — Bash output"));
+			assert.ok(text.includes("Reins · Bash output"));
 			assert.ok(text.includes("output-01"));
 			assert.ok(text.includes("↑/↓"));
 
@@ -64,7 +64,7 @@ describe("对话流长内容查看", () => {
 			input.emit("data", Buffer.from("\x1b"));
 			t.mock.timers.tick(100);
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("Reins — Bash output"), false);
+			assert.equal(text.includes("Reins · Bash output"), false);
 			assert.ok(text.includes("📁 Reins"));
 		} finally {
 			exitTui(input);
@@ -127,7 +127,7 @@ describe("对话流长内容查看", () => {
 			input.emit("data", Buffer.from("\x07"));
 			t.mock.timers.tick(100);
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — Bash output"));
+			assert.ok(text.includes("Reins · Bash output"));
 			assert.ok(text.includes("FIRST-OUTPUT"));
 			assert.equal(text.includes("SECOND-OUTPUT"), false);
 		} finally {
@@ -160,7 +160,7 @@ describe("对话流长内容查看", () => {
 			input.emit("data", Buffer.from("\x07"));
 			t.mock.timers.tick(100);
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Reins — Prompt"));
+			assert.ok(text.includes("Reins · Prompt"));
 			assert.ok(text.includes("第六行"));
 		} finally {
 			exitTui(input);

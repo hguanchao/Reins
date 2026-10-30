@@ -2,7 +2,7 @@ import { describeError } from "../../shared/describe-error.ts";
 import type { AgentEventListener } from "../../agent/events.ts";
 import { collapseToolGroups, measureTranscriptView } from "../transcript.ts";
 import { desktopNotify } from "../terminal.ts";
-import { ERROR_STATUS, WAITING_FOR_MODEL } from "../render/status.ts";
+import { NOTIFY, STATUS } from "../copy.ts";
 import type { ImageAttachment } from "../image.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { closeThinking, closeText, createEventTarget, freezeSubagentGroups } from "./turn.ts";
@@ -58,7 +58,7 @@ export function startRun(
 		clearTimeout(state.statusClearTimer);
 		state.statusClearTimer = undefined;
 	}
-	host.setStatus(WAITING_FOR_MODEL);
+	host.setStatus(STATUS.waitingForModel);
 
 	const width = host.terminalWidth();
 	const mainHeight = host.mainAreaHeight();
@@ -75,7 +75,7 @@ export function startRun(
 				kind: "error",
 			});
 			active.outcome = "error";
-			host.setStatus(ERROR_STATUS, "error");
+			host.setStatus(STATUS.error, "error");
 		})
 		.finally(() => {
 			if (state.activeTurn !== active) return;
@@ -108,7 +108,7 @@ export function startRun(
 			} else if (active.outcome === "done") {
 				host.clearStatus();
 			} else {
-				host.setStatus(ERROR_STATUS, "error");
+				host.setStatus(STATUS.error, "error");
 				// 回合已经结束：把耗时与用量定格，错误提示保留时显示这一轮的最终值
 				state.statusElapsedMs = Math.max(0, Date.now() - active.startedAt);
 				state.statusTokens = active.tokensUsed;
@@ -120,13 +120,13 @@ export function startRun(
 				} else {
 					// 输入框里还有草稿：整屏页会把使用者正在写的内容连同下一次按键一起抢走。
 					// 计划卡已经留在对话流里，双击即可打开审批页。
-					host.setStatus("Plan ready; double-click the plan card to review", "notice");
+					host.setStatus(STATUS.planReady, "notice");
 					host.scheduleStatusClear();
 				}
 			}
 			host.render();
 			if (active.outcome !== "aborted") {
-				notify(host, active.outcome === "done" ? "Turn complete" : "Turn failed");
+				notify(host, active.outcome === "done" ? NOTIFY.done : NOTIFY.failed);
 			}
 			// 排队消息接上：中止是使用者的明确意图，默认不替他续发；只有 Esc 请求过立即发送才例外。
 			// 计划审批页打开时先暂停队列，否则排队消息会越过审批直接进入下一轮。

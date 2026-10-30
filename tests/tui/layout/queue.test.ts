@@ -25,7 +25,7 @@ describe("排队消息", () => {
 		try {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(50);
-			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for model..."));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Waiting for model…"));
 
 			// /model 只影响下一轮，运行中照开
 			input.emit("data", Buffer.from("/model\r"));
@@ -39,7 +39,7 @@ describe("排队消息", () => {
 
 			// /help 打开整屏帮助页
 			input.emit("data", Buffer.from("/help\r"));
-			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
+			assert.equal(frameLines(output).map(plain)[0], "Reins · help");
 			input.emit("data", Buffer.from("\x1b"));
 
 			// /skills 只是只读页面，运行中也该放行
@@ -56,7 +56,7 @@ describe("排队消息", () => {
 				frameLines(output)
 					.map(plain)
 					.join("\n")
-					.includes("/compact is unavailable"),
+					.includes("/compact: wait for"),
 			);
 
 			// /session 会替换整段历史，运行中同样挡掉；Tab 也只补全，不打开菜单
@@ -396,7 +396,7 @@ describe("排队消息", () => {
 
 			assert.ok(switched >= 0, "一轮结束后应落下确认块");
 			// 运行中切换要说清生效时机，否则页脚已经变了、这一轮却还在用旧模型
-			assert.ok(lines.join("\n").includes("(from the next turn)"));
+			assert.ok(lines.join("\n").includes("applies from"));
 			// 落在这一轮之后：位置在末尾，时间顺序也对
 			assert.ok(switched > prompt, `确认块应排在当前轮之后：switched=${switched} prompt=${prompt}`);
 		} finally {
@@ -424,7 +424,7 @@ describe("排队消息", () => {
 			t.mock.timers.tick(100);
 
 			assert.ok(
-				frameLines(output).map(plain).join("\n").includes("Retrying (1/5): Rate limited..."),
+				frameLines(output).map(plain).join("\n").includes("Retrying 1/5 · Rate limited"),
 			);
 			// 重试用警告色，与「正在进行」的强调色分开：它不是正常推进，但也没失败
 			assert.ok(rawFrame(output).includes("\x1b[38;2;224;175;104m"));
@@ -462,7 +462,7 @@ describe("排队消息", () => {
 			// 第四条只显式提示，不丢；页脚仍只画三条加一行计数
 			input.emit("data", Buffer.from("q4\r"));
 			const frame = frameLines(output).map(plain).join("\n");
-			assert.ok(frame.includes("Queued (4); only the first 3 are shown"));
+			assert.ok(frame.includes("messages queued"));
 			assert.ok(frame.includes("↳ q1"));
 			assert.equal(frame.includes("↳ q4"), false);
 

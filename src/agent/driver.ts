@@ -16,12 +16,29 @@ import { contextTokens } from "../session/usage.ts";
 import type { ToolRegistry } from "../tools/registry.ts";
 import type { WorkspaceBoundary } from "../workspace/boundary.ts";
 import { estimateTokens, type Compactor } from "./compactor.ts";
-import type { AgentEvent, AgentEventListener } from "./events.ts";
+import type { AgentEvent, AgentEventListener, AbortCause } from "./events.ts";
 import type { PromptInstruction } from "./instructions.ts";
 import { buildPromptSections, renderSystemPrompt, toSessionTools, type PromptSkill } from "./prompt.ts";
 
 /** 工具结果摘要的首行上限；完整结果另存，摘要只用于界面一行显示。 */
 const SUMMARY_LIMIT = 200;
+
+/** AbortSignal 的 reason 只有调用方明确标记过才有意义，认不出来的一律当作未知。 */
+function abortCauseOf(reason: unknown): AbortCause | undefined {
+	return reason === "user" || reason === "session" ? reason : undefined;
+}
+
+/**
+ * 写进会话的截断原因。
+ *
+ * 与界面上那句话分开写：这条是给模型看的上下文，措辞要稳定、不含人称；界面那句是给人看
+ * 的，可以直说「你停的」。两者都由同一个原因枚举决定，不会互相矛盾。
+ */
+function cutOffReason(cause: AbortCause | undefined): string {
+	if (cause === "user") return "the user stopped the response";
+	if (cause === "session") return "the session closed";
+	return "the response stopped";
+}
 
 /**
  * 回合驱动。
@@ -168,8 +185,9 @@ export class TurnDriver {
 		}
 
 		if (result.stopReason === "aborted") {
-			await this.#recordCutOff(result, "the user interrupted the response");
-			await this.emit({ type: "aborted" });
+			const cause = abortCauseOf(signal.reason);
+			await this.#recordCutOff(result, cutOffReason(cause));
+			await this.emit({ type: "aborted", cause });
 			return "end";
 		}
 		if (result.stopReason === "error") {

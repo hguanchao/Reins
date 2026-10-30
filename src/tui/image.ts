@@ -2,6 +2,7 @@ import { extname } from "node:path";
 
 import type { LlmImageBlock } from "../llm/messages.ts";
 import { formatBytes } from "../shared/format.ts";
+import { imageTooLarge, imagesTooLarge, tooManyImages } from "./copy.ts";
 
 /**
  * 输入框里的图片附件。
@@ -60,15 +61,15 @@ export function imageLimitError(
 /** 一组附件是否超限；合并两批附件时也要走这里，不能只检查新增的那张。 */
 export function attachmentSetError(images: readonly ImageAttachment[]): string | undefined {
 	if (images.length > MAX_IMAGE_COUNT) {
-		return `At most ${MAX_IMAGE_COUNT} images can be attached to one message`;
+		return tooManyImages(MAX_IMAGE_COUNT);
 	}
 	const oversized = images.find((image) => image.bytes > MAX_IMAGE_BYTES);
 	if (oversized !== undefined) {
-		return `Image ${oversized.name} is ${formatBytes(oversized.bytes)}; the limit is ${formatBytes(MAX_IMAGE_BYTES)}`;
+		return imageTooLarge(oversized.name, formatBytes(oversized.bytes), formatBytes(MAX_IMAGE_BYTES));
 	}
 	const total = images.reduce((sum, image) => sum + image.bytes, 0);
 	if (total > MAX_TOTAL_IMAGE_BYTES) {
-		return `Attached images total ${formatBytes(total)}; the limit is ${formatBytes(MAX_TOTAL_IMAGE_BYTES)}`;
+		return imagesTooLarge(formatBytes(total), formatBytes(MAX_TOTAL_IMAGE_BYTES));
 	}
 	return undefined;
 }

@@ -27,13 +27,13 @@ describe("工作区信任页", () => {
 	it("标题钉在左上，逐条列出会生效的文件与技能目录", () => {
 		const lines = render(input());
 
-		assert.equal(lines[0]?.trimEnd(), "Reins — workspace trust");
+		assert.equal(lines[0]?.trimEnd(), "Reins · workspace trust");
 		assert.ok((lines[0] ?? "").startsWith("Reins"), "标题不该居中，它就在左上角");
 		const text = lines.join("\n");
-		assert.match(text, /Files read under this trust/);
+		assert.match(text, /Files Reins may read/);
 		assert.match(text, /\.reins\/config\.toml|\.reins\\config\.toml/);
 		assert.match(text, /AGENTS\.md/);
-		assert.match(text, /Skill directories scanned under this trust/);
+		assert.match(text, /Skill folders Reins may load/);
 		assert.match(text, /Trusting lets those files take effect\./);
 		assert.match(text, /Not trusting keeps the default/);
 		// 相对路径就不该再出现工作区根，否则一眼看不出是哪一个文件
@@ -141,7 +141,7 @@ describe("工作区信任页", () => {
 
 	it("记录结论时把选项行换成进行中的说明", () => {
 		const lines = render(input({ pending: true }), 80, 24);
-		assert.match(lines.at(-2) ?? "", /Recording the decision\.\.\./);
+		assert.match(lines.at(-2) ?? "", /Recording the decision…/);
 		assert.equal((lines.at(-2) ?? "").includes("Trust"), false);
 		// 固定区仍占四行，画面不会跟着跳
 		assert.equal(lines.length, 24);

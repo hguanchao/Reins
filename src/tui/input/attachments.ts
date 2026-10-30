@@ -7,6 +7,7 @@ import {
 	type ImageAttachment,
 } from "../image.ts";
 import { PASTE_END, PASTE_START } from "./keys.ts";
+import { STATUS, attachedWithoutVision, imageError } from "../copy.ts";
 import { errorLine } from "../render/status.ts";
 import { closeFileMenu } from "../runtime/panels.ts";
 import type { TuiHost } from "../runtime/types.ts";
@@ -57,7 +58,7 @@ export function insertImageMarker(host: TuiHost, image: ImageAttachment, at: num
 
 	if (host.options.imagesSupported?.() === false) {
 		host.setStatus(
-			`Attached ${name}; this model does not declare image input, so it will receive a placeholder`,
+			attachedWithoutVision(name),
 			"warning",
 		);
 		host.scheduleStatusClear();
@@ -96,7 +97,7 @@ export function readAndInsertImage(
 		})
 		.catch((error: unknown) => {
 			if (state.finished || epoch !== state.attachmentEpoch) return;
-			host.setStatus(`Image: ${errorLine(error)}`, "error");
+			host.setStatus(imageError(errorLine(error)), "error");
 			host.scheduleStatusClear();
 		})
 		.finally(() => {
@@ -109,18 +110,18 @@ export function readAndInsertImage(
 export function attachImagePath(host: TuiHost, path: string, at = host.state.inputCursor): void {
 	const source = host.options.images;
 	if (source === undefined) return;
-	readAndInsertImage(host, () => source.read(path), "Reading image...", at);
+	readAndInsertImage(host, () => source.read(path), STATUS.readingImage, at);
 }
 
 export function attachClipboardImage(host: TuiHost, at = host.state.inputCursor): void {
 	const source = host.options.images;
 	if (source === undefined) {
-		host.setStatus("Image input is unavailable in this session", "notice");
+		host.setStatus(STATUS.imagesUnsupported, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
 	}
-	readAndInsertImage(host, () => source.clipboard(), "Reading clipboard image...", at);
+	readAndInsertImage(host, () => source.clipboard(), STATUS.readingClipboardImage, at);
 }
 
 /**

@@ -15,6 +15,7 @@ import {
 	padEnd,
 } from "./menu-panel.ts";
 import { displayWidth } from "../render/text.ts";
+import { PANEL } from "../copy.ts";
 
 /**
  * 斜杠命令补全面板。
@@ -42,7 +43,7 @@ const PREFIX_WIDTH = 3;
 /** 命令名与说明之间的间距。 */
 const GAP = "    ";
 const GAP_WIDTH = displayWidth(GAP);
-const EMPTY = "No matching commands";
+const EMPTY = PANEL.noMatchingCommands;
 
 export function commandMenuHeight(itemCount: number, maxVisible = MENU_MAX_VISIBLE): number {
 	return menuListHeight(itemCount, { empty: EMPTY }, maxVisible);

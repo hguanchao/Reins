@@ -1,9 +1,26 @@
 import { THINKING_LEVELS } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
-import { formatDuration } from "../../shared/format.ts";
 import type { CommandMenuItem } from "../panel/command-menu.ts";
 import type { SessionSwitchResult } from "../options.ts";
-import { CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE, implementationPrompt } from "../render/status.ts";
+import { implementationPrompt } from "../render/status.ts";
+import {
+	FAILURE_ACTIONS,
+	FORK_WORKSPACE_NOTE,
+	NO_MODELS,
+	REVISE_PLAN_PREFIX,
+	STATUS,
+	commandFailed,
+	commandFinished,
+	commandRunning,
+	failure,
+	forkedSession,
+	reviewBlocks,
+	reviewResult,
+	switchedSession,
+	unknownEffort,
+	unknownModel,
+	waitForTurn,
+} from "../copy.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
 import { closePlanReview, closePlanReviewAndResume, showPage } from "./pages.ts";
 import {
@@ -62,7 +79,7 @@ export function executeCommand(host: TuiHost, command: CommandMenuItem, args = "
 	if (host.planning()) {
 		host.setInput("");
 		host.resetStatusMeta();
-		host.setStatus("Plugin commands are unavailable in Plan mode", "notice");
+		host.setStatus(STATUS.pluginCommandsInPlan, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -97,7 +114,7 @@ function runPluginCommand(host: TuiHost, command: CommandMenuItem, args: string)
 		clearTimeout(state.statusClearTimer);
 		state.statusClearTimer = undefined;
 	}
-	host.setStatus(`Running /${command.name}...`);
+	host.setStatus(commandRunning(command.name));
 	host.render();
 
 	void source
@@ -108,7 +125,7 @@ function runPluginCommand(host: TuiHost, command: CommandMenuItem, args: string)
 			markTranscriptDirty(state);
 			host.clearStatus();
 			host.render();
-			host.notify(`/${command.name} finished`);
+			host.notify(commandFinished(command.name));
 		})
 		.catch((error) => {
 			if (state.finished) return;
@@ -117,9 +134,9 @@ function runPluginCommand(host: TuiHost, command: CommandMenuItem, args: string)
 				kind: "error",
 			});
 			markTranscriptDirty(state);
-			host.setStatus("Error", "error");
+			host.setStatus(STATUS.error, "error");
 			host.render();
-			host.notify(`/${command.name} failed`);
+			host.notify(commandFailed(command.name));
 		});
 }
 
@@ -129,7 +146,7 @@ function executeModelCommand(host: TuiHost, args: string): void {
 	if (source === undefined) {
 		host.setInput("");
 		host.resetStatusMeta();
-		host.setStatus(CONFIGURATION_REQUIRED, "notice");
+		host.setStatus(STATUS.configurationInvalid, "notice");
 		return;
 	}
 
@@ -144,11 +161,8 @@ function executeModelCommand(host: TuiHost, args: string): void {
 	if (item === undefined) {
 		host.appendCommandTurn("/model", [
 			items.length === 0
-				? "No models are available."
-				: {
-						kind: "error",
-						text: `Error: Unknown model: ${target}. Run /model to choose from the list.`,
-					},
+				? NO_MODELS
+				: { kind: "error", text: unknownModel(target) },
 		]);
 		return;
 	}
@@ -162,7 +176,7 @@ function executeEffortCommand(host: TuiHost, args: string): void {
 	if (source === undefined) {
 		host.setInput("");
 		host.resetStatusMeta();
-		host.setStatus(CONFIGURATION_REQUIRED, "notice");
+		host.setStatus(STATUS.configurationInvalid, "notice");
 		return;
 	}
 
@@ -177,7 +191,7 @@ function executeEffortCommand(host: TuiHost, args: string): void {
 		host.appendCommandTurn("/effort", [
 			{
 				kind: "error",
-				text: `Error: Unknown effort: ${target}. Available: ${THINKING_LEVELS.join(", ")}.`,
+				text: unknownEffort(target, THINKING_LEVELS),
 			},
 		]);
 		return;
@@ -192,7 +206,7 @@ function executeSessionCommand(host: TuiHost, args: string): void {
 	if (source === undefined) {
 		host.setInput("");
 		host.resetStatusMeta();
-		host.setStatus(SESSION_UNAVAILABLE, "notice");
+		host.setStatus(STATUS.sessionStorageUnavailable, "notice");
 		return;
 	}
 
@@ -246,10 +260,10 @@ function applyConversation(host: TuiHost, result: SessionSwitchResult): void {
  * 审查子代理把用量记进当前会话；此时换会话、回退或导出会让两边同时读同一份文件，
  * 或者导出一份正在变化的快照。
  */
-function reviewBlocks(host: TuiHost, action: string): boolean {
+function blockedByReview(host: TuiHost, action: string): boolean {
 	if (!host.state.reviewing) return false;
 	host.resetStatusMeta();
-	host.setStatus(`A review is running; ${action} is unavailable until it finishes`, "notice");
+	host.setStatus(reviewBlocks(action), "notice");
 	host.scheduleStatusClear();
 	host.render();
 	return true;
@@ -261,21 +275,21 @@ function executeExportCommand(host: TuiHost, args: string): void {
 	const source = host.options.exportSession;
 	if (source === undefined) {
 		host.resetStatusMeta();
-		host.setStatus("Session export is unavailable in this session", "notice");
+		host.setStatus(STATUS.exportUnavailable, "notice");
 		host.scheduleStatusClear();
 		return;
 	}
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
-		host.setStatus("/export is unavailable while a turn is running", "notice");
+		host.setStatus(waitForTurn("/export"), "notice");
 		host.scheduleStatusClear();
 		return;
 	}
-	if (reviewBlocks(host, "/export")) return;
+	if (blockedByReview(host, "/export")) return;
 
 	const target = args.trim();
 	host.resetStatusMeta();
-	host.setStatus("Exporting...");
+	host.setStatus(STATUS.exporting);
 	host.render();
 	void Promise.resolve()
 		.then(() => source.export(target.length === 0 ? undefined : target))
@@ -286,9 +300,9 @@ function executeExportCommand(host: TuiHost, args: string): void {
 		})
 		.catch((error) => {
 			if (host.state.finished) return;
-			host.setStatus("Export failed", "error");
+			host.setStatus(STATUS.exportFailed, "error");
 			host.appendCommandTurn("/export", [
-				{ kind: "error", text: `Error: ${describeError(error)}` },
+				{ kind: "error", text: failure(FAILURE_ACTIONS.export, describeError(error)) },
 			]);
 		});
 }
@@ -299,19 +313,19 @@ function executeReviewCommand(host: TuiHost, args: string): void {
 	const source = host.options.review;
 	if (source === undefined) {
 		host.resetStatusMeta();
-		host.setStatus("Code review is unavailable in this session", "notice");
+		host.setStatus(STATUS.reviewUnavailable, "notice");
 		host.scheduleStatusClear();
 		return;
 	}
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
-		host.setStatus("/review is unavailable while a turn is running", "notice");
+		host.setStatus(waitForTurn("/review"), "notice");
 		host.scheduleStatusClear();
 		return;
 	}
 	if (host.state.reviewing) {
 		host.resetStatusMeta();
-		host.setStatus("A review is already running", "notice");
+		host.setStatus(STATUS.reviewAlreadyRunning, "notice");
 		host.scheduleStatusClear();
 		return;
 	}
@@ -321,7 +335,7 @@ function executeReviewCommand(host: TuiHost, args: string): void {
 	state.reviewing = true;
 	state.reviewAbort = controller;
 	host.resetStatusMeta();
-	host.setStatus("Reviewing changes...");
+	host.setStatus(STATUS.reviewing);
 	host.render();
 
 	void Promise.resolve()
@@ -336,18 +350,16 @@ function executeReviewCommand(host: TuiHost, args: string): void {
 			if (state.finished) return;
 			host.clearStatus();
 			host.appendCommandTurn("/review", [
-				`${result.label} · ${result.steps} steps · ${formatDuration(result.durationMs)}${
-					result.stopReason === "done" ? "" : ` · ${result.stopReason}`
-				}`,
+				reviewResult(result.label, result.steps, result.durationMs, result.stopReason),
 				"",
 				{ kind: "markdown" as const, text: result.report },
 			]);
 		})
 		.catch((error) => {
 			if (state.finished) return;
-			host.setStatus("Review failed", "error");
+			host.setStatus(STATUS.reviewFailed, "error");
 			host.appendCommandTurn("/review", [
-				{ kind: "error", text: `Error: ${describeError(error)}` },
+				{ kind: "error", text: failure(FAILURE_ACTIONS.review, describeError(error)) },
 			]);
 		})
 		.finally(() => {
@@ -363,7 +375,7 @@ function executeCompactCommand(host: TuiHost): void {
 	host.setInput("");
 	if (compact === undefined) {
 		host.resetStatusMeta();
-		host.setStatus(CONFIGURATION_REQUIRED, "notice");
+		host.setStatus(STATUS.configurationInvalid, "notice");
 		return;
 	}
 	startRun(host, "/compact", [], compact);
@@ -380,12 +392,12 @@ function executePlanCommand(host: TuiHost, args: string): void {
 	host.setInput("");
 	if (source === undefined) {
 		host.resetStatusMeta();
-		host.setStatus("Plan mode is unavailable in this session", "notice");
+		host.setStatus(STATUS.planUnavailable, "notice");
 		return;
 	}
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
-		host.setStatus("/plan is unavailable while a turn is running", "notice");
+		host.setStatus(waitForTurn("/plan"), "notice");
 		return;
 	}
 
@@ -395,7 +407,7 @@ function executePlanCommand(host: TuiHost, args: string): void {
 		if (source.current() !== enabled) source.select(enabled);
 	} catch (error) {
 		host.resetStatusMeta();
-		host.setStatus(`Failed to switch Plan mode: ${describeError(error)}`, "error");
+		host.setStatus(failure(FAILURE_ACTIONS.planSwitch, describeError(error)), "error");
 		host.scheduleStatusClear();
 		return;
 	}
@@ -427,7 +439,7 @@ export function approvePlan(host: TuiHost): void {
 	if (host.state.activeTurn !== undefined) {
 		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
-		host.setStatus("A turn is still running; wait for it to finish before approving the plan", "notice");
+		host.setStatus(STATUS.approveWhileTurn, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -438,7 +450,7 @@ export function approvePlan(host: TuiHost): void {
 	if (agent === undefined) {
 		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
-		host.setStatus("Agent unavailable", "notice");
+		host.setStatus(STATUS.agentNotConnected, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -449,7 +461,7 @@ export function approvePlan(host: TuiHost): void {
 	} catch (error) {
 		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
-		host.setStatus(`Failed to leave Plan mode: ${describeError(error)}`, "error");
+		host.setStatus(failure(FAILURE_ACTIONS.planSwitch, describeError(error)), "error");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -464,7 +476,7 @@ export function revisePlan(host: TuiHost): void {
 	// 与 /plan 同一条约束：提示词与工具清单会在同一轮里前后不一致，不能中途改
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
-		host.setStatus("Plan mode cannot change while a turn is running", "notice");
+		host.setStatus(waitForTurn("Plan mode"), "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -472,7 +484,7 @@ export function revisePlan(host: TuiHost): void {
 	if (!host.planning()) {
 		if (host.options.planMode === undefined) {
 			host.resetStatusMeta();
-			host.setStatus("Plan mode is unavailable in this session", "notice");
+			host.setStatus(STATUS.planUnavailable, "notice");
 			host.scheduleStatusClear();
 			host.render();
 			return;
@@ -481,14 +493,14 @@ export function revisePlan(host: TuiHost): void {
 			host.options.planMode.select(true);
 		} catch (error) {
 			host.resetStatusMeta();
-			host.setStatus(`Failed to enter Plan mode: ${describeError(error)}`, "error");
+			host.setStatus(failure(FAILURE_ACTIONS.planSwitch, describeError(error)), "error");
 			host.scheduleStatusClear();
 			host.render();
 			return;
 		}
 	}
 
-	if (host.state.input.length === 0) host.setInput("Revise the plan: ");
+	if (host.state.input.length === 0) host.setInput(REVISE_PLAN_PREFIX);
 	host.clearStatus();
 	host.render();
 }
@@ -499,7 +511,7 @@ export function leavePlan(host: TuiHost): void {
 	if (host.state.activeTurn !== undefined) {
 		closePlanReviewAndResume(host);
 		host.resetStatusMeta();
-		host.setStatus("Plan mode cannot change while a turn is running", "notice");
+		host.setStatus(waitForTurn("Plan mode"), "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -510,7 +522,7 @@ export function leavePlan(host: TuiHost): void {
 		if (wasPlanning) host.options.planMode?.select(false);
 	} catch (error) {
 		host.resetStatusMeta();
-		host.setStatus(`Failed to leave Plan mode: ${describeError(error)}`, "error");
+		host.setStatus(failure(FAILURE_ACTIONS.planSwitch, describeError(error)), "error");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -525,15 +537,12 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	if (source === undefined) return;
 
 	const forking = action === "fork";
-	if (reviewBlocks(host, forking ? "forking" : "/session")) return;
+	if (blockedByReview(host, forking ? "forking" : "/session")) return;
 	// 一轮进行中不能换会话：宿主会关掉旧会话的写入器，正在跑的驱动下一次追加就失败，
 	// 而新会话已经把旧 turn 移出了界面状态——本轮回复会无声地丢掉。
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
-		host.setStatus(
-			`${forking ? "Forking" : "/session"} is unavailable while a turn is running`,
-			"notice",
-		);
+		host.setStatus(waitForTurn(forking ? "Forking" : "/session"), "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -542,7 +551,7 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 	let result: SessionSwitchResult;
 	try {
 		const run = forking ? source.fork : source.select;
-		if (run === undefined) throw new Error("Session forking is unavailable");
+		if (run === undefined) throw new Error("Forking isn't available");
 		result = run(id);
 	} catch (error) {
 		host.state.follow = true;
@@ -550,7 +559,7 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 		host.appendCommandTurn("/session", [
 			{
 				kind: "error",
-				text: `Error: Failed to ${forking ? "fork" : "switch"} session: ${message}`,
+				text: failure(forking ? FAILURE_ACTIONS.sessionFork : FAILURE_ACTIONS.sessionSwitch, message),
 			},
 		]);
 		return;
@@ -565,11 +574,11 @@ export function switchSession(host: TuiHost, id: string, action: "select" | "for
 		const origin = result.fork?.sourceId ?? id;
 		const copied = result.fork?.copied ?? 0;
 		host.appendCommandTurn("/session", [
-			`Forked from ${origin} · ${copied} ${copied === 1 ? "entry" : "entries"} copied`,
-			"Workspace unchanged · checkpoints start fresh within the fork.",
+			forkedSession(origin, copied),
+			FORK_WORKSPACE_NOTE,
 			...result.warnings,
 		]);
 		return;
 	}
-	host.appendCommandTurn("/session", [`Switched to session ${id}.`, ...result.warnings]);
+	host.appendCommandTurn("/session", [switchedSession(id), ...result.warnings]);
 }

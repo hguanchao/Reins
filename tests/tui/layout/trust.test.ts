@@ -63,7 +63,7 @@ describe("启动信任页", () => {
 
 		try {
 			const text = textOf(output);
-			assert.match(text, /Reins — workspace trust/);
+			assert.match(text, /Reins · workspace trust/);
 			assert.match(text, /\.reins\/config\.toml|\.reins\\config\.toml/);
 			assert.match(text, /AGENTS\.md/);
 			assert.match(text, /› \[y\] Trust this workspace/);
@@ -220,7 +220,7 @@ describe("启动信任页", () => {
 			const text = textOf(output);
 			assert.match(text, /Workspace skills skipped/);
 			assert.match(text, /v1\.2\.3/);
-			assert.equal(text.includes("Reins — workspace trust"), false);
+			assert.equal(text.includes("Reins · workspace trust"), false);
 		} finally {
 			exitTui(input);
 		}

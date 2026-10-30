@@ -1,4 +1,5 @@
 import { THEME } from "../render/theme.ts";
+import { TRANSCRIPT } from "../copy.ts";
 
 /** 用户提示背景，与菜单面板使用同一档浮起表面。 */
 export const PROMPT_BG = THEME.surface;
@@ -90,7 +91,7 @@ export const SUBAGENT_BOLD = "\x1b[1m";
 export const PLAN_MARKER_COLOR = THEME.accent;
 export const PLAN_TITLE_COLOR = THEME.textPrimary;
 export const PLAN_HINT_COLOR = THEME.textSubtle;
-export const PLAN_CARD_HINT = "  ·  double-click to view";
+export const PLAN_CARD_HINT = TRANSCRIPT.planHint;
 export const PROMPT_MAX_LINES = 3;
 /** 右侧固定预留一列空隙和一列滚动条。 */
 export const GUTTER_WIDTH = 2;

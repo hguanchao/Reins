@@ -2,6 +2,7 @@ import { renderMarkdown } from "../render/markdown.ts";
 import { displayWidth, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import type { TranscriptPlan } from "../transcript.ts";
+import { ACTIONS, PAGE } from "../copy.ts";
 
 /**
  * 计划审批页。
@@ -13,9 +14,9 @@ import type { TranscriptPlan } from "../transcript.ts";
 /** 底部固定区：一条分隔线加一行动作。 */
 export const PLAN_ACTION_HEIGHT = 2;
 
-const TITLE = "Reins — plan";
-const COMPACT_ACTIONS = "a approve  r revise  q leave  Esc close";
-const SCROLL_HINT = "↑/↓ scroll";
+const TITLE = PAGE.planTitle;
+const COMPACT_ACTIONS = `a ${ACTIONS.approveShort}  r ${ACTIONS.reviseShort}  q ${ACTIONS.leaveShort}  Esc ${ACTIONS.close}`;
+const SCROLL_HINT = `↑/↓ ${ACTIONS.scroll}`;
 const ACTION_LABEL_COLOR = THEME.textSecondary;
 const KEY_COLOR = THEME.accent;
 const LEAVE_KEY_COLOR = THEME.warning;
@@ -29,17 +30,17 @@ interface ActionKey {
 }
 
 const FULL_KEYS: readonly ActionKey[] = [
-	{ key: "a", label: "approve & implement", color: KEY_COLOR },
-	{ key: "r", label: "request changes", color: KEY_COLOR },
-	{ key: "q", label: "leave plan", color: LEAVE_KEY_COLOR },
-	{ key: "Esc", label: "close", color: CLOSE_KEY_COLOR },
+	{ key: "a", label: ACTIONS.approve, color: KEY_COLOR },
+	{ key: "r", label: ACTIONS.revise, color: KEY_COLOR },
+	{ key: "q", label: ACTIONS.leave, color: LEAVE_KEY_COLOR },
+	{ key: "Esc", label: ACTIONS.close, color: CLOSE_KEY_COLOR },
 ];
 
 const COMPACT_KEYS: readonly ActionKey[] = [
-	{ key: "a", label: "approve", color: KEY_COLOR },
-	{ key: "r", label: "revise", color: KEY_COLOR },
-	{ key: "q", label: "leave", color: LEAVE_KEY_COLOR },
-	{ key: "Esc", label: "close", color: CLOSE_KEY_COLOR },
+	{ key: "a", label: ACTIONS.approveShort, color: KEY_COLOR },
+	{ key: "r", label: ACTIONS.reviseShort, color: KEY_COLOR },
+	{ key: "q", label: ACTIONS.leaveShort, color: LEAVE_KEY_COLOR },
+	{ key: "Esc", label: ACTIONS.close, color: CLOSE_KEY_COLOR },
 ];
 
 /** 审批页正文：标题、空行与完整计划。 */

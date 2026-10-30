@@ -14,18 +14,8 @@ import {
 	isSubagentCall,
 	takeToolForFailure,
 } from "../transcript.ts";
-import {
-	COMPACTING_CONTEXT,
-	ERROR_STATUS,
-	INTERRUPTED,
-	RUNNING_TOOL,
-	THINKING,
-	WAITING_FOR_MODEL,
-	WAITING_FOR_SUBAGENT,
-	WRITING_RESPONSE,
-	WRITING_TOOL_CALL,
-	shortReason,
-} from "../render/status.ts";
+import { shortReason } from "../render/status.ts";
+import { STATUS, TRANSCRIPT, cancelPhrase, retryStatus } from "../copy.ts";
 import type { ActiveTurn, TuiHost, TuiState } from "./types.ts";
 
 /**
@@ -215,16 +205,16 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 
 		switch (event.type) {
 			case "turn_start":
-				host.setStatus(WAITING_FOR_MODEL);
+				host.setStatus(STATUS.waitingForModel);
 				break;
 			case "writing_tool_call":
 				// 参数还在流里，工具没开始跑；不能提前显示成 Running
-				host.setStatus(WRITING_TOOL_CALL);
+				host.setStatus(STATUS.writingToolCall);
 				break;
 			case "text_delta":
 				closeThinking(host, active);
 				appendAssistantText(host, active, event.text);
-				host.setStatus(WRITING_RESPONSE);
+				host.setStatus(STATUS.writingResponse);
 				break;
 			case "reasoning_delta":
 				// 思考开始：插入区块；正文实时写入，运行时默认只显示最后五行。
@@ -232,7 +222,7 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 				// 它后面。这样迟到的思考片段不会把一句话切成两段。
 				if (active.thinkingBlock === undefined && event.text.trim().length === 0) {
 					// 纯空白的思考没有可显示内容，不建一个只有标题的空块
-					host.setStatus(THINKING);
+					host.setStatus(STATUS.thinking);
 					break;
 				}
 				if (active.thinkingBlock === undefined) {
@@ -253,21 +243,21 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 					host.syncTurn(active);
 				}
 				appendThinkingText(host, active, event.text);
-				host.setStatus(THINKING);
+				host.setStatus(STATUS.thinking);
 				break;
 			case "tool_start": {
 				closeThinking(host, active);
 				if (handlePlanStart(host, state, active, event)) {
-					host.setStatus(WAITING_FOR_MODEL);
+					host.setStatus(STATUS.waitingForModel);
 					break;
 				}
 				if (handleTodoCardStart(host, state, active, event)) {
 					// 任务表不产生模型等待：这一行已经交给面板处理，状态只需离开响应阶段
-					host.setStatus(RUNNING_TOOL);
+					host.setStatus(STATUS.runningTool);
 					break;
 				}
 				if (handleSubagentStart(host, active, event)) {
-					host.setStatus(WAITING_FOR_SUBAGENT);
+					host.setStatus(STATUS.waitingForSubagent);
 					break;
 				}
 				const tool = describeToolLine(event.name, event.args, event.callId, host.options.workspaceRoot);
@@ -281,7 +271,7 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 			}
 			case "tool_update":
 				// 子代理的每一步进度仍是「等它回来」，不能显示成普通工具在跑
-				host.setStatus(isSubagentCall(active.lines, event.callId) ? WAITING_FOR_SUBAGENT : RUNNING_TOOL);
+				host.setStatus(isSubagentCall(active.lines, event.callId) ? STATUS.waitingForSubagent : STATUS.runningTool);
 				break;
 			case "tool_end":
 				// 有效计划没有普通工具行可挂结果；无效调用仍按失败行处理
@@ -289,13 +279,13 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 					event.name === "present_plan" &&
 					findTopLevelToolByCallId(active.lines, event.callId) === undefined
 				) {
-					host.setStatus(WAITING_FOR_MODEL);
+					host.setStatus(STATUS.waitingForModel);
 					break;
 				}
 				if (handleSubagentEnd(active, event)) {
 					host.markTranscriptDirty();
 					// 并行派发时还有一个在跑就继续等它，不能提前回到模型等待
-					host.setStatus(hasRunningSubagent(active.lines) ? WAITING_FOR_SUBAGENT : WAITING_FOR_MODEL);
+					host.setStatus(hasRunningSubagent(active.lines) ? STATUS.waitingForSubagent : STATUS.waitingForModel);
 					break;
 				}
 				// 成功不落行：工具调用本身已经显示；结果挂到调用行，Ctrl+O 可展开
@@ -323,19 +313,19 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 					}
 				}
 				// 工具结果已经写回会话，下一回合的请求就要发出
-				host.setStatus(WAITING_FOR_MODEL);
+				host.setStatus(STATUS.waitingForModel);
 				break;
 			case "compaction_start":
 				host.appendLine(
 					active,
-					`· compacting context (${event.messages} messages, ~${event.tokensBefore} tokens)`,
+					`Compacting context · ${event.messages} messages · ~${event.tokensBefore} tokens`,
 				);
-				host.setStatus(COMPACTING_CONTEXT);
+				host.setStatus(STATUS.compacting);
 				break;
 			case "compaction_end":
 				host.appendLine(
 					active,
-					`  compacted: ~${event.tokensBefore} → ~${event.tokensAfter} tokens`,
+					`Context compacted · ~${event.tokensBefore} → ~${event.tokensAfter} tokens`,
 				);
 				host.options.agent?.refreshInfo();
 				break;
@@ -359,23 +349,22 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 				host.options.agent?.refreshInfo();
 				break;
 			case "retrying": {
-				// 动作在前：先说明系统正在重试，再用冒号补上这一次失败的原因
-				const retry = `Retrying (${event.attempt}/${event.maxAttempts})`;
+				// 原因用 `·` 接在动作后面：一行里先说在做什么，再补一句为什么
 				const reason = shortReason(event.reason).replace(/[.…]+$/, "");
-				host.setStatus(reason.length === 0 ? `${retry}...` : `${retry}: ${reason}...`, "warning");
+				host.setStatus(retryStatus(event.attempt, event.maxAttempts, reason), "warning");
 				break;
 			}
 			case "error":
 				closeThinking(host, active);
 				host.appendLine(active, { text: `Error: ${event.message}`, kind: "error" });
 				active.outcome = "error";
-				host.setStatus(ERROR_STATUS, "error");
+				host.setStatus(STATUS.error, "error");
 				break;
 			case "aborted":
 				closeThinking(host, active);
 				// 使用者主动停下不是错误：用中性说明，不染错误色，也不加错误标记。
 				// 状态行直接清空，不再留一个「已停下」的静态结局
-				host.appendLine(active, { text: INTERRUPTED, kind: "info" });
+				host.appendLine(active, { text: cancelPhrase(event.cause), kind: "info" });
 				active.outcome = "aborted";
 				host.clearStatus();
 				break;
@@ -410,7 +399,7 @@ export function freezeSubagentGroups(active: ActiveTurn): void {
 			if (member.status === "running") {
 				member.status = active.outcome === "done" ? "done" : "failed";
 				member.durationMs = Date.now() - line.startedAt;
-				if (member.status === "failed") member.failure = "the subagent never reported back";
+				if (member.status === "failed") member.failure = TRANSCRIPT.subagentNoResult;
 			}
 		}
 		line.durationMs = Date.now() - line.startedAt;

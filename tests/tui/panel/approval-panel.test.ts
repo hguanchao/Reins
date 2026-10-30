@@ -44,9 +44,9 @@ describe("审批面板", () => {
 		assert.ok((lines[0] ?? "").includes(THEME.warning));
 		assert.ok(rows[1]?.includes('Bash  { "command": "npm test" }'));
 		assert.equal(rows[2], " ".repeat(60));
-		assert.ok(rows[3]?.includes("› [y] allow once"));
-		assert.ok(rows[3]?.includes("[n] deny"));
-		assert.equal(rows[3]?.includes("› [n] deny"), false);
+		assert.ok(rows[3]?.includes("› [y] Yes, proceed"));
+		assert.ok(rows[3]?.includes("[n] No"));
+		assert.equal(rows[3]?.includes("› [n] No"), false);
 		assert.equal(rows[3]?.includes("[a]"), false);
 		assert.equal(rows[4], "─".repeat(60));
 	});
@@ -80,8 +80,8 @@ describe("审批面板", () => {
 
 		assert.ok(rows[0]?.includes("Permission required"));
 		assert.ok(rows[1]?.includes("Bash  git status"));
-		assert.ok(rows[3]?.includes('[a] always for "git status"'));
-		assert.ok(rows[3]?.includes("[n] deny"));
+		assert.ok(rows[3]?.includes('[a] Yes, always allow "git status"'));
+		assert.ok(rows[3]?.includes("[n] No"));
 		assert.equal(rows[3]?.includes("› [a]"), false);
 		assert.equal(rows[3]?.includes("› [n]"), false);
 	});
@@ -140,7 +140,7 @@ describe("审批面板", () => {
 		const scrolled = render(60, prompt, "once", true, 5).map(plain).join("\n");
 		assert.equal(scrolled.includes("row-01"), false);
 		assert.ok(scrolled.includes("row-06"));
-		assert.ok(scrolled.includes("[y] allow once"));
+		assert.ok(scrolled.includes("[y] Yes, proceed"));
 	});
 
 	it("展开高度封顶并给对话流留出空间", () => {
@@ -158,7 +158,7 @@ describe("审批面板", () => {
 		assert.ok(approvalPreviewScrollLimit(prompt, true, 60, 12) > 0);
 	});
 
-	it("默认选中 allow once", () => {
+	it("默认选中 Yes, proceed", () => {
 		const row = render(80, {
 			tool: "bash",
 			risk: "destructive",
@@ -167,7 +167,7 @@ describe("审批面板", () => {
 			saveShort: "git status",
 		})[3];
 
-		assert.ok(row?.includes(`${ACCENT_COLOR}› [y] allow once`));
+		assert.ok(row?.includes(`${ACCENT_COLOR}› [y] Yes, proceed`));
 		assert.equal(row?.includes(`${THEME.error}[n]`), false);
 	});
 
@@ -181,19 +181,19 @@ describe("审批面板", () => {
 		};
 
 		const always = render(80, prompt, "always")[3];
-		assert.ok(always?.includes(`${ACCENT_COLOR}› [a] always for "git status"`));
+		assert.ok(always?.includes(`${ACCENT_COLOR}› [a] Yes, always allow "git status"`));
 		assert.ok(always?.includes("\x1b[1m"));
 		assert.equal(always?.includes(`${ACCENT_COLOR}[y]`), false);
 		assert.equal(always?.includes("› [y]"), false);
 
 		// 默认选中的拒绝用危险色，而不是主题强调色
 		const deny = render(80, prompt, "deny")[3];
-		assert.ok(deny?.includes(`${THEME.error}› [n] deny`));
+		assert.ok(deny?.includes(`${THEME.error}› [n] No`));
 		assert.equal(deny?.includes(`${ACCENT_COLOR}[n]`), false);
 		assert.equal(deny?.includes("› [y]"), false);
 	});
 
-	it("文件类范围不重复路径，显示 always for this file", () => {
+	it("文件类范围不重复路径，显示 Yes, always allow this file", () => {
 		const rows = render(80, {
 			tool: "edit",
 			risk: "destructive",
@@ -203,8 +203,8 @@ describe("审批面板", () => {
 		}).map(plain);
 
 		assert.ok(rows[1]?.includes("Edit  src/a.ts"));
-		assert.ok(rows[3]?.includes("[a] always for this file"));
-		assert.ok(rows[3]?.includes("[y] allow once"));
+		assert.ok(rows[3]?.includes("[a] Yes, always allow this file"));
+		assert.ok(rows[3]?.includes("[y] Yes, proceed"));
 	});
 
 	it("窄终端下退化为短动作行，拒绝键仍然可见", () => {
@@ -217,9 +217,9 @@ describe("审批面板", () => {
 		}).map(plain);
 
 		assert.ok(rows[1]?.includes("Bash  git status"));
-		assert.ok(rows[3]?.includes("› [y] once"));
-		assert.ok(rows[3]?.includes("[a] always"));
-		assert.ok(rows[3]?.includes("[n] deny"));
+		assert.ok(rows[3]?.includes("› [y] Yes"));
+		assert.ok(rows[3]?.includes("[a] Always"));
+		assert.ok(rows[3]?.includes("[n] No"));
 		assert.equal(rows[3]?.includes("› [a]"), false);
 		assert.equal(rows[3]?.includes("› [n]"), false);
 	});
@@ -290,7 +290,7 @@ describe("审批面板的内容净化", () => {
 		const rows = lines.map(plain);
 
 		assert.equal(joined.includes("\u001b[2J"), false);
-		assert.ok(rows.some((row) => row.includes('always for "npmtest"')));
+		assert.ok(rows.some((row) => row.includes('Yes, always allow "npmtest"')));
 	});
 
 	it("超长工具名不会让整行溢出面板宽度", () => {

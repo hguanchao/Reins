@@ -391,19 +391,19 @@ describe("工具行渲染", () => {
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
-			agent.emit({ type: "aborted" });
+			agent.emit({ type: "aborted", cause: "user" });
 			t.mock.timers.tick(100);
 
 			const frame = frameLines(output);
 			const text = frame.map(plain).join("\n");
 			// 主动停下由对话流说明，状态行不再保留结局，也不再转圈
-			assert.equal(text.includes("Stopping..."), false);
+			assert.equal(text.includes("Stopping…"), false);
 			assert.equal(text.includes("⠋"), false);
 
 			// 对话流里留一条弱化色的说明，标出回答在这里被截断，且是使用者自己停下的
-			const note = frame.find((line) => plain(line).includes("Stopped by you"));
+			const note = frame.find((line) => plain(line).includes("Turn stopped by you"));
 			assert.ok(note);
-			assert.equal(text.split("Stopped by you").length - 1, 1);
+			assert.equal(text.split("Turn stopped by you").length - 1, 1);
 			assert.ok(note.includes(THEME.textSubtle));
 			assert.equal(plain(note).includes("Error"), false);
 			assert.equal(frame.some((line) => plain(line).includes("×")), false);
@@ -425,26 +425,26 @@ describe("工具行渲染", () => {
 
 			agent.emit({ type: "writing_tool_call", name: "read" });
 			let status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Writing tool call..."));
+			assert.ok(status.includes("Writing tool call…"));
 
 			agent.emit({ type: "tool_start", callId: "s1", name: "subagent", args: { task: "检查一" } });
 			agent.emit({ type: "tool_start", callId: "s2", name: "subagent", args: { task: "检查二" } });
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Waiting for subagent..."));
+			assert.ok(status.includes("Waiting for subagent…"));
 
 			// 子代理内部的进度更新不能把状态改写成普通工具在跑
 			agent.emit({ type: "tool_update", callId: "s1", text: "step 2/8" });
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Waiting for subagent..."));
+			assert.ok(status.includes("Waiting for subagent…"));
 
 			// 并行派发时先结束一个，另一个还在跑，状态仍是等待子代理
 			agent.emit({ type: "tool_end", callId: "s1", name: "subagent", isError: false, durationMs: 10, summary: "ok" });
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Waiting for subagent..."));
+			assert.ok(status.includes("Waiting for subagent…"));
 
 			agent.emit({ type: "tool_end", callId: "s2", name: "subagent", isError: false, durationMs: 10, summary: "ok" });
 			status = plain(frameLines(output)[7] ?? "");
-			assert.ok(status.includes("Waiting for model..."));
+			assert.ok(status.includes("Waiting for model…"));
 		} finally {
 			exitTui(input);
 		}

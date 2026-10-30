@@ -1,5 +1,5 @@
 import { describeError } from "../../shared/describe-error.ts";
-import { ERROR_STATUS } from "../render/status.ts";
+import { STATUS, failure, FAILURE_ACTIONS, undoResult } from "../copy.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
@@ -15,7 +15,7 @@ export function executeUndo(host: TuiHost): void {
 	const state = host.state;
 	if (source === undefined || !source.available()) {
 		host.resetStatusMeta();
-		host.setStatus(source?.error() ?? "Checkpoints are unavailable in this workspace", "notice");
+		host.setStatus(source?.error() ?? STATUS.checkpointsUnavailable, "notice");
 		host.scheduleStatusClear();
 		return;
 	}
@@ -30,7 +30,7 @@ export function executeUndo(host: TuiHost): void {
 
 	state.restoringCheckpoint = true;
 	host.resetStatusMeta();
-	host.setStatus("Reading checkpoints...", "notice");
+	host.setStatus(STATUS.readingCheckpoints, "notice");
 	host.render();
 	void source
 		.latestUndoable()
@@ -56,12 +56,10 @@ export function executeUndo(host: TuiHost): void {
 				.then((result) => {
 					state.restoringCheckpoint = false;
 					if (state.finished) return;
-					const verb = result.entry.kind === "safety" ? "Restored" : "Undid";
-					const removed = result.removed > 0 ? `, ${result.removed} removed` : "";
 					host.appendCommandTurn("/undo", [
 						{
 							kind: "info",
-							text: `${verb} ${result.entry.label} · ${result.restored} restored${removed}`,
+							text: undoResult(result.entry.kind, result.entry.label, result.restored, result.removed),
 						},
 					]);
 					host.clearStatus();
@@ -71,7 +69,7 @@ export function executeUndo(host: TuiHost): void {
 					state.restoringCheckpoint = false;
 					if (state.finished) return;
 					host.appendCommandTurn("/undo", [{ kind: "error", text: `Error: ${describeError(error)}` }]);
-					host.setStatus(ERROR_STATUS, "error");
+					host.setStatus(STATUS.error, "error");
 					host.scheduleStatusClear();
 					host.render();
 				});
@@ -80,7 +78,7 @@ export function executeUndo(host: TuiHost): void {
 			state.restoringCheckpoint = false;
 			if (state.finished) return;
 			host.resetStatusMeta();
-			host.setStatus(`Undo unavailable: ${describeError(error)}`, "error");
+			host.setStatus(failure(FAILURE_ACTIONS.undo, describeError(error)), "error");
 			host.scheduleStatusClear();
 			host.render();
 		});

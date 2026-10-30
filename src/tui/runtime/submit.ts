@@ -1,7 +1,7 @@
 import { findCommand } from "../commands.ts";
 import { TURN_SAFE_COMMANDS } from "../commands.ts";
 import { commandArgs } from "../commands.ts";
-import { CONFIGURATION_REQUIRED } from "../render/status.ts";
+import { IMAGE_STILL_READING, STATUS, queuedOverflow, unknownCommand, waitForTurn } from "../copy.ts";
 import { attachmentLimit, clearAttachments, imagesOf } from "../input/attachments.ts";
 import { QUEUE_MAX_VISIBLE } from "../view/footer.ts";
 import { markTranscriptDirty } from "./transcript-state.ts";
@@ -19,21 +19,21 @@ export function submit(host: TuiHost): boolean {
 	const state = host.state;
 	if (state.restoringCheckpoint) {
 		// 工作区正在恢复，此时开新回合会让模型看到一半旧、一半新的文件
-		host.setStatus("Restoring checkpoint...", "notice");
+		host.setStatus(STATUS.restoringCheckpoint, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return false;
 	}
 	if (state.imageLoading) {
 		// 标记还没落进输入框，此时发送会得到一轮文字与图片对不上的消息
-		host.setStatus("Still reading an image; try again in a moment", "notice");
+		host.setStatus(IMAGE_STILL_READING, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return false;
 	}
 	if (state.reviewing) {
 		// 审查子代理正往会话里记用量；此时开新回合或换会话会让两边同时写同一份文件
-		host.setStatus("A review is running; press Ctrl+C to cancel it", "notice");
+		host.setStatus(STATUS.reviewRunningCancel, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return false;
@@ -58,7 +58,7 @@ export function submit(host: TuiHost): boolean {
 		// 斜杠开头没有对应命令时不要把它当普通提问发给模型
 		state.commandMenu = undefined;
 		host.resetStatusMeta();
-		host.setStatus(`Unknown command: ${message.split(/\s/, 1)[0]}`, "warning");
+		host.setStatus(unknownCommand(message.split(/\s/, 1)[0] ?? ""), "warning");
 		host.render();
 		return false;
 	}
@@ -68,7 +68,7 @@ export function submit(host: TuiHost): boolean {
 		if (state.activeTurn !== undefined && !TURN_SAFE_COMMANDS.has(command.name)) {
 			state.commandMenu = undefined;
 			state.commandMenuDismissed = true;
-			host.setStatus(`/${command.name} is unavailable while a turn is running`, "notice");
+			host.setStatus(waitForTurn(`/${command.name}`), "notice");
 			host.render();
 			return false;
 		}
@@ -96,10 +96,7 @@ export function submit(host: TuiHost): boolean {
 		// 队列越多，页脚越高，对话流就越矮。超过能显示的行数之后照收不误，但要当场说一句：
 		// 静默接受会让人以为消息丢了，而它其实排在后面。
 		if (state.queued.length > QUEUE_MAX_VISIBLE) {
-			host.setStatus(
-				`Queued (${state.queued.length}); only the first ${QUEUE_MAX_VISIBLE} are shown`,
-				"notice",
-			);
+			host.setStatus(queuedOverflow(state.queued.length, QUEUE_MAX_VISIBLE), "notice");
 			host.scheduleStatusClear();
 		}
 		host.render();
@@ -110,7 +107,7 @@ export function submit(host: TuiHost): boolean {
 		// 配置没读成功时不进入对话：保留输入与图片标记，只把原因放到运行时状态行
 		state.commandMenu = undefined;
 		host.resetStatusMeta();
-		host.setStatus(CONFIGURATION_REQUIRED, "notice");
+		host.setStatus(STATUS.configurationInvalid, "notice");
 		host.render();
 		return false;
 	}

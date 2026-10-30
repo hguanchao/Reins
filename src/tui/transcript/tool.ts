@@ -1,4 +1,5 @@
 import { sanitizeLine } from "../../tools/describe.ts";
+import { TRANSCRIPT, hiddenLines, toolGroupSummary } from "../copy.ts";
 import { formatDuration } from "../../shared/format.ts";
 import {
 	coloredLine,
@@ -91,7 +92,7 @@ export function toolResultLines(
 	baseIndent = RESPONSE_INDENT,
 ): readonly string[] {
 	const raw = tool.result ?? "";
-	const rows = stripTrailingBlank((raw.length === 0 ? "(no output)" : raw).split("\n"));
+	const rows = stripTrailingBlank((raw.length === 0 ? TRANSCRIPT.noOutput : raw).split("\n"));
 	const visible = rows.slice(0, TOOL_RESULT_PREVIEW_LINES).map(expandTabs);
 	const hidden = rows.length - visible.length;
 	const bandStart = displayWidth(baseIndent) + DETAIL_BAND_LEFT;
@@ -104,7 +105,7 @@ export function toolResultLines(
 		...(hidden === 0
 			? []
 			: bandedWrappedLines(
-					`… (${hidden} more lines · Ctrl+G)`,
+					hiddenLines(hidden, "Ctrl+G"),
 					width,
 					THEME.textSubtle,
 					bandStart,
@@ -114,7 +115,7 @@ export function toolResultLines(
 	];
 }
 
-/** 组头按固定顺序汇总：Read → Listed → Searched。 */
+/** 组头按固定顺序汇总：Read → Listed → Searched → Ran。 */
 function groupHeaderLabel(members: readonly TranscriptTool[]): string {
 	let read = 0;
 	let list = 0;
@@ -126,13 +127,7 @@ function groupHeaderLabel(members: readonly TranscriptTool[]): string {
 		else if (member.group === "search") search += 1;
 		else if (member.group === "command") command += 1;
 	}
-
-	const parts: string[] = [];
-	if (read > 0) parts.push(`Read ${read} ${read === 1 ? "file" : "files"}`);
-	if (list > 0) parts.push(`Listed ${list} ${list === 1 ? "dir" : "dirs"}`);
-	if (search > 0) parts.push(`Searched ${search} ${search === 1 ? "pattern" : "patterns"}`);
-	if (command > 0) parts.push(`Ran ${command} ${command === 1 ? "command" : "commands"}`);
-	return parts.join(", ");
+	return toolGroupSummary({ read, list, search, command });
 }
 
 /**

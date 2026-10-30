@@ -1,6 +1,6 @@
 import type { ApprovalPrompt } from "../../permission/approval.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
-import { displayToolName, isCommandTool, sanitizeLine } from "../../tools/describe.ts";
+import { displayToolName, sanitizeLine } from "../../tools/describe.ts";
 import {
 	ACCENT_COLOR,
 	BORDER_COLOR,
@@ -9,6 +9,7 @@ import {
 } from "./menu-panel.ts";
 import { characterWidth, displayWidth, fitToWidth, graphemes, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
+import { APPROVAL, PANEL, alwaysAllowFile, alwaysAllowScope } from "../copy.ts";
 
 /**
  * 工具审批面板。
@@ -23,7 +24,7 @@ export const APPROVAL_PANEL_BASE_HEIGHT = 5;
 /** 展开详情时至少给对话流留出的行数。 */
 const APPROVAL_MIN_MAIN_ROWS = 3;
 
-const TITLE = "Permission required";
+const TITLE = PANEL.permissionRequired;
 /** 选中动作前的标记，与用户提示和工具调用保持一致。 */
 const ACTION_MARKER = "› ";
 /** 未选中的动作用同宽空白占位，移动高亮时文字不左右跳。 */
@@ -47,7 +48,7 @@ export function approvalPreviewLines(prompt: ApprovalPrompt, width: number): rea
 	);
 	if (text.trim().length === 0) return [];
 
-	const lines: string[] = [`  ${fitToWidth(prompt.previewLabel ?? "Details", bodyWidth)}`];
+	const lines: string[] = [`  ${fitToWidth(prompt.previewLabel ?? PANEL.details, bodyWidth)}`];
 	for (const raw of text.split("\n")) {
 		if (raw.length === 0) {
 			lines.push("");
@@ -288,66 +289,64 @@ export function approvalActionAt(
 	return undefined;
 }
 
-/** 可记住范围的文案：文件类不重复路径，命令类保留具体命令前缀。 */
-function alwaysLabel(prompt: ApprovalPrompt): string | undefined {
+/**
+ * 可记住的范围：文件类不重复路径，命令类保留具体命令前缀。
+ *
+ * 只返回范围本身，句子由文案模块拼；命令前缀来自模型生成的参数，可能夹带转义序列，
+ * 必须先和详情走同一套清洗，否则审批卡本身就能被命令内容改写屏幕。
+ */
+function alwaysScope(prompt: ApprovalPrompt): string | undefined {
 	if (prompt.saveShort === undefined) return undefined;
-	// 命令前缀来自模型生成的参数，可能夹带转义序列：动作行必须和详情走同一套清洗，
-	// 否则审批卡本身就能被命令内容改写屏幕
 	const short = sanitizeLine(prompt.saveShort).trim();
-	if (short.length === 0) return undefined;
-	if (prompt.tool === "edit" || prompt.tool === "write") return "always for this file";
-	if (isCommandTool(prompt.tool)) return `always for "${short}"`;
-	return `always: "${short}"`;
+	return short.length === 0 ? undefined : short;
+}
+
+/** 文件类动作说明的是「改这个文件」，其它动作说明允许的具体范围。 */
+function alwaysText(prompt: ApprovalPrompt): string | undefined {
+	const scope = alwaysScope(prompt);
+	if (scope === undefined) return undefined;
+	if (prompt.tool === "edit" || prompt.tool === "write") return alwaysAllowFile();
+	return alwaysAllowScope(scope);
 }
 
 function layoutActions(width: number, prompt: ApprovalPrompt): readonly ActionOption[] {
 	const available = width - 2;
-	const once: ActionOption = { action: "once", label: `${ACTION_MARKER}[y] allow once` };
-	const deny: ActionOption = { action: "deny", label: `${ACTION_MARKER}[n] deny` };
+	const once: ActionOption = { action: "once", label: `${ACTION_MARKER}[y] ${APPROVAL.proceed}` };
+	const deny: ActionOption = { action: "deny", label: `${ACTION_MARKER}[n] ${APPROVAL.deny}` };
 	const rowWidth = (options: readonly ActionOption[]): number =>
 		displayWidth(options.map((option) => option.label).join("   "));
 
-	const alwaysText = alwaysLabel(prompt);
-	if (alwaysText === undefined) {
+	const remember = alwaysText(prompt);
+	if (remember === undefined) {
 		const full = [once, deny];
 		return rowWidth(full) <= available
 			? full
 			: [
-					{ action: "once", label: `${ACTION_MARKER}[y]` },
-					{ action: "deny", label: `${ACTION_MARKER}[n]` },
+					{ action: "once", label: `${ACTION_MARKER}[y] ${APPROVAL.proceedShort}` },
+					{ action: "deny", label: `${ACTION_MARKER}[n] ${APPROVAL.denyShort}` },
 				];
 	}
 
-	const full = [
-		once,
-		{ action: "always" as const, label: `${ACTION_MARKER}[a] ${alwaysText}` },
-		deny,
-	];
+	const full = [once, { action: "always" as const, label: `${ACTION_MARKER}[a] ${remember}` }, deny];
 	if (rowWidth(full) <= available) return full;
 
-	const compact = [
-		once,
-		{ action: "always" as const, label: `${ACTION_MARKER}[a] always` },
-		deny,
+	const compact: readonly ActionOption[] = [
+		{ action: "once", label: `${ACTION_MARKER}[y] ${APPROVAL.proceedShort}` },
+		{ action: "always" as const, label: `${ACTION_MARKER}[a] ${APPROVAL.alwaysShort}` },
+		{ action: "deny", label: `${ACTION_MARKER}[n] ${APPROVAL.denyShort}` },
 	];
 	if (rowWidth(compact) <= available) return compact;
 
 	const shortest: readonly ActionOption[] = [
-		{ action: "once", label: `${ACTION_MARKER}[y] once` },
-		{ action: "always", label: `${ACTION_MARKER}[a] always` },
-		deny,
-	];
-	if (rowWidth(shortest) <= available) return shortest;
-
-	return [
 		{ action: "once", label: "[y]" },
 		{ action: "always", label: "[a]" },
 		{ action: "deny", label: "[n]" },
 	];
+	return shortest;
 }
 
 /** 参数是格式化过的 JSON 或命令文本，压成一行才能放进固定高度的面板。 */
 function compact(detail: string): string {
 	const oneLine = sanitizeLine(detail).replace(/\s+/g, " ").trim();
-	return oneLine.length > 0 ? oneLine : "(no arguments)";
+	return oneLine.length > 0 ? oneLine : PANEL.noArguments;
 }

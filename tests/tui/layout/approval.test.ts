@@ -42,8 +42,8 @@ describe("审批卡", () => {
 			assert.ok(text.includes("Permission required"));
 			assert.ok(text.includes("Bash  npm test"));
 			assert.equal(text.includes("destructive"), false);
-			assert.ok(text.includes("[y] allow once"));
-			assert.ok(text.includes("[n] deny"));
+			assert.ok(text.includes("[y] Yes, proceed"));
+			assert.ok(text.includes("[n] No"));
 			// 面板占据原本页脚的五行；输入行、状态行与信息行都不再显示
 			assert.ok(plain(lines[7] ?? "").includes("Permission required"));
 			assert.equal(text.includes("📁 Reins"), false);
@@ -180,7 +180,7 @@ describe("审批卡", () => {
 			const actionRow =
 				frameLines(output)
 					.map(plain)
-					.findIndex((line) => line.includes("[y] allow once")) + 1;
+					.findIndex((line) => line.includes("[y] Yes, proceed")) + 1;
 			assert.ok(actionRow > 0);
 			input.emit("data", Buffer.from(`\x1b[<0;5;${actionRow}M`));
 			await new Promise<void>((resolve) => setImmediate(resolve));
@@ -421,8 +421,8 @@ describe("审批卡", () => {
 			t.mock.timers.tick(100);
 
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes('[a] always for "git status"'));
-			assert.ok(text.includes("[n] deny"));
+			assert.ok(text.includes('[a] Yes, always allow "git status"'));
+			assert.ok(text.includes("[n] No"));
 
 			input.emit("data", Buffer.from("a"));
 			await new Promise<void>((resolve) => setImmediate(resolve));

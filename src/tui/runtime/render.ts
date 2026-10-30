@@ -29,11 +29,12 @@ import {
 import type { AnimationFrame } from "../render/sweep.ts";
 import type { FooterInfo } from "../view/footer.ts";
 import { SPINNER_FRAMES } from "./constants.ts";
+import { TRANSCRIPT } from "../copy.ts";
 import { menuOpen, menuVisibleLimit, terminalWidth, terminalRows } from "./geometry.ts";
 import { framedPageFor } from "./pages.ts";
 import type { TuiHost } from "./types.ts";
 
-const OVERFLOW_NOTICE = "▸ Terminal too small: some content is hidden";
+const OVERFLOW_NOTICE = TRANSCRIPT.terminalTooSmall;
 
 /**
  * 整帧绘制。

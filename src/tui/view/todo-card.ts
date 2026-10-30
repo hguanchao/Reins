@@ -1,4 +1,5 @@
 import { formatDuration } from "../../shared/format.ts";
+import { countSegments, moreItems, taskLabel } from "../copy.ts";
 import { swept, type AnimationFrame } from "../render/sweep.ts";
 import { displayWidth, fitToWidth, sanitizeForDisplay, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
@@ -87,12 +88,7 @@ function todoCountSegments(card: TranscriptTodo): string {
 		else pending += 1;
 	}
 
-	const parts: string[] = [];
-	if (running > 0) parts.push(`${running} running`);
-	if (done > 0) parts.push(`${done} done`);
-	if (failed > 0) parts.push(`${failed} failed`);
-	if (pending > 0) parts.push(`${pending} pending`);
-	return parts.join(" · ");
+	return countSegments({ running, done, failed, pending });
 }
 
 /**
@@ -143,7 +139,7 @@ function todoItemLine(
 	width: number,
 	frame?: AnimationFrame,
 ): string {
-	const label = `Task${index + 1}`;
+	const label = taskLabel(index + 1);
 	const indent = TODO_ITEM_INDENT;
 	const budget = Math.max(
 		0,
@@ -241,7 +237,7 @@ export function todoPanelLines(
 	const lines = [head, ...visible.map((item, index) => todoItemLine(index, item, width, itemFrame))];
 	const hidden = card.items.length - visible.length;
 	if (hidden > 0) {
-		lines.push(`${TODO_ITEM_INDENT}${TODO_MORE_COLOR}… ${hidden} more${THEME.reset}`);
+		lines.push(`${TODO_ITEM_INDENT}${TODO_MORE_COLOR}${moreItems(hidden)}${THEME.reset}`);
 	}
 	return lines;
 }

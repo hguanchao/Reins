@@ -37,7 +37,7 @@ describe("滚动与输入", () => {
 			assert.ok(main.slice(4).join("\n").includes("line"));
 
 			const status = plain(lines[7] ?? "");
-			assert.ok(status.includes("Writing response..."));
+			assert.ok(status.includes("Writing response…"));
 			assert.ok(status.includes("⇣"));
 			assert.equal(plain(lines[9] ?? ""), " › ");
 		} finally {
@@ -287,7 +287,7 @@ describe("滚动与输入", () => {
 			assert.ok(lines.some((line) => line.startsWith(" › line1")));
 			assert.ok(lines.some((line) => line.startsWith("   line2")));
 			assert.ok(cursorAt(output, 10, 9));
-			assert.equal(lines.join("\n").includes("Waiting for model..."), false);
+			assert.equal(lines.join("\n").includes("Waiting for model…"), false);
 		} finally {
 			exitTui(input);
 		}

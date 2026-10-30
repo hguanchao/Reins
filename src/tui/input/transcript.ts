@@ -3,7 +3,7 @@ import { imageMarker } from "../image.ts";
 import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN, MOUSE_WHEEL_UP, editInput, historyKey, menuKey, moveInputVertical, queuedEditKey, stripFocusEvents, stripMouseEvents } from "./keys.ts";
 import type { MouseInput } from "./keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "../view/scroll-button.ts";
-import { ABORTING } from "../render/status.ts";
+import { STATUS } from "../copy.ts";
 import { menuPanelTop } from "../runtime/approval.ts";
 import { menuVisibleLimit } from "../runtime/geometry.ts";
 import { completeCommandMenu } from "../runtime/panels.ts";
@@ -348,8 +348,8 @@ export function handleTranscriptInput(
 			// 中止默认不续发队列；这是唯一的例外——使用者明确要求立刻发出去
 			state.sendQueuedAfterAbort = true;
 			host.options.approval?.denyAll();
-			state.activeTurn.controller.abort();
-			host.setStatus(ABORTING);
+			state.activeTurn.controller.abort("user");
+			host.setStatus(STATUS.stopping);
 			deps.render();
 			return;
 		}

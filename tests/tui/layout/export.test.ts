@@ -72,7 +72,7 @@ describe("会话导出命令", () => {
 		try {
 			input.emit("data", Buffer.from("/export\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.ok(screen(output).includes("Error: disk full"));
+			assert.ok(screen(output).includes("Error: export failed · disk full"));
 		} finally {
 			exitTui(input);
 		}
@@ -87,7 +87,7 @@ describe("会话导出命令", () => {
 
 		try {
 			input.emit("data", Buffer.from("/export\r"));
-			assert.ok(screen(output).includes("Session export is unavailable"));
+			assert.ok(screen(output).includes("Session export isn't available"));
 		} finally {
 			exitTui(input);
 		}
@@ -116,7 +116,7 @@ describe("会话导出命令", () => {
 			input.emit("data", Buffer.from("hello\r"));
 			t.mock.timers.tick(50);
 			input.emit("data", Buffer.from("/export\r"));
-			assert.ok(screen(output).includes("/export is unavailable while a turn is running"), screen(output));
+			assert.ok(screen(output).includes("/export: wait for the running turn to finish"), screen(output));
 			await agent.finish();
 		} finally {
 			exitTui(input);

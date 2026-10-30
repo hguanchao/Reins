@@ -1,6 +1,7 @@
 import { actionLines, pageTitle } from "./chrome.ts";
 import { characterWidth, displayWidth, graphemes, sanitizeForDisplay } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
+import { ACTIONS, PAGE, PANEL } from "../copy.ts";
 import type { ViewerContent } from "../runtime/types.ts";
 
 /**
@@ -15,13 +16,13 @@ export const VIEWER_ACTION_HEIGHT = 2;
 
 export function viewerPageLines(content: ViewerContent, width: number): readonly string[] {
 	const columns = Math.max(0, width);
-	const lines: string[] = [pageTitle(`Reins — ${content.title}`, columns), " ".repeat(columns)];
+	const lines: string[] = [pageTitle(`${PAGE.viewerTitlePrefix}${content.title}`, columns), " ".repeat(columns)];
 
 	const text = sanitizeForDisplay(
 		content.text.replace(/\r\n?/g, "\n").replace(/\t/g, "    "),
 	);
 	if (text.trim().length === 0) {
-		lines.push(subtleLine("(no content)", columns));
+		lines.push(subtleLine(PANEL.noContent, columns));
 		return lines;
 	}
 
@@ -40,9 +41,9 @@ export function viewerPageLines(content: ViewerContent, width: number): readonly
 
 export function viewerActionLines(width: number): readonly string[] {
 	return actionLines(width, [
-		["Esc", "close", THEME.textSubtle],
-		["↑/↓", "scroll", THEME.accent],
-		["PgUp/PgDn", "page", THEME.accent],
+		["Esc", ACTIONS.close, THEME.textSubtle],
+		["↑/↓", ACTIONS.scroll, THEME.accent],
+		["PgUp/PgDn", ACTIONS.page, THEME.accent],
 	]);
 }
 

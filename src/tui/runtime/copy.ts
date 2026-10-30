@@ -1,6 +1,7 @@
 import type { TuiOutput } from "../options.ts";
 import { STATUS_CLEAR_MS } from "./constants.ts";
 import { clearStatus } from "./status.ts";
+import { STATUS } from "../copy.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
@@ -25,16 +26,16 @@ export async function copyText(host: TuiHost, text: string): Promise<void> {
 	}
 
 	if (!copied) {
-		host.setStatus("Copy failed", "warning");
+		host.setStatus(STATUS.copyFailed, "warning");
 		host.scheduleStatusClear();
 		return;
 	}
 
 	const state = host.state;
 	// OSC 52 只是把序列写进终端，终端是否真的接住无法确认；不能承诺「已复制」
-	const label = viaTerminal ? "Copy sent to terminal" : "Copied!";
+	const label = viaTerminal ? STATUS.copySentToTerminal : STATUS.copied;
 	// 上一次的复制提示还占着状态行左侧：先清掉，本次提示只在 token 位出现一次
-	if (state.statusText === "Copied!" || state.statusText === "Copy sent to terminal") {
+	if (state.statusText === STATUS.copied || state.statusText === STATUS.copySentToTerminal) {
 		clearStatus(state);
 	}
 	// 上一条状态的自动清理计时器会把本次提示连着清掉：提示的生命周期由下面的计时器独占

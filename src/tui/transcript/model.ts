@@ -5,6 +5,7 @@ import {
 	type ToolGroupKind,
 } from "../../tools/describe.ts";
 import { formatDuration } from "../../shared/format.ts";
+import { backgroundJob } from "../copy.ts";
 import { resultDetail } from "../../tools/result/detail.ts";
 import { resultMetric } from "../../tools/result/metric.ts";
 import type { TranscriptLine, TranscriptTool, TranscriptTurn } from "./types.ts";
@@ -125,7 +126,7 @@ export function attachToolResult(
 	const jobId = backgroundJobId(details);
 	const metric =
 		jobId !== undefined
-			? `background ${jobId}`
+			? backgroundJob(jobId)
 			: isCommandTool(name) && durationMs !== undefined
 				? formatDuration(durationMs)
 				: resultMetric(name, details, content);

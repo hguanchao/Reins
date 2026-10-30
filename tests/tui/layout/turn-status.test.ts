@@ -46,13 +46,13 @@ describe("回合状态行", () => {
 			t.mock.timers.tick(100);
 			let text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("› /compact"));
-			assert.ok(text.includes("· compacting context (6 messages, ~5000 tokens)"));
-			assert.ok(text.includes("Compacting context..."));
+			assert.ok(text.includes("Compacting context · 6 messages · ~5000 tokens"));
+			assert.ok(text.includes("Compacting context…"));
 
 			void listener?.({ type: "compaction_end", covered: 6, tokensBefore: 5000, tokensAfter: 1200 });
 			t.mock.timers.tick(100);
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("compacted: ~5000 → ~1200 tokens"));
+			assert.ok(text.includes("Context compacted · ~5000 → ~1200 tokens"));
 			assert.ok(refreshes >= 1);
 
 			finishCompact?.();
@@ -60,9 +60,9 @@ describe("回合状态行", () => {
 			t.mock.timers.tick(2000);
 
 			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("compacted: ~5000 → ~1200 tokens"));
+			assert.ok(text.includes("Context compacted · ~5000 → ~1200 tokens"));
 			assert.equal(text.includes("Done"), false);
-			assert.equal(text.includes("Compacting context..."), false);
+			assert.equal(text.includes("Compacting context…"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -82,14 +82,14 @@ describe("回合状态行", () => {
 			input.emit("data", Buffer.from("hello\r"));
 			agent.emit({ type: "text_delta", text: "hi" });
 			t.mock.timers.tick(100);
-			assert.ok(frameLines(output).map(plain).join("\n").includes("Writing response..."));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Writing response…"));
 
 			await agent.finish();
 
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("hi"));
 			assert.equal(text.includes("Done"), false);
-			assert.equal(text.includes("Writing response..."), false);
+			assert.equal(text.includes("Writing response…"), false);
 		} finally {
 			exitTui(input);
 		}
@@ -197,8 +197,8 @@ describe("回合状态行", () => {
 			input.emit("data", Buffer.from("/compact\r"));
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Configuration required"));
-			assert.equal(text.includes("Waiting for model..."), false);
+			assert.ok(text.includes("Configuration is invalid"));
+			assert.equal(text.includes("Waiting for model…"), false);
 		} finally {
 			exitTui(input);
 		}

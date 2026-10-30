@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 
 import type { ResultDetailKind } from "../../tools/result/detail.ts";
+import { hiddenLines } from "../copy.ts";
 import { highlightCode, type SyntaxSegment } from "../render/syntax.ts";
 import { characterWidth, displayWidth, graphemes, truncateToWidth, wrapText } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
@@ -47,7 +48,7 @@ export function detailBand(tool: TranscriptTool, baseIndent: string, width: numb
 		...(hidden === 0
 			? []
 			: detailBodyLines(
-					`… (${hidden} more lines · Ctrl+G)`,
+					hiddenLines(hidden, "Ctrl+G"),
 					"text",
 					width,
 					bandStart,

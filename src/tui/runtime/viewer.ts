@@ -1,5 +1,6 @@
 import type { TranscriptTool, TranscriptTurn } from "../transcript.ts";
 import { showPage } from "./pages.ts";
+import { STATUS, VIEWER_TITLE, toolDetailsTitle, toolOutputTitle } from "../copy.ts";
 import type { TuiHost, ViewerContent } from "./types.ts";
 
 /**
@@ -13,7 +14,7 @@ export function openLatestViewer(host: TuiHost): void {
 		(host.state.viewerTool === undefined ? undefined : anchoredBlock(host.state.viewerTool)) ??
 		latestViewerBlock(host.state.turns);
 	if (block === undefined) {
-		host.setStatus("Nothing to view yet", "notice");
+		host.setStatus(STATUS.nothingToView, "notice");
 		host.scheduleStatusClear();
 		host.render();
 		return;
@@ -55,10 +56,10 @@ function latestViewerBlock(turns: readonly TranscriptTurn[]): ViewerContent | un
 					line.body.length === 0
 						? line.partial
 						: `${line.body.join("\n")}${line.partial.length === 0 ? "" : `\n${line.partial}`}`;
-				if (text.trim().length > 0) return { title: "Thinking", text };
+				if (text.trim().length > 0) return { title: VIEWER_TITLE.thinking, text };
 			}
 		}
-		if (turn.prompt.trim().length > 0) return { title: "Prompt", text: turn.prompt };
+		if (turn.prompt.trim().length > 0) return { title: VIEWER_TITLE.prompt, text: turn.prompt };
 	}
 	return undefined;
 }
@@ -67,10 +68,10 @@ function toolBlock(tool: TranscriptTool | undefined): ViewerContent | undefined 
 	if (tool === undefined) return undefined;
 	// 结果才是工具实际产出的长内容；fullDetail 只用于没有结果的调用（命令全文/参数）
 	if (tool.result !== undefined && tool.result.length > 0) {
-		return { title: `${tool.name} output`, text: tool.result };
+		return { title: toolOutputTitle(tool.name), text: tool.result };
 	}
 	if (tool.fullDetail !== undefined && tool.fullDetail.length > 0) {
-		return { title: `${tool.name} details`, text: tool.fullDetail };
+		return { title: toolDetailsTitle(tool.name), text: tool.fullDetail };
 	}
 	return undefined;
 }

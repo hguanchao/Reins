@@ -1,6 +1,14 @@
 import type { LlmStopReason } from "../llm/messages.ts";
 
 /**
+ * 这一轮是被谁停下的。
+ *
+ * 中止原因要随事件一路带到界面：只有「使用者按下中断」和「会话关闭」两种会被主动标记，
+ * 拿不到标记时按未知处理——把未知说成「你停的」是在替使用者编造事实。
+ */
+export type AbortCause = "user" | "session";
+
+/**
  * 一轮对话对外发出的事件。
  *
  * 判别联合而不是回调集合：界面、日志、导出都消费同一串事件，用同一个类型描述它们，新增
@@ -78,7 +86,7 @@ export type AgentEvent =
 	/** 模型返回出错或连接中断。整个回合到此为止。 */
 	| { readonly type: "error"; readonly message: string }
 	/** 用户中止 */
-	| { readonly type: "aborted" }
+	| { readonly type: "aborted"; readonly cause?: AbortCause }
 	/** 本次运行彻底结束，此后不会再有事件 */
 	| { readonly type: "run_end" };
 

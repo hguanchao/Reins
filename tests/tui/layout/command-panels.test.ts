@@ -511,7 +511,7 @@ describe("命令补全与选择面板", () => {
 				false,
 				"点击后补全面板收起",
 			);
-			assert.equal(afterClick.join("\n").includes("Reins — help"), false, "点击不执行命令");
+			assert.equal(afterClick.join("\n").includes("Reins · help"), false, "点击不执行命令");
 
 			// 回车才执行
 			input.emit("data", Buffer.from("\r"));
@@ -519,7 +519,7 @@ describe("命令补全与选择面板", () => {
 				frameLines(output)
 					.map(plain)
 					.join("\n")
-					.includes("Reins — help"),
+					.includes("Reins · help"),
 				"回车执行命令",
 			);
 		} finally {
@@ -755,7 +755,7 @@ describe("命令补全与选择面板", () => {
 		try {
 			input.emit("data", Buffer.from("/zzz"));
 			let text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("No matching commands"));
+			assert.ok(text.includes("No matching commands."));
 
 			input.emit("data", Buffer.from("\r"));
 			text = frameLines(output).map(plain).join("\n");
@@ -865,7 +865,7 @@ describe("命令补全与选择面板", () => {
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
 
 		try {
-			input.emit("data", Buffer.from("/configuration"));
+			input.emit("data", Buffer.from("/provider"));
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("/model"));
 			assert.ok(text.includes("/effort"));
@@ -1005,7 +1005,7 @@ describe("命令补全与选择面板", () => {
 
 			assert.equal(calls, 0);
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Unknown model: nope"));
+			assert.ok(text.includes("unknown model: nope"));
 		} finally {
 			exitTui(input);
 		}
@@ -1037,7 +1037,7 @@ describe("命令补全与选择面板", () => {
 
 			assert.equal(selected, undefined);
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Unknown effort: bogus"));
+			assert.ok(text.includes("unknown effort: bogus"));
 		} finally {
 			exitTui(input);
 		}
@@ -1096,7 +1096,7 @@ describe("命令补全与选择面板", () => {
 
 			// 回车才执行
 			input.emit("data", Buffer.from("\r"));
-			assert.ok(frameLines(output).map(plain).join("\n").includes("Reins — help"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Reins · help"));
 		} finally {
 			exitTui(input);
 		}
@@ -1117,7 +1117,7 @@ describe("命令补全与选择面板", () => {
 
 			const text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes(" › /model "));
-			assert.ok(text.includes("Configuration required"));
+			assert.ok(text.includes("Configuration is invalid"));
 		} finally {
 			exitTui(input);
 		}
@@ -1473,7 +1473,7 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("f"));
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Failed to fork session"));
+			assert.ok(text.includes("session fork failed"));
 			assert.ok(text.includes("no entries to fork from"));
 		} finally {
 			exitTui(input);
@@ -1503,7 +1503,7 @@ describe("命令补全与选择面板", () => {
 			input.emit("data", Buffer.from("/session fedcba9876543210\r"));
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Failed to switch session"));
+			assert.ok(text.includes("session switch failed"));
 			assert.ok(text.includes("Session file is broken"));
 		} finally {
 			exitTui(input);
@@ -1649,7 +1649,7 @@ describe("命令补全与选择面板", () => {
 			assert.ok(text.includes("/model"));
 			assert.ok(text.includes("/effort"));
 			assert.ok(text.includes("/compact"));
-			assert.ok(text.includes("Requires a valid configuration"));
+			assert.ok(text.includes("Needs a provider in config.toml"));
 			assert.ok(lines.some((line) => line.includes("› /")));
 			assert.ok(lines.some((line) => line.endsWith(" 1/9 ────")));
 			assert.ok(CURSOR_SUFFIX.test(rawFrame(output)));
@@ -1744,8 +1744,8 @@ describe("命令补全与选择面板", () => {
 
 			input.emit("data", Buffer.from("hello\r"));
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Waiting for model..."));
-			assert.equal(text.includes("Configuration required"), false);
+			assert.ok(text.includes("Waiting for model…"));
+			assert.equal(text.includes("Configuration is invalid"), false);
 		} finally {
 			exitTui(input);
 		}

@@ -1,5 +1,6 @@
 import { THINKING_LEVELS, type ThinkingLevel } from "../../config/file.ts";
 import { displayWidth } from "../render/text.ts";
+import { EFFORT_DESCRIPTIONS as EFFORT_DESCRIPTIONS_COPY } from "../copy.ts";
 import {
 	type MenuListState,
 	MENU_MAX_VISIBLE,
@@ -36,14 +37,7 @@ const GAP = 4;
 const CURRENT_WIDTH = 7;
 
 /** 用使用场景说明每个等级，光看 low/high 这些缩写很难判断该选哪个。 */
-const EFFORT_DESCRIPTIONS: Readonly<Record<ThinkingLevel, string>> = {
-	off: "No reasoning; fastest responses",
-	low: "Quick tasks where you review each result",
-	medium: "Everyday work with a clear scope",
-	high: "Work where correctness and edge cases matter",
-	xhigh: "Deeper reasoning with higher token cost",
-	max: "Hard problems that need sustained reasoning",
-};
+const EFFORT_DESCRIPTIONS = EFFORT_DESCRIPTIONS_COPY;
 
 export function effortMenuHeight(maxVisible = MENU_MAX_VISIBLE): number {
 	return menuListHeight(THINKING_LEVELS.length, undefined, maxVisible);

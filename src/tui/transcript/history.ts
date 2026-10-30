@@ -9,6 +9,7 @@ import { firstLine } from "../../shared/format.ts";
 import { SUMMARY_PREFIX } from "../../session/fold.ts";
 import { displayToolName, sanitizeDetail } from "../../tools/describe.ts";
 import { imageMarker } from "../image.ts";
+import { TRANSCRIPT } from "../copy.ts";
 import { todoCardFinished, todoCardFromArgs, type TranscriptTodo } from "../view/todo-card.ts";
 import {
 	appendToolLine,
@@ -80,7 +81,7 @@ export function buildTranscriptHistory(
 			case "assistant": {
 				let turn: MutableTurn | undefined;
 				const currentTurn = (): MutableTurn =>
-					(turn ??= ensureTurn("(earlier conversation)"));
+					(turn ??= ensureTurn(TRANSCRIPT.earlierConversation));
 				const text = assistantText(message);
 				if (text.length > 0) currentTurn().response.push({ kind: "markdown", text });
 				for (const call of assistantToolCalls(message)) {
@@ -128,7 +129,7 @@ export function buildTranscriptHistory(
 					}
 					break;
 				}
-				const turn = ensureTurn("(earlier conversation)");
+				const turn = ensureTurn(TRANSCRIPT.earlierConversation);
 				const tool = takeToolForFailure(turn.response, message.toolCallId);
 				if (tool !== undefined) {
 					// 与实时一致：失败结果改调用行本身，错误详情留给双击展开

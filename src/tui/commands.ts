@@ -1,5 +1,6 @@
 import type { CommandMenuItem } from "./panel/command-menu.ts";
 import type { TuiOptions } from "./options.ts";
+import { commandDescription } from "./copy.ts";
 
 /**
  * 一轮进行中也能执行的命令。
@@ -16,97 +17,31 @@ export const TURN_SAFE_COMMANDS: ReadonlySet<string> = new Set([
 	"mcps",
 ]);
 
-/** 命令补全列表：配置不可用时仍然显示，但标成不可执行；隐藏项只在完整输入时执行。 */
+/**
+ * 命令补全列表：配置不可用时仍然显示，但标成不可执行；隐藏项只在完整输入时执行。
+ *
+ * 说明文字统一由文案模块给出：能用的说清做什么，不能用的说清缺什么。
+ */
 export function createBuiltinCommands(options: TuiOptions): readonly CommandMenuItem[] {
-	return [
-		{
-			name: "model",
-			description:
-				options.modelMenu === undefined
-					? "Requires a valid configuration"
-					: "Choose the model for this session",
-			enabled: options.modelMenu !== undefined,
-		},
-		{
-			name: "effort",
-			description:
-				options.effortMenu === undefined
-					? "Requires a valid configuration"
-					: "Choose the reasoning effort for this session",
-			enabled: options.effortMenu !== undefined,
-		},
-		{
-			name: "compact",
-			description:
-				options.agent?.compact === undefined
-					? "Requires a valid configuration"
-					: "Compress the conversation context into a summary now",
-			enabled: options.agent?.compact !== undefined,
-		},
-		{
-			name: "plan",
-			description:
-				options.planMode === undefined
-					? "Plan mode is unavailable in this session"
-					: "Plan read-only, then approve before implementing",
-			enabled: options.planMode !== undefined,
-		},
-		{
-			name: "session",
-			description:
-				options.sessionMenu === undefined
-					? "Session storage is unavailable"
-					: "Switch to another session in this project",
-			enabled: options.sessionMenu !== undefined,
-		},
-		{
-			name: "export",
-			description:
-				options.exportSession === undefined
-					? "Session export is unavailable"
-					: "Export this conversation to a Markdown or JSONL file",
-			enabled: options.exportSession !== undefined,
-			hidden: options.exportSession === undefined,
-		},
-		{
-			name: "review",
-			description:
-				options.review === undefined
-					? "Code review is unavailable"
-					: "Review the current changes in a read-only subagent",
-			enabled: options.review !== undefined,
-			hidden: options.review === undefined,
-		},
-		{
-			name: "help",
-			description: "Show the commands and keys",
-			enabled: true,
-		},
-		{
-			name: "undo",
-			description:
-				options.checkpoints?.available() === true
-					? "Restore files to before the latest turn"
-					: "Checkpoints are unavailable in this workspace",
-			enabled: options.checkpoints?.available() === true,
-		},
-		{
-			name: "skills",
-			description:
-				options.skills === undefined
-					? "Unavailable in this session"
-					: "List the skills found on disk",
-			enabled: options.skills !== undefined,
-		},
-		{
-			name: "mcps",
-			description:
-				options.mcpServers === undefined
-					? "No MCP connection in this session"
-					: "List MCP server connections and their tools",
-			enabled: options.mcpServers !== undefined,
-		},
+	const entries: readonly { readonly name: string; readonly enabled: boolean; readonly hidden?: boolean }[] = [
+		{ name: "model", enabled: options.modelMenu !== undefined },
+		{ name: "effort", enabled: options.effortMenu !== undefined },
+		{ name: "compact", enabled: options.agent?.compact !== undefined },
+		{ name: "plan", enabled: options.planMode !== undefined },
+		{ name: "session", enabled: options.sessionMenu !== undefined },
+		{ name: "export", enabled: options.exportSession !== undefined, hidden: options.exportSession === undefined },
+		{ name: "review", enabled: options.review !== undefined, hidden: options.review === undefined },
+		{ name: "help", enabled: true },
+		{ name: "undo", enabled: options.checkpoints?.available() === true },
+		{ name: "skills", enabled: options.skills !== undefined },
+		{ name: "mcps", enabled: options.mcpServers !== undefined },
 	];
+	return entries.map((entry) => ({
+		name: entry.name,
+		description: commandDescription(entry.name, entry.enabled),
+		enabled: entry.enabled,
+		...(entry.hidden === true ? { hidden: true } : {}),
+	}));
 }
 
 /** 内置命令 + 当前插件命令；同名时内置优先，插件不能顶掉 /model 这类入口。 */

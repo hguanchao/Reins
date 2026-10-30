@@ -103,11 +103,11 @@ describe("会话选择面板", () => {
 
 	it("没有标题的会话仍然排在时间列之前", () => {
 		const items: readonly SessionMenuItem[] = [
-			{ id: "8dfc462420d1a8d6", title: "(no conversation yet)", time: "1 day ago", current: false },
+			{ id: "8dfc462420d1a8d6", title: "Untitled session", time: "1 day ago", current: false },
 		];
 		const row = plain(renderSessionMenu(100, { items, cursor: 0, scrollTop: 0 })[1] ?? "");
 
-		assert.ok(row.indexOf("(no conversation yet)") < row.indexOf("1 day ago"));
+		assert.ok(row.indexOf("Untitled session") < row.indexOf("1 day ago"));
 	});
 
 	it("窄终端隐藏 current 列，标识与标题仍然可见", () => {

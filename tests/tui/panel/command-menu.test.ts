@@ -50,7 +50,7 @@ describe("命令补全面板", () => {
 		const rows = renderCommandMenu(72, { items: [], cursor: 0, scrollTop: 0 }).map(plain);
 		assert.equal(rows.length, 3);
 		assert.ok(rows[0]?.endsWith(" 0 ────"));
-		assert.ok(rows[1]?.includes("No matching commands"));
+		assert.ok(rows[1]?.includes("No matching commands."));
 	});
 
 	it("选中行只高亮字体，禁用命令使用弱化颜色", () => {

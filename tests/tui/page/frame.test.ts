@@ -30,7 +30,7 @@ describe("整屏页", () => {
 		const rows = helpPageLines(80, COMMANDS).map(plain);
 		const text = rows.join("\n");
 
-		assert.equal(rows[0], "Reins — help");
+		assert.equal(rows[0], "Reins · help");
 		assert.ok(text.includes("Commands"));
 		assert.ok(text.includes("Keys"));
 		assert.ok(text.includes("/model"));
@@ -116,7 +116,7 @@ describe("整屏页", () => {
 			.map(plain)
 			.join("\n");
 
-		assert.ok(text.includes("Reins — skills"));
+		assert.ok(text.includes("Reins · skills"));
 		assert.ok(text.includes("User skills"));
 		assert.ok(text.includes("Project skills"));
 		assert.ok(text.includes("writer"));
@@ -199,7 +199,7 @@ describe("整屏页", () => {
 		const listed = mcpsPageLines(80, [{ name: "context7", description: "connected  2 tools: a, b" }])
 			.map(plain)
 			.join("\n");
-		assert.ok(listed.includes("Reins — MCP servers"));
+		assert.ok(listed.includes("Reins · MCP servers"));
 		assert.ok(listed.includes("context7"));
 		assert.ok(listed.includes("2 tools"));
 
@@ -255,7 +255,7 @@ describe("整屏页", () => {
 		const visible = renderPage(lines, 5, 0);
 
 		assert.equal(visible.length, 5);
-		assert.equal(plain(visible[0] ?? ""), "Reins — help");
+		assert.equal(plain(visible[0] ?? ""), "Reins · help");
 	});
 
 	it("滚动超出范围时收敛到两端，内容不足时停在顶部", () => {
@@ -264,7 +264,7 @@ describe("整屏页", () => {
 		const top = renderPage(lines, 9999, 5);
 
 		assert.equal(plain(bottom.at(-1) ?? ""), plain(lines.at(-1) ?? ""));
-		assert.equal(plain(top[0] ?? ""), "Reins — help");
+		assert.equal(plain(top[0] ?? ""), "Reins · help");
 		assert.equal(top.length, 9999);
 		assert.equal(renderPage(lines, 5, -3)[0], lines[0]);
 	});

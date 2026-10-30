@@ -1,4 +1,5 @@
 import { displayWidth } from "../render/text.ts";
+import { PANEL } from "../copy.ts";
 import {
 	type MenuListState,
 	ACCENT_COLOR,
@@ -105,7 +106,7 @@ function row(
 	const key = padEnd(`${item.provider}/${item.model}`, columns.keyWidth);
 	const name = columns.nameWidth > 0 ? padEnd(displayName(item), columns.nameWidth) : "";
 	const current =
-		columns.currentWidth > 0 ? padStart(item.current ? "current" : "", columns.currentWidth) : "";
+		columns.currentWidth > 0 ? padStart(item.current ? PANEL.current : "", columns.currentWidth) : "";
 	const nameSegment = columns.nameWidth > 0 ? `${" ".repeat(GAP)}${name}` : "";
 	const currentSegment = columns.currentWidth > 0 ? `${" ".repeat(GAP)}${current}` : "";
 	const head = `${prefix}${key}${nameSegment}${currentSegment}`;

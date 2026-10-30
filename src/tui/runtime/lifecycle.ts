@@ -51,7 +51,7 @@ export function cleanup(
 		// 审批与审查都可能还在等：无论哪条路径退出，都要把它们交回/中止。
 		// 审查不是回合，只 abort activeTurn 会让子代理继续请求并写已关闭的会话。
 		options.approval?.denyAll();
-		if (state.activeTurn !== undefined) state.activeTurn.controller.abort();
+		if (state.activeTurn !== undefined) state.activeTurn.controller.abort("session");
 		state.reviewAbort?.abort();
 		state.reviewAbort = undefined;
 		if (state.exitTimer !== undefined) {

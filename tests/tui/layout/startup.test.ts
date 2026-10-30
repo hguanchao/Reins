@@ -22,7 +22,7 @@ describe("终端启动与收尾", () => {
 			assert.equal(input.rawMode, true);
 			// 第一次按下要给出明确反馈，否则使用者会以为按键没生效
 			assert.ok(output.chunks.length > written);
-			assert.ok(frameLines(output).map(plain).join("\n").includes("Press Ctrl+C again to exit"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Ctrl+C: press again to exit"));
 			assert.equal(
 				output.chunks.some((chunk) => chunk.includes(LEAVE)),
 				false,
@@ -172,11 +172,11 @@ describe("终端启动与收尾", () => {
 			input.emit("data", Buffer.from("\r"));
 
 			text = plain(frameLines(output).join("\n"));
-			assert.ok(text.includes("Configuration required"));
-			assert.equal(text.includes("Waiting for model..."), false);
+			assert.ok(text.includes("Configuration is invalid"));
+			assert.equal(text.includes("Waiting for model…"), false);
 
 			// 阻断是静止提示：不转圈、不占用活动强调色
-			const status = frameLines(output).find((line) => plain(line).includes("Configuration required")) ?? "";
+			const status = frameLines(output).find((line) => plain(line).includes("Configuration is invalid")) ?? "";
 			assert.equal(status.includes("⠋"), false);
 			assert.equal(status.includes(THEME.accent), false);
 			assert.ok(status.includes(THEME.textSecondary));

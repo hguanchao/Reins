@@ -1,4 +1,5 @@
 import { displayWidth, fitToWidth } from "../render/text.ts";
+import { PANEL, forkOf } from "../copy.ts";
 import {
 	type MenuListState,
 	ACCENT_COLOR,
@@ -107,7 +108,7 @@ function layoutColumns(width: number, items: readonly SessionMenuItem[]): Column
 
 /** 列表里显示的标题：分叉会话把来源带在标题里，不用再占一行。 */
 function titleOf(item: SessionMenuItem): string {
-	return item.forkedFrom === undefined ? item.title : `↳ Fork of ${item.forkedFrom}`;
+	return item.forkedFrom === undefined ? item.title : forkOf(item.forkedFrom);
 }
 
 function row(
@@ -126,7 +127,7 @@ function row(
 	const idText = padEnd(item.id, columns.idWidth);
 	const titleText = columns.titleWidth > 0 ? padEnd(fitToWidth(titleOf(item), columns.titleWidth), columns.titleWidth) : "";
 	const timeText = columns.timeWidth > 0 ? padEnd(fitToWidth(item.time, columns.timeWidth), columns.timeWidth) : "";
-	const currentText = item.current && columns.showCurrent ? "current" : "";
+	const currentText = item.current && columns.showCurrent ? PANEL.current : "";
 
 	// 先按纯文本拼一遍算宽度：颜色转义序列也算字符，直接量带色的字符串会少补白，
 	// 行底色就只铺到文字末尾

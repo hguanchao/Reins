@@ -20,7 +20,7 @@ describe("计划审批页", () => {
 		const lines = planReviewLines(PLAN, 60);
 		const text = lines.map(plain).join("\n");
 
-		assert.ok(text.includes("Reins — plan"));
+		assert.ok(text.includes("Reins · plan"));
 		assert.ok(text.includes("Add Plan mode"));
 		assert.ok(text.includes("A read-only planning flow."));
 		assert.ok(text.includes("Add the gate."));

@@ -27,8 +27,8 @@ describe("收尾任务卡", () => {
 		const text = view.lines.map(plain).join("\n");
 
 		assert.ok(text.includes("› Tasks  1 done · 1 failed"));
-		assert.ok(text.includes("● Task1  写工具"));
-		assert.ok(text.includes("× Task2  修路径"));
+		assert.ok(text.includes("● Task 1  写工具"));
+		assert.ok(text.includes("× Task 2  修路径"));
 		assert.equal(view.todoHeaders.length, 1);
 
 		const row = (view.todoHeaders[0]?.start ?? 0) + 1;
@@ -43,10 +43,10 @@ describe("收尾任务卡", () => {
 		const text = renderTranscript(80, 12, turns, 0).map(plain).join("\n");
 
 		assert.ok(text.includes("› Tasks  1 done · 1 failed"));
-		assert.equal(text.includes("Task1"), false);
+		assert.equal(text.includes("Task 1"), false);
 
 		assert.equal(toggleLastExpandable(turns), true);
 		assert.equal(collapsed.collapsed, false);
-		assert.ok(renderTranscript(80, 12, turns, 0).map(plain).join("\n").includes("● Task1  写工具"));
+		assert.ok(renderTranscript(80, 12, turns, 0).map(plain).join("\n").includes("● Task 1  写工具"));
 	});
 });

@@ -1,5 +1,6 @@
 import { describeError } from "../../shared/describe-error.ts";
 import type { TrustAnswer } from "../page/trust.ts";
+import { FAILURE_ACTIONS, STATUS, failure } from "../copy.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
@@ -14,7 +15,7 @@ import type { TuiHost } from "./types.ts";
  */
 
 /** 只跳过技能目录时的说明：让使用者知道少了什么，而不是以为项目配置生效了。 */
-const SKILLS_SKIPPED = "Workspace skills skipped for this run";
+const SKILLS_SKIPPED = STATUS.skillsSkipped;
 
 export function resolveTrust(host: TuiHost, answer: TrustAnswer): void {
 	const state = host.state;
@@ -61,7 +62,7 @@ export function resolveTrust(host: TuiHost, answer: TrustAnswer): void {
 		(error: unknown) => {
 			if (state.finished) return;
 			state.trustPrompt = undefined;
-			host.setStatus(`Could not record trust: ${describeError(error)}`, "error");
+			host.setStatus(failure(FAILURE_ACTIONS.trust, describeError(error)), "error");
 			host.scheduleStatusClear();
 			host.render();
 		},

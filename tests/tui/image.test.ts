@@ -37,7 +37,7 @@ describe("图片附件", () => {
 		const full = Array.from({ length: MAX_IMAGE_COUNT }, (_, index) =>
 			image({ name: `a${index}.png`, bytes: 1024 }),
 		);
-		assert.match(imageLimitError(full, image()) ?? "", /At most 4 images/);
+		assert.match(imageLimitError(full, image()) ?? "", /Up to 4 images per message/);
 		assert.match(imageLimitError([], image({ bytes: MAX_IMAGE_BYTES + 1 })) ?? "", /limit is 8 MB/);
 		assert.match(
 			imageLimitError(

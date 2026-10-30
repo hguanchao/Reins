@@ -265,8 +265,8 @@ describe("工具调用行", () => {
 			.map(plain)
 			.find((candidate) => candidate.includes("Bash"));
 
-		assert.equal(tool.metric, "background j1");
-		assert.ok(line?.includes("(background j1)"));
+		assert.equal(tool.metric, "background job j1");
+		assert.ok(line?.includes("(background job j1)"));
 	});
 
 	it("结果指标显示在折叠行末尾，没有参数时跟在名称后面", () => {

@@ -1,4 +1,4 @@
-import { ABORTING } from "../render/status.ts";
+import { STATUS, pendingConfirm } from "../copy.ts";
 import { cleanup } from "./lifecycle.ts";
 import { closePlanReview } from "./pages.ts";
 import { armExit, disarm } from "./lifecycle.ts";
@@ -19,8 +19,8 @@ export function onCtrlC(
 		}
 		armExit(state, () => disarm(state), EXIT_CONFIRM_WINDOW_MS);
 		host.options.approval?.denyAll();
-		state.activeTurn.controller.abort();
-		host.setStatus(ABORTING);
+		state.activeTurn.controller.abort("user");
+		host.setStatus(STATUS.stopping);
 		deps.render();
 		return;
 	}
@@ -32,7 +32,7 @@ export function onCtrlC(
 		}
 		armExit(state, () => disarm(state), EXIT_CONFIRM_WINDOW_MS);
 		state.reviewAbort?.abort();
-		host.setStatus("Cancelling review...", "notice");
+		host.setStatus(STATUS.cancellingReview, "notice");
 		deps.render();
 		return;
 	}
@@ -65,7 +65,7 @@ export function onCtrlC(
 		},
 		EXIT_CONFIRM_WINDOW_MS,
 	);
-	host.setStatus("Press Ctrl+C again to exit", "notice");
+	host.setStatus(pendingConfirm("exit"), "notice");
 	deps.render();
 }
 

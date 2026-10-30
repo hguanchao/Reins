@@ -3,6 +3,7 @@ import { padEnd } from "../panel/menu-panel.ts";
 import { displayWidth, fitToWidth, wrapWords } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { actionLines } from "./chrome.ts";
+import { ACTIONS, KEY_HINTS, PAGE, scanningDirectory } from "../copy.ts";
 
 /**
  * 整屏页。
@@ -38,39 +39,19 @@ interface PageSection {
 	readonly layout?: "card";
 }
 
-/** 命令之外的固定内容。 */
-const KEY_ENTRIES: readonly PageEntry[] = [
-	{ name: "Enter", description: "Send the prompt; queue it while a turn is running" },
-	{ name: "Shift+Enter", description: "Insert a newline without sending" },
-	{ name: "Tab", description: "Complete the selected item into the prompt" },
-	{ name: "Shift+Tab", description: "Cycle the approval mode: ask, auto, yolo" },
-	{ name: "Esc", description: "Close a menu or this page; deny an approval; interrupt and send the first queued message" },
-	{ name: "Ctrl+C twice", description: "Exit the interface" },
-	{ name: "Up / Down", description: "Prompt history, menu navigation, or page scrolling" },
-	{ name: "Left / Right", description: "Move the prompt cursor or approval selection" },
-	{ name: "Home / End", description: "Move to the start or end of the input line" },
-	{ name: "Alt+Up", description: "Take the last queued message back into the prompt" },
-	{ name: "Alt+Down", description: "Discard the last queued message" },
-	{ name: "PgUp / PgDn", description: "Scroll the conversation or this page" },
-	{ name: "Ctrl+Home/End", description: "Jump to the oldest or latest output" },
-	{ name: "Ctrl+E", description: "Expand or collapse the latest thinking or tool group" },
-	{ name: "Ctrl+O", description: "Show or hide the latest successful tool result" },
-	{ name: "Ctrl+G", description: "View the selected tool full-screen, or the latest long block" },
-	{ name: "Ctrl/Alt+V", description: "Insert an image from the clipboard as [image: name]" },
-	{ name: "Wheel / drag", description: "Scroll the conversation; drag the scrollbar or select text to copy" },
-	{ name: "Double-click", description: "Expand or collapse thinking, tool groups, and tool details" },
-	{ name: "y / a / n", description: "Allow once, always allow, or deny an approval" },
-	{ name: "d", description: "Expand or hide approval details; arrow keys scroll them" },
-	{ name: "@", description: "Complete a workspace file path; an image becomes an inline marker" },
-];
+/** 命令之外的固定内容：键位与说明都来自文案模块，帮助页不再手写一份。 */
+const KEY_ENTRIES: readonly PageEntry[] = KEY_HINTS.map((hint) => ({
+	name: hint.keys,
+	description: hint.description,
+}));
 
-const HELP_TITLE = "Reins — help";
-const SKILLS_TITLE = "Reins — skills";
-const MCPS_TITLE = "Reins — MCP servers";
-const COMMANDS_TITLE = "Commands";
-const KEYS_TITLE = "Keys";
-const SERVERS_SECTION = "Servers";
-const HELP_FOOTNOTE = "Run reins --help outside the interface for command-line options.";
+const HELP_TITLE = PAGE.helpTitle;
+const SKILLS_TITLE = PAGE.skillsTitle;
+const MCPS_TITLE = PAGE.mcpsTitle;
+const COMMANDS_TITLE = PAGE.commandsSection;
+const KEYS_TITLE = PAGE.keysSection;
+const SERVERS_SECTION = PAGE.serversSection;
+const HELP_FOOTNOTE = PAGE.helpFootnote;
 
 /** 名称列最宽到这里为止，再长就截断，免得说明被挤得读不了。 */
 const NAME_COLUMN_MAX = 14;
@@ -127,16 +108,16 @@ export function skillsPageLines(
 	const project = skills.filter((skill) => skill.scope === "project");
 	const sections: PageSection[] =
 		skills.length === 0
-			? [{ title: "Skills", entries: [], empty: "No skills yet." }]
+			? [{ title: PAGE.skillsSection, entries: [], empty: PAGE.noSkills }]
 			: [
-					...(user.length === 0 ? [] : [{ title: "User skills", entries: user, layout: "card" as const }]),
+					...(user.length === 0 ? [] : [{ title: PAGE.userSkillsSection, entries: user, layout: "card" as const }]),
 					...(project.length === 0
 						? []
-						: [{ title: "Project skills", entries: project, layout: "card" as const }]),
+						: [{ title: PAGE.projectSkillsSection, entries: project, layout: "card" as const }]),
 				];
 	const footnotes = [
-		...directories.map((directory) => `Looking in ${directory}`),
-		"Changes take effect on the next turn.",
+		...directories.map((directory) => scanningDirectory(directory)),
+		PAGE.skillsEffectNote,
 	];
 	return sectionPageLines(SKILLS_TITLE, sections, footnotes, width);
 }
@@ -156,10 +137,10 @@ export function mcpsPageLines(
 			{
 				title: SERVERS_SECTION,
 				entries,
-				empty: "No MCP servers configured.",
+				empty: PAGE.noMcpServers,
 			},
 		],
-		["Add [mcp_servers.<name>] to config.toml to connect one."],
+		[PAGE.mcpConfigNote],
 		width,
 	);
 	// 整屏页没有状态行：重连/健康检查的反馈直接画在标题下面，否则按 r/h 看起来毫无反应
@@ -178,10 +159,10 @@ export const MCP_ACTION_HEIGHT = 2;
 
 export function mcpsActionLines(width: number): readonly string[] {
 	return actionLines(width, [
-		["↑↓", "select", THEME.textSubtle],
-		["r", "reconnect", THEME.textSubtle],
-		["h", "health check", THEME.textSubtle],
-		["Esc", "close", THEME.textSubtle],
+		["↑↓", ACTIONS.select, THEME.textSubtle],
+		["r", ACTIONS.reconnect, THEME.textSubtle],
+		["h", ACTIONS.healthCheck, THEME.textSubtle],
+		["Esc", ACTIONS.close, THEME.textSubtle],
 	]);
 }
 

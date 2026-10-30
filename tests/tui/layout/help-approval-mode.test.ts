@@ -14,7 +14,7 @@ describe("帮助页与审批模式", () => {
 		try {
 			input.emit("data", Buffer.from("/help\r"));
 			const top = frameLines(output).map(plain);
-			assert.equal(top[0], "Reins — help");
+			assert.equal(top[0], "Reins · help");
 
 			// 一次下移一行
 			input.emit("data", Buffer.from("\x1b[B"));
@@ -33,7 +33,7 @@ describe("帮助页与审批模式", () => {
 
 			// 一直滚回顶部后不再上移
 			for (let index = 0; index < 200; index += 1) input.emit("data", Buffer.from("\x1b[A"));
-			assert.equal(frameLines(output).map(plain)[0], "Reins — help");
+			assert.equal(frameLines(output).map(plain)[0], "Reins · help");
 		} finally {
 			exitTui(input);
 		}
@@ -160,7 +160,7 @@ describe("帮助页与审批模式", () => {
 
 		try {
 			input.emit("data", Buffer.from("\x1b[Z"));
-			assert.ok(plain(frameLines(output)[7] ?? "").includes("Failed to switch approval"));
+			assert.ok(plain(frameLines(output)[7] ?? "").includes("approval switch failed"));
 			// 徽标仍停在原档位
 			assert.ok(plain(frameLines(output)[11] ?? "").endsWith("ASK"));
 		} finally {

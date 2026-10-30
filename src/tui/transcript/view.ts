@@ -1,6 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 
 import { sanitizeLine } from "../../tools/describe.ts";
+import { TRANSCRIPT } from "../copy.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { highlightImageMarkers } from "../image.ts";
 import { renderMarkdown } from "../render/markdown.ts";
@@ -469,7 +470,7 @@ function build(
 			const marker = line.kind === "warning" ? "!" : line.kind === "info" ? "·" : ERROR_MARKER;
 			const color =
 				line.kind === "warning" ? NOTICE_COLOR : line.kind === "info" ? THINKING_COLOR : ERROR_COLOR;
-			const text = line.kind === "warning" ? `Warning: ${line.text}` : line.text;
+			const text = line.kind === "warning" ? `${TRANSCRIPT.warningPrefix}${line.text}` : line.text;
 			lines.push(...wrappedLines(text, `${RESPONSE_INDENT}${marker} `, width, color));
 		}
 		prompts.push({ start, height: promptLines.length, responseStart });

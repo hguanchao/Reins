@@ -221,7 +221,7 @@ describe("页脚输入框", () => {
 
 		const status = renderFooter(80, "", true, {
 			symbol: "⠋",
-			text: "Thinking...",
+			text: "Thinking…",
 			tokens: 999,
 		});
 		assert.ok(plain(status[1] ?? "").includes("⇣0.9K"));
@@ -230,7 +230,7 @@ describe("页脚输入框", () => {
 	it("运行时 token 数超过一百万时晋升到 M", () => {
 		const lines = renderFooter(80, "", true, {
 			symbol: "⠋",
-			text: "Thinking...",
+			text: "Thinking…",
 			tokens: 1_500_000,
 		});
 
@@ -289,11 +289,11 @@ describe("页脚输入框", () => {
 	it("状态行显示计时与 token 数，右侧对齐", () => {
 		const lines = renderFooter(60, "", true, {
 			symbol: "⠋",
-			text: "Thinking...",
+			text: "Thinking…",
 			elapsedMs: 1200,
 			tokens: 128,
 		});
-		const left = " ⠋ Thinking...";
+		const left = " ⠋ Thinking…";
 		const right = "1.2s  ⇣0.1K";
 		const raw = lines[1] ?? "";
 
@@ -305,12 +305,12 @@ describe("页脚输入框", () => {
 	it("阶段计时在左，总计时与 token 数在右", () => {
 		const lines = renderFooter(70, "", true, {
 			symbol: "⠧",
-			text: "Writing response...",
+			text: "Writing response…",
 			phaseMs: 2500,
 			elapsedMs: 5300,
 			tokens: 21400,
 		});
-		const left = " ⠧ Writing response...  2.5s";
+		const left = " ⠧ Writing response…  2.5s";
 		const right = "5.3s  ⇣21.4K";
 		const raw = lines[1] ?? "";
 
@@ -322,7 +322,7 @@ describe("页脚输入框", () => {
 	it("token 位置可以临时显示复制提示", () => {
 		const lines = renderFooter(70, "", true, {
 			symbol: "⠧",
-			text: "Writing response...",
+			text: "Writing response…",
 			phaseMs: 2500,
 			elapsedMs: 5300,
 			tokens: 21400,
@@ -336,7 +336,7 @@ describe("页脚输入框", () => {
 	it("耗时满一分钟后改为分钟与秒", () => {
 		const lines = renderFooter(70, "", true, {
 			symbol: "⠋",
-			text: "Thinking...",
+			text: "Thinking…",
 			phaseMs: 65_400,
 			elapsedMs: 957_300,
 		});
@@ -349,7 +349,7 @@ describe("页脚输入框", () => {
 	it("整分钟不显示零秒，有零头才带秒", () => {
 		const at = (elapsedMs: number): string =>
 			plain(
-				renderFooter(70, "", true, { symbol: "⠋", text: "Thinking...", elapsedMs })[1] ?? "",
+				renderFooter(70, "", true, { symbol: "⠋", text: "Thinking…", elapsedMs })[1] ?? "",
 			);
 
 		assert.ok(at(60_000).endsWith("1m"));
@@ -360,7 +360,7 @@ describe("页脚输入框", () => {
 	it("扫光只作用于活动描述，计时和 token 保持静态", () => {
 		const lines = renderFooter(70, "", true, {
 			symbol: "⠧",
-			text: "Writing response...",
+			text: "Writing response…",
 			phaseMs: 2500,
 			elapsedMs: 5300,
 			tokens: 21400,
@@ -384,7 +384,7 @@ describe("页脚输入框", () => {
 	it("阻断与提示用静态中性色，不占用强调色", () => {
 		const lines = renderFooter(60, "", true, {
 			symbol: "",
-			text: "Configuration required",
+			text: "Configuration is invalid",
 			phaseMs: 0,
 			elapsedMs: 0,
 			tokens: 0,
@@ -396,7 +396,7 @@ describe("页脚输入框", () => {
 		assert.equal(raw.includes(THEME.accent), false);
 		assert.equal(raw.includes(THEME.error), false);
 		assert.equal(raw.includes(THEME.warning), false);
-		assert.ok(plain(raw).startsWith("  Configuration required"));
+		assert.ok(plain(raw).startsWith("  Configuration is invalid"));
 	});
 
 	it("运行时状态可以带扫光", () => {
@@ -500,7 +500,7 @@ describe("排队消息预览", () => {
 	});
 
 	it("每条排队消息占一行，排在状态行与输入框上边框之间", () => {
-		const lines = renderFooter(40, "", true, { symbol: "⠋", text: "Thinking..." }, undefined, {
+		const lines = renderFooter(40, "", true, { symbol: "⠋", text: "Thinking…" }, undefined, {
 			queued: ["顺便更新 README", "然后跑一遍测试"],
 		});
 

@@ -38,7 +38,7 @@ describe("子代理组", () => {
 		assert.ok(text.includes("› Subagents  1 running · 1 done · 1 failed"));
 		// 总耗时挂在括号 metric 位
 		assert.ok(/\(\d+(m\d+s|\.\ds)\)/.test(text));
-		assert.equal(text.includes("Subagent1"), false);
+		assert.equal(text.includes("Subagent 1"), false);
 	});
 
 	it("展开显示四态清单:●完成/转圈运行/×失败/○待办", () => {
@@ -55,10 +55,10 @@ describe("子代理组", () => {
 		const text = view.lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, "")).join("\n");
 
 		assert.ok(text.includes("◈ Subagents"));
-		assert.ok(text.includes("● Subagent1  梳理 tools 模块"));
-		assert.ok(text.includes("Subagent2  检查测试场景"));
+		assert.ok(text.includes("● Subagent 1  梳理 tools 模块"));
+		assert.ok(text.includes("Subagent 2  检查测试场景"));
 		// 失败行显示任务名,原因不占清单行
-		assert.ok(text.includes("× Subagent3  修复路径"));
+		assert.ok(text.includes("× Subagent 3  修复路径"));
 		assert.equal(text.includes("upstream 500"), false);
 		assert.ok(text.includes("(12 steps · 14.3s)"));
 		assert.ok(text.includes("(22.6s)"));
@@ -76,7 +76,7 @@ describe("子代理组", () => {
 		member.expanded = true;
 		const view2 = buildTranscriptView(60, [{ prompt: "go", response: [failed] }], undefined);
 		const lines = view2.lines.map((line) => line.replace(/\x1b\[[0-9;]*m/g, ""));
-		const headIndex = lines.findIndex((line) => line.includes("× Subagent3"));
+		const headIndex = lines.findIndex((line) => line.includes("× Subagent 3"));
 		assert.ok(headIndex >= 0);
 		// 展开后:色带里是原因全文,且失败行不再显示耗时
 		const band = lines.slice(headIndex + 1).find((line) => line.includes("upstream 500"));
@@ -93,7 +93,7 @@ describe("子代理组", () => {
 		assert.equal(view.liveLines.size, 1);
 
 		const animated = renderTranscriptView(view, 16, 0, { spinner: "⠋", sweepPhase: 0.5 });
-		const line = animated.find((row) => row.replace(/\x1b\[[0-9;]*m/g, "").includes("Subagent2")) ?? "";
+		const line = animated.find((row) => row.replace(/\x1b\[[0-9;]*m/g, "").includes("Subagent 2")) ?? "";
 		const plain = line.replace(/\x1b\[[0-9;]*m\\/g, "");
 		assert.ok(plain.includes("⠋"));
 		assert.ok((line.match(/\x1b\[38;2;/g) ?? []).length > 1);

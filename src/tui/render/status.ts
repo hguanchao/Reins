@@ -2,30 +2,12 @@ import { describeError } from "../../shared/describe-error.ts";
 import { graphemes } from "./text.ts";
 
 /**
- * 状态行文案与短提示格式化。
+ * 状态行的格式化。
  *
- * 状态行只有一行：控制字符会弄乱排版，过长的原因（端点常把整段错误体塞进消息里）会把
- * 计时与用量挤掉。所有进入状态行的外部文本都从这里收口。
+ * 文案本身在 `../copy.ts`：这里只负责把外部文本压成能放进一行状态行的形状。状态行只有一
+ * 行，控制字符会弄乱排版，过长的原因（端点常把整段错误体塞进消息里）会把计时与用量挤掉，
+ * 所以所有进入状态行的外部文本都从这里收口。
  */
-
-/** 等待模型回复：请求已发出，还没有任何增量到达。 */
-export const WAITING_FOR_MODEL = "Waiting for model...";
-/** 等待子代理：任务已经派出，结果还没回来。 */
-export const WAITING_FOR_SUBAGENT = "Waiting for subagent...";
-export const THINKING = "Thinking...";
-export const WRITING_RESPONSE = "Writing response...";
-/** 模型正在生成工具调用参数，工具尚未开始执行。 */
-export const WRITING_TOOL_CALL = "Writing tool call...";
-export const RUNNING_TOOL = "Running tool...";
-export const COMPACTING_CONTEXT = "Compacting context...";
-/** 配置不可用时按下回车给出的提示；不启动对话，避免看起来已经正常工作。 */
-export const CONFIGURATION_REQUIRED = "Configuration required";
-export const SESSION_UNAVAILABLE = "Session storage is unavailable";
-/** 使用者按下中断之后的状态。主动停下不是错误，用中性措辞，不染错误色。 */
-export const ABORTING = "Stopping...";
-/** 对话流里的中断标记：说明这一轮的回答在这里被截断了，且是使用者自己停下的。 */
-export const INTERRUPTED = "Stopped by you";
-export const ERROR_STATUS = "Error";
 
 /**
  * 重试原因压成一行短提示。
@@ -57,4 +39,3 @@ function truncateChars(text: string, limit: number): string {
 export function implementationPrompt(plan: string): string {
 	return `Implement this plan:\n\n${plan.trim()}\n\nRe-read the files you need before changing them.`;
 }
-

@@ -1,6 +1,7 @@
 import type { ApprovalMode } from "../../config/file.ts";
 import { formatCompactTokens, formatDuration } from "../../shared/format.ts";
 import { highlightImageMarkers } from "../image.ts";
+import { queueMore } from "../copy.ts";
 import { swept } from "../render/sweep.ts";
 import { characterWidth, displayWidth, graphemes, truncateToWidth } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
@@ -323,7 +324,7 @@ function queueLines(width: number, queued: readonly string[]): readonly string[]
 		.map((text) => `${QUEUE_COLOR}${QUEUE_PREFIX}${truncateToWidth(oneLine(text), textWidth)}${RESET}`);
 	const hidden = queued.length - QUEUE_MAX_VISIBLE;
 	if (hidden > 0) {
-		lines.push(`${QUEUE_COLOR}${" ".repeat(prefixWidth)}+${hidden} more${RESET}`);
+		lines.push(`${QUEUE_COLOR}${" ".repeat(prefixWidth)}${queueMore(hidden)}${RESET}`);
 	}
 	return lines;
 }

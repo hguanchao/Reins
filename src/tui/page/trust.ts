@@ -3,6 +3,7 @@ import { isAbsolute, relative } from "node:path";
 import { displayWidth, fitToWidth, truncateToWidth, wrapWords } from "../render/text.ts";
 import { THEME } from "../render/theme.ts";
 import { pageTitle } from "./chrome.ts";
+import { PAGE, STATUS, TRUST_LABELS } from "../copy.ts";
 
 /**
  * 工作区信任页。
@@ -17,15 +18,13 @@ export type TrustAnswer = "trust" | "session" | "skip";
 /** 正文最宽到这里为止再居中：铺满整屏的长句一行读完很吃力。 */
 const TEXT_MAX_WIDTH = 72;
 
-const TITLE = "Reins — workspace trust";
-const FILES_SECTION = "Files read under this trust";
-const SKILLS_SECTION = "Skill directories scanned under this trust";
-const INTRO = "This workspace ships files that change how Reins behaves.";
-const TRUST_NOTE =
-	"Trusting lets those files take effect. They configure this session and their instructions enter the prompt. " +
-	"Commands still run under the sandbox and the approval rules, and this workspace cannot add local processes to start.";
-const SKIP_NOTE = "Not trusting keeps the default: nothing from this workspace is loaded.";
-const PENDING = "Recording the decision...";
+const TITLE = PAGE.trustTitle;
+const FILES_SECTION = PAGE.trustFilesSection;
+const SKILLS_SECTION = PAGE.trustSkillsSection;
+const INTRO = PAGE.trustIntro;
+const TRUST_NOTE = PAGE.trustNote;
+const SKIP_NOTE = PAGE.trustSkipNote;
+const PENDING = STATUS.recordingDecision;
 
 export interface TrustPageInput {
 	readonly root: string;
@@ -48,23 +47,11 @@ interface TrustOption {
 	readonly label: string;
 }
 
-const FULL_LABELS: readonly TrustOption[] = [
-	{ answer: "trust", label: "[y] Trust this workspace" },
-	{ answer: "session", label: "[s] Trust for this session" },
-	{ answer: "skip", label: "[n] Do not trust" },
-];
+const FULL_LABELS: readonly TrustOption[] = TRUST_LABELS.full;
 /** 窄终端下的退路：宁可少几个字，也不要把按键前缀或「不信任」截掉。 */
-const SHORT_LABELS: readonly TrustOption[] = [
-	{ answer: "trust", label: "[y] Trust" },
-	{ answer: "session", label: "[s] Session" },
-	{ answer: "skip", label: "[n] Skip" },
-];
+const SHORT_LABELS: readonly TrustOption[] = TRUST_LABELS.short;
 /** 再窄就只剩按键本身：三个选项仍然完整可见，不会把 [n] 截掉。 */
-const MIN_LABELS: readonly TrustOption[] = [
-	{ answer: "trust", label: "[y]" },
-	{ answer: "session", label: "[s]" },
-	{ answer: "skip", label: "[n]" },
-];
+const MIN_LABELS: readonly TrustOption[] = TRUST_LABELS.minimal;
 
 /**
  * 整屏内容。

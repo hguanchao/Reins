@@ -1,5 +1,6 @@
 import { APPROVAL_MODES } from "../../config/file.ts";
 import { describeError } from "../../shared/describe-error.ts";
+import { FAILURE_ACTIONS, failure } from "../copy.ts";
 import {
 	decodeKittyKeys,
 	mouseEvents,
@@ -172,7 +173,7 @@ export function createInputHandler(host: TuiHost, deps: InputDeps): (chunk: Buff
 			try {
 				source.select(next);
 			} catch (error) {
-				host.setStatus(`Failed to switch approval: ${describeError(error)}`, "error");
+				host.setStatus(failure(FAILURE_ACTIONS.approvalSwitch, describeError(error)), "error");
 				host.scheduleStatusClear();
 			}
 			deps.render();
