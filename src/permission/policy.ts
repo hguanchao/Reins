@@ -1,6 +1,6 @@
 import type { ApprovalMode } from "../config/file.ts";
 import type { GateOutcome, GateRequest, PermissionScope, ToolAnnotations } from "../tools/contract.ts";
-import { describeApprovalPresentation, type ApprovalPresentation } from "../tools/describe.ts";
+import { describeApprovalPresentation, isCommandTool, type ApprovalPresentation } from "../tools/describe.ts";
 
 /**
  * 审批判定。
@@ -281,9 +281,9 @@ export class PermissionGate {
 /** 审批提示里参数摘要的长度上限:确认动作要一眼读完。 */
 const CALL_SUMMARY_LIMIT = 400;
 
-/** 给确认面板看的调用摘要。bash 与文件工具直接给命令/路径，其余压成一行 JSON。 */
+/** 给确认面板看的调用摘要。命令类工具与文件工具直接给命令/路径，其余压成一行 JSON。 */
 function describeCall(tool: string, args: Record<string, unknown>): string {
-	if (tool === "bash" && typeof args["command"] === "string") return args["command"];
+	if (isCommandTool(tool) && typeof args["command"] === "string") return args["command"];
 	if ((tool === "edit" || tool === "write") && typeof args["path"] === "string") return args["path"];
 
 	const text = JSON.stringify(args);

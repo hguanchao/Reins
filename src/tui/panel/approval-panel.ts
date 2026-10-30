@@ -1,6 +1,6 @@
 import type { ApprovalPrompt } from "../../permission/approval.ts";
 import type { ApprovalAnswer } from "../../permission/policy.ts";
-import { displayToolName, sanitizeLine } from "../../tools/describe.ts";
+import { displayToolName, isCommandTool, sanitizeLine } from "../../tools/describe.ts";
 import {
 	ACCENT_COLOR,
 	BORDER_COLOR,
@@ -288,7 +288,7 @@ export function approvalActionAt(
 	return undefined;
 }
 
-/** 可记住范围的文案：文件类不重复路径，Bash 保留具体命令前缀。 */
+/** 可记住范围的文案：文件类不重复路径，命令类保留具体命令前缀。 */
 function alwaysLabel(prompt: ApprovalPrompt): string | undefined {
 	if (prompt.saveShort === undefined) return undefined;
 	// 命令前缀来自模型生成的参数，可能夹带转义序列：动作行必须和详情走同一套清洗，
@@ -296,7 +296,7 @@ function alwaysLabel(prompt: ApprovalPrompt): string | undefined {
 	const short = sanitizeLine(prompt.saveShort).trim();
 	if (short.length === 0) return undefined;
 	if (prompt.tool === "edit" || prompt.tool === "write") return "always for this file";
-	if (prompt.tool === "bash") return `always for "${short}"`;
+	if (isCommandTool(prompt.tool)) return `always for "${short}"`;
 	return `always: "${short}"`;
 }
 

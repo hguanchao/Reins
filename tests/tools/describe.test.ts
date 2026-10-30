@@ -8,6 +8,7 @@ describe("工具调用摘要", () => {
 	it("工具名首字母大写，带命名空间的名称保持原样", () => {
 		assert.equal(displayToolName("read"), "Read");
 		assert.equal(displayToolName("bash"), "Bash");
+		assert.equal(displayToolName("pwsh"), "PowerShell");
 		assert.equal(displayToolName("ls"), "List");
 		assert.equal(displayToolName(""), "");
 		assert.equal(displayToolName("mcp__fs__read"), "mcp__fs__read");
@@ -193,6 +194,7 @@ describe("工具调用摘要", () => {
 		assert.equal(describeToolCall("grep", { pattern: "x" }).group, "search");
 		// 命令与只读探索一样在运行期成组，但两类不混在一起
 		assert.equal(describeToolCall("bash", { command: "x" }).group, "command");
+		assert.equal(describeToolCall("pwsh", { command: "Get-Date" }).group, "command");
 		assert.equal(describeToolCall("write", { path: "a.ts" }).group, undefined);
 		assert.equal(describeToolCall("edit", { path: "a.ts" }).group, undefined);
 		assert.equal(describeToolCall("mcp__fs__read", {}).group, undefined);
@@ -201,6 +203,16 @@ describe("工具调用摘要", () => {
 	it("缺少必填参数时给出占位，不显示 undefined", () => {
 		assert.equal(describeToolCall("read", {}).detail, "(missing path)");
 		assert.equal(describeToolCall("bash", {}).detail, "(no command)");
+		assert.equal(describeToolCall("pwsh", {}).detail, "(no command)");
+	});
+
+	it("pwsh 与 bash 走同一套摘要：折叠留核心命令，展开给完整命令", () => {
+		const command = "Get-ChildItem -Recurse | Select-String 'TODO'";
+		const call = describeToolCall("pwsh", { command }, "C:\\work");
+
+		assert.equal(call.name, "PowerShell");
+		assert.equal(call.detail, "Get-ChildItem -Recurse");
+		assert.equal(call.fullDetail, command);
 	});
 });
 

@@ -131,7 +131,8 @@ function buildRules(tools: readonly ToolDeclaration[]): string {
 	if (names.has("write")) {
 		rules.push("Use write for new files or complete rewrites; a full write discards content you did not read.");
 	}
-	if (names.has("bash")) {
+	const commandTools = ["bash", "pwsh"].filter((tool) => names.has(tool));
+	if (commandTools.length > 0) {
 		rules.push("Commands run in the workspace root. Use paths relative to it and do not prefix commands with cd.");
 		rules.push(
 			"Keep shell commands simple: prefer one command per call; chained commands and shell operators are " +
@@ -141,6 +142,13 @@ function buildRules(tools: readonly ToolDeclaration[]): string {
 			"Do not run destructive commands such as git reset --hard, git checkout --, recursive deletes, or force " +
 				"pushes unless the user explicitly asked for that operation.",
 		);
+		// 两种 shell 同时在场时，最常犯的错是在一个里面写另一个的语法
+		if (commandTools.length > 1) {
+			rules.push(
+				"bash and pwsh are different dialects: bash takes POSIX paths and $NAME, pwsh takes native C:\\... paths " +
+					"and $env:NAME. Pick the one that fits the task and keep a single command in its own dialect.",
+			);
+		}
 
 		const alternatives = ["grep", "find", "ls"].filter((name) => names.has(name));
 		if (alternatives.length > 0) {
@@ -163,7 +171,7 @@ function buildRules(tools: readonly ToolDeclaration[]): string {
 				"list in your reply.",
 		);
 	}
-	if (names.has("read") || names.has("bash")) {
+	if (names.has("read") || names.has("bash") || names.has("pwsh")) {
 		rules.push(
 			"When output says it was truncated, narrow the request; do not assume you saw the whole file or command output.",
 		);

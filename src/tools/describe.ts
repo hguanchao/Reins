@@ -49,6 +49,7 @@ const TOOL_PRESENTATION: Readonly<Record<string, ToolPresentation>> = {
 	find: { group: "search", resultIsDetail: true },
 	grep: { group: "search", resultIsDetail: true },
 	bash: { group: "command", resultIsDetail: false },
+	pwsh: { group: "command", resultIsDetail: false },
 	subagent: { resultIsDetail: false },
 };
 
@@ -94,10 +95,21 @@ function toolGroupKind(tool: string): ToolGroupKind | undefined {
 	return toolPresentation(tool)?.group;
 }
 
+/**
+ * 是否属于「执行一条 shell 命令」这一类工具。
+ *
+ * 审批摘要、链接目标与耗时展示都要按同一套规则对待它们。判定取自呈现表的分组，所以以后
+ * 再接一种 shell 只要在表里登记一次，不必在各处补工具名。
+ */
+export function isCommandTool(tool: string): boolean {
+	return toolGroupKind(tool) === "command";
+}
+
 /** 内置工具里缩写不适合直接展示的，换成完整名称；工具本名仍保持原样。 */
 const DISPLAY_NAMES: Readonly<Record<string, string>> = {
 	ls: "List",
 	present_plan: "Present plan",
+	pwsh: "PowerShell",
 };
 
 /** 工具展示名的唯一入口：审批面板、对话流、历史回填与 print-mode 都从这里取名。 */
@@ -112,13 +124,15 @@ export function displayToolName(tool: string): string {
 
 /** 折叠行的目标：文件工具用 basename，搜索工具用短路径，命令用核心命令。 */
 function describeDetail(tool: string, args: Record<string, unknown>, workspaceRoot: string | undefined): string {
+	// 命令类工具只看那一条命令，具体是哪种 shell 不影响摘要的取法
+	if (isCommandTool(tool)) {
+		return commandCore(sanitizeLine(text(args["command"]) ?? "(no command)"), workspaceRoot);
+	}
 	switch (tool) {
 		case "read":
 		case "write":
 		case "edit":
 			return basenamePath(text(args["path"]) ?? "(missing path)");
-		case "bash":
-			return commandCore(sanitizeLine(text(args["command"]) ?? "(no command)"), workspaceRoot);
 		case "find": {
 			const pattern = text(args["pattern"]) ?? "(no pattern)";
 			return withModifiers(shortenText(pattern, 48), scopeModifiers(args["path"]));
@@ -149,11 +163,12 @@ function describeDetail(tool: string, args: Record<string, unknown>, workspaceRo
 function describeFullDetail(tool: string, args: Record<string, unknown>, detail: string): string | undefined {
 	// 展开内容来自结果的工具,调用参数不再重复展示
 	if (toolPresentation(tool)?.resultIsDetail === true) return undefined;
+	// 命令类工具的展开就是那条命令本身，折叠态只留了核心命令
+	if (isCommandTool(tool)) {
+		const full = sanitizeLine(text(args["command"]) ?? "(no command)");
+		return full === detail ? undefined : full;
+	}
 	switch (tool) {
-		case "bash": {
-			const full = sanitizeLine(text(args["command"]) ?? "(no command)");
-			return full === detail ? undefined : full;
-		}
 		case "subagent": {
 			const task = text(args["task"]) ?? "(no task)";
 			return task === detail ? undefined : capDetail(task);
@@ -180,7 +195,7 @@ function fileLinkTarget(
 	args: Record<string, unknown>,
 	workspaceRoot: string | undefined,
 ): string | undefined {
-	if (tool === "bash") return directoryUrl(".", workspaceRoot);
+	if (isCommandTool(tool)) return directoryUrl(".", workspaceRoot);
 	// 文件类工具(带 path 参数且指向单个文件)指向那个文件;
 	// ls 缺省路径就是工作根本身,折叠行同样显示为 `.`,链接跟着指向工作根
 	if (tool === "read" || tool === "write" || tool === "edit" || tool === "ls") {
@@ -364,7 +379,7 @@ function editPresentation(
 /**
  * 审批请求的展示材料。
  *
- * bash 的卡片摘要取核心命令（长内联脚本只留解释器与参数标记），展开才看完整命令；
+ * 命令类工具的卡片摘要取核心命令（长内联脚本只留解释器与参数标记），展开才看完整命令；
  * edit 用参数里的新旧文本生成聚焦 diff，write 展示待写入内容。其余工具摘要保持一行 JSON，
  * 展开给格式化后的参数。这些都只用于展示，原始参数仍由权限判定使用。
  */
@@ -372,7 +387,7 @@ export function describeApprovalPresentation(
 	tool: string,
 	args: Record<string, unknown>,
 ): ApprovalPresentation | undefined {
-	if (tool === "bash") {
+	if (isCommandTool(tool)) {
 		const command = text(args["command"]);
 		if (command === undefined) return undefined;
 		const full = sanitizePreviewBlock(command).trimEnd();

@@ -1,4 +1,9 @@
-import { describeToolCall, type ToolDescription, type ToolGroupKind } from "../../tools/describe.ts";
+import {
+	describeToolCall,
+	isCommandTool,
+	type ToolDescription,
+	type ToolGroupKind,
+} from "../../tools/describe.ts";
 import { formatDuration } from "../../shared/format.ts";
 import { resultDetail } from "../../tools/result/detail.ts";
 import { resultMetric } from "../../tools/result/metric.ts";
@@ -121,7 +126,7 @@ export function attachToolResult(
 	const metric =
 		jobId !== undefined
 			? `background ${jobId}`
-			: name === "bash" && durationMs !== undefined
+			: isCommandTool(name) && durationMs !== undefined
 				? formatDuration(durationMs)
 				: resultMetric(name, details, content);
 	if (metric !== undefined) tool.metric = metric;

@@ -6,8 +6,9 @@ import { stripVTControlCharacters } from "node:util";
 /**
  * shell 进程的公共部分。
  *
- * 前台 bash 与后台作业共享同一套 shell 选择、输出收集与进程树终止规则；两边各写一遍，
- * 迟早在 Windows 的进程组或编码上分叉。这里只负责起进程与收输出，工具语义留在 bash。
+ * bash 与 pwsh 两个命令工具共享同一套 shell 选择、输出收集与进程树终止规则；两边各写一遍，
+ * 迟早在 Windows 的进程组或编码上分叉。这里只负责选解释器、起进程与收输出，命令语义留在
+ * 工具与 command-run。
  */
 
 export interface Shell {
@@ -68,14 +69,75 @@ export function resolveShell(lookup: ShellLookup = systemLookup(), shellPath?: s
 	);
 }
 
+/**
+ * 解释器按 UTF-8 输出。
+ *
+ * 系统代码页输出（中文 Windows 上是 GBK）按 UTF-8 解码会变成乱码；先给解释器一个 UTF-8
+ * 默认值，使用者自己设置的同名变量仍然优先。
+ */
+const UTF8_ENV: Readonly<Record<string, string>> = {
+	PYTHONUTF8: "1",
+	PYTHONIOENCODING: "utf-8:surrogateescape",
+};
+
 function bashShell(command: string): Shell {
 	return {
 		command,
 		args: (input) => ["-c", input],
-		// 系统代码页输出（中文 Windows 上是 GBK）到 UTF-8 解码会变成乱码；先给解释器一个
-		// UTF-8 默认值，使用者自己设置的同名变量仍然优先
-		env: { PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8:surrogateescape" },
+		env: UTF8_ENV,
 	};
+}
+
+/**
+ * 把控制台输出切成 UTF-8 的前置语句。
+ *
+ * Windows PowerShell 5.1 按系统代码页写控制台，中文机器上的输出按 UTF-8 解码就是乱码；
+ * PowerShell 7 起默认已是 UTF-8，这一句等于空转。设不上时吞掉错误继续跑命令：企业策略可能
+ * 把语言模式收成 ConstrainedLanguage 而禁止这里创建对象，那属于「输出可能乱码」的降级，比因
+ * 设编码失败而拒绝执行整条命令更可接受。
+ */
+const POWER_SHELL_ENCODING_PRELUDE = "try{[Console]::OutputEncoding=[Text.UTF8Encoding]::new()}catch{}\n";
+
+function powerShellShell(command: string): Shell {
+	return {
+		command,
+		// 每次调用都是新进程：-NoProfile 跳过使用者的 profile（它的输出会混进结果），
+		// -NonInteractive 保证提示不会把这一轮挂住
+		args: (input) => ["-NoProfile", "-NonInteractive", "-Command", POWER_SHELL_ENCODING_PRELUDE + input],
+		env: UTF8_ENV,
+	};
+}
+
+/**
+ * 选 PowerShell。
+ *
+ * Windows 上 bash 工具走 Git Bash 的 POSIX 方言，这个工具要说原生方言：`C:\...` 路径与
+ * `$env:NAME`。按 PowerShell 7（pwsh）、系统自带 Windows PowerShell 的顺序找，两者都在时选 7，
+ * 因为它是仍在更新的版本。保底那份在 System32 下，属于 Windows 本体。
+ */
+export function resolvePowerShell(lookup: ShellLookup = systemLookup()): Shell {
+	const name = lookup.platform === "win32" ? "pwsh.exe" : "pwsh";
+	for (const candidate of lookup.which(name)) {
+		if (lookup.exists(candidate)) return powerShellShell(candidate);
+	}
+
+	if (lookup.platform !== "win32") {
+		throw new Error(
+			"No PowerShell found on PATH. The pwsh tool needs PowerShell 7 outside Windows; use bash instead.",
+		);
+	}
+
+	for (const root of [lookup.env["ProgramFiles"], lookup.env["ProgramFiles(x86)"]]) {
+		if (root === undefined || root.length === 0) continue;
+		const candidate = join(root, "PowerShell", "7", "pwsh.exe");
+		if (lookup.exists(candidate)) return powerShellShell(candidate);
+	}
+
+	const systemRoot = lookup.env["SystemRoot"] ?? "C:\\Windows";
+	const bundled = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+	if (lookup.exists(bundled)) return powerShellShell(bundled);
+
+	throw new Error(`No PowerShell found under ${systemRoot}; the pwsh tool cannot run here.`);
 }
 
 function gitBashCandidates(env: NodeJS.ProcessEnv): readonly string[] {
