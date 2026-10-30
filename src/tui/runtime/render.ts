@@ -67,11 +67,16 @@ export function render(host: TuiHost): void {
 	const spinning =
 		state.statusTone === undefined || (state.statusTone === "warning" && active !== undefined);
 	const status =
-		state.statusText === undefined
+		state.statusText === undefined && state.copyNotice === undefined
 			? undefined
 			: {
-					symbol: spinning ? (SPINNER_FRAMES[state.spinnerFrame] ?? "") : "",
-					text: state.statusText,
+					symbol:
+						state.statusText === undefined
+							? ""
+							: spinning
+							  ? (SPINNER_FRAMES[state.spinnerFrame] ?? "")
+							  : "",
+					text: state.statusText ?? "",
 					sweep: state.statusTone === undefined ? state.sweepPhase : undefined,
 					tone: state.statusTone,
 					phaseMs:

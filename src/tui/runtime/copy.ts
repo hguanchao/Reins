@@ -1,5 +1,6 @@
 import type { TuiOutput } from "../options.ts";
 import { STATUS_CLEAR_MS } from "./constants.ts";
+import { clearStatus } from "./status.ts";
 import type { TuiHost } from "./types.ts";
 
 /**
@@ -32,11 +33,14 @@ export async function copyText(host: TuiHost, text: string): Promise<void> {
 	const state = host.state;
 	// OSC 52 只是把序列写进终端，终端是否真的接住无法确认；不能承诺「已复制」
 	const label = viaTerminal ? "Copy sent to terminal" : "Copied!";
-	// 没有运行时状态行就没有 token 位置可占，退成一条短暂提示
-	if (state.statusText === undefined) {
-		host.setStatus(label, "notice");
-		host.scheduleStatusClear();
-		return;
+	// 上一次的复制提示还占着状态行左侧：先清掉，本次提示只在 token 位出现一次
+	if (state.statusText === "Copied!" || state.statusText === "Copy sent to terminal") {
+		clearStatus(state);
+	}
+	// 上一条状态的自动清理计时器会把本次提示连着清掉：提示的生命周期由下面的计时器独占
+	if (state.statusClearTimer !== undefined) {
+		clearTimeout(state.statusClearTimer);
+		state.statusClearTimer = undefined;
 	}
 
 	state.copyNotice = label;
