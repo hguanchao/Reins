@@ -176,8 +176,16 @@ timeout = 120
 		assert.deepEqual(merged.plugins.disabled, ["a"]);
 	});
 
-	it("MCP server 只在用户级生效，项目既不能覆盖也不能新增", () => {
-		// 这些是本程序启动的本地进程：项目配置能声明它们，等于让一个目录决定启动什么程序
+	it("MCP server 的 env 与 headers 各自独立读出来", () => {
+		const parsed = get(
+			`${BASE}[mcp_servers.fs]\ncommand = "npx"\n[mcp_servers.fs.env]\nTOKEN = "abc"\n[mcp_servers.fs.headers]\nX-Trace = "1"\n`,
+		);
+		const server = parsed.config.mcpServers[0];
+		assert.deepEqual(server?.env, { TOKEN: "abc" });
+		assert.deepEqual(server?.headers, { "X-Trace": "1" });
+	});
+
+	it("MCP server 只在用户级生效，项目既不能覆盖也不能新增", () => {		// 这些是本程序启动的本地进程：项目配置能声明它们，等于让一个目录决定启动什么程序
 		const user = get(`${BASE}[mcp_servers.fs]\ncommand = "old"\n[mcp_servers.old]\ncommand = "keep"\n`);
 		const project = get(`${BASE}[mcp_servers.fs]\ncommand = "new"\n[mcp_servers.added]\nurl = "http://x"\n`);
 		const merged = mergeConfigs(user, project);

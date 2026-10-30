@@ -198,4 +198,28 @@ describe("技能发现", () => {
 			[join("/repo", ".reins", "skills"), join("/repo", ".agents", "skills")],
 		);
 	});
+
+	it("single 根：目录本身就是技能，不再往下扫一层", () => {
+		const parent = tempRoot();
+		const single = writeSkill(parent, "pdf", ["---", "name: pdf", "description: 处理 PDF", "---"].join("\n"));
+
+		// 同一个目录按父目录扫会找 pdf/SKILL.md 而落空，按 single 扫才能读出技能
+		assert.deepEqual(discoverSkills([{ directory: single, scope: "user" }]), []);
+		assert.deepEqual(discoverSkills([{ directory: single, scope: "user", single: true }]), [
+			{
+				name: "pdf",
+				description: "处理 PDF",
+				path: join(single, "SKILL.md"),
+				scope: "user",
+				directory: single,
+			},
+		]);
+	});
+
+	it("single 根缺少 SKILL.md 时什么都不返回", () => {
+		assert.deepEqual(
+			discoverSkills([{ directory: join(tempRoot(), "empty"), scope: "user", single: true }]),
+			[],
+		);
+	});
 });

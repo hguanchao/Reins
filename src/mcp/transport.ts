@@ -71,6 +71,8 @@ export interface StdioTransportOptions {
 	readonly args: readonly string[];
 	/** 子进程的工作目录 */
 	readonly cwd: string;
+	/** 叠加在宿主环境之上的变量；server 的启动参数常要靠它拿到凭据 */
+	readonly env?: Readonly<Record<string, string>>;
 	/** 连接断了（起不来、进程退出）时告知原因 */
 	readonly onClose: (reason: string) => void;
 }
@@ -85,6 +87,9 @@ export function createStdioTransport(options: StdioTransportOptions): McpTranspo
 	const queue = new MessageQueue();
 	const child = spawn(options.command, [...options.args], {
 		cwd: options.cwd,
+		// 宿主环境先铺，server 自己声明的变量优先：它要的是「覆盖」而不是「替换」，
+		// 换掉整份环境会让 server 找不到 PATH 上的解释器
+		env: { ...process.env, ...options.env },
 		stdio: ["pipe", "pipe", "pipe"],
 		windowsHide: true,
 	});

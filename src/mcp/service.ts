@@ -235,6 +235,7 @@ class McpConnection {
 					command: config.command ?? "",
 					args: config.args,
 					cwd: this.#cwd,
+					env: config.env,
 					onClose,
 				}),
 			};

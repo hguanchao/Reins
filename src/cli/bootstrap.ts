@@ -85,6 +85,8 @@ async function runPrint(options: CliOptions): Promise<number> {
 	const { registry, sandbox, sandboxWarnings } = pipeline;
 	const host = pipeline.host;
 	for (const warning of sandboxWarnings) writeStderr(`${warning}\n`);
+	// 声明式插件的装载结论与失败原因：非交互模式没有界面可看，只能写到 stderr
+	for (const line of pipeline.pluginReport) writeStderr(`reins: ${line}\n`);
 
 	const session = createSessionFor(workRoot, host.sessionStore());
 	const compactor = createCompactor(config, selection);

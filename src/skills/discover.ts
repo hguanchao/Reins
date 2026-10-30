@@ -1,5 +1,5 @@
 import { closeSync, openSync, readSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import {
 	agentsSkillsDir,
@@ -29,6 +29,13 @@ export type SkillScope = "user" | "project";
 export interface SkillRoot {
 	readonly directory: string;
 	readonly scope: SkillScope;
+	/**
+	 * 这个目录本身就是一个技能（里面直接放 SKILL.md），而不是装着若干技能的父目录。
+	 *
+	 * 两种约定都存在：Reins 与 `.agents/skills` 用父目录，插件清单里的技能路径常常直接指向
+	 * 某一个技能目录。把差别放在这一处，扫描逻辑就不用为来源分叉。
+	 */
+	readonly single?: boolean;
 }
 
 export interface SkillInfo {
@@ -90,6 +97,22 @@ export function discoverSkills(roots: readonly SkillRoot[]): readonly SkillInfo[
 }
 
 function discoverRoot(root: SkillRoot): readonly SkillInfo[] {
+	if (root.single === true) {
+		const path = join(root.directory, SKILL_FILE);
+		const contents = readSkillFile(path);
+		if (contents === undefined) return [];
+		const front = parseFrontmatter(contents);
+		return [
+			{
+				name: front.name ?? basename(root.directory),
+				description: front.description ?? "",
+				path,
+				scope: root.scope,
+				directory: root.directory,
+			},
+		];
+	}
+
 	let entries: readonly string[];
 	try {
 		entries = readdirSync(root.directory);

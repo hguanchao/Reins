@@ -30,7 +30,7 @@ import {
 	collectReviewContext,
 	parseReviewTarget,
 } from "../agent/review.ts";
-import { defaultSkillRoots, discoverSkills, type SkillInfo } from "../skills/discover.ts";
+import { defaultSkillRoots, discoverSkills, type SkillInfo, type SkillRoot } from "../skills/discover.ts";
 import { imageBlock, type ImageAttachment } from "../tui/image.ts";
 import { buildTranscriptHistory } from "../tui/transcript/history.ts";
 import { runTui } from "../tui/layout.ts";
@@ -127,7 +127,12 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	const needsTrust = "trust" in loaded && loaded.trust.source === "default";
 
 	// 技能与规则每轮重扫：改完 SKILL.md / AGENTS.md 下一轮就生效，不必重启
-	const skillRoots = () => defaultSkillRoots(workRoot, workspaceTrusted);
+	// 插件提供的技能在装配管线时才知道，先留空，装配完再补进来
+	let pluginSkillRoots: readonly SkillRoot[] = [];
+	const skillRoots = (): readonly SkillRoot[] => [
+		...defaultSkillRoots(workRoot, workspaceTrusted),
+		...pluginSkillRoots,
+	];
 	const skills = (): readonly SkillInfo[] => discoverSkills(skillRoots());
 	const instructions = (): readonly PromptInstruction[] =>
 		readInstructions(defaultInstructionSources(workRoot, workspaceTrusted));
@@ -203,7 +208,17 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 		onStage: (stage) => startup.mark(stage),
 	});
 	if (pipeline === null) return 1;
-	const { registry, host, sandbox, sandboxWarnings } = pipeline;
+	const { registry, host, sandbox, sandboxWarnings, declarative, pluginReport } = pipeline;
+	// 插件带来的技能与配置里的技能走同一条发现路径；报告逐条写出来，装上了但没生效的部分
+	// 必须让人看得见
+	pluginSkillRoots = declarative.plugins.flatMap((plugin) =>
+		plugin.skillDirectories.map((skill) => ({
+			directory: skill.directory,
+			scope: "user" as const,
+			single: skill.single,
+		})),
+	);
+	for (const line of pluginReport) writeStderr(`reins: ${line}\n`);
 
 	const workspace = new WorkspaceBoundary(workRoot);
 	startup.mark("sandbox");

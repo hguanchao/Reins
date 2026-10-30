@@ -1,7 +1,7 @@
 import { statSync } from "node:fs";
 
 import { ConfigError } from "../config/error.ts";
-import { ConfigFile, type Config } from "../config/file.ts";
+import { ConfigFile, type Config, type McpServerConfig, type SandboxMode } from "../config/file.ts";
 import { mergeConfigs, mergeProviders } from "../config/merge.ts";
 import { loadProviders, type ProvidersConfig } from "../config/providers-file.ts";
 import {
@@ -198,13 +198,18 @@ async function loadEffectiveConfig(
  * 沙箱管的是本程序发出的命令，管不到 MCP server 进程：它是使用者自己配置的本地程序，与插件
  * 同级。这件事不吭声就会被当成「开了沙箱就什么都隔离了」——而按沙箱的语义，`read-only` 是
  * 「不允许写」这样一个承诺。
+ *
+ * servers 传的是合并后的清单：插件声明的 MCP 同样不受沙箱约束，漏掉它们等于给出半个承诺。
  */
-export function warnUnsandboxedMcpServers(config: Config): void {
-	if (config.sandbox === "off") return;
-	const stdio = config.mcpServers.filter((server) => !server.disabled && server.type === "stdio");
+export function warnUnsandboxedMcpServers(
+	sandbox: SandboxMode,
+	servers: readonly McpServerConfig[],
+): void {
+	if (sandbox === "off") return;
+	const stdio = servers.filter((server) => !server.disabled && server.type === "stdio");
 	if (stdio.length === 0) return;
 	writeStderr(
-		`Note: sandbox mode is ${config.sandbox}, but these MCP servers are local processes started by reins and are not constrained by the sandbox: ` +
+		`Note: sandbox mode is ${sandbox}, but these MCP servers are local processes started by reins and are not constrained by the sandbox: ` +
 			`${stdio.map((server) => server.name).join(", ")}\n`,
 	);
 }

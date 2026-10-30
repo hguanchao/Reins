@@ -26,6 +26,12 @@ import { WorkspaceBoundary } from "../workspace/boundary.ts";
 import type { ModelEntry, ProviderEntry } from "../config/providers-file.ts";
 import { readVersion } from "../version.ts";
 import { disabledPlugins, warnUnsandboxedMcpServers } from "./config-selection.ts";
+import {
+	describeDeclarativeScan,
+	mergeMcpServers,
+	scanDeclarativePlugins,
+	type DeclarativeScan,
+} from "../plugins/declarative.ts";
 import { writeStderr } from "./output.ts";
 
 /**
@@ -219,6 +225,10 @@ export async function assemblePipeline(options: {
 	readonly sandbox: SandboxView;
 	readonly sandboxInfo: SandboxInfo;
 	readonly sandboxWarnings: readonly string[];
+	/** 声明式插件的扫描结果：技能根由界面侧接进技能清单 */
+	readonly declarative: DeclarativeScan;
+	/** 装载报告，逐条给使用者看 */
+	readonly pluginReport: readonly string[];
 } | null> {
 	const { config, workRoot, policy, gate } = options;
 	const registry = new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), gate);
@@ -231,12 +241,16 @@ export async function assemblePipeline(options: {
 		sessionStore: builtinSessionStore(),
 	});
 
+	// 声明式插件只提供文件：技能目录与 MCP 声明在这里汇总，代码插件仍走 external.ts
+	const declarative = scanDeclarativePlugins();
+	const mcp = mergeMcpServers(config.mcpServers, declarative.plugins);
+
 	// MCP 是宿主能力：插件层整个不可用也照常连接。远端工具与核心工具走同一条管线，
 	// 但按 bundled 记账——它们的声明来自外部，只读标注不可信
 	startMcpServers({
 		cwd: workRoot,
 		version: readVersion(),
-		servers: config.mcpServers,
+		servers: mcp.servers,
 		registerTool: (tool) => registry.register(tool, "bundled"),
 		...(options.onMcpStatus === undefined ? {} : { onStatus: options.onMcpStatus }),
 		...(options.onMcpControl === undefined ? {} : { onControl: options.onMcpControl }),
@@ -249,8 +263,16 @@ export async function assemblePipeline(options: {
 	try {
 		const { sandbox, info, warnings } = createSandboxFor(config, workRoot, host);
 		// 沙箱缺席时把哪些 MCP server 因此裸奔说出来:不说,使用者只会以为它们被拦着
-		warnUnsandboxedMcpServers(config);
-		return { registry, host, sandbox, sandboxInfo: info, sandboxWarnings: warnings };
+		warnUnsandboxedMcpServers(config.sandbox, mcp.servers);
+		return {
+			registry,
+			host,
+			sandbox,
+			sandboxInfo: info,
+			sandboxWarnings: warnings,
+			declarative,
+			pluginReport: describeDeclarativeScan(declarative, mcp.warnings),
+		};
 	} catch (error) {
 		writeStderr(`${describeError(error)}\n`);
 		return null;

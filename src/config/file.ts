@@ -60,6 +60,8 @@ export interface McpServerConfig {
 	/** 仅 http 与 sse 使用 */
 	readonly url: string | undefined;
 	readonly headers: Readonly<Record<string, string>>;
+	/** 仅 stdio 使用：叠加在宿主环境之上的变量，值优先于同名系统变量 */
+	readonly env: Readonly<Record<string, string>>;
 	/** 只作用于 tools/call，单位秒；连接与控制请求用的是固定的短超时 */
 	readonly timeoutSeconds: number | undefined;
 	readonly disabled: boolean;
@@ -164,6 +166,7 @@ const MCP_SERVER_KEYS: readonly string[] = [
 	"type",
 	"url",
 	"headers",
+	"env",
 	"timeout",
 	"disabled",
 ];
@@ -456,6 +459,7 @@ function readMcpServer(document: TomlDocument, name: string, path: readonly stri
 		args: readStringArray(document, [...path, "args"]) ?? [],
 		url,
 		headers: readStringMap(document, [...path, "headers"]) ?? {},
+		env: readStringMap(document, [...path, "env"]) ?? {},
 		timeoutSeconds: readInteger(document, [...path, "timeout"], 1),
 		disabled: readBoolean(document, [...path, "disabled"]) ?? false,
 	};
