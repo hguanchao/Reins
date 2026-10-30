@@ -1,7 +1,7 @@
 import type { TuiOutput } from "#src/tui/options.ts";
 import { STATUS_CLEAR_MS } from "#src/tui/runtime/constants.ts";
 import { saveCopyFallback, shortPath } from "#src/tui/runtime/copy-file.ts";
-import { STATUS, copySavedTo, copiedNotice } from "#src/tui/copy.ts";
+import { STATUS, copySavedTo } from "#src/tui/copy.ts";
 import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
@@ -36,7 +36,7 @@ export async function copyText(host: TuiHost, text: string): Promise<void> {
 
 	const state = host.state;
 	// OSC 52 只是把序列写进终端，终端是否真的接住无法确认；不能承诺「已复制」
-	const label = viaTerminal ? STATUS.copySentToTerminal : copiedNotice(codePoints(text));
+	const label = viaTerminal ? STATUS.copySentToTerminal : STATUS.copied;
 	// 上一条状态的自动清理计时器会把本次提示连着清掉：提示的生命周期由下面的计时器独占
 	if (state.statusClearTimer !== undefined) {
 		clearTimeout(state.statusClearTimer);
@@ -61,9 +61,4 @@ function writeOsc52(stdout: TuiOutput, text: string): boolean {
 	} catch {
 		return false;
 	}
-}
-
-/** 字符数按码点算：emoji 与中文都记 1，不因为 UTF-16 代理对翻倍。 */
-function codePoints(text: string): number {
-	return Array.from(text).length;
 }

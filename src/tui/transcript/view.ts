@@ -548,6 +548,29 @@ function build(
  * 复制时也不该插换行。普通正文没有这些前缀，保持默认元数据。只认详情色带，避免把普通
  * 正文里的缩进当成行号。
  */
+/**
+ * 有底色但没有行号列的行（提示块、思考正文、工具结果预览）的内容起点。
+ *
+ * 提示块整行都是底色，正文固定缩进三列（` › ` 与 `   `）；思考正文与工具结果是
+ * 「左侧留白 + 色带 + 一列内边距」，色带起点就是排版前缀的宽度。两种前缀都是排版，
+ * 不属于内容，复制时跳过；行内真正的缩进（代码、列表）留在内容里。
+ */
+function plainRowContentStart(line: string): number {
+	if (line.startsWith(PROMPT_BG)) return displayWidth(PROMPT_PREFIX);
+	const band = bandStartColumn(line);
+	return band === undefined ? 0 : band + 1;
+}
+
+/** 行首色带的起始显示列；整行从头就有底色、或前缀里夹着内容时返回 undefined。 */
+function bandStartColumn(line: string): number | undefined {
+	const at = line.indexOf(THEME.detailBg);
+	if (at <= 0) return undefined;
+	const lead = stripTerminalStyles(line.slice(0, at));
+	// 前缀里只该有空格：出现别的字符说明这个底色不是行首色带
+	if (lead.trim().length > 0) return undefined;
+	return displayWidth(lead);
+}
+
 function buildLineMeta(lines: readonly string[], plainRows: ReadonlySet<number>): readonly LineMeta[] {
 	const meta: LineMeta[] = [];
 	// 当前详情色带的内容起点；遇到非详情行、空行或新的行号时重置
@@ -560,7 +583,7 @@ function buildLineMeta(lines: readonly string[], plainRows: ReadonlySet<number>)
 		// 提示块、思考正文与工具结果预览也用同一个底色，但它们没有行号列：
 		// 一旦按「数字+两个空格」误判，复制时会把正文开头的数字吃掉并接错行
 		if (plainRows.has(index)) {
-			meta.push(PLAIN_LINE_META);
+			meta.push({ contentStart: plainRowContentStart(line), softWrap: false });
 			inDetail = false;
 			contentStart = 0;
 			diffBand = false;

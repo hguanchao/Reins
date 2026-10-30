@@ -73,13 +73,13 @@ describe("鼠标拖选复制", () => {
 			assert.deepEqual(copied, ["hello world"]);
 			let text = frameLines(output).map(plain).join("\n");
 			// 提示占用 token 位置，期间不显示 token 计量
-			assert.ok(text.includes("Copied 11 chars"));
+			assert.ok(text.includes("Copied!"));
 			assert.equal(text.includes("⇣"), false);
 
 			// 自动消失后 token 计量回显
 			t.mock.timers.tick(1_500);
 			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("Copied 11 chars"), false);
+			assert.equal(text.includes("Copied!"), false);
 			assert.ok(text.includes("⇣0"));
 		} finally {
 			exitTui(input);
@@ -251,6 +251,54 @@ describe("鼠标拖选复制", () => {
 			input.emit("data", Buffer.from("\x1b[<0;3;2M\x1b[<0;3;2m"));
 			t.mock.timers.tick(100);
 			assert.equal(frameLines(output).some((line) => line.includes(THEME.selectionBg)), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("停在边缘不动也会继续滚，滚到底自动停", async (t) => {
+		t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 60;
+		output.rows = 20;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			stdin: input,
+			stdout: output,
+			clipboard: { copy: () => true },
+		});
+
+		try {
+			input.emit("data", Buffer.from("说点话\r"));
+			agent.emit({
+				type: "text_delta",
+				text: Array.from({ length: 400 }, (_, index) => `word-${index + 1}`).join(" "),
+			});
+			t.mock.timers.tick(100);
+			input.emit("data", Buffer.from("\x1b[1;5H"));
+			t.mock.timers.tick(100);
+
+			const content = (): string => frameLines(output).map(plain).slice(0, 14).join("\n");
+
+			// 只发一次拖动事件，之后不再有任何鼠标输入
+			input.emit("data", Buffer.from("\x1b[<0;3;2M\x1b[<32;3;14M"));
+			t.mock.timers.tick(60);
+			const afterDrag = content();
+
+			t.mock.timers.tick(300);
+			const afterTicks = content();
+			// 没有新的移动事件，画面仍在往前走：这是定时器在滚
+			assert.notEqual(afterTicks, afterDrag);
+
+			// 滚到底之后自己停下，不会一直空转
+			t.mock.timers.tick(2_000);
+			const atBottom = content();
+			t.mock.timers.tick(2_000);
+			assert.equal(content(), atBottom);
 		} finally {
 			exitTui(input);
 		}

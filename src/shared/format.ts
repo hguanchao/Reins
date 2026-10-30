@@ -55,17 +55,6 @@ export function formatCompactTokens(tokens: number): string {
 	return `${Math.round(value)}`;
 }
 
-/**
- * 普通计数加千分位，用于「复制了多少字符」这类要一眼看出量级的数字。
- *
- * 与 token 的紧凑缩写区分开：字符数要精确到个位，使用者凭这个数字判断复制到的是
- * 一小段还是一整屏。
- */
-export function formatCount(count: number): string {
-	const value = Math.max(0, Math.round(count));
-	return `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
 function trimDecimal(value: number): string {
 	const rounded = Math.round(value * 10) / 10;
 	return Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);

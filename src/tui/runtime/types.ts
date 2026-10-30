@@ -96,6 +96,22 @@ export interface TranscriptPrefix {
 }
 
 /**
+ * 拖选时的持续自动滚动。
+ *
+ * 鼠标停在内容区边缘不动时终端不再发移动事件，只靠事件驱动就只能滚一次；这里用定时器
+ * 一直往前推，滚到顶或底再自己停下。
+ */
+export interface DragScroll {
+	readonly direction: -1 | 1;
+	/** 每个 tick 滚多少行：离边缘越远滚得越快。 */
+	readonly speed: number;
+	/** 最近一次鼠标位置；tick 里据此把选区焦点挪到新的边缘行。 */
+	row: number;
+	column: number;
+	readonly timer: ReturnType<typeof setInterval>;
+}
+
+/**
  * 界面运行期的全部可变状态。
  *
  * 字段按所属的交互域分段；`layout` 只负责创建它并把装配好的依赖交给各域模块，
@@ -157,8 +173,10 @@ export interface TuiState {
 	scrollTop: number;
 	/** 上一次左键按下的位置与时间，用于识别双击。 */
 	lastClick: { at: number; row: number; column: number } | undefined;
-	/** 鼠标拖选中的文本区域；松开时复制并清空。 */
+	/** 鼠标拖选中的文本区域；松开后保留高亮，下一次按下才清。 */
 	selection: SelectionRegion | undefined;
+	/** 拖到内容区边缘后的持续滚动；鼠标停住不动也继续滚。 */
+	dragScroll: DragScroll | undefined;
 	/** 是否跟随新内容滚到底部。 */
 	follow: boolean;
 	/** 对话流构建缓存：同一内容只换行一次，测量、绘制与命中共用。 */

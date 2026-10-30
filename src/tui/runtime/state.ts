@@ -45,6 +45,7 @@ export function createState(options: TuiOptions): TuiState {
 		scrollTop: 0,
 		lastClick: undefined,
 		selection: undefined,
+		dragScroll: undefined,
 		follow: true,
 		transcriptView: undefined,
 		transcriptViewWidth: -1,

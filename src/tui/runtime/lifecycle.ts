@@ -7,6 +7,7 @@ import {
 	LEAVE_ALTERNATE_SCREEN,
 	SHOW_CURSOR,
 } from "#src/tui/terminal.ts";
+import { stopDragScroll } from "#src/tui/input/selection-scroll.ts";
 import type { TuiState } from "#src/tui/runtime/types.ts";
 import type { TuiOptions } from "#src/tui/options.ts";
 
@@ -82,6 +83,8 @@ export function cleanup(
 			clearTimeout(state.copyNoticeTimer);
 			state.copyNoticeTimer = undefined;
 		}
+		// 拖选自动滚动是 interval：退出时不停掉，进程会被它一直挂住
+		stopDragScroll(state);
 		state.stdout.off("resize", deps.render);
 		state.stdin.off("data", deps.onData);
 		for (const signal of EXIT_SIGNALS) process.off(signal, deps.onInterrupt);

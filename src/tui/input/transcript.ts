@@ -5,13 +5,13 @@ import type { MouseInput } from "#src/tui/input/keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
 import { STATUS } from "#src/tui/copy.ts";
 import { armClear, clearDraft, disarmClear, restoreDraft } from "#src/tui/input/draft.ts";
+import { stopDragScroll, updateDragScroll } from "#src/tui/input/selection-scroll.ts";
 import { expandPaste, markerAtColumn, pasteInsertion } from "#src/tui/paste.ts";
 import { displayWidth } from "#src/tui/render/text.ts";
 import { menuPanelTop } from "#src/tui/runtime/approval.ts";
 import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
 import { completeCommandMenu } from "#src/tui/runtime/panels.ts";
 import { commandMenuHeight } from "#src/tui/panel/command-menu.ts";
-import { SELECT_EDGE_SCROLL } from "#src/tui/runtime/constants.ts";
 import { fileMenuHeight } from "#src/tui/panel/file-menu.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "#src/tui/input/scroll.ts";
 import type { InputDeps } from "#src/tui/input/deps.ts";
@@ -38,6 +38,7 @@ export function handleTranscriptInput(
 	// 键盘输入说明已经离开鼠标拖选；松开事件丢失时不能把高亮留在屏幕上
 	if (withoutMouse.length > 0 && state.selection !== undefined) {
 		state.selection = undefined;
+		stopDragScroll(state);
 		selectionChanged = true;
 	}
 	let wheelSteps = 0;
@@ -137,6 +138,8 @@ export function handleTranscriptInput(
 			// 于是紧接着的回车只会被当成抢回焦点，选中的命令反而执行不了
 			if (completionOpen && event.row >= menuPanelTop(state, host.options)) continue;
 
+			// 新的按下终止上一次拖动留下的自动滚动
+			stopDragScroll(state);
 			// 左键在对话流里按下：开始一次拖选。单击不动没有选区，松开时不会复制
 			if (event.column < width - 1) {
 				const point = selectionPoint(
@@ -201,16 +204,8 @@ export function handleTranscriptInput(
 			if (state.draggingScrollbar) {
 				dragRow = event.row;
 			} else if (state.selection !== undefined) {
-				// 拖到内容区上下边缘就先滚动：屏幕外的内容否则永远选不到
-				const edge = event.row <= 1 ? -1 : event.row >= mainHeight ? 1 : 0;
-				if (edge !== 0) {
-					const limit = host.maxScroll();
-					const next = Math.max(0, Math.min(limit, state.scrollTop + edge * SELECT_EDGE_SCROLL));
-					if (next !== state.scrollTop) {
-						state.scrollTop = next;
-						state.follow = next >= limit;
-					}
-				}
+				// 拖到内容区上下边缘就持续滚动：鼠标停住不动也要继续，屏幕外的内容才选得到
+				updateDragScroll(host, state, event.row, event.column, mainHeight);
 				const point = selectionPoint(
 					host.currentTranscript(width),
 					mainHeight,
@@ -228,6 +223,7 @@ export function handleTranscriptInput(
 			}
 		} else if (!event.press) {
 			state.draggingScrollbar = false;
+			stopDragScroll(state);
 			if (state.selection !== undefined) {
 				const selection = state.selection;
 				// 拖过一段就复制，并保留高亮：松手后还能看清复制了哪一段，下一次按下才清。

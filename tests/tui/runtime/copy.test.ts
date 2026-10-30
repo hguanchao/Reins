@@ -58,7 +58,7 @@ describe("复制提示的单一来源", () => {
 		const host = fakeHost(state);
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		await copyText(host, "hello");
-		assert.equal(state.copyNotice, "Copied 5 chars");
+		assert.equal(state.copyNotice, "Copied!");
 		assert.equal(state.statusText, undefined);
 	});
 
@@ -68,7 +68,7 @@ describe("复制提示的单一来源", () => {
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 		await copyText(host, "first");
 		await copyText(host, "second");
-		assert.equal(state.copyNotice, "Copied 6 chars");
+		assert.equal(state.copyNotice, "Copied!");
 	});
 
 	it("上一次状态清理的计时器不再吞掉本次提示", async (t) => {
@@ -80,7 +80,7 @@ describe("复制提示的单一来源", () => {
 		state.statusTone = undefined;
 		state.statusClearTimer = setTimeout(() => {}, 60_000) as unknown as ReturnType<typeof setTimeout>;
 		await copyText(host, "hello");
-		assert.equal(state.copyNotice, "Copied 5 chars");
+		assert.equal(state.copyNotice, "Copied!");
 		// 旧计时器已被取消，提示不会被它提前清掉
 		assert.equal(state.statusClearTimer, undefined);
 		assert.notEqual(state.copyNoticeTimer, undefined);

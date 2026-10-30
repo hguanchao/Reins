@@ -21,8 +21,6 @@ export const COMPACT_FOOTER_INPUT_ROW = 2;
 export const SWEEP_STEP = 0.08;
 /** 滚轮每格滚动固定行数，保持手感稳定。 */
 export const WHEEL_STEP = 3;
-/** 拖选碰到内容区上下边缘时每次滚动的行数：不一次跳太远，也不会像单行那样磨人。 */
-export const SELECT_EDGE_SCROLL = 3;
 /** 同一位置两次按下在这个窗口内算双击。 */
 export const DOUBLE_CLICK_MS = 400;
 /** 一轮结束后状态行停留的时间。 */

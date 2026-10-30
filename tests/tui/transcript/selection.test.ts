@@ -235,6 +235,31 @@ describe("文本选区", () => {
 		assert.ok(bodyCopy.includes("tail line"));
 	});
 
+	it("复制跳过提示块与工具结果的排版前缀，保留内容自身缩进", () => {
+		const code = ["def foo():", "    return 1", "", "  indented"].join("\n");
+		const tool: TranscriptTool = { kind: "tool", name: "Read", detail: "a.py", result: code, resultExpanded: true };
+		const view = buildTranscriptView(60, [{ prompt: "看代码", response: [tool] }]);
+		const indexOf = (needle: string): number =>
+			view.lines.findIndex((line) => stripTerminalStyles(line).includes(needle));
+
+		// 提示块：` › ` 只是排版，复制不该带上它
+		const promptLine = indexOf("看代码");
+		const promptCopy = selectionText(view, {
+			anchor: { line: promptLine, cell: 0 },
+			focus: { line: promptLine, cell: 59 },
+		});
+		assert.equal(promptCopy, "看代码");
+
+		// 工具结果：色带前留白与带内一列内边距都是排版；代码自己的缩进要留着
+		const first = indexOf("def foo");
+		const last = indexOf("indented");
+		const copy = selectionText(view, {
+			anchor: { line: first, cell: 0 },
+			focus: { line: last, cell: 59 },
+		});
+		assert.deepEqual(copy.split("\n"), ["def foo():", "    return 1", "", "  indented"]);
+	});
+
 	it("折叠块的省略提示不进复制文本", () => {
 		const body = Array.from({ length: 70 }, (_, index) => `line-${index + 1}`).join("\n");
 		const tool: TranscriptTool = {
