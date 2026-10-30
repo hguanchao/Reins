@@ -393,6 +393,34 @@ describe("折叠粘贴", () => {
 		assert.equal(await running, 0);
 	});
 
+	it("双击标记展开成原文，不再依赖剪贴板", async (t) => {
+		const { input, output, agent, running } = startTui(t);
+		try {
+			const text = "l1\nl2\nl3\nl4\nl5";
+			input.emit("data", Buffer.from(`\x1b[200~${text}\x1b[201~`));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const lines = frameLines(output).map(plain);
+			const row = lines.findIndex((line) => line.includes("[Pasted #1:"));
+			assert.ok(row >= 0);
+			const column = (lines[row] ?? "").indexOf("[Pasted #1:") + 3;
+			const click = `\x1b[<0;${column};${row + 1}M`;
+			input.emit("data", Buffer.from(click));
+			input.emit("data", Buffer.from(click));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			assert.equal(screenText(output).includes("[Pasted #1:"), false);
+			assert.ok(screenText(output).includes("l5"));
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, [text]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
 	it("短粘贴不折叠，按原样进输入框", async (t) => {
 		const { input, output, agent, running } = startTui(t);
 		try {

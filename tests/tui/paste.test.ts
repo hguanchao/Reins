@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 
 import {
 	createPasteStore,
+	expandPaste,
 	expandPastes,
 	highlightPasteMarkers,
+	markerAtColumn,
 	pasteInsertion,
 	pasteLineCount,
 	pasteMarkerOf,
@@ -70,6 +72,26 @@ describe("折叠粘贴", () => {
 		assert.equal(expandPastes(store, `看下 ${marker} 是什么`), `看下 ${text} 是什么`);
 		// 手打出同样字样、或标记被改了半截：不猜，按普通文字发出去
 		assert.equal(expandPastes(store, "[Pasted #9: 4 lines]"), "[Pasted #9: 4 lines]");
+	});
+
+	it("按显示宽度定位标记：前面的中文不会把列算错", () => {
+		const line = "中文[Pasted #3: 5 lines]尾巴";
+		assert.equal(markerAtColumn(line, 3), undefined);
+		assert.equal(markerAtColumn(line, 4), 3);
+		assert.equal(markerAtColumn(line, 23), 3);
+		assert.equal(markerAtColumn(line, 24), undefined);
+	});
+
+	it("展开把标记换回原文，光标落在原文末尾", () => {
+		const store = createPasteStore();
+		const text = "a\nb\nc\nd";
+		const marker = pasteInsertion(store, text, "").insert;
+		const expanded = expandPaste(store, `前 ${marker} 后`, 1);
+		assert.ok(expanded);
+		assert.equal(expanded.text, `前 ${text} 后`);
+		assert.equal(expanded.cursor, 9);
+		// 展开过的标记已经出表，再点也不会重复插入
+		assert.equal(expandPaste(store, expanded.text, 1), undefined);
 	});
 
 	it("标记上色只改颜色不改文字", () => {

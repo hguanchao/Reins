@@ -1,5 +1,6 @@
 import { pasteChipBytes, pasteChipLines, pasteMarker } from "#src/tui/copy.ts";
 import type { PasteInsertion } from "#src/tui/input/keys.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
 
 /**
  * 大段粘贴的折叠。
@@ -76,10 +77,49 @@ export function expandPastes(store: PasteStore, text: string): string {
 	return output;
 }
 
-/** 标记的通用形状，只用于上色；展开仍按登记过的精确文字匹配。 */
-const MARKER_PATTERN = /\[Pasted #\d+: \d+(?:\.\d+)? (?:lines?|bytes|KB|MB)\]/g;
+/** 标记的通用形状：上色与鼠标命中都用它；展开仍按登记过的精确文字匹配。 */
+const MARKER_PATTERN = /\[Pasted #(\d+): \d+(?:\.\d+)? (?:lines?|bytes|KB|MB)\]/g;
 
 /** 给输入框里的标记上色；不改变宽度，光标列与折行不受影响。 */
 export function highlightPasteMarkers(text: string, markerColor: string, restoreColor: string): string {
 	return text.replace(MARKER_PATTERN, (marker) => `${markerColor}${marker}${restoreColor}`);
+}
+
+/**
+ * 这一列落在哪一枚标记上。
+ *
+ * 只接受渲染后的显示列（0 起算），用来支持双击展开：标记是纯文本，鼠标点在哪一列
+ * 比「先定位光标再判断」更直接。
+ */
+export function markerAtColumn(line: string, column: number): number | undefined {
+	if (column < 0) return undefined;
+	MARKER_PATTERN.lastIndex = 0;
+	for (const match of line.matchAll(MARKER_PATTERN)) {
+		const start = displayWidth(line.slice(0, match.index ?? 0));
+		if (column >= start && column < start + displayWidth(match[0])) return Number(match[1]);
+	}
+	return undefined;
+}
+
+/**
+ * 把一枚标记换回原文，光标落在展开内容的末尾。
+ *
+ * 展开后这枚标记就消失了，原文不再需要留在表里；不删的话一次会话里反复折叠展开会让
+ * 整份文本一直挂在内存里。
+ */
+export function expandPaste(
+	store: PasteStore,
+	input: string,
+	id: number,
+): { text: string; cursor: number } | undefined {
+	const entry = store.entries.get(id);
+	if (entry === undefined) return undefined;
+	const marker = pasteMarkerOf(id, entry);
+	const at = input.indexOf(marker);
+	if (at < 0) return undefined;
+	store.entries.delete(id);
+	return {
+		text: input.slice(0, at) + entry + input.slice(at + marker.length),
+		cursor: at + entry.length,
+	};
 }

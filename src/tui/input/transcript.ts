@@ -5,7 +5,8 @@ import type { MouseInput } from "#src/tui/input/keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
 import { STATUS } from "#src/tui/copy.ts";
 import { armClear, clearDraft, disarmClear, restoreDraft } from "#src/tui/input/draft.ts";
-import { pasteInsertion } from "#src/tui/paste.ts";
+import { expandPaste, markerAtColumn, pasteInsertion } from "#src/tui/paste.ts";
+import { displayWidth } from "#src/tui/render/text.ts";
 import { menuPanelTop } from "#src/tui/runtime/approval.ts";
 import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
 import { completeCommandMenu } from "#src/tui/runtime/panels.ts";
@@ -158,10 +159,31 @@ export function handleTranscriptInput(
 
 			// 可点区域要含上下两条边框：使用者把那个方框整体当成输入框，点在边框上
 			// 却没有任何反应，会以为界面卡住了
-			const inputLineTotal = inputView(state.input, width, state.inputCursor).lines.length;
+			const view = inputView(state.input, width, state.inputCursor);
+			const inputLineTotal = view.lines.length;
 			const inputTop = host.inputTopRow(mainHeight);
 			const insideInput =
 				event.row >= inputTop - 1 && event.row <= inputTop + inputLineTotal;
+
+			// 双击折叠标记 = 展开成原文：与对话流里「双击展开」同一套手势，也不依赖
+			// 剪贴板里还留着同一段内容——这是它原来唯一的展开方式，粘贴一次别的就没了
+			if (doubleClick && insideInput) {
+				const line = view.lines[event.row - inputTop];
+				const id =
+					line === undefined
+						? undefined
+						: markerAtColumn(line.text, event.column - displayWidth(line.prefix) - 1);
+				const expanded = id === undefined ? undefined : expandPaste(state.pastes, state.input, id);
+				if (expanded !== undefined) {
+					host.setInput(expanded.text, expanded.cursor);
+					state.historyIndex = -1;
+					host.updateCommandMenu();
+					host.updateFileMenu();
+					state.lastClick = undefined;
+					deps.render();
+					return;
+				}
+			}
 			if (insideInput !== state.focused) {
 				state.focused = insideInput;
 				focusChanged = true;

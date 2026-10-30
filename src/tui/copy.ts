@@ -519,7 +519,7 @@ export const KEY_HINTS: readonly KeyHintCopy[] = [
 	{ keys: "Ctrl+G", description: "View the selected tool full-screen, or the latest long block" },
 	{ keys: "Ctrl+V / Alt+V", description: "Insert an image from the clipboard as [image: name]" },
 	{ keys: "Wheel / drag", description: "Scroll the conversation · drag the scrollbar or select text to copy" },
-	{ keys: "Double-click", description: "Expand or collapse thinking, tool groups, and tool details" },
+	{ keys: "Double-click", description: "Expand or collapse thinking, tool groups, or a pasted marker" },
 	{ keys: "y / a / n", description: "Answer an approval: proceed once, always allow, or deny" },
 	{ keys: "d", description: "Expand or hide approval details · arrow keys scroll them" },
 	{ keys: "@", description: "Complete a workspace file path; an image becomes an inline marker" },
