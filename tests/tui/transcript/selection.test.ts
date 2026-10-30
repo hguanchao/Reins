@@ -260,7 +260,7 @@ describe("文本选区", () => {
 		assert.deepEqual(copy.split("\n"), ["def foo():", "    return 1", "", "  indented"]);
 	});
 
-	it("折叠块的省略提示不进复制文本", () => {
+	it("折叠块的省略提示原样复制", () => {
 		const body = Array.from({ length: 70 }, (_, index) => `line-${index + 1}`).join("\n");
 		const tool: TranscriptTool = {
 			kind: "tool",
@@ -279,9 +279,9 @@ describe("文本选区", () => {
 			anchor: { line: ellipsis - 2, cell: 0 },
 			focus: { line: ellipsis, cell: 59 },
 		});
-		// 省略提示只是屏幕放不下的记号，粘到别处还要手动删一行
-		assert.equal(copy.includes("more lines"), false);
+		// 选到什么就复制什么：屏幕上看得见的省略提示也照原样带上
 		assert.ok(copy.includes("line-19"));
 		assert.ok(copy.includes("line-20"));
+		assert.ok(copy.includes("more lines"));
 	});
 });

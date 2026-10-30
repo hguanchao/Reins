@@ -1,15 +1,13 @@
 import type { TuiOutput } from "#src/tui/options.ts";
 import { STATUS_CLEAR_MS } from "#src/tui/runtime/constants.ts";
-import { saveCopyFallback, shortPath } from "#src/tui/runtime/copy-file.ts";
-import { STATUS, copySavedTo } from "#src/tui/copy.ts";
+import { STATUS } from "#src/tui/copy.ts";
 import type { TuiHost } from "#src/tui/runtime/types.ts";
 
 /**
  * 复制一段文本。
  *
  * 先交给宿主提供的系统剪贴板；写不进去时退到 OSC 52，让终端自己接住（SSH、容器里没有
- * 剪贴板命令时还有这一条路）。两条都走不通时把内容写到兜底文件，提示里给出路径——复制
- * 失败最糟的不是没复制上，而是刚才那段内容彻底没了。
+ * 剪贴板命令时还有这一条路）。两条都走不通就在状态行说一声，不做落盘之类的补救。
  *
  * 成功提示只占用状态行里 token 计量的位置，超时后 token 数自动回来，不打断当前正在显示
  * 的状态文字。
@@ -28,8 +26,7 @@ export async function copyText(host: TuiHost, text: string): Promise<void> {
 	}
 
 	if (!copied && !viaTerminal) {
-		const saved = await saveCopyFallback(text);
-		host.setStatus(saved === undefined ? STATUS.copyFailed : copySavedTo(shortPath(saved)), "warning");
+		host.setStatus(STATUS.copyFailed, "warning");
 		host.scheduleStatusClear();
 		return;
 	}

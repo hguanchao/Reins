@@ -115,11 +115,6 @@ export function commandRunning(name: string): string {
 	return `Running /${name}…`;
 }
 
-/** 剪贴板两条路都没走通、内容落到文件时：给出路径，别让人以为白复制了一次。 */
-export function copySavedTo(path: string): string {
-	return `Clipboard unavailable · saved to ${path}`;
-}
-
 /** 桌面通知：命令结束。 */
 export function commandFinished(name: string): string {
 	return `/${name} finished`;

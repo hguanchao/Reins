@@ -226,19 +226,24 @@ export function handleTranscriptInput(
 			stopDragScroll(state);
 			if (state.selection !== undefined) {
 				const selection = state.selection;
-				// 拖过一段就复制，并保留高亮：松手后还能看清复制了哪一段，下一次按下才清。
-				// 原地点击没有跨度，直接清掉，不留下一个字符大小的亮点。
+				// 松手即收起高亮：复制已经发生，留着色块只会让正文看起来还没结束
+				state.selection = undefined;
+				selectionChanged = true;
+				// 只有真的拖过一段才复制；原地点击与双击不该带走任何文字
 				if (selectionSpans(selection)) {
 					const text = selectionText(host.currentTranscript(width), selection);
 					if (text.trim().length > 0) host.copyText(text);
-				} else {
-					state.selection = undefined;
-					selectionChanged = true;
 				}
 			}
 		}
 	}
 
+	// 滚轮一旦滚动，选区的行号就不在同一屏上了；残留高亮跟着清掉
+	if (wheelSteps !== 0 && state.selection !== undefined) {
+		state.selection = undefined;
+		stopDragScroll(state);
+		selectionChanged = true;
+	}
 	applyWheelScroll(host, state, wheelSteps);
 	if (dragRow !== undefined) applyDragScroll(host, state, dragRow, mainHeight);
 	const scrollChanged = state.scrollTop !== beforeScroll;

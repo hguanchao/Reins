@@ -1,7 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import { copyText } from "#src/tui/runtime/copy.ts";
@@ -62,7 +59,7 @@ describe("复制提示的单一来源", () => {
 		assert.equal(state.statusText, undefined);
 	});
 
-	it("连续复制只留最后一次的提示与字数", async (t) => {
+	it("连续复制只留最后一次的提示", async (t) => {
 		const state = freshState();
 		const host = fakeHost(state);
 		t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -85,18 +82,16 @@ describe("复制提示的单一来源", () => {
 		assert.equal(state.statusClearTimer, undefined);
 		assert.notEqual(state.copyNoticeTimer, undefined);
 	});
-});
 
-describe("复制失败时的落盘兜底", () => {
-	it("剪贴板与 OSC 52 都失败时把内容写到文件，并给出路径", async (t) => {
-		const dir = mkdtempSync(join(tmpdir(), "reins-copy-"));
-		const file = join(dir, "last-copy.txt");
-		process.env["REINS_COPY_FILE"] = file;
-		t.after(() => {
-			delete process.env["REINS_COPY_FILE"];
-			rmSync(dir, { recursive: true, force: true });
-		});
+	it("系统剪贴板写不进去时退到 OSC 52，提示不承诺已复制", async (t) => {
+		const state = freshState();
+		const host = fakeHost(state, { clipboard: async () => false });
+		t.mock.timers.enable({ apis: ["setTimeout"] });
+		await copyText(host, "hello");
+		assert.equal(state.copyNotice, "Copy sent to terminal");
+	});
 
+	it("两条投递都失败时只在状态行说明", async (t) => {
 		const state = freshState();
 		const host = fakeHost(state, {
 			clipboard: async () => false,
@@ -109,29 +104,8 @@ describe("复制失败时的落盘兜底", () => {
 		});
 		t.mock.timers.enable({ apis: ["setTimeout"] });
 
-		await copyText(host, "中文内容");
-		assert.equal(readFileSync(file, "utf8"), "中文内容");
-		assert.equal(host.statuses.length, 1);
-		assert.ok(host.statuses[0]?.includes("Clipboard unavailable · saved to"));
-		// 内容没进剪贴板，就不该再显示「已复制」
-		assert.equal(state.copyNotice, undefined);
-	});
-
-	it("OSC 52 接住了就不额外写文件", async (t) => {
-		const dir = mkdtempSync(join(tmpdir(), "reins-copy-"));
-		const file = join(dir, "last-copy.txt");
-		process.env["REINS_COPY_FILE"] = file;
-		t.after(() => {
-			delete process.env["REINS_COPY_FILE"];
-			rmSync(dir, { recursive: true, force: true });
-		});
-
-		const state = freshState();
-		const host = fakeHost(state, { clipboard: async () => false });
-		t.mock.timers.enable({ apis: ["setTimeout"] });
-
 		await copyText(host, "hello");
-		assert.equal(state.copyNotice, "Copy sent to terminal");
-		assert.throws(() => readFileSync(file, "utf8"));
+		assert.deepEqual(host.statuses, ["Copy failed"]);
+		assert.equal(state.copyNotice, undefined);
 	});
 });

@@ -215,47 +215,6 @@ describe("鼠标拖选复制", () => {
 		}
 	});
 
-	it("松开后选区高亮保留，下一次按下才清", async (t) => {
-		t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		output.columns = 60;
-		output.rows = 20;
-		const agent = createFakeAgent();
-		void runTui({
-			version: "1.2.3",
-			info: FOOTER_INFO,
-			agent: agent.runtime,
-			stdin: input,
-			stdout: output,
-			clipboard: { copy: () => true },
-		});
-
-		try {
-			input.emit("data", Buffer.from("说点话\r"));
-			agent.emit({ type: "text_delta", text: "AA hello world BB" });
-			t.mock.timers.tick(100);
-
-			const span = locate(output, "hello world", 0);
-			input.emit(
-				"data",
-				Buffer.from(`\x1b[<0;${span.start};${span.row}M\x1b[<32;${span.end};${span.row}M`),
-			);
-			input.emit("data", Buffer.from(`\x1b[<0;${span.end};${span.row}m`));
-			await new Promise<void>((resolve) => setImmediate(resolve));
-
-			// 松手之后仍能看见刚才复制的是哪一段
-			assert.ok(frameLines(output).some((line) => line.includes(THEME.selectionBg)));
-
-			// 再按一下：新的一次点击把旧选区换掉，松开时没有跨度，高亮消失
-			input.emit("data", Buffer.from("\x1b[<0;3;2M\x1b[<0;3;2m"));
-			t.mock.timers.tick(100);
-			assert.equal(frameLines(output).some((line) => line.includes(THEME.selectionBg)), false);
-		} finally {
-			exitTui(input);
-		}
-	});
-
 	it("停在边缘不动也会继续滚，滚到底自动停", async (t) => {
 		t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
 		const input = new FakeInput();
