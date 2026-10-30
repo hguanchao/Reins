@@ -285,7 +285,18 @@ export async function assemblePipeline(options: {
 			? []
 			: declarative.plugins
 					.filter((plugin) => plugin.cordis && plugin.extensions.length > 0)
-					.map((plugin) => dshExtensionPlugin(plugin, extensionContext));
+					.map((plugin) =>
+						dshExtensionPlugin(plugin, {
+							...extensionContext,
+							// Reins 的沙箱模式映射成 dsh 的策略模式：worker 的文件边界与沙箱承诺一致
+							policyMode:
+								config.sandbox === "read-only"
+									? "read-only"
+									: config.sandbox === "workspace"
+										? "workspace-write"
+										: "danger-full-access",
+						}),
+					);
 	const piFailures = piCollectors.length === 0 ? [] : await host.loadExternal(piCollectors.map((item) => item.plugin));
 	const dshFailures = dshCollectors.length === 0 ? [] : await host.loadExternal(dshCollectors.map((item) => item.plugin));
 	options.onStage?.("external");

@@ -104,7 +104,7 @@ function targetName(source: string, kind: SourceKind): string {
 		return last.replace(/\.git$/i, "");
 	}
 	// scoped 包名 @scope/pkg 取 pkg；目录名里不放 @，避免 Windows 上的保留字符问题
-	return source.replace(/^@[^/]+\//, "");
+	return npmPackageName(source).replace(/^@[^/]+\//, "");
 }
 
 function installLocal(source: string, target: string): string | undefined {
@@ -114,7 +114,20 @@ function installLocal(source: string, target: string): string | undefined {
 	return undefined;
 }
 
-async function installNpm(packageName: string, target: string, runner: CommandRunner): Promise<string | undefined> {
+/** 安装说明里的包名：剥掉版本说明（pkg@1.2、@scope/pkg@1.2 → @scope/pkg）。 */
+function npmPackageName(spec: string): string {
+	if (spec.startsWith("@")) {
+		const slash = spec.indexOf("/");
+		const tail = spec.slice(slash + 1);
+		const at = tail.lastIndexOf("@");
+		return `@${spec.slice(1, slash)}/${at > 0 ? tail.slice(0, at) : tail}`;
+	}
+	const at = spec.lastIndexOf("@");
+	return at > 0 ? spec.slice(0, at) : spec;
+}
+
+async function installNpm(packageSource: string, target: string, runner: CommandRunner): Promise<string | undefined> {
+	const packageName = npmPackageName(packageSource);
 	// 先装进临时目录再搬：插件目录里只留包本身与它的依赖，npm 的中间产物不外带
 	const staging = join(tmpdir(), `reins-plugin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 	try {

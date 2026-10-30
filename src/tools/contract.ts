@@ -52,7 +52,7 @@ export interface ToolResult {
 	readonly details?: unknown;
 }
 
-interface ToolContext<P> {
+export interface ToolContext<P> {
 	readonly callId: string;
 	readonly args: P;
 	readonly signal: AbortSignal;
