@@ -72,18 +72,6 @@ export interface SessionEffortChangeEntry extends SessionEntryBase {
 }
 
 /**
- * 分支标记。
- *
- * 只表达「从这里继续」，不产生任何上下文。parentId 就是接续点：回退到某条消息之前时指向它
- * 的前一条，切换分支时指向目标分支的末尾；条目自己的 id 成为新的叶子。文件因此仍是只追加的，
- * 旧分支一个字节都不动。
- */
-export interface SessionBranchEntry extends SessionEntryBase {
-	readonly type: "branch";
-	readonly reason: "rewind" | "switch";
-}
-
-/**
  * 一次请求的用量。
  *
  * 单独记条目而不是挂在消息上：一次请求不一定产出消息（出错与中止就是），而没有用量的请求
@@ -129,7 +117,6 @@ export type SessionEntry =
 	| SessionSystemEntry
 	| SessionModelChangeEntry
 	| SessionEffortChangeEntry
-	| SessionBranchEntry
 	| SessionUsageEntry
 	| SessionCompactionEntry;
 
@@ -138,7 +125,6 @@ export type NewSessionEntry =
 	| Omit<SessionSystemEntry, keyof SessionEntryBase>
 	| Omit<SessionModelChangeEntry, keyof SessionEntryBase>
 	| Omit<SessionEffortChangeEntry, keyof SessionEntryBase>
-	| Omit<SessionBranchEntry, keyof SessionEntryBase>
 	| Omit<SessionUsageEntry, keyof SessionEntryBase>
 	| Omit<SessionCompactionEntry, keyof SessionEntryBase>;
 

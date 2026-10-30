@@ -1,6 +1,4 @@
 import type { AnyToolDefinition } from "../contract.ts";
-import { createJobOutputTool, createKillJobTool, type JobManager } from "../jobs.ts";
-import { createTerminalTools, type TerminalManager } from "../terminal.ts";
 import { createBashTool } from "./bash.ts";
 import { editTool } from "./edit.ts";
 import { findTool } from "./find.ts";
@@ -22,29 +20,19 @@ import { writeTool } from "./write.ts";
  * 查找类工具（ls、find、grep）用 bash 也能近似做出来，但仍然内置：它们是模型摸清仓库结构的
  * 常规手段，缺了之后每一轮都得绕远路。它们与其余核心工具一样，不可被插件替换。
  */
-export function createCoreTools(
-	options: {
-		readonly shellPath?: string;
-		readonly jobs?: JobManager;
-		readonly terminals?: TerminalManager;
-	} = {},
-): readonly AnyToolDefinition[] {
+export function createCoreTools(options: { readonly shellPath?: string } = {}): readonly AnyToolDefinition[] {
 	return [
 		readTool,
 		writeTool,
 		editTool,
 		patchTool,
-		createBashTool(options.shellPath, options.jobs),
-		...(options.terminals === undefined ? [] : createTerminalTools(options.terminals)),
+		createBashTool(options.shellPath),
 		todoTool,
 		presentPlanTool,
 		lsTool,
 		findTool,
 		grepTool,
 		webFetchTool,
-		...(options.jobs === undefined
-			? []
-			: [createJobOutputTool(options.jobs), createKillJobTool(options.jobs)]),
 	];
 }
 

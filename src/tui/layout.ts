@@ -29,7 +29,6 @@ import {
 	compactFooter,
 	footerHeight,
 	inputTopRow,
-	jobBarHeight,
 	mainAreaHeight,
 	menuOpen,
 	modalMenuOpen,
@@ -50,7 +49,6 @@ import { closePlanReviewAndResume, openPlanReview, pageLines } from "./runtime/p
 import { setStatus, clearStatus, resetStatusMeta, scheduleStatusClear } from "./runtime/status.ts";
 import { copyText } from "./runtime/copy.ts";
 import { closeThinking, appendLine, syncTurn, syncTurnFull } from "./runtime/turn.ts";
-import { appendJobNote, ensureJobTimer } from "./runtime/jobs.ts";
 import { executeUndo } from "./runtime/checkpoints.ts";
 import {
 	attachClipboardImage,
@@ -68,8 +66,6 @@ import {
 	executeCommand,
 	leavePlan,
 	revisePlan,
-	rewindTo,
-	switchBranch,
 	switchSession,
 } from "./runtime/commands.ts";
 import {
@@ -132,7 +128,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		mainAreaHeight: () => mainAreaHeight(state, options),
 		footerHeight: () => footerHeight(state, options),
 		todoPanelHeight: () => todoPanelHeight(state, options),
-		jobBarHeight: () => jobBarHeight(state, options),
 		approvalPanelTop: () => approvalPanelTop(state, options),
 		inputTopRow: (mainHeight) => inputTopRow(state, options, mainHeight),
 		commands: () => mergeCommands(state.builtinCommands, options.pluginCommands?.list() ?? []),
@@ -186,7 +181,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		revisePlan: () => revisePlan(host),
 		leavePlan: () => leavePlan(host),
 		executeUndo: () => executeUndo(host),
-		startJobTimer: () => ensureJobTimer(host),
 		closeFileMenu: (dismissed) => closeFileMenu(host, dismissed),
 		updateCommandMenu: () => updateCommandMenu(host),
 		updateFileMenu: () => updateFileMenu(host),
@@ -199,8 +193,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		completeMenu: () => completeMenu(host),
 		cancelMenu: () => cancelMenu(host),
 		forkSelectedSession: () => forkSelectedSession(host),
-		switchBranch: (id) => switchBranch(host, id),
-		rewindTo: (id) => rewindTo(host, id),
 		executeCommand: (command, args) => executeCommand(host, command, args),
 		submit: () => submit(host),
 		// cleanUp 在装配完成后才指向真正实现；退出发生在运行期，闭包按调用时的值取即可
@@ -239,14 +231,6 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		process.off("exit", restoreTerminal);
 		cleanup(state, options, { render: host.render, onData, onInterrupt: cleanUp });
 	};
-
-	state.unsubscribeJobs =
-		options.jobs?.subscribe((event) => {
-			if (event.type === "finished") appendJobNote(host, event.job);
-			ensureJobTimer(host);
-			host.render();
-		}) ?? (() => {});
-	ensureJobTimer(host);
 
 	const done = new Promise<number>((resolve) => {
 		state.finish = () => resolve(0);

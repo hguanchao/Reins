@@ -151,8 +151,8 @@ export function handleModalMenuInput(
 		return true;
 	}
 
-	// 会话面板多一个 f：从选中项分叉；分支与历史面板没有这个动作
-	if (host.state.sessionMenu !== undefined && (host.state.sessionMenu.kind ?? "sessions") === "sessions" && text === "f") {
+	// 会话面板多一个 f：从选中项分叉
+	if (host.state.sessionMenu !== undefined && text === "f") {
 		host.forkSelectedSession();
 		return true;
 	}

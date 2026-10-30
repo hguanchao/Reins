@@ -6,7 +6,7 @@ import type { FileMenuState } from "../panel/file-menu.ts";
 import { filterFiles, findAtToken, formatFileReference } from "../panel/file-menu.ts";
 import { isImagePath } from "../image.ts";
 import type { ModelMenuItem, ModelMenuState } from "../panel/model-menu.ts";
-import type { SessionMenuItem, SessionMenuKind, SessionMenuState } from "../panel/session-menu.ts";
+import type { SessionMenuItem, SessionMenuState } from "../panel/session-menu.ts";
 import { errorLine, CONFIGURATION_REQUIRED, SESSION_UNAVAILABLE } from "../render/status.ts";
 import { describeError } from "../../shared/describe-error.ts";
 import type { TranscriptLine } from "../transcript.ts";
@@ -138,23 +138,19 @@ export function confirmMenu(host: TuiHost): void {
 	if (state.sessionMenu !== undefined) {
 		const menu = state.sessionMenu;
 		const item = menu.items[menu.cursor];
-		const kind = menu.kind ?? "sessions";
 		closeAllMenus(host);
 		host.setInput("");
-		// 选中的就是当前会话/当前分支：关掉面板即可，不必重放一遍历史
+		// 选中的就是当前会话：关掉面板即可，不必重放一遍历史
 		if (item === undefined || item.current) {
 			host.render();
 			return;
 		}
-		if (kind === "branches") host.switchBranch(item.id);
-		else if (kind === "rewind") host.rewindTo(item.id);
-		else host.switchSession(item.id);
+		host.switchSession(item.id);
 	}
 }
 
 /**
  * Tab 在最后一级面板只把选中项补进输入框，不执行；要生效仍按回车。
- * 分支与历史没有可补全的命令文本，Tab 直接当成确认，避免面板看起来没有反应。
  */
 export function completeMenu(host: TuiHost): void {
 	const state = host.state;
@@ -172,10 +168,6 @@ export function completeMenu(host: TuiHost): void {
 		const menu = state.sessionMenu;
 		const item = menu.items[menu.cursor];
 		if (item === undefined) return;
-		if ((menu.kind ?? "sessions") !== "sessions") {
-			confirmMenu(host);
-			return;
-		}
 		closeAllMenus(host);
 		host.setInput(`/session ${item.id}`);
 	} else {
@@ -234,53 +226,11 @@ export function selectEffort(host: TuiHost, level: ThinkingLevel): void {
 export function openSessionMenu(host: TuiHost): void {
 	const source = host.options.sessionMenu;
 	if (source === undefined) return;
-	openSessionKindMenu(
-		host,
-		"/session",
-		"sessions",
-		"sessions",
-		"No sessions in this project yet.",
-		() => source.list(),
-	);
+	openSessionKindMenu(host, () => source.list());
 }
 
-/** /branches:列出当前会话的全部分支末尾。 */
-export function openBranchMenu(host: TuiHost): void {
-	const source = host.options.conversation;
-	if (source === undefined) return;
-	openSessionKindMenu(
-		host,
-		"/branches",
-		"branches",
-		"branches",
-		"This session has no branches yet.",
-		() => source.branches(),
-	);
-}
-
-/** /rewind:列出当前路径上的用户消息,从新到旧。 */
-export function openRewindMenu(host: TuiHost): void {
-	const source = host.options.conversation;
-	if (source === undefined) return;
-	openSessionKindMenu(
-		host,
-		"/rewind",
-		"rewind",
-		"messages",
-		"There are no messages to rewind to.",
-		() => source.messages(),
-	);
-}
-
-/** 打开会话类面板；列清单失败或为空时不弹面板，写一条说明回合，输入框交还给使用者。 */
-function openSessionKindMenu(
-	host: TuiHost,
-	command: string,
-	kind: SessionMenuKind,
-	noun: string,
-	empty: string,
-	list: () => readonly SessionMenuItem[],
-): void {
+/** 打开会话面板；列清单失败或为空时不弹面板，写一条说明回合，输入框交还给使用者。 */
+function openSessionKindMenu(host: TuiHost, list: () => readonly SessionMenuItem[]): void {
 	closeAllMenus(host);
 	let items: readonly SessionMenuItem[];
 	try {
@@ -288,20 +238,20 @@ function openSessionKindMenu(
 	} catch (error) {
 		host.setInput("");
 		host.state.follow = true;
-		host.appendCommandTurn(command, [
-			{ kind: "error", text: `Error: Failed to list ${noun}: ${describeError(error)}` },
+		host.appendCommandTurn("/session", [
+			{ kind: "error", text: `Error: Failed to list sessions: ${describeError(error)}` },
 		]);
 		return;
 	}
 	if (items.length === 0) {
 		host.setInput("");
 		host.state.follow = true;
-		host.appendCommandTurn(command, [empty]);
+		host.appendCommandTurn("/session", ["No sessions in this project yet."]);
 		return;
 	}
 
 	const current = items.findIndex((item) => item.current);
-	host.state.sessionMenu = { kind, items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
+	host.state.sessionMenu = { items, cursor: current >= 0 ? current : 0, scrollTop: 0 };
 	host.render();
 }
 
@@ -309,7 +259,6 @@ function openSessionKindMenu(
 export function forkSelectedSession(host: TuiHost): void {
 	const menu = host.state.sessionMenu;
 	if (menu === undefined) return;
-	if ((menu.kind ?? "sessions") !== "sessions") return;
 
 	const item = menu.items[menu.cursor];
 	closeAllMenus(host);

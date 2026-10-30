@@ -60,24 +60,6 @@ export function createBuiltinCommands(options: TuiOptions): readonly CommandMenu
 			enabled: options.sessionMenu !== undefined,
 		},
 		{
-			name: "rewind",
-			description:
-				options.conversation === undefined
-					? "Conversation history is unavailable"
-					: "Go back to an earlier message and edit it",
-			enabled: options.conversation !== undefined,
-			hidden: options.conversation === undefined,
-		},
-		{
-			name: "branches",
-			description:
-				options.conversation === undefined
-					? "Conversation history is unavailable"
-					: "Switch between conversation branches",
-			enabled: options.conversation !== undefined,
-			hidden: options.conversation === undefined,
-		},
-		{
 			name: "export",
 			description:
 				options.exportSession === undefined

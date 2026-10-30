@@ -34,11 +34,11 @@ describe("命令补全的隐藏项", () => {
 	});
 
 	it("完整输入隐藏命令名时才出现", () => {
-		const state = stateOf("/rewind");
+		const state = stateOf("/review");
 		updateCommandMenu(hostOf(state));
 		assert.deepEqual(
 			state.commandMenu?.items.map((item) => item.name),
-			["rewind"],
+			["review"],
 		);
 	});
 

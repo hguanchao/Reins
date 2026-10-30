@@ -291,8 +291,6 @@ function entryLooksIntact(parsed: Record<string, unknown>): boolean {
 			return typeof parsed["model"] === "string";
 		case "effort_change":
 			return typeof parsed["effort"] === "string";
-		case "branch":
-			return parsed["reason"] === "rewind" || parsed["reason"] === "switch";
 		case "usage":
 			return (
 				typeof parsed["model"] === "string" &&
@@ -312,7 +310,6 @@ function isEntryType(type: unknown): boolean {
 		type === "system" ||
 		type === "model_change" ||
 		type === "effort_change" ||
-		type === "branch" ||
 		type === "usage" ||
 		type === "compaction"
 	);

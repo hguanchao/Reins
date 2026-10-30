@@ -7,7 +7,6 @@ import { renderEffortMenu } from "../panel/effort-menu.ts";
 import { renderFileMenu } from "../panel/file-menu.ts";
 import { renderModelMenu } from "../panel/model-menu.ts";
 import { renderSessionMenu } from "../panel/session-menu.ts";
-import { renderJobBarLine } from "../job.ts";
 import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "../transcript.ts";
 import { scrollButtonPlacement } from "../view/scroll-button.ts";
 import { todoPanelLines } from "../view/todo-card.ts";
@@ -152,10 +151,8 @@ export function render(host: TuiHost): void {
 		state.currentTodo !== undefined
 			? [...todoPanelLines(state.currentTodo, width, animation)]
 			: [];
-	// 后台作业只占一行，放在任务面板与页脚之间；没有运行中作业时不占高度
-	const jobBar = host.jobBarHeight() > 0 ? [renderJobBarLine(options.jobs?.list() ?? [], width)] : [];
-	// 整屏自上而下：主区域、任务面板、Jobs bar、选择面板、页脚
-	const lines = [...mainLines, ...panelLines, ...jobBar, ...menuLines, ...footer];
+	// 整屏自上而下：主区域、任务面板、选择面板、页脚
+	const lines = [...mainLines, ...panelLines, ...menuLines, ...footer];
 	const fullInputRow = host.inputTopRow(mainHeight) + inputLines.row;
 	state.layoutOverflow = lines.length > height;
 	// 内容超屏时从底部保留：输入框与页脚比对话流顶部重要。光标行若被挤出可见区，

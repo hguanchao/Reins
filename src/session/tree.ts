@@ -44,8 +44,8 @@ export function leavesOf(entries: readonly SessionEntry[]): readonly SessionEntr
 /**
  * 当前叶子。
  *
- * 文件是只追加的，所以最后一个叶子就是最后写下的那条条目。分支标记也参与这个判断：
- * 回退或切换之后，新追加的标记成为叶子，旧分支的末尾仍是另一个叶子。
+ * 文件是只追加的，因此最后一个叶子就是最后写下的那条条目，续聊从这里接着写；手工改出
+ * 分叉的文件另说，那时取到的仍是最后落盘的那一条。
  */
 export function currentLeafOf(entries: readonly SessionEntry[]): SessionEntry | undefined {
 	const leaves = leavesOf(entries);

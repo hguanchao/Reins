@@ -99,9 +99,6 @@ function applyEntry(state: MutableState, entry: SessionEntry): void {
 		case "effort_change":
 			state.effort = entry.effort;
 			return;
-		case "branch":
-			// 分支标记只决定下一条条目接在哪里，本身不进入上下文
-			return;
 		case "compaction": {
 			// 摘要排在最前：它替代的消息都在压缩点之前，其中若还有保留下来的（压缩只覆盖前面
 			// 一段），那些消息也必须排在摘要之后，否则模型会先读到后半段再读到提要

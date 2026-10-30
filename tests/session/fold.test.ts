@@ -98,15 +98,6 @@ describe("会话折叠", () => {
 		assert.equal(state.effort, "high");
 	});
 
-	it("分支标记不进入上下文", () => {
-		const state = foldEntries([
-			messageEntry("a", { role: "user", content: "kept" }),
-			{ type: "branch", id: "b", parentId: "a", timestamp: T, reason: "rewind" },
-		]);
-		assert.deepEqual(state.messageIds, ["a"]);
-		assert.deepEqual(state.messages, [{ role: "user", content: "kept" }]);
-	});
-
 	it("压缩:被覆盖的消息退出，摘要排最前，未覆盖的排在摘要之后", () => {
 		const state = foldEntries([
 			messageEntry("m1", { role: "user", content: "one" }),

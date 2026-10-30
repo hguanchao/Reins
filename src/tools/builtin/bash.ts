@@ -1,5 +1,3 @@
-import { describeError } from "../../shared/describe-error.ts";
-import type { JobManager } from "../jobs.ts";
 import type { PermissionScope, ToolDefinition, ToolResult } from "../contract.ts";
 import type { JsonSchema } from "../schema.ts";
 import { MAX_CAPTURED_BYTES, resolveShell, startShellProcess } from "../shell.ts";
@@ -13,8 +11,7 @@ export { resolveShell } from "../shell.ts";
  * 这是四个核心工具里唯一具备任意执行能力的，所以命令先经沙箱包装再交给 shell——沙箱不需要
  * 替换这个工具本身，它只需要在这里加一层外壳。
  *
- * background 为 true 时不在本轮等待：进程交给宿主的 JobManager，工具立刻返回 job id；
- * 前台命令仍保持原来的超时、中止与输出截断。
+ * 一次调用就是一个前台进程：超时、中止与输出截断都在本轮内完成，不回传任何句柄。
  */
 
 const PARAMETERS = {
@@ -24,14 +21,7 @@ const PARAMETERS = {
 		timeout: {
 			type: "integer",
 			minimum: 1,
-			description:
-				"Timeout in seconds. Foreground commands default to 600; background commands run without a timeout when omitted.",
-		},
-		background: {
-			type: "boolean",
-			description:
-				"Run the command as a background job and return its job id immediately. Use job_output to read " +
-				"its output or kill_job to stop it.",
+			description: "Timeout in seconds. Defaults to 600.",
 		},
 	},
 	required: ["command"],
@@ -40,7 +30,6 @@ const PARAMETERS = {
 type BashArgs = {
 	readonly command: string;
 	readonly timeout?: number;
-	readonly background?: boolean;
 };
 
 /**
@@ -51,7 +40,7 @@ type BashArgs = {
  */
 const DEFAULT_TIMEOUT_SECONDS = 600;
 
-export function createBashTool(shellPath?: string, jobs?: JobManager): ToolDefinition<BashArgs> {
+export function createBashTool(shellPath?: string): ToolDefinition<BashArgs> {
 	return {
 		name: "bash",
 		summary: "Run a shell command in the workspace root (Git Bash on Windows)",
@@ -60,8 +49,7 @@ export function createBashTool(shellPath?: string, jobs?: JobManager): ToolDefin
 			"relative to the root and do not prefix commands with cd. Prefer one simple command per call, and use the " +
 			`dedicated file and search tools when they fit. Output is truncated from the end beyond ` +
 			`${DEFAULT_LIMITS.maxLines} lines or ${DEFAULT_LIMITS.maxBytes / 1024} KB; a non-zero exit code marks the ` +
-			"call as failed. Set background to true for long-running commands; otherwise the call waits for the " +
-			"command to finish. " +
+			"call as failed. The call waits for the command to finish. " +
 			(process.platform === "win32"
 				? "On Windows the shell is Git Bash: use POSIX syntax and /c/... paths, not cmd.exe syntax. "
 				: "") +
@@ -76,35 +64,6 @@ export function createBashTool(shellPath?: string, jobs?: JobManager): ToolDefin
 		},
 
 		async execute({ args, workspace, sandbox, session, signal }): Promise<ToolResult> {
-			if (args.background === true) {
-				if (jobs === undefined) {
-					return {
-						content: "Background jobs are unavailable in this mode; run the command without background.",
-						isError: true,
-					};
-				}
-				try {
-					const job = jobs.start({
-						command: args.command,
-						workspace,
-						sandbox,
-						session,
-						...(args.timeout === undefined ? {} : { timeoutSeconds: args.timeout }),
-					});
-					return {
-						content:
-							`Started background job ${job.id}: ${args.command}\n` +
-							`Use job_output with id "${job.id}" to read output, or kill_job to stop it.`,
-						details: { jobId: job.id, background: true },
-					};
-				} catch (error) {
-					return {
-						content: `Failed to start background job: ${describeError(error)}`,
-						isError: true,
-					};
-				}
-			}
-
 			const shell = resolveShell(undefined, shellPath);
 			const timeoutMs = (args.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1000;
 			const shellProcess = startShellProcess({

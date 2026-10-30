@@ -19,8 +19,6 @@ import { createSandbox, type SandboxInfo } from "../sandbox/setup.ts";
 import type { SandboxView } from "../sandbox/policy.ts";
 import type { Session } from "../session/session.ts";
 import type { ModelSelection } from "../config/selection.ts";
-import { JobManager } from "../tools/jobs.ts";
-import { TerminalManager } from "../tools/terminal.ts";
 import { createCoreTools } from "../tools/builtin/index.ts";
 import { ToolRegistry } from "../tools/registry.ts";
 import { ResultSpiller } from "../tools/spill.ts";
@@ -212,8 +210,6 @@ export async function assemblePipeline(options: {
 	readonly workRoot: string;
 	readonly policy: PermissionPolicy;
 	readonly gate: PermissionGate;
-	readonly jobs?: JobManager;
-	readonly terminals?: TerminalManager;
 	readonly onMcpStatus?: (source: McpStatusSource) => void;
 	readonly onMcpControl?: (control: McpControl) => void;
 	readonly onStage?: (stage: string) => void;
@@ -226,7 +222,7 @@ export async function assemblePipeline(options: {
 } | null> {
 	const { config, workRoot, policy, gate } = options;
 	const registry = new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), gate);
-	for (const tool of createCoreTools({ shellPath: config.shellPath, jobs: options.jobs, terminals: options.terminals })) {
+	for (const tool of createCoreTools({ shellPath: config.shellPath })) {
 		registry.register(tool, "core");
 	}
 

@@ -8,7 +8,6 @@ import { sessionMenuHeight } from "../panel/session-menu.ts";
 import { MENU_MAX_VISIBLE } from "../panel/menu-panel.ts";
 import { DEFAULT_COLUMNS, terminalHeight } from "../terminal.ts";
 import { todoCardFinished, TODO_PANEL_MAX_ITEMS } from "../view/todo-card.ts";
-import type { JobView } from "../job.ts";
 import type { TuiOptions } from "../options.ts";
 import {
 	COMPACT_FOOTER_FIXED_LINES,
@@ -134,31 +133,9 @@ export function todoPanelHeight(state: TuiState, options: TuiOptions): number {
 	return 1 + shown + overflow;
 }
 
-/** 正在运行的作业；页脚上方的 Jobs bar 与计时器都只认它们。 */
-function runningJobs(options: TuiOptions): readonly JobView[] {
-	return options.jobs?.list().filter((job) => job.status === "running") ?? [];
-}
-
-/** Jobs bar 只占一行；模态页与菜单打开时让位给内容。 */
-export function jobBarHeight(state: TuiState, options: TuiOptions): number {
-	return runningJobs(options).length > 0 &&
-		state.openPage === undefined &&
-		state.trustPrompt === undefined &&
-		state.approvalPrompt === undefined &&
-		!menuOpen(state)
-		? 1
-		: 0;
-}
-
 /** 页脚之外的主区域高度:对话流、整屏页与命中判定都用这一个数。 */
 export function mainAreaHeight(state: TuiState, options: TuiOptions): number {
-	return Math.max(
-		0,
-		terminalHeight(state.stdout) -
-			footerHeight(state, options) -
-			todoPanelHeight(state, options) -
-			jobBarHeight(state, options),
-	);
+	return Math.max(0, terminalHeight(state.stdout) - footerHeight(state, options) - todoPanelHeight(state, options));
 }
 
 /**
@@ -171,9 +148,5 @@ export function inputTopRow(state: TuiState, options: TuiOptions, mainHeight: nu
 	const panel = todoPanelHeight(state, options);
 	return compactFooter(state)
 		? mainHeight + panel + menuHeight(state) + COMPACT_FOOTER_INPUT_ROW
-		: mainHeight +
-				panel +
-				jobBarHeight(state, options) +
-				FULL_FOOTER_INPUT_ROW +
-				queueHeight(state.queued.length);
+		: mainHeight + panel + FULL_FOOTER_INPUT_ROW + queueHeight(state.queued.length);
 }

@@ -10,7 +10,6 @@ import type { CommandMenuItem } from "./panel/command-menu.ts";
 import type { FileSource } from "./panel/file-menu.ts";
 import type { FooterInfo } from "./view/footer.ts";
 import type { ImageAttachment, ImageSource } from "./image.ts";
-import type { JobEvent, JobView } from "./job.ts";
 import type { ModelMenuItem } from "./panel/model-menu.ts";
 import type { PageEntry, SkillPageEntry } from "./page/frame.ts";
 import type { SessionMenuItem } from "./panel/session-menu.ts";
@@ -76,37 +75,6 @@ export interface SessionMenuSource {
 	readonly select: (id: string) => SessionSwitchResult;
 	/** 从选中会话的当前末尾分叉并切过去；不提供时菜单里的 f 不可用 */
 	readonly fork?: (id: string) => SessionSwitchResult;
-}
-
-/** 回退到某条消息之前的结果：对话流换掉，被选中的原文回到输入框。 */
-export interface RewindResult {
-	/** false 表示选中的就是当前空会话的起点，界面不需要重放历史 */
-	readonly changed: boolean;
-	/** 回填输入框的正文；图片另走 images */
-	readonly prompt: string;
-	/** 原文里带的图片；界面重新挂成待发送附件 */
-	readonly images: readonly ImageAttachment[];
-	readonly history: readonly TranscriptTurn[];
-	readonly todo?: TranscriptTodo;
-	readonly plan?: TranscriptPlan;
-	readonly warnings: readonly string[];
-}
-
-/**
- * 当前会话的分支与历史。
- *
- * 分支列表来自会话树里的叶子，历史列表来自当前路径上的用户消息；两者都只读当前会话，
- * 不跨会话。切换与回退都通过追加分支标记完成，旧分支保留。
- */
-export interface ConversationSource {
-	/** 当前会话的全部分支末尾；current 标记当前所在的那一条 */
-	readonly branches: () => readonly SessionMenuItem[];
-	/** 切到某个分支末尾；失败时抛错 */
-	readonly selectBranch: (id: string) => SessionSwitchResult;
-	/** 当前路径上的用户消息，按从新到旧排列 */
-	readonly messages: () => readonly SessionMenuItem[];
-	/** 回退到这条消息之前；失败时抛错 */
-	readonly rewind: (id: string) => RewindResult;
 }
 
 /**
@@ -187,14 +155,6 @@ export interface CheckpointSource {
 	readonly error: () => string | undefined;
 	readonly latestUndoable: () => Promise<CheckpointPreview | undefined>;
 	readonly restore: (id: string) => Promise<CheckpointRestoreResult>;
-}
-
-/** 后台作业的界面数据源；由宿主的 JobManager 提供。Jobs bar 与结束说明只读这些。 */
-export interface JobSource {
-	readonly list: () => readonly JobView[];
-	readonly kill: (id: string) => unknown;
-	readonly subscribe: (listener: (event: JobEvent) => void) => () => void;
-	readonly shutdown: () => void;
 }
 
 /** 插件与宿主注册的斜杠命令；由装配处桥接到 PluginHost。 */
@@ -295,8 +255,6 @@ export interface TuiOptions {
 	readonly planMode?: PlanModeSource;
 	/** 检查点与撤销；不提供时 /undo 不可用 */
 	readonly checkpoints?: CheckpointSource;
-	/** 后台作业；不提供时没有 Jobs bar，bash 的 background 也会被拒绝 */
-	readonly jobs?: JobSource;
 	/** /model 菜单的数据来源；不提供时 /model 按普通输入处理 */
 	readonly modelMenu?: ModelMenuSource;
 	/** /effort 菜单的数据来源；不提供时 /effort 不可用 */
@@ -311,8 +269,6 @@ export interface TuiOptions {
 	readonly mcpControl?: McpControl;
 	/** /session 菜单的数据来源；不提供时该命令不可用（没有会话存储时就是这种情况） */
 	readonly sessionMenu?: SessionMenuSource;
-	/** /rewind 与 /branches 的数据来源；不提供时两条命令都不可用 */
-	readonly conversation?: ConversationSource;
 	/** /export 的数据来源；不提供时该命令不可用 */
 	readonly exportSession?: ExportSource;
 	/** /review 的数据来源；不提供时该命令不可用 */

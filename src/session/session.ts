@@ -40,7 +40,7 @@ export class Session implements SessionPort {
 	readonly path: string | null;
 
 	readonly #entries: SessionEntry[] = [];
-	/** 增量折叠；分支切换后整份重建，保证它只反映当前路径 */
+	/** 增量折叠；构造时按当前路径重建一次，保证它只反映续聊进来的那一条路径 */
 	#folder = new SessionFolder();
 	readonly #ids = new Set<string>();
 	readonly #writer: SessionWriter | undefined;
@@ -152,29 +152,6 @@ export class Session implements SessionPort {
 
 	async append(entry: NewSessionEntry): Promise<void> {
 		this.#appendAt(this.#leafId, entry);
-	}
-
-	/**
-	 * 回退到指定条目的后面。
-	 *
-	 * targetId 为 null 表示回到空会话。这里只追加一条分支标记，不删除也不改写任何条目：
-	 * 被回退掉的那段历史仍留在文件里，之后仍可作为另一条分支被切回来。
-	 */
-	rewindBefore(targetId: string | null): void {
-		this.#appendBranch(targetId, "rewind");
-	}
-
-	/** 切到某个分支的末尾；标记挂在目标条目之后，目标分支本身保持不变。 */
-	switchTo(leafId: string): void {
-		this.#appendBranch(leafId, "switch");
-	}
-
-	#appendBranch(targetId: string | null, reason: "rewind" | "switch"): void {
-		// 目标必须真实存在且能走到根：手工改坏的文件在这里就拒绝，而不是写出一个悬空分支
-		if (targetId !== null) pathTo(this.#entries, targetId);
-		this.#appendAt(targetId, { type: "branch", reason });
-		// 增量折叠里还留着旧分支的消息；换到新路径后必须整份重放
-		this.#rebuildFolder();
 	}
 
 	#rebuildFolder(): void {

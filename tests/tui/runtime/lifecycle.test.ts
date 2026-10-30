@@ -11,10 +11,8 @@ function stateOf(overrides: Record<string, unknown> = {}) {
 		activeTurn: undefined,
 		exitTimer: undefined,
 		spinnerTimer: undefined,
-		jobTimer: undefined,
 		statusClearTimer: undefined,
 		copyNoticeTimer: undefined,
-		unsubscribeJobs: () => {},
 		stdout: { off: () => {}, write: () => {} },
 		stdin: { off: () => {}, setRawMode: () => {}, pause: () => {} },
 		finish: () => {
@@ -33,21 +31,24 @@ describe("TUI 收尾", () => {
 	});
 
 	it("收尾中途抛错也要让 runTui 落定", () => {
-		const { state, finishCount } = stateOf({
-			// 插件在 shutdown 里抛错：不收进 finally 的话 finish 永远不会执行
-			unsubscribeJobs: () => {
-				throw new Error("boom");
+		const { state, finishCount } = stateOf();
+		// 审批桥接在收尾时抛错：不收进 finally 的话 finish 永远不会执行
+		const options = {
+			approval: {
+				denyAll: () => {
+					throw new Error("boom");
+				},
 			},
-		});
+		};
 
-		assert.throws(() => cleanup(state as never, { approval: undefined, jobs: undefined } as never, DEPS), /boom/);
+		assert.throws(() => cleanup(state as never, options as never, DEPS), /boom/);
 		assert.equal(finishCount(), 1);
 	});
 
 	it("重复收尾只落定一次", () => {
 		const { state, finishCount } = stateOf();
-		cleanup(state as never, { approval: undefined, jobs: undefined } as never, DEPS);
-		cleanup(state as never, { approval: undefined, jobs: undefined } as never, DEPS);
+		cleanup(state as never, { approval: undefined } as never, DEPS);
+		cleanup(state as never, { approval: undefined } as never, DEPS);
 		assert.equal(finishCount(), 1);
 	});
 
@@ -61,7 +62,7 @@ describe("TUI 收尾", () => {
 			},
 		});
 
-		cleanup(state as never, { approval: undefined, jobs: undefined } as never, DEPS);
+		cleanup(state as never, { approval: undefined } as never, DEPS);
 		assert.equal(aborted, true);
 	});
 });

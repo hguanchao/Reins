@@ -33,12 +33,8 @@ export interface SessionMenuItem {
 	readonly forkedFrom?: string;
 }
 
-/** 面板当前在选什么：会话文件、当前会话的分支，还是可回退的历史消息。 */
-export type SessionMenuKind = "sessions" | "branches" | "rewind";
-
+/** 面板在选哪个会话。 */
 export interface SessionMenuState extends MenuListState {
-	/** 省略按会话列表处理，旧调用点不需要跟着改 */
-	readonly kind?: SessionMenuKind;
 	readonly items: readonly SessionMenuItem[];
 }
 

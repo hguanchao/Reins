@@ -62,12 +62,6 @@ export function cleanup(
 			clearInterval(state.spinnerTimer);
 			state.spinnerTimer = undefined;
 		}
-		if (state.jobTimer !== undefined) {
-			clearInterval(state.jobTimer);
-			state.jobTimer = undefined;
-		}
-		state.unsubscribeJobs();
-		options.jobs?.shutdown();
 		if (state.statusClearTimer !== undefined) {
 			clearTimeout(state.statusClearTimer);
 			state.statusClearTimer = undefined;

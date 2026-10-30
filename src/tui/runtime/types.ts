@@ -241,9 +241,6 @@ export interface TuiState {
 
 	// —— 定时器与生命周期 ——
 	spinnerTimer: ReturnType<typeof setInterval> | undefined;
-	/** 只在有作业运行时启动：让 Jobs bar 的耗时跟着当前时间走。 */
-	jobTimer: ReturnType<typeof setInterval> | undefined;
-	unsubscribeJobs: () => void;
 	statusClearTimer: ReturnType<typeof setTimeout> | undefined;
 	exitArmed: boolean;
 	exitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -281,7 +278,6 @@ export interface TuiHost {
 	approvalPanelTop(): number;
 	inputTopRow(mainHeight: number): number;
 	todoPanelHeight(): number;
-	jobBarHeight(): number;
 	commands(): readonly CommandMenuItem[];
 	noticeText(): string | undefined;
 	currentTranscript(width: number): TranscriptView;
@@ -333,7 +329,6 @@ export interface TuiHost {
 	revisePlan(): void;
 	leavePlan(): void;
 	executeUndo(): void;
-	startJobTimer(): void;
 	closeFileMenu(dismissed?: boolean): void;
 	updateCommandMenu(): void;
 	updateFileMenu(): void;
@@ -347,10 +342,6 @@ export interface TuiHost {
 	completeMenu(): void;
 	cancelMenu(): void;
 	forkSelectedSession(): void;
-	/** 切到当前会话的另一个分支末尾 */
-	switchBranch(id: string): void;
-	/** 回退到某条消息之前，并把原文放回输入框 */
-	rewindTo(id: string): void;
 	executeCommand(command: CommandMenuItem, args?: string): void;
 	submit(): boolean;
 	/** 收尾退出整个界面；用于拒绝信任这类「不再继续」的结论。 */

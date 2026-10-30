@@ -100,8 +100,6 @@ export function createState(options: TuiOptions): TuiState {
 		mcpStatusTone: undefined,
 		pageCache: undefined,
 		spinnerTimer: undefined,
-		jobTimer: undefined,
-		unsubscribeJobs: () => {},
 		statusClearTimer: undefined,
 		exitArmed: false,
 		exitTimer: undefined,

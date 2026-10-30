@@ -6,7 +6,7 @@ import type { TuiHost } from "./types.ts";
  * /undo:恢复最近一个与当前工作区有差异的回合检查点。
  *
  * 没有页面可确认，所以恢复直接执行，结果通过对话流留下记录。恢复要跑 git，期间工作区
- * 必须是稳定状态：回合在跑或后台作业未停时明确拒绝，不做一半的恢复。
+ * 必须是稳定状态：回合在跑或审查在读工作区时明确拒绝，不做一半的恢复。
  */
 
 /** /undo:取最近一个与当前工作区有差异的回合检查点并恢复。 */
@@ -49,15 +49,6 @@ export function executeUndo(host: TuiHost): void {
 				host.render();
 				return;
 			}
-			if (host.options.jobs?.list().some((job) => job.status === "running") === true) {
-				// 后台作业可能正在写同一批文件；先让它停下来，否则恢复出来的工作区不是任何一个稳定状态
-				state.restoringCheckpoint = false;
-				host.setStatus("Stop background jobs before restoring files", "notice");
-				host.scheduleStatusClear();
-				host.render();
-				return;
-			}
-
 			host.clearStatus();
 			host.render();
 			return source
