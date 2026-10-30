@@ -175,6 +175,8 @@ export function handleTranscriptInput(
 						: markerAtColumn(line.text, event.column - displayWidth(line.prefix) - 1);
 				const expanded = id === undefined ? undefined : expandPaste(state.pastes, state.input, id);
 				if (expanded !== undefined) {
+					// 双击本身就落在输入框里：展开的同时把焦点收回来，下一次回车才是提交
+					state.focused = true;
 					host.setInput(expanded.text, expanded.cursor);
 					state.historyIndex = -1;
 					host.updateCommandMenu();
