@@ -35,6 +35,8 @@ import {
 import { describePiOutcomes, piExtensionPlugin, type PiExtensionCollector } from "../plugins/pi-runtime.ts";
 import { describeDshOutcomes, dshExtensionPlugin, type DshExtensionCollector } from "../plugins/dsh-runtime.ts";
 import { getAgentDir as getDshAgentDir } from "../plugins/pi-shim/api.ts";
+import { DEFAULT_WEB_FETCH_LIMITS, fetchWebPage } from "../tools/web-fetch.ts";
+import { defaultSkillRoots, discoverSkills } from "../skills/discover.ts";
 import { writeStderr } from "./output.ts";
 
 /**
@@ -288,6 +290,17 @@ export async function assemblePipeline(options: {
 					.map((plugin) =>
 						dshExtensionPlugin(plugin, {
 							...extensionContext,
+							skills: () => discoverSkills(defaultSkillRoots(workRoot, extensionContext.projectTrusted)),
+							webFetch: async (url, signal) => {
+								const page = await fetchWebPage(url, DEFAULT_WEB_FETCH_LIMITS, { signal });
+								return {
+									url: page.url,
+									statusCode: page.statusCode,
+									kind: page.kind,
+									content: page.content,
+									truncated: page.truncatedByBytes || page.truncatedByChars,
+								};
+							},
 							// Reins 的沙箱模式映射成 dsh 的策略模式：worker 的文件边界与沙箱承诺一致
 							policyMode:
 								config.sandbox === "read-only"

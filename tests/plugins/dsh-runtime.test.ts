@@ -65,6 +65,8 @@ const CONTEXT: DshExtensionContext = {
 	projectTrusted: false,
 	sessionDir: "C:\\sessions",
 	policyMode: "workspace-write",
+	skills: () => [],
+	webFetch: async () => ({ url: "", statusCode: 0, kind: "text", content: "", truncated: false }),
 	notify: () => {},
 };
 

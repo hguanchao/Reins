@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -33,6 +34,19 @@ export interface DshExtensionContext {
 	readonly sessionDir: string;
 	/** Reins 沙箱模式映射成 dsh 的策略模式；worker 的文件边界由此决定 */
 	readonly policyMode: "read-only" | "workspace-write" | "danger-full-access";
+	/** 当前可用的技能清单（dsh 的 skill 工具按需读取全文） */
+	readonly skills: () => readonly { readonly name: string; readonly description: string; readonly directory: string }[];
+	/** 网页抓取；由宿主的 web-fetch 实现提供 */
+	readonly webFetch: (
+		url: string,
+		signal?: AbortSignal,
+	) => Promise<{
+		readonly url: string;
+		readonly statusCode: number;
+		readonly kind: string;
+		readonly content: string;
+		readonly truncated: boolean;
+	}>;
 	/** 扩展往界面上写一行信息；print 模式落 stderr，界面模式进状态 */
 	readonly notify: (message: string) => void;
 }
@@ -184,6 +198,49 @@ function createDshRuntime(input: {
 			resolve: (_input: unknown) => ({
 				mode: context.policyMode,
 				workspaceRoot: context.cwd,
+			}),
+		},
+		// 网页抓取桥接宿主实现；搜索没有后端，明确报错而不是返回空结果
+		web: {
+			fetch: async (input: unknown, signal?: AbortSignal) => {
+				const url = isObject(input) && typeof input["url"] === "string" ? input["url"] : "";
+				const page = await context.webFetch(url, signal);
+				return {
+					url: page.url,
+					statusCode: page.statusCode,
+					body: { kind: page.kind, content: page.content },
+					truncated: page.truncated,
+				};
+			},
+			search: async (_input: unknown, _signal?: AbortSignal): Promise<never> => {
+				markUnavailable("ctx.web.search (no search backend configured)");
+				throw new Error("ctx.web.search is not available in Reins: no search backend is configured");
+			},
+		},
+		// 技能服务桥接 Reins 的 SKILL.md 发现：list 给清单，get 读全文
+		skills: {
+			list: async () =>
+				context.skills().map((skill) => ({
+					name: skill.name,
+					description: skill.description,
+					provider: "reins",
+					source: skill.directory,
+					invocation: { modelInvocable: true, userInvocable: true },
+				})),
+			get: async (name: unknown) => {
+				const wanted = typeof name === "string" ? name : "";
+				const skill = context.skills().find((item) => item.name === wanted);
+				if (skill === undefined) return undefined;
+				let content: string;
+				try {
+					content = readFileSync(join(skill.directory, "SKILL.md"), "utf8");
+				} catch {
+					return undefined;
+				}
+				return { name: skill.name, provider: "reins", content, invocation: { modelInvocable: true, userInvocable: true } };
+			},
+			snapshot: async () => ({
+				skills: context.skills().map((skill) => ({ name: skill.name, description: skill.description })),
 			}),
 		},
 		// dsh 的受管子进程：worker exe 的进程创建与输出收集。文件边界由 worker 按传入的策略
