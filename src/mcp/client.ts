@@ -37,6 +37,8 @@ export interface McpClientOptions {
 	/** 控制请求（握手、列工具）的超时 */
 	readonly controlTimeoutMs: number;
 	readonly callTimeoutMs: number;
+	/** 服务端通知（无 id 的报文，如 tools/list_changed）；本程序只关心方法名 */
+	readonly onNotification?: (method: string) => void;
 }
 
 interface Pending {
@@ -139,8 +141,11 @@ export class McpClient {
 		const id = message["id"];
 
 		if (typeof message["method"] === "string") {
-			// 通知没有 id，本程序不处理
-			if (id === undefined) return;
+			// 通知没有 id：方法名交给关心它的调用方（tools/list_changed 就从这里来），没人关心就丢掉
+			if (id === undefined) {
+				this.#options.onNotification?.(message["method"]);
+				return;
+			}
 			// 服务端反过来请求本程序（采样、列根目录之类）。本程序不提供这些能力，明确回一句
 			// 「不支持」，免得对方一直等
 			void this.#send({

@@ -100,6 +100,19 @@ export class ToolRegistry {
 	}
 
 	/**
+	 * 摘除一个非核心工具。
+	 *
+	 * 服务端把工具下线时，注册表里留着它只会让模型调到一个「当前不可用」的空壳。核心工具是
+	 * 产品本体，谁都不能拆——返回 false 表示没摘成（工具不存在，或它属于核心）。
+	 */
+	unregister(name: string): boolean {
+		const existing = this.#tools.get(name);
+		if (existing === undefined || existing.source === "core") return false;
+		this.#tools.delete(name);
+		return true;
+	}
+
+	/**
 	 * 在现有工具之上再挂一个，得到本次运行用的注册表。
 	 *
 	 * 需要它是因为有些工具要绑定本次运行才存在的东西（比如子代理要绑定本次运行的会话，

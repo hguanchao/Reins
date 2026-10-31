@@ -6,7 +6,7 @@ import { contextProxy } from "#src/plugins/missing.ts";
 
 import type { JsonSchema } from "#src/tools/schema.ts";
 import type { ToolResult } from "#src/tools/contract.ts";
-import type { Plugin, PluginApi, PluginFailure } from "#src/plugins/host.ts";
+import type { Plugin, PluginApi, PluginFailure, PluginReportLine } from "#src/plugins/host.ts";
 import type { DeclarativePlugin } from "#src/plugins/declarative.ts";
 import { CONFIG_DIR_NAME, getAgentDir, isToolCallEventType, withFileMutationQueue } from "#src/plugins/pi-shim/api.ts";
 
@@ -315,8 +315,8 @@ export function piExtensionPlugin(
 export function describePiOutcomes(
 	collectors: readonly PiExtensionCollector[],
 	failures: readonly PluginFailure[],
-): readonly string[] {
-	const lines: string[] = [];
+): readonly PluginReportLine[] {
+	const lines: PluginReportLine[] = [];
 	for (const collector of collectors) {
 		for (const outcome of collector.outcomes) {
 			const parts: string[] = [];
@@ -325,18 +325,22 @@ export function describePiOutcomes(
 			if (outcome.handlers > 0) {
 				parts.push(`${outcome.handlers} event handler(s) registered but not dispatched`);
 			}
-			lines.push(
-				`pi extension in ${collector.plugin.name}: ${
+			lines.push({
+				text: `pi extension in ${collector.plugin.name}: ${
 					parts.length === 0 ? "nothing registered" : parts.join("; ")
 				}`,
-			);
+				problem: false,
+			});
 			for (const name of outcome.unavailable) {
-				lines.push(`pi extension in ${collector.plugin.name}: unavailable — ${name}`);
+				lines.push({
+					text: `pi extension in ${collector.plugin.name}: unavailable — ${name}`,
+					problem: true,
+				});
 			}
 		}
 	}
 	for (const failure of failures) {
-		lines.push(`pi extension ${failure.plugin}: failed — ${failure.message}`);
+		lines.push({ text: `pi extension ${failure.plugin}: failed — ${failure.message}`, problem: true });
 	}
 	return lines;
 }

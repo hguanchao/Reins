@@ -63,6 +63,17 @@ export interface PluginFailure {
 }
 
 /**
+ * 装载报告的一行。
+ *
+ * 非交互模式把每一行都写上标准错误；全屏界面只把 problem 为真的行交给对话流顶部的
+ * 警告区，成功结论不再占用使用者的主屏幕。
+ */
+export interface PluginReportLine {
+	readonly text: string;
+	readonly problem: boolean;
+}
+
+/**
  * 一个插件的待提交项。
  *
  * 每个插件各有一份，而不是共用几个字段：插件可以在装载结束之后继续注册工具（远端连上之后

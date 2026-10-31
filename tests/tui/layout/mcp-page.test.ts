@@ -34,6 +34,7 @@ describe("MCP 管理页", () => {
 				return `Reconnected ${name}: 2 tools`;
 			},
 			healthCheck: async () => ["alpha: ok", "beta: failed"],
+			awaitStartup: async () => {},
 		};
 		const running = runTui({
 			version: "1.2.3",
@@ -62,6 +63,8 @@ describe("MCP 管理页", () => {
 			assert.ok(screen(output).includes("Reconnected beta: 2 tools"), screen(output));
 			input.emit("data", Buffer.from("\x1b"));
 			assert.ok(screen(output).includes("Reconnected beta: 2 tools"), screen(output));
+			// 回到对话流后，状态行的「重连中」要收尾，不能一直占着
+			assert.equal(screen(output).includes("Reconnecting"), false, screen(output));
 
 			input.emit("data", Buffer.from("/mcps\r"));
 			input.emit("data", Buffer.from("h"));
@@ -70,6 +73,8 @@ describe("MCP 管理页", () => {
 			text = screen(output);
 			assert.ok(text.includes("alpha: ok"));
 			assert.ok(text.includes("beta: failed"));
+			// 「检查中」同样要收尾
+			assert.equal(screen(output).includes("Checking MCP"), false, screen(output));
 		} finally {
 			exitTui(input);
 		}
@@ -93,6 +98,7 @@ describe("MCP 管理页", () => {
 			mcpControl: {
 				reconnect: async (name) => `Reconnected ${name}`,
 				healthCheck: async () => [],
+				awaitStartup: async () => {},
 			},
 			stdin: input,
 			stdout: output,
@@ -117,6 +123,7 @@ describe("MCP 管理页", () => {
 		const control: McpControl = {
 			reconnect: async (name) => `Reconnected ${name}`,
 			healthCheck: async () => [],
+			awaitStartup: async () => {},
 		};
 		const running = runTui({
 			version: "1.2.3",

@@ -13,7 +13,7 @@ import { startMcpServers, type McpControl, type McpStatusSource } from "#src/mcp
 import { ModelReviewer } from "#src/permission/reviewer.ts";
 import { PermissionGate, PermissionPolicy } from "#src/permission/policy.ts";
 import { ExternalPlugins } from "#src/plugins/external.ts";
-import { PluginHost, type PluginFailure } from "#src/plugins/host.ts";
+import { PluginHost, type PluginFailure, type PluginReportLine } from "#src/plugins/host.ts";
 import { builtinSandboxBackends, builtinSessionStore } from "#src/plugins/registry.ts";
 import { createSandbox, type SandboxInfo } from "#src/sandbox/setup.ts";
 import type { SandboxView } from "#src/sandbox/policy.ts";
@@ -235,7 +235,7 @@ export async function assemblePipeline(options: {
 	/** 声明式插件的扫描结果：技能根由界面侧接进技能清单 */
 	readonly declarative: DeclarativeScan;
 	/** 装载报告，逐条给使用者看 */
-	readonly pluginReport: readonly string[];
+	readonly pluginReport: readonly PluginReportLine[];
 } | null> {
 	const { config, workRoot, policy, gate } = options;
 	const registry = new ToolRegistry(new ResultSpiller(config.spillThreshold, spillDir()), gate);
@@ -259,6 +259,8 @@ export async function assemblePipeline(options: {
 		version: readVersion(),
 		servers: mcp.servers,
 		registerTool: (tool) => registry.register(tool, "bundled"),
+		// 服务端把工具下线时从注册表摘掉;核心工具由注册表自己挡住,这里不判
+		unregisterTool: (name) => registry.unregister(name),
 		...(options.onMcpStatus === undefined ? {} : { onStatus: options.onMcpStatus }),
 		...(options.onMcpControl === undefined ? {} : { onControl: options.onMcpControl }),
 	});

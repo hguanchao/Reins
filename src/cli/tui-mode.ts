@@ -210,8 +210,6 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 	});
 	if (pipeline === null) return 1;
 	const { registry, host, sandbox, sandboxWarnings, declarative, pluginReport } = pipeline;
-	// 插件带来的技能与配置里的技能走同一条发现路径；报告逐条写出来，装上了但没生效的部分
-	// 必须让人看得见
 	pluginSkillRoots = declarative.plugins.flatMap((plugin) =>
 		plugin.skillDirectories.map((skill) => ({
 			directory: skill.directory,
@@ -219,7 +217,8 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			single: skill.single,
 		})),
 	);
-	for (const line of pluginReport) writeStderr(`reins: ${line}\n`);
+	// 装载问题行交给对话流顶部的警告区(进屏后呈现);成功结论不再写主屏幕
+	const loadProblems = pluginReport.filter((line) => line.problem).map((line) => line.text);
 
 	const workspace = new WorkspaceBoundary(workRoot);
 	startup.mark("sandbox");
@@ -728,6 +727,8 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			warning,
 			ready,
 			trustPrompt,
+			startupProblems: loadProblems.length === 0 ? undefined : loadProblems,
+			mcpStatus,
 			skills: skillsPage,
 			mcpServers: mcpStatus === undefined ? undefined : mcpServerRows,
 			mcpControl,

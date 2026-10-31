@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { isObject } from "#src/plugins/dsh-shim/shared.ts";
 import type { DeclarativePlugin } from "#src/plugins/declarative.ts";
-import type { Plugin, PluginApi, PluginFailure } from "#src/plugins/host.ts";
+import type { Plugin, PluginApi, PluginFailure, PluginReportLine } from "#src/plugins/host.ts";
 import type { ToolContext, ToolResult } from "#src/tools/contract.ts";
 import type { JsonSchema } from "#src/tools/schema.ts";
 import { writeForwarders } from "#src/plugins/shims.ts";
@@ -440,8 +440,8 @@ export function dshExtensionPlugin(
 export function describeDshOutcomes(
 	collectors: readonly DshExtensionCollector[],
 	failures: readonly PluginFailure[],
-): readonly string[] {
-	const lines: string[] = [];
+): readonly PluginReportLine[] {
+	const lines: PluginReportLine[] = [];
 	for (const collector of collectors) {
 		for (const outcome of collector.outcomes) {
 			const parts: string[] = [];
@@ -452,27 +452,35 @@ export function describeDshOutcomes(
 			if (outcome.handlers.length > 0) parts.push(`events: ${outcome.handlers.join(", ")}`);
 			if (outcome.warnings.length > 0) {
 				for (const warning of outcome.warnings) {
-					lines.push(`dsh plugin ${collector.plugin.name}: warning — ${warning}`);
+					lines.push({
+						text: `dsh plugin ${collector.plugin.name}: warning — ${warning}`,
+						problem: true,
+					});
 				}
 			}
 			if (outcome.promptSections.length > 0) {
 				parts.push(`prompt sections (registered, not applied): ${outcome.promptSections.join(", ")}`);
 			}
-			lines.push(
-				`dsh plugin ${collector.plugin.name}: ${
+			lines.push({
+				text: `dsh plugin ${collector.plugin.name}: ${
 					parts.length === 0 ? "nothing registered" : parts.join("; ")
 				}`,
-			);
-			lines.push(
-				`dsh plugin ${collector.plugin.name}: projection data is kept in memory only and is not written to the session file`,
-			);
+				problem: false,
+			});
+			lines.push({
+				text: `dsh plugin ${collector.plugin.name}: projection data is kept in memory only and is not written to the session file`,
+				problem: false,
+			});
 			for (const name of outcome.unavailable) {
-				lines.push(`dsh plugin ${collector.plugin.name}: unavailable — ${name}`);
+				lines.push({
+					text: `dsh plugin ${collector.plugin.name}: unavailable — ${name}`,
+					problem: true,
+				});
 			}
 		}
 	}
 	for (const failure of failures) {
-		lines.push(`dsh plugin ${failure.plugin}: failed — ${failure.message}`);
+		lines.push({ text: `dsh plugin ${failure.plugin}: failed — ${failure.message}`, problem: true });
 	}
 	return lines;
 }

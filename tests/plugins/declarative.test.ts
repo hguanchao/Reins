@@ -257,10 +257,11 @@ describe("装载报告", () => {
 			["Plugin pack: MCP server fs is already configured; the plugin's declaration is ignored"],
 		);
 
-		assert.equal(lines[0], "plugin pack (plugin.json): 1 skill dir(s)");
-		assert.ok(lines.some((line) => line.includes("unsupported — hooks")));
-		assert.ok(lines.some((line) => line.startsWith("plugin broken: failed —")));
-		assert.ok(lines.some((line) => line.includes("already configured")));
+		assert.equal(lines[0]?.text, "plugin pack (plugin.json): 1 skill dir(s)");
+		assert.equal(lines[0]?.problem, false);
+		assert.ok(lines.some((line) => line.text.includes("unsupported — hooks") && line.problem));
+		assert.ok(lines.some((line) => line.text.startsWith("plugin broken: failed —") && line.problem));
+		assert.ok(lines.some((line) => line.text.includes("already configured") && line.problem));
 	});
 
 	it("什么都没有的插件也要说清楚", () => {
@@ -281,6 +282,6 @@ describe("装载报告", () => {
 			failures: [],
 		});
 
-		assert.deepEqual(lines, ["plugin empty (convention): nothing usable"]);
+		assert.deepEqual(lines, [{ text: "plugin empty (convention): nothing usable", problem: false }]);
 	});
 });

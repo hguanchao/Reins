@@ -194,7 +194,7 @@ function copyPlugin(origin: string, target: string): void {
 }
 
 function report(directory: string, options: { readonly restart: boolean }): readonly string[] {
-	const lines: string[] = [...describeDeclarativeScan(scanDeclarativePlugins(directory))];
+	const lines: string[] = describeDeclarativeScan(scanDeclarativePlugins(directory)).map((line) => line.text);
 	// 顶层 .ts 文件是另一类插件（代码插件），扫描器不认它们，这里单独点名
 	if (existsSync(directory)) {
 		for (const entry of readdirSync(directory)) {

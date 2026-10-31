@@ -3,6 +3,7 @@ import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { McpServerConfig } from "#src/config/file.ts";
 import { pluginsDir } from "#src/config/paths.ts";
+import type { PluginReportLine } from "#src/plugins/host.ts";
 import { describeError } from "#src/shared/describe-error.ts";
 
 /**
@@ -419,23 +420,28 @@ function toServerConfig(name: string, raw: unknown): McpServerConfig {
 export function describeDeclarativeScan(
 	scan: DeclarativeScan,
 	mcpWarnings: readonly string[] = [],
-): readonly string[] {
-	const lines: string[] = [];
+): readonly PluginReportLine[] {
+	const lines: PluginReportLine[] = [];
 	for (const plugin of scan.plugins) {
 		const parts: string[] = [];
 		if (plugin.skillDirectories.length > 0) parts.push(`${plugin.skillDirectories.length} skill dir(s)`);
 		if (plugin.mcpServers.length > 0) parts.push(`${plugin.mcpServers.length} MCP server(s)`);
 		if (plugin.extensions.length > 0) parts.push(`${plugin.extensions.length} extension(s)`);
-		lines.push(
-			`plugin ${plugin.name} (${plugin.manifest}): ${parts.length === 0 ? "nothing usable" : parts.join(", ")}`,
-		);
-		for (const item of plugin.unsupported) lines.push(`plugin ${plugin.name}: unsupported — ${item}`);
-		for (const warning of plugin.warnings) lines.push(`plugin ${plugin.name}: ${warning}`);
+		lines.push({
+			text: `plugin ${plugin.name} (${plugin.manifest}): ${parts.length === 0 ? "nothing usable" : parts.join(", ")}`,
+			problem: false,
+		});
+		for (const item of plugin.unsupported) {
+			lines.push({ text: `plugin ${plugin.name}: unsupported — ${item}`, problem: true });
+		}
+		for (const warning of plugin.warnings) {
+			lines.push({ text: `plugin ${plugin.name}: ${warning}`, problem: true });
+		}
 	}
 	for (const failure of scan.failures) {
-		lines.push(`plugin ${failure.plugin}: failed — ${failure.message}`);
+		lines.push({ text: `plugin ${failure.plugin}: failed — ${failure.message}`, problem: true });
 	}
-	lines.push(...mcpWarnings);
+	lines.push(...mcpWarnings.map((text) => ({ text, problem: true })));
 	return lines;
 }
 

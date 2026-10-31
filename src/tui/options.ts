@@ -4,7 +4,7 @@ import type {
 	CheckpointRestoreResult,
 } from "#src/checkpoint/service.ts";
 import type { ApprovalMode, NotifyMode, ThinkingLevel } from "#src/config/file.ts";
-import type { McpControl } from "#src/mcp/service.ts";
+import type { McpControl, McpStatusSource } from "#src/mcp/service.ts";
 import type { ApprovalBroker } from "#src/permission/approval.ts";
 import type { CommandMenuItem } from "#src/tui/panel/command-menu.ts";
 import type { FileSource } from "#src/tui/panel/file-menu.ts";
@@ -265,6 +265,10 @@ export interface TuiOptions {
 	readonly skills?: SkillsPageSource;
 	/** /mcps 的数据来源；不提供时该命令不可用（MCP 插件缺席就是这种情况） */
 	readonly mcpServers?: () => readonly PageEntry[];
+	/** MCP 连接的实时状态；启动期状态行据此显示握手进度 */
+	readonly mcpStatus?: McpStatusSource;
+	/** 插件与扩展装载的问题行（失败/警告/不支持）；进对话流顶部的警告区 */
+	readonly startupProblems?: readonly string[];
 	/** /mcps 页的重连与健康检查；不提供时 r/h 无效 */
 	readonly mcpControl?: McpControl;
 	/** /session 菜单的数据来源；不提供时该命令不可用（没有会话存储时就是这种情况） */

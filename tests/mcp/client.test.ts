@@ -96,3 +96,55 @@ describe("MCP 健康检查", () => {
 		connection.close();
 	});
 });
+
+describe("服务端通知", () => {
+	it("通知按方法名交给监听者，请求照常配对", async () => {
+		const queue: JsonRpcMessage[] = [];
+		let wake: (() => void) | undefined;
+		let closed = false;
+		const transport: McpTransport = {
+			async send(message): Promise<void> {
+				const id = message["id"];
+				if (typeof message["method"] !== "string" || id === undefined) return;
+				if (message["method"] === "initialize") {
+					queue.push({ jsonrpc: "2.0", id, result: { protocolVersion: "2025-06-18" } });
+					wake?.();
+				}
+			},
+			async *receive(): AsyncIterable<JsonRpcMessage> {
+				for (;;) {
+					const next = queue.shift();
+					if (next !== undefined) {
+						yield next;
+						continue;
+					}
+					if (closed) return;
+					await new Promise<void>((resolve) => {
+						wake = resolve;
+					});
+				}
+			},
+			close(): void {
+				closed = true;
+				wake?.();
+			},
+		};
+		const notifications: string[] = [];
+		const client = new McpClient({
+			transport,
+			clientName: "test",
+			version: "0.0.0",
+			controlTimeoutMs: 1000,
+			callTimeoutMs: 1000,
+			onNotification: (method) => notifications.push(method),
+		});
+
+		await client.connect();
+		queue.push({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+		queue.push({ jsonrpc: "2.0", method: "notifications/other" });
+		wake?.();
+		for (let index = 0; index < 5; index += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+		assert.deepEqual(notifications, ["notifications/tools/list_changed", "notifications/other"]);
+		client.close();
+	});
+});

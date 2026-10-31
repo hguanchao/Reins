@@ -4,6 +4,7 @@ import {
 	type PromptInstruction,
 } from "#src/agent/instructions.ts";
 import { PermissionGate, PermissionPolicy } from "#src/permission/policy.ts";
+import type { McpControl } from "#src/mcp/service.ts";
 import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 import { readVersion } from "#src/version.ts";
 import { HELP_TEXT, parseArgs, UsageError, type CliOptions } from "#src/cli/args.ts";
@@ -79,12 +80,17 @@ async function runPrint(options: CliOptions): Promise<number> {
 		reviewer:
 			config.approval === "auto" ? createReviewer(config, selection, workRoot) : undefined,
 	});
+	// MCP 的限时收口交给首条消息前：非交互同样不该拿半套工具清单发第一次请求
+	let mcpControl: McpControl | undefined;
 	const pipeline = await assemblePipeline({
 		config,
 		workRoot,
 		policy,
 		gate,
 		extensionContext: { mode: "print", projectTrusted: "trusted" in loaded && loaded.trusted },
+		onMcpControl: (control) => {
+			mcpControl = control;
+		},
 	});
 	if (pipeline === null) return 1;
 	const { registry, sandbox, sandboxWarnings } = pipeline;
@@ -99,12 +105,19 @@ async function runPrint(options: CliOptions): Promise<number> {
 	try {
 		return await runPrintMode({
 			prompt: options.prompt,
-			createDriver: (onEvent) =>
-				createDriverFor(
+			createDriver: (onEvent) => {
+				const driver = createDriverFor(
 					{ config, selection, compactor },
 					{ registry, session, workspace, sandbox, instructions },
 					onEvent,
-				),
+				);
+				return {
+					run: async (prompt, signal) => {
+						await mcpControl?.awaitStartup();
+						return driver.run(prompt, signal);
+					},
+				};
+			},
 			workspaceRoot: workRoot,
 			json: options.json,
 			stdout: writeStdout,

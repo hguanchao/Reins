@@ -272,3 +272,15 @@ describe("工具注册表", () => {
 		assert.deepEqual(outcome.details, details);
 	});
 });
+
+describe("摘除工具", () => {
+	it("bundled 工具可摘除，核心工具与未知名字不行", () => {
+		const registry = registryWith(ALLOW);
+		assert.equal(registry.unregister("echo-tool"), false);
+		const remote = { ...ECHO, name: "remote-tool" };
+		registry.register(remote, "bundled");
+		assert.equal(registry.unregister("remote-tool"), true);
+		assert.equal(registry.get("remote-tool"), undefined);
+		assert.equal(registry.unregister("remote-tool"), false);
+	});
+});
