@@ -65,6 +65,8 @@ export function App(): ReactElement {
 	const [version, setVersion] = useState("");
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
+	/** 侧栏收起态:只影响界面,不影响会话 */
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -316,21 +318,23 @@ export function App(): ReactElement {
 
 	return (
 		<>
-			<MenuStrip />
+			<MenuStrip onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)} />
 			<div className={"workspace" + (window.reinsDesktop === undefined ? " full" : "")}>
-			<Sidebar
-				version={version}
-				sessions={sessions}
-				currentId={sessionId}
-				running={running}
-				cwd={cwd}
-				skills={skills}
-				plugins={plugins}
-				model={model}
-				approvalMode={approvalMode}
-				onSwitch={switchSession}
-				onNew={newTask}
-			/>
+				{!sidebarCollapsed && (
+					<Sidebar
+						version={version}
+						sessions={sessions}
+						currentId={sessionId}
+						running={running}
+						cwd={cwd}
+						skills={skills}
+						plugins={plugins}
+						model={model}
+						approvalMode={approvalMode}
+						onSwitch={switchSession}
+						onNew={newTask}
+					/>
+				)}
 			<div className="content">
 				<Header title={currentTitle} totalTokens={totalTokens} connected={connected} />
 				{loadError !== undefined ? (
