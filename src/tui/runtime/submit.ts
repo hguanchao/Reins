@@ -3,7 +3,7 @@ import { TURN_SAFE_COMMANDS } from "#src/tui/commands.ts";
 import { commandArgs } from "#src/tui/commands.ts";
 import { IMAGE_STILL_READING, STATUS, queuedOverflow, unknownCommand, waitForTurn } from "#src/tui/copy.ts";
 import { expandPastes } from "#src/tui/paste.ts";
-import { forgetDraft } from "#src/tui/input/draft.ts";
+import { resetInputUndo } from "#src/tui/input/draft.ts";
 import { attachmentLimit, clearAttachments, imagesOf } from "#src/tui/input/attachments.ts";
 import { QUEUE_MAX_VISIBLE } from "#src/tui/view/footer.ts";
 import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
@@ -73,6 +73,7 @@ export function submit(host: TuiHost): boolean {
 			state.commandMenu = undefined;
 			state.commandMenuDismissed = true;
 			host.setStatus(waitForTurn(`/${command.name}`), "notice");
+			host.scheduleStatusClear();
 			host.render();
 			return false;
 		}
@@ -94,10 +95,11 @@ export function submit(host: TuiHost): boolean {
 	// 一轮进行中不再丢输入：排进队列，本轮收尾后自动发送
 	if (state.activeTurn !== undefined) {
 		clearAttachments(host);
-		// 已经发出去的草稿不属于下一次输入，撤销不该把它拉回来
-		forgetDraft(state);
 		state.commandMenu = undefined;
 		host.setInput("");
+		// 已经排队的草稿不属于下一次输入，撤销不该把它拉回来；清栈要放在
+		// setInput 之后——setInput 自己会把这次清空压进撤销栈
+		resetInputUndo(state);
 		state.queued.push({ text: expanded, images });
 		// 队列越多，页脚越高，对话流就越矮。超过能显示的行数之后照收不误，但要当场说一句：
 		// 静默接受会让人以为消息丢了，而它其实排在后面。
@@ -119,8 +121,9 @@ export function submit(host: TuiHost): boolean {
 	}
 
 	clearAttachments(host);
-	forgetDraft(state);
 	host.setInput("");
+	// 发出去的草稿不属于下一次输入：清栈放在 setInput 之后，否则这次清空又进栈
+	resetInputUndo(state);
 	host.launch(expanded, images);
 	return true;
 }

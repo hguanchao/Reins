@@ -696,7 +696,8 @@ function planTitle(text: string): string {
  * 思考区块的屏幕行。
  *
  * 标题带符号、不铺底色；正文上下各留一行色带，左侧与工具详情保持同样的留白。
- * 运行时收起只留最后五行屏幕行，结束后收起只留标题，双击展开时给全文。
+ * 运行时收起只留最后五行屏幕行，结束后收起只留标题；Ctrl+E 或双击展开时给全文，
+ * 展开状态在思考结束后保留。
  */
 function thinkingBlockLines(block: TranscriptThinking, width: number): readonly string[] {
 	const body = block.partial.length > 0 ? [...block.body, block.partial] : block.body;
@@ -743,8 +744,8 @@ function thinkingHeaderLines(block: TranscriptThinking, width: number): readonly
 /** 运行中的标题按起始时间现算；结束后的标题已经在关闭时定格。 */
 function thinkingHeaderText(block: TranscriptThinking): string {
 	if (!block.running || block.startedAt === undefined) return block.header;
-	const elapsed = Math.max(0, Date.now() - block.startedAt);
-	return `Thinking… ${formatDuration(Math.floor(elapsed / 1000) * 1000)}`;
+	// 与工具行、子代理组头同一口径：0.1s 步进，不截断到整秒
+	return `Thinking… ${formatDuration(Math.max(0, Date.now() - block.startedAt))}`;
 }
 
 /** 思考正文的一行：色带在标题符号右侧留出与工具详情相同的列数，带内留一列内边距。 */

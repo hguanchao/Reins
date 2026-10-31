@@ -8,7 +8,12 @@ import { formatDuration } from "#src/shared/format.ts";
 import { backgroundJob } from "#src/tui/copy.ts";
 import { resultDetail } from "#src/tools/result/detail.ts";
 import { resultMetric } from "#src/tools/result/metric.ts";
-import type { TranscriptLine, TranscriptTool, TranscriptTurn } from "#src/tui/transcript/types.ts";
+import type {
+	TranscriptLine,
+	TranscriptTool,
+	TranscriptToolGroup,
+	TranscriptTurn,
+} from "#src/tui/transcript/types.ts";
 
 /** 把一条工具调用的描述变成对话流行；可选的展开字段缺省时不写入。 */
 export function toolLineOf(described: ToolDescription, callId: string): TranscriptTool {
@@ -90,16 +95,20 @@ function sameGroupFamily(left: ToolGroupKind | undefined, right: ToolGroupKind |
 	return (left === "command") === (right === "command");
 }
 
+/** 收起一个工具组：组收起后下级也收起，重新展开时成员回到折叠态，不保留上一次摊开的详情。 */
+function collapseToolGroup(line: TranscriptToolGroup): void {
+	line.expanded = false;
+	for (const member of line.members) {
+		member.detailExpanded = false;
+		member.resultExpanded = false;
+	}
+}
+
 /** 回合结束：收起所有工具组；命令组在运行期就已经形成，这里只负责收起。 */
 export function collapseToolGroups(lines: TranscriptLine[]): void {
 	for (const line of lines) {
 		if (typeof line === "object" && line !== null && line.kind === "toolGroup") {
-			line.expanded = false;
-			// 组收起后下级也收起：重新展开时成员回到折叠态，不保留上一次摊开的详情
-			for (const member of line.members) {
-				member.detailExpanded = false;
-				member.resultExpanded = false;
-			}
+			collapseToolGroup(line);
 		}
 	}
 }
@@ -251,44 +260,13 @@ export function toggleLastExpandable(turns: readonly TranscriptTurn[]): boolean 
 			}
 			if (line.kind === "toolGroup" && line.members.length >= 2) {
 				line.expanded = !line.expanded;
+				// 收起走与回合结束同一条规则：成员的摊开详情一并收起
+				if (!line.expanded) collapseToolGroup(line);
 				return true;
 			}
 		}
 	}
 	return false;
-}
-
-/** Ctrl+O：展开或收起最近一个成功工具的结果，返回被切换的工具供 Ctrl+G 定位。 */
-export function toggleLastToolResult(turns: readonly TranscriptTurn[]): TranscriptTool | undefined {
-	for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
-		const response = turns[turnIndex]?.response ?? [];
-		for (let index = response.length - 1; index >= 0; index -= 1) {
-			const line = response[index];
-			if (typeof line !== "object" || line === null) continue;
-			if (line.kind === "tool" && line.result !== undefined && line.result.trim().length > 0) {
-				line.resultExpanded = !line.resultExpanded;
-				// 结果色带与完整详情互斥：同时打开会把同一份内容铺两遍
-				if (line.resultExpanded) line.detailExpanded = false;
-				return line;
-			}
-			if (line.kind === "toolGroup") {
-				for (let member = line.members.length - 1; member >= 0; member -= 1) {
-					const item = line.members[member];
-					if (item?.result === undefined || item.result.trim().length === 0) continue;
-					// 组收起时结果也被组头盖住：第一次 Ctrl+O 先把组和结果一起打开
-					if (!line.expanded) {
-						line.expanded = true;
-						item.resultExpanded = true;
-					} else {
-						item.resultExpanded = !item.resultExpanded;
-					}
-					if (item.resultExpanded) item.detailExpanded = false;
-					return item;
-				}
-			}
-		}
-	}
-	return undefined;
 }
 
 /** 组里是否还有子代理在跑；并行派发时用它决定状态行还要不要继续等待。 */

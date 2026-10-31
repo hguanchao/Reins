@@ -1,7 +1,6 @@
-import { stripVTControlCharacters } from "node:util";
-
 import { MENU_MAX_VISIBLE, keepVisible } from "#src/tui/panel/menu-panel.ts";
 import type { ApprovalAnswer } from "#src/permission/policy.ts";
+import { sanitizePasteText } from "#src/tui/paste.ts";
 
 /**
  * 终端输入解析与单行/多行编辑器。
@@ -83,12 +82,10 @@ export function queuedEditKey(text: string): "recall" | "discard" | undefined {
 	return undefined;
 }
 
-/** 对话流滚动键；不与输入行的 Home/End 抢按键。 */
-export function scrollKey(text: string): "pageUp" | "pageDown" | "top" | "bottom" | undefined {
+/** 对话流滚动键。 */
+export function scrollKey(text: string): "pageUp" | "pageDown" | undefined {
 	if (text === "\x1b[5~") return "pageUp";
 	if (text === "\x1b[6~") return "pageDown";
-	if (text === "\x1b[1;5H") return "top";
-	if (text === "\x1b[1;5F") return "bottom";
 	return undefined;
 }
 
@@ -379,10 +376,7 @@ export function editInput(
 		handled = true;
 	};
 	const insertPaste = (value: string): void => {
-		// 粘贴正文里可能带终端控制序列：它们不是要输入的文字，留着会污染输入框的渲染
-		const cleaned = stripVTControlCharacters(
-			value.replace(/\r\n?/g, "\n").replace(/\t/g, "    "),
-		).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+		const cleaned = sanitizePasteText(value);
 		const insertion = paste?.(cleaned, text.slice(0, cursor));
 		if (insertion !== undefined && insertion.removeBefore > 0) {
 			// 同一段内容贴在已有标记后面：把那行标记换回正文，这也是折叠唯一的展开手势

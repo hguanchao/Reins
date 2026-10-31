@@ -722,13 +722,13 @@ describe("工具调用行", () => {
 		assert.equal(plain(line ?? "").length, 40);
 	});
 
-	it("运行中的工具行按整秒显示耗时，结果回来后被真实耗时覆盖", () => {
+	it("运行中的工具行按 0.1s 步进显示耗时，结果回来后被真实耗时覆盖", () => {
 		const tool: TranscriptTool = {
 			kind: "tool",
 			name: "Bash",
 			detail: "npm test",
 			group: "command",
-			// 3.2 秒：离整秒边界足够远，断言不会被调度抖动翻过去
+			// 3.2 秒：离 0.1s 边界足够远，断言不会被调度抖动翻过去
 			startedAt: Date.now() - 3200,
 		};
 		const lineOf = (): string =>
@@ -736,13 +736,13 @@ describe("工具调用行", () => {
 				.map(plain)
 				.find((item) => item.includes("Bash")) ?? "";
 
-		// 截到整秒：数字每秒才变一次，否则每帧都会因为新字符串重排整份对话流
-		assert.ok(lineOf().includes("(3.0s)"));
+		// 与子代理组头同一口径：0.1s 步进，而不是整秒截断成 3.0s
+		assert.ok(lineOf().includes("(3.2s)"));
 
 		// 结果回来时按真实耗时定格，实时值不再参与
 		attachToolResult(tool, "bash", "ok", 1200);
 		assert.ok(lineOf().includes("(1.2s)"));
-		assert.equal(lineOf().includes("(3.0s)"), false);
+		assert.equal(lineOf().includes("(3.2s)"), false);
 	});
 
 	it("历史回填的工具行没有起点，不显示运行耗时", () => {

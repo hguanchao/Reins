@@ -189,11 +189,11 @@ export function toolLines(
 /**
  * 运行中的耗时。
  *
- * 与思考标题同一个口径：截到整秒再格式化，数字每秒才变一次——按毫秒现算会让对话流每帧
- * 都因为一个新字符串而重排，而视觉上根本分辨不出 0.1 秒的差别。
+ * 按 0.1s 步进显示，与子代理组头的跳动同一口径：格式化本身就带 0.1s 精度，整秒截断只
+ * 会让它永远停在 1.0s、2.0s。重建节奏由刷新帧控制，前缀缓存把重排限制在最后一个回合。
  */
 function liveDuration(startedAt: number): string {
-	return formatDuration(Math.floor(Math.max(0, Date.now() - startedAt) / 1000) * 1000);
+	return formatDuration(Math.max(0, Date.now() - startedAt));
 }
 
 /** 一行同时有两种颜色：标记与名称弱化，参数用正文色，结果指标再弱一档；指标放不下时省略。 */

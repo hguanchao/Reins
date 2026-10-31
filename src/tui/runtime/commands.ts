@@ -147,6 +147,8 @@ function executeModelCommand(host: TuiHost, args: string): void {
 		host.setInput("");
 		host.resetStatusMeta();
 		host.setStatus(STATUS.configurationInvalid, "notice");
+		host.scheduleStatusClear();
+		host.render();
 		return;
 	}
 
@@ -177,6 +179,8 @@ function executeEffortCommand(host: TuiHost, args: string): void {
 		host.setInput("");
 		host.resetStatusMeta();
 		host.setStatus(STATUS.configurationInvalid, "notice");
+		host.scheduleStatusClear();
+		host.render();
 		return;
 	}
 
@@ -207,6 +211,8 @@ function executeSessionCommand(host: TuiHost, args: string): void {
 		host.setInput("");
 		host.resetStatusMeta();
 		host.setStatus(STATUS.sessionStorageUnavailable, "notice");
+		host.scheduleStatusClear();
+		host.render();
 		return;
 	}
 
@@ -376,6 +382,8 @@ function executeCompactCommand(host: TuiHost): void {
 	if (compact === undefined) {
 		host.resetStatusMeta();
 		host.setStatus(STATUS.configurationInvalid, "notice");
+		host.scheduleStatusClear();
+		host.render();
 		return;
 	}
 	startRun(host, "/compact", [], compact);
@@ -393,11 +401,15 @@ function executePlanCommand(host: TuiHost, args: string): void {
 	if (source === undefined) {
 		host.resetStatusMeta();
 		host.setStatus(STATUS.planUnavailable, "notice");
+		host.scheduleStatusClear();
+		host.render();
 		return;
 	}
 	if (host.state.activeTurn !== undefined) {
 		host.resetStatusMeta();
 		host.setStatus(waitForTurn("/plan"), "notice");
+		host.scheduleStatusClear();
+		host.render();
 		return;
 	}
 

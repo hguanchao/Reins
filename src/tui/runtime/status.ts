@@ -3,7 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
 import { isRunningTool } from "#src/tui/transcript/model.ts";
 import type { TranscriptLine } from "#src/tui/transcript/types.ts";
-import { STATUS_CLEAR_MS, SWEEP_STEP } from "#src/tui/runtime/constants.ts";
+import { STATUS_CLEAR_MS, STATUS_ERROR_CLEAR_MS, SWEEP_STEP } from "#src/tui/runtime/constants.ts";
 import type { TuiState, ActiveTurn } from "#src/tui/runtime/types.ts";
 import { SPINNER_FRAMES, SPINNER_INTERVAL_MS } from "#src/tui/runtime/constants.ts";
 
@@ -55,15 +55,19 @@ export function scheduleStatusClear(
 	render: () => void,
 	delayMs = STATUS_CLEAR_MS,
 ): void {
-	// 错误与警告留给使用者读完：1.5 秒往往不够，而且不少错误只写状态行、不落对话流。
-	// 下一条状态或回合收尾会覆盖它，不会永久占位；提示类（notice）仍按原节奏消失。
-	if (state.statusTone === "warning" || state.statusTone === "error") return;
+	// 错误与警告留给使用者读完：按更长的窗口自动消失，而不是永久占位。原来的设计是
+	// 「留给下一条状态或回合收尾覆盖」，但空闲时发生的错误（命令失败、剪贴板失败、MCP
+	// 失败）之后没有任何覆盖点，等于永不消失。
+	const delay =
+		state.statusTone === "warning" || state.statusTone === "error"
+			? STATUS_ERROR_CLEAR_MS
+			: delayMs;
 	if (state.statusClearTimer !== undefined) clearTimeout(state.statusClearTimer);
 	state.statusClearTimer = setTimeout(() => {
 		state.statusClearTimer = undefined;
 		clearStatus(state);
 		render();
-	}, delayMs);
+	}, delay);
 }
 
 export function stopSpinner(state: TuiState): void {
@@ -96,24 +100,19 @@ export function startSpinner(
 	}, SPINNER_INTERVAL_MS);
 }
 
-/** 刷新帧里属于「当前这一轮」的部分：思考标题与运行中的子代理组。 */
+/** 刷新帧里属于「当前这一轮」的部分：思考标题、任务卡与运行中的工具、子代理。 */
 function tickActiveStatus(
 	state: TuiState,
 	active: ActiveTurn,
 	syncApprovalPrompt: () => void,
 ): void {
-	const now = Date.now();
 	syncApprovalPrompt();
 
-	const block = active.thinkingBlock;
-	const startedAt = active.thinkingStartedAt;
-	if (block !== undefined && startedAt !== undefined) {
-		// 对话流按整秒重建一次，标题里的耗时由视图按同一个起点现算
-		const second = Math.floor(Math.max(0, now - startedAt) / 1000);
-		if (second !== active.thinkingSecond) {
-			active.thinkingSecond = second;
-			markTranscriptDirty(state);
-		}
+	// 所有实时耗时统一按 0.1s 连续跳动：转圈本来就是 100ms 一帧，凡是有内容在跑就把
+	// 对话流一起标脏，渲染端每帧重算耗时。前缀缓存把重建限制在最后一个回合，长会话
+	// 也扛得住；常驻任务面板每帧重画，不依赖这里的标脏。
+	if (active.thinkingBlock !== undefined && active.thinkingStartedAt !== undefined) {
+		markTranscriptDirty(state);
 	}
 	// 运行中的子代理组头:计数与耗时都在变,有组在跑才标脏重建
 	let subagentsRunning = false;
@@ -126,15 +125,9 @@ function tickActiveStatus(
 	}
 	if (subagentsRunning) markTranscriptDirty(state);
 
-	// 运行中的工具行耗时同样按整秒变；不标脏的话数字会停在第一帧。这里记的是绝对秒：
-	// 并行工具各自起点不同，逐条比对耗时会在某些工具跨秒时漏掉重建
-	if (hasRunningTool(active.lines)) {
-		const second = Math.floor(now / 1000);
-		if (second !== active.toolSecond) {
-			active.toolSecond = second;
-			markTranscriptDirty(state);
-		}
-	}
+	if (hasRunningTool(active.lines)) markTranscriptDirty(state);
+	// 对话流里的任务卡头行带当前任务的实时耗时；卡 running 期间同样逐帧重算
+	if (state.currentTodo?.running === true) markTranscriptDirty(state);
 }
 
 /** 这一轮里是否还有工具没结束；组内的成员也要看，展开的组会显示它们。 */

@@ -160,6 +160,8 @@ describe("系统提示词", () => {
 		// 没有说明时不留一个空冒号
 		assert.ok(sections["skills"]?.includes("- bare (/skills/bare/SKILL.md)"));
 		assert.ok(sections["skills"]?.includes("Read a skill's SKILL.md"));
+		// $name 引用的语义要说清：模型看到用户消息里的 $name 就去读对应 SKILL.md
+		assert.ok(sections["skills"]?.includes("A $name mention in the user's message"));
 	});
 
 	it("没有技能时不写这一节", () => {

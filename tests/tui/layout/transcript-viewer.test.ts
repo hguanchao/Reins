@@ -54,8 +54,10 @@ describe("对话流长内容查看", () => {
 			assert.ok(text.includes("output-01"));
 			assert.ok(text.includes("↑/↓"));
 
-			// 超出首屏的尾部也能滚到
-			input.emit("data", Buffer.from("\x1b[1;5F"));
+			// 超出首屏的尾部也能滚到：PgDn 连按到页底（超出会夹住）
+			for (let index = 0; index < 6; index += 1) {
+				input.emit("data", Buffer.from("\x1b[6~"));
+			}
 			t.mock.timers.tick(100);
 			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("output-40"));

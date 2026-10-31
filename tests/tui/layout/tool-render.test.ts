@@ -450,7 +450,7 @@ describe("工具行渲染", () => {
 		}
 	});
 
-	it("运行中的命令行耗时逐秒递增，结束后定格", (t) => {
+	it("运行中的命令行耗时时实递增，结束后定格", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval", "Date"] });
 
 		const input = new FakeInput();
@@ -469,14 +469,14 @@ describe("工具行渲染", () => {
 			input.emit("data", Buffer.from("hi\r"));
 			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "npm test" } });
 			t.mock.timers.tick(100);
-			assert.ok(commandLine().includes("(0.0s)"));
+			assert.ok(commandLine().includes("(0.1s)"));
 
-			// 长命令跑到一半就能看出用了多久，不必等结果回来
+			// 长命令跑到一半就能看出用了多久，而且按 0.1s 连续跳动，不是整秒一跳
 			t.mock.timers.tick(2000);
-			assert.ok(commandLine().includes("(2.0s)"));
+			assert.ok(commandLine().includes("(2.1s)"));
 
 			t.mock.timers.tick(3000);
-			assert.ok(commandLine().includes("(5.0s)"));
+			assert.ok(commandLine().includes("(5.1s)"));
 
 			// 结果回来时按真实耗时定格，实时值不再参与
 			agent.emit({
@@ -490,7 +490,7 @@ describe("工具行渲染", () => {
 			});
 			t.mock.timers.tick(100);
 			assert.ok(commandLine().includes("(4.2s)"));
-			assert.equal(commandLine().includes("(5.0s)"), false);
+			assert.equal(commandLine().includes("(5.1s)"), false);
 		} finally {
 			exitTui(input);
 		}

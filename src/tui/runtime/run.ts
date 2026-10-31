@@ -43,8 +43,6 @@ export function startRun(
 		lines: [],
 		textBlock: undefined,
 		thinkingStartedAt: undefined,
-		thinkingSecond: 0,
-		toolSecond: 0,
 		thinkingBlock: undefined,
 		tokensUsed: 0,
 		outcome: "done",
@@ -66,7 +64,18 @@ export function startRun(
 	startSpinner(state, host.render, () => host.syncApprovalPrompt());
 	host.render();
 
-	void run(createEventTarget(host), active.controller.signal)
+	// 首条消息前给仍在握手的 MCP server 一个限时收口:超时照常发,迟到的工具下一轮补上。
+	// 整个进程只等第一次,收口早已结束(或没有 MCP)时这一行瞬时返回。没有闸时保持同步
+	// 启动——提交后立刻发生的第一个事件不能因为一个空等的 await 错过监听器。
+	const gate = host.options.mcpControl?.awaitStartup;
+	const runner =
+		gate === undefined
+			? run(createEventTarget(host), active.controller.signal)
+			: (async (): Promise<void> => {
+					await gate();
+					return run(createEventTarget(host), active.controller.signal);
+				})();
+	void runner
 		.catch((error) => {
 			if (state.finished || state.activeTurn !== active) return;
 			closeThinking(host, active);

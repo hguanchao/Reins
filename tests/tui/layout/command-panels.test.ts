@@ -899,7 +899,9 @@ describe("命令补全与选择面板", () => {
 			const lines = frameLines(output).map(plain);
 			assert.equal(calls, 0);
 			assert.equal(lines.some((line) => line.includes("Model switched")), false);
-			assert.ok(lines.some((line) => line.includes("v1.2.3")));
+			// 回到启动画面:没有横幅,只剩空主区域与页脚
+			assert.equal(lines.some((line) => line.includes("v1.2.3")), false);
+			assert.ok(lines.some((line) => line.includes("100K / 1M")));
 		} finally {
 			exitTui(input);
 		}

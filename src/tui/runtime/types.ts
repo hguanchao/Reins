@@ -4,12 +4,14 @@ import type { ApprovalAnswer } from "#src/permission/policy.ts";
 import type { TrustAnswer } from "#src/tui/page/trust.ts";
 import type { ImageAttachment, PendingImage } from "#src/tui/image.ts";
 import type { PasteStore } from "#src/tui/paste.ts";
+import type { UndoEntry } from "#src/tui/input/undo.ts";
 import type { TuiInput, TuiOptions, TuiOutput, PageKind, SessionSwitchResult } from "#src/tui/options.ts";
 import type { CommandMenuState, CommandMenuItem } from "#src/tui/panel/command-menu.ts";
 import type { EffortMenuState } from "#src/tui/panel/effort-menu.ts";
 import type { FileMenuState } from "#src/tui/panel/file-menu.ts";
 import type { ModelMenuState } from "#src/tui/panel/model-menu.ts";
 import type { SessionMenuState } from "#src/tui/panel/session-menu.ts";
+import type { SkillMenuItem, SkillMenuState } from "#src/tui/panel/skill-menu.ts";
 import type {
 	SelectionRegion,
 	TranscriptLine,
@@ -33,13 +35,6 @@ interface QueuedPrompt {
 	readonly images: readonly ImageAttachment[];
 }
 
-/** 被清空的草稿：撤销时原样放回，连光标位置与当时的图片一起。 */
-export interface ClearedDraft {
-	readonly text: string;
-	readonly cursor: number;
-	readonly images: readonly PendingImage[];
-}
-
 /** 一轮正在进行的对话。 */
 export interface ActiveTurn {
 	readonly turn: LiveTurn;
@@ -51,15 +46,6 @@ export interface ActiveTurn {
 	textBlock: TranscriptMarkdown | undefined;
 	/** 当前这段思考是什么时候开始的；没有思考在进行时为空 */
 	thinkingStartedAt: number | undefined;
-	/** 上一次已经按整秒画出的思考耗时；只在跨秒时重建对话流 */
-	thinkingSecond: number;
-	/**
-	 * 上一次按整秒重建工具耗时的时刻（绝对秒）。
-	 *
-	 * 记绝对秒而不是某个工具的耗时秒：并行执行时各工具的起点不同，逐条比对会在某些工具
-	 * 跨秒时漏掉重建；只要还有工具在跑，每秒重建一次就够了。
-	 */
-	toolSecond: number;
 	/** 当前正在写入的思考区块；结束后仍留在 lines 里供双击展开 */
 	thinkingBlock: TranscriptThinking | undefined;
 	/** 本轮已经产生的 token 消耗；每次请求回报后累加，压缩请求不计入 */
@@ -124,6 +110,8 @@ export interface TuiState {
 	ready: boolean;
 	activeWarning: string | undefined;
 	readonly sandboxNotice: string | undefined;
+	/** 启动期装载问题(插件失败/警告、MCP 失败);与启动警告同区展示在对话流顶部 */
+	startupProblems: string | undefined;
 	builtinCommands: readonly CommandMenuItem[];
 	input: string;
 	inputCursor: number;
@@ -145,9 +133,8 @@ export interface TuiState {
 	/** 第一次 Esc 的确认：窗口内再按一次才真的清空，一下按掉整段草稿代价太大。 */
 	escClearArmed: boolean;
 	escClearTimer: ReturnType<typeof setTimeout> | undefined;
-	/** 最近一次清空的草稿；Ctrl+Z 放回去，只留一份。 */
-	clearedDraft: ClearedDraft | undefined;
-	/** bracketed paste 可能跨多个数据块，记住是否还在粘贴中。 */
+	/** 输入框的撤销栈：每次正文变化前的旧状态，Ctrl+Z 弹出恢复。 */
+	undoStack: readonly UndoEntry[];	/** bracketed paste 可能跨多个数据块，记住是否还在粘贴中。 */
 	pasting: boolean;
 	/** 上一块末尾未完成的转义序列；与下一块拼接后再解析，避免标记被分块切断。 */
 	inputTail: string;
@@ -243,6 +230,13 @@ export interface TuiState {
 	/** 当前 @ 片段对应的文件索引；同一次补全期间复用，换片段或关面板时丢弃。 */
 	fileFiles: readonly string[] | undefined;
 	fileIndexStart: number | undefined;
+	/** $ 技能补全面板；与文件面板互斥，同一时间只开一个。 */
+	skillMenu: SkillMenuState | undefined;
+	/** 与文件面板同一套规则：Esc 主动收起后，输入不变就不再弹回来。 */
+	skillMenuDismissed: boolean;
+	/** 打开时缓存的技能清单；同一次补全期间只过滤，换片段或关面板时丢弃。 */
+	skillEntries: readonly SkillMenuItem[] | undefined;
+	skillIndexStart: number | undefined;
 
 	// —— 整屏页 ——
 	/** 占据主区域的整屏页；打开期间视口只跟着它自己的滚动。 */
@@ -293,6 +287,8 @@ export interface TuiHost {
 	readonly state: TuiState;
 	render(): void;
 	setInput(value: string, cursor?: number): void;
+	/** Ctrl+Z：退回上一步输入；空栈时返回 false，不改动任何状态。 */
+	undoInput(): boolean;
 	setStatus(text: string, tone?: "warning" | "error" | "notice"): void;
 	clearStatus(): void;
 	resetStatusMeta(): void;
@@ -354,7 +350,8 @@ export interface TuiHost {
 	recallHistory(delta: -1 | 1): boolean;
 	insertImageMarker(image: ImageAttachment, at: number): void;
 	attachImagePath(path: string, at?: number): void;
-	attachClipboardImage(at?: number): void;
+	/** Ctrl+V：读剪贴板,文本按粘贴规则入框,图片插成附件标记。 */
+	attachClipboard(at?: number): void;
 	readAndInsertImage(read: () => Promise<ImageAttachment>, status: string, at: number): void;
 	draggedImagePath(chunk: string): string | undefined;
 	imagesInInput(): readonly ImageAttachment[];
@@ -365,6 +362,9 @@ export interface TuiHost {
 	closeFileMenu(dismissed?: boolean): void;
 	updateCommandMenu(): void;
 	updateFileMenu(): void;
+	closeSkillMenu(dismissed?: boolean): void;
+	updateSkillMenu(): void;
+	insertSkillReference(): void;
 	insertFileReference(): void;
 	/** 五种选择面板互斥，下面这组方法作用于当前打开的那一个。 */
 	openModelMenu(): void;

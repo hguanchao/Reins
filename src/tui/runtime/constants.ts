@@ -25,5 +25,7 @@ export const WHEEL_STEP = 3;
 export const DOUBLE_CLICK_MS = 400;
 /** 一轮结束后状态行停留的时间。 */
 export const STATUS_CLEAR_MS = 1500;
+/** 错误与警告的停留时间：比提示久，留给使用者读完，但不永久占位。 */
+export const STATUS_ERROR_CLEAR_MS = 8000;
 /** 清空后「可以撤销」的提示停留时间：比普通状态久一点，但也不能一直占着状态行。 */
 export const UNDO_HINT_MS = 4000;

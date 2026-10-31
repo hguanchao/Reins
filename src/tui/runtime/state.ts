@@ -13,6 +13,10 @@ export function createState(options: TuiOptions): TuiState {
 		ready: options.ready ?? true,
 		activeWarning: options.warning,
 		sandboxNotice: options.sandboxWarning,
+		startupProblems:
+			options.startupProblems === undefined || options.startupProblems.length === 0
+				? undefined
+				: options.startupProblems.join("\n"),
 		builtinCommands: createBuiltinCommands(options),
 		input: "",
 		inputCursor: 0,
@@ -27,7 +31,7 @@ export function createState(options: TuiOptions): TuiState {
 		pastes: createPasteStore(),
 		escClearArmed: false,
 		escClearTimer: undefined,
-		clearedDraft: undefined,
+		undoStack: [],
 		pasting: false,
 		inputTail: "",
 		inputTailTimer: undefined,
@@ -93,6 +97,10 @@ export function createState(options: TuiOptions): TuiState {
 		fileMenuDismissed: false,
 		fileFiles: undefined,
 		fileIndexStart: undefined,
+		skillMenu: undefined,
+		skillMenuDismissed: false,
+		skillEntries: undefined,
+		skillIndexStart: undefined,
 		openPage: undefined,
 		pageScrollTop: 0,
 		viewer: undefined,

@@ -38,6 +38,7 @@ export function createImageSource(workRoot: string): ImageSource {
 		read: (path) => readImageFile(workRoot, path),
 		detect: (text) => detectImagePath(workRoot, text),
 		clipboard: readClipboardImage,
+		clipboardText: readClipboardText,
 	};
 }
 
@@ -141,6 +142,47 @@ async function readClipboardImage(): Promise<ImageAttachment> {
 	if (process.platform === "win32") return readWindowsClipboard();
 	if (process.platform === "darwin") return readDarwinClipboard();
 	return readLinuxClipboard();
+}
+
+/**
+ * 读系统剪贴板里的文本。
+ *
+ * 剪贴板里没有文本（比如只有一张图）时返回空串，让调用方接着试图片；命令缺席这种
+ * 读不了的情况才抛错。输出按 UTF-8 收：Windows 控制台默认代码页会把中文读乱。
+ */
+async function readClipboardText(): Promise<string> {
+	if (process.platform === "win32") {
+		const bytes = await captureCommand("powershell.exe", [
+			"-NoProfile",
+			"-NonInteractive",
+			"-Command",
+			// Write 不带换行：Get-Clipboard 自己会把结尾的换行一并输出，粘进输入框会多出空行
+			"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::Out.Write((Get-Clipboard -Raw))",
+		]);
+		return bytes.toString("utf8");
+	}
+	if (process.platform === "darwin") {
+		const bytes = await captureCommand("pbpaste", []);
+		return bytes.toString("utf8");
+	}
+	const attempts: readonly (readonly [string, readonly string[]])[] = [
+		["wl-paste", ["--no-newline"]],
+		["xclip", ["-selection", "clipboard", "-o"]],
+	];
+	let foundCommand = false;
+	for (const [command, args] of attempts) {
+		try {
+			const bytes = await captureCommand(command, args);
+			foundCommand = true;
+			if (bytes.length > 0) return bytes.toString("utf8");
+		} catch {
+			continue;
+		}
+	}
+	if (!foundCommand) {
+		throw new Error("Reading clipboard text on Linux needs wl-paste or xclip on PATH");
+	}
+	return "";
 }
 
 function readWindowsClipboard(): Promise<ImageAttachment> {

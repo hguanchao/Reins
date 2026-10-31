@@ -4,7 +4,7 @@ import { MOUSE_BUTTON_MASK, MOUSE_MOTION_BIT, MOUSE_WHEEL_BIT, MOUSE_WHEEL_DOWN,
 import type { MouseInput } from "#src/tui/input/keys.ts";
 import { scrollButtonHit, scrollButtonPlacement } from "#src/tui/view/scroll-button.ts";
 import { STATUS } from "#src/tui/copy.ts";
-import { armClear, clearDraft, disarmClear, restoreDraft } from "#src/tui/input/draft.ts";
+import { armClear, clearDraft, disarmClear } from "#src/tui/input/draft.ts";
 import { stopDragScroll, updateDragScroll } from "#src/tui/input/selection-scroll.ts";
 import { expandPaste, markerAtColumn, pasteInsertion } from "#src/tui/paste.ts";
 import { displayWidth } from "#src/tui/render/text.ts";
@@ -13,6 +13,7 @@ import { menuVisibleLimit } from "#src/tui/runtime/geometry.ts";
 import { completeCommandMenu } from "#src/tui/runtime/panels.ts";
 import { commandMenuHeight } from "#src/tui/panel/command-menu.ts";
 import { fileMenuHeight } from "#src/tui/panel/file-menu.ts";
+import { skillMenuHeight } from "#src/tui/panel/skill-menu.ts";
 import { applyDragScroll, applyWheelScroll, handleScrollKey, handleToggleKey, trackClick } from "#src/tui/input/scroll.ts";
 import type { InputDeps } from "#src/tui/input/deps.ts";
 import { handleMenuMouse, inlineMenuTarget } from "#src/tui/input/menus.ts";
@@ -50,7 +51,8 @@ export function handleTranscriptInput(
 	/** 按钮此刻是否真的画着：没画出来的位置不该被点中，也不该响应悬停。 */
 	const buttonShown = bottomButton !== undefined && state.scrollTop < host.maxScroll();
 	/** 补全面板画在输入框上方，落在它上面的点击不参与焦点判定。 */
-	const completionOpen = state.commandMenu !== undefined || state.fileMenu !== undefined;
+	const completionOpen =
+		state.commandMenu !== undefined || state.fileMenu !== undefined || state.skillMenu !== undefined;
 	/** 行内补全面板的屏幕范围；滚轮停在面板上时交给菜单，停在面板外时滚对话流。 */
 	let inlineMenuTop: number | undefined;
 	let inlineMenuBottom = 0;
@@ -60,6 +62,9 @@ export function handleTranscriptInput(
 	} else if (state.fileMenu !== undefined) {
 		inlineMenuTop = menuPanelTop(state, host.options);
 		inlineMenuBottom = inlineMenuTop + fileMenuHeight(state.fileMenu.items.length);
+	} else if (state.skillMenu !== undefined) {
+		inlineMenuTop = menuPanelTop(state, host.options);
+		inlineMenuBottom = inlineMenuTop + skillMenuHeight(state.skillMenu.items.length);
 	}
 
 	for (const event of mouseOf()) {
@@ -185,6 +190,7 @@ export function handleTranscriptInput(
 					state.historyIndex = -1;
 					host.updateCommandMenu();
 					host.updateFileMenu();
+					host.updateSkillMenu();
 					state.lastClick = undefined;
 					deps.render();
 					return;
@@ -324,6 +330,43 @@ export function handleTranscriptInput(
 		}
 	}
 
+	if (state.skillMenu !== undefined) {
+		// 技能补全和文件补全同一套按键与鼠标：不抢焦点，回车在无匹配时放行给提交
+		const menu = state.skillMenu;
+		const skillPanelTop = menuPanelTop(state, host.options);
+		const insert = (): void => {
+			host.insertSkillReference();
+		};
+		if (
+			handleMenuMouse(
+				mouseOf(),
+				inlineMenuTarget(menu, skillPanelTop, skillMenuHeight(menu.items.length, menuLimit), insert, menuLimit),
+				deps.render,
+			)
+		) {
+			return;
+		}
+
+		const key = menuKey(text);
+		if (key === "up" || key === "down") {
+			host.moveMenu(key === "up" ? -1 : 1);
+			return;
+		}
+		if (key === "tab" || key === "enter") {
+			if (menu.items.length > 0) {
+				insert();
+				return;
+			}
+			// 与文件面板同一取舍：Tab 无匹配吞掉，回车放行——$ 后面也可能只是普通文字
+			if (key === "tab") return;
+		}
+		if (key === "escape") {
+			host.closeSkillMenu(true);
+			deps.render();
+			return;
+		}
+	}
+
 	/** 任何要编辑输入框的动作都把输入焦点收回来；只滚对话流或展开内容的按键不算。 */
 	const focusInput = (): void => {
 		if (state.focused) return;
@@ -343,8 +386,8 @@ export function handleTranscriptInput(
 		return;
 	}
 
-	// Ctrl+Z：撤销上一次清空；清空之后又打了字就不动，免得覆盖更新的内容
-	if (withoutMouse === "\x1a" && !pasting && restoreDraft(host, state)) {
+	// Ctrl+Z：撤销上一次输入改动；连打的字符合并成一步，空栈时不动
+	if (withoutMouse === "\x1a" && !pasting && host.undoInput()) {
 		deps.render();
 		return;
 	}
@@ -356,11 +399,10 @@ export function handleTranscriptInput(
 		deps.render();
 		return;
 	}
-	// Ctrl+V / Alt+V 读剪贴板里的图片；终端自己处理的文本粘贴不会走到这里
-	const clipboardKey = withoutMouse === "\x16" || withoutMouse === "\x1bv" || withoutMouse === "\x1bV";
-	if (clipboardKey && !pasting) {
+	// Ctrl+V 读剪贴板：文本按粘贴规则入框，图片插成附件标记；终端自己处理的粘贴不会走到这里
+	if (withoutMouse === "\x16" && !pasting) {
 		focusInput();
-		host.attachClipboardImage();
+		host.attachClipboard();
 		return;
 	}
 	// 拖入终端只会得到一段路径文本：整段就是一个现有图片时插成正文标记，不填进输入框
@@ -430,6 +472,7 @@ export function handleTranscriptInput(
 				host.setInput(state.input.length === 0 ? recalled.text : `${recalled.text}\n${state.input}`);
 				host.updateCommandMenu();
 				host.updateFileMenu();
+				host.updateSkillMenu();
 				deps.render();
 				return;
 			}
@@ -487,6 +530,7 @@ export function handleTranscriptInput(
 		// 输入变了，之前用 Esc 关掉补全面板的决定就作废：新内容该有自己的补全
 		state.commandMenuDismissed = false;
 		state.fileMenuDismissed = false;
+		state.skillMenuDismissed = false;
 	}
 	// 去掉尾随空白后内容才真正变化时才收起选择面板：命令名后的空格只是分隔符，
 	// 多敲一个空格不该把已经打开的二级菜单关掉。命令补全面板相反，跟着新输入继续过滤
@@ -498,6 +542,7 @@ export function handleTranscriptInput(
 	host.setInput(edit.text, edit.cursor);
 	host.updateCommandMenu();
 	host.updateFileMenu();
+	host.updateSkillMenu();
 	// 配置不可用时主区域要一直保留警告，不能因为敲了字就切到对话流。
 	// 这里只记录「对话已经开始」；斜杠命令不算对话内容，输入框里的字由渲染层临时收起启动画面。
 	if (state.input.length > 0 && !state.input.startsWith("/") && state.ready) state.hasInput = true;

@@ -80,7 +80,7 @@ describe("对话流展开", () => {
 		}
 	});
 
-	it("Ctrl+O 展开最近成功工具结果", (t) => {
+	it("Ctrl+E 展开的思考在思考结束后保留", (t) => {
 		t.mock.timers.enable({ apis: ["setInterval"] });
 		const input = new FakeInput();
 		const output = new FakeOutput();
@@ -91,142 +91,19 @@ describe("对话流展开", () => {
 
 		try {
 			input.emit("data", Buffer.from("hello\r"));
-			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
-			agent.emit({
-				type: "tool_end",
-				callId: "c1",
-				name: "read",
-				isError: false,
-				durationMs: 1,
-				summary: "RESULT-BODY",
-				content: "RESULT-BODY",
-			});
+			agent.emit({ type: "reasoning_delta", text: "line1\nline2\nline3" });
+			input.emit("data", Buffer.from("\x05"));
+			// 思考收尾不能把使用者展开的区块收回去：正文与定格的标题都还在
+			agent.emit({ type: "text_delta", text: "answer" });
 			t.mock.timers.tick(100);
-
-			let text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("RESULT-BODY"), false);
-
-			input.emit("data", Buffer.from("\x0f"));
-			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("RESULT-BODY"));
-
-			input.emit("data", Buffer.from("\x0f"));
-			text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("RESULT-BODY"), false);
-		} finally {
-			exitTui(input);
-		}
-	});
-
-	it("空结果按 Ctrl+O 不打开空色带", (t) => {
-		t.mock.timers.enable({ apis: ["setInterval"] });
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		output.columns = 60;
-		output.rows = 20;
-		const agent = createFakeAgent();
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
-
-		try {
-			input.emit("data", Buffer.from("hello\r"));
-			agent.emit({ type: "tool_start", callId: "c1", name: "bash", args: { command: "true" } });
-			agent.emit({
-				type: "tool_end",
-				callId: "c1",
-				name: "bash",
-				isError: false,
-				durationMs: 1,
-				summary: "",
-				content: "",
-			});
-			t.mock.timers.tick(100);
-
-			input.emit("data", Buffer.from("\x0f"));
 			const text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("(no output)"), false);
-		} finally {
-			exitTui(input);
-		}
-	});
+			assert.ok(text.includes("line1"));
+			assert.ok(text.includes("Thought for"));
 
-	it("双击展开后再按 Ctrl+O，内容不会铺两遍", (t) => {
-		t.mock.timers.enable({ apis: ["setInterval"] });
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		output.columns = 60;
-		output.rows = 20;
-		const agent = createFakeAgent();
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
-
-		const count = (text: string): number => text.split("ONLY-ONCE").length - 1;
-		try {
-			input.emit("data", Buffer.from("hello\r"));
-			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
-			agent.emit({
-				type: "tool_end",
-				callId: "c1",
-				name: "read",
-				isError: false,
-				durationMs: 1,
-				summary: "ONLY-ONCE",
-				content: "ONLY-ONCE",
-			});
+			// 没被展开过的下一条思考仍是收起态：标题用折叠符号，不是展开的菱形
+			agent.emit({ type: "reasoning_delta", text: "again1\nagain2\nagain3" });
 			t.mock.timers.tick(100);
-
-			const row = frameLines(output).map(plain).findIndex((line) => line.includes("Read")) + 1;
-			assert.ok(row > 0);
-			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
-			input.emit("data", Buffer.from(`\x1b[<0;5;${row}M`));
-			assert.equal(count(frameLines(output).map(plain).join("\n")), 1);
-
-			// 再按 Ctrl+O：切到结果色带，同一份内容仍然只出现一次
-			input.emit("data", Buffer.from("\x0f"));
-			assert.equal(count(frameLines(output).map(plain).join("\n")), 1);
-		} finally {
-			exitTui(input);
-		}
-	});
-
-	it("Ctrl+O 可展开收起工具组里的结果", async (t) => {
-		t.mock.timers.enable({ apis: ["setInterval"] });
-		const input = new FakeInput();
-		const output = new FakeOutput();
-		output.columns = 60;
-		output.rows = 20;
-		const agent = createFakeAgent();
-		void runTui({ version: "1.2.3", info: FOOTER_INFO, agent: agent.runtime, stdin: input, stdout: output });
-
-		try {
-			input.emit("data", Buffer.from("hello\r"));
-			agent.emit({ type: "tool_start", callId: "c1", name: "read", args: { path: "a.ts" } });
-			agent.emit({
-				type: "tool_end",
-				callId: "c1",
-				name: "read",
-				isError: false,
-				durationMs: 1,
-				summary: "A-BODY",
-				content: "A-BODY",
-			});
-			agent.emit({ type: "tool_start", callId: "c2", name: "read", args: { path: "b.ts" } });
-			agent.emit({
-				type: "tool_end",
-				callId: "c2",
-				name: "read",
-				isError: false,
-				durationMs: 1,
-				summary: "B-BODY",
-				content: "B-BODY",
-			});
-			t.mock.timers.tick(100);
-			await agent.finish();
-
-			let text = frameLines(output).map(plain).join("\n");
-			assert.equal(text.includes("B-BODY"), false);
-
-			input.emit("data", Buffer.from("\x0f"));
-			text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("B-BODY"));
+			assert.ok(frameLines(output).map(plain).join("\n").includes("✻ Thinking…"));
 		} finally {
 			exitTui(input);
 		}
@@ -545,7 +422,8 @@ describe("对话流展开", () => {
 			t.mock.timers.tick(1500);
 
 			const text = frameLines(output).map(plain).join("\n");
-			assert.ok(text.includes("Thinking… 1.0s"));
+			// 与工具行同一口径：0.1s 步进，不截断到整秒
+			assert.ok(text.includes("Thinking… 1.5s"));
 		} finally {
 			exitTui(input);
 		}

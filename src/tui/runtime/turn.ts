@@ -71,7 +71,8 @@ export function closeThinking(host: TuiHost, active: ActiveTurn): void {
 		}
 		block.header = `Thought for ${formatDuration(Date.now() - startedAt)}`;
 		block.running = false;
-		block.expanded = false;
+		// 展开状态原样保留：使用者按 Ctrl+E 展开后，思考结束不能自己收回去。
+		// 没人动过的块默认就是收起态，结束后仍只留标题。
 	}
 	host.syncTurn(active);
 }
@@ -228,7 +229,6 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 				if (active.thinkingBlock === undefined) {
 					const startedAt = Date.now();
 					active.thinkingStartedAt = startedAt;
-					active.thinkingSecond = 0;
 					const block: TranscriptThinking = {
 						kind: "thinkingBlock",
 						header: "Thinking…",
@@ -288,7 +288,7 @@ export function createEventTarget(host: TuiHost): (event: AgentEvent) => void {
 					host.setStatus(hasRunningSubagent(active.lines) ? STATUS.waitingForSubagent : STATUS.waitingForModel);
 					break;
 				}
-				// 成功不落行：工具调用本身已经显示；结果挂到调用行，Ctrl+O 可展开
+				// 成功不落行：工具调用本身已经显示；结果挂到调用行，Ctrl+G 可看全文
 				if (event.isError) {
 					// 失败行可能刚从组里摘出来，结构变了要整体同步，不能只标脏
 					const tool = takeToolForFailure(active.lines, event.callId);

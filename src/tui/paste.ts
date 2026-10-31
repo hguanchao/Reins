@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from "node:util";
+
 import { pasteChipBytes, pasteChipLines, pasteMarker } from "#src/tui/copy.ts";
 import type { PasteInsertion } from "#src/tui/input/keys.ts";
 import { displayWidth } from "#src/tui/render/text.ts";
@@ -10,6 +12,19 @@ import { displayWidth } from "#src/tui/render/text.ts";
  *
  * 阈值与标签抄自 grok：四行或 10 KB 以上折叠，多行按行数、超大按体积。
  */
+
+/**
+ * 粘贴正文的清理。
+ *
+ * 手动粘贴与剪贴板粘贴共用这一份：换行统一成 \n、制表符铺成空格、剥掉混在正文里的
+ * 终端控制序列——它们不是要输入的文字，留着会污染输入框的渲染。
+ */
+export function sanitizePasteText(text: string): string {
+	return stripVTControlCharacters(text.replace(/\r\n?/g, "\n").replace(/\t/g, "    ")).replace(
+		/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,
+		"",
+	);
+}
 
 /** 达到这个行数就折叠；一两行的短粘贴保持原样更自然。 */
 export const PASTE_CHIP_MIN_LINES = 4;

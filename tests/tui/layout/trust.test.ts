@@ -219,7 +219,9 @@ describe("启动信任页", () => {
 			assert.equal(trust.declined, 0);
 			const text = textOf(output);
 			assert.match(text, /Workspace skills skipped/);
-			assert.match(text, /v1\.2\.3/);
+			// 不退出:回到没有横幅的启动画面,页脚信息行在
+			assert.equal(text.includes("v1.2.3"), false);
+			assert.ok(text.includes("📊 100K / 1M"));
 			assert.equal(text.includes("Reins · workspace trust"), false);
 		} finally {
 			exitTui(input);
@@ -328,7 +330,8 @@ describe("启动信任页", () => {
 		try {
 			const text = textOf(output);
 			assert.equal(text.includes("workspace trust"), false);
-			assert.match(text, /v1\.2\.3/);
+			// 首帧就是没有横幅的界面:页脚信息行在
+			assert.ok(text.includes("📊 100K / 1M"));
 		} finally {
 			exitTui(input);
 		}

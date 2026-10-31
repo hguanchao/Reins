@@ -147,6 +147,8 @@ export function fakeImageSource(overrides: Partial<ImageSource> = {}): ImageSour
 		}),
 		detect: (text) => (text === "drag.png" ? "drag.png" : undefined),
 		clipboard: async () => IMAGE_ATTACHMENT,
+		// 默认剪贴板里没有文本：相关测试用 overrides 换成自己的文本
+		clipboardText: async () => "",
 		...overrides,
 	};
 }

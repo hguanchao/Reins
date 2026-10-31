@@ -4,6 +4,7 @@ import type { CommandMenuItem, CommandMenuState } from "#src/tui/panel/command-m
 import type { EffortMenuState } from "#src/tui/panel/effort-menu.ts";
 import type { FileMenuState } from "#src/tui/panel/file-menu.ts";
 import { filterFiles, findAtToken, formatFileReference } from "#src/tui/panel/file-menu.ts";
+import { filterSkills, findSkillToken, type SkillMenuState } from "#src/tui/panel/skill-menu.ts";
 import { isImagePath } from "#src/tui/image.ts";
 import type { ModelMenuItem, ModelMenuState } from "#src/tui/panel/model-menu.ts";
 import type { SessionMenuItem, SessionMenuState } from "#src/tui/panel/session-menu.ts";
@@ -31,13 +32,14 @@ import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
  * 差异点留在各自的 select 函数里，公共的滚动窗口规则在 panel 目录里。
  */
 
-/** 五种互斥的选择面板；条目类型不同，公共状态都是一份 MenuListState。 */
+/** 六种互斥的选择面板；条目类型不同，公共状态都是一份 MenuListState。 */
 type AnyMenuState =
 	| CommandMenuState
 	| EffortMenuState
 	| FileMenuState
 	| ModelMenuState
-	| SessionMenuState;
+	| SessionMenuState
+	| SkillMenuState;
 
 /** 把光标移动 delta 并保证它落在可见窗口内；键盘移动首尾相接。 */
 function moveCursor(
@@ -67,7 +69,8 @@ function openMenu(state: TuiState): AnyMenuState | undefined {
 		state.effortMenu ??
 		state.sessionMenu ??
 		state.commandMenu ??
-		state.fileMenu
+		state.fileMenu ??
+		state.skillMenu
 	);
 }
 
@@ -479,6 +482,75 @@ export function insertFileReference(
 	const next = state.input.slice(0, token.start) + reference + " " + state.input.slice(token.end);
 	host.setInput(next, token.start + reference.length + 1);
 	closeFileMenu(host);
+	updateCommandMenu(host);
+	host.render();
+}
+
+/** 收起 $ 技能面板；dismissed 表示使用者主动按了 Esc，输入不变就不再自动弹回来。 */
+export function closeSkillMenu(host: TuiHost, dismissed = false): void {
+	host.state.skillMenu = undefined;
+	host.state.skillEntries = undefined;
+	host.state.skillIndexStart = undefined;
+	if (dismissed) host.state.skillMenuDismissed = true;
+}
+
+/**
+ * 按光标所在的 `$` 片段刷新技能面板。
+ *
+ * 与文件面板同一套节奏：每次重新打开都重扫清单，同一次补全里只过滤缓存。两个行内面板互斥——
+ * 调用顺序是命令面板、文件面板、技能面板，后者看到前者开着就收起自己，同一时间只开一个。
+ */
+export function updateSkillMenu(host: TuiHost): void {
+	const state = host.state;
+	const source = host.options.skills;
+	if (source === undefined) {
+		closeSkillMenu(host);
+		return;
+	}
+	if (modalMenuOpen(state) || state.commandMenu !== undefined || state.fileMenu !== undefined) {
+		closeSkillMenu(host);
+		return;
+	}
+	if (state.skillMenuDismissed) {
+		state.skillMenu = undefined;
+		return;
+	}
+
+	const token = findSkillToken(state.input, state.inputCursor);
+	if (token === undefined) {
+		closeSkillMenu(host);
+		return;
+	}
+
+	if (state.skillEntries === undefined || state.skillIndexStart !== token.start) {
+		state.skillIndexStart = token.start;
+		state.skillEntries = source.list().map((skill) => ({
+			name: skill.name,
+			description: skill.description,
+			scope: skill.scope,
+		}));
+	}
+	state.skillMenu = {
+		items: filterSkills(state.skillEntries, token.query),
+		token,
+		cursor: 0,
+		scrollTop: 0,
+	};
+}
+
+/** 把选中的技能补全成 `$name` 写回输入框；只补名字，正文由模型按提示词自己去读。 */
+export function insertSkillReference(host: TuiHost): void {
+	const menu = host.state.skillMenu;
+	if (menu === undefined) return;
+	const skill = menu.items[menu.cursor];
+	if (skill === undefined) return;
+	const state = host.state;
+	const token = menu.token;
+
+	const reference = `$${skill.name}`;
+	const next = state.input.slice(0, token.start) + reference + " " + state.input.slice(token.end);
+	host.setInput(next, token.start + reference.length + 1);
+	closeSkillMenu(host);
 	updateCommandMenu(host);
 	host.render();
 }

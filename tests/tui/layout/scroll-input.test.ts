@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, createFakeAgent, LEAVE, FOOTER_INFO, exitTui, lastFrame, frameLines, cursorAt, plain } from "#tests/tui/support/harness.ts";
+import { FakeInput, FakeOutput, createFakeAgent, BORDER, LEAVE, FOOTER_INFO, exitTui, lastFrame, frameLines, cursorAt, plain } from "#tests/tui/support/harness.ts";
 import { runTui } from "#src/tui/layout.ts";
 import { THEME } from "#src/tui/render/theme.ts";
 
@@ -331,7 +331,7 @@ describe("滚动与输入", () => {
 		}
 	});
 
-	it("还没输入就按退格，启动标志与版本号仍然显示", () => {
+	it("还没输入就按退格，空启动画面不受影响", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
@@ -342,9 +342,9 @@ describe("滚动与输入", () => {
 
 			assert.equal(output.chunks.length, written);
 			const lines = frameLines(output);
-			const main = lines.slice(0, 6).join("\n");
-			assert.ok(main.includes("████  █████  █████"));
-			assert.ok(main.includes("v1.2.3"));
+			// 空启动画面不因退格重画或错位:主区域仍是留白,页脚边框完好
+			for (let row = 0; row < 6; row += 1) assert.equal(plain(lines[row] ?? ""), "");
+			assert.equal(plain(lines[8] ?? ""), BORDER.repeat(40));
 		} finally {
 			exitTui(input);
 		}

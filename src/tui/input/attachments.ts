@@ -6,8 +6,9 @@ import {
 	uniqueImageName,
 	type ImageAttachment,
 } from "#src/tui/image.ts";
-import { PASTE_END, PASTE_START } from "#src/tui/input/keys.ts";
+import { PASTE_END, PASTE_START, editInput } from "#src/tui/input/keys.ts";
 import { STATUS, attachedWithoutVision, imageError } from "#src/tui/copy.ts";
+import { pasteInsertion } from "#src/tui/paste.ts";
 import { errorLine } from "#src/tui/render/status.ts";
 import { closeFileMenu } from "#src/tui/runtime/panels.ts";
 import type { TuiHost } from "#src/tui/runtime/types.ts";
@@ -93,7 +94,12 @@ export function readAndInsertImage(
 		.then((image) => {
 			// 退出后不要再动界面：备用屏已经离开，此刻写入会画在 shell 上
 			if (state.finished) return;
-			if (epoch === state.attachmentEpoch) insertImageMarker(host, image, position);
+			if (epoch === state.attachmentEpoch) {
+				// 读取结束就该收尾：成功路径不写状态，把「读取中」清掉，否则它会一直占着
+				// 状态行。状态已被别的阶段占用（回合进行中）时不动它。
+				if (state.statusText === status) host.clearStatus();
+				insertImageMarker(host, image, position);
+			}
 		})
 		.catch((error: unknown) => {
 			if (state.finished || epoch !== state.attachmentEpoch) return;
@@ -122,6 +128,62 @@ export function attachClipboardImage(host: TuiHost, at = host.state.inputCursor)
 		return;
 	}
 	readAndInsertImage(host, () => source.clipboard(), STATUS.readingClipboardImage, at);
+}
+
+/**
+ * Ctrl+V：读剪贴板，图文分流。
+ *
+ * 先读文本：剪贴板里是文字时（绝大多数时刻）不必再走一遍读图命令。文本走与手动粘贴
+ * 同一套规则——短文直插，长文折叠成标记。读到空串或读不了再试图片，两者都没有才报错；
+ * 位置在开始读取时确定，与读图的落点规则一致。
+ */
+export function attachClipboard(host: TuiHost, at = host.state.inputCursor): void {
+	const source = host.options.images;
+	if (source === undefined) {
+		host.setStatus(STATUS.imagesUnsupported, "notice");
+		host.scheduleStatusClear();
+		host.render();
+		return;
+	}
+	const state = host.state;
+	const epoch = state.attachmentEpoch;
+	const position = Math.min(Math.max(0, at), state.input.length);
+	host.setStatus(STATUS.readingClipboard);
+	host.render();
+	void source
+		.clipboardText()
+		.then((text) => {
+			if (state.finished || epoch !== state.attachmentEpoch) return;
+			if (text.length > 0) insertClipboardText(host, text, position);
+			else readAndInsertImage(host, () => source.clipboard(), STATUS.readingClipboardImage, position);
+		})
+		.catch(() => {
+			// 文本通道缺席（比如 Linux 没装 wl-paste/xclip）不拦着读图
+			if (state.finished || epoch !== state.attachmentEpoch) return;
+			readAndInsertImage(host, () => source.clipboard(), STATUS.readingClipboardImage, position);
+		});
+}
+
+/** 把剪贴板文本当作一次 bracketed paste 写进输入框：清理与折叠都走 editInput 的同一条路径。 */
+function insertClipboardText(host: TuiHost, text: string, at: number): void {
+	const state = host.state;
+	const edit = editInput(
+		state.input,
+		at,
+		`${PASTE_START}${text}${PASTE_END}`,
+		false,
+		(pasteText, before) => pasteInsertion(state.pastes, pasteText, before),
+	);
+	if (edit.text !== state.input) {
+		host.setInput(edit.text, edit.cursor);
+		state.historyIndex = -1;
+		host.updateCommandMenu();
+		host.updateFileMenu();
+		host.updateSkillMenu();
+	}
+	// 「读取中」的提示在这里收尾；状态已被回合阶段占用时不动它
+	if (state.statusText === STATUS.readingClipboard) host.clearStatus();
+	host.render();
 }
 
 /**

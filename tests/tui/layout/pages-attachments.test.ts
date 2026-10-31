@@ -86,8 +86,10 @@ describe("整屏页与图片附件", () => {
 			input.emit("data", Buffer.from("\x1b"));
 
 			const back = frameLines(output).map(plain);
-			assert.ok(back.join("\n").includes("v1.2.3"));
+			// 回到启动画面:没有横幅,主区域留空,页脚信息行在
+			assert.equal(back.join("\n").includes("v1.2.3"), false);
 			assert.equal(back.join("\n").includes("Reins · help"), false);
+			assert.ok(back.join("\n").includes("📊 100K / 1M"));
 			assert.equal(back[9], " › ");
 		} finally {
 			exitTui(input);
@@ -107,7 +109,8 @@ describe("整屏页与图片附件", () => {
 
 			pressCtrlC(input);
 			const back = frameLines(output).map(plain);
-			assert.ok(back.join("\n").includes("v1.2.3"));
+			// 回到启动画面:没有横幅,主区域留空
+			assert.equal(back.join("\n").includes("v1.2.3"), false);
 			assert.equal(back.join("\n").includes("Reins · help"), false);
 			// 第一次只返回对话流，不退出备用屏
 			assert.equal(output.chunks.some((chunk) => chunk.includes(LEAVE)), false);
@@ -159,9 +162,11 @@ describe("整屏页与图片附件", () => {
 			assert.ok(mcps.join("\n").includes("context7"));
 			assert.ok(mcps.join("\n").includes("2 tools"));
 
-			// 关掉之后回到启动画面：页面没有留下任何残影
+			// 关掉之后回到启动画面：页面没有留下任何残影；启动画面没有横幅，只剩空主区域与页脚
 			input.emit("data", Buffer.from("\x1b"));
-			assert.ok(frameLines(output).map(plain).join("\n").includes("v1.2.3"));
+			const startup = frameLines(output).map(plain).join("\n");
+			assert.equal(startup.includes("v1.2.3"), false);
+			assert.ok(startup.includes("📊 100K / 1M"));
 		} finally {
 			exitTui(input);
 		}
@@ -231,6 +236,8 @@ describe("整屏页与图片附件", () => {
 			assert.equal(text.includes("[img]"), false);
 			// 图片标记本身就是附件提示，状态行不再额外写一行 Attached
 			assert.equal(text.includes("Attached"), false);
+			// 读取结束后「读取中」的提示要收尾，不会一直占着状态行
+			assert.equal(text.includes("Reading clipboard image…"), false, text);
 
 			input.emit("data", Buffer.from("这个间距为什么不对\r"));
 			assert.deepEqual(agent.prompts, ["[image: screenshot.png] 这个间距为什么不对"]);
@@ -239,6 +246,155 @@ describe("整屏页与图片附件", () => {
 			text = frameLines(output).map(plain).join("\n");
 			assert.ok(text.includes("[image: screenshot.png] 这个间距为什么不对"));
 			await agent.finish();
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("Ctrl+V 粘贴剪贴板文本：短文直插", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			images: fakeImageSource({ clipboardText: async () => "quoted text" }),
+			imagesSupported: () => true,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x16"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("quoted text"));
+			// 文本剪贴板不落图片标记
+			assert.equal(text.includes("[image:"), false);
+
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["quoted text"]);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("Ctrl+V 粘贴长文本按大段粘贴折叠，发送时还原原文", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			images: fakeImageSource({
+				clipboardText: async () => ["l1", "l2", "l3", "l4", "l5"].join("\n"),
+			}),
+			imagesSupported: () => true,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			input.emit("data", Buffer.from("\x16"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+
+			const text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("[Pasted #1: 5 lines]"));
+			assert.equal(text.includes("l2"), false);
+
+			input.emit("data", Buffer.from(" 总结一下\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.equal(agent.prompts.length, 1);
+			assert.ok(agent.prompts[0]?.includes("l3"));
+			assert.ok(agent.prompts[0]?.includes("总结一下"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("$ 打开技能补全，Tab 补全名字，发送的是原文", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			skills: {
+				list: () => [
+					{ name: "deploy-docs", description: "部署文档站点", note: "~/skills/deploy-docs", scope: "project" },
+					{ name: "review-pr", description: "审查当前改动", note: "~/skills/review-pr", scope: "user" },
+				],
+				directories: () => [],
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			// 刚敲 $ 还没有过滤词：全部技能都列出
+			input.emit("data", Buffer.from("我想 $"));
+			let text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("deploy-docs"));
+			assert.ok(text.includes("review-pr"));
+			assert.ok(text.includes("project"), "来源徽标可见");
+
+			// 过滤词收紧后只剩命中的技能
+			input.emit("data", Buffer.from("dep"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("deploy-docs"));
+			assert.equal(text.includes("review-pr"), false);
+
+			// Tab 补全整段 $片段为完整名字
+			input.emit("data", Buffer.from("\t"));
+			text = frameLines(output).map(plain).join("\n");
+			assert.ok(text.includes("我想 $deploy-docs"));
+			assert.equal(agent.prompts.length, 0);
+
+			// 发送的是原文：$name 原样交给模型，展开正文是模型读 SKILL.md 的事
+			input.emit("data", Buffer.from("总结一下\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["我想 $deploy-docs 总结一下"]);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("$ 在普通文本里不弹技能面板", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 24;
+		const agent = createFakeAgent();
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: agent.runtime,
+			skills: {
+				list: () => [{ name: "deploy-docs", description: "", note: "", scope: "user" }],
+				directories: () => [],
+			},
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			// 前面不是空白、或 $ 后不是名字字符：都是普通文字
+			input.emit("data", Buffer.from("花了$5 用 $PATH{a}"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			const text = frameLines(output).map(plain).join("\n");
+			assert.equal(text.includes("deploy-docs"), false, text);
+			assert.equal(text.includes("No matching skills."), false, text);
 		} finally {
 			exitTui(input);
 		}
@@ -364,6 +520,8 @@ describe("整屏页与图片附件", () => {
 
 		try {
 			input.emit("data", Buffer.from("\x16"));
+			// Ctrl+V 先读剪贴板文本（空）再落到读图：等文本通道让位后回车才会被挡
+			await new Promise<void>((resolve) => setImmediate(resolve));
 			input.emit("data", Buffer.from("\r"));
 			assert.deepEqual(agent.prompts, []);
 			assert.ok(frameLines(output).map(plain).join("\n").includes("Still reading an image"));

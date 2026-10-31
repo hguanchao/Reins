@@ -17,7 +17,6 @@ export {
 	isSubagentCall,
 	takeToolForFailure,
 	toggleLastExpandable,
-	toggleLastToolResult,
 } from "#src/tui/transcript/model.ts";
 export {
 	highlightSelection,

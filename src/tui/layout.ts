@@ -1,5 +1,5 @@
 import type { AgentEventListener } from "#src/agent/events.ts";
-import { STATUS, UNTITLED_SESSION } from "#src/tui/copy.ts";
+import { STATUS, UNTITLED_SESSION, mcpConnectingStatus } from "#src/tui/copy.ts";
 import {
 	CURSOR_BLINKING_BAR,
 	CURSOR_DEFAULT,
@@ -52,7 +52,7 @@ import { copyText } from "#src/tui/runtime/copy.ts";
 import { closeThinking, appendLine, syncTurn, syncTurnFull } from "#src/tui/runtime/turn.ts";
 import { executeUndo } from "#src/tui/runtime/checkpoints.ts";
 import {
-	attachClipboardImage,
+	attachClipboard,
 	attachImagePath,
 	clearAttachments,
 	draggedImagePath,
@@ -60,6 +60,8 @@ import {
 	insertImageMarker,
 	readAndInsertImage,
 } from "#src/tui/input/attachments.ts";
+import { undoInput } from "#src/tui/input/draft.ts";
+import { recordUndo } from "#src/tui/input/undo.ts";
 import { recallHistory, rememberInput } from "#src/tui/input/history.ts";
 import { healthCheckMcp, moveMcpCursor, reconnectMcp } from "#src/tui/runtime/mcp.ts";
 import {
@@ -72,16 +74,19 @@ import {
 import {
 	cancelMenu,
 	closeFileMenu,
+	closeSkillMenu,
 	completeMenu,
 	confirmMenu,
 	forkSelectedSession,
 	insertFileReference,
+	insertSkillReference,
 	moveMenu,
 	openEffortMenu,
 	openModelMenu,
 	openSessionMenu,
 	updateCommandMenu,
 	updateFileMenu,
+	updateSkillMenu,
 } from "#src/tui/runtime/panels.ts";
 import { submit } from "#src/tui/runtime/submit.ts";
 import { resolveTrust } from "#src/tui/runtime/trust.ts";
@@ -109,9 +114,18 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		state,
 		render: () => render(host),
 		setInput: (value, cursor = value.length) => {
+			// 撤销栈只收正文变化：光标移动与重设同一段内容不产生可撤销的一步
+			if (value !== state.input) {
+				state.undoStack = recordUndo(
+					state.undoStack,
+					{ text: state.input, cursor: state.inputCursor, images: [...state.pendingImages] },
+					{ text: value, cursor },
+				);
+			}
 			state.input = value;
 			state.inputCursor = Math.min(Math.max(0, cursor), value.length);
 		},
+		undoInput: () => undoInput(host),
 		setStatus: (text, tone) => setStatus(state, text, tone),
 		clearStatus: () => clearStatus(state),
 		resetStatusMeta: () => resetStatusMeta(state),
@@ -174,7 +188,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		}),
 		insertImageMarker: (image, at) => insertImageMarker(host, image, at),
 		attachImagePath: (path, at) => attachImagePath(host, path, at),
-		attachClipboardImage: (at) => attachClipboardImage(host, at),
+		attachClipboard: (at) => attachClipboard(host, at),
 		readAndInsertImage: (read, status, at) => readAndInsertImage(host, read, status, at),
 		draggedImagePath: (chunk) => draggedImagePath(host, chunk),
 		imagesInInput: () => imagesOf(state),
@@ -186,6 +200,9 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		updateCommandMenu: () => updateCommandMenu(host),
 		updateFileMenu: () => updateFileMenu(host),
 		insertFileReference: () => insertFileReference(host, (path, at) => attachImagePath(host, path, at)),
+		closeSkillMenu: (dismissed) => closeSkillMenu(host, dismissed),
+		updateSkillMenu: () => updateSkillMenu(host),
+		insertSkillReference: () => insertSkillReference(host),
 		openModelMenu: () => openModelMenu(host),
 		openEffortMenu: () => openEffortMenu(host),
 		openSessionMenu: () => openSessionMenu(host),
@@ -255,6 +272,7 @@ export async function runTui(options: TuiOptions): Promise<number> {
 		// 与备用屏会留在使用者的 shell 上，必须手工 reset 才能恢复
 		for (const signal of EXIT_SIGNALS) process.on(signal, cleanUp);
 		process.on("exit", restoreTerminal);
+		startLoadingStatus(host);
 		host.render();
 	} catch (error) {
 		cleanUp();
@@ -265,6 +283,63 @@ export async function runTui(options: TuiOptions): Promise<number> {
 }
 
 /** 主区域可见范围内的最大滚动量。 */
+/**
+ * 启动期加载状态。
+ *
+ * MCP server 在后台握手，有 server 还在 connecting 时状态行显示带进度的连接文案并以
+ * 100ms 刷新；全部落定后按结果分流——全部连上就把状态行清掉，装载问题（插件失败/警告、
+ * MCP 连接失败）交给对话流顶部的警告区：全部 server 连不上按错误起头，其余按警告。
+ * 插件装载在进屏前已经完成，它的问题行同样在这里并入警告区。
+ */
+let loadTimer: ReturnType<typeof setInterval> | undefined;
+
+function startLoadingStatus(host: TuiHost): void {
+	const state = host.state;
+	const problems = host.options.startupProblems ?? [];
+	const servers = (): readonly { readonly name: string; readonly status: string; readonly detail: string }[] =>
+		(host.options.mcpStatus?.() ?? []).filter((row) => row.status !== "disabled");
+	const connectingCount = (): number => servers().filter((row) => row.status === "connecting").length;
+
+	const settle = (): void => {
+		const rows = servers();
+		const failed = rows.filter((row) => row.status === "unreachable");
+		const lines = [...problems];
+		for (const row of failed) lines.push(`MCP server ${row.name}: ${row.detail}`);
+		if (lines.length === 0) return;
+		const lead = rows.length > 0 && failed.length === rows.length ? "Error" : "Warning";
+		state.startupProblems = `${lead}: ${lines.join("\n")}`;
+	};
+
+	if (connectingCount() === 0) {
+		settle();
+		return;
+	}
+
+	const total = servers().length;
+	const tick = (): void => {
+		if (state.finished) {
+			if (loadTimer !== undefined) clearInterval(loadTimer);
+			loadTimer = undefined;
+			return;
+		}
+		if (connectingCount() === 0) {
+			if (loadTimer !== undefined) clearInterval(loadTimer);
+			loadTimer = undefined;
+			settle();
+			// 握手结束状态行就退场:成功无声,失败由警告区承担
+			clearStatus(state);
+			host.render();
+			return;
+		}
+		setStatus(state, mcpConnectingStatus(total - connectingCount(), total));
+		host.render();
+	};
+	tick();
+	loadTimer = setInterval(tick, 100);
+	// unref：使用者退出时不能被一个还没到点的刷新拖住进程
+	loadTimer.unref?.();
+}
+
 function maxScroll(host: TuiHost): number {
 	const width = host.terminalWidth();
 	const mainHeight = host.mainAreaHeight();
@@ -288,6 +363,7 @@ function launch(host: TuiHost, prompt: string, images: readonly ImageAttachment[
 		host.state.commandMenu = undefined;
 		host.resetStatusMeta();
 		host.setStatus(STATUS.agentNotConnected, "notice");
+		host.scheduleStatusClear();
 		host.render();
 		return;
 	}

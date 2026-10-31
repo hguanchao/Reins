@@ -131,16 +131,6 @@ export function handleApprovalInput(
 			deps.render();
 			return;
 		}
-		if (scroll === "top") {
-			state.approvalScrollTop = 0;
-			deps.render();
-			return;
-		}
-		if (scroll === "bottom") {
-			state.approvalScrollTop = approvalPreviewScrollLimit(prompt, true, panelWidth, rows);
-			deps.render();
-			return;
-		}
 	}
 
 	if (handleScrollKey(host, state, text, mainHeight) || handleToggleKey(state, text)) {

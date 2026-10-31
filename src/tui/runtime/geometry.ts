@@ -3,6 +3,7 @@ import { approvalPanelHeight } from "#src/tui/panel/approval-panel.ts";
 import { commandMenuHeight } from "#src/tui/panel/command-menu.ts";
 import { effortMenuHeight } from "#src/tui/panel/effort-menu.ts";
 import { fileMenuHeight } from "#src/tui/panel/file-menu.ts";
+import { skillMenuHeight } from "#src/tui/panel/skill-menu.ts";
 import { modelMenuHeight } from "#src/tui/panel/model-menu.ts";
 import { sessionMenuHeight } from "#src/tui/panel/session-menu.ts";
 import { MENU_MAX_VISIBLE } from "#src/tui/panel/menu-panel.ts";
@@ -56,6 +57,7 @@ export function menuHeight(state: TuiState): number {
 	}
 	if (state.commandMenu !== undefined) return commandMenuHeight(state.commandMenu.items.length, limit);
 	if (state.fileMenu !== undefined) return fileMenuHeight(state.fileMenu.items.length, limit);
+	if (state.skillMenu !== undefined) return skillMenuHeight(state.skillMenu.items.length, limit);
 	return 0;
 }
 
@@ -79,7 +81,8 @@ export function menuOpen(state: TuiState): boolean {
 		state.effortMenu !== undefined ||
 		state.sessionMenu !== undefined ||
 		state.commandMenu !== undefined ||
-		state.fileMenu !== undefined
+		state.fileMenu !== undefined ||
+		state.skillMenu !== undefined
 	);
 }
 

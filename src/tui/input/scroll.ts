@@ -1,6 +1,6 @@
 import { DOUBLE_CLICK_MS, WHEEL_STEP } from "#src/tui/runtime/constants.ts";
 import { invalidateTranscriptPrefix, markTranscriptDirty } from "#src/tui/runtime/transcript-state.ts";
-import { scrollTopForRow, toggleLastExpandable, toggleLastToolResult } from "#src/tui/transcript.ts";
+import { scrollTopForRow, toggleLastExpandable } from "#src/tui/transcript.ts";
 import type { MouseInput } from "#src/tui/input/keys.ts";
 import type { TuiHost, TuiState } from "#src/tui/runtime/types.ts";
 
@@ -49,7 +49,7 @@ export function applyDragScroll(
 }
 
 /**
- * PageUp / PageDown / Ctrl+Home。
+ * PageUp / PageDown。
  *
  * 返回是否消费了这次按键；不是滚动键时为 false，调用方继续往下分发。
  */
@@ -71,40 +71,17 @@ export function handleScrollKey(
 		state.follow = state.scrollTop >= limit;
 		return true;
 	}
-	if (text === "\x1b[1;5H") {
-		state.scrollTop = 0;
-		state.follow = host.maxScroll() <= 0;
-		return true;
-	}
-	// Ctrl+End：跳到最新。帮助页承诺了它，终端发出的序列是 CSI 1;5F
-	if (text === "\x1b[1;5F") {
-		const limit = host.maxScroll();
-		state.scrollTop = limit;
-		state.follow = true;
-		return true;
-	}
 	return false;
 }
 
 /**
- * Ctrl+E 展开/收起最后一块思考或工具组，Ctrl+O 切换最后一条工具结果。
+ * Ctrl+E 展开/收起最后一块思考或工具组。
  *
  * 返回是否消费了这次按键；没有可展开目标时也消费，避免按键漏进输入框成为正文。
  */
 export function handleToggleKey(state: TuiState, text: string): boolean {
 	if (text === "\x05") {
 		if (toggleLastExpandable(state.turns)) {
-			invalidateTranscriptPrefix(state);
-			markTranscriptDirty(state);
-			state.follow = false;
-		}
-		return true;
-	}
-	if (text === "\x0f") {
-		const tool = toggleLastToolResult(state.turns);
-		if (tool !== undefined) {
-			// 刚展开的这条就是 Ctrl+G 要继续看的那条，别再跳回“最新”
-			state.viewerTool = tool;
 			invalidateTranscriptPrefix(state);
 			markTranscriptDirty(state);
 			state.follow = false;

@@ -238,7 +238,10 @@ describe("鼠标拖选复制", () => {
 				text: Array.from({ length: 400 }, (_, index) => `word-${index + 1}`).join(" "),
 			});
 			t.mock.timers.tick(100);
-			input.emit("data", Buffer.from("\x1b[1;5H"));
+			// 跳到顶部：PgUp 连按到页顶（超出会夹住）
+			for (let index = 0; index < 8; index += 1) {
+				input.emit("data", Buffer.from("\x1b[5~"));
+			}
 			t.mock.timers.tick(100);
 
 			const content = (): string => frameLines(output).map(plain).slice(0, 14).join("\n");
@@ -295,7 +298,9 @@ describe("鼠标拖选复制", () => {
 			t.mock.timers.tick(100);
 
 			// 先跳到顶部：跟随底部时画面本来就在最末，往下拖没有可滚的余量
-			input.emit("data", Buffer.from("\x1b[1;5H"));
+			for (let index = 0; index < 8; index += 1) {
+				input.emit("data", Buffer.from("\x1b[5~"));
+			}
 			t.mock.timers.tick(100);
 
 			// 只看内容区：状态行的耗时每帧都在变，拿整屏比较会把「没滚动」判成滚动

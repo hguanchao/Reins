@@ -350,17 +350,35 @@ describe("Esc 清空输入框", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("清空后又打了字，Ctrl+Z 不覆盖新内容", async (t) => {
+	it("清空后又打了字，Ctrl+Z 先撤新字再撤回清空", async (t) => {
 		const { input, agent, running } = startTui(t);
 		try {
 			input.emit("data", Buffer.from("abc"));
 			input.emit("data", Buffer.from("\x1b"));
 			input.emit("data", Buffer.from("\x1b"));
 			input.emit("data", Buffer.from("hi"));
+			// 第一级：撤掉清空之后新打的 hi
+			input.emit("data", Buffer.from("\x1a"));
+			// 第二级：撤掉清空本身，abc 回来
 			input.emit("data", Buffer.from("\x1a"));
 			input.emit("data", Buffer.from("\r"));
 			await new Promise<void>((resolve) => setImmediate(resolve));
-			assert.deepEqual(agent.prompts, ["hi"]);
+			assert.deepEqual(agent.prompts, ["abc"]);
+		} finally {
+			exitTui(input);
+		}
+		assert.equal(await running, 0);
+	});
+
+	it("Ctrl+Z 撤销普通打字", async (t) => {
+		const { input, agent, running } = startTui(t);
+		try {
+			input.emit("data", Buffer.from("hello"));
+			input.emit("data", Buffer.from(" world"));
+			input.emit("data", Buffer.from("\x1a"));
+			input.emit("data", Buffer.from("\r"));
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			assert.deepEqual(agent.prompts, ["hello"]);
 		} finally {
 			exitTui(input);
 		}

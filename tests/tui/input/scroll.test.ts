@@ -82,23 +82,22 @@ describe("滚动键", () => {
 		assert.equal(state.scrollTop, 20);
 	});
 
-	it("Ctrl+Home 回到顶部", () => {
-		const state = stateOf({ scrollTop: 7 });
-		assert.equal(handleScrollKey(hostOf(10), state, "\x1b[1;5H", 5), true);
-		assert.equal(state.scrollTop, 0);
-	});
-
-	it("已经到顶时 PageUp 与 Ctrl+Home 不取消跟随", () => {
+	it("已经到顶时 PageUp 不取消跟随", () => {
 		const fits = stateOf({ scrollTop: 0, follow: true });
 		assert.equal(handleScrollKey(hostOf(0), fits, "\x1b[5~", 5), true);
-		assert.equal(fits.follow, true);
-		assert.equal(handleScrollKey(hostOf(0), fits, "\x1b[1;5H", 5), true);
 		assert.equal(fits.follow, true);
 
 		// 内容超出屏幕时回到顶部才是「离开底部」，跟随要关掉
 		const overflowing = stateOf({ scrollTop: 0, follow: true });
 		assert.equal(handleScrollKey(hostOf(30), overflowing, "\x1b[5~", 5), true);
 		assert.equal(overflowing.follow, false);
+	});
+
+	it("Ctrl+Home/End 已移除：不消费也不滚动", () => {
+		const state = stateOf({ scrollTop: 7 });
+		assert.equal(handleScrollKey(hostOf(10), state, "\x1b[1;5H", 5), false);
+		assert.equal(handleScrollKey(hostOf(10), state, "\x1b[1;5F", 5), false);
+		assert.equal(state.scrollTop, 7);
 	});
 
 	it("其它按键不消费", () => {
@@ -109,28 +108,12 @@ describe("滚动键", () => {
 describe("展开键", () => {
 	it("没有可展开目标时也消费按键", () => {
 		assert.equal(handleToggleKey(stateOf(), "\x05"), true);
-		assert.equal(handleToggleKey(stateOf(), "\x0f"), true);
+		// Ctrl+O 已移除：按键交回后续路径
+		assert.equal(handleToggleKey(stateOf(), "\x0f"), false);
 		assert.equal(handleToggleKey(stateOf(), "a"), false);
 	});
 
-	it("Ctrl+O 记下被展开的工具供 Ctrl+G 定位", () => {
-		const tool: TranscriptTool = { kind: "tool", name: "read", detail: "a", result: "ok" };
-		const state = stateOf({ turns: [{ prompt: "p", response: [tool] }] });
-		assert.equal(handleToggleKey(state, "\x0f"), true);
-		assert.equal(state.viewerTool, tool);
-
-		// 收起同一条工具时目标不变：Ctrl+G 仍然指向使用者最近摆弄的那一行
-		assert.equal(handleToggleKey(state, "\x0f"), true);
-		assert.equal(state.viewerTool, tool);
-	});
-
-	it("有目标时改动对话流并关闭跟随", () => {
-		const tool: TranscriptTool = { kind: "tool", name: "read", detail: "a", result: "ok" };
-		const state = stateOf({ turns: [{ prompt: "p", response: [tool] }] });
-		assert.equal(handleToggleKey(state, ""), true);
-		assert.equal(tool.resultExpanded, true);
-		assert.equal(state.follow, false);
-
+	it("Ctrl+E 展开思考块并关闭跟随", () => {
 		const thinking = {
 			kind: "thinkingBlock" as const,
 			header: "hmm",
@@ -139,9 +122,31 @@ describe("展开键", () => {
 			running: false,
 			expanded: false,
 		};
-		const thinkingState = stateOf({ turns: [{ prompt: "p", response: [thinking] }] });
-		assert.equal(handleToggleKey(thinkingState, ""), true);
+		const state = stateOf({ turns: [{ prompt: "p", response: [thinking] }] });
+		assert.equal(handleToggleKey(state, "\x05"), true);
 		assert.equal(thinking.expanded, true);
-		assert.equal(toggleLastExpandable(thinkingState.turns), true);
+		assert.equal(state.follow, false);
+
+		assert.equal(toggleLastExpandable(state.turns), true);
+		assert.equal(thinking.expanded, false);
+	});
+
+	it("Ctrl+E 收起工具组时成员的摊开详情一并收起", () => {
+		const first: TranscriptTool = {
+			kind: "tool",
+			name: "read",
+			detail: "a",
+			result: "ok",
+			resultExpanded: true,
+		};
+		const group = {
+			kind: "toolGroup" as const,
+			expanded: true,
+			members: [first, { kind: "tool", name: "read", detail: "b", result: "ok" } as TranscriptTool],
+		};
+		const state = stateOf({ turns: [{ prompt: "p", response: [group] }] });
+		assert.equal(handleToggleKey(state, "\x05"), true);
+		assert.equal(group.expanded, false);
+		assert.equal(first.resultExpanded, false);
 	});
 });

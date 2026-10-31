@@ -34,6 +34,8 @@ export interface ImageSource {
 	readonly detect: (text: string) => string | undefined;
 	/** 读取系统剪贴板里的图片；失败时抛错 */
 	readonly clipboard: () => Promise<ImageAttachment>;
+	/** 读取系统剪贴板里的文本；剪贴板里没有文本时返回空串，读不了时抛错 */
+	readonly clipboardText: () => Promise<string>;
 }
 
 /** 一次最多附几张图。 */

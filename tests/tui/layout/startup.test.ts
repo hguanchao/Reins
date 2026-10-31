@@ -1,9 +1,102 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { FakeInput, FakeOutput, ENTER, SYNC_BEGIN, SYNC_END, LEAVE, FOCUS, INFO, BORDER, FOOTER_INFO, WARNING, pressCtrlC, exitTui, rawFrame, frameLines, cursorAt, plain } from "#tests/tui/support/harness.ts";
+import { createFakeAgent, FakeInput, FakeOutput, ENTER, SYNC_BEGIN, SYNC_END, LEAVE, FOCUS, INFO, BORDER, FOOTER_INFO, WARNING, pressCtrlC, exitTui, rawFrame, frameLines, cursorAt, plain } from "#tests/tui/support/harness.ts";
 import { runTui } from "#src/tui/layout.ts";
 import { THEME } from "#src/tui/render/theme.ts";
+
+describe("启动期加载状态", () => {
+	it("MCP 握手期间状态行显示进度，落定后清掉并把失败交给警告区", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const rows = [
+			{ name: "alpha", status: "connecting", detail: "" },
+			{ name: "beta", status: "connecting", detail: "" },
+		];
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: createFakeAgent().runtime,
+			mcpStatus: () => rows,
+			startupProblems: ["plugin pack: warning — something"],
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			const text = (): string => frameLines(output).map(plain).join("\n");
+			assert.ok(text().includes("Connecting to MCP servers (0/2 ready)…"));
+
+			// 连接落定：一个成功一个失败
+			rows[0]!.status = "connected";
+			rows[0]!.detail = "1 tools: a";
+			rows[1]!.status = "unreachable";
+			rows[1]!.detail = "connect ECONNREFUSED";
+			await new Promise<void>((resolve) => setTimeout(resolve, 250));
+
+			const settled = text();
+			assert.equal(settled.includes("Connecting to MCP"), false);
+			// 部分失败按警告起头,连同插件问题一起进对话流顶部
+			assert.ok(settled.includes("Warning: plugin pack: warning — something"));
+			assert.ok(settled.includes("MCP server beta: connect ECONNREFUSED"));
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("全部成功时状态行直接消失，成功结论不进对话流", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		const rows = [{ name: "alpha", status: "connecting", detail: "" }];
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: createFakeAgent().runtime,
+			mcpStatus: () => rows,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			assert.ok(frameLines(output).map(plain).join("\n").includes("Connecting to MCP servers (0/1 ready)…"));
+
+			rows[0]!.status = "connected";
+			rows[0]!.detail = "2 tools: a, b";
+			await new Promise<void>((resolve) => setTimeout(resolve, 250));
+
+			const settled = frameLines(output).map(plain).join("\n");
+			assert.equal(settled.includes("Connecting to MCP"), false);
+			assert.equal(settled.includes("Warning:"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+
+	it("没有 MCP 与插件问题时状态行不出现", async () => {
+		const input = new FakeInput();
+		const output = new FakeOutput();
+		output.columns = 80;
+		output.rows = 20;
+		void runTui({
+			version: "1.2.3",
+			info: FOOTER_INFO,
+			agent: createFakeAgent().runtime,
+			stdin: input,
+			stdout: output,
+		});
+
+		try {
+			await new Promise<void>((resolve) => setTimeout(resolve, 120));
+			assert.equal(frameLines(output).map(plain).join("\n").includes("Connecting to MCP"), false);
+		} finally {
+			exitTui(input);
+		}
+	});
+});
 
 describe("终端启动与收尾", () => {
 	it("进入备用屏，按当前尺寸绘制，连按两次 Ctrl+C 后恢复", async () => {
@@ -99,7 +192,7 @@ describe("终端启动与收尾", () => {
 		assert.equal(await running, 0);
 	});
 
-	it("主区域在输入框之上居中", () => {
+	it("启动时主区域留空，输入框在下方", () => {
 		const input = new FakeInput();
 		const output = new FakeOutput();
 		void runTui({ version: "1.2.3", info: FOOTER_INFO, stdin: input, stdout: output });
@@ -107,10 +200,8 @@ describe("终端启动与收尾", () => {
 		try {
 			const lines = frameLines(output);
 			assert.equal(lines.length, 12);
-			assert.equal(plain(lines[0] ?? "").trimEnd(), "    ████  █████  █████  █   █  █████");
-			assert.ok(lines[0]?.startsWith(`${" ".repeat(4)}${THEME.textSubtle}`));
-			assert.equal(plain(lines[5] ?? ""), `${" ".repeat(17)}v1.2.3`);
-			assert.ok(lines[5]?.startsWith(`${" ".repeat(17)}${THEME.textSubtle}`));
+			// 启动画面没有横幅:主区域留空,第一轮对话开始后才由 transcript 接管
+			for (let row = 0; row < 8; row += 1) assert.equal(plain(lines[row] ?? ""), "");
 			assert.equal(plain(lines[8] ?? ""), BORDER.repeat(40));
 			assert.equal(plain(lines[9] ?? ""), " › ");
 			assert.equal(plain(lines[10] ?? ""), BORDER.repeat(40));

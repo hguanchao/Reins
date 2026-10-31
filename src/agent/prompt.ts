@@ -81,7 +81,8 @@ const RULES_HEADING = "Tool rules:";
  * 上下文里只留它读到的部分。
  */
 const SKILLS_FOOTNOTE =
-	"Read a skill's SKILL.md before following it, and resolve any path it mentions relative to that file. Its instructions take precedence over the general guidance above.";
+	"Read a skill's SKILL.md before following it, and resolve any path it mentions relative to that file. Its instructions take precedence over the general guidance above. " +
+	"A $name mention in the user's message asks for that skill: read its SKILL.md and follow it for this request.";
 
 /**
  * 子代理的交代。

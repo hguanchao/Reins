@@ -1,10 +1,10 @@
 import { inputView, renderFooter } from "#src/tui/view/footer.ts";
-import { renderMain } from "#src/tui/view/main.ts";
 import { commandNameOf } from "#src/tui/commands.ts";
 import { renderApprovalPanel } from "#src/tui/panel/approval-panel.ts";
 import { renderCommandMenu } from "#src/tui/panel/command-menu.ts";
 import { renderEffortMenu } from "#src/tui/panel/effort-menu.ts";
 import { renderFileMenu } from "#src/tui/panel/file-menu.ts";
+import { renderSkillMenu } from "#src/tui/panel/skill-menu.ts";
 import { renderModelMenu } from "#src/tui/panel/model-menu.ts";
 import { renderSessionMenu } from "#src/tui/panel/session-menu.ts";
 import { renderTranscriptView, measureTranscriptView, scrollbarColumn, selectionSpans } from "#src/tui/transcript.ts";
@@ -45,7 +45,7 @@ const OVERFLOW_NOTICE = TRANSCRIPT.terminalTooSmall;
  * 不整屏清空：先擦行再覆盖，旧内容不会在清屏与重绘之间闪一下。
  */
 export function render(host: TuiHost): void {
-	const { state, options } = host;
+	const { state } = host;
 	const width = terminalWidth(state);
 	const height = terminalRows(state);
 	const mainHeight = host.mainAreaHeight();
@@ -150,7 +150,8 @@ export function render(host: TuiHost): void {
 				? framedPageFor(host, state.openPage, width, mainHeight)
 				: transcriptShown
 					? renderTranscriptView(view, mainHeight, state.scrollTop, animation, selection)
-					: renderMain(width, mainHeight, options.version);
+					: // 启动画面:没有横幅,主区域留空,第一轮对话开始后才由 transcript 接管
+						Array.from({ length: mainHeight }, () => "");
 	const mainLines = [...main];
 	// 常驻任务面板:贴在页脚上方,任务表存在且非空时显示;Plan 模式隐藏旧任务表
 	const panelLines =
@@ -260,6 +261,7 @@ function menuLinesOf(host: TuiHost, width: number, _metrics: unknown): readonly 
 		return renderCommandMenu(width, state.commandMenu, menuVisibleLimit(state));
 	}
 	if (state.fileMenu !== undefined) return renderFileMenu(width, state.fileMenu, menuVisibleLimit(state));
+	if (state.skillMenu !== undefined) return renderSkillMenu(width, state.skillMenu, menuVisibleLimit(state));
 	return [];
 }
 

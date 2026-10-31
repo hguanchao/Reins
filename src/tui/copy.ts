@@ -50,6 +50,7 @@ export const STATUS = {
 	mcpHealthCheckFailed: "MCP health check failed",
 	mcpReconnectFailed: "MCP reconnect failed",
 	readingImage: "Reading image…",
+	readingClipboard: "Reading clipboard…",
 	readingClipboardImage: "Reading clipboard image…",
 	recordingDecision: "Recording the decision…",
 	exportFailed: "Export failed",
@@ -129,6 +130,11 @@ export function commandFailed(name: string): string {
 export const REVISE_PLAN_PREFIX = "Revise the plan: ";
 
 /** 两段确认：键位在前、动作在后，键位只在这一处维护。 */
+/** 启动期 MCP 握手的状态行:带就绪进度,数字随刷新跳动。 */
+export function mcpConnectingStatus(ready: number, total: number): string {
+	return `Connecting to MCP servers (${ready}/${total} ready)…`;
+}
+
 export function pendingConfirm(action: string, key = "Ctrl+C"): string {
 	return `${key}: press again to ${action}`;
 }
@@ -371,6 +377,7 @@ export const PANEL = {
 	/** 列表空态：空态是句子，句号收尾。 */
 	noMatchingCommands: "No matching commands.",
 	noMatchingFiles: "No matching files.",
+	noMatchingSkills: "No matching skills.",
 	noSessions: "No sessions in this project yet.",
 	/** 菜单里的当前项标记。 */
 	current: "current",
@@ -505,7 +512,8 @@ export const KEY_HINTS: readonly KeyHintCopy[] = [
 	{ keys: "Shift+Tab", description: "Cycle the approval mode: ask, auto, yolo" },
 	{ keys: "Esc", description: "Close a menu or this page, or deny an approval" },
 	{ keys: "Esc", description: "Interrupt the turn · send the first queued message" },
-	{ keys: "Esc twice", description: "Clear the input · Ctrl+Z brings it back" },
+	{ keys: "Esc twice", description: "Clear the input" },
+	{ keys: "Ctrl+Z", description: "Undo the last input change · brings back a cleared draft" },
 	{ keys: "Ctrl+C twice", description: "Exit the interface · a draft is cleared first" },
 	{ keys: "Up / Down", description: "Prompt cursor or history, menu navigation, or page scrolling" },
 	{ keys: "Left / Right", description: "Move the prompt cursor or approval selection" },
@@ -513,16 +521,15 @@ export const KEY_HINTS: readonly KeyHintCopy[] = [
 	{ keys: "Alt+Up", description: "Take the last queued message back into the prompt" },
 	{ keys: "Alt+Down", description: "Discard the last queued message" },
 	{ keys: "PgUp / PgDn", description: "Scroll the conversation or this page" },
-	{ keys: "Ctrl+Home/End", description: "Jump to the oldest or latest output" },
 	{ keys: "Ctrl+E", description: "Expand or collapse the latest thinking or tool group" },
-	{ keys: "Ctrl+O", description: "Show or hide the latest successful tool result" },
 	{ keys: "Ctrl+G", description: "View the selected tool full-screen, or the latest long block" },
-	{ keys: "Ctrl+V / Alt+V", description: "Insert an image from the clipboard as [image: name]" },
+	{ keys: "Ctrl+V", description: "Paste the clipboard: text inserts like a paste, an image becomes an [image: name] marker" },
 	{ keys: "Wheel / drag", description: "Scroll the conversation · drag the scrollbar or select text to copy" },
 	{ keys: "Double-click", description: "Expand or collapse thinking, tool groups, or a pasted marker" },
 	{ keys: "y / a / n", description: "Answer an approval: proceed once, always allow, or deny" },
 	{ keys: "d", description: "Expand or hide approval details · arrow keys scroll them" },
 	{ keys: "@", description: "Complete a workspace file path; an image becomes an inline marker" },
+	{ keys: "$", description: "Complete a skill; the model reads its SKILL.md when mentioned" },
 ];
 
 /** 整屏页底部动作条的标签：动作在前，说明它做什么，不写整句。 */

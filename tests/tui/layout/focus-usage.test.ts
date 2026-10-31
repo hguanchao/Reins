@@ -39,8 +39,8 @@ describe("焦点、状态与用量", () => {
 
 			const lines = frameLines(output);
 			assert.equal(lines.length, 7);
-			assert.equal(plain(lines[0] ?? "").trimEnd(), "████  █████  █████");
-			assert.equal(lines.join("\n").includes("v1.2.3"), false);
+			// 主区域 3 行在窄终端下照样留空
+			for (let row = 0; row < 3; row += 1) assert.equal(plain(lines[row] ?? ""), "");
 			assert.equal(plain(lines[3] ?? ""), BORDER.repeat(20));
 			assert.equal(plain(lines[4] ?? ""), " › ");
 			assert.equal(plain(lines[5] ?? ""), BORDER.repeat(20));
