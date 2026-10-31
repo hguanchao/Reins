@@ -16,6 +16,8 @@ import type { ApprovalAnswer, ApprovalRequest, WebEvent } from "./types.ts";
 export function App(): ReactElement {
 	const [lines, setLines] = useState<readonly Line[]>([]);
 	const [running, setRunning] = useState(false);
+	/** turn 已开始但模型还没吐出任何可见内容:像素加载行只在这一窗口出现 */
+	const [awaitingModel, setAwaitingModel] = useState(false);
 	const [approval, setApproval] = useState<{ id: number; request: ApprovalRequest } | undefined>(
 		undefined,
 	);
@@ -31,14 +33,22 @@ export function App(): ReactElement {
 				// 新回合的增量不得接上上一回合的尾巴
 				setLines(sealStreaming);
 				setRunning(true);
+				setAwaitingModel(true);
+				return;
+			case "writing_tool_call":
+				// 参数还在流式传输:对界面只是「有内容了」,不落行
+				setAwaitingModel(false);
 				return;
 			case "text_delta":
+				setAwaitingModel(false);
 				setLines((prev) => appendToLast(prev, "assistant", event.text));
 				return;
 			case "reasoning_delta":
+				setAwaitingModel(false);
 				setLines((prev) => appendToLast(prev, "thinking", event.text));
 				return;
 			case "tool_start":
+				setAwaitingModel(false);
 				setLines((prev) => [
 					...prev,
 					{
@@ -105,6 +115,7 @@ export function App(): ReactElement {
 				return;
 			case "run_end":
 				setRunning(false);
+				setAwaitingModel(false);
 				return;
 			case "approval_request":
 				setApproval({ id: event.id, request: event.request });
@@ -138,7 +149,31 @@ export function App(): ReactElement {
 	useEffect(() => {
 		const el = scrollRef.current;
 		if (el !== null) el.scrollTop = el.scrollHeight;
-	}, [lines, approval]);
+	}, [lines, approval, awaitingModel]);
+
+	// 全局键位:Esc 中断回合,1/2/3 直接回答审批(输入焦点在文本框里时不劫持)
+	useEffect(() => {
+		const onKeyDown = (event: KeyboardEvent): void => {
+			const target = event.target as HTMLElement | null;
+			const typing = target !== null && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
+			if (event.key === "Escape" && running) {
+				void api.abort().catch(() => {});
+				return;
+			}
+			if (typing || approval === undefined) return;
+			const canAlways = approval.request.saveLabel !== undefined;
+			const map: Record<string, ApprovalAnswer> = { "1": "once", "3": "deny" };
+			if (canAlways) map["2"] = "always";
+			else map["2"] = "deny";
+			const answer = map[event.key];
+			if (answer !== undefined) {
+				setApproval(undefined);
+				void api.approve(approval.id, answer).catch(() => {});
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [running, approval]);
 
 	const send = useCallback((text: string): void => {
 		// 自己的消息先画上去:内核没有「用户已发言」事件,等重放就晚了一整个回合
@@ -181,7 +216,24 @@ export function App(): ReactElement {
 			) : (
 				<>
 					<div className="scroll" ref={scrollRef}>
+						{lines.length === 0 && !running ? <div className="greeting">今天要做点什么?</div> : null}
 						<TranscriptView lines={lines} />
+						{awaitingModel ? (
+							<div className="waiting">
+								<span className="pixels">
+									<i />
+									<i />
+									<i />
+									<i />
+									<i />
+									<i />
+									<i />
+									<i />
+									<i />
+								</span>
+								思考中
+							</div>
+						) : null}
 					</div>
 					{approval !== undefined && (
 						<ApprovalCard request={approval.request} onAnswer={(value) => answer(approval.id, value)} />

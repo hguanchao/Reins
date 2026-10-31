@@ -1,11 +1,18 @@
 import type { ReactElement } from "react";
 
+import { handleCopyClick } from "./markdown.ts";
+import { MarkdownView } from "./markdown-view.tsx";
 import type { Line } from "./transcript.ts";
 
-/** 会话流的渲染;一行一个组件分支,markdown 渲染与折叠组留给后续版本。 */
+/** 会话流的渲染:视觉按 zai-dark 复刻——用户右对齐气泡、助手 markdown 全宽、工具行式摘要。 */
 export function TranscriptView({ lines }: { lines: readonly Line[] }): ReactElement {
 	return (
-		<div className="transcript">
+		<div
+			className="transcript"
+			onClick={(event) => {
+				handleCopyClick(event.nativeEvent);
+			}}
+		>
 			{lines.map((line, index) => (
 				<LineView key={index} line={line} />
 			))}
@@ -18,38 +25,47 @@ function LineView({ line }: { line: Line }): ReactElement | null {
 		case "user":
 			return (
 				<div className="line user">
-					<span className="marker">❯</span>
-					<span className="text">{line.text}</span>
+					<div className="bubble">{line.text}</div>
 				</div>
 			);
 		case "assistant":
-			return line.text.length === 0 ? null : <div className="line assistant">{line.text}</div>;
+			return line.text.trim().length === 0 ? null : (
+				<div className="line assistant">
+					<MarkdownView text={line.text} streaming={line.open} />
+				</div>
+			);
 		case "thinking":
-			// 流式中的思考默认展开:模型首 token 前的真空期里,这是唯一说明「还在干活」的东西
+			// 流式中的思考默认展开:真空期里这是唯一说明「还在干活」的东西
 			return (
 				<details className="line thinking" open={line.open}>
-					<summary>{line.open ? "思考中…" : "思考"}</summary>
+					<summary>
+						<span className={line.open ? "grad-text" : undefined}>
+							{line.open ? "思考中" : "已思考"}
+						</span>
+					</summary>
 					<div className="body">{line.text}</div>
 				</details>
 			);
 		case "tool":
 			return (
-				<details className={"line tool" + (line.isError ? " error" : "")}>
+				<details className={"line tool" + (line.running ? " running" : "") + (line.isError ? " error" : "")}>
 					<summary>
-						<span className={"mark " + (line.running ? "run" : line.isError ? "bad" : "ok")}>
-							{line.running ? "◌" : line.isError ? "×" : "✓"}
+						<span className={"glyph" + (line.running ? "" : line.isError ? " bad" : " ok")}>
+							{line.running ? "◇" : line.isError ? "×" : "✓"}
 						</span>
-						<span className="name">{line.name}</span>
-						{line.summary !== undefined && <span className="summary">{line.summary}</span>}
-						{line.durationMs !== undefined && (
-							<span className="duration">{formatDuration(line.durationMs)}</span>
-						)}
+						<span className={"tname" + (line.running ? " grad-text" : "")}>{line.name}</span>
+						{line.summary !== undefined && <span className="tsummary">{line.summary}</span>}
+						{line.durationMs !== undefined && <span className="tduration">{formatDuration(line.durationMs)}</span>}
 					</summary>
-					{line.detail.length > 0 && <pre className="body">{line.detail}</pre>}
+					{line.detail.length > 0 && <div className="tbody">{line.detail}</div>}
 				</details>
 			);
 		case "notice":
-			return <div className={"line notice " + line.tone}>{line.text}</div>;
+			return (
+				<div className={"line notice " + line.tone}>
+					<div className="bubble">{line.text}</div>
+				</div>
+			);
 	}
 }
 
