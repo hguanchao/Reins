@@ -3,6 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
+	"main": "desktop/build/main.js",
 	"bin": {
 		"reins": "./src/cli/index.ts"
 	},
@@ -14,16 +15,21 @@
 		"node": ">=22.18"
 	},
 	"scripts": {
-		"typecheck": "tsc --noEmit && tsc -p web --noEmit",
+		"typecheck": "tsc --noEmit && tsc -p web --noEmit && tsc -p desktop --noEmit",
 		"test": "node --test --test-timeout=30000 \"tests/**/*.test.ts\"",
 		"test:dir": "node --test --test-timeout=30000",
-		"build:ui": "vite build"
+		"build:ui": "vite build",
+		"build:desktop": "node desktop/build.mjs",
+		"build:exe": "npm run build:ui && npm run build:desktop && electron-builder --win --config desktop/electron-builder.json"
 	},
 	"devDependencies": {
 		"@types/node": "22.20.5",
 		"@types/react": "19.2.2",
 		"@types/react-dom": "19.2.2",
 		"@vitejs/plugin-react": "5.0.4",
+		"electron": "38.7.2",
+		"electron-builder": "26.0.12",
+		"esbuild": "0.27.2",
 		"typescript": "5.9.3",
 		"vite": "7.1.11"
 	},

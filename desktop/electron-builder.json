@@ -1,0 +1,30 @@
+{
+	"appId": "com.reins.desktop",
+	"productName": "Reins",
+	"directories": {
+		"output": "desktop/release"
+	},
+	"files": [
+		"desktop/build/**",
+		"web/dist/**",
+		"package.json"
+	],
+	"asarUnpack": [
+		"desktop/build/**",
+		"web/dist/**"
+	],
+	"win": {
+		"target": [
+			{ "target": "nsis", "arch": ["x64"] },
+			{ "target": "portable", "arch": ["x64"] }
+		]
+	},
+	"nsis": {
+		"oneClick": false,
+		"allowToChangeInstallationDirectory": true,
+		"artifactName": "Reins-Setup-${version}.${ext}"
+	},
+	"portable": {
+		"artifactName": "Reins-Portable-${version}.${ext}"
+	}
+}
