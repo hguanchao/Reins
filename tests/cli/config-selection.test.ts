@@ -30,6 +30,7 @@ function options(configPath: string, providersPath: string): CliOptions {
 		trust: undefined,
 		resume: undefined,
 		json: false,
+		port: undefined,
 		pluginAction: undefined,
 		pluginSource: undefined,
 	};
@@ -107,6 +108,7 @@ describe("工作区信任结论", () => {
 				trust: undefined,
 				resume: undefined,
 				json: false,
+				port: undefined,
 				pluginAction: undefined,
 				pluginSource: undefined,
 			});
@@ -165,6 +167,7 @@ describe("启动提示的去向", () => {
 				trust: undefined,
 				resume: undefined,
 				json: false,
+				port: undefined,
 				pluginAction: undefined,
 				pluginSource: undefined,
 			});
@@ -179,6 +182,7 @@ describe("启动提示的去向", () => {
 				trust: undefined,
 				resume: undefined,
 				json: false,
+				port: undefined,
 				pluginAction: undefined,
 				pluginSource: undefined,
 			});

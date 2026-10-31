@@ -6,8 +6,8 @@ export class UsageError extends Error {
 	}
 }
 
-/** CLI 的运行方式：启动界面、一次提问、帮助、版本，或管理插件。 */
-type CliCommand = "tui" | "print" | "help" | "version" | "plugin";
+/** CLI 的运行方式：启动界面、一次提问、本地网页服务、帮助、版本，或管理插件。 */
+type CliCommand = "tui" | "print" | "serve" | "help" | "version" | "plugin";
 
 export interface CliOptions {
 	readonly command: CliCommand;
@@ -21,6 +21,8 @@ export interface CliOptions {
 	readonly resume: string | undefined;
 	/** print 模式把事件流写成 JSONL，而不是把回答写到标准输出 */
 	readonly json: boolean;
+	/** serve 模式的监听端口；没给就用默认值 */
+	readonly port: number | undefined;
 	/** 插件子命令的动作；仅 command 为 plugin 时有值 */
 	readonly pluginAction: "add" | "list" | undefined;
 	/** add 的来源：npm 包名、git 仓库地址或本地目录 */
@@ -51,6 +53,16 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		// 插件子命令先于其余参数处理：来源本身可能是任意文本，不再当选项或句子解析
 		if (argument === "plugin") {
 			return parsePluginCommand(argv.slice(index + 1), {
+				configPath,
+				providersPath,
+				trust,
+				resume,
+				json,
+			});
+		}
+		// serve 子命令同样先截断：它不收位置参数,只认自己的端口选项
+		if (argument === "serve" && positionals.length === 0 && !explicitPrint) {
+			return parseServeCommand(argv.slice(index + 1), {
 				configPath,
 				providersPath,
 				trust,
@@ -129,6 +141,7 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 		trust,
 		resume,
 		json,
+		port: undefined,
 		pluginAction: undefined,
 		pluginSource: undefined,
 	};
@@ -143,6 +156,43 @@ function optionsOf(command: CliCommand): CliOptions {
 		trust: undefined,
 		resume: undefined,
 		json: false,
+		port: undefined,
+		pluginAction: undefined,
+		pluginSource: undefined,
+	};
+}
+
+/** `reins serve` 子命令:起本地网页服务,只认 --port。 */
+function parseServeCommand(
+	rest: readonly string[],
+	shared: Pick<CliOptions, "configPath" | "providersPath" | "trust" | "resume" | "json">,
+): CliOptions {
+	// 信任决策与一次性提问互斥的规则不变:写在 serve 前面的 --resume 一样报错,不静默丢弃
+	if (shared.resume !== undefined) {
+		throw new UsageError("--resume only works with the full-screen interface");
+	}
+	let port: number | undefined;
+	for (let index = 0; index < rest.length; index += 1) {
+		const argument = rest[index];
+		const value =
+			argument === "--port"
+				? rest[index + 1]
+				: argument.startsWith("--port=")
+					? argument.slice("--port=".length)
+					: undefined;
+		if (value === undefined) throw new UsageError(`unknown option ${argument} (serve takes only --port)`);
+		const parsed = Number(value);
+		if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+			throw new UsageError("--port requires a port number between 1 and 65535");
+		}
+		port = parsed;
+		if (argument === "--port") index += 1;
+	}
+	return {
+		command: "serve",
+		prompt: "",
+		...shared,
+		port,
 		pluginAction: undefined,
 		pluginSource: undefined,
 	};
@@ -168,6 +218,7 @@ function parsePluginCommand(
 		command: "plugin",
 		prompt: "",
 		...shared,
+		port: undefined,
 		pluginAction: action,
 		pluginSource: source,
 	};
@@ -187,6 +238,7 @@ Usage:
   reins <prompt>              Run one prompt, write the answer to stdout
   reins -p <prompt>           Same, explicitly non-interactive
   reins -p --json <prompt>    Write a JSONL event stream to stdout instead
+  reins serve                 Start the browser interface on 127.0.0.1
   reins plugin add <source>   Install a plugin (npm package, git URL, or local directory)
   reins plugin list           Show installed plugins and what each one provides
   reins --help                Show this help
@@ -194,6 +246,7 @@ Usage:
 
 Options:
   --json                      Emit one JSON event per line; requires -p
+  --port <n>                  Port for serve (default 8787)
   --trust                     Read the config shipped in this workspace and record the decision
   --no-trust                  Do not read the workspace config, and record the decision
   --config <path>             Use the given config.toml instead of the one in the config directory

@@ -285,7 +285,9 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 
 	return {
 		start(): Promise<RunningWebServer> {
-			return new Promise((resolveStart) => {
+			return new Promise((resolveStart, rejectStart) => {
+				// 端口被占用是最现实的启动失败:在这里拒绝,而不是让 start 永远悬着
+				server.once("error", rejectStart);
 				server.listen(options.port, "127.0.0.1", () => {
 					const address = server.address();
 					const port = typeof address === "object" && address !== null ? address.port : options.port;

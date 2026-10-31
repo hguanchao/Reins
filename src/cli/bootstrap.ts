@@ -18,6 +18,7 @@ import {
 	createReviewer,
 } from "#src/cli/pipeline.ts";
 import { runPrintMode } from "#src/cli/print-mode.ts";
+import { runServeMode } from "#src/cli/serve-mode.ts";
 import { createSessionFor } from "#src/cli/session/factory.ts";
 import { runPluginCommand } from "#src/cli/plugin-command.ts";
 import { runTuiMode } from "#src/cli/tui-mode.ts";
@@ -54,6 +55,9 @@ export async function main(argv: readonly string[]): Promise<number> {
 		case "print":
 			initializeConfig(options);
 			return runPrint(options);
+		case "serve":
+			initializeConfig(options);
+			return runServeMode(options);
 		case "tui":
 			return runTuiMode(options);
 	}

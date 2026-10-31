@@ -29,6 +29,7 @@ function pluginOptions(action: "add" | "list", source?: string): CliOptions {
 		trust: undefined,
 		resume: undefined,
 		json: false,
+		port: undefined,
 		pluginAction: action,
 		pluginSource: source,
 	};
