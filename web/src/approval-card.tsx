@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-import type { ApprovalAnswer, ApprovalRequest } from "./types";
+import type { ApprovalAnswer, ApprovalRequest } from "./types.ts";
 
 /** 审批卡片:与全屏界面同一份请求形状,结论经 serve 转回审批桥。 */
 export function ApprovalCard({

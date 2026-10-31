@@ -5,7 +5,7 @@
  * notice。历史重放(会话条目)与实时事件(增量拼接)都归约到同一个形状,渲染只有一份。
  */
 
-import type { LlmMessage, SessionEntry } from "./types";
+import type { LlmMessage, SessionEntry } from "./types.ts";
 
 export type Line =
 	| { kind: "user"; text: string }
@@ -35,6 +35,19 @@ export function linesFromEntries(entries: readonly SessionEntry[]): Line[] {
 			for (const block of message.content) {
 				if (block.type === "text") lines.push({ kind: "assistant", text: block.text, open: false });
 				else if (block.type === "thinking") lines.push({ kind: "thinking", text: block.text, open: false });
+				// 调用行先占位,紧跟的 toolResult 条目按 toolCallId 回填结论
+				else if (block.type === "toolCall") {
+					lines.push({
+						kind: "tool",
+						callId: block.id,
+						name: block.name,
+						running: false,
+						isError: false,
+						durationMs: undefined,
+						summary: undefined,
+						detail: "",
+					});
+				}
 			}
 		} else {
 			for (let index = lines.length - 1; index >= 0; index -= 1) {

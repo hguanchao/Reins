@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 
-import { api, openEventStream } from "./api";
-import { ApprovalCard } from "./approval-card";
-import { Composer } from "./composer";
-import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript";
-import { TranscriptView } from "./transcript-view";
-import type { ApprovalAnswer, ApprovalRequest, WebEvent } from "./types";
+import { api, openEventStream } from "./api.ts";
+import { ApprovalCard } from "./approval-card.tsx";
+import { Composer } from "./composer.tsx";
+import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript.ts";
+import { TranscriptView } from "./transcript-view.tsx";
+import type { ApprovalAnswer, ApprovalRequest, WebEvent } from "./types.ts";
 
 /**
  * 界面主组件。
@@ -141,6 +141,8 @@ export function App(): ReactElement {
 	}, [lines, approval]);
 
 	const send = useCallback((text: string): void => {
+		// 自己的消息先画上去:内核没有「用户已发言」事件,等重放就晚了一整个回合
+		setLines((prev) => [...prev, { kind: "user", text }]);
 		void api.send(text).catch((error: unknown) => {
 			setLines((prev) => [
 				...prev,

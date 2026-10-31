@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-import type { Line } from "./transcript";
+import type { Line } from "./transcript.ts";
 
 /** 会话流的渲染;一行一个组件分支,markdown 渲染与折叠组留给后续版本。 */
 export function TranscriptView({ lines }: { lines: readonly Line[] }): ReactElement {
@@ -25,9 +25,10 @@ function LineView({ line }: { line: Line }): ReactElement | null {
 		case "assistant":
 			return line.text.length === 0 ? null : <div className="line assistant">{line.text}</div>;
 		case "thinking":
+			// 流式中的思考默认展开:模型首 token 前的真空期里,这是唯一说明「还在干活」的东西
 			return (
-				<details className="line thinking">
-					<summary>思考</summary>
+				<details className="line thinking" open={line.open}>
+					<summary>{line.open ? "思考中…" : "思考"}</summary>
 					<div className="body">{line.text}</div>
 				</details>
 			);

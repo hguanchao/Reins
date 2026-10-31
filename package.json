@@ -9,7 +9,8 @@
 	},
 	"imports": {
 		"#src/*": "./src/*",
-		"#tests/*": "./tests/*"
+		"#tests/*": "./tests/*",
+		"#web/*": "./web/src/*"
 	},
 	"engines": {
 		"node": ">=22.18"

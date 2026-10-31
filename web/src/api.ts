@@ -5,7 +5,7 @@
  * 会话时清掉重登即可。事件流用 EventSource,浏览器自己负责断线重连。
  */
 
-import type { ApprovalAnswer, ApprovalRequest, SessionEntry, WebEvent } from "./types";
+import type { ApprovalAnswer, ApprovalRequest, SessionEntry, WebEvent } from "./types.ts";
 
 const FROM_URL = new URLSearchParams(window.location.search).get("token");
 if (FROM_URL !== null) localStorage.setItem("reins-token", FROM_URL);
