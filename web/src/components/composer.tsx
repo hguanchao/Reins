@@ -1,6 +1,7 @@
-import { ArrowUp, ChevronDown, Folder, Square, TriangleAlert } from "lucide-react";
+import { ArrowUp, Folder, Square, TriangleAlert } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
+import { Selector } from "./selector.tsx";
 import type { ApprovalMode, ModelInfo } from "../protocol.ts";
 
 const MODE_LABELS: Record<ApprovalMode, string> = {
@@ -8,38 +9,6 @@ const MODE_LABELS: Record<ApprovalMode, string> = {
 	auto: "自动审批",
 	yolo: "完全访问",
 };
-
-/** 可开合的选择器 chip;面板出现时有一层透明遮罩负责点外关闭。 */
-function Selector({
-	display,
-	panelClass,
-	children,
-}: {
-	display: ReactElement;
-	panelClass: string;
-	children: (close: () => void) => ReactElement;
-}): ReactElement {
-	const [open, setOpen] = useState(false);
-	return (
-		<div className="sel">
-			<button type="button" className="chip" onClick={() => setOpen(!open)}>
-				{display}
-				<ChevronDown size={12} className="caret" />
-			</button>
-			{open ? (
-				<>
-					<div
-						className="backdrop"
-						onClick={() => {
-							setOpen(false);
-						}}
-					/>
-					<div className={"panel " + panelClass}>{children(() => setOpen(false))}</div>
-				</>
-			) : null}
-		</div>
-	);
-}
 
 function WorkspaceChip({ workspace }: { workspace: string }): ReactElement {
 	return (
@@ -100,7 +69,7 @@ function ModelSelector({
 	onChange: (model: ModelInfo) => void;
 }): ReactElement {
 	return (
-		<Selector panelClass="model-panel" display={<span>{current.name}</span>}>
+		<Selector panelClass="model-panel" placement="above" display={<span>{current.name}</span>}>
 			{(close) => (
 				<>
 					{models.map((item) => (

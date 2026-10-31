@@ -23,12 +23,13 @@ const HEARTBEAT_MS = 15_000;
 
 /** 传输层对装配层的全部要求;每一条都能用假实现独立测试。 */
 export interface WebServerDeps {
-	/** 当前运行状态:回合、待审批、审批方式与当前模型,重连首屏用 */
+	/** 当前运行状态:回合、待审批、审批方式、当前模型与应用版本,重连首屏用 */
 	snapshot(): {
 		running: boolean;
 		approval: { readonly id: number; readonly request: unknown } | undefined;
 		approvalMode: string;
 		model: { readonly provider: string; readonly model: string; readonly name: string };
+		version: string;
 	};
 	/** 会话全量:浏览器首屏重放用 */
 	session(): { readonly id: string; readonly cwd: string; readonly entries: readonly unknown[] };
@@ -38,6 +39,10 @@ export interface WebServerDeps {
 	switchSession(id: string): boolean;
 	/** 开一个新会话;回合进行中返回 false */
 	newSession(): boolean;
+	/** 发现的技能清单(技能库面板) */
+	skills(): readonly { readonly name: string; readonly description: string; readonly path: string }[];
+	/** 已装载的插件清单(插件市场面板) */
+	plugins(): readonly { readonly name: string; readonly kind: string }[];
 	/** 提交一句话;回合进行中返回 false,传输层据此回 409 */
 	submit(text: string): boolean;
 	abort(): void;
@@ -234,6 +239,14 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 		}
 		if (req.method === "GET" && path === "/api/sessions") {
 			sendJson(res, 200, deps.sessions());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/skills") {
+			sendJson(res, 200, deps.skills());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/plugins") {
+			sendJson(res, 200, deps.plugins());
 			return;
 		}
 		if (req.method === "GET" && path === "/api/models") {

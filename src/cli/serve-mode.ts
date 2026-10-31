@@ -17,6 +17,8 @@ import { listSessions, resumeSession } from "#src/cli/session/target.ts";
 import type { ModelSelection } from "#src/config/selection.ts";
 import type { ApprovalMode } from "#src/config/file.ts";
 import type { Session } from "#src/session/session.ts";
+import { defaultSkillRoots, discoverSkills } from "#src/skills/discover.ts";
+import { readVersion } from "#src/version.ts";
 import {
 	defaultInstructionSources,
 	readInstructions,
@@ -169,12 +171,24 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 				approval: id === undefined ? undefined : { id, request: approvals.pending() },
 				approvalMode: policy.mode,
 				model: currentModel(),
+				version: readVersion(),
 			};
 		},
 		session: () => ({ id: session.id, cwd: session.cwd, entries: session.entries() }),
 		sessions,
 		switchSession: switchToSession,
 		newSession: startNewSession,
+		skills: () =>
+			discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map((skill) => ({
+				name: skill.name,
+				description: skill.description,
+				path: skill.path,
+			})),
+		plugins: () =>
+			pipeline.declarative.plugins.map((plugin) => ({
+				name: plugin.name,
+				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
+			})),
 		models: modelList,
 		setModel: (provider, model) => {
 			const found = providersConfig.providers.find((item) => item.id === provider);

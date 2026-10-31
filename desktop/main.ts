@@ -100,7 +100,40 @@ const LOADING_PAGE =
 </style><div class="c"><div class="s"></div><p>Reins 启动中…</p></div>`);
 
 async function run(): Promise<void> {
-	Menu.setApplicationMenu(null);
+	// 原生菜单栏:编辑/窗口/帮助/关于,标签带 Alt 访问键;关于面板的数据来自打包的 package.json
+	app.setAboutPanelOptions({ applicationName: "Reins", applicationVersion: app.getVersion() });
+	const menu = Menu.buildFromTemplate([
+		{
+			label: "编辑(&E)",
+			submenu: [
+				{ role: "undo", label: "撤销" },
+				{ role: "redo", label: "重做" },
+				{ type: "separator" },
+				{ role: "cut", label: "剪切" },
+				{ role: "copy", label: "复制" },
+				{ role: "paste", label: "粘贴" },
+				{ role: "selectAll", label: "全选" },
+			],
+		},
+		{
+			label: "窗口(&W)",
+			submenu: [
+				{ role: "minimize", label: "最小化" },
+				{ role: "zoom", label: "最大化" },
+				{ type: "separator" },
+				{ role: "close", label: "关闭" },
+			],
+		},
+		{
+			label: "帮助(&H)",
+			submenu: [
+				{ role: "reload", label: "重新加载界面" },
+				{ role: "toggleDevTools", label: "开发者工具" },
+			],
+		},
+		{ label: "关于(&A)", submenu: [{ role: "about", label: "关于 Reins" }] },
+	]);
+	Menu.setApplicationMenu(menu);
 	await app.whenReady();
 
 	// 窗口先出:静态 loading 页毫秒级可见,选目录、拉服务都排在它后面,

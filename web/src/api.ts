@@ -10,8 +10,10 @@ import type {
 	ApprovalMode,
 	ApprovalRequest,
 	ModelInfo,
+	PluginInfo,
 	SessionEntry,
 	SessionSummary,
+	SkillInfo,
 	WebEvent,
 } from "./protocol.ts";
 
@@ -36,6 +38,7 @@ export interface ServeState {
 	approval: { id: number; request: ApprovalRequest } | undefined;
 	approvalMode: ApprovalMode;
 	model: ModelInfo;
+	version: string;
 }
 
 export const api = {
@@ -44,6 +47,12 @@ export const api = {
 	},
 	async session(): Promise<{ id: string; cwd: string; entries: readonly SessionEntry[] }> {
 		return (await request("/api/session")) as { id: string; cwd: string; entries: readonly SessionEntry[] };
+	},
+	async skills(): Promise<readonly SkillInfo[]> {
+		return (await request("/api/skills")) as readonly SkillInfo[];
+	},
+	async plugins(): Promise<readonly PluginInfo[]> {
+		return (await request("/api/plugins")) as readonly PluginInfo[];
 	},
 	async sessions(): Promise<readonly SessionSummary[]> {
 		return (await request("/api/sessions")) as readonly SessionSummary[];

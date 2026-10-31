@@ -7,7 +7,15 @@ import { Header } from "./components/header.tsx";
 import { Sidebar } from "./components/sidebar.tsx";
 import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
 import { TranscriptView } from "./transcript/view.tsx";
-import type { ApprovalAnswer, ApprovalMode, ApprovalRequest, ModelInfo, WebEvent } from "./protocol.ts";
+import type {
+	ApprovalAnswer,
+	ApprovalMode,
+	ApprovalRequest,
+	ModelInfo,
+	PluginInfo,
+	SkillInfo,
+	WebEvent,
+} from "./protocol.ts";
 
 /** 时段问候;草稿态的主视觉文案。 */
 function greeting(): string {
@@ -53,6 +61,9 @@ export function App(): ReactElement {
 	const [models, setModels] = useState<readonly ModelInfo[]>([]);
 	const [model, setModel] = useState<ModelInfo>({ provider: "", model: "", name: "" });
 	const [approvalMode, setApprovalModeState] = useState<ApprovalMode>("ask");
+	const [version, setVersion] = useState("");
+	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
+	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -73,6 +84,7 @@ export function App(): ReactElement {
 				setApproval(state.approval);
 				setApprovalModeState(state.approvalMode);
 				setModel(state.model);
+				setVersion(state.version);
 				setSessionId(session.id);
 				setCwd(session.cwd);
 				setLines(linesFromEntries(session.entries));
@@ -204,6 +216,14 @@ export function App(): ReactElement {
 			} catch {
 				// 模型清单拿不到时选择器空着,不挡会话
 			}
+			void api
+				.skills()
+				.then(setSkills)
+				.catch(() => {});
+			void api
+				.plugins()
+				.then(setPlugins)
+				.catch(() => {});
 			disposeStream = openEventStream(handleEvent, setConnected);
 		})();
 		return () => disposeStream?.();
@@ -280,6 +300,7 @@ export function App(): ReactElement {
 	}, []);
 
 	const draft = lines.length === 0 && !running;
+	const currentTitle = sessions.find((item) => item.id === sessionId)?.title ?? (running ? "会话进行中" : "新任务");
 	const composerProps = {
 		running,
 		workspace: workspaceName(cwd),
@@ -294,9 +315,21 @@ export function App(): ReactElement {
 
 	return (
 		<div className="workspace">
-			<Sidebar sessions={sessions} currentId={sessionId} onSwitch={switchSession} onNew={newTask} />
+			<Sidebar
+				version={version}
+				sessions={sessions}
+				currentId={sessionId}
+				running={running}
+				cwd={cwd}
+				skills={skills}
+				plugins={plugins}
+				model={model}
+				approvalMode={approvalMode}
+				onSwitch={switchSession}
+				onNew={newTask}
+			/>
 			<div className="content">
-				<Header sessionId={sessionId} totalTokens={totalTokens} connected={connected} />
+				<Header title={currentTitle} totalTokens={totalTokens} connected={connected} />
 				{loadError !== undefined ? (
 					<div className="load-error">无法连接: {loadError}</div>
 				) : draft ? (

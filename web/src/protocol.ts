@@ -39,6 +39,18 @@ export interface StateInfo {
 	approval: { id: number; request: ApprovalRequest } | undefined;
 	approvalMode: ApprovalMode;
 	model: ModelInfo;
+	version: string;
+}
+
+export interface SkillInfo {
+	name: string;
+	description: string;
+	path: string;
+}
+
+export interface PluginInfo {
+	name: string;
+	kind: string;
 }
 
 export type WebEvent =

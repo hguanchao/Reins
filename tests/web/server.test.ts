@@ -44,11 +44,14 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 			approval: state.approval,
 			approvalMode: "ask",
 			model: { provider: "p1", model: "m1", name: "Model One" },
+			version: "1.0.0",
 		}),
 		session: () => ({ id: "s1", cwd: "/work", entries: state.entries }),
 		sessions: () => [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }],
 		switchSession: () => !state.running,
 		newSession: () => !state.running,
+		skills: () => [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
+		plugins: () => [{ name: "demo", kind: "declarative" }],
 		submit: (text) => {
 			if (state.running) return false;
 			state.submitted.push(text);
@@ -138,6 +141,7 @@ describe("web 传输层", () => {
 			running: false,
 			approvalMode: "ask",
 			model: { provider: "p1", model: "m1", name: "Model One" },
+			version: "1.0.0",
 		});
 
 		const byQuery = await fetch(`${base}/api/state?token=${TOKEN}`);
