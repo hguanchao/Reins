@@ -212,6 +212,19 @@ describe("系统提示词", () => {
 		assert.ok(text.includes("## AGENTS.md\nUse tabs."));
 	});
 
+	it("红线规则写入三份开场白", () => {
+		const main = buildPromptSections({ cwd: "/work", tools: [] })["preamble"] ?? "";
+		assert.ok(main.includes("instead of retrying the same call"));
+		assert.ok(main.includes("changes you did not make"));
+		assert.ok(main.includes("do not end by offering to continue later"));
+
+		const plan = buildPromptSections({ cwd: "/work", tools: [], planMode: true })["preamble"] ?? "";
+		assert.ok(plan.includes("Conversational agreement approves nothing"));
+
+		const subagent = buildSubagentPrompt({ cwd: "/work", tools: [] });
+		assert.ok(subagent.includes("record the limitation in your report"));
+	});
+
 	it("会话声明只记录完整描述与参数，不记录提示词摘要", () => {
 		const [declared] = toSessionTools([tool("read", "Full read description", "Short read")]);
 
