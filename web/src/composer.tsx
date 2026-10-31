@@ -1,3 +1,4 @@
+import { ArrowUp, ChevronDown, Folder, Square, TriangleAlert } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
 import type { ApprovalMode, ModelInfo } from "./types.ts";
@@ -23,7 +24,7 @@ function Selector({
 		<div className="sel">
 			<button type="button" className="chip" onClick={() => setOpen(!open)}>
 				{display}
-				<span className="caret">▾</span>
+				<ChevronDown size={12} className="caret" />
 			</button>
 			{open ? (
 				<>
@@ -43,7 +44,7 @@ function Selector({
 function WorkspaceChip({ workspace }: { workspace: string }): ReactElement {
 	return (
 		<span className="chip static" title={workspace}>
-			<span className="chip-icon">📁</span>
+			<Folder size={13} className="chip-icon" />
 			{workspace}
 		</span>
 	);
@@ -62,25 +63,25 @@ function ApprovalSelector({
 			panelClass="mode-panel"
 			display={
 				<span className={danger ? "warn-text" : undefined}>
-					{danger ? "⚠ " : ""}
+					{danger ? <TriangleAlert size={13} /> : null}
 					{MODE_LABELS[mode]}
 				</span>
 			}
 		>
 			{(close) => (
 				<>
-					{(Object.keys(MODE_LABELS) as ApprovalMode[]).map((mode) => (
+					{(Object.keys(MODE_LABELS) as ApprovalMode[]).map((item) => (
 						<button
 							type="button"
-							key={mode}
-							className={"opt" + (mode === "yolo" ? " danger" : "")}
+							key={item}
+							className={"opt" + (item === "yolo" ? " danger" : "")}
 							onClick={() => {
-								onChange(mode);
+								onChange(item);
 								close();
 							}}
 						>
-							{mode === "yolo" ? "⚠ " : ""}
-							{MODE_LABELS[mode]}
+							{item === "yolo" ? <TriangleAlert size={13} /> : null}
+							{MODE_LABELS[item]}
 						</button>
 					))}
 				</>
@@ -102,17 +103,19 @@ function ModelSelector({
 		<Selector panelClass="model-panel" display={<span>{current.name}</span>}>
 			{(close) => (
 				<>
-					{models.map((model) => (
+					{models.map((item) => (
 						<button
 							type="button"
-							key={model.provider + "/" + model.model}
-							className={"opt" + (model.model === current.model && model.provider === current.provider ? " picked" : "")}
+							key={item.provider + "/" + item.model}
+							className={
+								"opt" + (item.model === current.model && item.provider === current.provider ? " picked" : "")
+							}
 							onClick={() => {
-								onChange(model);
+								onChange(item);
 								close();
 							}}
 						>
-							{model.name}
+							{item.name}
 						</button>
 					))}
 				</>
@@ -185,7 +188,7 @@ export function Composer({
 					<ModelSelector models={models} current={model} onChange={onModel} />
 					{running ? (
 						<button type="button" className="stop" title="中断当前回合 (Esc)" onClick={onStop}>
-							<i />
+							<Square size={10} fill="currentColor" />
 						</button>
 					) : (
 						<button
@@ -195,7 +198,7 @@ export function Composer({
 							disabled={text.trim().length === 0}
 							onClick={submit}
 						>
-							↑
+							<ArrowUp size={16} />
 						</button>
 					)}
 				</div>

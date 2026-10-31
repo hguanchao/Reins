@@ -483,6 +483,18 @@ header .conn.on {
 .line.tool .glyph {
 	color: var(--fg-faint);
 	flex: none;
+	display: flex;
+	align-items: center;
+}
+
+.line.tool .glyph .spin {
+	animation: spin 1.6s linear infinite;
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .line.tool .glyph.ok {
@@ -777,16 +789,10 @@ header .conn.on {
 	border-radius: 9999px;
 	border: 1px solid var(--border-hover);
 	background: var(--raised);
+	color: var(--fg);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-}
-
-.composer .stop i {
-	width: 10px;
-	height: 10px;
-	background: var(--fg);
-	border-radius: 2px;
 }
 
 /* ── 选择器 chip 与面板 ── */
@@ -1003,6 +1009,9 @@ header .conn.on {
 	.pixels i {
 		animation: none;
 		opacity: 0.6;
+	}
+	.glyph .spin {
+		animation: none;
 	}
 	* {
 		transition: none !important;

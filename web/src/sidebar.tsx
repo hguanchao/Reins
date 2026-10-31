@@ -1,3 +1,5 @@
+import { Plus } from "lucide-react";
+
 import type { ReactElement } from "react";
 
 import type { SessionSummary } from "./types.ts";
@@ -36,7 +38,7 @@ export function Sidebar({
 				<span className="name">Reins</span>
 			</div>
 			<button type="button" className="new-task" onClick={onNew}>
-				<span className="plus">＋</span> 新建任务
+				<Plus size={14} className="plus" /> 新建任务
 			</button>
 			<div className="side-section">
 				<span className="side-title">任务列表</span>

@@ -1,10 +1,11 @@
+import { Check, CircleDashed, X } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { handleCopyClick } from "./markdown.ts";
 import { MarkdownView } from "./markdown-view.tsx";
 import type { Line } from "./transcript.ts";
 
-/** 会话流的渲染:视觉按 zai-dark 复刻——用户右对齐气泡、助手 markdown 全宽、工具行式摘要。 */
+/** 会话流的渲染:视觉按 zai-light 复刻——用户右对齐气泡、助手 markdown 全宽、工具行式摘要。 */
 export function TranscriptView({ lines }: { lines: readonly Line[] }): ReactElement {
 	return (
 		<div
@@ -51,7 +52,13 @@ function LineView({ line }: { line: Line }): ReactElement | null {
 				<details className={"line tool" + (line.running ? " running" : "") + (line.isError ? " error" : "")}>
 					<summary>
 						<span className={"glyph" + (line.running ? "" : line.isError ? " bad" : " ok")}>
-							{line.running ? "◇" : line.isError ? "×" : "✓"}
+							{line.running ? (
+								<CircleDashed size={14} className="spin" />
+							) : line.isError ? (
+								<X size={14} />
+							) : (
+								<Check size={14} />
+							)}
 						</span>
 						<span className={"tname" + (line.running ? " grad-text" : "")}>{line.name}</span>
 						{line.summary !== undefined && <span className="tsummary">{line.summary}</span>}
