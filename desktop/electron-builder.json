@@ -13,18 +13,15 @@
 		"desktop/build/**",
 		"web/dist/**"
 	],
+	"electronLanguages": ["zh-CN", "en-US"],
 	"win": {
 		"target": [
-			{ "target": "nsis", "arch": ["x64"] },
-			{ "target": "portable", "arch": ["x64"] }
+			{ "target": "nsis", "arch": ["x64"] }
 		]
 	},
 	"nsis": {
 		"oneClick": false,
 		"allowToChangeInstallationDirectory": true,
 		"artifactName": "Reins-Setup-${version}.${ext}"
-	},
-	"portable": {
-		"artifactName": "Reins-Portable-${version}.${ext}"
 	}
 }

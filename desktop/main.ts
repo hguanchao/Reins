@@ -36,8 +36,8 @@ function lastWorkspace(): string | undefined {
 	}
 }
 
-/** 原生对话框选工作区;默认落在上次用过的目录。取消选择就退出——没有工作区,agent 无处安身。 */
-async function pickWorkspace(): Promise<string | undefined> {
+/** 原生对话框选工作区,挂在启动窗口上;默认落在上次用过的目录。取消选择就退出——没有工作区,agent 无处安身。 */
+async function pickWorkspace(window: BrowserWindow): Promise<string | undefined> {
 	// 环境变量入口:测试与自动化用它跳过对话框;存在且有效才认
 	const override = process.env.REINS_WORKSPACE;
 	if (override !== undefined && existsSync(override)) {
@@ -45,7 +45,7 @@ async function pickWorkspace(): Promise<string | undefined> {
 		return override;
 	}
 	const previous = lastWorkspace();
-	const result = await dialog.showOpenDialog({
+	const result = await dialog.showOpenDialog(window, {
 		title: "选择 Reins 的工作区",
 		defaultPath: previous,
 		properties: ["openDirectory", "createDirectory"],
@@ -85,17 +85,53 @@ function startServer(workspace: string): Promise<ServerHandle> {
 	});
 }
 
+/** 窗口先出的 loading 页:纯内联,毫秒级可见;真就绪后由 loadURL 整页换掉。 */
+const LOADING_PAGE =
+	"data:text/html;charset=utf-8," +
+	encodeURIComponent(`<!doctype html><meta charset="utf-8"><title>Reins</title>
+<style>
+	body{margin:0;background:#121212;color:#8a8a8a;font-family:"Segoe UI",system-ui,sans-serif;
+		height:100vh;display:flex;align-items:center;justify-content:center}
+	.c{text-align:center}
+	.s{width:34px;height:34px;margin:0 auto 14px;border-radius:50%;
+		border:3px solid #2c2c2c;border-top-color:#d78a4e;animation:r 0.9s linear infinite}
+	p{font-size:13px;letter-spacing:1px}
+	@keyframes r{to{transform:rotate(360deg)}}
+</style><div class="c"><div class="s"></div><p>Reins 启动中…</p></div>`);
+
 async function run(): Promise<void> {
 	Menu.setApplicationMenu(null);
 	await app.whenReady();
 
-	const workspace = await pickWorkspace();
+	// 窗口先出:静态 loading 页毫秒级可见,选目录、拉服务都排在它后面,
+	// 双击后的等待从「干瞪眼」变成「页内转圈」
+	const window = new BrowserWindow({
+		width: 1180,
+		height: 820,
+		title: "Reins",
+		backgroundColor: "#121212",
+		show: false,
+		webPreferences: { sandbox: true },
+	});
+	let server: ServerHandle | undefined;
+	window.on("closed", () => {
+		// 窗口是壳的唯一出口:关窗即收摊,服务进程跟着退
+		server?.child.kill();
+	});
+	window.webContents.setWindowOpenHandler(({ url }) => {
+		if (!url.startsWith("http://127.0.0.1:")) void shell.openExternal(url);
+		return { action: "deny" };
+	});
+	await window.loadURL(LOADING_PAGE);
+	window.show();
+
+	// 原生对话框挂在工作窗口上,模态而不再挡住整个启动
+	const workspace = await pickWorkspace(window);
 	if (workspace === undefined) {
 		app.quit();
 		return;
 	}
 
-	let server: ServerHandle;
 	try {
 		server = await startServer(workspace);
 	} catch (error) {
@@ -103,18 +139,6 @@ async function run(): Promise<void> {
 		app.quit();
 		return;
 	}
-
-	const window = new BrowserWindow({
-		width: 1180,
-		height: 820,
-		title: "Reins",
-		backgroundColor: "#121212",
-		webPreferences: { sandbox: true },
-	});
-	window.on("closed", () => {
-		// 窗口是壳的唯一出口:关窗即收摊,服务进程跟着退
-		server.child.kill();
-	});
 	server.child.once("exit", (code) => {
 		if (!window.isDestroyed()) {
 			dialog.showErrorBox("Reins 已退出", `服务进程结束(exit ${code ?? "unknown"})。`);
@@ -122,11 +146,7 @@ async function run(): Promise<void> {
 		app.quit();
 	});
 
-	// 界面里的外链交给系统浏览器,不要在壳里开新窗
-	window.webContents.setWindowOpenHandler(({ url }) => {
-		if (!url.startsWith("http://127.0.0.1:")) void shell.openExternal(url);
-		return { action: "deny" };
-	});
+	// 就绪行到了,整页换成真正的界面
 	await window.loadURL(server.url);
 }
 
