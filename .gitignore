@@ -16,3 +16,7 @@ desktop/release/
 
 # 桌面打包的临时输出目录
 /desktop/release-build/
+
+# electron-builder 的时间戳产物目录
+/desktop/out/
+/desktop/*.exe

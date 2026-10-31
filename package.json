@@ -21,7 +21,7 @@
 		"test:dir": "node --test --test-timeout=30000",
 		"build:ui": "vite build",
 		"build:desktop": "node desktop/build.mjs",
-		"build:exe": "npm run build:ui && npm run build:desktop && electron-builder --win --config desktop/electron-builder.json"
+		"build:exe": "npm run build:ui && npm run build:desktop && node desktop/package.mjs"
 	},
 	"devDependencies": {
 		"@types/node": "22.20.5",
