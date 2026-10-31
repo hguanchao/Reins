@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describeError } from "#src/shared/describe-error.ts";
 import { loadSelection } from "#src/cli/config-selection.ts";
 import type { CliOptions } from "#src/cli/args.ts";
-import { writeStderr } from "#src/cli/output.ts";
+import { writeStderr, writeStdout } from "#src/cli/output.ts";
 import {
 	assemblePipeline,
 	createCompactor,
@@ -23,6 +23,7 @@ import { PermissionGate, PermissionPolicy, type ApprovalAnswer } from "#src/perm
 import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 import type { McpControl } from "#src/mcp/service.ts";
 import { createWebServer, type WebServerDeps } from "#src/web/server.ts";
+import { formatReadyLine } from "#src/web/ready-line.ts";
 
 /**
  * 浏览器界面模式。
@@ -153,11 +154,13 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		staticRoot: staticRoot(),
 	};
 
-	const token = randomBytes(16).toString("base64url");
-	const server = await createWebServer(deps, { token, port: options.port ?? 8787 }).start();
-	writeStderr(`Reins 界面: http://127.0.0.1:${server.port}/?token=${token}\n`);
-	writeStderr(`会话: ${session.id}\n`);
-	writeStderr("Ctrl+C 退出\n");
+		const token = randomBytes(16).toString("base64url");
+		const server = await createWebServer(deps, { token, port: options.port ?? 8787 }).start();
+		writeStderr(`Reins 界面: http://127.0.0.1:${server.port}/?token=${token}\n`);
+		writeStderr(`会话: ${session.id}\n`);
+		writeStderr("Ctrl+C 退出\n");
+		// 机器可读的就绪行:壳只认 stdout 上的这一行,其余输出都给人看
+		writeStdout(formatReadyLine({ port: server.port, token }) + "\n");
 
 	const exitCode = await new Promise<number>((resolveRun) => {
 		process.once("SIGINT", () => {
@@ -185,8 +188,10 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	return exitCode;
 }
 
-/** 从本文件位置推导仓库根下的 web/dist;推导不出或不存在时返回 undefined。 */
+/** 界面构建产物目录:环境变量优先(桌面打包传 unpacked 路径),否则按仓库布局推导。 */
 function staticRoot(): string | undefined {
+	const override = process.env["REINS_UI_DIST"];
+	if (override !== undefined && override.length > 0 && existsSync(override)) return override;
 	const root = fileURLToPath(new URL("../../web/dist", import.meta.url));
 	return existsSync(root) ? root : undefined;
 }
