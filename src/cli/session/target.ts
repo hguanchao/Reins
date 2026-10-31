@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { join } from "node:path";
+import { basename, join } from "node:path";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 
 import { sessionDirectories, sessionsDir } from "#src/config/paths.ts";
 import { Session } from "#src/session/session.ts";
@@ -51,6 +52,85 @@ export function listSessions(workRoot: string, store: SessionStore): readonly Se
 /** 退出全屏界面后留在主屏上的命令，使用者也据此回到同一个会话。 */
 export function resumeCommand(id: string): string {
 	return `reins --resume ${id}`;
+}
+
+/** 归档目录:挂在每个会话目录下的 archived 子目录;清单只认 .jsonl 文件,不会把它当会话扫出来。 */
+function archivedDirectory(directory: string): string {
+	return join(directory, "archived");
+}
+
+/** 列出已归档的会话;新旧目录的归档合并成一份清单,排序规则同活动清单。 */
+export function listArchivedSessions(workRoot: string, store: SessionStore): readonly SessionListing[] {
+	const seen = new Set<string>();
+	const listings: SessionListing[] = [];
+	for (const directory of sessionDirectories(workRoot)) {
+		const archived = archivedDirectory(directory);
+		if (!existsSync(archived)) continue;
+		for (const listing of store.list(archived)) {
+			if (seen.has(listing.id)) continue;
+			seen.add(listing.id);
+			listings.push(listing);
+		}
+	}
+	return listings.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+/**
+ * 批量删除会话,返回实际删除的个数。
+ *
+ * skip 里的会话(当前正在用的那个)原地跳过:删掉自己脚下正在写的会话文件,回合写到一半
+ * 就没有落点了。
+ */
+export function deleteSessions(
+	workRoot: string,
+	store: SessionStore,
+	ids: readonly string[],
+	skip: readonly string[],
+): number {
+	let deleted = 0;
+	for (const directory of sessionDirectories(workRoot)) {
+		for (const listing of store.list(directory)) {
+			if (!ids.includes(listing.id) || skip.includes(listing.id)) continue;
+			rmSync(listing.file, { force: true });
+			deleted += 1;
+		}
+	}
+	return deleted;
+}
+
+/** 批量归档:会话文件挪进所在目录的 archived 子目录,返回实际归档的个数。 */
+export function archiveSessions(
+	workRoot: string,
+	store: SessionStore,
+	ids: readonly string[],
+	skip: readonly string[],
+): number {
+	let archived = 0;
+	for (const directory of sessionDirectories(workRoot)) {
+		const target = archivedDirectory(directory);
+		for (const listing of store.list(directory)) {
+			if (!ids.includes(listing.id) || skip.includes(listing.id)) continue;
+			mkdirSync(target, { recursive: true });
+			renameSync(listing.file, join(target, basename(listing.file)));
+			archived += 1;
+		}
+	}
+	return archived;
+}
+
+/** 批量恢复:归档文件挪回活动目录,返回实际恢复的个数。 */
+export function restoreSessions(workRoot: string, store: SessionStore, ids: readonly string[]): number {
+	let restored = 0;
+	for (const directory of sessionDirectories(workRoot)) {
+		const archived = archivedDirectory(directory);
+		if (!existsSync(archived)) continue;
+		for (const listing of store.list(archived)) {
+			if (!ids.includes(listing.id)) continue;
+			renameSync(listing.file, join(directory, basename(listing.file)));
+			restored += 1;
+		}
+	}
+	return restored;
 }
 
 /**

@@ -1,5 +1,19 @@
-import { Bell, Folder, LibraryBig, LoaderCircle, Plus, Puzzle, Settings } from "lucide-react";
-import type { ReactElement } from "react";
+import {
+	Archive,
+	ArchiveRestore,
+	Bell,
+	Check,
+	ChevronDown,
+	ChevronRight,
+	Folder,
+	LibraryBig,
+	LoaderCircle,
+	Plus,
+	Puzzle,
+	Settings,
+	Trash2,
+} from "lucide-react";
+import { useState, type ReactElement } from "react";
 
 import { Selector } from "./selector.tsx";
 import type { ModelInfo, PluginInfo, SessionSummary, SkillInfo } from "../protocol.ts";
@@ -26,11 +40,13 @@ function workspaceName(cwd: string): string {
 
 /**
  * 左侧任务栏(约 280px):品牌 + 版本、功能菜单(新建任务/技能库/插件市场)、
- * 「任务」「空间」两个分组、底部铃铛与设置。全白底,选中态靠浅灰胶囊分层。
+ * 「任务」「空间」两个分组(空间支持折叠会话、批量删除、单条删除/归档、已归档恢复)、
+ * 底部铃铛与设置。全白底,选中态靠浅灰胶囊分层。
  */
 export function Sidebar({
 	version,
 	sessions,
+	archived,
 	currentId,
 	running,
 	cwd,
@@ -40,9 +56,13 @@ export function Sidebar({
 	approvalMode,
 	onSwitch,
 	onNew,
+	onDeleteSessions,
+	onArchiveSessions,
+	onRestoreSessions,
 }: {
 	version: string;
 	sessions: readonly SessionSummary[];
+	archived: readonly SessionSummary[];
 	currentId: string;
 	running: boolean;
 	cwd: string;
@@ -52,8 +72,43 @@ export function Sidebar({
 	approvalMode: string;
 	onSwitch: (id: string) => void;
 	onNew: () => void;
+	onDeleteSessions: (ids: readonly string[]) => void;
+	onArchiveSessions: (ids: readonly string[]) => void;
+	onRestoreSessions: (id: string) => void;
 }): ReactElement {
 	const modeLabel = approvalMode === "yolo" ? "完全访问" : approvalMode === "auto" ? "自动审批" : "每次询问";
+	const [spaceOpen, setSpaceOpen] = useState(true);
+	const [archivedOpen, setArchivedOpen] = useState(false);
+	const [manageMode, setManageMode] = useState(false);
+	const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+	const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
+
+	const toggleSelect = (id: string): void => {
+		setSelected((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+
+	const leaveManage = (): void => {
+		setManageMode(false);
+		setSelected(new Set());
+	};
+
+	const batchDelete = (): void => {
+		if (selected.size === 0) return;
+		onDeleteSessions([...selected]);
+		leaveManage();
+	};
+
+	const batchArchive = (): void => {
+		if (selected.size === 0) return;
+		onArchiveSessions([...selected]);
+		leaveManage();
+	};
+
 	return (
 		<aside className="sidebar">
 			<div className="side-brand">
@@ -117,30 +172,130 @@ export function Sidebar({
 				<div className="side-empty">暂无任务</div>
 				<div className="side-section">
 					<span>空间 (1)</span>
+					<button
+						type="button"
+						className={"manage" + (manageMode ? " on" : "")}
+						title="批量管理会话"
+						onClick={() => (manageMode ? leaveManage() : setManageMode(true))}
+					>
+						管理
+					</button>
 				</div>
-				<div className="space-row">
+				<button type="button" className="space-row" onClick={() => setSpaceOpen(!spaceOpen)}>
+					{spaceOpen ? <ChevronDown size={14} className="chev" /> : <ChevronRight size={14} className="chev" />}
 					<Folder size={14} />
 					<span className="space-name">{workspaceName(cwd)}</span>
-				</div>
-				<div className="side-sessions">
-					{sessions.map((session) => (
-						<button
-							type="button"
-							key={session.id}
-							className={"session" + (session.id === currentId ? " current" : "")}
-							onClick={() => {
-								if (session.id !== currentId) onSwitch(session.id);
-							}}
-						>
-							<span className="session-title">{session.title ?? "未命名会话"}</span>
-							{session.id === currentId && running ? (
-								<LoaderCircle size={13} className="spin ok-spin" />
-							) : (
-								<span className="session-time">{relativeTime(session.updatedAt)}</span>
-							)}
+				</button>
+				{spaceOpen ? (
+					<div className="side-sessions">
+						{sessions.length === 0 ? <div className="side-empty">还没有会话</div> : null}
+						{sessions.map((session) => {
+							const current = session.id === currentId;
+							const confirming = confirmingId === session.id;
+							return (
+								<div key={session.id} className={"session" + (current ? " current" : "")}>
+									{manageMode && !current ? (
+										<button
+											type="button"
+											className={"checkbox" + (selected.has(session.id) ? " on" : "")}
+											title="选择会话"
+											onClick={() => toggleSelect(session.id)}
+										>
+											{selected.has(session.id) ? <Check size={11} /> : null}
+										</button>
+									) : null}
+									{confirming ? (
+										<span className="confirm">
+											确认删除?
+											<button
+												type="button"
+												className="confirm-btn danger"
+												onClick={() => {
+													onDeleteSessions([session.id]);
+													setConfirmingId(undefined);
+												}}
+											>
+												删除
+											</button>
+											<button type="button" className="confirm-btn" onClick={() => setConfirmingId(undefined)}>
+												取消
+											</button>
+										</span>
+									) : (
+										<>
+											<button
+												type="button"
+												className="session-title"
+												onClick={() => {
+													if (!current) onSwitch(session.id);
+												}}
+											>
+												{session.title ?? "未命名会话"}
+											</button>
+											{current && running ? (
+												<LoaderCircle size={13} className="spin ok-spin" />
+											) : (
+												<span className="session-time">{relativeTime(session.updatedAt)}</span>
+											)}
+											{!manageMode && !current ? (
+												<span className="row-actions">
+													<button
+														type="button"
+														title="归档会话"
+														onClick={() => onArchiveSessions([session.id])}
+													>
+														<Archive size={13} />
+													</button>
+													<button
+														type="button"
+														title="删除会话"
+														onClick={() => setConfirmingId(session.id)}
+													>
+														<Trash2 size={13} />
+													</button>
+												</span>
+											) : null}
+										</>
+									)}
+								</div>
+							);
+						})}
+					</div>
+				) : null}
+				{manageMode && selected.size > 0 ? (
+					<div className="side-actions">
+						<button type="button" className="batch danger" onClick={batchDelete}>
+							<Trash2 size={13} /> 删除 ({selected.size})
 						</button>
-					))}
+						<button type="button" className="batch" onClick={batchArchive}>
+							<Archive size={13} /> 归档 ({selected.size})
+						</button>
+					</div>
+				) : null}
+				<div className="side-section">
+					<button type="button" className="archived-toggle" onClick={() => setArchivedOpen(!archivedOpen)}>
+						{archivedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+						<span>已归档 ({archived.length})</span>
+					</button>
 				</div>
+				{archivedOpen ? (
+					<div className="side-sessions archived">
+						{archived.length === 0 ? <div className="side-empty">没有归档会话</div> : null}
+						{archived.map((session) => (
+							<div key={session.id} className="session archived">
+								<span className="session-title">{session.title ?? "未命名会话"}</span>
+								<span className="row-actions">
+									<button type="button" title="恢复到会话列表" onClick={() => onRestoreSessions(session.id)}>
+										<ArchiveRestore size={13} />
+									</button>
+									<button type="button" title="彻底删除" onClick={() => onDeleteSessions([session.id])}>
+										<Trash2 size={13} />
+									</button>
+								</span>
+							</div>
+						))}
+					</div>
+				) : null}
 			</div>
 			<div className="side-foot">
 				<Selector panelClass="foot-panel" display={<Bell size={16} />}>

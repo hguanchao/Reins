@@ -59,6 +59,7 @@ export function App(): ReactElement {
 	const [sessionId, setSessionId] = useState("");
 	const [cwd, setCwd] = useState("");
 	const [sessions, setSessions] = useState<readonly { id: string; title: string | undefined; updatedAt: string }[]>([]);
+	const [archived, setArchived] = useState<readonly { id: string; title: string | undefined; updatedAt: string }[]>([]);
 	const [models, setModels] = useState<readonly ModelInfo[]>([]);
 	const [model, setModel] = useState<ModelInfo>({ provider: "", model: "", name: "" });
 	const [approvalMode, setApprovalModeState] = useState<ApprovalMode>("ask");
@@ -74,6 +75,10 @@ export function App(): ReactElement {
 		void api
 			.sessions()
 			.then(setSessions)
+			.catch(() => {});
+		void api
+			.archivedSessions()
+			.then(setArchived)
 			.catch(() => {});
 	}, []);
 
@@ -302,6 +307,19 @@ export function App(): ReactElement {
 		void api.setApprovalMode(mode).catch(() => {});
 	}, []);
 
+	const deleteSessions = useCallback((ids: readonly string[]): void => {
+		void api.deleteSessions(ids).then(refreshSessions).catch(() => {});
+	}, [refreshSessions]);
+
+	const archiveSessions = useCallback((ids: readonly string[]): void => {
+		// 归档的是当前会话以外的才会留在列表里;归档本身可能包含正在看的会话,重载兜底
+		void api.archiveSessions(ids).then(refreshSessions).catch(() => {});
+	}, [refreshSessions]);
+
+	const restoreSession = useCallback((id: string): void => {
+		void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
+	}, [refreshSessions]);
+
 	const draft = lines.length === 0 && !running;
 	const currentTitle = sessions.find((item) => item.id === sessionId)?.title ?? (running ? "会话进行中" : "新任务");
 	const composerProps = {
@@ -321,19 +339,23 @@ export function App(): ReactElement {
 			<MenuStrip onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)} />
 			<div className={"workspace" + (window.reinsDesktop === undefined ? " full" : "")}>
 				{!sidebarCollapsed && (
-					<Sidebar
-						version={version}
-						sessions={sessions}
-						currentId={sessionId}
-						running={running}
-						cwd={cwd}
-						skills={skills}
-						plugins={plugins}
-						model={model}
-						approvalMode={approvalMode}
-						onSwitch={switchSession}
-						onNew={newTask}
-					/>
+			<Sidebar
+				version={version}
+				sessions={sessions}
+				archived={archived}
+				currentId={sessionId}
+				running={running}
+				cwd={cwd}
+				skills={skills}
+				plugins={plugins}
+				model={model}
+				approvalMode={approvalMode}
+				onSwitch={switchSession}
+				onNew={newTask}
+				onDeleteSessions={deleteSessions}
+				onArchiveSessions={archiveSessions}
+				onRestoreSessions={restoreSession}
+			/>
 				)}
 			<div className="content">
 				<Header title={currentTitle} totalTokens={totalTokens} connected={connected} />

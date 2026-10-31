@@ -57,6 +57,30 @@ export const api = {
 	async sessions(): Promise<readonly SessionSummary[]> {
 		return (await request("/api/sessions")) as readonly SessionSummary[];
 	},
+	async archivedSessions(): Promise<readonly SessionSummary[]> {
+		return (await request("/api/sessions/archived")) as readonly SessionSummary[];
+	},
+	async deleteSessions(ids: readonly string[]): Promise<number> {
+		const body = (await request("/api/sessions/delete", {
+			method: "POST",
+			body: JSON.stringify({ ids }),
+		})) as { deleted?: number };
+		return body.deleted ?? 0;
+	},
+	async archiveSessions(ids: readonly string[]): Promise<number> {
+		const body = (await request("/api/sessions/archive", {
+			method: "POST",
+			body: JSON.stringify({ ids }),
+		})) as { archived?: number };
+		return body.archived ?? 0;
+	},
+	async restoreSessions(ids: readonly string[]): Promise<number> {
+		const body = (await request("/api/sessions/restore", {
+			method: "POST",
+			body: JSON.stringify({ ids }),
+		})) as { restored?: number };
+		return body.restored ?? 0;
+	},
 	async switchSession(id: string): Promise<void> {
 		await request("/api/session/switch", { method: "POST", body: JSON.stringify({ id }) });
 	},

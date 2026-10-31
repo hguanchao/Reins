@@ -282,6 +282,192 @@ button {
 	border-top: 1px solid rgba(13, 13, 13, 0.04);
 }
 
+/* 空间行可点折叠;会话行内按钮复位 */
+.space-row {
+	border: none;
+	background: transparent;
+	width: 100%;
+	cursor: pointer;
+}
+
+.space-row .chev {
+	color: var(--fg-faint);
+	flex: none;
+}
+
+.session .session-title {
+	border: none;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	padding: 0;
+	text-align: left;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	flex: 1;
+	min-width: 0;
+}
+
+.session .row-actions {
+	display: flex;
+	gap: 2px;
+	opacity: 0;
+	transition: opacity 100ms;
+	flex: none;
+}
+
+.session:hover .row-actions,
+.session.confirming .row-actions {
+	opacity: 1;
+}
+
+.session .row-actions button {
+	border: none;
+	background: transparent;
+	color: var(--fg-subtle);
+	padding: 2px;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+}
+
+.session .row-actions button:hover {
+	background: var(--hover);
+	color: var(--fg);
+}
+
+.session .row-actions button:last-child:hover {
+	color: var(--bad);
+}
+
+.checkbox {
+	width: 15px;
+	height: 15px;
+	border: 1px solid var(--border-hover);
+	border-radius: 4px;
+	background: var(--panel);
+	color: var(--fg);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	padding: 0;
+}
+
+.checkbox.on {
+	background: var(--fg);
+	border-color: var(--fg);
+	color: var(--fg-inverse);
+}
+
+.session.confirming {
+	background: rgba(224, 49, 49, 0.06);
+}
+
+.confirm {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--bad);
+	font-size: 12.5px;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.confirm-btn {
+	border: 1px solid var(--border);
+	background: var(--panel);
+	border-radius: 6px;
+	padding: 2px 8px;
+	color: var(--fg);
+	font-size: 12px;
+}
+
+.confirm-btn.danger {
+	border-color: rgba(224, 49, 49, 0.5);
+	color: var(--bad);
+}
+
+.side-actions {
+	display: flex;
+	gap: 6px;
+	padding: 6px 10px 2px 24px;
+	flex-wrap: wrap;
+}
+
+.side-actions .batch {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	border: 1px solid var(--border);
+	background: var(--panel);
+	border-radius: 8px;
+	padding: 4px 10px;
+	color: var(--fg);
+	font-size: 12.5px;
+}
+
+.side-actions .batch:hover {
+	background: var(--hover);
+}
+
+.side-actions .batch.danger {
+	color: var(--bad);
+	border-color: rgba(224, 49, 49, 0.4);
+}
+
+.side-section .manage {
+	margin-left: auto;
+	border: none;
+	background: transparent;
+	color: var(--fg-faint);
+	font-size: 12px;
+	padding: 1px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+}
+
+.side-section .manage:hover {
+	background: var(--hover);
+	color: var(--fg);
+}
+
+.side-section .manage.on {
+	background: var(--selected);
+	color: var(--fg);
+}
+
+.side-section {
+	display: flex;
+	align-items: center;
+}
+
+.archived-toggle {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	border: none;
+	background: transparent;
+	color: var(--fg-faint);
+	font-size: 12px;
+	padding: 0;
+	cursor: pointer;
+}
+
+.archived-toggle:hover {
+	color: var(--fg);
+}
+
+.side-sessions.archived {
+	padding-left: 24px;
+}
+
+.side-sessions.archived .session-title {
+	color: var(--fg-subtle);
+}
+
 .side-foot .chip {
 	padding: 6px;
 	border-radius: 8px;

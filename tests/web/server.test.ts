@@ -20,6 +20,7 @@ interface FakeState {
 	submitted: string[];
 	aborted: boolean;
 	resolved: Array<{ id: number; answer: string }>;
+	deleted: string[];
 	entries: readonly unknown[];
 	listeners: Set<(event: unknown) => void>;
 	emit(event: unknown): void;
@@ -32,6 +33,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		submitted: [],
 		aborted: false,
 		resolved: [],
+		deleted: [],
 		entries: [{ type: "message" }],
 		listeners: new Set(),
 		emit(event) {
@@ -50,6 +52,13 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		sessions: () => [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }],
 		switchSession: () => !state.running,
 		newSession: () => !state.running,
+		archivedSessions: () => [{ id: "a1", title: "old", updatedAt: "2025-12-31T00:00:00Z" }],
+		deleteSessions: (ids) => {
+			state.deleted.push(...ids);
+			return ids.length;
+		},
+		archiveSessions: (ids) => ids.length,
+		restoreSessions: (ids) => ids.length,
 		skills: () => [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
 		plugins: () => [{ name: "demo", kind: "declarative" }],
 		submit: (text) => {
@@ -249,6 +258,9 @@ describe("web 传输层", () => {
 		const list = await fetch(`${base}/api/sessions`, { headers: { "x-reins-token": TOKEN } });
 		assert.deepEqual(await list.json(), [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }]);
 
+		const archived = await fetch(`${base}/api/sessions/archived`, { headers: { "x-reins-token": TOKEN } });
+		assert.deepEqual(await archived.json(), [{ id: "a1", title: "old", updatedAt: "2025-12-31T00:00:00Z" }]);
+
 		const switched = await fetch(`${base}/api/session/switch`, {
 			method: "POST",
 			headers,
@@ -265,6 +277,19 @@ describe("web 传输层", () => {
 		assert.equal(busy.status, 409);
 		const busyNew = await fetch(`${base}/api/session/new`, { method: "POST", headers });
 		assert.equal(busyNew.status, 409);
+	});
+
+	it("批量删除:转交装配层并返回个数", async () => {
+		const { deps, state } = fakeDeps(undefined);
+		const server = await startServer(deps);
+		const response = await fetch(`http://127.0.0.1:${server.port}/api/sessions/delete`, {
+			method: "POST",
+			headers: { "x-reins-token": TOKEN, "content-type": "application/json" },
+			body: JSON.stringify({ ids: ["s1", "s2"] }),
+		});
+		assert.equal(response.status, 200);
+		assert.deepEqual(await response.json(), { deleted: 2 });
+		assert.deepEqual(state.deleted, ["s1", "s2"]);
 	});
 
 	it("模型清单与切换、审批模式切换", async () => {

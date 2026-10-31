@@ -39,6 +39,14 @@ export interface WebServerDeps {
 	switchSession(id: string): boolean;
 	/** 开一个新会话;回合进行中返回 false */
 	newSession(): boolean;
+	/** 已归档的会话清单 */
+	archivedSessions(): readonly { readonly id: string; readonly title: string | undefined; readonly updatedAt: string }[];
+	/** 批量删除会话,返回实际删除的个数;当前会话由装配层跳过 */
+	deleteSessions(ids: readonly string[]): number;
+	/** 批量归档会话,返回实际归档的个数;当前会话由装配层跳过 */
+	archiveSessions(ids: readonly string[]): number;
+	/** 批量恢复归档,返回实际恢复的个数 */
+	restoreSessions(ids: readonly string[]): number;
 	/** 发现的技能清单(技能库面板) */
 	skills(): readonly { readonly name: string; readonly description: string; readonly path: string }[];
 	/** 已装载的插件清单(插件市场面板) */
@@ -239,6 +247,40 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 		}
 		if (req.method === "GET" && path === "/api/sessions") {
 			sendJson(res, 200, deps.sessions());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/sessions/archived") {
+			sendJson(res, 200, deps.archivedSessions());
+			return;
+		}
+		if (req.method === "POST" && path === "/api/sessions/delete") {
+			const body = await readJsonBody(req);
+			const ids = body?.["ids"];
+			if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+				sendJson(res, 400, { error: "ids must be an array of strings" });
+				return;
+			}
+			sendJson(res, 200, { deleted: deps.deleteSessions(ids as string[]) });
+			return;
+		}
+		if (req.method === "POST" && path === "/api/sessions/archive") {
+			const body = await readJsonBody(req);
+			const ids = body?.["ids"];
+			if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+				sendJson(res, 400, { error: "ids must be an array of strings" });
+				return;
+			}
+			sendJson(res, 200, { archived: deps.archiveSessions(ids as string[]) });
+			return;
+		}
+		if (req.method === "POST" && path === "/api/sessions/restore") {
+			const body = await readJsonBody(req);
+			const ids = body?.["ids"];
+			if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+				sendJson(res, 400, { error: "ids must be an array of strings" });
+				return;
+			}
+			sendJson(res, 200, { restored: deps.restoreSessions(ids as string[]) });
 			return;
 		}
 		if (req.method === "GET" && path === "/api/skills") {

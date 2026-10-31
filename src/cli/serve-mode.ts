@@ -13,7 +13,14 @@ import {
 	createReviewer,
 } from "#src/cli/pipeline.ts";
 import { createSessionFor } from "#src/cli/session/factory.ts";
-import { listSessions, resumeSession } from "#src/cli/session/target.ts";
+import {
+	archiveSessions,
+	deleteSessions,
+	listArchivedSessions,
+	listSessions,
+	resumeSession,
+	restoreSessions,
+} from "#src/cli/session/target.ts";
 import type { ModelSelection } from "#src/config/selection.ts";
 import type { ApprovalMode } from "#src/config/file.ts";
 import type { Session } from "#src/session/session.ts";
@@ -152,6 +159,25 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		return true;
 	};
 
+	/** 归档/删除的公共护栏:当前会话永远跳过,回合进行中一律不动。 */
+	const archivedList = (): readonly { id: string; title: string | undefined; updatedAt: string }[] =>
+		sessionStore === undefined
+			? []
+			: listArchivedSessions(workRoot, sessionStore).map((item) => ({
+					id: item.id,
+					title: item.title,
+					updatedAt: item.updatedAt,
+				}));
+
+	const removeSessions = (ids: readonly string[]): number =>
+		running || sessionStore === undefined ? 0 : deleteSessions(workRoot, sessionStore, ids, [session.id]);
+
+	const stashSessions = (ids: readonly string[]): number =>
+		running || sessionStore === undefined ? 0 : archiveSessions(workRoot, sessionStore, ids, [session.id]);
+
+	const unstashSessions = (ids: readonly string[]): number =>
+		running || sessionStore === undefined ? 0 : restoreSessions(workRoot, sessionStore, ids);
+
 	const modelList = (): readonly { provider: string; model: string; name: string }[] =>
 		providersConfig.providers.flatMap((provider) =>
 			provider.models.map((model) => ({ provider: provider.id, model: model.id, name: model.name })),
@@ -178,6 +204,10 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		sessions,
 		switchSession: switchToSession,
 		newSession: startNewSession,
+		archivedSessions: archivedList,
+		deleteSessions: removeSessions,
+		archiveSessions: stashSessions,
+		restoreSessions: unstashSessions,
 		skills: () =>
 			discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map((skill) => ({
 				name: skill.name,
