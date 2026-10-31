@@ -1,12 +1,148 @@
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
-/** 输入区:圆角卡壳,Enter 发送、Shift+Enter 换行、Esc 中断;圆形发送钮。 */
+import type { ApprovalMode, ModelInfo } from "./types.ts";
+
+const MODE_LABELS: Record<ApprovalMode, string> = {
+	ask: "每次询问",
+	auto: "自动审批",
+	yolo: "完全访问",
+};
+
+/** 可开合的选择器 chip;面板出现时有一层透明遮罩负责点外关闭。 */
+function Selector({
+	display,
+	panelClass,
+	children,
+}: {
+	display: ReactElement;
+	panelClass: string;
+	children: (close: () => void) => ReactElement;
+}): ReactElement {
+	const [open, setOpen] = useState(false);
+	return (
+		<div className="sel">
+			<button type="button" className="chip" onClick={() => setOpen(!open)}>
+				{display}
+				<span className="caret">▾</span>
+			</button>
+			{open ? (
+				<>
+					<div
+						className="backdrop"
+						onClick={() => {
+							setOpen(false);
+						}}
+					/>
+					<div className={"panel " + panelClass}>{children(() => setOpen(false))}</div>
+				</>
+			) : null}
+		</div>
+	);
+}
+
+function WorkspaceChip({ workspace }: { workspace: string }): ReactElement {
+	return (
+		<span className="chip static" title={workspace}>
+			<span className="chip-icon">📁</span>
+			{workspace}
+		</span>
+	);
+}
+
+function ApprovalSelector({
+	mode,
+	onChange,
+}: {
+	mode: ApprovalMode;
+	onChange: (mode: ApprovalMode) => void;
+}): ReactElement {
+	const danger = mode === "yolo";
+	return (
+		<Selector
+			panelClass="mode-panel"
+			display={
+				<span className={danger ? "warn-text" : undefined}>
+					{danger ? "⚠ " : ""}
+					{MODE_LABELS[mode]}
+				</span>
+			}
+		>
+			{(close) => (
+				<>
+					{(Object.keys(MODE_LABELS) as ApprovalMode[]).map((mode) => (
+						<button
+							type="button"
+							key={mode}
+							className={"opt" + (mode === "yolo" ? " danger" : "")}
+							onClick={() => {
+								onChange(mode);
+								close();
+							}}
+						>
+							{mode === "yolo" ? "⚠ " : ""}
+							{MODE_LABELS[mode]}
+						</button>
+					))}
+				</>
+			)}
+		</Selector>
+	);
+}
+
+function ModelSelector({
+	models,
+	current,
+	onChange,
+}: {
+	models: readonly ModelInfo[];
+	current: ModelInfo;
+	onChange: (model: ModelInfo) => void;
+}): ReactElement {
+	return (
+		<Selector panelClass="model-panel" display={<span>{current.name}</span>}>
+			{(close) => (
+				<>
+					{models.map((model) => (
+						<button
+							type="button"
+							key={model.provider + "/" + model.model}
+							className={"opt" + (model.model === current.model && model.provider === current.provider ? " picked" : "")}
+							onClick={() => {
+								onChange(model);
+								close();
+							}}
+						>
+							{model.name}
+						</button>
+					))}
+				</>
+			)}
+		</Selector>
+	);
+}
+
+/**
+ * 输入区:圆角卡壳,上排工作区与选择器,中间文本框,下排左审批右发送。
+ * Enter 发送、Shift+Enter 换行、Esc 中断。
+ */
 export function Composer({
 	running,
+	workspace,
+	approvalMode,
+	onApprovalMode,
+	models,
+	model,
+	onModel,
 	onSend,
 	onStop,
 }: {
 	running: boolean;
+	workspace: string;
+	approvalMode: ApprovalMode;
+	onApprovalMode: (mode: ApprovalMode) => void;
+	models: readonly ModelInfo[];
+	model: ModelInfo;
+	onModel: (model: ModelInfo) => void;
 	onSend: (text: string) => void;
 	onStop: () => void;
 }): ReactElement {
@@ -33,15 +169,20 @@ export function Composer({
 	return (
 		<div className="composer">
 			<div className="shell">
+				<div className="sel-row">
+					<WorkspaceChip workspace={workspace} />
+				</div>
 				<textarea
 					value={text}
 					placeholder={running ? "回合进行中,Esc 可中断…" : "输入消息,Enter 发送,Shift+Enter 换行"}
-					rows={1}
+					rows={2}
 					onChange={(event) => setText(event.target.value)}
 					onKeyDown={onKeyDown}
 				/>
 				<div className="row">
-					<span className="hint">Enter 发送 · Shift+Enter 换行{running ? " · Esc 中断" : ""}</span>
+					<ApprovalSelector mode={approvalMode} onChange={onApprovalMode} />
+					<span className="spacer" />
+					<ModelSelector models={models} current={model} onChange={onModel} />
 					{running ? (
 						<button type="button" className="stop" title="中断当前回合 (Esc)" onClick={onStop}>
 							<i />

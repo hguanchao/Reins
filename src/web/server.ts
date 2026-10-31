@@ -23,16 +23,32 @@ const HEARTBEAT_MS = 15_000;
 
 /** 传输层对装配层的全部要求;每一条都能用假实现独立测试。 */
 export interface WebServerDeps {
-	/** 当前运行状态:是否有回合在跑、有没有等待审批的请求 */
-	snapshot(): { running: boolean; approval: { readonly id: number; readonly request: unknown } | undefined };
+	/** 当前运行状态:回合、待审批、审批方式与当前模型,重连首屏用 */
+	snapshot(): {
+		running: boolean;
+		approval: { readonly id: number; readonly request: unknown } | undefined;
+		approvalMode: string;
+		model: { readonly provider: string; readonly model: string; readonly name: string };
+	};
 	/** 会话全量:浏览器首屏重放用 */
 	session(): { readonly id: string; readonly cwd: string; readonly entries: readonly unknown[] };
+	/** 本工作区的会话清单,按更新时间从新到旧 */
+	sessions(): readonly { readonly id: string; readonly title: string | undefined; readonly updatedAt: string }[];
+	/** 切换到既有会话;回合进行中返回 false */
+	switchSession(id: string): boolean;
+	/** 开一个新会话;回合进行中返回 false */
+	newSession(): boolean;
 	/** 提交一句话;回合进行中返回 false,传输层据此回 409 */
 	submit(text: string): boolean;
 	abort(): void;
 	approval: {
 		resolve(id: number, answer: string): void;
 	};
+	/** 可选的全部模型与当前选择;切换只在空闲时生效 */
+	models(): readonly { readonly provider: string; readonly model: string; readonly name: string }[];
+	setModel(provider: string, model: string): boolean;
+	/** 审批方式热切换;合法取值由装配层把关 */
+	setApprovalMode(mode: string): void;
 	/** 订阅推送事件;返回退订函数。每个 SSE 连接订一份。 */
 	subscribe(listener: (event: WebEvent) => void): () => void;
 	/** 界面构建产物目录;未构建时为空,首页给出构建指引 */
@@ -216,6 +232,14 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			sendJson(res, 200, deps.session());
 			return;
 		}
+		if (req.method === "GET" && path === "/api/sessions") {
+			sendJson(res, 200, deps.sessions());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/models") {
+			sendJson(res, 200, deps.models());
+			return;
+		}
 		if (req.method === "POST") {
 			if (!isTrustedOrigin(req.headers.origin)) {
 				sendJson(res, 403, { error: "untrusted origin" });
@@ -258,6 +282,54 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			// 结论的合法性由审批桥把关:无效的请求会被它静默丢弃,传输层只负责转交
 			deps.approval.resolve(id, answer);
 			sendJson(res, 202, { ok: true });
+			return;
+		}
+		if (path === "/api/session/switch") {
+			const body = await readJsonBody(req);
+			const id = body?.["id"];
+			if (typeof id !== "string" || id.length === 0) {
+				sendJson(res, 400, { error: "id is required" });
+				return;
+			}
+			if (!deps.switchSession(id)) {
+				sendJson(res, 409, { error: "cannot switch now" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/session/new") {
+			if (!deps.newSession()) {
+				sendJson(res, 409, { error: "cannot switch now" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/model") {
+			const body = await readJsonBody(req);
+			const provider = body?.["provider"];
+			const model = body?.["model"];
+			if (typeof provider !== "string" || typeof model !== "string") {
+				sendJson(res, 400, { error: "provider and model are required" });
+				return;
+			}
+			if (!deps.setModel(provider, model)) {
+				sendJson(res, 400, { error: "unknown provider or model" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/approval-mode") {
+			const body = await readJsonBody(req);
+			const mode = body?.["mode"];
+			if (typeof mode !== "string") {
+				sendJson(res, 400, { error: "mode is required" });
+				return;
+			}
+			deps.setApprovalMode(mode);
+			sendJson(res, 200, { ok: true });
 			return;
 		}
 		sendJson(res, 404, { error: "not found" });

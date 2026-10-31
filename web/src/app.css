@@ -1,25 +1,26 @@
-/* 设计 token 与组件样式:按 zai-dark 主题复刻的视觉系统。 */
+/* 设计 token 与组件样式:按 zai-light 主题复刻的视觉系统。 */
 
 :root {
-	color-scheme: dark;
-	/* 色板:背景 / 面板 / 卡片 三级灰 + 语义色,全部来自 zai-dark */
-	--bg: #161616;
-	--panel: #202020;
-	--card: #2b2b2b;
-	--raised: #363636;
-	--fg: #d4d4d4;
-	--fg-subtle: rgba(212, 212, 212, 0.6);
-	--fg-faint: rgba(212, 212, 212, 0.3);
-	--fg-inverse: #000000;
-	--brand: #ffffff;
-	--border: rgba(255, 255, 255, 0.1);
-	--border-hover: rgba(255, 255, 255, 0.15);
-	--hover: rgba(255, 255, 255, 0.05);
-	--selected: rgba(255, 255, 255, 0.1);
-	--bubble: rgba(255, 255, 255, 0.08);
-	--ok: #46bf72;
-	--warn: #ff8a30;
-	--bad: #ff5c5c;
+	color-scheme: light;
+	/* 色板:zai-light —— 白面板 + 浅灰工作区 + 黑色前景 */
+	--bg: #f8f8f8;
+	--panel: #ffffff;
+	--sidebar: #f0f0f0;
+	--card: #ffffff;
+	--raised: #e6e6e6;
+	--fg: #262626;
+	--fg-subtle: rgba(13, 13, 13, 0.62);
+	--fg-faint: rgba(13, 13, 13, 0.38);
+	--fg-inverse: #ffffff;
+	--border: rgba(13, 13, 13, 0.1);
+	--border-hover: rgba(13, 13, 13, 0.18);
+	--hover: rgba(13, 13, 13, 0.05);
+	--selected: rgba(13, 13, 13, 0.08);
+	--bubble: rgba(13, 13, 13, 0.06);
+	--ok: #1e8a3e;
+	--warn: #e07b00;
+	--send: #ee7b00;
+	--bad: #e03131;
 	--blue: #4099ff;
 	--sel: rgba(64, 153, 255, 0.28);
 	--sans: "Segoe UI", -apple-system, system-ui, "Microsoft YaHei UI", "PingFang SC", sans-serif;
@@ -42,7 +43,6 @@ body {
 	background: var(--sel);
 }
 
-/* 滚动条:透明轨道,悬停才显形的 thumb */
 ::-webkit-scrollbar {
 	width: 14px;
 	height: 14px;
@@ -57,7 +57,7 @@ body {
 	border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-	background: rgba(255, 255, 255, 0.18);
+	background: rgba(13, 13, 13, 0.25);
 	border: 3px solid transparent;
 	background-clip: padding-box;
 }
@@ -67,13 +67,147 @@ button {
 	cursor: pointer;
 }
 
-.app {
+/* ── 工作区骨架:左任务栏 + 右内容列 ── */
+.workspace {
 	display: flex;
-	flex-direction: column;
 	height: 100vh;
 }
 
-/* ── header:12 格高,面板色,细底边 ── */
+.sidebar {
+	width: 264px;
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	background: var(--sidebar);
+	border-right: 1px solid var(--border);
+	overflow: hidden;
+}
+
+.side-brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 14px 16px 10px;
+}
+
+.side-brand .logo {
+	width: 26px;
+	height: 26px;
+	border-radius: 7px;
+	background: var(--fg);
+	color: var(--fg-inverse);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 600;
+	font-size: 14px;
+}
+
+.side-brand .name {
+	font-weight: 600;
+}
+
+.new-task {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 4px 10px 8px;
+	padding: 7px 10px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--fg);
+	text-align: left;
+}
+
+.new-task:hover {
+	background: var(--selected);
+}
+
+.new-task .plus {
+	color: var(--fg-subtle);
+}
+
+.side-section {
+	padding: 10px 16px 4px;
+}
+
+.side-title {
+	font-size: 12px;
+	color: var(--fg-faint);
+}
+
+.side-list {
+	flex: 1;
+	overflow-y: auto;
+	padding: 0 10px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.side-empty {
+	padding: 8px 10px;
+	color: var(--fg-faint);
+	font-size: 13px;
+}
+
+.task {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	padding: 7px 10px;
+	border: none;
+	border-radius: 8px;
+	background: transparent;
+	color: var(--fg);
+	text-align: left;
+	min-width: 0;
+}
+
+.task:hover {
+	background: var(--selected);
+}
+
+.task .dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: transparent;
+	flex: none;
+	align-self: center;
+}
+
+.task .dot.on {
+	background: var(--blue);
+}
+
+.task-title {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.task.current .task-title {
+	font-weight: 500;
+}
+
+.task-time {
+	flex: none;
+	color: var(--fg-faint);
+	font-size: 12px;
+}
+
+/* ── 内容列 ── */
+.content {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	background: var(--bg);
+}
+
 header {
 	display: flex;
 	align-items: center;
@@ -86,8 +220,7 @@ header {
 }
 
 header .brand {
-	font-weight: 500;
-	color: var(--fg);
+	font-weight: 600;
 }
 
 header .meta {
@@ -132,7 +265,7 @@ header .conn.on {
 	padding: 20px 24px;
 }
 
-/* 用户消息:右对齐气泡,右上角近直角是识别特征 */
+/* 用户消息:右对齐气泡,右上角近直角 */
 .line.user {
 	display: flex;
 	justify-content: flex-end;
@@ -147,11 +280,7 @@ header .conn.on {
 	overflow-wrap: anywhere;
 }
 
-/* 助手文本:无气泡全宽,markdown 排版 */
-.line.assistant {
-	leading-trim: both;
-}
-
+/* 助手文本:无气泡全宽 markdown */
 .line.assistant .md {
 	font-size: 14px;
 	line-height: 1.75;
@@ -233,11 +362,10 @@ header .conn.on {
 	font-weight: 500;
 }
 
-/* 行内 code 与代码块 */
 .md code:not(.hljs) {
 	font-family: var(--mono);
 	font-size: 13px;
-	background: rgba(255, 255, 255, 0.06);
+	background: rgba(13, 13, 13, 0.06);
 	border-radius: 6px;
 	padding: 1px 6px;
 }
@@ -293,7 +421,7 @@ header .conn.on {
 	padding: 0;
 }
 
-/* ── 思考块:触发行扫光,展开区左轨 ── */
+/* ── 思考块 ── */
 .line.thinking summary {
 	display: flex;
 	align-items: center;
@@ -313,7 +441,7 @@ header .conn.on {
 	margin-top: 8px;
 	margin-left: 6px;
 	padding-left: 14px;
-	border-left: 2px solid var(--border);
+	border-left: 2px solid var(--border-hover);
 	color: var(--fg-subtle);
 	max-height: 240px;
 	overflow-y: auto;
@@ -322,9 +450,9 @@ header .conn.on {
 	line-height: 1.7;
 }
 
-/* 扫光文字:运行中的招牌动效 */
+/* 扫光:运行中的招牌动效(亮色用近黑渐变) */
 .grad-text {
-	background: linear-gradient(90deg, #ffffff 0%, rgba(255, 255, 255, 0.35) 50%, #ffffff 100%);
+	background: linear-gradient(90deg, rgba(10, 10, 10, 0.9) 0%, rgba(10, 10, 10, 0.35) 50%, rgba(10, 10, 10, 0.9) 100%);
 	background-size: 300% 100%;
 	-webkit-background-clip: text;
 	background-clip: text;
@@ -338,7 +466,7 @@ header .conn.on {
 	}
 }
 
-/* ── 工具行:无卡片,纯行式摘要 + 等宽主文本 ── */
+/* ── 工具行 ── */
 .line.tool summary {
 	display: flex;
 	align-items: baseline;
@@ -370,10 +498,6 @@ header .conn.on {
 	flex: none;
 }
 
-.line.tool.running .tname {
-	/* 运行中:名称走扫光,不用转圈 */
-}
-
 .line.tool .tsummary {
 	color: var(--fg-subtle);
 	font-family: var(--mono);
@@ -395,7 +519,7 @@ header .conn.on {
 	margin: 8px 0 0 6px;
 	padding: 8px 12px;
 	border-left: 2px solid var(--border);
-	background: rgba(255, 255, 255, 0.03);
+	background: rgba(13, 13, 13, 0.03);
 	border-radius: 0 8px 8px 0;
 	font-family: var(--mono);
 	font-size: 12.5px;
@@ -425,16 +549,19 @@ header .conn.on {
 
 .line.notice.error .bubble {
 	color: var(--bad);
-	background: rgba(255, 92, 92, 0.08);
+	background: rgba(224, 49, 49, 0.08);
 	border-radius: 8px;
 	padding: 6px 14px;
 }
 
-/* ── 等待模型的像素加载:九宫格逐格点亮 ── */
+/* ── 等待模型的像素加载 ── */
 .waiting {
 	display: flex;
 	align-items: center;
 	gap: 10px;
+	max-width: 56rem;
+	margin: 0 auto;
+	padding: 4px 24px;
 	color: var(--fg-subtle);
 	font-size: 13px;
 	font-weight: 500;
@@ -444,6 +571,7 @@ header .conn.on {
 	display: grid;
 	grid-template-columns: repeat(3, 4px);
 	gap: 1.5px;
+	color: var(--fg);
 }
 
 .pixels i {
@@ -490,28 +618,276 @@ header .conn.on {
 	}
 }
 
-/* ── 空会话问候 ── */
-.greeting {
+/* ── 草稿态:线框标识 + 问候 + 居中输入卡 + 快捷任务 ── */
+.draft {
 	flex: 1;
+	position: relative;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--fg-faint);
-	font-size: 20px;
-	font-weight: 500;
-	letter-spacing: 0.02em;
-	user-select: none;
+	overflow: hidden;
 }
 
-/* ── 审批卡:弹层色 + 数字列表框 ── */
-.approval {
-	flex: none;
-	margin: 0 16px 8px;
+.watermark {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: min(46vh, 46vw);
+	font-weight: 600;
+	color: transparent;
+	-webkit-text-stroke: 1.5px rgba(13, 13, 13, 0.07);
+	pointer-events: none;
+	user-select: none;
+	-webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.15));
+	mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.15));
+}
+
+.draft-body {
+	position: relative;
+	width: min(42rem, calc(100% - 48px));
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.greeting {
+	text-align: center;
+	font-size: 26px;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+	color: var(--fg);
+	margin-bottom: 6px;
+}
+
+.chips {
+	display: flex;
+	justify-content: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.quick {
 	border: 1px solid var(--border);
+	background: var(--panel);
+	border-radius: 9999px;
+	padding: 6px 16px;
+	color: var(--fg-subtle);
+}
+
+.quick:hover {
+	border-color: var(--border-hover);
+	color: var(--fg);
+}
+
+/* ── 输入卡:工作区行 + 文本框 + 选择器行 ── */
+.composer {
+	flex: none;
+	width: 100%;
+}
+
+.composer .shell {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	border: 0.5px solid var(--border);
 	background: var(--card);
 	border-radius: 16px;
+	padding: 10px 14px 12px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 6px 18px rgba(0, 0, 0, 0.05);
+	transition: border-color 120ms;
+}
+
+.composer .shell:focus-within {
+	border-color: var(--border-hover);
+}
+
+/* 会话态:输入卡落底 */
+.scroll + .approval,
+.content > .approval {
+	flex: none;
+	margin: 0 16px 8px;
+}
+
+.content > .composer {
+	max-width: 56rem;
+	margin: 0 auto 16px;
+}
+
+.composer .sel-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding-bottom: 2px;
+	border-bottom: 1px solid var(--border);
+}
+
+.composer textarea {
+	border: none;
+	background: transparent;
+	color: var(--fg);
+	font: inherit;
+	line-height: 1.6;
+	resize: none;
+	outline: none;
+	max-height: 180px;
+}
+
+.composer textarea::placeholder {
+	color: var(--fg-faint);
+}
+
+.composer .row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.composer .spacer {
+	flex: 1;
+}
+
+.composer .send {
+	width: 32px;
+	height: 32px;
+	border-radius: 9999px;
+	border: none;
+	background: var(--send);
+	color: #ffffff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 16px;
+	line-height: 1;
+}
+
+.composer .send:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.composer .send:not(:disabled):hover {
+	filter: brightness(1.08);
+}
+
+.composer .stop {
+	width: 32px;
+	height: 32px;
+	border-radius: 9999px;
+	border: 1px solid var(--border-hover);
+	background: var(--raised);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.composer .stop i {
+	width: 10px;
+	height: 10px;
+	background: var(--fg);
+	border-radius: 2px;
+}
+
+/* ── 选择器 chip 与面板 ── */
+.sel {
+	position: relative;
+}
+
+.sel .chip {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	border: none;
+	background: transparent;
+	border-radius: 8px;
+	padding: 4px 8px;
+	color: var(--fg);
+}
+
+.sel .chip:hover {
+	background: var(--hover);
+}
+
+.sel .chip.static {
+	cursor: default;
+	color: var(--fg-subtle);
+}
+
+.sel .chip.static:hover {
+	background: transparent;
+}
+
+.sel .chip-icon {
+	font-size: 13px;
+}
+
+.sel .caret {
+	color: var(--fg-faint);
+	font-size: 10px;
+}
+
+.warn-text {
+	color: var(--warn);
+}
+
+.backdrop {
+	position: fixed;
+	inset: 0;
+	z-index: 30;
+}
+
+.panel {
+	position: absolute;
+	bottom: calc(100% + 6px);
+	left: 0;
+	z-index: 31;
+	min-width: 220px;
+	max-height: 260px;
+	overflow-y: auto;
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+	padding: 4px;
+}
+
+.model-panel {
+	left: auto;
+	right: 0;
+}
+
+.panel .opt {
+	display: block;
+	width: 100%;
+	border: none;
+	background: transparent;
+	text-align: left;
+	padding: 7px 10px;
+	border-radius: 8px;
+	color: var(--fg);
+}
+
+.panel .opt:hover {
+	background: var(--hover);
+}
+
+.panel .opt.picked {
+	background: var(--selected);
+	font-weight: 500;
+}
+
+.panel .opt.danger {
+	color: var(--bad);
+}
+
+/* ── 审批卡 ── */
+.approval {
+	border: 1px solid var(--border);
+	background: var(--panel);
+	border-radius: 16px;
 	padding: 12px 14px;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .approval .head {
@@ -523,14 +899,14 @@ header .conn.on {
 .approval .risk {
 	font-size: 11px;
 	color: var(--bad);
-	border: 1px solid rgba(255, 92, 92, 0.4);
+	border: 1px solid rgba(224, 49, 49, 0.4);
 	border-radius: 4px;
 	padding: 0 6px;
 }
 
 .approval .risk.external {
 	color: var(--warn);
-	border-color: rgba(255, 138, 48, 0.4);
+	border-color: rgba(224, 123, 0, 0.4);
 }
 
 .approval .tool {
@@ -604,110 +980,15 @@ header .conn.on {
 }
 
 .approval .option.danger:hover {
-	background: rgba(255, 92, 92, 0.1);
+	background: rgba(224, 49, 49, 0.08);
 }
 
-/* ── 输入区:圆角卡 + 右下圆形发送钮 ── */
-.composer {
-	flex: none;
-	max-width: 56rem;
-	width: 100%;
-	margin: 0 auto 16px;
-	padding: 0 24px;
-}
-
-.composer .shell {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	border: 0.5px solid var(--border);
-	background: var(--card);
-	border-radius: 16px;
-	padding: 12px 14px;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 6px 18px rgba(0, 0, 0, 0.06);
-	transition: border-color 120ms;
-}
-
-.composer .shell:focus-within {
-	border-color: var(--border-hover);
-}
-
-.composer textarea {
-	border: none;
-	background: transparent;
-	color: var(--fg);
-	font: inherit;
-	line-height: 1.6;
-	resize: none;
-	outline: none;
-	max-height: 180px;
-}
-
-.composer textarea::placeholder {
-	color: var(--fg-faint);
-}
-
-.composer .row {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: 10px;
-}
-
-.composer .hint {
-	color: var(--fg-faint);
-	font-size: 12px;
-	margin-right: auto;
-}
-
-.composer .send {
-	width: 30px;
-	height: 30px;
-	border-radius: 9999px;
-	border: none;
-	background: var(--brand);
-	color: var(--fg-inverse);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 15px;
-	line-height: 1;
-}
-
-.composer .send:disabled {
-	opacity: 0.35;
-	cursor: default;
-}
-
-.composer .send:not(:disabled):hover {
-	background: rgba(255, 255, 255, 0.8);
-}
-
-.composer .stop {
-	width: 30px;
-	height: 30px;
-	border-radius: 9999px;
-	border: 1px solid var(--border-hover);
-	background: var(--raised);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-.composer .stop i {
-	width: 10px;
-	height: 10px;
-	background: var(--fg);
-	border-radius: 2px;
-}
-
-/* ── 焦点可见性:键盘用户仍能看到轮廓 ── */
+/* ── 焦点可见性 ── */
 :focus-visible {
-	outline: 2px solid rgba(64, 153, 255, 0.5);
+	outline: 2px solid rgba(64, 153, 255, 0.55);
 	outline-offset: 2px;
 }
 
-/* ── 加载失败 ── */
 .load-error {
 	padding: 32px;
 	color: var(--bad);

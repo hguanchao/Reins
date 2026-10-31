@@ -39,8 +39,16 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		},
 	};
 	const deps: WebServerDeps = {
-		snapshot: () => ({ running: state.running, approval: state.approval }),
+		snapshot: () => ({
+			running: state.running,
+			approval: state.approval,
+			approvalMode: "ask",
+			model: { provider: "p1", model: "m1", name: "Model One" },
+		}),
 		session: () => ({ id: "s1", cwd: "/work", entries: state.entries }),
+		sessions: () => [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }],
+		switchSession: () => !state.running,
+		newSession: () => !state.running,
 		submit: (text) => {
 			if (state.running) return false;
 			state.submitted.push(text);
@@ -54,6 +62,9 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 				state.resolved.push({ id, answer });
 			},
 		},
+		models: () => [{ provider: "p1", model: "m1", name: "Model One" }],
+		setModel: () => true,
+		setApprovalMode: () => {},
 		subscribe: (listener) => {
 			state.listeners.add(listener);
 			return () => state.listeners.delete(listener);
@@ -123,8 +134,11 @@ describe("web 传输层", () => {
 
 		const byHeader = await fetch(`${base}/api/state`, { headers: { "x-reins-token": TOKEN } });
 		assert.equal(byHeader.status, 200);
-		// JSON 序列化会丢掉 undefined 字段,这里按线上形态断言
-		assert.deepEqual(await byHeader.json(), { running: false });
+		assert.deepEqual(await byHeader.json(), {
+			running: false,
+			approvalMode: "ask",
+			model: { provider: "p1", model: "m1", name: "Model One" },
+		});
 
 		const byQuery = await fetch(`${base}/api/state?token=${TOKEN}`);
 		assert.equal(byQuery.status, 200);
@@ -220,6 +234,57 @@ describe("web 传输层", () => {
 		// 心跳帧可能已随事件一起到达,也可能在下一拍
 		if (!text.includes(": ping")) await readUntil(reader, ": ping");
 		controller.abort();
+	});
+
+	it("会话清单、切换与新建:进行中一律 409", async () => {
+		const { deps, state } = fakeDeps(undefined);
+		const server = await startServer(deps);
+		const base = `http://127.0.0.1:${server.port}`;
+		const headers = { "x-reins-token": TOKEN, "content-type": "application/json" };
+
+		const list = await fetch(`${base}/api/sessions`, { headers: { "x-reins-token": TOKEN } });
+		assert.deepEqual(await list.json(), [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }]);
+
+		const switched = await fetch(`${base}/api/session/switch`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ id: "s1" }),
+		});
+		assert.equal(switched.status, 200);
+
+		state.running = true;
+		const busy = await fetch(`${base}/api/session/switch`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ id: "s2" }),
+		});
+		assert.equal(busy.status, 409);
+		const busyNew = await fetch(`${base}/api/session/new`, { method: "POST", headers });
+		assert.equal(busyNew.status, 409);
+	});
+
+	it("模型清单与切换、审批模式切换", async () => {
+		const { deps } = fakeDeps(undefined);
+		const server = await startServer(deps);
+		const base = `http://127.0.0.1:${server.port}`;
+		const headers = { "x-reins-token": TOKEN, "content-type": "application/json" };
+
+		const models = await fetch(`${base}/api/models`, { headers: { "x-reins-token": TOKEN } });
+		assert.deepEqual(await models.json(), [{ provider: "p1", model: "m1", name: "Model One" }]);
+
+		const switched = await fetch(`${base}/api/model`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ provider: "p1", model: "m1" }),
+		});
+		assert.equal(switched.status, 200);
+
+		const mode = await fetch(`${base}/api/approval-mode`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ mode: "yolo" }),
+		});
+		assert.equal(mode.status, 200);
 	});
 
 	it("静态托管:index、类型标注、SPA 回落与路径穿越拦截", async () => {

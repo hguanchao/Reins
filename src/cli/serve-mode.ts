@@ -13,13 +13,21 @@ import {
 	createReviewer,
 } from "#src/cli/pipeline.ts";
 import { createSessionFor } from "#src/cli/session/factory.ts";
+import { listSessions, resumeSession } from "#src/cli/session/target.ts";
+import type { ModelSelection } from "#src/config/selection.ts";
+import type { ApprovalMode } from "#src/config/file.ts";
+import type { Session } from "#src/session/session.ts";
 import {
 	defaultInstructionSources,
 	readInstructions,
 	type PromptInstruction,
 } from "#src/agent/instructions.ts";
 import { ApprovalBroker } from "#src/permission/approval.ts";
-import { PermissionGate, PermissionPolicy, type ApprovalAnswer } from "#src/permission/policy.ts";
+import {
+	PermissionGate,
+	PermissionPolicy,
+	type ApprovalAnswer,
+} from "#src/permission/policy.ts";
 import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 import type { McpControl } from "#src/mcp/service.ts";
 import { createWebServer, type WebServerDeps } from "#src/web/server.ts";
@@ -35,6 +43,8 @@ import { formatReadyLine } from "#src/web/ready-line.ts";
 
 /** 审批结论的合法取值;传输层只给字符串,这里收窄后才准进审批桥。 */
 const APPROVAL_ANSWERS: readonly ApprovalAnswer[] = ["once", "always", "deny"];
+/** 审批方式的合法取值;与 config.toml 的语义一致,切换不落盘。 */
+const APPROVAL_MODES: readonly ApprovalMode[] = ["ask", "auto", "yolo"];
 
 export async function runServeMode(options: CliOptions): Promise<number> {
 	const loaded = await loadSelection(options);
@@ -42,7 +52,7 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		writeStderr(`${loaded.error.display}\n`);
 		return 1;
 	}
-	const { config, selection } = loaded.value;
+	const { config, selection: initialSelection, providersConfig } = loaded.value;
 
 	const workRoot = process.cwd();
 	const workspace = new WorkspaceBoundary(workRoot);
@@ -54,7 +64,7 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	const policy = new PermissionPolicy(config.approval);
 	const gate = new PermissionGate({
 		policy,
-		reviewer: config.approval === "auto" ? createReviewer(config, selection, workRoot) : undefined,
+		reviewer: config.approval === "auto" ? createReviewer(config, initialSelection, workRoot) : undefined,
 		confirmer: approvals.request,
 	});
 
@@ -74,8 +84,12 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	for (const warning of sandboxWarnings) writeStderr(`${warning}\n`);
 	for (const line of pipeline.pluginReport) writeStderr(`reins: ${line.text}\n`);
 
-	const session = createSessionFor(workRoot, host.sessionStore());
-	const compactor = createCompactor(config, selection);
+	const sessionStore = host.sessionStore();
+	let session = createSessionFor(workRoot, sessionStore);
+	const compactor = createCompactor(config, initialSelection);
+	// 模型可在会话内热切换:只换主模型,压缩与审批模型保持启动时的选择(切模型不重建它们,
+	// 语义是「下一轮回答换脑子」,不悄悄改审计链路)
+	let selection: ModelSelection = initialSelection;
 
 	// 事件广播:装配层的 AgentEvent 原样转发,浏览器是又一个消费方
 	const listeners = new Set<(event: unknown) => void>();
@@ -103,15 +117,75 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	let currentAbort: AbortController | undefined;
 	let currentRun: Promise<void> | undefined;
 
+	/** 会话清单;侧栏的「任务列表」就是它。没有会话存储(插件缺席)时为空清单。 */
+	const sessions = (): readonly { id: string; title: string | undefined; updatedAt: string }[] =>
+		sessionStore === undefined
+			? []
+			: listSessions(workRoot, sessionStore).map((item) => ({
+					id: item.id,
+					title: item.title,
+					updatedAt: item.updatedAt,
+				}));
+
+	/** 切会话/新建会话都只在空闲时允许:正在跑的回合属于旧会话,切断它等于毁掉结果。 */
+	const switchToSession = (id: string): boolean => {
+		if (running || sessionStore === undefined) return false;
+		let next: Session;
+		try {
+			next = resumeSession(workRoot, id, sessionStore);
+		} catch {
+			return false;
+		}
+		void session.close();
+		session = next;
+		broadcast({ type: "session_switched" });
+		return true;
+	};
+
+	const startNewSession = (): boolean => {
+		if (running) return false;
+		void session.close();
+		session = createSessionFor(workRoot, sessionStore);
+		broadcast({ type: "session_switched" });
+		return true;
+	};
+
+	const modelList = (): readonly { provider: string; model: string; name: string }[] =>
+		providersConfig.providers.flatMap((provider) =>
+			provider.models.map((model) => ({ provider: provider.id, model: model.id, name: model.name })),
+		);
+
+	const currentModel = (): { provider: string; model: string; name: string } => ({
+		provider: selection.provider.id,
+		model: selection.model.id,
+		name: selection.model.name,
+	});
+
 	const deps: WebServerDeps = {
 		snapshot: () => {
 			const id = approvals.pendingId();
 			return {
 				running,
 				approval: id === undefined ? undefined : { id, request: approvals.pending() },
+				approvalMode: policy.mode,
+				model: currentModel(),
 			};
 		},
 		session: () => ({ id: session.id, cwd: session.cwd, entries: session.entries() }),
+		sessions,
+		switchSession: switchToSession,
+		newSession: startNewSession,
+		models: modelList,
+		setModel: (provider, model) => {
+			const found = providersConfig.providers.find((item) => item.id === provider);
+			const entry = found?.models.find((item) => item.id === model);
+			if (found === undefined || entry === undefined) return false;
+			selection = { ...selection, provider: found, model: entry };
+			return true;
+		},
+		setApprovalMode: (mode) => {
+			if (APPROVAL_MODES.includes(mode as ApprovalMode)) policy.setMode(mode as ApprovalMode);
+		},
 		submit: (text) => {
 			if (running) return false;
 			running = true;

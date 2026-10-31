@@ -19,6 +19,28 @@ export interface ApprovalRequest {
 
 export type ApprovalAnswer = "once" | "always" | "deny";
 
+export type ApprovalMode = "ask" | "auto" | "yolo";
+
+export interface ModelInfo {
+	provider: string;
+	model: string;
+	name: string;
+}
+
+export interface SessionSummary {
+	id: string;
+	title: string | undefined;
+	updatedAt: string;
+}
+
+/** /api/state 的形状:首屏与重连的单一事实来源。 */
+export interface StateInfo {
+	running: boolean;
+	approval: { id: number; request: ApprovalRequest } | undefined;
+	approvalMode: ApprovalMode;
+	model: ModelInfo;
+}
+
 export type WebEvent =
 	| { type: "turn_start" }
 	| { type: "text_delta"; text: string }
@@ -46,7 +68,8 @@ export type WebEvent =
 	| { type: "aborted"; cause?: string }
 	| { type: "run_end" }
 	| { type: "approval_request"; id: number; request: ApprovalRequest }
-	| { type: "approval_cleared" };
+	| { type: "approval_cleared" }
+	| { type: "session_switched" };
 
 export type LlmMessage =
 	| { role: "user"; content: string | readonly LlmUserBlock[] }

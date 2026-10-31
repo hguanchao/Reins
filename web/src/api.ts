@@ -5,7 +5,15 @@
  * 会话时清掉重登即可。事件流用 EventSource,浏览器自己负责断线重连。
  */
 
-import type { ApprovalAnswer, ApprovalRequest, SessionEntry, WebEvent } from "./types.ts";
+import type {
+	ApprovalAnswer,
+	ApprovalMode,
+	ApprovalRequest,
+	ModelInfo,
+	SessionEntry,
+	SessionSummary,
+	WebEvent,
+} from "./types.ts";
 
 const FROM_URL = new URLSearchParams(window.location.search).get("token");
 if (FROM_URL !== null) localStorage.setItem("reins-token", FROM_URL);
@@ -26,6 +34,8 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 export interface ServeState {
 	running: boolean;
 	approval: { id: number; request: ApprovalRequest } | undefined;
+	approvalMode: ApprovalMode;
+	model: ModelInfo;
 }
 
 export const api = {
@@ -34,6 +44,24 @@ export const api = {
 	},
 	async session(): Promise<{ id: string; cwd: string; entries: readonly SessionEntry[] }> {
 		return (await request("/api/session")) as { id: string; cwd: string; entries: readonly SessionEntry[] };
+	},
+	async sessions(): Promise<readonly SessionSummary[]> {
+		return (await request("/api/sessions")) as readonly SessionSummary[];
+	},
+	async switchSession(id: string): Promise<void> {
+		await request("/api/session/switch", { method: "POST", body: JSON.stringify({ id }) });
+	},
+	async newSession(): Promise<void> {
+		await request("/api/session/new", { method: "POST" });
+	},
+	async models(): Promise<readonly ModelInfo[]> {
+		return (await request("/api/models")) as readonly ModelInfo[];
+	},
+	async setModel(provider: string, model: string): Promise<void> {
+		await request("/api/model", { method: "POST", body: JSON.stringify({ provider, model }) });
+	},
+	async setApprovalMode(mode: ApprovalMode): Promise<void> {
+		await request("/api/approval-mode", { method: "POST", body: JSON.stringify({ mode }) });
 	},
 	async send(text: string): Promise<void> {
 		await request("/api/message", { method: "POST", body: JSON.stringify({ text }) });
