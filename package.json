@@ -14,13 +14,18 @@
 		"node": ">=22.18"
 	},
 	"scripts": {
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsc --noEmit && tsc -p web --noEmit",
 		"test": "node --test --test-timeout=30000 \"tests/**/*.test.ts\"",
-		"test:dir": "node --test --test-timeout=30000"
+		"test:dir": "node --test --test-timeout=30000",
+		"build:ui": "vite build"
 	},
 	"devDependencies": {
 		"@types/node": "22.20.5",
-		"typescript": "5.9.3"
+		"@types/react": "19.2.2",
+		"@types/react-dom": "19.2.2",
+		"@vitejs/plugin-react": "5.0.4",
+		"typescript": "5.9.3",
+		"vite": "7.1.11"
 	},
 	"dependencies": {
 		"@joplin/turndown-plugin-gfm": "1.0.68",
@@ -32,6 +37,8 @@
 		"jsonc-parser": "3.3.1",
 		"lowlight": "3.3.0",
 		"marked": "18.1.1",
+		"react": "19.2.0",
+		"react-dom": "19.2.0",
 		"turndown": "7.2.4",
 		"undici": "7.30.1"
 	}
