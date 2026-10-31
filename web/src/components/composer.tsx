@@ -1,7 +1,7 @@
 import { ArrowUp, ChevronDown, Folder, Square, TriangleAlert } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactElement } from "react";
 
-import type { ApprovalMode, ModelInfo } from "./types.ts";
+import type { ApprovalMode, ModelInfo } from "../protocol.ts";
 
 const MODE_LABELS: Record<ApprovalMode, string> = {
 	ask: "每次询问",

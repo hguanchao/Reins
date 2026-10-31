@@ -5,7 +5,7 @@
  * notice。历史重放(会话条目)与实时事件(增量拼接)都归约到同一个形状,渲染只有一份。
  */
 
-import type { LlmMessage, SessionEntry } from "./types.ts";
+import type { LlmMessage, SessionEntry } from "../protocol.ts";
 
 export type Line =
 	| { kind: "user"; text: string }

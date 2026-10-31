@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 
 import { handleCopyClick } from "./markdown.ts";
 import { MarkdownView } from "./markdown-view.tsx";
-import type { Line } from "./transcript.ts";
+import type { Line } from "./lines.ts";
 
 /** 会话流的渲染:视觉按 zai-light 复刻——用户右对齐气泡、助手 markdown 全宽、工具行式摘要。 */
 export function TranscriptView({ lines }: { lines: readonly Line[] }): ReactElement {

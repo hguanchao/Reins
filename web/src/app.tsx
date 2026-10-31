@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 
 import { api, openEventStream } from "./api.ts";
-import { ApprovalCard } from "./approval-card.tsx";
-import { Composer } from "./composer.tsx";
-import { Sidebar } from "./sidebar.tsx";
-import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript.ts";
-import { TranscriptView } from "./transcript-view.tsx";
-import type { ApprovalAnswer, ApprovalMode, ApprovalRequest, ModelInfo, WebEvent } from "./types.ts";
+import { ApprovalCard } from "./components/approval-card.tsx";
+import { Composer } from "./components/composer.tsx";
+import { Header } from "./components/header.tsx";
+import { Sidebar } from "./components/sidebar.tsx";
+import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
+import { TranscriptView } from "./transcript/view.tsx";
+import type { ApprovalAnswer, ApprovalMode, ApprovalRequest, ModelInfo, WebEvent } from "./protocol.ts";
 
 /** 时段问候;草稿态的主视觉文案。 */
 function greeting(): string {
@@ -295,15 +296,7 @@ export function App(): ReactElement {
 		<div className="workspace">
 			<Sidebar sessions={sessions} currentId={sessionId} onSwitch={switchSession} onNew={newTask} />
 			<div className="content">
-				<header>
-					<span className="brand">Reins</span>
-					<span className="meta">{sessionId}</span>
-					<span className="spacer" />
-					{totalTokens > 0 && <span className="tokens">{totalTokens.toLocaleString()} tok</span>}
-					<span className={"conn" + (connected ? " on" : "")}>
-						{connected ? "connected" : "reconnecting"}
-					</span>
-				</header>
+				<Header sessionId={sessionId} totalTokens={totalTokens} connected={connected} />
 				{loadError !== undefined ? (
 					<div className="load-error">无法连接: {loadError}</div>
 				) : draft ? (

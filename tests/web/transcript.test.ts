@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "#web/transcript.ts";
+import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "#web/transcript/lines.ts";
 
 /**
  * 会话流状态逻辑的契约:增量拼接到哪一行、回合边界怎么封口、工具结果怎么回填。

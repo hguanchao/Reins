@@ -13,7 +13,7 @@ import type {
 	SessionEntry,
 	SessionSummary,
 	WebEvent,
-} from "./types.ts";
+} from "./protocol.ts";
 
 const FROM_URL = new URLSearchParams(window.location.search).get("token");
 if (FROM_URL !== null) localStorage.setItem("reins-token", FROM_URL);

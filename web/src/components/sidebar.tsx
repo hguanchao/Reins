@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 
 import type { ReactElement } from "react";
 
-import type { SessionSummary } from "./types.ts";
+import type { SessionSummary } from "../protocol.ts";
 
 /** 相对时间:刚刚 / N 分钟前 / N 小时前 / 昨天 / N 天前,更早退回日期。 */
 function relativeTime(updatedAt: string): string {

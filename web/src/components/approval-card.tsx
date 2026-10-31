@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-import type { ApprovalAnswer, ApprovalRequest } from "./types.ts";
+import type { ApprovalAnswer, ApprovalRequest } from "../protocol.ts";
 
 /**
  * 审批卡:弹层色圆角卡 + 数字列表框,与 zcode 的 PermissionDialog 同构。
