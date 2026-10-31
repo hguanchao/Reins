@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"main": "desktop/build/main.js",
+	"main": "desktop/build/main.cjs",
 	"bin": {
 		"reins": "./src/cli/index.ts"
 	},

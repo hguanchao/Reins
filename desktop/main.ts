@@ -38,6 +38,12 @@ function lastWorkspace(): string | undefined {
 
 /** 原生对话框选工作区;默认落在上次用过的目录。取消选择就退出——没有工作区,agent 无处安身。 */
 async function pickWorkspace(): Promise<string | undefined> {
+	// 环境变量入口:测试与自动化用它跳过对话框;存在且有效才认
+	const override = process.env.REINS_WORKSPACE;
+	if (override !== undefined && existsSync(override)) {
+		rememberWorkspace(override);
+		return override;
+	}
 	const previous = lastWorkspace();
 	const result = await dialog.showOpenDialog({
 		title: "选择 Reins 的工作区",

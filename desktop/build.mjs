@@ -33,5 +33,6 @@ await build({
 	platform: "node",
 	format: "cjs",
 	external: ["electron"],
-	outfile: "desktop/build/main.js",
+	// .cjs 后缀是刻意的:打包进去的 package.json 带 "type": "module",.js 会被当 ESM 加载
+	outfile: "desktop/build/main.cjs",
 });
