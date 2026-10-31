@@ -6,3 +6,6 @@ reference/
 # 工具生成的会话状态
 .zcode/
 .workbuddy/
+
+# 浏览器界面的构建产物:由 web/ 源码构建,不入库
+web/dist/
