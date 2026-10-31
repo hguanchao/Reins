@@ -9,3 +9,7 @@ reference/
 
 # 浏览器界面的构建产物:由 web/ 源码构建,不入库
 web/dist/
+
+# 桌面打包的中间产物与发布件:由 desktop/ 源码构建,不入库
+desktop/build/
+desktop/release/
