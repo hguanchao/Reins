@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BrowserWindow, Menu, app, dialog, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import { parseReadyLine } from "#src/web/ready-line.ts";
 
 /**
@@ -99,52 +99,63 @@ const LOADING_PAGE =
 	@keyframes r{to{transform:rotate(360deg)}}
 </style><div class="c"><div class="s"></div><p>Reins 启动中…</p></div>`);
 
+/** 四个顶级菜单;无边框窗的菜单条点击时在按钮原位弹出,保持真正的原生菜单交互。 */
+function buildMenus(): Record<string, Menu> {
+	const templates: Record<string, Electron.MenuItemConstructorOptions[]> = {
+		edit: [
+			{ role: "undo", label: "撤销" },
+			{ role: "redo", label: "重做" },
+			{ type: "separator" },
+			{ role: "cut", label: "剪切" },
+			{ role: "copy", label: "复制" },
+			{ role: "paste", label: "粘贴" },
+			{ role: "selectAll", label: "全选" },
+		],
+		window: [
+			{ role: "minimize", label: "最小化" },
+			{ role: "zoom", label: "最大化" },
+			{ type: "separator" },
+			{ role: "close", label: "关闭" },
+		],
+		help: [
+			{ role: "reload", label: "重新加载界面" },
+			{ role: "toggleDevTools", label: "开发者工具" },
+		],
+		about: [{ role: "about", label: "关于 Reins" }],
+	};
+	return Object.fromEntries(
+		Object.entries(templates).map(([kind, template]) => [kind, Menu.buildFromTemplate(template)]),
+	);
+}
+
 async function run(): Promise<void> {
 	// 原生菜单栏:编辑/窗口/帮助/关于,标签带 Alt 访问键;关于面板的数据来自打包的 package.json
 	app.setAboutPanelOptions({ applicationName: "Reins", applicationVersion: app.getVersion() });
-	const menu = Menu.buildFromTemplate([
-		{
-			label: "编辑(&E)",
-			submenu: [
-				{ role: "undo", label: "撤销" },
-				{ role: "redo", label: "重做" },
-				{ type: "separator" },
-				{ role: "cut", label: "剪切" },
-				{ role: "copy", label: "复制" },
-				{ role: "paste", label: "粘贴" },
-				{ role: "selectAll", label: "全选" },
-			],
-		},
-		{
-			label: "窗口(&W)",
-			submenu: [
-				{ role: "minimize", label: "最小化" },
-				{ role: "zoom", label: "最大化" },
-				{ type: "separator" },
-				{ role: "close", label: "关闭" },
-			],
-		},
-		{
-			label: "帮助(&H)",
-			submenu: [
-				{ role: "reload", label: "重新加载界面" },
-				{ role: "toggleDevTools", label: "开发者工具" },
-			],
-		},
-		{ label: "关于(&A)", submenu: [{ role: "about", label: "关于 Reins" }] },
-	]);
-	Menu.setApplicationMenu(menu);
+	const menus = buildMenus();
+	// 菜单改为页内菜单条弹出,不再挂应用菜单:隐藏标题栏后它无处显示,Alt 也不该再唤出
+	Menu.setApplicationMenu(null);
+	ipcMain.handle("menu:show", (event, kind: unknown) => {
+		const menu = typeof kind === "string" ? menus[kind] : undefined;
+		const window = BrowserWindow.fromWebContents(event.sender);
+		if (menu !== undefined && window !== null) menu.popup({ window });
+	});
 	await app.whenReady();
 
 	// 窗口先出:静态 loading 页毫秒级可见,选目录、拉服务都排在它后面,
 	// 双击后的等待从「干瞪眼」变成「页内转圈」
+	// 无边框窗:菜单条本身是最顶行,最小化/最大化/关闭由 titleBarOverlay 的原生按钮承担
 	const window = new BrowserWindow({
 		width: 1180,
 		height: 820,
 		title: "Reins",
-		backgroundColor: "#121212",
+		backgroundColor: "#ffffff",
 		show: false,
-		webPreferences: { sandbox: true },
+		titleBarStyle: "hidden",
+		titleBarOverlay: { color: "#ffffff", symbolColor: "#262626", height: 36 },
+		webPreferences: {
+			sandbox: true,
+			preload: join(buildDir, "preload.cjs"),
+		},
 	});
 	let server: ServerHandle | undefined;
 	window.on("closed", () => {

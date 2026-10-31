@@ -4,6 +4,7 @@ import { api, openEventStream } from "./api.ts";
 import { ApprovalCard } from "./components/approval-card.tsx";
 import { Composer } from "./components/composer.tsx";
 import { Header } from "./components/header.tsx";
+import { MenuStrip } from "./components/menustrip.tsx";
 import { Sidebar } from "./components/sidebar.tsx";
 import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
 import { TranscriptView } from "./transcript/view.tsx";
@@ -314,7 +315,9 @@ export function App(): ReactElement {
 	};
 
 	return (
-		<div className="workspace">
+		<>
+			<MenuStrip />
+			<div className={"workspace" + (window.reinsDesktop === undefined ? " full" : "")}>
 			<Sidebar
 				version={version}
 				sessions={sessions}
@@ -378,5 +381,6 @@ export function App(): ReactElement {
 				)}
 			</div>
 		</div>
+		</>
 	);
 }

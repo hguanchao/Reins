@@ -36,3 +36,12 @@ await build({
 	// .cjs 后缀是刻意的:打包进去的 package.json 带 "type": "module",.js 会被当 ESM 加载
 	outfile: "desktop/build/main.cjs",
 });
+
+await build({
+	entryPoints: ["desktop/preload.ts"],
+	bundle: true,
+	platform: "node",
+	format: "cjs",
+	external: ["electron"],
+	outfile: "desktop/build/preload.cjs",
+});

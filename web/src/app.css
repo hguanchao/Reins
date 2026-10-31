@@ -67,9 +67,44 @@ button {
 	cursor: pointer;
 }
 
+/* ── 顶部菜单条:无边框窗的最顶行,整条可拖动窗口,按钮弹出原生菜单 ── */
+.menustrip {
+	height: 36px;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 0 10px;
+	background: var(--panel);
+	-webkit-app-region: drag;
+	flex: none;
+}
+
+.menustrip button {
+	-webkit-app-region: no-drag;
+	border: none;
+	background: transparent;
+	padding: 4px 10px;
+	border-radius: 6px;
+	color: var(--fg);
+	font-size: 13px;
+}
+
+.menustrip button:hover {
+	background: var(--hover);
+}
+
+.menustrip .strip-fill {
+	flex: 1;
+}
+
 /* ── 工作区骨架:左任务栏 + 右内容列;全白,层级靠灰度 ── */
 .workspace {
 	display: flex;
+	height: calc(100vh - 36px);
+}
+
+/* 浏览器里没有菜单条,工作区占满整屏 */
+.workspace.full {
 	height: 100vh;
 }
 
