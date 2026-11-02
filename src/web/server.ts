@@ -3,6 +3,10 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
+import type { FileContent, FileSearchHit, FileTree } from "#src/web/files.ts";
+import { parseSettingsUpdate, type SettingsSnapshot, type SettingsUpdate } from "#src/web/settings.ts";
+import type { GitStatus } from "#src/workspace/git.ts";
+
 /**
  * 浏览器界面的本地服务:纯传输层。
  *
@@ -21,16 +25,27 @@ const MAX_BODY_BYTES = 1_000_000;
 /** SSE 心跳间隔:只为了让中间层别把静默连接当死连接掐掉。 */
 const HEARTBEAT_MS = 15_000;
 
+/** 当前运行状态：回合、待审批、审批方式、模型、用量与版本，重连首屏用。 */
+export interface WebState {
+	readonly running: boolean;
+	readonly approval: { readonly id: number; readonly request: unknown } | undefined;
+	readonly approvalMode: string;
+	readonly model: { readonly provider: string; readonly model: string; readonly name: string };
+	readonly version: string;
+	readonly sessionId: string;
+	readonly cwd: string;
+	readonly effort: string;
+	readonly planMode: boolean;
+	readonly contextWindow: number | undefined;
+	readonly contextTokens: number | undefined;
+	readonly totalTokens: number;
+	readonly cost: number | undefined;
+}
+
 /** 传输层对装配层的全部要求;每一条都能用假实现独立测试。 */
 export interface WebServerDeps {
 	/** 当前运行状态:回合、待审批、审批方式、当前模型与应用版本,重连首屏用 */
-	snapshot(): {
-		running: boolean;
-		approval: { readonly id: number; readonly request: unknown } | undefined;
-		approvalMode: string;
-		model: { readonly provider: string; readonly model: string; readonly name: string };
-		version: string;
-	};
+	snapshot(): WebState;
 	/** 会话全量:浏览器首屏重放用 */
 	session(): { readonly id: string; readonly cwd: string; readonly entries: readonly unknown[] };
 	/** 本工作区的会话清单,按更新时间从新到旧 */
@@ -51,17 +66,35 @@ export interface WebServerDeps {
 	skills(): readonly { readonly name: string; readonly description: string; readonly path: string }[];
 	/** 已装载的插件清单(插件市场面板) */
 	plugins(): readonly { readonly name: string; readonly kind: string }[];
+	/** 设置页快照 */
+	settings(): SettingsSnapshot;
+	/** 应用可热更新的设置;返回错误说明时前端直接展示 */
+	applySettings(update: SettingsUpdate): { readonly ok: boolean; readonly error?: string };
+	/** 读取工作区目录的一层条目 */
+	fileTree(path: string): FileTree;
+	/** 读取一个文本文件 */
+	fileRead(path: string): FileContent;
+	/** 按路径搜索文件 */
+	fileSearch(query: string, limit: number): readonly FileSearchHit[];
+	/** 只读 git 状态;不在仓库里时返回 null */
+	gitStatus(): GitStatus | null;
+	/** 单文件 diff;失败时返回 null */
+	gitDiff(path: string, staged: boolean): string | null;
 	/** 提交一句话;回合进行中返回 false,传输层据此回 409 */
 	submit(text: string): boolean;
 	abort(): void;
+	/** 立即压缩上下文;没有压缩器或正在跑回合时返回 false */
+	compact(): boolean;
 	approval: {
 		resolve(id: number, answer: string): void;
 	};
 	/** 可选的全部模型与当前选择;切换只在空闲时生效 */
 	models(): readonly { readonly provider: string; readonly model: string; readonly name: string }[];
 	setModel(provider: string, model: string): boolean;
-	/** 审批方式热切换;合法取值由装配层把关 */
-	setApprovalMode(mode: string): void;
+	/** 审批方式热切换;非法取值返回 false */
+	setApprovalMode(mode: string): boolean;
+	/** Plan 模式热切换;只影响本进程 */
+	setPlanMode(enabled: boolean): void;
 	/** 订阅推送事件;返回退订函数。每个 SSE 连接订一份。 */
 	subscribe(listener: (event: WebEvent) => void): () => void;
 	/** 界面构建产物目录;未构建时为空,首页给出构建指引 */
@@ -120,6 +153,10 @@ function tokenMatches(provided: string, expected: string): boolean {
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
 	res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
 	res.end(JSON.stringify(body));
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 /** 常见静态资源的类型表;浏览器按它决定怎么渲染。 */
@@ -295,6 +332,50 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			sendJson(res, 200, deps.models());
 			return;
 		}
+		if (req.method === "GET" && path === "/api/settings") {
+			sendJson(res, 200, deps.settings());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/files/tree") {
+			try {
+				sendJson(res, 200, deps.fileTree(url.searchParams.get("path") ?? ""));
+			} catch (error) {
+				sendJson(res, 400, { error: errorMessage(error) });
+			}
+			return;
+		}
+		if (req.method === "GET" && path === "/api/files/read") {
+			const file = url.searchParams.get("path");
+			if (file === null || file.length === 0) {
+				sendJson(res, 400, { error: "path is required" });
+				return;
+			}
+			try {
+				sendJson(res, 200, deps.fileRead(file));
+			} catch (error) {
+				sendJson(res, 400, { error: errorMessage(error) });
+			}
+			return;
+		}
+		if (req.method === "GET" && path === "/api/files/search") {
+			const query = url.searchParams.get("q") ?? "";
+			const limit = Number(url.searchParams.get("limit") ?? "20");
+			sendJson(res, 200, deps.fileSearch(query, Number.isFinite(limit) ? limit : 20));
+			return;
+		}
+		if (req.method === "GET" && path === "/api/git/status") {
+			sendJson(res, 200, deps.gitStatus());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/git/diff") {
+			const file = url.searchParams.get("path");
+			if (file === null || file.length === 0) {
+				sendJson(res, 400, { error: "path is required" });
+				return;
+			}
+			sendJson(res, 200, { diff: deps.gitDiff(file, url.searchParams.get("staged") === "1") });
+			return;
+		}
 		if (req.method === "POST") {
 			if (!isTrustedOrigin(req.headers.origin)) {
 				sendJson(res, 403, { error: "untrusted origin" });
@@ -383,8 +464,45 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				sendJson(res, 400, { error: "mode is required" });
 				return;
 			}
-			deps.setApprovalMode(mode);
+			if (!deps.setApprovalMode(mode)) {
+				sendJson(res, 400, { error: "unknown approval mode" });
+				return;
+			}
 			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/settings") {
+			const body = await readJsonBody(req);
+			const parsed = parseSettingsUpdate(body ?? {});
+			if (!parsed.ok || parsed.update === undefined) {
+				sendJson(res, 400, { error: parsed.error ?? "invalid settings" });
+				return;
+			}
+			const result = deps.applySettings(parsed.update);
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "cannot apply settings" });
+				return;
+			}
+			sendJson(res, 200, deps.settings());
+			return;
+		}
+		if (path === "/api/plan-mode") {
+			const body = await readJsonBody(req);
+			const enabled = body?.["enabled"];
+			if (typeof enabled !== "boolean") {
+				sendJson(res, 400, { error: "enabled is required" });
+				return;
+			}
+			deps.setPlanMode(enabled);
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/compact") {
+			if (!deps.compact()) {
+				sendJson(res, 409, { error: "cannot compact now" });
+				return;
+			}
+			sendJson(res, 202, { ok: true });
 			return;
 		}
 		sendJson(res, 404, { error: "not found" });

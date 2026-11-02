@@ -21,9 +21,13 @@
 		"test:dir": "node --test --test-timeout=30000",
 		"build:ui": "vite build",
 		"build:desktop": "node desktop/build.mjs",
-		"build:exe": "npm run build:ui && npm run build:desktop && node desktop/package.mjs"
+		"build:exe": "npm run build:ui && npm run build:desktop && node desktop/package.mjs",
+		"serve": "node src/cli/index.ts serve",
+		"dev:web": "vite",
+		"dev:desktop": "npm run build:ui && npm run build:desktop && electron ."
 	},
 	"devDependencies": {
+		"@tailwindcss/vite": "4.3.3",
 		"@types/node": "22.20.5",
 		"@types/react": "19.2.2",
 		"@types/react-dom": "19.2.2",
@@ -31,6 +35,7 @@
 		"electron": "38.7.2",
 		"electron-builder": "26.0.12",
 		"esbuild": "0.27.2",
+		"tailwindcss": "4.3.3",
 		"typescript": "5.9.3",
 		"vite": "7.1.11"
 	},

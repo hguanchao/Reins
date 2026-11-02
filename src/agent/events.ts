@@ -53,6 +53,10 @@ export type AgentEvent =
 			readonly kind: "turn" | "compact";
 			/** 本次请求的合计 token 数（输入 + 输出，含缓存） */
 			readonly tokens: number;
+			/** 这次请求之后上下文有多大；压缩用量没有这个含义，省略 */
+			readonly contextTokens?: number;
+			/** 这笔用量的金额；模型没配单价时省略 */
+			readonly cost?: number;
 	  }
 	/** 请求失败后正在重试：此时还没有新的内容，界面据此说明为什么还在等 */
 	| {

@@ -169,18 +169,21 @@ export class TurnDriver {
 		if (result.usage !== undefined) {
 			const total = contextTokens(result.usage);
 			if (total > 0) this.#contextTokens = total;
+			const cost = computeCost(this.#deps.model.cost, result.usage);
 			await this.#deps.session.append({
 				type: "usage",
 				provider: this.#deps.provider.id,
 				model: this.#deps.model.id,
 				kind: "turn",
 				usage: result.usage,
-				cost: computeCost(this.#deps.model.cost, result.usage),
+				cost,
 			});
 			await this.emit({
 				type: "usage_recorded",
 				kind: "turn",
 				tokens: result.usage.total,
+				contextTokens: total,
+				...(cost === undefined ? {} : { cost }),
 			});
 		}
 

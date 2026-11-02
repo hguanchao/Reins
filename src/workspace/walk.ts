@@ -114,6 +114,55 @@ export function* walk(root: string, options: WalkOptions): Generator<WalkEntry> 
 }
 
 /**
+ * 列出目录的一层条目。
+ *
+ * 与 walk 共用同一套 .gitignore 判定，但只读目标目录本身：文件树展开一个节点时不该把整棵
+ * 子树都遍历一遍。目录排在文件前面，同级按路径排序，界面不需要再排一次。
+ */
+export function listDirectory(root: string, relativeDirectory: string): readonly WalkEntry[] {
+	const normalized = relativeDirectory
+		.replaceAll("\\", "/")
+		.replaceAll(/^\/+|\/+$/g, "");
+	const segments = normalized.length === 0 ? [] : normalized.split("/");
+	const ancestors = ancestorLayers(root);
+
+	// 从起点逐层走到目标目录，沿途收集每一层自己的 .gitignore；目标目录的规则最后读
+	const layers: IgnoreLayer[] = [];
+	let directory = root;
+	let relative = "";
+	for (const segment of segments) {
+		const dirents = readdirSync(directory, { withFileTypes: true });
+		const own = ignoreLayerOf(directory, relative, dirents);
+		if (own !== undefined) layers.push(own);
+		directory = join(directory, segment);
+		relative = relative.length === 0 ? segment : `${relative}/${segment}`;
+	}
+
+	const dirents = readdirSync(directory, { withFileTypes: true });
+	const own = ignoreLayerOf(directory, relative, dirents);
+	if (own !== undefined) layers.push(own);
+
+	const entries: WalkEntry[] = [];
+	for (const dirent of dirents) {
+		if (dirent.name === VCS_DIRECTORY) continue;
+		const absolute = join(directory, dirent.name);
+		const kind = kindOf(dirent, absolute);
+		if (kind === undefined) continue;
+
+		const child = relative.length === 0 ? dirent.name : `${relative}/${dirent.name}`;
+		const scoped = kind === "directory" ? `${child}/` : child;
+		if (isIgnored(ancestors, layers, scoped)) continue;
+		entries.push({ absolute, relative: toPosix(child), kind });
+	}
+
+	entries.sort((left, right) => {
+		if (left.kind !== right.kind) return left.kind === "directory" ? -1 : 1;
+		return left.relative.localeCompare(right.relative);
+	});
+	return entries;
+}
+
+/**
  * 条目类型。
  *
  * 直接取 dirent 里带的类型，不再对每条 lstat 一次——那是整次遍历最贵的一步。少数文件系统

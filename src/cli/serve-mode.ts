@@ -23,7 +23,11 @@ import {
 } from "#src/cli/session/target.ts";
 import type { ModelSelection } from "#src/config/selection.ts";
 import type { ApprovalMode } from "#src/config/file.ts";
+import { configFilePath, providersFilePath } from "#src/config/paths.ts";
+import { applyLiveConfig } from "#src/config/reload.ts";
+import { updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
 import type { Session } from "#src/session/session.ts";
+import { lastContextTokens, sumUsage } from "#src/session/usage.ts";
 import { defaultSkillRoots, discoverSkills } from "#src/skills/discover.ts";
 import { readVersion } from "#src/version.ts";
 import {
@@ -38,9 +42,12 @@ import {
 	type ApprovalAnswer,
 } from "#src/permission/policy.ts";
 import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import { gitDiff, gitStatus } from "#src/workspace/git.ts";
 import type { McpControl } from "#src/mcp/service.ts";
+import { fileTree, readWorkspaceFile, searchWorkspaceFiles } from "#src/web/files.ts";
 import { createWebServer, type WebServerDeps } from "#src/web/server.ts";
 import { formatReadyLine } from "#src/web/ready-line.ts";
+import { describeSettings, type SettingsUpdate } from "#src/web/settings.ts";
 
 /**
  * 浏览器界面模式。
@@ -61,7 +68,11 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		writeStderr(`${loaded.error.display}\n`);
 		return 1;
 	}
-	const { config, selection: initialSelection, providersConfig } = loaded.value;
+	const { config: initialConfig, selection: initialSelection, providersConfig } = loaded.value;
+	/** 可热更新的配置项会在设置页改动时整体替换；驱动每轮新建，下一轮就读到新值。 */
+	let config = initialConfig;
+	const configFile = options.configPath ?? configFilePath();
+	const providersFile = options.providersPath ?? providersFilePath();
 
 	const workRoot = process.cwd();
 	const workspace = new WorkspaceBoundary(workRoot);
@@ -123,6 +134,8 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 
 	// 一次只跑一个回合;在跑的回合的句柄留给退出与状态查询
 	let running = false;
+	/** 手动压缩与回合互斥：两边都会往同一个会话写条目。 */
+	let compacting = false;
 	let currentAbort: AbortController | undefined;
 	let currentRun: Promise<void> | undefined;
 
@@ -138,7 +151,7 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 
 	/** 切会话/新建会话都只在空闲时允许:正在跑的回合属于旧会话,切断它等于毁掉结果。 */
 	const switchToSession = (id: string): boolean => {
-		if (running || sessionStore === undefined) return false;
+		if (running || compacting || sessionStore === undefined) return false;
 		let next: Session;
 		try {
 			next = resumeSession(workRoot, id, sessionStore);
@@ -152,7 +165,7 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	};
 
 	const startNewSession = (): boolean => {
-		if (running) return false;
+		if (running || compacting) return false;
 		void session.close();
 		session = createSessionFor(workRoot, sessionStore);
 		broadcast({ type: "session_switched" });
@@ -170,13 +183,19 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 				}));
 
 	const removeSessions = (ids: readonly string[]): number =>
-		running || sessionStore === undefined ? 0 : deleteSessions(workRoot, sessionStore, ids, [session.id]);
+		running || compacting || sessionStore === undefined
+			? 0
+			: deleteSessions(workRoot, sessionStore, ids, [session.id]);
 
 	const stashSessions = (ids: readonly string[]): number =>
-		running || sessionStore === undefined ? 0 : archiveSessions(workRoot, sessionStore, ids, [session.id]);
+		running || compacting || sessionStore === undefined
+			? 0
+			: archiveSessions(workRoot, sessionStore, ids, [session.id]);
 
 	const unstashSessions = (ids: readonly string[]): number =>
-		running || sessionStore === undefined ? 0 : restoreSessions(workRoot, sessionStore, ids);
+		running || compacting || sessionStore === undefined
+			? 0
+			: restoreSessions(workRoot, sessionStore, ids);
 
 	const modelList = (): readonly { provider: string; model: string; name: string }[] =>
 		providersConfig.providers.flatMap((provider) =>
@@ -189,15 +208,82 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		name: selection.model.name,
 	});
 
+	const settingsSnapshot = () =>
+		describeSettings({
+			version: readVersion(),
+			configPath: configFile,
+			providersPath: providersFile,
+			config,
+			selection,
+			providers: providersConfig.providers,
+			mcpServers: config.mcpServers.map((server) => ({
+				name: server.name,
+				type: server.type,
+				disabled: server.disabled,
+			})),
+			plugins: pipeline.declarative.plugins.map((plugin) => ({
+				name: plugin.name,
+				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
+			})),
+			skills: discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map((skill) => ({
+				name: skill.name,
+				description: skill.description,
+				path: skill.path,
+			})),
+		});
+
+	/**
+	 * 应用设置页的可写项。
+	 *
+	 * 先落盘再换内存：写配置失败时界面上的值不能先变，否则使用者会以为已经保存。只有能热
+	 * 更新的 effort 与 approval 走到这里，其余项由设置页标成需要重启。
+	 */
+	const applySettings = (update: SettingsUpdate): { ok: boolean; error?: string } => {
+		try {
+			if (update.effort !== undefined) {
+				updateUserConfigValue(["reasoning_effort"], () => update.effort as string, configFile);
+			}
+			if (update.approval !== undefined) {
+				updateUserConfigValue(["approval"], () => update.approval as string, configFile);
+			}
+		} catch (error) {
+			return { ok: false, error: describeError(error) };
+		}
+
+		const fields: (keyof typeof config)[] = [];
+		if (update.effort !== undefined) fields.push("reasoningEffort");
+		if (update.approval !== undefined) fields.push("approval");
+		config = applyLiveConfig(
+			config,
+			{
+				...config,
+				...(update.effort === undefined ? {} : { reasoningEffort: update.effort }),
+				...(update.approval === undefined ? {} : { approval: update.approval }),
+			},
+			fields,
+		);
+		if (update.approval !== undefined) policy.setMode(update.approval);
+		return { ok: true };
+	};
+
 	const deps: WebServerDeps = {
 		snapshot: () => {
 			const id = approvals.pendingId();
+			const usage = sumUsage(session.entries());
 			return {
-				running,
+				running: running || compacting,
 				approval: id === undefined ? undefined : { id, request: approvals.pending() },
 				approvalMode: policy.mode,
 				model: currentModel(),
 				version: readVersion(),
+				sessionId: session.id,
+				cwd: session.cwd,
+				effort: config.reasoningEffort,
+				planMode: policy.planMode,
+				contextWindow: selection.model.contextWindow ?? config.contextWindow,
+				contextTokens: lastContextTokens(session.entries()),
+				totalTokens: usage.total,
+				cost: usage.cost,
 			};
 		},
 		session: () => ({ id: session.id, cwd: session.cwd, entries: session.entries() }),
@@ -219,19 +305,40 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 				name: plugin.name,
 				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
 			})),
+		settings: settingsSnapshot,
+		applySettings,
+		fileTree: (path) => fileTree(workspace, path),
+		fileRead: (path) => readWorkspaceFile(workspace, path),
+		fileSearch: (query, limit) => searchWorkspaceFiles(workspace, query, limit),
+		gitStatus: () => gitStatus(workRoot) ?? null,
+		gitDiff: (path, staged) => gitDiff(workRoot, path, staged) ?? null,
 		models: modelList,
 		setModel: (provider, model) => {
 			const found = providersConfig.providers.find((item) => item.id === provider);
 			const entry = found?.models.find((item) => item.id === model);
 			if (found === undefined || entry === undefined) return false;
+			try {
+				updateModelSelection(provider, model, configFile);
+			} catch (error) {
+				broadcast({ type: "error", message: describeError(error) });
+				return false;
+			}
 			selection = { ...selection, provider: found, model: entry };
 			return true;
 		},
 		setApprovalMode: (mode) => {
-			if (APPROVAL_MODES.includes(mode as ApprovalMode)) policy.setMode(mode as ApprovalMode);
+			if (!APPROVAL_MODES.includes(mode as ApprovalMode)) return false;
+			const next = mode as ApprovalMode;
+			policy.setMode(next);
+			// 热切换只影响本进程，不写配置；设置页里的 approval 才会落盘
+			config = { ...config, approval: next };
+			return true;
+		},
+		setPlanMode: (enabled) => {
+			policy.setPlanMode(enabled);
 		},
 		submit: (text) => {
-			if (running) return false;
+			if (running || compacting) return false;
 			running = true;
 			currentAbort = new AbortController();
 			currentRun = (async () => {
@@ -257,6 +364,23 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		},
 		abort: () => {
 			currentAbort?.abort();
+		},
+		compact: () => {
+			if (running || compacting || compactor === undefined) return false;
+			compacting = true;
+			const driver = createDriverFor(
+				{ config, selection, compactor },
+				{ registry, session, workspace, sandbox, instructions },
+				(event) => broadcast(event),
+			);
+			const controller = new AbortController();
+			void driver
+				.compact(controller.signal)
+				.catch((error: unknown) => broadcast({ type: "error", message: describeError(error) }))
+				.finally(() => {
+					compacting = false;
+				});
+			return true;
 		},
 		approval: {
 			resolve: (id, answer) => {

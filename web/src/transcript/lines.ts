@@ -15,11 +15,14 @@ export type Line =
 			kind: "tool";
 			callId: string;
 			name: string;
+			args: Record<string, unknown> | undefined;
 			running: boolean;
 			isError: boolean;
 			durationMs: number | undefined;
 			summary: string | undefined;
 			detail: string;
+			content: string | undefined;
+			details: unknown;
 	  }
 	| { kind: "notice"; text: string; tone: "info" | "error" };
 
@@ -41,11 +44,14 @@ export function linesFromEntries(entries: readonly SessionEntry[]): Line[] {
 						kind: "tool",
 						callId: block.id,
 						name: block.name,
+						args: block.arguments,
 						running: false,
 						isError: false,
 						durationMs: undefined,
 						summary: undefined,
 						detail: "",
+						content: undefined,
+						details: undefined,
 					});
 				}
 			}
@@ -58,6 +64,7 @@ export function linesFromEntries(entries: readonly SessionEntry[]): Line[] {
 						running: false,
 						isError: message.isError,
 						summary: firstLine(message.content),
+						content: message.content,
 					};
 					break;
 				}
@@ -79,7 +86,7 @@ function firstLine(text: string): string {
 	return newline === -1 ? text : text.slice(0, newline);
 }
 
-/** 拼增量:只并进同kind的最后一行,且那行还开着(新回合不会接上上一回合的尾巴)。 */
+/** 拼增量:只并进同 kind 的最后一行,且那行还开着(新回合不会接上上一回合的尾巴)。 */
 export function appendToLast(lines: readonly Line[], kind: "assistant" | "thinking", delta: string): Line[] {
 	for (let index = lines.length - 1; index >= 0; index -= 1) {
 		const line = lines[index];
@@ -114,4 +121,33 @@ export function updateTool(
 		}
 	}
 	return lines as Line[];
+}
+
+/** 一次工具调用的行。 */
+export type ToolLine = Extract<Line, { kind: "tool" }>;
+
+/** 会话流的分块:连续的几次工具调用并成一块,渲染时连成一条轨迹。 */
+export type LineBlock = { kind: "line"; line: Line } | { kind: "tools"; items: readonly ToolLine[] };
+
+/**
+ * 把连续的工具行并成块。
+ *
+ * 一次任务里工具调用往往连着出现七八行,逐行平铺会把回答推得很远;并块之后只看得到
+ * 一条轨迹,展开某一项仍然能看到它的输出。
+ */
+export function groupToolRuns(lines: readonly Line[]): LineBlock[] {
+	const blocks: LineBlock[] = [];
+	for (const line of lines) {
+		if (line.kind !== "tool") {
+			blocks.push({ kind: "line", line });
+			continue;
+		}
+		const last = blocks[blocks.length - 1];
+		if (last !== undefined && last.kind === "tools") {
+			blocks[blocks.length - 1] = { kind: "tools", items: [...last.items, line] };
+		} else {
+			blocks.push({ kind: "tools", items: [line] });
+		}
+	}
+	return blocks;
 }

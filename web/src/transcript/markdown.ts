@@ -8,7 +8,6 @@
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import { marked } from "marked";
-import "highlight.js/styles/github.css";
 
 function escapeHtml(text: string): string {
 	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -26,9 +25,9 @@ marked.use({
 					: escapeHtml(token.text);
 			const label = lang === "" ? "text" : lang;
 			return (
-				`<div class="codeblock"><div class="codeblock-head">` +
-				`<span class="codeblock-lang">${escapeHtml(label)}</span>` +
-				`<button type="button" class="codeblock-copy" data-copy>复制</button>` +
+				`<div class="code-block"><div class="code-block-head">` +
+				`<span class="code-lang">${escapeHtml(label)}</span>` +
+				`<button type="button" class="code-copy" data-copy>复制</button>` +
 				`</div><pre><code class="hljs">${highlighted}</code></pre></div>`
 			);
 		},
@@ -51,7 +50,7 @@ export function renderMarkdown(markdown: string, streaming: boolean): string {
 export function handleCopyClick(event: Event): boolean {
 	const button = (event.target as HTMLElement | null)?.closest("[data-copy]");
 	if (button === null || !(button instanceof HTMLButtonElement)) return false;
-	const code = button.closest(".codeblock")?.querySelector("code")?.textContent ?? "";
+	const code = button.closest(".code-block")?.querySelector("code")?.textContent ?? "";
 	void navigator.clipboard.writeText(code);
 	button.textContent = "已复制";
 	window.setTimeout(() => {

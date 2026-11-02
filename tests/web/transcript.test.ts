@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "#web/transcript/lines.ts";
+import { appendToLast, groupToolRuns, linesFromEntries, sealStreaming, updateTool, type Line } from "#web/transcript/lines.ts";
 
 /**
  * 会话流状态逻辑的契约:增量拼接到哪一行、回合边界怎么封口、工具结果怎么回填。
@@ -58,11 +58,14 @@ describe("工具行回填", () => {
 		kind: "tool",
 		callId: "c1",
 		name: "read",
+		args: undefined,
 		running: true,
 		isError: false,
 		durationMs: undefined,
 		summary: undefined,
 		detail: "",
+		content: undefined,
+		details: undefined,
 	};
 
 	it("按 callId 找到并改写", () => {
@@ -74,6 +77,38 @@ describe("工具行回填", () => {
 		const lines: Line[] = [toolLine];
 		const next = updateTool(lines, "别的", (line) => ({ ...line, summary: "x" }));
 		assert.equal(next, lines);
+	});
+});
+
+describe("工具行成组", () => {
+	const tool = (callId: string): Line => ({
+		kind: "tool",
+		callId,
+		name: "read",
+		args: undefined,
+		running: false,
+		isError: false,
+		durationMs: 120,
+		summary: "ok",
+		detail: "",
+		content: undefined,
+		details: undefined,
+	});
+
+	it("连续调用并成一块,中间夹着别的行则断开", () => {
+		const blocks = groupToolRuns([tool("a"), tool("b"), assistant("说一句"), tool("c")]);
+		assert.deepEqual(
+			blocks.map((block) => (block.kind === "tools" ? block.items.map((item) => item.callId) : block.line.kind)),
+			[["a", "b"], "assistant", ["c"]],
+		);
+	});
+
+	it("没有工具行时逐行返回", () => {
+		const blocks = groupToolRuns([{ kind: "user", text: "你好" }, assistant("在")]);
+		assert.deepEqual(
+			blocks.map((block) => block.kind),
+			["line", "line"],
+		);
 	});
 });
 
@@ -104,7 +139,19 @@ describe("会话条目重放", () => {
 		assert.deepEqual(lines, [
 			{ kind: "user", text: "修一下" },
 			{ kind: "thinking", text: "想想", open: false },
-			{ kind: "tool", callId: "t1", name: "read", running: false, isError: false, durationMs: undefined, summary: "文件内容", detail: "" },
+			{
+				kind: "tool",
+				callId: "t1",
+				name: "read",
+				args: {},
+				running: false,
+				isError: false,
+				durationMs: undefined,
+				summary: "文件内容",
+				detail: "",
+				content: "文件内容\n第二行",
+				details: undefined,
+			},
 			{ kind: "assistant", text: "改好了", open: false },
 		]);
 	});

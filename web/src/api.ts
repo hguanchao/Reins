@@ -8,12 +8,18 @@
 import type {
 	ApprovalAnswer,
 	ApprovalMode,
-	ApprovalRequest,
+	FileContent,
+	FileSearchHit,
+	FileTree,
+	GitStatus,
 	ModelInfo,
 	PluginInfo,
 	SessionEntry,
 	SessionSummary,
+	SettingsSnapshot,
 	SkillInfo,
+	StateInfo,
+	ThinkingLevel,
 	WebEvent,
 } from "./protocol.ts";
 
@@ -33,13 +39,7 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 	return body;
 }
 
-export interface ServeState {
-	running: boolean;
-	approval: { id: number; request: ApprovalRequest } | undefined;
-	approvalMode: ApprovalMode;
-	model: ModelInfo;
-	version: string;
-}
+export type ServeState = StateInfo;
 
 export const api = {
 	async state(): Promise<ServeState> {
@@ -95,6 +95,44 @@ export const api = {
 	},
 	async setApprovalMode(mode: ApprovalMode): Promise<void> {
 		await request("/api/approval-mode", { method: "POST", body: JSON.stringify({ mode }) });
+	},
+	async settings(): Promise<SettingsSnapshot> {
+		return (await request("/api/settings")) as SettingsSnapshot;
+	},
+	async updateSettings(update: {
+		effort?: ThinkingLevel;
+		approval?: ApprovalMode;
+	}): Promise<SettingsSnapshot> {
+		return (await request("/api/settings", {
+			method: "POST",
+			body: JSON.stringify(update),
+		})) as SettingsSnapshot;
+	},
+	async setPlanMode(enabled: boolean): Promise<void> {
+		await request("/api/plan-mode", { method: "POST", body: JSON.stringify({ enabled }) });
+	},
+	async compact(): Promise<void> {
+		await request("/api/compact", { method: "POST" });
+	},
+	async fileTree(path: string): Promise<FileTree> {
+		return (await request(`/api/files/tree?path=${encodeURIComponent(path)}`)) as FileTree;
+	},
+	async fileRead(path: string): Promise<FileContent> {
+		return (await request(`/api/files/read?path=${encodeURIComponent(path)}`)) as FileContent;
+	},
+	async fileSearch(query: string, limit = 20): Promise<readonly FileSearchHit[]> {
+		return (await request(
+			`/api/files/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+		)) as readonly FileSearchHit[];
+	},
+	async gitStatus(): Promise<GitStatus | null> {
+		return (await request("/api/git/status")) as GitStatus | null;
+	},
+	async gitDiff(path: string, staged: boolean): Promise<string | null> {
+		const body = (await request(
+			`/api/git/diff?path=${encodeURIComponent(path)}&staged=${staged ? "1" : "0"}`,
+		)) as { diff?: string | null };
+		return body.diff ?? null;
 	},
 	async send(text: string): Promise<void> {
 		await request("/api/message", { method: "POST", body: JSON.stringify({ text }) });

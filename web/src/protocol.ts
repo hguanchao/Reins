@@ -21,6 +21,8 @@ export type ApprovalAnswer = "once" | "always" | "deny";
 
 export type ApprovalMode = "ask" | "auto" | "yolo";
 
+export type ThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface ModelInfo {
 	provider: string;
 	model: string;
@@ -40,6 +42,14 @@ export interface StateInfo {
 	approvalMode: ApprovalMode;
 	model: ModelInfo;
 	version: string;
+	sessionId: string;
+	cwd: string;
+	effort: ThinkingLevel;
+	planMode: boolean;
+	contextWindow: number | undefined;
+	contextTokens: number | undefined;
+	totalTokens: number;
+	cost: number | undefined;
 }
 
 export interface SkillInfo {
@@ -51,6 +61,88 @@ export interface SkillInfo {
 export interface PluginInfo {
 	name: string;
 	kind: string;
+}
+
+export interface ModelCost {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+}
+
+export interface SettingsModel {
+	provider: string;
+	providerName: string;
+	model: string;
+	name: string;
+	reasoning: boolean;
+	thinkingLevels: readonly ThinkingLevel[];
+	contextWindow: number | undefined;
+	maxTokens: number | undefined;
+	cost: ModelCost | undefined;
+}
+
+export interface SettingsSnapshot {
+	version: string;
+	configPath: string;
+	providersPath: string;
+	provider: string;
+	model: string;
+	effort: ThinkingLevel;
+	approval: ApprovalMode;
+	sandbox: string;
+	contextWindow: number | undefined;
+	maxTokens: number | undefined;
+	compactModel: string | undefined;
+	reviewModel: string | undefined;
+	models: readonly SettingsModel[];
+	mcpServers: readonly { name: string; type: string; disabled: boolean }[];
+	plugins: readonly { name: string; kind: string }[];
+	skills: readonly { name: string; description: string; path: string }[];
+}
+
+export interface FileTreeEntry {
+	name: string;
+	path: string;
+	kind: "file" | "directory";
+}
+
+export interface FileTree {
+	path: string;
+	entries: readonly FileTreeEntry[];
+}
+
+export interface FileContent {
+	path: string;
+	text: string;
+	encoding: string;
+	hasBom: boolean;
+	lossy: boolean;
+	binary: boolean;
+	truncated: boolean;
+	size: number;
+}
+
+export interface FileSearchHit {
+	path: string;
+	kind: "file" | "directory";
+}
+
+export interface GitFileChange {
+	path: string;
+	index: string;
+	worktree: string;
+	staged: boolean;
+	kind: "added" | "modified" | "deleted" | "renamed" | "untracked" | "conflicted" | "unknown";
+	from?: string;
+}
+
+export interface GitStatus {
+	branch: string | undefined;
+	upstream: string | undefined;
+	ahead: number;
+	behind: number;
+	files: readonly GitFileChange[];
 }
 
 export type WebEvent =
@@ -67,9 +159,11 @@ export type WebEvent =
 			isError: boolean;
 			durationMs: number;
 			summary: string;
+			content?: string;
+			details?: unknown;
 	  }
 	| { type: "turn_end"; stopReason: string }
-	| { type: "usage_recorded"; kind: string; tokens: number }
+	| { type: "usage_recorded"; kind: string; tokens: number; contextTokens?: number; cost?: number }
 	| { type: "retrying"; attempt: number; maxAttempts: number; reason: string }
 	| { type: "compaction_start"; messages: number; tokensBefore: number }
 	| { type: "compaction_end"; covered: number; tokensBefore: number; tokensAfter: number }
@@ -91,7 +185,7 @@ export type LlmMessage =
 				| { type: "text"; text: string }
 				| { type: "thinking"; text: string }
 				| { type: "redactedThinking"; data: string }
-				| { type: "toolCall"; id: string; name: string }
+				| { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> }
 			)[];
 	  }
 	| { role: "toolResult"; toolCallId: string; toolName: string; content: string; isError: boolean };

@@ -47,6 +47,14 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 			approvalMode: "ask",
 			model: { provider: "p1", model: "m1", name: "Model One" },
 			version: "1.0.0",
+			sessionId: "s1",
+			cwd: "/work",
+			effort: "off",
+			planMode: false,
+			contextWindow: 100_000,
+			contextTokens: 1_234,
+			totalTokens: 2_345,
+			cost: 0.01,
 		}),
 		session: () => ({ id: "s1", cwd: "/work", entries: state.entries }),
 		sessions: () => [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }],
@@ -61,6 +69,39 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		restoreSessions: (ids) => ids.length,
 		skills: () => [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
 		plugins: () => [{ name: "demo", kind: "declarative" }],
+		settings: () => ({
+			version: "1.0.0",
+			configPath: "/config.toml",
+			providersPath: "/providers.json",
+			provider: "p1",
+			model: "m1",
+			effort: "off",
+			approval: "ask",
+			sandbox: "off",
+			contextWindow: 100_000,
+			maxTokens: 8_192,
+			compactModel: undefined,
+			reviewModel: undefined,
+			models: [],
+			mcpServers: [],
+			plugins: [],
+			skills: [],
+		}),
+		applySettings: () => ({ ok: true }),
+		fileTree: () => ({ path: "", entries: [] }),
+		fileRead: () => ({
+			path: "a.txt",
+			text: "hi",
+			encoding: "utf8",
+			hasBom: false,
+			lossy: false,
+			binary: false,
+			truncated: false,
+			size: 2,
+		}),
+		fileSearch: () => [],
+		gitStatus: () => null,
+		gitDiff: () => null,
 		submit: (text) => {
 			if (state.running) return false;
 			state.submitted.push(text);
@@ -69,6 +110,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		abort: () => {
 			state.aborted = true;
 		},
+		compact: () => true,
 		approval: {
 			resolve: (id, answer) => {
 				state.resolved.push({ id, answer });
@@ -76,7 +118,8 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		},
 		models: () => [{ provider: "p1", model: "m1", name: "Model One" }],
 		setModel: () => true,
-		setApprovalMode: () => {},
+		setApprovalMode: (mode) => mode !== "nope",
+		setPlanMode: () => {},
 		subscribe: (listener) => {
 			state.listeners.add(listener);
 			return () => state.listeners.delete(listener);
@@ -151,6 +194,14 @@ describe("web 传输层", () => {
 			approvalMode: "ask",
 			model: { provider: "p1", model: "m1", name: "Model One" },
 			version: "1.0.0",
+			sessionId: "s1",
+			cwd: "/work",
+			effort: "off",
+			planMode: false,
+			contextWindow: 100_000,
+			contextTokens: 1_234,
+			totalTokens: 2_345,
+			cost: 0.01,
 		});
 
 		const byQuery = await fetch(`${base}/api/state?token=${TOKEN}`);
@@ -314,6 +365,64 @@ describe("web 传输层", () => {
 			body: JSON.stringify({ mode: "yolo" }),
 		});
 		assert.equal(mode.status, 200);
+
+		const badMode = await fetch(`${base}/api/approval-mode`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ mode: "nope" }),
+		});
+		assert.equal(badMode.status, 400);
+	});
+
+	it("文件、Git、设置与模式接口", async () => {
+		const { deps } = fakeDeps(undefined);
+		const server = await startServer(deps);
+		const base = `http://127.0.0.1:${server.port}`;
+		const headers = { "x-reins-token": TOKEN, "content-type": "application/json" };
+
+		const settings = await fetch(`${base}/api/settings`, { headers: { "x-reins-token": TOKEN } });
+		assert.equal(settings.status, 200);
+		assert.equal(((await settings.json()) as { version: string }).version, "1.0.0");
+
+		const tree = await fetch(`${base}/api/files/tree?path=`, { headers: { "x-reins-token": TOKEN } });
+		assert.deepEqual(await tree.json(), { path: "", entries: [] });
+
+		const file = await fetch(`${base}/api/files/read?path=a.txt`, { headers: { "x-reins-token": TOKEN } });
+		assert.equal(((await file.json()) as { text: string }).text, "hi");
+		const missingFile = await fetch(`${base}/api/files/read`, { headers: { "x-reins-token": TOKEN } });
+		assert.equal(missingFile.status, 400);
+
+		const status = await fetch(`${base}/api/git/status`, { headers: { "x-reins-token": TOKEN } });
+		assert.equal(await status.json(), null);
+		const diff = await fetch(`${base}/api/git/diff?path=a.txt&staged=0`, {
+			headers: { "x-reins-token": TOKEN },
+		});
+		assert.deepEqual(await diff.json(), { diff: null });
+		const missingDiff = await fetch(`${base}/api/git/diff`, { headers: { "x-reins-token": TOKEN } });
+		assert.equal(missingDiff.status, 400);
+
+		const update = await fetch(`${base}/api/settings`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ effort: "high" }),
+		});
+		assert.equal(update.status, 200);
+		const invalidUpdate = await fetch(`${base}/api/settings`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ sandbox: "off" }),
+		});
+		assert.equal(invalidUpdate.status, 400);
+
+		const plan = await fetch(`${base}/api/plan-mode`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ enabled: true }),
+		});
+		assert.equal(plan.status, 200);
+
+		const compact = await fetch(`${base}/api/compact`, { method: "POST", headers });
+		assert.equal(compact.status, 202);
 	});
 
 	it("静态托管:index、类型标注、SPA 回落与路径穿越拦截", async () => {
