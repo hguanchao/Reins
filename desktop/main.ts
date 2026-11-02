@@ -90,18 +90,25 @@ const LOADING_PAGE =
 	"data:text/html;charset=utf-8," +
 	encodeURIComponent(`<!doctype html><meta charset="utf-8"><title>Reins</title>
 <style>
-	body{margin:0;background:#121212;color:#8a8a8a;font-family:"Segoe UI",system-ui,sans-serif;
+	body{margin:0;background:#161616;color:#b3b3b3;font-family:"Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
 		height:100vh;display:flex;align-items:center;justify-content:center}
 	.c{text-align:center}
-	.s{width:34px;height:34px;margin:0 auto 14px;border-radius:50%;
-		border:3px solid #2c2c2c;border-top-color:#d78a4e;animation:r 0.9s linear infinite}
-	p{font-size:13px;letter-spacing:1px}
+	.s{width:26px;height:26px;margin:0 auto 16px;border-radius:50%;
+		border:2px solid #2b2b2b;border-top-color:#f8f8f8;animation:r 0.8s linear infinite}
+	p{margin:0;font-size:12.5px;letter-spacing:0.02em}
 	@keyframes r{to{transform:rotate(360deg)}}
-</style><div class="c"><div class="s"></div><p>Reins 启动中…</p></div>`);
+</style><div class="c"><div class="s"></div><p>正在启动 Reins</p></div>`);
 
-/** 四个顶级菜单;无边框窗的菜单条点击时在按钮原位弹出,保持真正的原生菜单交互。 */
-function buildMenus(): Record<string, Menu> {
-	const templates: Record<string, Electron.MenuItemConstructorOptions[]> = {
+type TopMenuKind = "edit" | "window" | "help" | "about";
+
+/**
+ * 顶栏四个菜单。
+ *
+ * 无边框窗口没有系统菜单栏，顶栏的标签各自弹出对应的原生菜单；关于面板的数据来自打包的
+ * package.json。
+ */
+function buildMenus(): Record<TopMenuKind, Menu> {
+	const templates: Record<TopMenuKind, Electron.MenuItemConstructorOptions[]> = {
 		edit: [
 			{ role: "undo", label: "撤销" },
 			{ role: "redo", label: "重做" },
@@ -125,38 +132,64 @@ function buildMenus(): Record<string, Menu> {
 	};
 	return Object.fromEntries(
 		Object.entries(templates).map(([kind, template]) => [kind, Menu.buildFromTemplate(template)]),
-	);
+	) as Record<TopMenuKind, Menu>;
 }
 
 async function run(): Promise<void> {
-	// 原生菜单栏:编辑/窗口/帮助/关于,标签带 Alt 访问键;关于面板的数据来自打包的 package.json
 	app.setAboutPanelOptions({ applicationName: "Reins", applicationVersion: app.getVersion() });
 	const menus = buildMenus();
-	// 菜单改为页内菜单条弹出,不再挂应用菜单:隐藏标题栏后它无处显示,Alt 也不该再唤出
+	// 菜单由顶栏标签按需弹出，不挂应用菜单：隐藏标题栏后它无处显示，Alt 也不该再唤出
 	Menu.setApplicationMenu(null);
 	ipcMain.handle("menu:show", (event, kind: unknown) => {
-		const menu = typeof kind === "string" ? menus[kind] : undefined;
 		const window = BrowserWindow.fromWebContents(event.sender);
+		const menu = typeof kind === "string" ? menus[kind as TopMenuKind] : undefined;
 		if (menu !== undefined && window !== null) menu.popup({ window });
+	});
+	ipcMain.handle("window:minimize", (event) => {
+		BrowserWindow.fromWebContents(event.sender)?.minimize();
+	});
+	ipcMain.handle("window:toggle-maximize", (event) => {
+		const window = BrowserWindow.fromWebContents(event.sender);
+		if (window === null) return;
+		if (window.isMaximized()) window.unmaximize();
+		else window.maximize();
+	});
+	ipcMain.handle("window:close", (event) => {
+		BrowserWindow.fromWebContents(event.sender)?.close();
+	});
+	ipcMain.handle("window:is-maximized", (event) => {
+		return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
+	});
+	ipcMain.handle("window:set-theme", (event, theme: unknown) => {
+		const window = BrowserWindow.fromWebContents(event.sender);
+		if (window === null) return;
+		window.setBackgroundColor(theme === "zai-light" ? "#f8f8f8" : "#161616");
 	});
 	await app.whenReady();
 
 	// 窗口先出:静态 loading 页毫秒级可见,选目录、拉服务都排在它后面,
 	// 双击后的等待从「干瞪眼」变成「页内转圈」
-	// 无边框窗:菜单条本身是最顶行,最小化/最大化/关闭由 titleBarOverlay 的原生按钮承担
+	// 无边框窗:窗口按钮由渲染层绘制,与 ZCode 的顶栏同一套交互
 	const window = new BrowserWindow({
 		width: 1180,
 		height: 820,
+		minWidth: 880,
+		minHeight: 600,
 		title: "Reins",
-		backgroundColor: "#ffffff",
+		backgroundColor: "#161616",
 		show: false,
-		titleBarStyle: "hidden",
-		titleBarOverlay: { color: "#ffffff", symbolColor: "#262626", height: 36 },
+		frame: false,
 		webPreferences: {
 			sandbox: true,
 			preload: join(buildDir, "preload.cjs"),
 		},
 	});
+	// 最大化状态要同步给渲染层:按钮图标在「最大化/还原」之间切换
+	const sendMaximized = (): void => {
+		if (!window.isDestroyed()) window.webContents.send("window:maximized-changed", window.isMaximized());
+	};
+	window.on("maximize", sendMaximized);
+	window.on("unmaximize", sendMaximized);
 	let server: ServerHandle | undefined;
 	window.on("closed", () => {
 		// 窗口是壳的唯一出口:关窗即收摊,服务进程跟着退
@@ -183,6 +216,13 @@ async function run(): Promise<void> {
 		app.quit();
 		return;
 	}
+	// 页面里的外链不能把壳导航走；同源路由放行，其余交给系统浏览器
+	const serverOrigin = new URL(server.url).origin;
+	window.webContents.on("will-navigate", (event, url) => {
+		if (url.startsWith(serverOrigin)) return;
+		event.preventDefault();
+		if (url.startsWith("http://") || url.startsWith("https://")) void shell.openExternal(url);
+	});
 	server.child.once("exit", (code) => {
 		if (!window.isDestroyed()) {
 			dialog.showErrorBox("Reins 已退出", `服务进程结束(exit ${code ?? "unknown"})。`);

@@ -19,5 +19,5 @@
 			"#src/*": ["../src/*"]
 		}
 	},
-	"include": ["main.ts"]
+	"include": ["main.ts", "preload.ts"]
 }
