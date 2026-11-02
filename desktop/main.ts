@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
 import { parseReadyLine } from "#src/web/ready-line.ts";
@@ -25,36 +25,57 @@ function rememberWorkspace(path: string): void {
 	writeFileSync(join(app.getPath("userData"), "last-workspace.json"), JSON.stringify({ path }));
 }
 
+function isDirectory(path: string): boolean {
+	try {
+		return statSync(path).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
 function lastWorkspace(): string | undefined {
 	const file = join(app.getPath("userData"), "last-workspace.json");
 	try {
 		const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
 		const path = (parsed as { path?: unknown }).path;
-		return typeof path === "string" && existsSync(path) ? path : undefined;
+		return typeof path === "string" && isDirectory(path) ? path : undefined;
 	} catch {
 		return undefined;
 	}
 }
 
-/** 原生对话框选工作区,挂在启动窗口上;默认落在上次用过的目录。取消选择就退出——没有工作区,agent 无处安身。 */
-async function pickWorkspace(window: BrowserWindow): Promise<string | undefined> {
-	// 环境变量入口:测试与自动化用它跳过对话框;存在且有效才认
+/**
+ * 启动工作区。
+ *
+ * 参考同类产品的做法：启动时不弹目录框。上次用过的目录优先；首次启动落在一个应用自管的
+ * 空工作区，Agent 始终有真实 cwd，用户再从界面里打开真正的项目。打开工作区是界面动作，
+ * 不该挡住启动。
+ */
+function resolveStartupWorkspace(): string {
 	const override = process.env.REINS_WORKSPACE;
-	if (override !== undefined && existsSync(override)) {
+	if (override !== undefined && isDirectory(override)) {
 		rememberWorkspace(override);
 		return override;
 	}
 	const previous = lastWorkspace();
+	if (previous !== undefined) return previous;
+
+	const fallback = join(app.getPath("userData"), "workspace");
+	mkdirSync(fallback, { recursive: true });
+	rememberWorkspace(fallback);
+	return fallback;
+}
+
+/** 界面里的「打开工作区」只负责选目录；重启服务与换页由调用方完成。 */
+async function chooseWorkspace(window: BrowserWindow): Promise<string | undefined> {
 	const result = await dialog.showOpenDialog(window, {
-		title: "选择 Reins 的工作区",
-		defaultPath: previous,
+		title: "打开工作区",
+		defaultPath: lastWorkspace(),
 		properties: ["openDirectory", "createDirectory"],
-		buttonLabel: "在这里工作",
+		buttonLabel: "打开",
 	});
 	const picked = result.filePaths[0];
-	if (picked === undefined) return undefined;
-	rememberWorkspace(picked);
-	return picked;
+	return picked !== undefined && isDirectory(picked) ? picked : undefined;
 }
 
 /** 拉起打包好的服务进程,等 stdout 上的就绪行;报错行落进拒绝理由。 */
@@ -191,6 +212,23 @@ async function run(): Promise<void> {
 	window.on("maximize", sendMaximized);
 	window.on("unmaximize", sendMaximized);
 	let server: ServerHandle | undefined;
+	let serverGeneration = 0;
+	let serverOrigin: string | undefined;
+
+	const attachServer = (handle: ServerHandle): void => {
+		const generation = ++serverGeneration;
+		server = handle;
+		serverOrigin = new URL(handle.url).origin;
+		handle.child.once("exit", (code) => {
+			// 切换工作区时旧进程会被主动结束，它的退出不该被当成崩溃
+			if (generation !== serverGeneration) return;
+			if (!window.isDestroyed()) {
+				dialog.showErrorBox("Reins 已退出", `服务进程结束(exit ${code ?? "unknown"})。`);
+			}
+			app.quit();
+		});
+	};
+
 	window.on("closed", () => {
 		// 窗口是壳的唯一出口:关窗即收摊,服务进程跟着退
 		server?.child.kill();
@@ -199,39 +237,52 @@ async function run(): Promise<void> {
 		if (!url.startsWith("http://127.0.0.1:")) void shell.openExternal(url);
 		return { action: "deny" };
 	});
+	// 页面里的外链不能把壳导航走；同源路由放行，其余交给系统浏览器
+	window.webContents.on("will-navigate", (event, url) => {
+		if (serverOrigin !== undefined && url.startsWith(serverOrigin)) return;
+		event.preventDefault();
+		if (url.startsWith("http://") || url.startsWith("https://")) void shell.openExternal(url);
+	});
+
+	ipcMain.handle("workspace:choose", async () => {
+		const picked = await chooseWorkspace(window);
+		if (picked === undefined) return false;
+
+		const previous = server;
+		try {
+			const next = await startServer(picked);
+			attachServer(next);
+			previous?.child.kill();
+			rememberWorkspace(picked);
+			await window.loadURL(next.url);
+			return true;
+		} catch (error) {
+			dialog.showErrorBox("切换工作区失败", error instanceof Error ? error.message : String(error));
+			return false;
+		}
+	});
+
 	await window.loadURL(LOADING_PAGE);
 	window.show();
 
-	// 原生对话框挂在工作窗口上,模态而不再挡住整个启动
-	const workspace = await pickWorkspace(window);
-	if (workspace === undefined) {
-		app.quit();
-		return;
-	}
-
+	let workspace: string;
 	try {
-		server = await startServer(workspace);
+		workspace = resolveStartupWorkspace();
 	} catch (error) {
 		dialog.showErrorBox("Reins 启动失败", error instanceof Error ? error.message : String(error));
 		app.quit();
 		return;
 	}
-	// 页面里的外链不能把壳导航走；同源路由放行，其余交给系统浏览器
-	const serverOrigin = new URL(server.url).origin;
-	window.webContents.on("will-navigate", (event, url) => {
-		if (url.startsWith(serverOrigin)) return;
-		event.preventDefault();
-		if (url.startsWith("http://") || url.startsWith("https://")) void shell.openExternal(url);
-	});
-	server.child.once("exit", (code) => {
-		if (!window.isDestroyed()) {
-			dialog.showErrorBox("Reins 已退出", `服务进程结束(exit ${code ?? "unknown"})。`);
-		}
-		app.quit();
-	});
 
-	// 就绪行到了,整页换成真正的界面
-	await window.loadURL(server.url);
+	try {
+		const handle = await startServer(workspace);
+		attachServer(handle);
+		// 就绪行到了,整页换成真正的界面
+		await window.loadURL(handle.url);
+	} catch (error) {
+		dialog.showErrorBox("Reins 启动失败", error instanceof Error ? error.message : String(error));
+		app.quit();
+	}
 }
 
 const gotLock = app.requestSingleInstanceLock();

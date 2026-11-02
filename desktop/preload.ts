@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("reinsDesktop", {
 	showMenu: (kind?: "edit" | "window" | "help" | "about"): void => {
 		void ipcRenderer.invoke("menu:show", kind);
 	},
+	chooseWorkspace: (): Promise<boolean> => ipcRenderer.invoke("workspace:choose") as Promise<boolean>,
 	minimize: (): void => {
 		void ipcRenderer.invoke("window:minimize");
 	},

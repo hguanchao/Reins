@@ -7,6 +7,7 @@ import {
 	Clock,
 	Ellipsis,
 	Folder,
+	FolderOpen,
 	Loader2,
 	Pin,
 	Settings2,
@@ -18,6 +19,7 @@ import { useState, type PointerEvent, type ReactElement } from "react";
 import { Button, IconButton, Menu, Popover } from "../components/ui/index.ts";
 import { cn } from "../components/ui/cn.ts";
 import { relativeTime, workspaceName } from "../lib/format.ts";
+import { desktopBridge } from "../platform.ts";
 import type { SessionSummary } from "../protocol.ts";
 
 export interface SidebarProps {
@@ -45,6 +47,7 @@ export interface SidebarProps {
 export function Sidebar(props: SidebarProps): ReactElement {
 	const [spaceOpen, setSpaceOpen] = useState(true);
 	const [archivedOpen, setArchivedOpen] = useState(false);
+	const bridge = desktopBridge();
 	const pinnedSessions = props.sessions.filter((session) => props.pinned.has(session.id));
 	const spaceSessions = props.sessions.filter((session) => !props.pinned.has(session.id));
 
@@ -97,14 +100,28 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					<span>空间 (1)</span>
 				</div>
 				<div className="mt-1 px-2">
-					<button
-						type="button"
-						onClick={() => setSpaceOpen((value) => !value)}
-						className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-ui-base text-foreground transition-colors hover:bg-surface-hover"
-					>
-						<Folder className="size-4 shrink-0 text-foreground-subtle" />
-						<span className="min-w-0 flex-1 truncate">{workspaceName(props.cwd)}</span>
-					</button>
+					<div className="group/space flex h-8 items-center gap-1 rounded-lg px-2 transition-colors hover:bg-surface-hover">
+						<button
+							type="button"
+							onClick={() => setSpaceOpen((value) => !value)}
+							className="flex min-w-0 flex-1 items-center gap-2 text-left text-ui-base text-foreground"
+						>
+							<Folder className="size-4 shrink-0 text-foreground-subtle" />
+							<span className="min-w-0 flex-1 truncate">{workspaceName(props.cwd)}</span>
+						</button>
+						{bridge === undefined ? null : (
+							<IconButton
+								label="打开工作区"
+								size="icon-xs"
+								className="text-foreground-subtlest hover:text-foreground"
+								onClick={() => {
+									void bridge.chooseWorkspace();
+								}}
+							>
+								<FolderOpen className="size-3.5" />
+							</IconButton>
+						)}
+					</div>
 					{spaceOpen ? (
 						<div className="mt-1 flex flex-col gap-px pl-3">
 							{spaceSessions.length === 0 ? (
