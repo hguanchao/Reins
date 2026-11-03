@@ -11,6 +11,7 @@ import { UserMessage } from "./user-message.tsx";
 /** 会话流：用户气泡、助手 Markdown、思考行、连续工具行与提示。 */
 export function TranscriptView({ lines }: { readonly lines: readonly Line[] }): ReactElement {
 	const blocks = groupToolRuns(lines);
+	const lineIndexes = new Map<Line, number>(lines.map((line, index): [Line, number] => [line, index]));
 	return (
 		<div className="flex flex-col gap-3" aria-live="polite">
 			{blocks.map((block, index) =>
@@ -21,15 +22,15 @@ export function TranscriptView({ lines }: { readonly lines: readonly Line[] }): 
 						))}
 					</div>
 				) : (
-					<LineView key={`line-${index}`} line={block.line} />
+					<LineView key={`line-${index}`} line={block.line} lineIndex={lineIndexes.get(block.line) ?? 0} />
 				),
 			)}
 		</div>
 	);
 }
 
-function LineView({ line }: { readonly line: Line }): ReactElement | null {
-	if (line.kind === "user") return <UserMessage text={line.text} />;
+function LineView({ line, lineIndex }: { readonly line: Line; readonly lineIndex: number }): ReactElement | null {
+	if (line.kind === "user") return <UserMessage text={line.text} lineIndex={lineIndex} />;
 	if (line.kind === "assistant") {
 		return line.text.length === 0 ? null : <MarkdownView text={line.text} streaming={line.open} />;
 	}

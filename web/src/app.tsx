@@ -13,6 +13,7 @@ import { ApprovalCard } from "./chat/approval-card.tsx";
 import { Composer, type ComposerProps } from "./chat/composer.tsx";
 import { Hero } from "./chat/hero.tsx";
 import { LoadingPixels } from "./chat/loading-pixels.tsx";
+import { MessageRail } from "./chat/message-rail.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
 import { ToastHost, toast } from "./components/ui/index.ts";import { ScrollFadeViewport } from "./components/ui/scroll-fade-viewport.tsx";
 import { workspaceName } from "./lib/format.ts";
@@ -47,13 +48,12 @@ import {
 	RIGHTBAR_MIN,
 	SIDEBAR_AUTO_COLLAPSE,
 } from "./shell/columns.ts";import { CommandPalette } from "./shell/command-palette.tsx";
-import { ConversationHeader, type ConversationView } from "./shell/conversation-header.tsx";
+import { ConversationHeader } from "./shell/conversation-header.tsx";
 import type { GlobalPanelId } from "./shell/sidebar.tsx";
 import { Sidebar } from "./shell/sidebar.tsx";
 import { readPinnedSessions, writePinnedSessions } from "./state/pinned.ts";
 import { useTheme } from "./state/theme.ts";
 import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
-import { TrajectoryView } from "./trajectory/trajectory-view.tsx";
 
 const STICK_THRESHOLD = 80;
 const SIDEBAR_DEFAULT = 280;
@@ -91,7 +91,6 @@ export function App(): ReactElement {
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [commandOpen, setCommandOpen] = useState(false);
 	const [activePanel, setActivePanel] = useState<GlobalPanelId | undefined>(undefined);
-	const [view, setView] = useState<ConversationView>("chat");
 	const [pinned, setPinned] = useState<ReadonlySet<string>>(readPinnedSessions);
 	const [canGoBack, setCanGoBack] = useState(false);
 	const [canGoForward, setCanGoForward] = useState(false);
@@ -166,7 +165,6 @@ export function App(): ReactElement {
 		navigatingRef.current = true;
 		updateHistoryButtons();
 		setActivePanel(undefined);
-		setView("chat");
 		setSideFullscreen(false);
 		void api.switchSession(id).catch((error: unknown) => {
 			navigatingRef.current = false;
@@ -182,7 +180,6 @@ export function App(): ReactElement {
 		navigatingRef.current = true;
 		updateHistoryButtons();
 		setActivePanel(undefined);
-		setView("chat");
 		setSideFullscreen(false);
 		void api.switchSession(id).catch((error: unknown) => {
 			navigatingRef.current = false;
@@ -335,7 +332,6 @@ export function App(): ReactElement {
 					setLines([]);
 					setContextTokens(undefined);
 					setActivePanel(undefined);
-					setView("chat");
 					setSideFullscreen(false);
 					reload();
 					refreshSessions();
@@ -381,7 +377,7 @@ export function App(): ReactElement {
 		if (!stickToBottom.current) return;
 		const element = scrollRef.current;
 		if (element !== null) element.scrollTop = element.scrollHeight;
-	}, [lines, approval, awaitingModel, view]);
+	}, [lines, approval, awaitingModel]);
 
 	useEffect(() => {
 		const timer = window.setInterval(() => {
@@ -429,7 +425,6 @@ export function App(): ReactElement {
 	const newTask = useCallback((): void => {
 		setSettingsOpen(false);
 		setActivePanel(undefined);
-		setView("chat");
 		setSideFullscreen(false);
 		void api.newSession().catch((error: unknown) => {
 			toast(error instanceof Error ? error.message : String(error), "error");
@@ -449,7 +444,6 @@ export function App(): ReactElement {
 	const switchSession = useCallback(
 		(id: string): void => {
 			setActivePanel(undefined);
-			setView("chat");
 			setSideFullscreen(false);
 			if (id === sessionId) return;
 			setSettingsOpen(false);
@@ -462,7 +456,6 @@ export function App(): ReactElement {
 
 	const send = useCallback((text: string): void => {
 		setActivePanel(undefined);
-		setView("chat");
 		setSideFullscreen(false);
 		setLines((current) => [...current, { kind: "user", text }]);
 		void api.send(text).catch((error: unknown) => {
@@ -705,11 +698,9 @@ export function App(): ReactElement {
 				blank={draft}
 				workspace={workspaceName(cwd) || "Reins"}
 				title={currentTitle}
-				view={view}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
 				rightbarOpen={sideOpen}
-				onView={setView}
 				onBack={goBack}
 				onForward={goForward}
 				onToggleRightbar={toggleSidePane}
@@ -723,8 +714,6 @@ export function App(): ReactElement {
 					<div className="flex flex-1 items-center justify-center px-6 text-[13px] text-destructive">
 						无法连接：{loadError}
 					</div>
-				) : view === "trajectory" && !draft ? (
-					<TrajectoryView lines={lines} />
 				) : draft ? (
 					<Hero
 						workspace={workspaceName(cwd)}
@@ -745,6 +734,7 @@ export function App(): ReactElement {
 									</div>
 								</div>
 							</ScrollFadeViewport>
+							<MessageRail lines={lines} scrollRef={scrollRef} />
 							{!atBottom ? (
 								<button
 									type="button"
