@@ -6,7 +6,7 @@ import { desktopBridge } from "../platform.ts";
  * 主题。
  *
  * 只有两套实际主题（Zai Light / Zai Dark），System 是选择方式而不是第三套配色。
- * 首次启动默认深色，与桌面产品的主界面一致；选择存在 localStorage，桌面壳同步窗口底色。
+ * 首次启动默认跟随系统；选择存在 localStorage，桌面壳同步窗口底色。
  */
 
 export type ThemeMode = "zai-dark" | "zai-light" | "system";
@@ -20,9 +20,9 @@ export function readThemeMode(): ThemeMode {
 		const stored = localStorage.getItem(STORAGE_KEY);
 		if (stored === "zai-light" || stored === "zai-dark" || stored === "system") return stored;
 	} catch {
-		// 隐私模式或禁用存储时退回默认深色
+		// 隐私模式或禁用存储时按默认跟随系统处理
 	}
-	return "zai-dark";
+	return "system";
 }
 
 export function resolveTheme(mode: ThemeMode): ResolvedTheme {

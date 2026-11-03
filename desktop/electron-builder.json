@@ -2,7 +2,8 @@
 	"appId": "com.reins.desktop",
 	"productName": "Reins",
 	"directories": {
-		"output": "desktop/release"
+		"output": "desktop/release",
+		"buildResources": "desktop/assets"
 	},
 	"files": [
 		"desktop/build/**",
@@ -15,6 +16,7 @@
 	],
 	"electronLanguages": ["zh-CN", "en-US"],
 	"win": {
+		"icon": "icon.ico",
 		"target": [
 			{ "target": "nsis", "arch": ["x64"] }
 		]

@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 
 /**
  * 桌面打包的两段 esbuild。用 JS API 而不是命令行,只为干净地放进 banner:
@@ -45,3 +45,7 @@ await build({
 	external: ["electron"],
 	outfile: "desktop/build/preload.cjs",
 });
+
+// 窗口图标在运行期按 buildDir 读取,与主进程一起放进打包目录
+mkdirSync("desktop/build", { recursive: true });
+copyFileSync("desktop/assets/icon.ico", "desktop/build/icon.ico");

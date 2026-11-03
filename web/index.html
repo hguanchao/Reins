@@ -4,11 +4,18 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="theme-color" content="#161616" />
+		<link rel="icon" type="image/svg+xml" href="/logo.svg" />
 		<title>Reins</title>
 		<script>
-			// 首帧之前定好主题，避免深色界面先闪一帧白底
-			try {
-				const mode = localStorage.getItem("reins-theme") || "zai-dark";
+			// 首帧之前定好主题，避免界面先闪一帧错误的底色；默认跟随系统
+			(() => {
+				let mode = "system";
+				try {
+					const stored = localStorage.getItem("reins-theme");
+					if (stored === "zai-light" || stored === "zai-dark") mode = stored;
+				} catch {
+					// 存储不可用时保持默认的跟随系统
+				}
 				const dark =
 					mode === "zai-dark" ||
 					(mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
@@ -17,9 +24,7 @@
 				document
 					.querySelector('meta[name="theme-color"]')
 					?.setAttribute("content", dark ? "#161616" : "#f8f8f8");
-			} catch {
-				// 读不到 localStorage 时沿用 html 上的默认深色
-			}
+			})();
 		</script>
 	</head>
 	<body>
