@@ -59,14 +59,14 @@
 		outline: none;
 	}
 
-	/* 滚动条只在指针进入容器时显形，避免一屏全是灰条 */
+	/* 滚动条常驻但透明,滚动或悬停时才显出圆头窄条;轨道透明,留白由 padding 撑出 */
 	* {
 		scrollbar-width: thin;
 		scrollbar-color: transparent transparent;
 	}
 
 	*:hover {
-		scrollbar-color: color-mix(in oklab, var(--foreground) 20%, transparent) transparent;
+		scrollbar-color: var(--border) transparent;
 	}
 
 	*::-webkit-scrollbar {
@@ -83,11 +83,16 @@
 		border: 3px solid transparent;
 		border-radius: 999px;
 		background-clip: padding-box;
+		min-height: 32px;
 		transition: background-color 200ms ease;
 	}
 
 	*:hover::-webkit-scrollbar-thumb {
-		background-color: color-mix(in oklab, var(--foreground) 20%, transparent);
+		background-color: var(--border);
+	}
+
+	*:active::-webkit-scrollbar-thumb {
+		background-color: var(--border-hover);
 	}
 
 	.drag-region {
@@ -434,6 +439,16 @@
 	}
 }
 
+/* 工具调用运行中的不定进度:一条扫光在窄轨道里来回走 */
+@keyframes reins-tool-progress {
+	from {
+		left: -33%;
+	}
+	to {
+		left: 100%;
+	}
+}
+
 @keyframes reins-rise {
 	from {
 		opacity: 0;
@@ -500,6 +515,10 @@
 
 .animate-sweep {
 	animation: reins-sweep 1.2s ease-in-out infinite;
+}
+
+.animate-tool-progress {
+	animation: reins-tool-progress 1.2s ease-in-out infinite;
 }
 
 .animate-rise {
