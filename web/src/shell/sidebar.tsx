@@ -4,8 +4,6 @@ import {
 	Blocks,
 	ChevronRight,
 	CirclePlus,
-	Clock,
-	Ellipsis,
 	Folder,
 	FolderOpen,
 	Loader2,
@@ -14,9 +12,9 @@ import {
 	Trash2,
 	type LucideIcon,
 } from "lucide-react";
-import { useState, type PointerEvent, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 
-import { Button, IconButton, Menu, Popover } from "../components/ui/index.ts";
+import { Button, Menu, Popover, ScrollFadeViewport } from "../components/ui/index.ts";
 import { cn } from "../components/ui/cn.ts";
 import { relativeTime, workspaceName } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
@@ -40,10 +38,9 @@ export interface SidebarProps {
 	onOpenPluginsPlaceholder(): void;
 	onOpenScheduled(): void;
 	onOpenSettings(): void;
-	onResizeStart(event: PointerEvent<HTMLDivElement>): void;
 }
 
-/** 侧栏：品牌、功能导航、置顶任务与工作区任务。 */
+/** 侧栏帧:导航组在顶部,任务列表占主体,功能入口收在底部。 */
 export function Sidebar(props: SidebarProps): ReactElement {
 	const [spaceOpen, setSpaceOpen] = useState(true);
 	const [archivedOpen, setArchivedOpen] = useState(false);
@@ -53,156 +50,159 @@ export function Sidebar(props: SidebarProps): ReactElement {
 
 	return (
 		<aside
-			className="relative flex h-full shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar"
+			className="flex h-full shrink-0 flex-col overflow-hidden rounded-(--workspace-panel-radius) border-[0.5px] border-border bg-sidebar shadow-xs"
 			style={{ width: props.width }}
 		>
-			<div className="flex items-center justify-between gap-2 px-4 pb-3 pt-4">
-				<div className="min-w-0 truncate text-ui-lg font-semibold tracking-tight text-foreground">
-					Reins
-				</div>
-				<span className="shrink-0 font-mono text-ui-xs text-foreground-subtlest">
-					V{props.version || "1.0.0"}
-				</span>
-			</div>
-
-			<div className="px-2 pb-2">
+			<div className="flex h-1 shrink-0 drag-region" />
+			<nav className="flex flex-col gap-1 px-2 pb-2">
 				<Button
 					variant="ghost"
 					size="lg"
-					className="w-full justify-start gap-2 bg-surface-strong font-semibold hover:bg-surface-hover"
+					className="h-8 w-full justify-start gap-2 px-2.5 font-medium"
 					onClick={props.onNewTask}
 				>
 					<CirclePlus className="size-4" />
-					新建任务
+					<span className="min-w-0 flex-1 text-left">新建任务</span>
+					<span className="text-ui-sm text-foreground-subtlest">Ctrl N</span>
 				</Button>
-			</div>
-
-			<div className="flex flex-col gap-0.5 px-2">
 				<NavRow icon={Blocks} label="插件" onClick={props.onOpenPluginsPlaceholder} />
-				<NavRow icon={Clock} label="定时任务" onClick={props.onOpenScheduled} />
-			</div>
+				<NavRow icon={Archive} label="定时任务" onClick={props.onOpenScheduled} />
+			</nav>
 
-			<div className="min-h-0 flex-1 overflow-y-auto pb-3">
-				<div className="mt-4 px-4 text-ui-sm font-medium text-foreground-subtle">
-					任务 ({pinnedSessions.length})
-				</div>
-				{pinnedSessions.length === 0 ? (
-					<div className="px-4 py-1.5 text-ui-sm text-foreground-subtlest">暂无任务</div>
-				) : (
-					<div className="mt-1 flex flex-col gap-px px-2">
-						{pinnedSessions.map((session) => (
-							<SessionRow key={session.id} {...props} session={session} />
-						))}
-					</div>
-				)}
+			<div className="min-h-0 flex-1 border-t border-border/50 pt-2">
+				<ScrollFadeViewport className="h-full">
+					<GroupHeading label={pinnedSessions.length > 0 ? "置顶" : undefined} />
+					{pinnedSessions.length === 0 ? null : (
+						<div className="flex flex-col gap-px px-2 pb-2">
+							{pinnedSessions.map((session) => (
+								<SessionRow key={session.id} {...props} session={session} />
+							))}
+						</div>
+					)}
 
-				<div className="mt-4 flex items-center justify-between px-4 text-ui-sm font-medium text-foreground-subtle">
-					<span>空间 (1)</span>
-				</div>
-				<div className="mt-1 px-2">
-					<div className="group/space flex h-8 items-center gap-1 rounded-lg px-2 transition-colors hover:bg-surface-hover">
+					<div className="flex items-center justify-between px-4 pb-1 pt-1">
 						<button
 							type="button"
 							onClick={() => setSpaceOpen((value) => !value)}
-							className="flex min-w-0 flex-1 items-center gap-2 text-left text-ui-base text-foreground"
+							className="flex min-w-0 flex-1 items-center gap-1 text-left text-ui-base font-medium text-foreground-subtlest"
 						>
-							<Folder className="size-4 shrink-0 text-foreground-subtle" />
-							<span className="min-w-0 flex-1 truncate">{workspaceName(props.cwd)}</span>
+							<ChevronRight
+								className={cn(
+									"size-3.5 shrink-0 transition-transform",
+									spaceOpen && "rotate-90",
+								)}
+							/>
+							<span className="min-w-0 truncate">{workspaceName(props.cwd)}</span>
 						</button>
 						{bridge === undefined ? null : (
-							<IconButton
-								label="打开工作区"
+							<Button
+								variant="ghost"
 								size="icon-xs"
+								aria-label="打开工作区"
+								title="打开工作区"
 								className="text-foreground-subtlest hover:text-foreground"
 								onClick={() => {
 									void bridge.chooseWorkspace();
 								}}
 							>
 								<FolderOpen className="size-3.5" />
-							</IconButton>
+							</Button>
 						)}
 					</div>
 					{spaceOpen ? (
-						<div className="mt-1 flex flex-col gap-px pl-3">
+						<div className="flex flex-col gap-px px-2">
 							{spaceSessions.length === 0 ? (
-								<div className="px-2 py-1.5 text-ui-sm text-foreground-subtlest">暂无任务</div>
+								<div className="px-2.5 py-1.5 text-ui-sm text-foreground-subtlest">
+									还没有任务
+								</div>
 							) : (
 								spaceSessions.map((session) => (
 									<SessionRow key={session.id} {...props} session={session} />
 								))
 							)}
 						</div>
-					) : null}
-				</div>
+					) : (
+						<div className="px-4 py-1.5">
+							<Folder className="size-4 text-foreground-subtlest" />
+						</div>
+					)}
 
-				{props.archived.length === 0 ? null : (
-					<div className="mt-4 px-2">
-						<button
-							type="button"
-							onClick={() => setArchivedOpen((value) => !value)}
-							className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-ui-base text-foreground-subtle transition-colors hover:bg-surface-hover"
-						>
-							<Archive className="size-4 shrink-0" />
-							<span className="min-w-0 flex-1">已归档 ({props.archived.length})</span>
-							<ChevronRight
-								className={cn(
-									"size-3.5 shrink-0 text-foreground-subtlest transition-transform",
-									archivedOpen && "rotate-90",
-								)}
-							/>
-						</button>
-						{archivedOpen ? (
-							<div className="mt-1 flex flex-col gap-px pl-3">
-								{props.archived.map((session) => (
-									<div
-										key={session.id}
-										className="group/row flex h-8 items-center gap-2 rounded-lg px-2 hover:bg-surface-hover"
-									>
-										<span className="min-w-0 flex-1 truncate text-ui-base text-foreground-subtle">
-											{session.title ?? "未命名会话"}
-										</span>
-										<Button
-											size="xs"
-											variant="ghost"
-											className="opacity-0 group-hover/row:opacity-100"
-											onClick={() => props.onRestore(session.id)}
+					{props.archived.length === 0 ? null : (
+						<div className="mt-3 px-2">
+							<button
+								type="button"
+								onClick={() => setArchivedOpen((value) => !value)}
+								className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-ui-base text-foreground-subtle transition-colors hover:bg-surface-hover"
+							>
+								<Archive className="size-4 shrink-0" />
+								<span className="min-w-0 flex-1">已归档 ({props.archived.length})</span>
+								<ChevronRight
+									className={cn(
+										"size-3.5 shrink-0 text-foreground-subtlest transition-transform",
+										archivedOpen && "rotate-90",
+									)}
+								/>
+							</button>
+							{archivedOpen ? (
+								<div className="mt-1 flex flex-col gap-px">
+									{props.archived.map((session) => (
+										<div
+											key={session.id}
+											className="group/row flex min-h-8 items-center gap-2 rounded-lg py-1 pl-2.5 pr-1 hover:bg-surface-hover"
 										>
-											恢复
-										</Button>
-									</div>
-								))}
-							</div>
-						) : null}
-					</div>
-				)}
+											<span className="min-w-0 flex-1 truncate text-ui-base text-foreground-subtle">
+												{session.title ?? "未命名会话"}
+											</span>
+											<Button
+												size="xs"
+												variant="ghost"
+												className="opacity-0 group-hover/row:opacity-100"
+												onClick={() => props.onRestore(session.id)}
+											>
+												恢复
+											</Button>
+										</div>
+									))}
+								</div>
+							) : null}
+						</div>
+					)}
+					<div className="h-2" />
+				</ScrollFadeViewport>
 			</div>
 
-			<div className="flex h-14 shrink-0 items-center justify-end gap-1 border-t border-border/60 px-4">
+			<div className="flex h-12 shrink-0 items-center justify-end gap-1 px-3">
 				<Popover
 					trigger={({ toggle }) => (
-						<IconButton label="通知" size="icon-sm" onClick={toggle}>
+						<Button variant="ghost" size="icon-sm" aria-label="通知" title="通知" onClick={toggle}>
 							<Bell className="size-4" />
-						</IconButton>
+						</Button>
 					)}
 					className="w-64"
 				>
 					<div className="px-2 py-3 text-ui-sm text-foreground-subtle">暂无通知</div>
 				</Popover>
-				<IconButton label="设置" size="icon-sm" onClick={props.onOpenSettings}>
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					aria-label="设置"
+					title="设置"
+					onClick={props.onOpenSettings}
+				>
 					<Settings2 className="size-4" />
-				</IconButton>
-			</div>
-
-			<div
-				role="separator"
-				aria-orientation="vertical"
-				aria-label="调整侧栏宽度"
-				onPointerDown={props.onResizeStart}
-				className="group absolute right-0 top-0 z-10 h-full w-1 cursor-ew-resize touch-none"
-			>
-				<span className="absolute inset-y-2 right-0 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-resize-handle group-active:bg-resize-handle" />
+				</Button>
+				<span className="ml-1 shrink-0 font-mono text-ui-xs text-foreground-subtlest">
+					v{props.version || "1.0.0"}
+				</span>
 			</div>
 		</aside>
+	);
+}
+
+function GroupHeading({ label }: { readonly label: string | undefined }): ReactElement {
+	if (label === undefined) return <div className="h-2" />;
+	return (
+		<h3 className="px-4 pb-1 pt-1 text-ui-base font-medium text-foreground-subtlest">{label}</h3>
 	);
 }
 
@@ -219,7 +219,7 @@ function NavRow({
 		<button
 			type="button"
 			onClick={onClick}
-			className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-ui-base text-foreground transition-colors hover:bg-surface-hover"
+			className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-ui-base text-foreground transition-colors hover:bg-surface-hover"
 		>
 			<Icon className="size-4 shrink-0 text-foreground-subtle" />
 			<span className="min-w-0 flex-1 truncate">{label}</span>
@@ -227,6 +227,7 @@ function NavRow({
 	);
 }
 
+/** 双行任务条目:首行标题,次行状态说明;前置 16px 槽位承载运行/置顶指示。 */
 function SessionRow(
 	props: SidebarProps & { readonly session: SessionSummary },
 ): ReactElement {
@@ -236,39 +237,48 @@ function SessionRow(
 	return (
 		<div
 			className={cn(
-				"group/row flex h-8 items-center gap-1 rounded-lg pl-2 pr-1 transition-colors",
-				active ? "bg-surface-hover" : "hover:bg-surface-hover",
+				"group/row flex min-h-9 items-center gap-2 rounded-lg py-1 pl-2.5 pr-1 transition-colors",
+				active ? "bg-selected" : "hover:bg-surface-hover",
 			)}
 		>
+			<span className="flex size-4 shrink-0 items-center justify-center">
+				{props.running && active ? (
+					<Loader2 className="size-3.5 animate-spin text-foreground-subtle" />
+				) : pinned ? (
+					<Pin className="size-3 text-foreground-subtlest" />
+				) : null}
+			</span>
 			<button
 				type="button"
 				onClick={() => props.onSwitch(session.id)}
-				className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+				className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
 			>
-				{props.running && active ? (
-					<Loader2 className="size-3.5 shrink-0 animate-spin text-foreground-subtle" />
-				) : pinned ? (
-					<Pin className="size-3 shrink-0 text-foreground-subtlest" />
-				) : null}
-				<span className="min-w-0 flex-1 truncate text-ui-base text-foreground">
+				<span className="min-w-0 truncate text-ui-base leading-tight text-foreground">
 					{session.title ?? "新任务"}
 				</span>
-				<span className="shrink-0 text-ui-sm text-foreground-subtlest">
-					{relativeTime(session.updatedAt)}
+				<span className="flex items-center gap-1 text-ui-sm leading-tight text-foreground-subtlest">
+					<span className="min-w-0 truncate">{pinned ? "已置顶" : "任务"}</span>
+					<span className="ml-auto shrink-0 pl-2">{relativeTime(session.updatedAt)}</span>
 				</span>
 			</button>
 			<div className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-within:opacity-100">
 				<Menu
 					trigger={({ toggle }) => (
-						<IconButton label="会话操作" size="icon-xs" onClick={toggle}>
-							<Ellipsis className="size-3.5" />
-						</IconButton>
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label="会话操作"
+							title="会话操作"
+							onClick={toggle}
+						>
+							<MoreGlyph />
+						</Button>
 					)}
 					entries={[
 						{
 							type: "item",
 							key: "pin",
-							label: pinned ? "取消置顶" : "置顶到任务",
+							label: pinned ? "取消置顶" : "置顶",
 							icon: Pin,
 							onSelect: () => props.onTogglePin(session.id),
 						},
@@ -293,5 +303,16 @@ function SessionRow(
 				/>
 			</div>
 		</div>
+	);
+}
+
+/** 省略号图标:菜单入口的统一记号 */
+function MoreGlyph(): ReactElement {
+	return (
+		<svg viewBox="0 0 16 16" className="size-3.5 fill-current" aria-hidden="true">
+			<circle cx="3" cy="8" r="1.4" />
+			<circle cx="8" cy="8" r="1.4" />
+			<circle cx="13" cy="8" r="1.4" />
+		</svg>
 	);
 }

@@ -177,7 +177,7 @@ export function CommandPalette({
 				if (event.target === event.currentTarget) onClose();
 			}}
 		>
-			<div className="w-full max-w-xl overflow-hidden rounded-2xl border border-popover-border bg-popover shadow-lg animate-pop">
+			<div className="w-full max-w-xl overflow-hidden rounded-2xl border border-popover-border bg-popover shadow-md animate-pop">
 				<div className="flex h-12 items-center gap-2 border-b border-border/50 px-4">
 					<Search className="size-4 shrink-0 text-foreground-subtlest" />
 					<input
@@ -209,8 +209,10 @@ export function CommandPalette({
 									onMouseEnter={() => setIndex(itemIndex)}
 									onClick={() => choose(item)}
 									className={cn(
-										"flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui-base",
-										itemIndex === index ? "bg-menu-hover text-foreground" : "text-foreground-subtle",
+										"flex min-h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-ui-base transition-colors",
+										itemIndex === index
+											? "bg-selected text-foreground"
+											: "text-foreground-subtle hover:bg-surface-hover",
 									)}
 								>
 									<Icon className="size-4 shrink-0 text-foreground-subtlest" />

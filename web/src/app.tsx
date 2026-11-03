@@ -1,4 +1,4 @@
-import { ArrowDown, Info, PanelRight, PanelRightClose } from "lucide-react";
+import { ArrowDown, GitBranch, Info, PanelRight, PanelRightClose } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
@@ -13,7 +13,8 @@ import { ApprovalCard } from "./chat/approval-card.tsx";
 import { Composer, type ComposerProps } from "./chat/composer.tsx";
 import { LoadingPixels } from "./chat/loading-pixels.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
-import { Button, Dialog, ToastHost, toast } from "./components/ui/index.ts";
+import { Button, Dialog, ScrollFadeViewport, ToastHost, toast } from "./components/ui/index.ts";
+import { IconButton } from "./components/ui/button.tsx";
 import { cn } from "./components/ui/cn.ts";
 import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
@@ -39,7 +40,10 @@ import { SettingsPage } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import { CommandPalette } from "./shell/command-palette.tsx";
 import { Sidebar } from "./shell/sidebar.tsx";
-import { TopBar } from "./shell/top-bar.tsx";
+import { TopOverlay } from "./shell/top-overlay.tsx";
+import { WorkspaceHeader } from "./shell/workspace-header.tsx";
+import { WindowControls } from "./shell/window-controls.tsx";
+import { workspaceName } from "./lib/format.ts";
 import { readPinnedSessions, writePinnedSessions } from "./state/pinned.ts";
 import { useTheme } from "./state/theme.ts";
 import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
@@ -52,17 +56,17 @@ const SIDE_PANE_DEFAULT = 480;
 
 const QUICK_PROMPTS: readonly { readonly label: string; readonly prompt: string }[] = [
 	{ label: "总结这个项目", prompt: "总结这个项目的结构与用途" },
-	{ label: "修复失败的测试", prompt: "运行项目测试,修复失败的用例" },
-	{ label: "审查未提交改动", prompt: "审查工作区未提交的改动,按严重程度列出问题" },
+	{ label: "修复失败的测试", prompt: "运行项目测试，修复失败的用例" },
+	{ label: "审查未提交改动", prompt: "审查工作区未提交的改动，按严重程度列出问题" },
 ];
 
 function greeting(): string {
 	const hour = new Date().getHours();
-	if (hour < 5) return "夜深了,注意休息";
-	if (hour < 11) return "早上好,今天从什么开始?";
-	if (hour < 13) return "中午好,上午进展如何?";
-	if (hour < 18) return "下午好,继续推进";
-	return "晚上好,今天辛苦了";
+	if (hour < 5) return "夜深了，注意休息";
+	if (hour < 11) return "早上好，今天从什么开始？";
+	if (hour < 13) return "中午好，上午进展如何？";
+	if (hour < 18) return "下午好，继续推进";
+	return "晚上好，今天辛苦了";
 }
 
 /** 界面主组件：装配三栏骨架、会话状态与事件流。 */
@@ -654,7 +658,6 @@ export function App(): ReactElement {
 
 	const activeTab = sideTabs.find((tab) => tab.id === activeTabId);
 	const disconnected = everConnected.current && !connected;
-	const draft = lines.length === 0 && !running;
 
 	const composerProps: ComposerProps = {
 		running,
@@ -683,187 +686,261 @@ export function App(): ReactElement {
 
 	if (settingsOpen) {
 		return (
-			<div className="flex h-full flex-col">
-				<TopBar
-					canGoBack={canGoBack}
-					canGoForward={canGoForward}
-					onBack={goBack}
-					onForward={goForward}
-					onSearch={() => setCommandOpen(true)}
-				/>
-				<div className="min-h-0 flex-1 overflow-hidden">
-					<SettingsPage
-						settings={settings}
-						themeMode={theme.mode}
-						onThemeMode={theme.setMode}
-						onClose={() => setSettingsOpen(false)}
-						onUpdate={updateSettings}
-						onModel={changeModel}
-					/>
+			<div className="flex h-full flex-col bg-background-win-alt">
+				<div className="drag-region h-1 shrink-0" />
+				<div className="min-h-0 flex-1 overflow-hidden px-1 pb-1">
+					<div className="flex h-full flex-col overflow-hidden rounded-(--workspace-panel-radius) border-[0.5px] border-border bg-background shadow-xs">
+						<SettingsPage
+							settings={settings}
+							themeMode={theme.mode}
+							onThemeMode={theme.setMode}
+							onClose={() => setSettingsOpen(false)}
+							onUpdate={updateSettings}
+							onModel={changeModel}
+						/>
+					</div>
 				</div>
 				<ToastHost />
 			</div>
 		);
 	}
 
+	const draft = lines.length === 0 && !running;
+	const currentTitle = sessions.find((session) => session.id === sessionId)?.title ?? "新任务";
+
 	return (
-		<div className="flex h-full flex-col">
-			<TopBar
+		<div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background-win-alt">
+			<TopOverlay
+				sidebarCollapsed={sidebarCollapsed}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
 				onBack={goBack}
 				onForward={goForward}
-				onSearch={() => setCommandOpen(true)}
-				sidebarCollapsed={sidebarCollapsed}
 				onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+				onNewTask={newTask}
 			/>
 			<AppShell
 				sidebar={
-					sidebarCollapsed ? null : (
-						<Sidebar
-							sessions={sessions}
-							archived={archived}
-							pinned={pinned}
-							currentId={sessionId}
-							running={running}
-							cwd={cwd}
-							width={sidebarWidth}
-							version={settings?.version ?? ""}
-							onNewTask={newTask}
-							onSwitch={switchSession}
-							onArchive={(id) => {
-								void api.archiveSessions([id]).then(refreshSessions).catch(() => {});
-							}}
-							onDelete={(id) => {
-								void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
-							}}
-							onRestore={(id) => {
-								void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
-							}}
-							onTogglePin={togglePin}
-							onOpenPluginsPlaceholder={() => setPluginsPlaceholderOpen(true)}
-							onOpenScheduled={() => setScheduledOpen(true)}
-							onOpenSettings={() => setSettingsOpen(true)}
-							onResizeStart={startSidebarResize}
-						/>
+					sidebarCollapsed ? (
+						<div className="drag-region h-full w-1 shrink-0" />
+					) : (
+						<>
+							<div className="drag-region h-1 shrink-0" />
+							<Sidebar
+								sessions={sessions}
+								archived={archived}
+								pinned={pinned}
+								currentId={sessionId}
+								running={running}
+								cwd={cwd}
+								width={sidebarWidth}
+								version={settings?.version ?? ""}
+								onNewTask={newTask}
+								onSwitch={switchSession}
+								onArchive={(id) => {
+									void api.archiveSessions([id]).then(refreshSessions).catch(() => {});
+								}}
+								onDelete={(id) => {
+									void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
+								}}
+								onRestore={(id) => {
+									void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
+								}}
+								onTogglePin={togglePin}
+								onOpenPluginsPlaceholder={() => setPluginsPlaceholderOpen(true)}
+								onOpenScheduled={() => setScheduledOpen(true)}
+								onOpenSettings={() => setSettingsOpen(true)}
+							/>
+						</>
+					)
+				}
+				resizeHandle={
+					sidebarCollapsed ? undefined : (
+						<div
+							role="separator"
+							aria-orientation="vertical"
+							aria-label="调整侧栏宽度"
+							onPointerDown={startSidebarResize}
+							className="group/handle relative z-10 flex h-full w-1 shrink-0 cursor-ew-resize touch-none items-center justify-center"
+						>
+							<span className="absolute inset-y-2 w-0.5 rounded-full bg-transparent transition-colors group-hover/handle:bg-foreground-subtlest/50 group-active/handle:bg-foreground-subtlest/50" />
+						</div>
 					)
 				}
 				sidePane={
 					sideOpen ? (
-						<SidePane
-							tabs={sideTabs}
-							activeId={activeTabId}
-							width={sideWidth}
-							onSelect={setActiveTabId}
-							onClose={closeTab}
-							onClosePane={() => setSideOpen(false)}
-							onAdd={(kind) => {
-								if (kind === "files") openFilesTab();
-								else if (kind === "git") openGitTab();
-								else if (kind === "skills") openSkillsTab();
-								else openPluginsTab();
-							}}
-							onResizeStart={startSidePaneResize}
-						>
-							{activeTab?.kind === "files" ? <FilesPane git={git} onOpenFile={openFile} /> : null}
-							{activeTab?.kind === "code" ? <CodePane path={activeTab.path} /> : null}
-							{activeTab?.kind === "git" ? (
-								<GitPane status={git} onRefresh={refreshGit} onOpenFile={openFile} />
-							) : null}
-							{activeTab?.kind === "skills" ? <SkillsPane skills={skills} /> : null}
-							{activeTab?.kind === "plugins" ? <PluginsPane plugins={plugins} /> : null}
-						</SidePane>
+						<>
+							<div
+								role="separator"
+								aria-orientation="vertical"
+								aria-label="调整面板宽度"
+								onPointerDown={startSidePaneResize}
+								className="group/handle relative z-10 flex h-full w-1 shrink-0 cursor-ew-resize touch-none items-center justify-center"
+							>
+								<span className="absolute inset-y-2 w-0.5 rounded-full bg-transparent transition-colors group-hover/handle:bg-foreground-subtlest/50 group-active/handle:bg-foreground-subtlest/50" />
+							</div>
+							<div className="min-h-0 flex h-full min-w-0 flex-col pr-1 pb-1" style={{ width: sideWidth }}>
+								<SidePane
+									tabs={sideTabs}
+									activeId={activeTabId}
+									onSelect={setActiveTabId}
+									onClose={closeTab}
+									onClosePane={() => setSideOpen(false)}
+									onAdd={(kind) => {
+										if (kind === "files") openFilesTab();
+										else if (kind === "git") openGitTab();
+										else if (kind === "skills") openSkillsTab();
+										else openPluginsTab();
+									}}
+								>
+									{activeTab?.kind === "files" ? (
+										<FilesPane git={git} onOpenFile={openFile} />
+									) : null}
+									{activeTab?.kind === "code" ? <CodePane path={activeTab.path} /> : null}
+									{activeTab?.kind === "git" ? (
+										<GitPane status={git} onRefresh={refreshGit} onOpenFile={openFile} />
+									) : null}
+									{activeTab?.kind === "skills" ? <SkillsPane skills={skills} /> : null}
+									{activeTab?.kind === "plugins" ? <PluginsPane plugins={plugins} /> : null}
+								</SidePane>
+							</div>
+						</>
 					) : undefined
 				}
 			>
-				<div className="relative flex min-h-0 flex-1 flex-col">
-					<button
-						type="button"
-						onClick={toggleSidePane}
-						aria-label={sideOpen ? "关闭侧面板" : "打开侧面板"}
-						title={sideOpen ? "关闭侧面板" : "打开侧面板"}
-						className="absolute right-3 top-3 z-20 flex size-7 items-center justify-center rounded-md border border-border bg-background text-foreground-subtle shadow-xs transition-colors hover:bg-surface-hover hover:text-foreground"
-					>
-						{sideOpen ? <PanelRightClose className="size-4" /> : <PanelRight className="size-4" />}
-					</button>
+				<section
+					className={cn(
+						"relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background",
+						"rounded-(--workspace-panel-radius) border-[0.5px] border-border shadow-xs",
+						sideOpen && "rounded-r-none border-r-0",
+					)}
+				>
+					<WorkspaceHeader
+						variant={draft ? "draft" : "task"}
+						leading={
+							<>
+								{draft ? (
+									<span className="min-w-0 truncate text-ui-base font-medium text-foreground-subtle">
+										{workspaceName(cwd) || "Reins"}
+									</span>
+								) : (
+									<span className="min-w-0 truncate text-ui-base font-medium text-foreground">
+										{currentTitle}
+									</span>
+								)}
+								{git !== null && git.branch !== "" ? (
+									<span className="hidden shrink-0 items-center gap-1 rounded-md bg-surface px-1.5 py-0.5 text-ui-xs text-foreground-subtle md:inline-flex">
+										<GitBranch className="size-3" />
+										{git.branch}
+									</span>
+								) : null}
+							</>
+						}
+						actions={
+							<>
+								{disconnected ? (
+									<span className="flex items-center gap-1.5 rounded-md bg-warning-surface px-2 py-1 text-ui-xs text-warning-surface-foreground">
+										<Info className="size-3.5" />
+										重连中
+									</span>
+								) : null}
+								<IconButton
+									label={sideOpen ? "关闭面板" : "打开面板"}
+									size="icon-sm"
+									onClick={toggleSidePane}
+								>
+									{sideOpen ? (
+										<PanelRightClose className="size-4" />
+									) : (
+										<PanelRight className="size-4" />
+									)}
+								</IconButton>
+								<WindowControls />
+							</>
+						}
+					/>
 
-					{disconnected ? (
-					<div className="flex items-center gap-2 border-b border-warning/20 bg-warning-surface px-4 py-2 text-ui-sm text-warning-surface-foreground" role="status">
-						<Info className="size-4 shrink-0" />
-						连接已断开，正在重连。这期间的消息可能没有送达。
-					</div>
-				) : null}
-
-				{loadError !== undefined ? (
-					<div className="flex flex-1 items-center justify-center px-6 text-ui-sm text-destructive">
-						无法连接：{loadError}
-					</div>
-				) : draft ? (
-					<div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6">
-						<div className="flex w-full max-w-2xl flex-col gap-6">
-							<div className="flex items-center gap-3">
-								<span className="flex size-10 items-center justify-center rounded-xl bg-primary text-ui-lg font-semibold text-primary-foreground">
-									R
-								</span>
-								<span className="text-ui-xl font-semibold tracking-tight text-foreground">{greeting()}</span>
-							</div>
-							<Composer {...composerProps} />
-							<div className="flex flex-wrap gap-2">
-								{QUICK_PROMPTS.map((item) => (
-									<Button
-										key={item.label}
-										variant="outline"
-										size="sm"
-										className="rounded-lg text-ui-caption text-foreground"
-										onClick={() => send(item.prompt)}
-									>
-										{item.label}
-									</Button>
-								))}
-							</div>
+					{loadError !== undefined ? (
+						<div className="flex flex-1 items-center justify-center px-6 text-ui-sm text-destructive">
+							无法连接:{loadError}
 						</div>
-					</div>
-				) : (
-					<>
-						<div className="relative min-h-0 flex-1">
-							<div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 pb-5 pt-6">
-								<div className="mx-auto w-full max-w-4xl">
-									<TranscriptView lines={lines} />
-									{awaitingModel ? (
-										<div className="mt-4">
-											<LoadingPixels />
-										</div>
-									) : null}
+					) : draft ? (
+						<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+							<div className="flex min-h-full w-full flex-col items-center justify-center px-6 pb-10">
+								<div className="flex w-full max-w-2xl flex-col items-center gap-6">
+									<img
+										src="/logo.svg"
+										alt=""
+										className="size-16 shrink-0 [mask-image:linear-gradient(to_bottom,black_30%,transparent_100%)]"
+									/>
+									<span className="text-ui-xl font-medium tracking-tight text-foreground">
+										{greeting()}
+									</span>
+									<Composer {...composerProps} />
+									<div className="flex flex-wrap justify-center gap-2">
+										{QUICK_PROMPTS.map((item) => (
+											<Button
+												key={item.label}
+												variant="outline"
+												size="sm"
+												className="rounded-lg text-ui-caption text-foreground-subtle hover:text-foreground"
+												onClick={() => send(item.prompt)}
+											>
+												{item.label}
+											</Button>
+										))}
+									</div>
 								</div>
 							</div>
-							{!atBottom ? (
-								<button
-									type="button"
-									onClick={jumpToBottom}
-									title="回到底部"
-									aria-label="回到底部"
-									className={cn(
-										"absolute bottom-3 right-4 z-20 flex size-7 items-center justify-center rounded-full border border-border bg-card text-foreground-subtle shadow-md transition-colors hover:bg-card-selected hover:text-foreground",
-									)}
+						</div>
+					) : (
+						<>
+							<div className="relative min-h-0 flex-1">
+								<ScrollFadeViewport
+									ref={scrollRef}
+									onScroll={onScroll}
+									className="h-full [scrollbar-gutter:stable_both-edges]"
 								>
-									<ArrowDown className="size-4" />
-								</button>
-							) : null}
-						</div>
-
-						<div className="shrink-0 px-4 pb-4">
-							<div className="mx-auto w-full max-w-4xl">
-								{approval === undefined ? null : (
-									<div className="mb-3">
-										<ApprovalCard request={approval.request} onAnswer={(value) => answer(approval.id, value)} />
+									<div className="mx-auto w-full max-w-4xl px-4 pb-6 pt-4">
+										<TranscriptView lines={lines} />
+										{awaitingModel ? (
+											<div className="mt-4">
+												<LoadingPixels />
+											</div>
+										) : null}
 									</div>
-								)}
-								<Composer {...composerProps} />
+								</ScrollFadeViewport>
+								{!atBottom ? (
+									<button
+										type="button"
+										onClick={jumpToBottom}
+										title="回到底部"
+										aria-label="回到底部"
+										className={cn(
+											"absolute bottom-3 right-4 z-20 flex size-7 items-center justify-center rounded-full border border-border bg-card text-foreground-subtle shadow-md transition-colors hover:bg-card-selected hover:text-foreground",
+										)}
+									>
+										<ArrowDown className="size-4" />
+									</button>
+								) : null}
 							</div>
-						</div>
-					</>
+
+							<div className="sticky bottom-0 shrink-0 px-4 pb-4">
+								<div className="mx-auto w-full max-w-4xl">
+									{approval === undefined ? null : (
+										<div className="mb-3">
+											<ApprovalCard
+												request={approval.request}
+												onAnswer={(value) => answer(approval.id, value)}
+											/>
+										</div>
+									)}
+									<Composer {...composerProps} />
+								</div>
+							</div>
+						</>
 					)}
-				</div>
+				</section>
 			</AppShell>
 
 			<ToastHost />

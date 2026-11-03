@@ -8,7 +8,7 @@ import {
 	Sparkles,
 	X,
 } from "lucide-react";
-import type { PointerEvent, ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import { IconButton } from "../components/ui/button.tsx";
 import { cn } from "../components/ui/cn.ts";
@@ -18,24 +18,19 @@ import type { SideTab } from "./types.ts";
 export interface SidePaneProps {
 	readonly tabs: readonly SideTab[];
 	readonly activeId: string | undefined;
-	readonly width: number;
 	onSelect(id: string): void;
 	onClose(id: string): void;
 	onClosePane(): void;
 	onAdd(kind: "files" | "git" | "skills" | "plugins"): void;
-	onResizeStart(event: PointerEvent<HTMLDivElement>): void;
 	readonly children: ReactNode;
 }
 
-/** 右侧面板：48px 页签栏 + 内容区；宽度由调用方拖拽。 */
+/** 右侧面板帧:48px 页签栏 + 内容区;宽度与拖拽把手都由外层布局承担。 */
 export function SidePane(props: SidePaneProps): ReactElement {
 	return (
-		<aside
-			className="relative flex h-full shrink-0 flex-col overflow-hidden border-l border-border bg-background"
-			style={{ width: props.width }}
-		>
+		<aside className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-(--workspace-panel-radius) border-[0.5px] border-border bg-background shadow-xs">
 			<div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/50 px-2">
-				<div className="no-drag flex min-w-0 flex-1 items-center gap-1">
+				<div className="flex min-w-0 flex-1 items-center gap-1">
 					<div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
 						{props.tabs.map((tab) => (
 							<TabButton
@@ -116,16 +111,6 @@ export function SidePane(props: SidePaneProps): ReactElement {
 				) : (
 					props.children
 				)}
-			</div>
-
-			<div
-				role="separator"
-				aria-orientation="vertical"
-				aria-label="调整侧面板宽度"
-				onPointerDown={props.onResizeStart}
-				className="group absolute left-0 top-0 z-10 h-full w-[3px] cursor-ew-resize touch-none"
-			>
-				<span className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-transparent transition-colors group-hover:bg-resize-handle group-active:bg-resize-handle" />
 			</div>
 		</aside>
 	);

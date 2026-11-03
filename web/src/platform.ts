@@ -1,6 +1,5 @@
 /** 桌面壳注入的能力；浏览器里不存在，相关入口据此隐藏。 */
 export interface ReinsDesktopBridge {
-	showMenu(kind?: "edit" | "window" | "help" | "about"): void;
 	chooseWorkspace(): Promise<boolean>;
 	minimize(): void;
 	toggleMaximize(): void;
