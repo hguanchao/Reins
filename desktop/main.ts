@@ -114,16 +114,16 @@ const LOADING_PAGE =
 	"data:text/html;charset=utf-8," +
 	encodeURIComponent(`<!doctype html><meta charset="utf-8"><title>Reins</title>
 <style>
-	body{margin:0;background:#161616;color:#b3b3b3;font-family:"Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+	body{margin:0;background:#f9fafb;color:#61666b;font-family:"Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
 		height:100vh;display:flex;align-items:center;justify-content:center}
 	.c{text-align:center}
-	.s{width:26px;height:26px;margin:0 auto 16px;border-radius:50%;
-		border:2px solid #2b2b2b;border-top-color:#f8f8f8;animation:r 0.8s linear infinite}
-	p{margin:0;font-size:12.5px;letter-spacing:0.02em}
+	.s{width:24px;height:24px;margin:0 auto 14px;border-radius:50%;
+		border:2px solid #e5e7eb;border-top-color:#0f1115;animation:r 0.8s linear infinite}
+	p{margin:0;font-size:13px;letter-spacing:0.02em}
 	@keyframes r{to{transform:rotate(360deg)}}
-	@media (prefers-color-scheme: light){
-		body{background:#ececee;color:#6b6b6b}
-		.s{border-color:#dedede;border-top-color:#161616}
+	@media (prefers-color-scheme: dark){
+		body{background:#151517;color:#81858c}
+		.s{border-color:#2c2c2e;border-top-color:#f9fafb}
 	}
 </style><div class="c"><div class="s"></div><p>正在启动 Reins</p></div>`);
 
@@ -147,31 +147,24 @@ async function run(): Promise<void> {
 	app.setAboutPanelOptions({ applicationName: "Reins", applicationVersion: app.getVersion() });
 	// 菜单不显示,只为保住重载/开发者工具的快捷键
 	Menu.setApplicationMenu(HIDDEN_MENU);
-	ipcMain.handle("window:minimize", (event) => {
-		BrowserWindow.fromWebContents(event.sender)?.minimize();
-	});
-	ipcMain.handle("window:toggle-maximize", (event) => {
-		const window = BrowserWindow.fromWebContents(event.sender);
-		if (window === null) return;
-		if (window.isMaximized()) window.unmaximize();
-		else window.maximize();
-	});
-	ipcMain.handle("window:close", (event) => {
-		BrowserWindow.fromWebContents(event.sender)?.close();
-	});
-	ipcMain.handle("window:is-maximized", (event) => {
-		return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
-	});
 	ipcMain.handle("window:set-theme", (event, theme: unknown) => {
 		const window = BrowserWindow.fromWebContents(event.sender);
 		if (window === null) return;
-		window.setBackgroundColor(theme === "zai-light" ? "#ececee" : "#161616");
+		const dark = theme === "zai-dark";
+		window.setBackgroundColor(dark ? "#151517" : "#f9fafb");
+		if (process.platform === "win32") {
+			window.setTitleBarOverlay({
+				color: dark ? "#1b1b1c" : "#f9fafb",
+				symbolColor: dark ? "#f9fafb" : "#0f1115",
+				height: 40,
+			});
+		}
 	});
 	await app.whenReady();
 
 	// 窗口先出:静态 loading 页毫秒级可见,选目录、拉服务都排在它后面,
 	// 双击后的等待从「干瞪眼」变成「页内转圈」
-	// 无边框窗:窗口按钮由渲染层绘制,与 ZCode 的顶栏同一套交互
+	// 无边框窗：Windows 用原生标题栏覆盖层保留系统窗控，页面只负责 40px 拖拽条
 	const window = new BrowserWindow({
 		width: 1180,
 		height: 820,
@@ -179,20 +172,23 @@ async function run(): Promise<void> {
 		minHeight: 600,
 		title: "Reins",
 		icon: join(buildDir, "icon.ico"),
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#161616" : "#ececee",
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#151517" : "#f9fafb",
 		show: false,
-		frame: false,
+		titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
+		...(process.platform === "win32"
+			? {
+					titleBarOverlay: {
+						color: nativeTheme.shouldUseDarkColors ? "#1b1b1c" : "#f9fafb",
+						symbolColor: nativeTheme.shouldUseDarkColors ? "#f9fafb" : "#0f1115",
+						height: 40,
+					},
+				}
+			: {}),
 		webPreferences: {
 			sandbox: true,
 			preload: join(buildDir, "preload.cjs"),
 		},
 	});
-	// 最大化状态要同步给渲染层:按钮图标在「最大化/还原」之间切换
-	const sendMaximized = (): void => {
-		if (!window.isDestroyed()) window.webContents.send("window:maximized-changed", window.isMaximized());
-	};
-	window.on("maximize", sendMaximized);
-	window.on("unmaximize", sendMaximized);
 	let server: ServerHandle | undefined;
 	let serverGeneration = 0;
 	let serverOrigin: string | undefined;

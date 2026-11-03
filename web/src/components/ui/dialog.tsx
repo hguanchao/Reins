@@ -37,33 +37,39 @@ export function Dialog({
 	}, [open, onClose]);
 
 	if (!open) return null;
-	return createPortal(
-		<div
-			className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
-			onMouseDown={(event) => {
-				if (event.target === event.currentTarget) onClose();
-			}}
-		>
+		return createPortal(
 			<div
-				ref={panelRef}
-				role="dialog"
-				aria-modal="true"
-				aria-label={title}
-				className={cn(
-					"w-full max-w-lg rounded-2xl border border-popover-border bg-popover p-4 shadow-md animate-pop",
-					className,
-				)}
+				className="fixed inset-0 z-[80] flex items-center justify-center bg-black/25 p-4"
+				onMouseDown={(event) => {
+					if (event.target === event.currentTarget) onClose();
+				}}
 			>
-				<div className="mb-3 flex items-center justify-between gap-3">
-					<h2 className="text-ui-base font-semibold text-foreground">{title}</h2>
-					<Button size="icon-sm" variant="ghost" aria-label="关闭" onClick={onClose}>
-						<X className="size-4" />
-					</Button>
+				<div
+					ref={panelRef}
+					role="dialog"
+					aria-modal="true"
+					aria-label={title}
+					className={cn(
+						"dialog-material w-full max-w-lg rounded-[28px] p-5 animate-panel-in",
+						className,
+					)}
+				>
+					<div className="mb-4 flex items-center justify-between gap-3">
+						<h2 className="text-[16px] leading-6 font-medium text-foreground">{title}</h2>
+						<Button
+							size="icon-sm"
+							variant="ghost"
+							aria-label="关闭"
+							className="rounded-sm"
+							onClick={onClose}
+						>
+							<X className="size-4" />
+						</Button>
+					</div>
+					{children}
+					{footer === undefined ? null : <div className="mt-5 flex justify-end gap-2">{footer}</div>}
 				</div>
-				{children}
-				{footer === undefined ? null : <div className="mt-4 flex justify-end gap-2">{footer}</div>}
-			</div>
-		</div>,
-		document.body,
-	);
+			</div>,
+			document.body,
+		);
 }

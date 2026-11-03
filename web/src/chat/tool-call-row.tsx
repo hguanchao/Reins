@@ -1,4 +1,4 @@
-import { ChevronRight, CircleAlert, Loader2 } from "lucide-react";
+import { ChevronRight, CircleAlert } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
 import { DiffView } from "../components/diff-view.tsx";
@@ -6,76 +6,68 @@ import { cn } from "../components/ui/cn.ts";
 import type { ToolLine } from "../transcript/lines.ts";
 import { detailText, diffOf, diffStats, toolIcon, toolLabel, toolPrimary } from "./tool-meta.ts";
 
-/** 工具调用：一行摘要，展开看输出或 diff。 */
+/** 工具调用行：24px 摘要，展开后看 diff 或输出。 */
 export function ToolCallRow({ line }: { readonly line: ToolLine }): ReactElement {
 	const [open, setOpen] = useState(false);
 	const Icon = toolIcon(line.name);
 	const primary = toolPrimary(line.name, line.args);
 	const diff = diffOf(line.details);
 	const stats = diffStats(diff);
-	const hasBody = diff !== undefined || line.content !== undefined || line.detail.length > 0 || line.details !== undefined;
+	const body = line.content ?? line.detail ?? detailText(line.details);
+	const hasBody = diff !== undefined || body.length > 0;
 
 	return (
-		<div className="group/tool min-w-0">
+		<div className="group/tool flex min-w-0 flex-col">
 			<button
 				type="button"
 				onClick={() => setOpen((value) => !value)}
 				disabled={!hasBody}
 				aria-expanded={open}
-				className="group/summary inline-flex max-w-full cursor-pointer items-center gap-2 self-start text-left text-ui-base"
+				className={cn(
+					"flex h-6 min-w-0 items-center text-left text-[13px] leading-[24px] text-foreground-subtlest transition-colors",
+					hasBody ? "cursor-pointer hover:text-foreground-subtle" : "cursor-default",
+				)}
 			>
-				<Icon className="size-4 shrink-0 text-foreground-subtlest" />
-				<span
-					className={cn(
-						"shrink-0 font-medium",
-						line.running ? "animate-gradient-text" : "text-foreground-subtlest",
-					)}
-				>
+				<span className="flex size-4 shrink-0 items-center justify-center">
+					<Icon className="size-3.5" />
+				</span>
+				<span className={cn("ml-1.5 shrink-0 font-normal", line.running && "animate-gradient-text")}>
 					{toolLabel(line.name)}
 				</span>
-				{primary === undefined ? null : (
-					<span className="min-w-0 truncate text-foreground-subtle">{primary}</span>
-				)}
+				<span className="mx-2 size-0.5 shrink-0 rounded-full bg-foreground-subtlest" />
+				<span className={cn("min-w-0 flex-1 truncate", line.isError && "text-destructive")}>
+					{line.isError ? (line.summary ?? primary ?? "执行失败") : (primary ?? "")}
+				</span>
 				{stats.added === 0 && stats.removed === 0 ? null : (
-					<span className="shrink-0 font-mono text-ui-sm tabular-nums">
-						<span className="text-diff-added">+{stats.added}</span>{" "}
-						<span className="text-diff-removed">-{stats.removed}</span>
+					<span className="ml-2.5 shrink-0 font-mono text-[11px] leading-4 tabular-nums">
+						<span className="text-success">+{stats.added}</span>{" "}
+						<span className="text-destructive">-{stats.removed}</span>
 					</span>
 				)}
 				{line.durationMs === undefined ? null : (
-					<span className="shrink-0 font-mono text-ui-xs tabular-nums text-foreground-subtlest">
+					<span className="ml-2.5 shrink-0 font-mono text-[11px] leading-4 tabular-nums text-foreground-subtlest">
 						{formatDuration(line.durationMs)}
 					</span>
 				)}
-				{line.running ? (
-					<Loader2 className="size-4 shrink-0 animate-spin text-foreground-subtlest" />
-				) : line.isError ? (
-					<CircleAlert className="size-4 shrink-0 text-destructive" />
-				) : null}
+				{line.isError ? <CircleAlert className="ml-2 size-3.5 shrink-0 text-destructive" /> : null}
 				{hasBody ? (
 					<ChevronRight
 						className={cn(
-							"size-4 shrink-0 text-foreground-subtlest opacity-0 transition-opacity duration-200 group-hover/summary:opacity-100",
+							"ml-1 size-3.5 shrink-0 opacity-0 transition-opacity group-hover/tool:opacity-100",
 							open && "rotate-90 opacity-100",
 						)}
 					/>
 				) : null}
 			</button>
 
-			{line.running ? (
-				<div className="ml-6 mt-1 h-1 w-16 overflow-hidden rounded-full bg-surface-hover">
-					<div className="relative h-full w-1/3 rounded-full bg-brand animate-tool-progress" />
-				</div>
-			) : null}
-
 			{open ? (
-				<div className="ml-6 mt-2 max-h-60 overflow-auto rounded-xl border border-border bg-surface px-3 py-2">
+				<div className="mb-1 ml-1 mt-1 max-h-[260px] overflow-auto rounded-lg border-[0.5px] border-border bg-code-block px-4 py-3">
 					{line.isError && line.summary !== undefined ? (
-						<div className="mb-2 text-ui-sm text-destructive">{line.summary}</div>
+						<div className="mb-2 text-[12px] leading-[18px] text-destructive">{line.summary}</div>
 					) : null}
 					{diff === undefined ? (
-						<pre className="whitespace-pre-wrap break-words font-mono text-ui-sm leading-5 text-foreground-subtle">
-							{line.content ?? line.detail ?? detailText(line.details)}
+						<pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-foreground-subtle">
+							{body}
 						</pre>
 					) : (
 						<DiffView diff={diff} />

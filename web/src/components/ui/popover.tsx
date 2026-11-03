@@ -96,7 +96,7 @@ export function Popover({
 									maxHeight: position?.maxHeight,
 								}}
 								className={cn(
-									"z-50 overflow-y-auto rounded-xl border border-popover-border bg-popover p-2.5 shadow-md animate-pop",
+									"menu-material z-50 overflow-y-auto rounded-[16px] p-1.5 animate-pop",
 									className,
 								)}
 							>

@@ -19,6 +19,7 @@ export function readUiFontSize(): number {
 export function applyUiFontSize(size: number): void {
 	const value = Math.min(MAX, Math.max(MIN, Math.round(size)));
 	document.documentElement.style.setProperty("--ui-font-size", `${value}px`);
+	document.documentElement.style.setProperty("--content-font-size", `${value}px`);
 	try {
 		localStorage.setItem(STORAGE_KEY, String(value));
 	} catch {

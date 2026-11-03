@@ -1,28 +1,30 @@
-import { ArrowDown, GitBranch, Info, PanelRight, PanelRightClose } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
 	useRef,
 	useState,
-	type PointerEvent,
+	type CSSProperties,
 	type ReactElement,
 } from "react";
 
 import { api, openEventStream } from "./api.ts";
 import { ApprovalCard } from "./chat/approval-card.tsx";
 import { Composer, type ComposerProps } from "./chat/composer.tsx";
+import { Hero } from "./chat/hero.tsx";
 import { LoadingPixels } from "./chat/loading-pixels.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
-import { Dialog, ScrollFadeViewport, ToastHost, toast } from "./components/ui/index.ts";
-import { IconButton } from "./components/ui/button.tsx";
-import { cn } from "./components/ui/cn.ts";
+import { ToastHost, toast } from "./components/ui/index.ts";import { ScrollFadeViewport } from "./components/ui/scroll-fade-viewport.tsx";
+import { workspaceName } from "./lib/format.ts";
 import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
 import { GitPane } from "./panels/git-pane.tsx";
+import { PluginsPage } from "./panels/plugins-page.tsx";
 import { PluginsPane } from "./panels/plugins-pane.tsx";
+import { SchedulesPage } from "./panels/schedules-page.tsx";
 import { SidePane } from "./panels/side-pane.tsx";
 import { SkillsPane } from "./panels/skills-pane.tsx";
-import type { SideTab } from "./panels/types.ts";
+import type { SideTab, SideTabKind } from "./panels/types.ts";
 import type {
 	ApprovalAnswer,
 	ApprovalMode,
@@ -38,36 +40,23 @@ import type {
 } from "./protocol.ts";
 import { SettingsPage } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
-import { CommandPalette } from "./shell/command-palette.tsx";
+import {
+	clampSidebar,
+	defaultRightbarWidth,
+	RIGHTBAR_MAX_RATIO,
+	RIGHTBAR_MIN,
+	SIDEBAR_AUTO_COLLAPSE,
+} from "./shell/columns.ts";import { CommandPalette } from "./shell/command-palette.tsx";
+import { ConversationHeader, type ConversationView } from "./shell/conversation-header.tsx";
+import type { GlobalPanelId } from "./shell/sidebar.tsx";
 import { Sidebar } from "./shell/sidebar.tsx";
-import { TopOverlay } from "./shell/top-overlay.tsx";
-import { WorkspaceHeader } from "./shell/workspace-header.tsx";
-import { WindowControls } from "./shell/window-controls.tsx";
-import { workspaceName } from "./lib/format.ts";
 import { readPinnedSessions, writePinnedSessions } from "./state/pinned.ts";
 import { useTheme } from "./state/theme.ts";
 import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
+import { TrajectoryView } from "./trajectory/trajectory-view.tsx";
 
 const STICK_THRESHOLD = 80;
-const SIDEBAR_MIN = 240;
-const SIDEBAR_DEFAULT = 276;
-const SIDE_PANE_MIN = 240;
-const SIDE_PANE_DEFAULT = 480;
-
-const QUICK_PROMPTS: readonly { readonly label: string; readonly prompt: string }[] = [
-	{ label: "总结这个项目", prompt: "总结这个项目的结构与用途" },
-	{ label: "修复失败的测试", prompt: "运行项目测试，修复失败的用例" },
-	{ label: "审查未提交改动", prompt: "审查工作区未提交的改动，按严重程度列出问题" },
-];
-
-function greeting(): string {
-	const hour = new Date().getHours();
-	if (hour < 5) return "夜深了，注意休息";
-	if (hour < 11) return "早上好，今天从什么开始？";
-	if (hour < 13) return "中午好，上午进展如何？";
-	if (hour < 18) return "下午好，继续推进";
-	return "晚上好，今天辛苦了";
-}
+const SIDEBAR_DEFAULT = 280;
 
 /** 界面主组件：装配三栏骨架、会话状态与事件流。 */
 export function App(): ReactElement {
@@ -92,16 +81,17 @@ export function App(): ReactElement {
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
-	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
 	const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
 	const [sideTabs, setSideTabs] = useState<readonly SideTab[]>([]);
 	const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
 	const [sideOpen, setSideOpen] = useState(false);
-	const [sideWidth, setSideWidth] = useState(SIDE_PANE_DEFAULT);
+	const [sideFullscreen, setSideFullscreen] = useState(false);
+	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [commandOpen, setCommandOpen] = useState(false);
-	const [scheduledOpen, setScheduledOpen] = useState(false);
-	const [pluginsPlaceholderOpen, setPluginsPlaceholderOpen] = useState(false);
+	const [activePanel, setActivePanel] = useState<GlobalPanelId | undefined>(undefined);
+	const [view, setView] = useState<ConversationView>("chat");
 	const [pinned, setPinned] = useState<ReadonlySet<string>>(readPinnedSessions);
 	const [canGoBack, setCanGoBack] = useState(false);
 	const [canGoForward, setCanGoForward] = useState(false);
@@ -174,8 +164,10 @@ export function App(): ReactElement {
 		const id = historyRef.current[historyIndexRef.current];
 		if (id === undefined) return;
 		navigatingRef.current = true;
-		setSettingsOpen(false);
 		updateHistoryButtons();
+		setActivePanel(undefined);
+		setView("chat");
+		setSideFullscreen(false);
 		void api.switchSession(id).catch((error: unknown) => {
 			navigatingRef.current = false;
 			toast(error instanceof Error ? error.message : String(error), "error");
@@ -188,8 +180,10 @@ export function App(): ReactElement {
 		const id = historyRef.current[historyIndexRef.current];
 		if (id === undefined) return;
 		navigatingRef.current = true;
-		setSettingsOpen(false);
 		updateHistoryButtons();
+		setActivePanel(undefined);
+		setView("chat");
+		setSideFullscreen(false);
 		void api.switchSession(id).catch((error: unknown) => {
 			navigatingRef.current = false;
 			toast(error instanceof Error ? error.message : String(error), "error");
@@ -340,6 +334,9 @@ export function App(): ReactElement {
 				case "session_switched":
 					setLines([]);
 					setContextTokens(undefined);
+					setActivePanel(undefined);
+					setView("chat");
+					setSideFullscreen(false);
 					reload();
 					refreshSessions();
 					refreshGit();
@@ -384,7 +381,7 @@ export function App(): ReactElement {
 		if (!stickToBottom.current) return;
 		const element = scrollRef.current;
 		if (element !== null) element.scrollTop = element.scrollHeight;
-	}, [lines, approval, awaitingModel]);
+	}, [lines, approval, awaitingModel, view]);
 
 	useEffect(() => {
 		const timer = window.setInterval(() => {
@@ -398,9 +395,12 @@ export function App(): ReactElement {
 		const onResize = (): void => {
 			window.clearTimeout(timer);
 			timer = window.setTimeout(() => {
-				const contentWidth = window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth);
-				if (sideOpen && contentWidth < 480) setSideOpen(false);
-				if (!sidebarCollapsed && contentWidth < 360) setSidebarCollapsed(true);
+				if (window.innerWidth < SIDEBAR_AUTO_COLLAPSE) setSidebarCollapsed(true);
+				const available = window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth);
+				if (sideOpen && available < 720) {
+					setSideOpen(false);
+					setSideFullscreen(false);
+				}
 			}, 300);
 		};
 		window.addEventListener("resize", onResize);
@@ -428,6 +428,9 @@ export function App(): ReactElement {
 
 	const newTask = useCallback((): void => {
 		setSettingsOpen(false);
+		setActivePanel(undefined);
+		setView("chat");
+		setSideFullscreen(false);
 		void api.newSession().catch((error: unknown) => {
 			toast(error instanceof Error ? error.message : String(error), "error");
 		});
@@ -445,6 +448,9 @@ export function App(): ReactElement {
 
 	const switchSession = useCallback(
 		(id: string): void => {
+			setActivePanel(undefined);
+			setView("chat");
+			setSideFullscreen(false);
 			if (id === sessionId) return;
 			setSettingsOpen(false);
 			void api.switchSession(id).catch((error: unknown) => {
@@ -455,6 +461,9 @@ export function App(): ReactElement {
 	);
 
 	const send = useCallback((text: string): void => {
+		setActivePanel(undefined);
+		setView("chat");
+		setSideFullscreen(false);
 		setLines((current) => [...current, { kind: "user", text }]);
 		void api.send(text).catch((error: unknown) => {
 			setLines((current) => [
@@ -559,63 +568,34 @@ export function App(): ReactElement {
 		[openTab],
 	);
 
-	const closeTab = useCallback(
-		(id: string): void => {
-			setSideTabs((current) => {
-				const next = current.filter((item) => item.id !== id);
-				setActiveTabId((active) => (active === id ? next[next.length - 1]?.id : active));
-				return next;
-			});
+	const addSideTab = useCallback(
+		(kind: SideTabKind): void => {
+			if (kind === "files") openFilesTab();
+			else if (kind === "git") openGitTab();
+			else if (kind === "skills") openSkillsTab();
+			else if (kind === "plugins") openPluginsTab();
+			else if (kind === "browser") openTab({ id: "browser", kind: "browser", title: "浏览器" });
+			else openTab({ id: "terminal", kind: "terminal", title: "终端" });
 		},
-		[],
+		[openFilesTab, openGitTab, openPluginsTab, openSkillsTab, openTab],
 	);
+
+	const closeTab = useCallback((id: string): void => {
+		setSideTabs((current) => {
+			const next = current.filter((item) => item.id !== id);
+			setActiveTabId((active) => (active === id ? next[next.length - 1]?.id : active));
+			return next;
+		});
+	}, []);
 
 	const toggleSidePane = useCallback((): void => {
 		if (sideOpen) {
 			setSideOpen(false);
+			setSideFullscreen(false);
 			return;
 		}
-		if (sideTabs.length === 0) openFilesTab();
-		else setSideOpen(true);
-	}, [openFilesTab, sideOpen, sideTabs.length]);
-
-	const startSidebarResize = useCallback(
-		(event: PointerEvent<HTMLDivElement>): void => {
-			event.preventDefault();
-			const startX = event.clientX;
-			const startWidth = sidebarWidth;
-			const onMove = (move: globalThis.PointerEvent): void => {
-				const max = window.innerWidth * 0.5;
-				setSidebarWidth(Math.round(Math.max(SIDEBAR_MIN, Math.min(max, startWidth + move.clientX - startX))));
-			};
-			const onUp = (): void => {
-				window.removeEventListener("pointermove", onMove);
-				window.removeEventListener("pointerup", onUp);
-			};
-			window.addEventListener("pointermove", onMove);
-			window.addEventListener("pointerup", onUp);
-		},
-		[sidebarWidth],
-	);
-
-	const startSidePaneResize = useCallback(
-		(event: PointerEvent<HTMLDivElement>): void => {
-			event.preventDefault();
-			const startX = event.clientX;
-			const startWidth = sideWidth;
-			const onMove = (move: globalThis.PointerEvent): void => {
-				const max = window.innerWidth * 0.65;
-				setSideWidth(Math.round(Math.max(SIDE_PANE_MIN, Math.min(max, startWidth - (move.clientX - startX)))));
-			};
-			const onUp = (): void => {
-				window.removeEventListener("pointermove", onMove);
-				window.removeEventListener("pointerup", onUp);
-			};
-			window.addEventListener("pointermove", onMove);
-			window.addEventListener("pointerup", onUp);
-		},
-		[sideWidth],
-	);
+		setSideOpen(true);
+	}, [sideOpen]);
 
 	useEffect(() => {
 		const onKeyDown = (event: globalThis.KeyboardEvent): void => {
@@ -657,7 +637,7 @@ export function App(): ReactElement {
 	}, [answer, approval, newTask, running, stop]);
 
 	const activeTab = sideTabs.find((tab) => tab.id === activeTabId);
-	const disconnected = everConnected.current && !connected;
+	const connectionOk = connected || !everConnected.current;
 
 	const composerProps: ComposerProps = {
 		running,
@@ -684,221 +664,78 @@ export function App(): ReactElement {
 		},
 	};
 
-	if (settingsOpen) {
-		return (
-			<div className="flex h-full flex-col bg-background-win-alt p-1">
-				<div className="drag-region h-1 w-full shrink-0" />
-				<div className="min-h-0 flex-1 overflow-hidden">
-					<div className="flex h-full flex-col overflow-hidden rounded-(--workspace-panel-radius) border-[0.5px] border-border bg-background shadow-xs">
-						<SettingsPage
-							settings={settings}
-							themeMode={theme.mode}
-							onThemeMode={theme.setMode}
-							onClose={() => setSettingsOpen(false)}
-							onUpdate={updateSettings}
-							onModel={changeModel}
-						/>
-					</div>
-				</div>
-				<ToastHost />
-			</div>
-		);
-	}
+	const draft = lines.length === 0 && !running && activePanel === undefined;
+	const currentTitle = sessions.find((session) => session.id === sessionId)?.title ?? "新会话";
 
-	const draft = lines.length === 0 && !running;
-	const currentTitle = sessions.find((session) => session.id === sessionId)?.title ?? "新任务";
+	useEffect(() => {
+		document.title = currentTitle === "新会话" ? "Reins" : `${currentTitle} · Reins`;
+	}, [currentTitle]);
 
-	return (
-		<div className="relative flex h-full min-h-0 w-full overflow-hidden bg-background-win-alt">
-			<TopOverlay
-				sidebarCollapsed={sidebarCollapsed}
+	const sidePane = (
+		<SidePane
+			tabs={sideTabs}
+			activeId={activeTabId}
+			fullscreen={sideFullscreen}
+			onSelect={setActiveTabId}
+			onClose={closeTab}
+			onClosePane={() => {
+				setSideOpen(false);
+				setSideFullscreen(false);
+			}}
+			onToggleFullscreen={() => setSideFullscreen((value) => !value)}
+			onAdd={addSideTab}
+		>
+			{activeTab?.kind === "files" ? <FilesPane git={git} onOpenFile={openFile} /> : null}
+			{activeTab?.kind === "code" ? <CodePane path={activeTab.path} /> : null}
+			{activeTab?.kind === "git" ? (
+				<GitPane status={git} onRefresh={refreshGit} onOpenFile={openFile} />
+			) : null}
+			{activeTab?.kind === "skills" ? <SkillsPane skills={skills} /> : null}
+			{activeTab?.kind === "plugins" ? <PluginsPane plugins={plugins} /> : null}
+		</SidePane>
+	);
+
+	const main = activePanel === "plugins" ? (
+		<PluginsPage plugins={plugins} onClose={() => setActivePanel(undefined)} />
+	) : activePanel === "schedules" ? (
+		<SchedulesPage onClose={() => setActivePanel(undefined)} />
+	) : (
+		<>
+			<ConversationHeader
+				blank={draft}
+				workspace={workspaceName(cwd) || "Reins"}
+				title={currentTitle}
+				view={view}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
+				rightbarOpen={sideOpen}
+				onView={setView}
 				onBack={goBack}
 				onForward={goForward}
-				onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
-				onNewTask={newTask}
+				onToggleRightbar={toggleSidePane}
 			/>
-			<AppShell
-				sidebar={
-					sidebarCollapsed ? (
-						<div className="w-1 shrink-0" />
-					) : (
-						<Sidebar
-							sessions={sessions}
-							archived={archived}
-							pinned={pinned}
-							currentId={sessionId}
-							running={running}
-							cwd={cwd}
-							width={sidebarWidth}
-							version={settings?.version ?? ""}
-							onNewTask={newTask}
-							onSwitch={switchSession}
-							onArchive={(id) => {
-								void api.archiveSessions([id]).then(refreshSessions).catch(() => {});
-							}}
-							onDelete={(id) => {
-								void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
-							}}
-							onRestore={(id) => {
-								void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
-							}}
-							onTogglePin={togglePin}
-							onOpenPluginsPlaceholder={() => setPluginsPlaceholderOpen(true)}
-							onOpenScheduled={() => setScheduledOpen(true)}
-							onOpenSettings={() => setSettingsOpen(true)}
-						/>
-					)
-				}
-				resizeHandle={
-					sidebarCollapsed ? undefined : (
-						<div
-							role="separator"
-							aria-orientation="vertical"
-							aria-label="调整侧栏宽度"
-							onPointerDown={startSidebarResize}
-							className="group/handle relative z-10 flex h-full w-1 shrink-0 cursor-ew-resize touch-none items-center justify-center"
-						>
-							<span className="absolute inset-y-2 w-0.5 rounded-full bg-transparent transition-colors group-hover/handle:bg-foreground-subtlest/50 group-active/handle:bg-foreground-subtlest/50" />
-						</div>
-					)
-				}
-				sidePane={
-					sideOpen ? (
-						<>
-							<div
-								role="separator"
-								aria-orientation="vertical"
-								aria-label="调整面板宽度"
-								onPointerDown={startSidePaneResize}
-								className="group/handle relative z-10 flex h-full w-1 shrink-0 cursor-ew-resize touch-none items-center justify-center"
-							>
-								<span className="absolute inset-y-2 w-0.5 rounded-full bg-transparent transition-colors group-hover/handle:bg-foreground-subtlest/50 group-active/handle:bg-foreground-subtlest/50" />
-							</div>
-							<div className="min-h-0 flex h-full min-w-0 flex-col pr-1 pb-1" style={{ width: sideWidth }}>
-								<SidePane
-									tabs={sideTabs}
-									activeId={activeTabId}
-									onSelect={setActiveTabId}
-									onClose={closeTab}
-									onClosePane={() => setSideOpen(false)}
-									onAdd={(kind) => {
-										if (kind === "files") openFilesTab();
-										else if (kind === "git") openGitTab();
-										else if (kind === "skills") openSkillsTab();
-										else openPluginsTab();
-									}}
-								>
-									{activeTab?.kind === "files" ? (
-										<FilesPane git={git} onOpenFile={openFile} />
-									) : null}
-									{activeTab?.kind === "code" ? <CodePane path={activeTab.path} /> : null}
-									{activeTab?.kind === "git" ? (
-										<GitPane status={git} onRefresh={refreshGit} onOpenFile={openFile} />
-									) : null}
-									{activeTab?.kind === "skills" ? <SkillsPane skills={skills} /> : null}
-									{activeTab?.kind === "plugins" ? <PluginsPane plugins={plugins} /> : null}
-								</SidePane>
-							</div>
-						</>
-					) : undefined
-				}
-			>
-				<section
-					className={cn(
-						"relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background",
-						"rounded-(--workspace-panel-radius) border-[0.5px] border-border shadow-xs",
-						sideOpen && "rounded-r-none border-r-0",
-					)}
-				>
-					<WorkspaceHeader
-						variant={draft ? "draft" : "task"}
-						overlayLeading={sidebarCollapsed}
-						leading={
-							<>
-								{draft ? (
-									<span className="min-w-0 truncate text-ui-base font-medium text-foreground-subtle">
-										{workspaceName(cwd) || "Reins"}
-									</span>
-								) : (
-									<span className="min-w-0 truncate text-ui-base font-medium text-foreground">
-										{currentTitle}
-									</span>
-								)}
-								{git !== null && git.branch !== "" ? (
-									<span className="hidden shrink-0 items-center gap-1 rounded-md bg-surface px-1.5 py-0.5 text-ui-xs text-foreground-subtle md:inline-flex">
-										<GitBranch className="size-3" />
-										{git.branch}
-									</span>
-								) : null}
-							</>
-						}
-						actions={
-							<>
-								{disconnected ? (
-									<span className="flex items-center gap-1.5 rounded-md bg-warning-surface px-2 py-1 text-ui-xs text-warning-surface-foreground">
-										<Info className="size-3.5" />
-										重连中
-									</span>
-								) : null}
-								<IconButton
-									label={sideOpen ? "关闭面板" : "打开面板"}
-									size="icon-sm"
-									onClick={toggleSidePane}
-								>
-									{sideOpen ? (
-										<PanelRightClose className="size-4" />
-									) : (
-										<PanelRight className="size-4" />
-									)}
-								</IconButton>
-								<WindowControls />
-							</>
-						}
-					/>
 
-					{loadError !== undefined ? (
-						<div className="flex flex-1 items-center justify-center px-6 text-ui-sm text-destructive">
-							无法连接:{loadError}
-						</div>
-					) : draft ? (
-						<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-							<div className="flex min-h-full w-full flex-col items-center justify-center px-6 pb-16 pt-20">
-								<div className="flex w-full max-w-2xl flex-col items-center gap-7">
-									<img
-										src="/logo.svg"
-										alt=""
-										className="size-20 shrink-0 drop-shadow-xs [mask-image:linear-gradient(to_bottom,black_55%,transparent_125%)]"
-									/>
-									<h1 className="text-ui-xl font-medium tracking-tight text-foreground">
-										{greeting()}
-									</h1>
-									<Composer {...composerProps} />
-									<div className="flex flex-wrap justify-center gap-2">
-										{QUICK_PROMPTS.map((item) => (
-											<button
-												key={item.label}
-												type="button"
-												onClick={() => send(item.prompt)}
-												className="h-7 rounded-full border border-border bg-card px-3 text-ui-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-											>
-												{item.label}
-											</button>
-										))}
-									</div>
-								</div>
-							</div>
-						</div>
-					) : (
-						<>
-							<div className="relative min-h-0 flex-1">
-								<ScrollFadeViewport
-									ref={scrollRef}
-									onScroll={onScroll}
-									className="h-full [scrollbar-gutter:stable_both-edges]"
-								>
-									<div className="mx-auto w-full max-w-4xl px-4 pb-6 pt-4">
+			<div
+				className="flex min-h-0 flex-1 flex-col"
+				style={{ "--chat-content-width": "clamp(680px, 64%, 920px)" } as unknown as CSSProperties}
+			>
+				{loadError !== undefined ? (
+					<div className="flex flex-1 items-center justify-center px-6 text-[13px] text-destructive">
+						无法连接：{loadError}
+					</div>
+				) : view === "trajectory" && !draft ? (
+					<TrajectoryView lines={lines} />
+				) : draft ? (
+					<Hero
+						workspace={workspaceName(cwd)}
+						composer={<Composer {...composerProps} hero />}
+					/>
+				) : (
+					<>
+						<div className="relative min-h-0 flex-1">
+							<ScrollFadeViewport ref={scrollRef} onScroll={onScroll} className="h-full">
+								<div className="px-4">
+									<div className="mx-auto w-full max-w-[var(--chat-content-width)] pb-6 pt-4">
 										<TranscriptView lines={lines} />
 										{awaitingModel ? (
 											<div className="mt-4">
@@ -906,46 +743,118 @@ export function App(): ReactElement {
 											</div>
 										) : null}
 									</div>
-								</ScrollFadeViewport>
-								{!atBottom ? (
-									<button
-										type="button"
-										onClick={jumpToBottom}
-										title="回到底部"
-										aria-label="回到底部"
-										className={cn(
-											"absolute bottom-3 right-4 z-20 flex size-7 items-center justify-center rounded-full border border-border bg-card text-foreground-subtle shadow-md transition-colors hover:bg-card-selected hover:text-foreground",
-										)}
-									>
-										<ArrowDown className="size-4" />
-									</button>
-								) : null}
-							</div>
-
-							<div className="sticky bottom-0 shrink-0 px-4 pb-4">
-								<div className="mx-auto w-full max-w-4xl">
-									{approval === undefined ? null : (
-										<div className="mb-3">
-											<ApprovalCard
-												request={approval.request}
-												onAnswer={(value) => answer(approval.id, value)}
-											/>
-										</div>
-									)}
-									<Composer {...composerProps} />
 								</div>
+							</ScrollFadeViewport>
+							{!atBottom ? (
+								<button
+									type="button"
+									onClick={jumpToBottom}
+									title="回到底部"
+									aria-label="回到底部"
+									className="absolute bottom-4 right-[max(calc((100%_-_var(--chat-content-width))_/_2),16px)] z-20 flex size-[34px] items-center justify-center rounded-full border-0 bg-card text-foreground shadow-panel-elevated transition-colors hover:bg-surface-hover"
+								>
+									<ArrowDown className="size-4" />
+								</button>
+							) : null}
+						</div>
+
+						<div className="sticky bottom-0 shrink-0 bg-[linear-gradient(180deg,transparent_0px,var(--background)_36px)] px-4 pb-4 pt-6">
+							<div className="mx-auto w-full max-w-[var(--chat-content-width)]">
+								{approval === undefined ? null : (
+									<div className="mb-1.5">
+										<ApprovalCard
+											request={approval.request}
+											onAnswer={(value) => answer(approval.id, value)}
+										/>
+									</div>
+								)}
+								<Composer {...composerProps} />
 							</div>
-						</>
-					)}
-				</section>
+						</div>
+					</>
+				)}
+			</div>
+		</>
+	);
+
+	return (
+		<>
+			<AppShell
+				sidebarWidth={sidebarWidth}
+				sidebarCollapsed={sidebarCollapsed}
+				rightbarWidth={sideWidth}
+				rightbarOpen={sideOpen}
+				rightbarFullscreen={sideFullscreen}
+				onSidebarWidth={(width) => setSidebarWidth(clampSidebar(width))}
+				onRightbarWidth={(width) =>
+					setSideWidth(
+						Math.max(
+							RIGHTBAR_MIN,
+							Math.min(Math.round(window.innerWidth * RIGHTBAR_MAX_RATIO), Math.round(width)),
+						),
+					)
+				}
+				onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+				onNewSession={newTask}
+				sidebar={
+					<Sidebar
+						sessions={sessions}
+						archived={archived}
+						pinned={pinned}
+						currentId={sessionId}
+						running={running}
+						cwd={cwd}
+						version={settings?.version ?? ""}
+						connected={connectionOk}
+						activePanel={activePanel}
+						onNewSession={newTask}
+						onSwitch={switchSession}
+						onArchive={(id) => {
+							void api.archiveSessions([id]).then(refreshSessions).catch(() => {});
+						}}
+						onDelete={(id) => {
+							void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
+						}}
+						onRestore={(id) => {
+							void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
+						}}
+						onTogglePin={togglePin}
+						onOpenPanel={(panel) => {
+							setActivePanel(panel);
+							setSettingsOpen(false);
+							setSideFullscreen(false);
+						}}
+						onOpenSettings={() => setSettingsOpen(true)}
+					/>
+				}
+				rightbar={sidePane}
+			>
+				{main}
 			</AppShell>
 
 			<ToastHost />
+			{settingsOpen ? (
+				<SettingsPage
+					settings={settings}
+					archived={archived}
+					themeMode={theme.mode}
+					onThemeMode={theme.setMode}
+					onClose={() => setSettingsOpen(false)}
+					onUpdate={updateSettings}
+					onModel={changeModel}
+					onRestore={(id) => {
+						void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
+					}}
+				/>
+			) : null}
 			<CommandPalette
 				open={commandOpen}
 				sessions={sessions}
 				onClose={() => setCommandOpen(false)}
-				onNewTask={newTask}
+				onNewTask={() => {
+					setCommandOpen(false);
+					newTask();
+				}}
 				onSettings={() => {
 					setCommandOpen(false);
 					setSettingsOpen(true);
@@ -961,22 +870,6 @@ export function App(): ReactElement {
 				onSwitchSession={switchSession}
 				onOpenFile={openFile}
 			/>
-
-			<Dialog open={scheduledOpen} onClose={() => setScheduledOpen(false)} title="定时任务">
-				<p className="text-ui-base leading-6 text-foreground-subtle">
-					当前版本还没有调度器。定时任务需要宿主侧的持久化调度与后台会话，这里不会创建假的定时任务。
-				</p>
-			</Dialog>
-
-			<Dialog
-				open={pluginsPlaceholderOpen}
-				onClose={() => setPluginsPlaceholderOpen(false)}
-				title="插件"
-			>
-				<p className="text-ui-base leading-6 text-foreground-subtle">
-					插件功能还没有确定，先保留入口占位；后续会在这里接入插件的安装、启用与配置。
-				</p>
-			</Dialog>
-		</div>
+		</>
 	);
 }

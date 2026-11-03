@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="zai-dark" class="dark">
+<html lang="zh-CN">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="theme-color" content="#161616" />
-		<link rel="icon" type="image/svg+xml" href="/logo.svg" />
+		<meta name="theme-color" content="#f9fafb" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" media="(prefers-color-scheme: light)" />
+		<link rel="icon" type="image/svg+xml" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
 		<title>Reins</title>
 		<script>
 			// 首帧之前定好主题，避免界面先闪一帧错误的底色；默认跟随系统
@@ -12,7 +13,7 @@
 				let mode = "system";
 				try {
 					const stored = localStorage.getItem("reins-theme");
-					if (stored === "zai-light" || stored === "zai-dark") mode = stored;
+					if (stored === "zai-light" || stored === "zai-dark" || stored === "system") mode = stored;
 				} catch {
 					// 存储不可用时保持默认的跟随系统
 				}
@@ -23,7 +24,12 @@
 				document.documentElement.classList.toggle("dark", dark);
 				document
 					.querySelector('meta[name="theme-color"]')
-					?.setAttribute("content", dark ? "#161616" : "#ececee");
+					?.setAttribute("content", dark ? "#1b1b1c" : "#f9fafb");
+				// 桌面壳使用原生标题栏覆盖，页面给标题栏让出 40px
+				if (window.reinsDesktop !== undefined) {
+					document.documentElement.dataset.windowsTitlebar = "";
+					document.documentElement.style.setProperty("--caption-height", "40px");
+				}
 			})();
 		</script>
 	</head>

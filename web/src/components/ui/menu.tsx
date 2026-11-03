@@ -136,25 +136,25 @@ export function Menu({
 									right: position?.right,
 									maxHeight: position?.maxHeight,
 								}}
-								className={cn(
-									"z-50 min-w-52 overflow-y-auto rounded-lg border border-popover-border bg-menu p-1 shadow-md animate-pop",
-									className,
-								)}
+									className={cn(
+										"menu-material z-50 min-w-52 overflow-y-auto rounded-[16px] p-1 animate-pop",
+										className,
+									)}
 							>
 								{entries.map((entry, index) => {
-									if (entry.type === "separator") {
-										return <div key={`sep-${index}`} role="separator" className="-mx-1 my-1 h-px bg-border" />;
-									}
-									if (entry.type === "label") {
-										return (
-											<div
-												key={`label-${index}`}
-												className="px-2 py-1 text-ui-xs font-medium text-foreground-subtlest"
-											>
-												{entry.label}
-											</div>
-										);
-									}
+										if (entry.type === "separator") {
+											return <div key={`sep-${index}`} role="separator" className="mx-1 my-1 h-px bg-border/70" />;
+										}
+										if (entry.type === "label") {
+											return (
+												<div
+													key={`label-${index}`}
+													className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-foreground-subtlest"
+												>
+													{entry.label}
+												</div>
+											);
+										}
 									const Icon = entry.icon;
 									return (
 										<button
@@ -168,20 +168,20 @@ export function Menu({
 												setOpen(false);
 												entry.onSelect();
 											}}
-											className={cn(
-												"flex min-h-7 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-ui-base transition-colors",
-												entry.danger
-													? "text-destructive hover:bg-destructive-surface"
-													: "text-foreground hover:bg-menu-hover",
-												entry.disabled && "pointer-events-none opacity-50",
-											)}
+												className={cn(
+													"flex min-h-7 w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-[13px] leading-5 transition-colors",
+													entry.danger
+														? "text-destructive hover:bg-destructive-surface"
+														: "text-foreground hover:bg-menu-hover",
+													entry.disabled && "pointer-events-none opacity-50",
+												)}
 										>
 											{Icon === undefined ? null : <Icon className="size-4 shrink-0 text-foreground-subtlest" />}
 											<span className="min-w-0 flex-1 truncate">{entry.label}</span>
 											{entry.hint === undefined ? null : (
-												<span className="shrink-0 text-ui-xs text-foreground-subtlest">{entry.hint}</span>
+												<span className="shrink-0 text-[11px] leading-4 text-foreground-subtlest">{entry.hint}</span>
 											)}
-											{entry.checked === true ? <Check className="size-4 shrink-0" /> : null}
+											{entry.checked === true ? <Check className="size-3.5 shrink-0" /> : null}
 										</button>
 									);
 								})}

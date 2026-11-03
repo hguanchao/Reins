@@ -1,12 +1,13 @@
 import type { ReactElement } from "react";
 
-/** 用户消息:右对齐的浅色气泡,右上角收小,支持 squircle 时换成更柔和的超椭圆。 */
+/** 用户消息：右对齐的浅蓝气泡，宽度跟随内容列。 */
 export function UserMessage({ text }: { readonly text: string }): ReactElement {
 	return (
 		<div className="flex justify-end">
 			<div
 				data-user-bubble
-				className="max-w-xl whitespace-pre-wrap break-words rounded-xl rounded-tr-xs border border-border bg-user-message-bubble px-4 py-3 text-ui-base text-foreground"
+				className="max-w-[min(calc(var(--chat-content-width)*0.702),82%)] whitespace-pre-wrap break-words rounded-[20px] bg-user-message-bubble px-4 py-2.5 text-foreground"
+				style={{ fontSize: "var(--content-font-size)", lineHeight: "22px" }}
 			>
 				{text}
 			</div>

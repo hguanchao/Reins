@@ -8,14 +8,14 @@ import { ThinkingBlock } from "./thinking-block.tsx";
 import { ToolCallRow } from "./tool-call-row.tsx";
 import { UserMessage } from "./user-message.tsx";
 
-/** 会话流：用户气泡、助手 Markdown、思考块、连续工具行与提示。 */
+/** 会话流：用户气泡、助手 Markdown、思考行、连续工具行与提示。 */
 export function TranscriptView({ lines }: { readonly lines: readonly Line[] }): ReactElement {
 	const blocks = groupToolRuns(lines);
 	return (
-		<div className="flex flex-col gap-6" aria-live="polite">
+		<div className="flex flex-col gap-3" aria-live="polite">
 			{blocks.map((block, index) =>
 				block.kind === "tools" ? (
-					<div key={`tools-${index}`} className="flex flex-col gap-1.5">
+					<div key={`tools-${index}`} className="flex flex-col gap-1">
 						{block.items.map((item) => (
 							<ToolCallRow key={item.callId} line={item} />
 						))}
@@ -40,11 +40,11 @@ function LineView({ line }: { readonly line: Line }): ReactElement | null {
 		return (
 			<div
 				className={cn(
-					"flex items-start gap-2 text-ui-sm",
-					line.tone === "error" ? "text-destructive" : "text-foreground-subtle",
+					"flex items-start gap-2 text-[13px] leading-5",
+					line.tone === "error" ? "text-destructive" : "text-foreground-subtlest",
 				)}
 			>
-				<Info className="mt-0.5 size-4 shrink-0" />
+				<Info className="mt-0.5 size-3.5 shrink-0" />
 				<span className="min-w-0 break-words">{line.text}</span>
 			</div>
 		);

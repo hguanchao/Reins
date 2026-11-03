@@ -16,14 +16,14 @@ const VARIANTS: Record<ButtonVariant, string> = {
 };
 
 const SIZES: Record<ButtonSize, string> = {
-	xs: "h-5 rounded-md px-2 text-ui-sm",
-	sm: "h-6 rounded-md px-2.5 text-ui-sm",
-	default: "h-7 rounded-lg px-3 text-ui-base",
-	lg: "h-8 rounded-lg px-3.5 text-ui-base",
-	"icon-xs": "size-5 rounded-md",
-	"icon-sm": "size-6 rounded-md",
-	icon: "size-7 rounded-lg",
-	"icon-lg": "size-8 rounded-lg",
+	xs: "h-6 rounded-xs px-2 text-[11px]",
+	sm: "h-7 rounded-sm px-3 text-[12px]",
+	default: "h-9 rounded-md px-3.5 text-[14px]",
+	lg: "h-9 rounded-md px-4 text-[14px]",
+	"icon-xs": "size-5 rounded-xs",
+	"icon-sm": "size-7 rounded-sm",
+	icon: "size-7 rounded-sm",
+	"icon-lg": "size-9 rounded-md",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

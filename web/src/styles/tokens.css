@@ -9,29 +9,32 @@
 
 @theme inline {
 	--font-sans:
-		ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
-		"Segoe UI Symbol", "Noto Color Emoji";
+		-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+		"Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
 	--font-mono:
-		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-		"Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", monospace;
+		"SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", Menlo,
+		Courier, "PingFang SC", "Microsoft YaHei";
 
-	/* UI 字号随界面设置整体缩放；技术内容使用独立字号，不在这里 */
-	--text-ui-xl: calc(var(--ui-font-size) + 4px);
-	--text-ui-xl--line-height: 1.35;
-	--text-ui-lg: calc(var(--ui-font-size) + 2px);
-	--text-ui-lg--line-height: 1.4;
-	--text-ui-base: var(--ui-font-size);
-	--text-ui-base--line-height: 1.5;
-	--text-ui-caption: calc(var(--ui-font-size) - 1px);
-	--text-ui-caption--line-height: 1.45;
-	--text-ui-sm: calc(var(--ui-font-size) - 2px);
-	--text-ui-sm--line-height: 1.45;
-	--text-ui-xs: calc(var(--ui-font-size) - 4px);
-	--text-ui-xs--line-height: 1.4;
-	--text-ui-settings-title: calc(var(--ui-font-size) + 10px);
-	--text-ui-settings-title--line-height: 1.33;
+	/* 界面字号固定，正文内容随设置缩放；技术内容使用独立字号 */
+	--text-ui-xl: 20px;
+	--text-ui-xl--line-height: 28px;
+	--text-ui-lg: 16px;
+	--text-ui-lg--line-height: 24px;
+	--text-ui-base: 14px;
+	--text-ui-base--line-height: 22px;
+	--text-ui-caption: 13px;
+	--text-ui-caption--line-height: 20px;
+	--text-ui-sm: 12px;
+	--text-ui-sm--line-height: 18px;
+	--text-ui-xs: 11px;
+	--text-ui-xs--line-height: 16px;
+	--text-ui-settings-title: 20px;
+	--text-ui-settings-title--line-height: 28px;
 
-	--shadow-composer-soft: var(--composer-shadow);
+	--shadow-composer-soft: var(--elevation-soft);
+	--shadow-panel-elevated: var(--elevation-panel);
+	--shadow-panel-prominent: var(--elevation-prominent);
+	--shadow-panel-soft: var(--elevation-soft);
 
 	--color-background: var(--background);
 	--color-background-alt: var(--background-alt);
@@ -105,174 +108,218 @@
 	--color-terminal-fg: var(--terminal-fg);
 }
 
-/*
- * Zai Dark 同时写在 :root 上：页面在脚本执行前就已经是深色，不会先闪一帧白底。
- * 浅色主题由 data-theme 覆盖。
- */
 :root,
-[data-theme="zai-dark"] {
-	color-scheme: dark;
-	--ui-font-size: 14px;
-	--composer-shadow: 0 0 #0000;
-	/* 帧式布局里各独立帧的圆角半径,Windows 上取小值避免与系统窗口圆角打架 */
-	--workspace-panel-radius: 6px;
-
-	--background: #161616;
-	--background-alt: color-mix(in oklab, #2b2b2b 60%, transparent);
-	--background-win-alt: #2b2b2b;
-	--sidebar: #161616;
-	--header: #202020;
-	--panel: #202020;
-	--card: #2b2b2b;
-	--card-selected: #2b2b2b;
-	--card-border: rgba(255, 255, 255, 0.1);
-	--input: #2b2b2b;
-	--input-focused: #2b2b2b;
-	--input-border: rgba(255, 255, 255, 0.1);
-	--input-border-hover: rgba(255, 255, 255, 0.15);
-	--input-border-focused: rgba(255, 255, 255, 0.15);
-	--menu: #2b2b2b;
-	--menu-hover: #363636;
-	--popover: #2b2b2b;
-	--popover-header: #202020;
-	--popover-border: rgba(255, 255, 255, 0.1);
-	--surface: rgba(255, 255, 255, 0.05);
-	--surface-hover: rgba(255, 255, 255, 0.1);
-	--surface-strong: #2b2b2b;
-	--selected: rgba(255, 255, 255, 0.1);
-	--hover: rgba(255, 255, 255, 0.05);
-	--border: rgba(255, 255, 255, 0.1);
-	--border-hover: rgba(255, 255, 255, 0.15);
-
-	--foreground: #d4d4d4;
-	--foreground-subtle: color-mix(in oklab, #d4d4d4 60%, transparent);
-	--foreground-subtlest: color-mix(in oklab, #d4d4d4 30%, transparent);
-	--foreground-inverse: #000000;
-	--remote-foreground-muted: #b3b3b3;
-
-	--brand: #ffffff;
-	--primary: #ffffff;
-	--primary-foreground: #000000;
-	--secondary: #363636;
-	--accent: #001d3d;
-	--icon-blue: #4099ff;
-
-	--success: #46bf72;
-	--success-surface: rgba(70, 191, 114, 0.16);
-	--success-surface-foreground: #87d9a4;
-	--warning: #ff8a30;
-	--warning-surface: rgba(255, 138, 48, 0.16);
-	--warning-surface-foreground: #ffa159;
-	--destructive: #ff5c5c;
-	--destructive-surface: rgba(255, 92, 92, 0.16);
-	--destructive-surface-foreground: #ff8585;
-	--diff-added: #46bf72;
-	--diff-removed: #ff5c5c;
-
-	--user-message-bubble: rgba(255, 255, 255, 0.08);
-	--tag: #363636;
-	--tooltip: #2b2b2b;
-	--tooltip-foreground: #f8f8f8;
-	--toast: #2b2b2b;
-	--progress-surface: rgba(70, 130, 240, 0.16);
-	--progress-surface-foreground: #93c5fd;
-	--idle-task: #7b5ce5;
-	--idle-task-surface: #160d38;
-
-	--git-modified: #ff8a30;
-	--git-added: #46bf72;
-	--git-deleted: #ff5c5c;
-	--git-renamed: #4099ff;
-	--git-untracked: #46bf72;
-	--find-highlight: #542500;
-	--find-highlight-active: #ff8a30;
-	--resize-handle: #38bdf8;
-
-	--interaction-confirmation-surface: rgba(70, 191, 114, 0.16);
-	--interaction-confirmation-foreground: #87d9a4;
-	--markdown-inline-code: #363636;
-	--terminal-bg: #161616;
-	--terminal-fg: #d4d4d4;
-}
-
 [data-theme="zai-light"] {
 	color-scheme: light;
-	--composer-shadow: 0 1px 3px rgb(0 0 0 / 4%), 0 6px 18px rgb(0 0 0 / 4%);
+	--ui-font-size: 14px;
+	--content-font-size: 14px;
 
-	--background: #f8f8f8;
-	--background-alt: color-mix(in oklab, #ececee 70%, transparent);
-	--background-win-alt: #ececee;
-	--sidebar: #f0f0f0;
-	--header: #f7f7f7;
+	/* 几何与材质 */
+	--radius-xs: 4px;
+	--radius-sm: 8px;
+	--radius-md: 12px;
+	--radius-lg: 16px;
+	--radius-xl: 20px;
+	--radius-panel: 28px;
+	--caption-height: 0px;
+	--elevation-stroke-color: rgba(0, 0, 0, 0.16);
+	--elevation-stroke: 0 0 0 0.5px var(--elevation-stroke-color);
+	--elevation-panel:
+		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.03), 0 0 16px 0 rgba(0, 0, 0, 0.02);
+	--elevation-prominent:
+		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.04), 0 0 20px 0 rgba(0, 0, 0, 0.05);
+	--elevation-soft:
+		var(--elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.03), 0 0 24px 0 rgba(0, 0, 0, 0.03);
+
+	--background: #ffffff;
+	--background-alt: #f9fafb;
+	--background-win-alt: #f9fafb;
+	--sidebar: #f9fafb;
+	--header: #ffffff;
 	--panel: #ffffff;
 	--card: #ffffff;
-	--card-selected: #ffffff;
-	--card-border: rgba(13, 13, 13, 0.1);
+	--card-selected: #f5f6f7;
+	--card-border: rgba(0, 0, 0, 0.16);
 	--input: #ffffff;
 	--input-focused: #ffffff;
-	--input-border: rgba(13, 13, 13, 0.1);
-	--input-border-hover: rgba(13, 13, 13, 0.15);
-	--input-border-focused: rgba(13, 13, 13, 0.15);
-	--menu: #ffffff;
-	--menu-hover: #f0f0f0;
-	--popover: #ffffff;
-	--popover-header: #f8f8f8;
-	--popover-border: rgba(13, 13, 13, 0.1);
-	--surface: rgba(13, 13, 13, 0.03);
-	--surface-hover: rgba(13, 13, 13, 0.05);
-	--surface-strong: #f0f0f0;
-	--selected: rgba(13, 13, 13, 0.06);
-	--hover: rgba(13, 13, 13, 0.06);
-	--border: rgba(13, 13, 13, 0.1);
-	--border-hover: rgba(13, 13, 13, 0.15);
+	--input-border: rgba(0, 0, 0, 0.1);
+	--input-border-hover: rgba(0, 0, 0, 0.12);
+	--input-border-focused: rgba(0, 0, 0, 0.16);
+	--menu: rgba(248, 249, 250, 0.94);
+	--menu-hover: rgba(38, 49, 72, 0.06);
+	--popover: rgba(248, 249, 250, 0.97);
+	--popover-header: #f9fafb;
+	--popover-border: rgba(0, 0, 0, 0.08);
+	--surface: #f5f6f7;
+	--surface-hover: rgba(38, 49, 72, 0.06);
+	--surface-strong: #ebedf2;
+	--selected: rgba(38, 49, 72, 0.08);
+	--hover: rgba(38, 49, 72, 0.06);
+	--border: rgba(0, 0, 0, 0.12);
+	--border-hover: rgba(0, 0, 0, 0.16);
 
-	--foreground: #262626;
-	--foreground-subtle: color-mix(in oklab, #262626 75%, transparent);
-	--foreground-subtlest: color-mix(in oklab, #262626 62%, transparent);
+	--foreground: #0f1115;
+	--foreground-subtle: #61666b;
+	--foreground-subtlest: #81858c;
 	--foreground-inverse: #ffffff;
-	--remote-foreground-muted: #595959;
+	--remote-foreground-muted: #61666b;
 
-	--brand: #000000;
-	--primary: #000000;
+	--brand: #0f1115;
+	--primary: #0f1115;
 	--primary-foreground: #ffffff;
-	--secondary: #e6e6e6;
-	--accent: #ebf4ff;
-	--icon-blue: #0b7fff;
+	--secondary: #ebedf2;
+	--accent: #edf3fe;
+	--icon-blue: #418ce6;
 
-	--success: #1e8a3e;
-	--success-surface: #eaf7ee;
+	--success: #22c55e;
+	--success-surface: #e6faed;
 	--success-surface-foreground: #166b32;
-	--warning: #e07b00;
-	--warning-surface: rgba(224, 123, 0, 0.12);
-	--warning-surface-foreground: #914e00;
-	--destructive: #e03131;
-	--destructive-surface: rgba(224, 49, 49, 0.1);
-	--destructive-surface-foreground: #b42020;
-	--diff-added: #1e8a3e;
-	--diff-removed: #e03131;
+	--warning: #f59e0b;
+	--warning-surface: #fef5e7;
+	--warning-surface-foreground: #8a5200;
+	--destructive: #ec1313;
+	--destructive-surface: #fef2f2;
+	--destructive-surface-foreground: #b91c1c;
+	--diff-added: #01a241;
+	--diff-removed: #ba2723;
 
-	--user-message-bubble: rgba(13, 13, 13, 0.05);
-	--tag: #e6e6e6;
-	--tooltip: #f0f0f0;
-	--tooltip-foreground: #0d0d0d;
-	--toast: #ffffff;
-	--progress-surface: #eff6ff;
-	--progress-surface-foreground: #1d4ed8;
-	--idle-task: #9e77ed;
-	--idle-task-surface: #f5f3ff;
+	--user-message-bubble: #edf3fe;
+	--tag: #f5f6f7;
+	--tooltip: #1b1b1c;
+	--tooltip-foreground: #f9fafb;
+	--toast: #1b1b1c;
+	--progress-surface: #edf3fe;
+	--progress-surface-foreground: #418ce6;
+	--idle-task: #7c5cff;
+	--idle-task-surface: #f3f0ff;
 
-	--git-modified: #e07b00;
-	--git-added: #1e8a3e;
-	--git-deleted: #e03131;
-	--git-renamed: #0b7fff;
-	--git-untracked: #1e8a3e;
-	--find-highlight: #fff4eb;
-	--find-highlight-active: #ffb26b;
-	--resize-handle: #0ea5e9;
+	--git-modified: #dd8629;
+	--git-added: #01a241;
+	--git-deleted: #ba2723;
+	--git-renamed: #418ce6;
+	--git-untracked: #01a241;
+	--find-highlight: #fff2cc;
+	--find-highlight-active: #f7ad31;
+	--resize-handle: #418ce6;
 
-	--interaction-confirmation-surface: #eaf7ee;
+	--interaction-confirmation-surface: #e6faed;
 	--interaction-confirmation-foreground: #166b32;
-	--markdown-inline-code: #e6e6e6;
-	--terminal-bg: #f8f8f8;
-	--terminal-fg: #262626;
+	--markdown-inline-code: #f5f6f7;
+	--terminal-bg: #f9fafb;
+	--terminal-fg: #0f1115;
+
+	--focus-ring: #418ce6;
+	--business-blue: #418ce6;
+	--business-blue-soft: #e4edfd;
+	--bubble: #edf3fe;
+	--bubble-strong: #d3e2ff;
+	--code-block: #f9fafb;
+	--code-block-banner: #f9fafb;
+	--sidebar-nav-active: #ebedf2;
+	--warn-label: #dd8629;
+	--label-shimmer: rgba(15, 17, 21, 0.3);
+	--deep-diving: color-mix(in srgb, #418ce6 70%, #0e3074);
+	--deep-diving-shimmer: color-mix(in srgb, #418ce6 30%, #0e3074);
+}
+
+[data-theme="zai-dark"] {
+	color-scheme: dark;
+	--elevation-stroke-color: rgba(255, 255, 255, 0.16);
+	--elevation-stroke: 0 0 0 0.5px var(--elevation-stroke-color);
+	--elevation-panel:
+		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.18), 0 0 16px 0 rgba(0, 0, 0, 0.12);
+	--elevation-prominent:
+		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.22), 0 0 20px 0 rgba(0, 0, 0, 0.18);
+	--elevation-soft:
+		var(--elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.18), 0 0 24px 0 rgba(0, 0, 0, 0.12);
+
+	--background: #151517;
+	--background-alt: #1b1b1c;
+	--background-win-alt: #1b1b1c;
+	--sidebar: #1b1b1c;
+	--header: #151517;
+	--panel: #232325;
+	--card: #232325;
+	--card-selected: #2c2c2e;
+	--card-border: rgba(255, 255, 255, 0.2);
+	--input: #2c2c2e;
+	--input-focused: #2c2c2e;
+	--input-border: rgba(255, 255, 255, 0.12);
+	--input-border-hover: rgba(255, 255, 255, 0.16);
+	--input-border-focused: rgba(255, 255, 255, 0.2);
+	--menu: rgba(48, 49, 54, 0.92);
+	--menu-hover: rgba(255, 255, 255, 0.08);
+	--popover: rgba(48, 49, 54, 0.96);
+	--popover-header: #232325;
+	--popover-border: rgba(255, 255, 255, 0.12);
+	--surface: #2c2c2e;
+	--surface-hover: rgba(255, 255, 255, 0.08);
+	--surface-strong: #353638;
+	--selected: rgba(255, 255, 255, 0.1);
+	--hover: rgba(255, 255, 255, 0.08);
+	--border: rgba(255, 255, 255, 0.16);
+	--border-hover: rgba(255, 255, 255, 0.2);
+
+	--foreground: #f9fafb;
+	--foreground-subtle: #cfd3d6;
+	--foreground-subtlest: #81858c;
+	--foreground-inverse: #151517;
+	--remote-foreground-muted: #adb2b8;
+
+	--brand: #f9fafb;
+	--primary: #f9fafb;
+	--primary-foreground: #151517;
+	--secondary: #2c2c2e;
+	--accent: #1e2a3d;
+	--icon-blue: #7aaaff;
+
+	--success: #22c55e;
+	--success-surface: #233c2c;
+	--success-surface-foreground: #4ed17e;
+	--warning: #f59e0b;
+	--warning-surface: #27241f;
+	--warning-surface-foreground: #f7ad31;
+	--destructive: #f25a5a;
+	--destructive-surface: rgba(242, 90, 90, 0.12);
+	--destructive-surface-foreground: #f25a5a;
+	--diff-added: #41c977;
+	--diff-removed: #fa423e;
+
+	--user-message-bubble: #2c2c2e;
+	--tag: #2c2c2e;
+	--tooltip: #2c2c2e;
+	--tooltip-foreground: #f9fafb;
+	--toast: #2c2c2e;
+	--progress-surface: #253349;
+	--progress-surface-foreground: #7aaaff;
+	--idle-task: #9e77ed;
+	--idle-task-surface: #241c3a;
+
+	--git-modified: #f7ad31;
+	--git-added: #41c977;
+	--git-deleted: #fa423e;
+	--git-renamed: #7aaaff;
+	--git-untracked: #41c977;
+	--find-highlight: #3d321a;
+	--find-highlight-active: #f7ad31;
+	--resize-handle: #7aaaff;
+
+	--interaction-confirmation-surface: #233c2c;
+	--interaction-confirmation-foreground: #4ed17e;
+	--markdown-inline-code: #2c2c2e;
+	--terminal-bg: #151517;
+	--terminal-fg: #f9fafb;
+
+	--focus-ring: #7aaaff;
+	--business-blue: #7aaaff;
+	--business-blue-soft: #28354a;
+	--bubble: #2c2c2e;
+	--bubble-strong: #353638;
+	--code-block: #1f1f21;
+	--code-block-banner: #232325;
+	--sidebar-nav-active: #2c2c2e;
+	--warn-label: #f7ad31;
+	--label-shimmer: rgba(255, 255, 255, 0.45);
+	--deep-diving: color-mix(in srgb, #7aaaff 55%, #adb2b8);
+	--deep-diving-shimmer: color-mix(in srgb, #93c5fd 65%, #7aaaff);
 }
