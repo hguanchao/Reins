@@ -3,13 +3,10 @@ import { contextBridge, ipcRenderer } from "electron";
 /**
  * 渲染层的窗口能力桥。
  *
- * 页面跑在 http://127.0.0.1 上，不能直接碰 Electron；这里只暴露窗口控制、主题同步与
- * 应用菜单三件事，其余能力仍留在主进程。
+ * 页面跑在 http://127.0.0.1 上，不能直接碰 Electron；这里只暴露窗口控制、
+ * 工作区选择与主题同步，其余能力仍留在主进程。
  */
 contextBridge.exposeInMainWorld("reinsDesktop", {
-	showMenu: (kind?: "edit" | "window" | "help" | "about"): void => {
-		void ipcRenderer.invoke("menu:show", kind);
-	},
 	chooseWorkspace: (): Promise<boolean> => ipcRenderer.invoke("workspace:choose") as Promise<boolean>,
 	minimize: (): void => {
 		void ipcRenderer.invoke("window:minimize");

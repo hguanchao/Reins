@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BrowserWindow, Menu, app, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { parseReadyLine } from "#src/web/ready-line.ts";
 
 /**
@@ -106,7 +106,10 @@ function startServer(workspace: string): Promise<ServerHandle> {
 	});
 }
 
-/** 窗口先出的 loading 页:纯内联,毫秒级可见;真就绪后由 loadURL 整页换掉。 */
+/**
+ * 窗口先出的 loading 页:纯内联,毫秒级可见;真就绪后由 loadURL 整页换掉。
+ * 底色跟随系统,默认主题跟随系统时首屏不会先闪一下深色。
+ */
 const LOADING_PAGE =
 	"data:text/html;charset=utf-8," +
 	encodeURIComponent(`<!doctype html><meta charset="utf-8"><title>Reins</title>
@@ -118,54 +121,32 @@ const LOADING_PAGE =
 		border:2px solid #2b2b2b;border-top-color:#f8f8f8;animation:r 0.8s linear infinite}
 	p{margin:0;font-size:12.5px;letter-spacing:0.02em}
 	@keyframes r{to{transform:rotate(360deg)}}
+	@media (prefers-color-scheme: light){
+		body{background:#f8f8f8;color:#6b6b6b}
+		.s{border-color:#dedede;border-top-color:#161616}
+	}
 </style><div class="c"><div class="s"></div><p>正在启动 Reins</p></div>`);
 
-type TopMenuKind = "edit" | "window" | "help" | "about";
-
 /**
- * 顶栏四个菜单。
+ * 隐藏的应用菜单。
  *
- * 无边框窗口没有系统菜单栏，顶栏的标签各自弹出对应的原生菜单；关于面板的数据来自打包的
- * package.json。
+ * 无边框窗口没有菜单栏,界面也不提供菜单入口;这里只挂重载与开发者工具两个 role,
+ * 让它们的快捷键(Ctrl+R / F12 类)继续生效,菜单本身永远不显示。
  */
-function buildMenus(): Record<TopMenuKind, Menu> {
-	const templates: Record<TopMenuKind, Electron.MenuItemConstructorOptions[]> = {
-		edit: [
-			{ role: "undo", label: "撤销" },
-			{ role: "redo", label: "重做" },
-			{ type: "separator" },
-			{ role: "cut", label: "剪切" },
-			{ role: "copy", label: "复制" },
-			{ role: "paste", label: "粘贴" },
-			{ role: "selectAll", label: "全选" },
-		],
-		window: [
-			{ role: "minimize", label: "最小化" },
-			{ role: "zoom", label: "最大化" },
-			{ type: "separator" },
-			{ role: "close", label: "关闭" },
-		],
-		help: [
+const HIDDEN_MENU = Menu.buildFromTemplate([
+	{
+		label: "界面",
+		submenu: [
 			{ role: "reload", label: "重新加载界面" },
 			{ role: "toggleDevTools", label: "开发者工具" },
 		],
-		about: [{ role: "about", label: "关于 Reins" }],
-	};
-	return Object.fromEntries(
-		Object.entries(templates).map(([kind, template]) => [kind, Menu.buildFromTemplate(template)]),
-	) as Record<TopMenuKind, Menu>;
-}
+	},
+]);
 
 async function run(): Promise<void> {
 	app.setAboutPanelOptions({ applicationName: "Reins", applicationVersion: app.getVersion() });
-	const menus = buildMenus();
-	// 菜单由顶栏标签按需弹出，不挂应用菜单：隐藏标题栏后它无处显示，Alt 也不该再唤出
-	Menu.setApplicationMenu(null);
-	ipcMain.handle("menu:show", (event, kind: unknown) => {
-		const window = BrowserWindow.fromWebContents(event.sender);
-		const menu = typeof kind === "string" ? menus[kind as TopMenuKind] : undefined;
-		if (menu !== undefined && window !== null) menu.popup({ window });
-	});
+	// 菜单不显示,只为保住重载/开发者工具的快捷键
+	Menu.setApplicationMenu(HIDDEN_MENU);
 	ipcMain.handle("window:minimize", (event) => {
 		BrowserWindow.fromWebContents(event.sender)?.minimize();
 	});
@@ -197,7 +178,8 @@ async function run(): Promise<void> {
 		minWidth: 880,
 		minHeight: 600,
 		title: "Reins",
-		backgroundColor: "#161616",
+		icon: join(buildDir, "icon.ico"),
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#161616" : "#f8f8f8",
 		show: false,
 		frame: false,
 		webPreferences: {
