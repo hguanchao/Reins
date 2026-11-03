@@ -89,7 +89,7 @@ export function MessageRail({ lines, scrollRef }: MessageRailProps): ReactElemen
 
 	return (
 		<div
-			className="absolute top-3 bottom-3 right-2 z-20 w-4"
+			className="absolute top-3 bottom-3 right-0 z-30 w-4"
 			onMouseEnter={() => setOpen(true)}
 			onMouseLeave={() => setOpen(false)}
 			onBlur={(event) => {
@@ -114,11 +114,13 @@ export function MessageRail({ lines, scrollRef }: MessageRailProps): ReactElemen
 					open ? "pointer-events-none opacity-0" : "opacity-100",
 				)}
 			>
-				<span className="absolute inset-y-2 right-[6.5px] w-px bg-border/70" />
 				{items.map((item, index) => (
 					<span
 						key={item.index}
-						className="absolute right-[4px] h-[2px] w-[6px] -translate-y-1/2 rounded-full bg-foreground-subtlest/70"
+						className={cn(
+							"absolute right-[6px] h-[1.5px] -translate-y-1/2 rounded-full transition-all",
+							current === item.index ? "w-[14px] bg-foreground" : "w-[9px] bg-foreground-subtlest/55",
+						)}
 						style={{ top: `${((index + 1) / (items.length + 1)) * 100}%` }}
 					/>
 				))}
@@ -129,30 +131,39 @@ export function MessageRail({ lines, scrollRef }: MessageRailProps): ReactElemen
 				role="navigation"
 				aria-label="消息轨迹"
 				className={cn(
-					"absolute top-0 right-0 flex max-h-full w-[min(220px,42vw)] flex-col overflow-y-auto overscroll-contain rounded-xl border-[0.5px] border-border bg-popover p-1.5 shadow-panel-prominent backdrop-blur-xl transition-[opacity,transform] duration-150",
-					open ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0",
+					"absolute top-1/2 right-0 flex max-h-[min(400px,calc(100%_-_24px))] w-[min(320px,40vw)] -translate-y-1/2 flex-col overflow-y-auto overscroll-contain rounded-xl border-[0.5px] border-border bg-card p-2 shadow-panel-prominent transition-opacity duration-150",
+					open ? "visible opacity-100" : "invisible opacity-0",
 				)}
 			>
-				<ol className="flex flex-col">
-					{items.map((item) => (
-						<li key={item.index}>
-							<button
-								type="button"
-								title={item.text}
-								onClick={() => jump(item.index)}
-								onMouseEnter={() => setHovered(item.index)}
-								onMouseLeave={() => setHovered((value) => (value === item.index ? undefined : value))}
-								className={cn(
-									"line-clamp-2 block w-full rounded-md px-2.5 py-1.5 text-right text-[12px] leading-[18px] transition-colors",
-									current === item.index || hovered === item.index || jumped === item.index
-										? "bg-surface-hover text-foreground"
-										: "text-foreground-subtle hover:bg-surface-hover hover:text-foreground",
-								)}
-							>
-								{item.text.length === 0 ? "空消息" : item.text}
-							</button>
-						</li>
-					))}
+				<ol className="flex flex-col gap-0.5">
+					{items.map((item) => {
+						const active = current === item.index || hovered === item.index || jumped === item.index;
+						return (
+							<li key={item.index}>
+								<button
+									type="button"
+									title={item.text}
+									onClick={() => jump(item.index)}
+									onMouseEnter={() => setHovered(item.index)}
+									onMouseLeave={() => setHovered((value) => (value === item.index ? undefined : value))}
+									className={cn(
+										"flex w-full items-center gap-2.5 rounded-md px-2 py-[5px] text-[12px] leading-[18px] transition-colors",
+										active ? "font-semibold text-foreground" : "text-foreground-subtlest hover:text-foreground",
+									)}
+								>
+									<span className="min-w-0 flex-1 truncate text-right">
+										{item.text.length === 0 ? "空消息" : item.text}
+									</span>
+									<span
+										className={cn(
+											"h-px shrink-0 rounded-full",
+											active ? "w-6 bg-foreground" : "w-3 bg-foreground-subtlest/55",
+										)}
+									/>
+								</button>
+							</li>
+						);
+					})}
 				</ol>
 			</div>
 		</div>
