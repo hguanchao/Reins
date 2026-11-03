@@ -57,8 +57,8 @@ export function TopOverlay({
 	const ToggleIcon = sidebarCollapsed ? PanelLeftOpen : PanelLeftClose;
 
 	return (
-		<div className="pointer-events-none absolute left-0 top-0 z-20 h-14">
-			<div className="no-drag pointer-events-auto flex h-12 items-center gap-1 pl-3 pt-1">
+		<div className="pointer-events-none absolute left-0 top-1 z-20 h-14">
+			<div className="no-drag pointer-events-auto flex h-12 items-center gap-1 pl-2">
 				<button
 					type="button"
 					aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}

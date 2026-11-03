@@ -526,16 +526,15 @@ function ContextUsage({
 }: {
 	readonly tokens: number | undefined;
 	readonly window: number | undefined;
-}): ReactElement {
-	const ratio = tokens !== undefined && window !== undefined && window > 0 ? Math.min(1, tokens / window) : 0;
+}): ReactElement | null {
+	// 用量未知时不渲染空圈:一个没有数据的圆环看起来更像故障而不是占位
+	if (tokens === undefined || window === undefined || window <= 0) return null;
+	const ratio = Math.min(1, tokens / window);
 	const size = 18;
 	const stroke = 2;
 	const radius = (size - stroke) / 2;
 	const circumference = 2 * Math.PI * radius;
-	const label =
-		tokens === undefined || window === undefined
-			? "上下文用量未知"
-			: `上下文 ${formatTokens(tokens)} / ${formatTokens(window)}（${Math.round(ratio * 100)}%）`;
+	const label = `上下文 ${formatTokens(tokens)} / ${formatTokens(window)}（${Math.round(ratio * 100)}%）`;
 
 	return (
 		<Tooltip label={label}>

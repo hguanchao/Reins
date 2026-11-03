@@ -37,7 +37,7 @@ export function applyTheme(mode: ThemeMode): ResolvedTheme {
 	root.classList.toggle("dark", resolved === "zai-dark");
 	document
 		.querySelector('meta[name="theme-color"]')
-		?.setAttribute("content", resolved === "zai-dark" ? "#161616" : "#f8f8f8");
+		?.setAttribute("content", resolved === "zai-dark" ? "#161616" : "#ececee");
 	desktopBridge()?.setTheme(resolved);
 	return resolved;
 }

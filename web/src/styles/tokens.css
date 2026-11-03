@@ -199,10 +199,10 @@
 	color-scheme: light;
 	--composer-shadow: 0 1px 3px rgb(0 0 0 / 4%), 0 6px 18px rgb(0 0 0 / 4%);
 
-	--background: #ffffff;
-	--background-alt: color-mix(in oklab, #ffffff 70%, transparent);
-	--background-win-alt: #ffffff;
-	--sidebar: #fafafa;
+	--background: #f8f8f8;
+	--background-alt: color-mix(in oklab, #ececee 70%, transparent);
+	--background-win-alt: #ececee;
+	--sidebar: #f0f0f0;
 	--header: #f7f7f7;
 	--panel: #ffffff;
 	--card: #ffffff;
@@ -218,13 +218,13 @@
 	--popover: #ffffff;
 	--popover-header: #f8f8f8;
 	--popover-border: rgba(13, 13, 13, 0.1);
-	--surface: rgba(13, 13, 13, 0.04);
-	--surface-hover: rgba(13, 13, 13, 0.06);
+	--surface: rgba(13, 13, 13, 0.03);
+	--surface-hover: rgba(13, 13, 13, 0.05);
 	--surface-strong: #f0f0f0;
 	--selected: rgba(13, 13, 13, 0.06);
 	--hover: rgba(13, 13, 13, 0.06);
-	--border: rgba(13, 13, 13, 0.08);
-	--border-hover: rgba(13, 13, 13, 0.14);
+	--border: rgba(13, 13, 13, 0.1);
+	--border-hover: rgba(13, 13, 13, 0.15);
 
 	--foreground: #262626;
 	--foreground-subtle: color-mix(in oklab, #262626 75%, transparent);

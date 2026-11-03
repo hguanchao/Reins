@@ -53,18 +53,18 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			className="flex h-full shrink-0 flex-col overflow-hidden rounded-(--workspace-panel-radius) border-[0.5px] border-border bg-sidebar shadow-xs"
 			style={{ width: props.width }}
 		>
-			<div className="flex h-1 shrink-0 drag-region" />
-			<nav className="flex flex-col gap-1 px-2 pb-2">
-				<Button
-					variant="ghost"
-					size="lg"
-					className="h-8 w-full justify-start gap-2 px-2.5 font-medium"
+			{/* 左上角浮动工具条悬在侧栏上方,这条占位让出工具条的高度 */}
+			<div className="drag-region h-11 shrink-0" />
+			<nav className="flex flex-col gap-1 px-2 pb-1">
+				<button
+					type="button"
 					onClick={props.onNewTask}
+					className="flex h-8 w-full shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-ui-base font-medium text-foreground transition-colors hover:bg-surface-hover"
 				>
-					<CirclePlus className="size-4" />
-					<span className="min-w-0 flex-1 text-left">新建任务</span>
-					<span className="text-ui-sm text-foreground-subtlest">Ctrl N</span>
-				</Button>
+					<CirclePlus className="size-4 shrink-0" />
+					<span className="min-w-0 flex-1 truncate">新建任务</span>
+					<span className="shrink-0 text-ui-sm text-foreground-subtlest">Ctrl N</span>
+				</button>
 				<NavRow icon={Blocks} label="插件" onClick={props.onOpenPluginsPlaceholder} />
 				<NavRow icon={Archive} label="定时任务" onClick={props.onOpenScheduled} />
 			</nav>
@@ -171,7 +171,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				</ScrollFadeViewport>
 			</div>
 
-			<div className="flex h-12 shrink-0 items-center justify-end gap-1 px-3">
+			<div className="flex h-11 shrink-0 items-center gap-1 px-3">
 				<Popover
 					trigger={({ toggle }) => (
 						<Button variant="ghost" size="icon-sm" aria-label="通知" title="通知" onClick={toggle}>
@@ -191,7 +191,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				>
 					<Settings2 className="size-4" />
 				</Button>
-				<span className="ml-1 shrink-0 font-mono text-ui-xs text-foreground-subtlest">
+				<span className="ml-auto shrink-0 font-mono text-ui-xs leading-none text-foreground-subtlest">
 					v{props.version || "1.0.0"}
 				</span>
 			</div>

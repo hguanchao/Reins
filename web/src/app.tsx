@@ -13,7 +13,7 @@ import { ApprovalCard } from "./chat/approval-card.tsx";
 import { Composer, type ComposerProps } from "./chat/composer.tsx";
 import { LoadingPixels } from "./chat/loading-pixels.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
-import { Button, Dialog, ScrollFadeViewport, ToastHost, toast } from "./components/ui/index.ts";
+import { Dialog, ScrollFadeViewport, ToastHost, toast } from "./components/ui/index.ts";
 import { IconButton } from "./components/ui/button.tsx";
 import { cn } from "./components/ui/cn.ts";
 import { CodePane } from "./panels/code-pane.tsx";
@@ -686,9 +686,9 @@ export function App(): ReactElement {
 
 	if (settingsOpen) {
 		return (
-			<div className="flex h-full flex-col bg-background-win-alt">
-				<div className="drag-region h-1 shrink-0" />
-				<div className="min-h-0 flex-1 overflow-hidden px-1 pb-1">
+			<div className="flex h-full flex-col bg-background-win-alt p-1">
+				<div className="drag-region h-1 w-full shrink-0" />
+				<div className="min-h-0 flex-1 overflow-hidden">
 					<div className="flex h-full flex-col overflow-hidden rounded-(--workspace-panel-radius) border-[0.5px] border-border bg-background shadow-xs">
 						<SettingsPage
 							settings={settings}
@@ -722,36 +722,33 @@ export function App(): ReactElement {
 			<AppShell
 				sidebar={
 					sidebarCollapsed ? (
-						<div className="drag-region h-full w-1 shrink-0" />
+						<div className="w-1 shrink-0" />
 					) : (
-						<>
-							<div className="drag-region h-1 shrink-0" />
-							<Sidebar
-								sessions={sessions}
-								archived={archived}
-								pinned={pinned}
-								currentId={sessionId}
-								running={running}
-								cwd={cwd}
-								width={sidebarWidth}
-								version={settings?.version ?? ""}
-								onNewTask={newTask}
-								onSwitch={switchSession}
-								onArchive={(id) => {
-									void api.archiveSessions([id]).then(refreshSessions).catch(() => {});
-								}}
-								onDelete={(id) => {
-									void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
-								}}
-								onRestore={(id) => {
-									void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
-								}}
-								onTogglePin={togglePin}
-								onOpenPluginsPlaceholder={() => setPluginsPlaceholderOpen(true)}
-								onOpenScheduled={() => setScheduledOpen(true)}
-								onOpenSettings={() => setSettingsOpen(true)}
-							/>
-						</>
+						<Sidebar
+							sessions={sessions}
+							archived={archived}
+							pinned={pinned}
+							currentId={sessionId}
+							running={running}
+							cwd={cwd}
+							width={sidebarWidth}
+							version={settings?.version ?? ""}
+							onNewTask={newTask}
+							onSwitch={switchSession}
+							onArchive={(id) => {
+								void api.archiveSessions([id]).then(refreshSessions).catch(() => {});
+							}}
+							onDelete={(id) => {
+								void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
+							}}
+							onRestore={(id) => {
+								void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
+							}}
+							onTogglePin={togglePin}
+							onOpenPluginsPlaceholder={() => setPluginsPlaceholderOpen(true)}
+							onOpenScheduled={() => setScheduledOpen(true)}
+							onOpenSettings={() => setSettingsOpen(true)}
+						/>
 					)
 				}
 				resizeHandle={
@@ -817,6 +814,7 @@ export function App(): ReactElement {
 				>
 					<WorkspaceHeader
 						variant={draft ? "draft" : "task"}
+						overlayLeading={sidebarCollapsed}
 						leading={
 							<>
 								{draft ? (
@@ -866,28 +864,27 @@ export function App(): ReactElement {
 						</div>
 					) : draft ? (
 						<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-							<div className="flex min-h-full w-full flex-col items-center justify-center px-6 pb-10">
-								<div className="flex w-full max-w-2xl flex-col items-center gap-6">
+							<div className="flex min-h-full w-full flex-col items-center justify-center px-6 pb-16 pt-20">
+								<div className="flex w-full max-w-2xl flex-col items-center gap-7">
 									<img
 										src="/logo.svg"
 										alt=""
-										className="size-16 shrink-0 [mask-image:linear-gradient(to_bottom,black_30%,transparent_100%)]"
+										className="size-20 shrink-0 drop-shadow-xs [mask-image:linear-gradient(to_bottom,black_55%,transparent_125%)]"
 									/>
-									<span className="text-ui-xl font-medium tracking-tight text-foreground">
+									<h1 className="text-ui-xl font-medium tracking-tight text-foreground">
 										{greeting()}
-									</span>
+									</h1>
 									<Composer {...composerProps} />
 									<div className="flex flex-wrap justify-center gap-2">
 										{QUICK_PROMPTS.map((item) => (
-											<Button
+											<button
 												key={item.label}
-												variant="outline"
-												size="sm"
-												className="rounded-lg text-ui-caption text-foreground-subtle hover:text-foreground"
+												type="button"
 												onClick={() => send(item.prompt)}
+												className="h-7 rounded-full border border-border bg-card px-3 text-ui-caption text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
 											>
 												{item.label}
-											</Button>
+											</button>
 										))}
 									</div>
 								</div>

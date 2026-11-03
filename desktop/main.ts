@@ -122,7 +122,7 @@ const LOADING_PAGE =
 	p{margin:0;font-size:12.5px;letter-spacing:0.02em}
 	@keyframes r{to{transform:rotate(360deg)}}
 	@media (prefers-color-scheme: light){
-		body{background:#f8f8f8;color:#6b6b6b}
+		body{background:#ececee;color:#6b6b6b}
 		.s{border-color:#dedede;border-top-color:#161616}
 	}
 </style><div class="c"><div class="s"></div><p>正在启动 Reins</p></div>`);
@@ -165,7 +165,7 @@ async function run(): Promise<void> {
 	ipcMain.handle("window:set-theme", (event, theme: unknown) => {
 		const window = BrowserWindow.fromWebContents(event.sender);
 		if (window === null) return;
-		window.setBackgroundColor(theme === "zai-light" ? "#f8f8f8" : "#161616");
+		window.setBackgroundColor(theme === "zai-light" ? "#ececee" : "#161616");
 	});
 	await app.whenReady();
 
@@ -179,7 +179,7 @@ async function run(): Promise<void> {
 		minHeight: 600,
 		title: "Reins",
 		icon: join(buildDir, "icon.ico"),
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#161616" : "#f8f8f8",
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#161616" : "#ececee",
 		show: false,
 		frame: false,
 		webPreferences: {

@@ -10,19 +10,23 @@ import { cn } from "../components/ui/cn.ts";
  */
 export function WorkspaceHeader({
 	variant = "task",
+	/** 侧栏收起时,左上角浮动工具条盖在头部上,标题要给工具条让出左侧空间 */
+	overlayLeading = false,
 	leading,
 	actions,
 }: {
 	/** draft = 还没有会话(新建任务态),task = 已有会话在展示 */
 	readonly variant?: "draft" | "task";
+	readonly overlayLeading?: boolean;
 	readonly leading?: ReactNode;
 	readonly actions?: ReactNode;
 }): ReactElement {
 	return (
 		<header
 			className={cn(
-				"drag-region relative flex h-12 w-full shrink-0 items-center justify-between gap-2 overflow-hidden px-2",
+				"drag-region relative flex h-12 w-full shrink-0 items-center justify-between gap-2 overflow-hidden px-2 transition-[padding] duration-300",
 				variant === "draft" ? "border-b border-transparent" : "border-b border-border/50",
+				overlayLeading && "pl-40",
 			)}
 		>
 			<div className="no-drag flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
