@@ -22,7 +22,7 @@ export function ToolCallRow({ line }: { readonly line: ToolLine }): ReactElement
 				onClick={() => setOpen((value) => !value)}
 				disabled={!hasBody}
 				aria-expanded={open}
-				className="flex max-w-full items-center gap-2 self-start text-left text-ui-base"
+				className="group/summary inline-flex max-w-full cursor-pointer items-center gap-2 self-start text-left text-ui-base"
 			>
 				<Icon className="size-4 shrink-0 text-foreground-subtlest" />
 				<span
@@ -55,7 +55,7 @@ export function ToolCallRow({ line }: { readonly line: ToolLine }): ReactElement
 				{hasBody ? (
 					<ChevronRight
 						className={cn(
-							"size-4 shrink-0 text-foreground-subtlest opacity-0 transition-transform group-hover/tool:opacity-100",
+							"size-4 shrink-0 text-foreground-subtlest opacity-0 transition-opacity duration-200 group-hover/summary:opacity-100",
 							open && "rotate-90 opacity-100",
 						)}
 					/>
@@ -64,7 +64,7 @@ export function ToolCallRow({ line }: { readonly line: ToolLine }): ReactElement
 
 			{line.running ? (
 				<div className="ml-6 mt-1 h-1 w-16 overflow-hidden rounded-full bg-surface-hover">
-					<div className="h-full w-1/2 rounded-full bg-brand animate-sweep" />
+					<div className="relative h-full w-1/3 rounded-full bg-brand animate-tool-progress" />
 				</div>
 			) : null}
 

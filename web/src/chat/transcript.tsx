@@ -12,7 +12,7 @@ import { UserMessage } from "./user-message.tsx";
 export function TranscriptView({ lines }: { readonly lines: readonly Line[] }): ReactElement {
 	const blocks = groupToolRuns(lines);
 	return (
-		<div className="flex flex-col gap-5" aria-live="polite">
+		<div className="flex flex-col gap-6" aria-live="polite">
 			{blocks.map((block, index) =>
 				block.kind === "tools" ? (
 					<div key={`tools-${index}`} className="flex flex-col gap-1.5">

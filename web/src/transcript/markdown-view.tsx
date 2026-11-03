@@ -7,7 +7,7 @@ export function MarkdownView({ text, streaming }: { text: string; streaming: boo
 	const html = useMemo(() => renderMarkdown(text, streaming), [text, streaming]);
 	return (
 		<div
-			className="md"
+			className="md text-ui-base leading-[1.75] tracking-wide"
 			dangerouslySetInnerHTML={{ __html: html }}
 			onClick={(event) => {
 				handleCopyClick(event.nativeEvent);

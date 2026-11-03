@@ -34,7 +34,7 @@ export function ThinkingBlock({
 				/>
 			</button>
 			{open ? (
-				<div className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words pl-6 text-ui-base leading-6 text-foreground-subtle">
+				<div className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words pl-6 text-ui-base leading-[1.75] tracking-wide text-foreground-subtle">
 					{text}
 				</div>
 			) : null}

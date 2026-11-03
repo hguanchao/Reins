@@ -284,19 +284,19 @@ export function Composer(props: ComposerProps): ReactElement {
 				</div>
 			) : null}
 
-			<div className="composer-shell flex flex-col gap-3 rounded-2xl border-[0.5px] border-input-border bg-input p-3 shadow-composer-soft transition-colors focus-within:border-input-border-focused focus-within:bg-input-focused hover:border-input-border-hover">
-				<textarea
-					ref={textareaRef}
-					value={text}
-					onChange={onChange}
-					onKeyDown={onKeyDown}
-					rows={1}
-					placeholder={props.running ? "正在回复…" : `给 Reins 一个任务，@ 文件，$ 技能`}
-					className="max-h-42 min-h-10 w-full resize-none bg-transparent text-ui-base leading-6 text-foreground outline-none placeholder:text-foreground-subtlest"
-					aria-label="输入消息"
-				/>
+			<div className="composer-shell flex flex-col gap-3 overflow-hidden rounded-2xl border-[0.5px] border-input-border bg-input p-3 shadow-composer-soft transition-colors hover:border-input-border-hover focus-within:border-input-border-focused focus-within:bg-input-focused">
+					<textarea
+						ref={textareaRef}
+						value={text}
+						onChange={onChange}
+						onKeyDown={onKeyDown}
+						rows={1}
+						placeholder={props.running ? "正在回复…" : "给 Reins 一个任务，@ 文件，$ 技能"}
+						className="max-h-42 min-h-10 w-full resize-none bg-transparent text-ui-base leading-6 text-foreground outline-none placeholder:text-foreground-subtlest"
+						aria-label="输入消息"
+					/>
 
-				<div className="flex flex-wrap items-end gap-3 gap-y-2">
+					<div className="group/toolbar flex flex-wrap items-end gap-3 gap-y-2">
 					<div className="flex items-center gap-1">
 						<Menu
 							trigger={({ toggle }) => (
@@ -338,18 +338,18 @@ export function Composer(props: ComposerProps): ReactElement {
 							<Button
 								size="icon"
 								variant="secondary"
-								className="rounded-full"
+								className="gap-1 rounded-full bg-brand text-foreground-inverse hover:opacity-80"
 								aria-label="停止"
 								title="停止 (Esc)"
 								onClick={props.onStop}
 							>
-								<Square className="size-4 fill-current" />
+								<Square className="size-3.5 fill-current" />
 							</Button>
 						) : (
 							<Button
 								size="icon"
 								variant="primary"
-								className="rounded-full"
+								className="gap-1 rounded-full bg-brand text-foreground-inverse hover:opacity-80"
 								aria-label="发送"
 								title="发送 (Enter)"
 								disabled={text.trim().length === 0}
@@ -378,14 +378,14 @@ function ModeControl(props: ComposerProps): ReactElement {
 				>
 					{props.planMode ? <MapIcon className="size-4" /> : <Bot className="size-4" />}
 					<span>{props.planMode ? "Plan" : "Agent"}</span>
-					<span className="text-ui-xs text-foreground-subtlest">{APPROVAL_LABELS[props.approvalMode]}</span>
+					<span className="text-ui-sm text-foreground-subtle">{APPROVAL_LABELS[props.approvalMode]}</span>
 					<ChevronDown className="size-3.5 text-foreground-subtlest" />
 				</Button>
 			)}
 			className="w-64"
 		>
-			<div className="flex flex-col gap-2">
-				<div className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5">
+			<div className="flex flex-col gap-1 p-1">
+				<div className="flex items-center justify-between gap-3 rounded-xl px-2.5 py-2">
 					<div className="min-w-0">
 						<div className="text-ui-base font-medium">Plan 模式</div>
 						<div className="text-ui-sm text-foreground-subtle">只读规划，不改动任何文件</div>
@@ -397,15 +397,15 @@ function ModeControl(props: ComposerProps): ReactElement {
 					/>
 				</div>
 				<div className="h-px bg-border" />
-				<div className="px-2 py-1 text-ui-xs font-medium text-foreground-subtlest">审批方式</div>
+				<div className="px-2.5 pb-1 pt-1.5 text-ui-xs font-medium text-foreground-subtlest">审批方式</div>
 				{(Object.keys(APPROVAL_LABELS) as ApprovalMode[]).map((mode) => (
 					<button
 						key={mode}
 						type="button"
 						onClick={() => props.onApprovalMode(mode)}
 						className={cn(
-							"flex min-h-8 items-center gap-2 rounded-lg px-2 text-left text-ui-base",
-							mode === props.approvalMode ? "bg-menu-hover text-foreground" : "text-foreground-subtle",
+							"flex min-h-8 items-center gap-2 rounded-xl px-2.5 text-left text-ui-base transition-colors",
+							mode === props.approvalMode ? "bg-selected text-foreground" : "text-foreground-subtle hover:bg-surface-hover",
 						)}
 					>
 						<span className="min-w-0 flex-1">{APPROVAL_LABELS[mode]}</span>
@@ -460,8 +460,10 @@ function ModelSelect(
 									type="button"
 									onClick={() => props.onModel(model.provider, model.model)}
 									className={cn(
-										"flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui-base",
-										active ? "bg-menu-hover text-foreground" : "text-foreground-subtle hover:bg-menu-hover",
+										"flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-ui-base transition-colors",
+										active
+											? "bg-selected text-foreground"
+											: "text-foreground-subtle hover:bg-surface-hover",
 									)}
 								>
 									<span className="min-w-0 flex-1 truncate">{model.name}</span>
