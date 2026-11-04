@@ -53,8 +53,15 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 			planMode: false,
 			contextWindow: 100_000,
 			contextTokens: 1_234,
-			totalTokens: 2_345,
-			cost: 0.01,
+			usage: {
+				requests: 2,
+				input: 1_000,
+				output: 345,
+				cacheRead: 800,
+				cacheWrite: 200,
+				total: 2_345,
+				cost: 0.01,
+			},
 		}),
 		session: () => ({ id: "s1", cwd: "/work", entries: state.entries }),
 		sessions: () => [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }],
@@ -200,8 +207,15 @@ describe("web 传输层", () => {
 			planMode: false,
 			contextWindow: 100_000,
 			contextTokens: 1_234,
-			totalTokens: 2_345,
-			cost: 0.01,
+			usage: {
+				requests: 2,
+				input: 1_000,
+				output: 345,
+				cacheRead: 800,
+				cacheWrite: 200,
+				total: 2_345,
+				cost: 0.01,
+			},
 		});
 
 		const byQuery = await fetch(`${base}/api/state?token=${TOKEN}`);

@@ -35,6 +35,19 @@ export interface SessionSummary {
 	updatedAt: string;
 }
 
+/** 会话的累计用量;金额缺省说明有请求没配单价,不拿 0 冒充「不要钱」。 */
+export interface UsageSummary {
+	/** 记录到的请求次数 */
+	requests: number;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	/** 各次请求提供方回报的合计累加 */
+	total: number;
+	cost: number | undefined;
+}
+
 /** /api/state 的形状:首屏与重连的单一事实来源。 */
 export interface StateInfo {
 	running: boolean;
@@ -48,8 +61,7 @@ export interface StateInfo {
 	planMode: boolean;
 	contextWindow: number | undefined;
 	contextTokens: number | undefined;
-	totalTokens: number;
-	cost: number | undefined;
+	usage: UsageSummary;
 }
 
 export interface SkillInfo {
@@ -163,7 +175,17 @@ export type WebEvent =
 			details?: unknown;
 	  }
 	| { type: "turn_end"; stopReason: string }
-	| { type: "usage_recorded"; kind: string; tokens: number; contextTokens?: number; cost?: number }
+	| {
+			type: "usage_recorded";
+			kind: string;
+			tokens: number;
+			input: number;
+			output: number;
+			cacheRead: number;
+			cacheWrite: number;
+			contextTokens?: number;
+			cost?: number;
+	  }
 	| { type: "retrying"; attempt: number; maxAttempts: number; reason: string }
 	| { type: "compaction_start"; messages: number; tokensBefore: number }
 	| { type: "compaction_end"; covered: number; tokensBefore: number; tokensAfter: number }

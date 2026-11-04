@@ -38,8 +38,16 @@ export interface WebState {
 	readonly planMode: boolean;
 	readonly contextWindow: number | undefined;
 	readonly contextTokens: number | undefined;
-	readonly totalTokens: number;
-	readonly cost: number | undefined;
+	/** 会话累计用量;金额缺省说明有请求没配单价 */
+	readonly usage: {
+		readonly requests: number;
+		readonly input: number;
+		readonly output: number;
+		readonly cacheRead: number;
+		readonly cacheWrite: number;
+		readonly total: number;
+		readonly cost: number | undefined;
+	};
 }
 
 /** 传输层对装配层的全部要求;每一条都能用假实现独立测试。 */

@@ -422,7 +422,7 @@ describe("焦点、状态与用量", () => {
 			assert.ok(before.includes("100K / 1M"));
 			assert.ok(before.includes("⚡ 50%"));
 
-			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 440_000 });
+			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 440_000, input: 400_000, output: 40_000, cacheRead: 0, cacheWrite: 0 });
 			t.mock.timers.tick(1);
 
 			// 轮次还没结束，页脚已经是最新的一笔
@@ -447,18 +447,18 @@ describe("焦点、状态与用量", () => {
 		try {
 			input.emit("data", Buffer.from("hello\r"));
 
-			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 1200 });
+			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 1200, input: 1_000, output: 200, cacheRead: 0, cacheWrite: 0 });
 			t.mock.timers.tick(100);
 			let status = plain(frameLines(output)[7] ?? "");
 			assert.ok(status.includes("⇣1.2K"));
 
-			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 800 });
+			agent.emit({ type: "usage_recorded", kind: "turn", tokens: 800, input: 600, output: 200, cacheRead: 0, cacheWrite: 0 });
 			t.mock.timers.tick(100);
 			status = plain(frameLines(output)[7] ?? "");
 			assert.ok(status.includes("⇣2K"));
 
 			// 压缩请求是压缩成本，不属于这一轮对话的 token 用量
-			agent.emit({ type: "usage_recorded", kind: "compact", tokens: 5000 });
+			agent.emit({ type: "usage_recorded", kind: "compact", tokens: 5000, input: 4_000, output: 1_000, cacheRead: 0, cacheWrite: 0 });
 			t.mock.timers.tick(100);
 			status = plain(frameLines(output)[7] ?? "");
 			assert.ok(status.includes("⇣2K"));

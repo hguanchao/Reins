@@ -2,6 +2,7 @@ import {
 	ArrowUp,
 	AtSign,
 	ChevronDown,
+	Database,
 	Map as MapIcon,
 	Plus,
 	Settings2,
@@ -23,8 +24,16 @@ import {
 } from "react";
 
 import { api } from "../api.ts";
-import { Menu, Tooltip, cn, toast, type MenuEntry } from "../components/ui/index.ts";
-import type { ApprovalMode, ModelInfo, SettingsModel, SkillInfo, ThinkingLevel } from "../protocol.ts";
+import { Menu, Popover, Tooltip, cn, toast, type MenuEntry } from "../components/ui/index.ts";
+import { formatCost } from "../lib/format.ts";
+import type {
+	ApprovalMode,
+	ModelInfo,
+	SettingsModel,
+	SkillInfo,
+	ThinkingLevel,
+	UsageSummary,
+} from "../protocol.ts";
 
 const MAX_INPUT_HEIGHT = 336;
 
@@ -61,6 +70,7 @@ export interface ComposerProps {
 	readonly skills: readonly SkillInfo[];
 	readonly contextTokens: number | undefined;
 	readonly contextWindow: number | undefined;
+	readonly usage: UsageSummary;
 	readonly hero?: boolean;
 	onSend(text: string): void;
 	onStop(): void;
@@ -430,6 +440,7 @@ export function Composer(props: ComposerProps): ReactElement {
 					</div>
 
 					<div className="ml-auto flex min-w-0 items-center gap-3">
+						<UsagePill usage={props.usage} />
 						<ContextUsage tokens={props.contextTokens} window={props.contextWindow} />
 
 						{effortLevels.length <= 1 ? null : (
@@ -499,6 +510,63 @@ export function Composer(props: ComposerProps): ReactElement {
 			</div>
 		</div>
 	);
+}
+
+/**
+ * 用量胶囊：累计 token 与缓存命中率,点开看分项明细。
+ *
+ * 没有任何请求时不显示——空数字会被读成「用过但没花」,与事实不符。缓存命中率只统计输入侧
+ * （未命中输入 + 缓存读 + 缓存写）,输出不经过缓存,不参与计算。
+ */
+function UsagePill({ usage }: { readonly usage: UsageSummary }): ReactElement | null {
+	if (usage.requests === 0) return null;
+	const inputSide = usage.input + usage.cacheRead + usage.cacheWrite;
+	const hit = inputSide > 0 ? Math.round((usage.cacheRead / inputSide) * 100) : null;
+	const rows: readonly (readonly [string, string])[] = [
+		["请求", `${usage.requests} 次`],
+		["输入", exactCount(usage.input)],
+		...(usage.cacheRead > 0 ? ([["缓存读取", exactCount(usage.cacheRead)]] as const) : []),
+		...(usage.cacheWrite > 0 ? ([["缓存写入", exactCount(usage.cacheWrite)]] as const) : []),
+		["输出", exactCount(usage.output)],
+		...(hit !== null ? ([["缓存命中率", `${hit}%`]] as const) : []),
+		...(formatCost(usage.cost) !== undefined ? ([["累计费用", formatCost(usage.cost) ?? ""]] as const) : []),
+	];
+
+	return (
+		<Popover
+			trigger={({ toggle }) => (
+				<button
+					type="button"
+					onClick={toggle}
+					aria-label="用量统计"
+					className="flex h-7 items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium text-foreground-subtle transition-colors hover:bg-surface-hover"
+				>
+					<Database className="size-3.5 shrink-0" />
+					<span>{formatTokens(usage.total)}</span>
+					{hit !== null ? (
+						<>
+							<span className="text-foreground-subtlest">·</span>
+							<span>命中 {hit}%</span>
+						</>
+					) : null}
+				</button>
+			)}
+		>
+			<div className="w-56 px-2.5 py-2" aria-label="用量统计">
+				{rows.map(([label, value]) => (
+					<div key={label} className="flex h-7 items-center justify-between text-[13px] leading-5">
+						<span className="text-foreground-subtle">{label}</span>
+						<span className="tabular-nums text-foreground">{value}</span>
+					</div>
+				))}
+			</div>
+		</Popover>
+	);
+}
+
+/** 明细行用的精确计数:千分位分组,与胶囊上的缩写互补。 */
+function exactCount(value: number): string {
+	return value.toLocaleString("en-US");
 }
 
 function ContextUsage({

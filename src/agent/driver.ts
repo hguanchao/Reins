@@ -182,6 +182,10 @@ export class TurnDriver {
 				type: "usage_recorded",
 				kind: "turn",
 				tokens: result.usage.total,
+				input: result.usage.input,
+				output: result.usage.output,
+				cacheRead: result.usage.cacheRead,
+				cacheWrite: result.usage.cacheWrite,
 				contextTokens: total,
 				...(cost === undefined ? {} : { cost }),
 			});
@@ -360,6 +364,10 @@ export class TurnDriver {
 				type: "usage_recorded",
 				kind: "compact",
 				tokens: result.usage.total,
+				input: result.usage.input,
+				output: result.usage.output,
+				cacheRead: result.usage.cacheRead,
+				cacheWrite: result.usage.cacheWrite,
 			});
 		}
 

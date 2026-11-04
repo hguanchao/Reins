@@ -282,8 +282,15 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 				planMode: policy.planMode,
 				contextWindow: selection.model.contextWindow ?? config.contextWindow,
 				contextTokens: lastContextTokens(session.entries()),
-				totalTokens: usage.total,
-				cost: usage.cost,
+				usage: {
+					requests: usage.requests,
+					input: usage.input,
+					output: usage.output,
+					cacheRead: usage.cacheRead,
+					cacheWrite: usage.cacheWrite,
+					total: usage.total,
+					cost: usage.cost,
+				},
 			};
 		},
 		session: () => ({ id: session.id, cwd: session.cwd, entries: session.entries() }),

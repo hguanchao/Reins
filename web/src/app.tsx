@@ -37,8 +37,10 @@ import type {
 	SettingsSnapshot,
 	SkillInfo,
 	ThinkingLevel,
+	UsageSummary,
 	WebEvent,
 } from "./protocol.ts";
+import { applyUsageRecorded } from "./state/usage.ts";
 import { SettingsPage } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
@@ -77,6 +79,7 @@ export function App(): ReactElement {
 	const [effort, setEffort] = useState<ThinkingLevel>("off");
 	const [contextWindow, setContextWindow] = useState<number | undefined>(undefined);
 	const [contextTokens, setContextTokens] = useState<number | undefined>(undefined);
+	const [usage, setUsage] = useState<UsageSummary>({ requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: undefined });
 	const [git, setGit] = useState<GitStatus | null>(null);
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
@@ -206,6 +209,7 @@ export function App(): ReactElement {
 				setCwd(state.cwd);
 				setContextWindow(state.contextWindow);
 				setContextTokens(state.contextTokens);
+				setUsage(state.usage);
 				setLines(linesFromEntries(session.entries));
 				setLoadError(undefined);
 			} catch (error) {
@@ -275,6 +279,7 @@ export function App(): ReactElement {
 					return;
 				case "usage_recorded":
 					if (event.contextTokens !== undefined) setContextTokens(event.contextTokens);
+					setUsage((current) => applyUsageRecorded(current, event));
 					return;
 				case "retrying":
 					setLines((current) => [
@@ -646,6 +651,7 @@ export function App(): ReactElement {
 		skills,
 		contextTokens,
 		contextWindow,
+		usage,
 		onSend: send,
 		onStop: stop,
 		onApprovalMode: changeApprovalMode,

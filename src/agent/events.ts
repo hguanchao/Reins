@@ -53,6 +53,14 @@ export type AgentEvent =
 			readonly kind: "turn" | "compact";
 			/** 本次请求的合计 token 数（输入 + 输出，含缓存） */
 			readonly tokens: number;
+			/** 本次请求的输入侧 token（不含缓存的部分） */
+			readonly input: number;
+			/** 本次请求生成的输出 token */
+			readonly output: number;
+			/** 本次请求命中缓存的 token */
+			readonly cacheRead: number;
+			/** 本次请求写入缓存的 token */
+			readonly cacheWrite: number;
 			/** 这次请求之后上下文有多大；压缩用量没有这个含义，省略 */
 			readonly contextTokens?: number;
 			/** 这笔用量的金额；模型没配单价时省略 */
