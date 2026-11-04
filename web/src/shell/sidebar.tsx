@@ -1,6 +1,5 @@
 import {
 	Archive,
-	ArchiveRestore,
 	Blocks,
 	CalendarClock,
 	ChevronDown,
@@ -32,19 +31,12 @@ import { cn } from "../components/ui/cn.ts";
 import { relativeTime, workspaceName } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
 import type { SessionSummary } from "../protocol.ts";
-import {
-	archivedFilterLabel,
-	buildSessionRows,
-	sidebarSectionVisibility,
-	type ArchivedFilter,
-	type SessionRow,
-} from "./session-tree.ts";
+import { buildSessionRows, sidebarSectionVisibility, type SessionRow } from "./session-tree.ts";
 
 export type GlobalPanelId = "plugins" | "schedules";
 
 export interface SidebarProps {
 	readonly sessions: readonly SessionSummary[];
-	readonly archived: readonly SessionSummary[];
 	readonly pinned: ReadonlySet<string>;
 	readonly currentId: string;
 	/** 当前会话还没有任何内容（尚未发送第一条消息），侧栏不为它补行 */
@@ -60,7 +52,6 @@ export interface SidebarProps {
 	onSwitch(id: string): void;
 	onArchive(id: string): void;
 	onDelete(id: string): void;
-	onRestore(id: string): void;
 	onTogglePin(id: string): void;
 	onOpenPanel(panel: GlobalPanelId): void;
 	onOpenSettings(): void;
@@ -73,23 +64,17 @@ export interface SidebarProps {
 	onDeleteMany(ids: readonly string[]): void;
 }
 
-const ARCHIVED_FILTERS: readonly ArchivedFilter[] = ["hide", "show", "only"];
-
-
 /** 侧栏：品牌、新会话、全局面板、工作区浏览区与底部设置。 */
 export function Sidebar(props: SidebarProps): ReactElement {
 	const [query, setQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [tasksOpen, setTasksOpen] = useState(true);
 	const [spacesOpen, setSpacesOpen] = useState(true);
-	const [archivedFilter, setArchivedFilter] = useState<ArchivedFilter>("hide");
 	const searchInput = useRef<HTMLInputElement | null>(null);
 	const rows = buildSessionRows({
 		sessions: props.sessions,
-		archived: props.archived,
 		pinned: props.pinned,
 		query,
-		archivedFilter,
 		currentId: props.currentId,
 		currentIsDraft: props.currentIsDraft,
 	});
@@ -163,15 +148,6 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		{ type: "label", label: "排序" },
 		{ type: "item", key: "order-updated", label: "按更新时间", checked: true, onSelect: () => {} },
 		{ type: "item", key: "order-manual", label: "手动排序（未接入）", checked: false, disabled: true, onSelect: () => {} },
-		{ type: "separator" },
-		{ type: "label", label: "归档" },
-		...ARCHIVED_FILTERS.map<MenuEntry>((filter) => ({
-			type: "item",
-			key: filter,
-			label: archivedFilterLabel(filter),
-			checked: archivedFilter === filter,
-			onSelect: () => setArchivedFilter(filter),
-		})),
 	];
 
 	return (
@@ -325,8 +301,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 											onSwitch={() => props.onSwitch(row.id)}
 											onArchive={() => props.onArchive(row.id)}
 											onDelete={() => props.onDelete(row.id)}
-											onRestore={() => props.onRestore(row.id)}
-											onTogglePin={() => props.onTogglePin(row.id)}
+													onTogglePin={() => props.onTogglePin(row.id)}
 											onRename={() => setTaskRename({ id: row.id, value: row.title })}
 											onBatch={() => {
 												setBatchMode(true);
@@ -384,10 +359,6 @@ export function Sidebar(props: SidebarProps): ReactElement {
 												void bridge.chooseWorkspace();
 											}
 								}
-								onArchiveFilter={() => {
-									const index = ARCHIVED_FILTERS.indexOf(archivedFilter);
-									setArchivedFilter(ARCHIVED_FILTERS[(index + 1) % ARCHIVED_FILTERS.length] ?? "hide");
-								}}
 							/>
 						</div>
 					</div>
@@ -610,21 +581,17 @@ function WorkspaceRow({
 	onOpenFolder,
 	onRename,
 	onRemove,
-	onArchiveFilter,
 }: {
 	readonly name: string;
 	onNewSession(): void;
 	readonly onOpenFolder?: () => void;
 	readonly onRename?: () => void;
 	readonly onRemove?: () => void;
-	onArchiveFilter(): void;
 }): ReactElement {
 	const entries: MenuEntry[] = [
 		...(onOpenFolder === undefined ? [] : [{ type: "item" as const, key: "open", label: "打开文件夹", icon: FolderOpen, onSelect: onOpenFolder }]),
 		...(onRename === undefined ? [] : [{ type: "item" as const, key: "rename", label: "重命名", icon: Pencil, onSelect: onRename }]),
 		...(onRemove === undefined ? [] : [{ type: "item" as const, key: "remove", label: "从列表中移除", icon: ListX, danger: true, onSelect: onRemove }]),
-		{ type: "separator" as const },
-		{ type: "item" as const, key: "archived", label: "切换归档显示", onSelect: onArchiveFilter },
 	];
 
 	return (
@@ -677,7 +644,6 @@ function SessionRowView({
 	onSwitch,
 	onArchive,
 	onDelete,
-	onRestore,
 	onTogglePin,
 	onRename,
 	onBatch,
@@ -692,48 +658,34 @@ function SessionRowView({
 	onSwitch(): void;
 	onArchive(): void;
 	onDelete(): void;
-	onRestore(): void;
 	onTogglePin(): void;
 	onRename(): void;
 	onBatch(): void;
 	readonly onOpenFolder?: () => void;
 }): ReactElement {
-	const entries: MenuEntry[] = row.archived
-		? [{ type: "item", key: "restore", label: "恢复", icon: ArchiveRestore, onSelect: onRestore }]
-		: [
-				{ type: "item", key: "pin", label: row.pinned ? "取消置顶" : "置顶", icon: Pin, onSelect: onTogglePin },
-				{ type: "item", key: "rename", label: "重命名", icon: Pencil, onSelect: onRename },
-				{ type: "separator" },
-				...(onOpenFolder === undefined
-					? []
-					: [{ type: "item" as const, key: "open", label: "打开文件夹", icon: FolderOpen, onSelect: onOpenFolder }]),
-				{ type: "item", key: "batch", label: "批量操作", icon: ListChecks, onSelect: onBatch },
-				{ type: "separator" },
-				{ type: "item", key: "archive", label: "归档", icon: Archive, disabled: current, onSelect: onArchive },
-				{
-					type: "item",
-					key: "delete",
-					label: "删除任务",
-					icon: Trash2,
-					danger: true,
-					disabled: current,
-					onSelect: onDelete,
-				},
-			];
+	const entries: MenuEntry[] = [
+		{ type: "item", key: "pin", label: row.pinned ? "取消置顶" : "置顶", icon: Pin, onSelect: onTogglePin },
+		{ type: "item", key: "rename", label: "重命名", icon: Pencil, onSelect: onRename },
+		{ type: "separator" },
+		...(onOpenFolder === undefined
+			? []
+			: [{ type: "item" as const, key: "open", label: "打开文件夹", icon: FolderOpen, onSelect: onOpenFolder }]),
+		{ type: "item", key: "batch", label: "批量操作", icon: ListChecks, onSelect: onBatch },
+		{ type: "separator" },
+		{ type: "item", key: "archive", label: "归档", icon: Archive, disabled: current, onSelect: onArchive },
+		{ type: "item", key: "delete", label: "删除任务", icon: Trash2, danger: true, disabled: current, onSelect: onDelete },
+	];
 
 	if (batchMode) {
-		// 归档行不可勾选：服务端的批量归档/删除只作用于活动清单，勾了也是静默无效
 		return (
 			<button
 				type="button"
-				onClick={row.archived ? undefined : onToggleSelect}
-				disabled={row.archived}
+				onClick={onToggleSelect}
 				aria-pressed={selected}
 				title={row.title}
 				className={cn(
 					"flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[14px] leading-5 transition-colors",
 					selected ? "bg-selected" : "hover:bg-surface-hover",
-					row.archived && "cursor-default text-foreground-subtlest hover:bg-transparent",
 				)}
 			>
 				{selected ? (
@@ -742,9 +694,7 @@ function SessionRowView({
 					<Circle className="size-4 shrink-0 text-foreground-subtlest" />
 				)}
 				<span className="min-w-0 flex-1 truncate">{row.title}</span>
-				<span className="shrink-0 text-[10px] leading-4 text-foreground-subtlest">
-					{row.archived ? "已归档" : relativeTime(row.updatedAt)}
-				</span>
+				<span className="shrink-0 text-[10px] leading-4 text-foreground-subtlest">{relativeTime(row.updatedAt)}</span>
 			</button>
 		);
 	}
@@ -754,7 +704,6 @@ function SessionRowView({
 			className={cn(
 				"group/session flex h-8 items-center rounded-md pl-2 pr-1 text-[14px] leading-5 transition-colors",
 				current ? "bg-selected" : "hover:bg-surface-hover",
-				row.archived && "text-foreground-subtlest",
 			)}
 		>
 			<span className="flex w-4 shrink-0 items-center justify-center">
@@ -768,13 +717,9 @@ function SessionRowView({
 			>
 				{row.title}
 			</button>
-			{row.archived ? (
-				<span className="shrink-0 text-[10px] leading-4 text-foreground-subtlest">已归档</span>
-			) : (
-				<span className="flex shrink-0 items-center gap-1.5 text-[10px] leading-4 text-foreground-subtlest group-hover/session:hidden group-focus-within/session:hidden">
-					<span className="whitespace-nowrap">{relativeTime(row.updatedAt)}</span>
-				</span>
-			)}
+			<span className="flex shrink-0 items-center gap-1.5 text-[10px] leading-4 text-foreground-subtlest group-hover/session:hidden group-focus-within/session:hidden">
+				<span className="whitespace-nowrap">{relativeTime(row.updatedAt)}</span>
+			</span>
 			<span className="hidden shrink-0 items-center group-hover/session:flex group-focus-within/session:flex">
 				<Menu
 					trigger={({ toggle }) => (

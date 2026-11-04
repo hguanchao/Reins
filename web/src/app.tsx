@@ -862,7 +862,6 @@ export function App(): ReactElement {
 				sidebar={
 					<Sidebar
 						sessions={displaySessions}
-						archived={archived}
 						pinned={pinned}
 						currentId={sessionId}
 						currentIsDraft={lines.length === 0}
@@ -879,9 +878,6 @@ export function App(): ReactElement {
 						}}
 						onDelete={(id) => {
 							void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
-						}}
-						onRestore={(id) => {
-							void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
 						}}
 						onTogglePin={togglePin}
 						onOpenPanel={(panel) => {
