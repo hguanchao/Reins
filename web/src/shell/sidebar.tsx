@@ -1,5 +1,4 @@
 import {
-	AppWindow,
 	Archive,
 	ArchiveRestore,
 	Blocks,
@@ -14,7 +13,6 @@ import {
 	Folder,
 	FolderOpen,
 	FolderPlus,
-	Forward,
 	ListChecks,
 	ListX,
 	Pencil,
@@ -666,9 +664,8 @@ function WorkspaceRow({
 /**
  * 任务行。
  *
- * 普通模式下 hover 出「更多」菜单（置顶/重命名/分享任务 ─ 独立窗口/打开文件夹/批量操作
- * ─ 归档/删除）；批量模式下整行变成勾选框，点行即选中/取消，菜单收起，统一动作由底栏发起。
- * 分享任务与独立窗口还没有对应能力，先禁用占位。
+ * 普通模式下 hover 出「更多」菜单（置顶/重命名 ─ 打开文件夹/批量操作 ─ 归档/删除）；
+ * 批量模式下整行变成勾选框，点行即选中/取消，菜单收起，统一动作由底栏发起。
  */
 function SessionRowView({
 	row,
@@ -706,9 +703,7 @@ function SessionRowView({
 		: [
 				{ type: "item", key: "pin", label: row.pinned ? "取消置顶" : "置顶", icon: Pin, onSelect: onTogglePin },
 				{ type: "item", key: "rename", label: "重命名", icon: Pencil, onSelect: onRename },
-				{ type: "item", key: "share", label: "分享任务（未接入）", icon: Forward, disabled: true, onSelect: () => {} },
 				{ type: "separator" },
-				{ type: "item", key: "window", label: "在独立窗口中打开（未接入）", icon: AppWindow, disabled: true, onSelect: () => {} },
 				...(onOpenFolder === undefined
 					? []
 					: [{ type: "item" as const, key: "open", label: "打开文件夹", icon: FolderOpen, onSelect: onOpenFolder }]),
