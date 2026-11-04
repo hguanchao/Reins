@@ -38,10 +38,12 @@ import type {
 } from "../protocol.ts";
 import { formatDuration } from "../lib/format.ts";
 
-/** 输入区最多显示 5 行；第 6 行起 textarea 内部滚动（行高 24px + 上内边距 4px） */
+/** 输入区默认 2 行、最多 5 行；第 6 行起 textarea 内部滚动（行高 24px + 上内边距 4px） */
 const INPUT_LINE_HEIGHT = 24;
+const INPUT_MIN_LINES = 2;
 const INPUT_MAX_LINES = 5;
 const INPUT_PADDING_TOP = 4;
+const MIN_INPUT_HEIGHT = INPUT_PADDING_TOP + INPUT_LINE_HEIGHT * INPUT_MIN_LINES;
 const MAX_INPUT_HEIGHT = INPUT_PADDING_TOP + INPUT_LINE_HEIGHT * INPUT_MAX_LINES;
 
 const APPROVAL_LABELS: Record<ApprovalMode, string> = {
@@ -79,7 +81,6 @@ export interface ComposerProps {
 	readonly contextWindow: number | undefined;
 	readonly usage: UsageSummary;
 	readonly activity: ActivitySummary;
-	readonly hero?: boolean;
 	onSend(text: string): void;
 	onStop(): void;
 	onApprovalMode(mode: ApprovalMode): void;
@@ -357,20 +358,19 @@ export function Composer(props: ComposerProps): ReactElement {
 					value={text}
 					onChange={onChange}
 					onKeyDown={onKeyDown}
-					rows={1}
+					rows={2}
 					placeholder={placeholder}
 					aria-label="输入消息"
-					className={cn(
-					"w-full resize-none bg-transparent pb-0 text-foreground outline-none placeholder:text-foreground-subtlest",
-					props.hero ? "min-h-[52px]" : "min-h-[36px]",
-				)}
-				style={{
-					paddingTop: INPUT_PADDING_TOP,
-					paddingLeft: 14,
-					paddingRight: 14,
-					lineHeight: INPUT_LINE_HEIGHT,
-					fontSize: "var(--content-font-size)",
-				}}
+					className="w-full resize-none bg-transparent pb-0 text-foreground outline-none placeholder:text-foreground-subtlest"
+					style={{
+						paddingTop: INPUT_PADDING_TOP,
+						paddingLeft: 14,
+						paddingRight: 14,
+						// 无单位数字会被当成倍数(24 × 字号),行高必须带单位
+						lineHeight: `${INPUT_LINE_HEIGHT}px`,
+						fontSize: "var(--content-font-size)",
+						minHeight: MIN_INPUT_HEIGHT,
+					}}
 				/>
 
 				<div className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-2 pt-0.5 pb-1.5">

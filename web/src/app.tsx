@@ -762,7 +762,7 @@ export function App(): ReactElement {
 				) : draft ? (
 					<Hero
 						workspace={workspaceName(cwd)}
-						composer={<Composer {...composerProps} hero />}
+						composer={<Composer {...composerProps} />}
 					/>
 				) : (
 					<>
