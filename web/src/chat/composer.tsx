@@ -433,8 +433,8 @@ export function Composer(props: ComposerProps): ReactElement {
 								<button
 									type="button"
 									onClick={toggle}
-									className="flex h-7 max-w-[150px] items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium text-foreground-subtle transition-colors hover:bg-surface-hover"
-									aria-label="审批方式"
+								className="flex h-7 min-w-0 max-w-[150px] items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium text-foreground-subtle transition-colors hover:bg-surface-hover"
+								aria-label="审批方式"
 								>
 									<ShieldCheck className="size-3.5 shrink-0" />
 									<span className="min-w-0 truncate">{APPROVAL_LABELS[props.approvalMode]}</span>
@@ -481,8 +481,8 @@ export function Composer(props: ComposerProps): ReactElement {
 								<button
 									type="button"
 									onClick={toggle}
-									className="flex h-7 max-w-[220px] items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium text-foreground-subtle transition-colors hover:bg-surface-hover"
-									aria-label="选择模型"
+										className="flex h-7 min-w-0 max-w-[220px] items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium text-foreground-subtle transition-colors hover:bg-surface-hover"
+										aria-label="选择模型"
 								>
 									<span className="min-w-0 truncate">{props.model.name}</span>
 									<ChevronDown className="size-3 shrink-0 text-foreground-subtlest" />
@@ -519,7 +519,7 @@ export function Composer(props: ComposerProps): ReactElement {
 				</div>
 
 				{hasDock ? (
-					<div className="mt-1 flex items-center justify-center gap-3">
+					<div className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
 						<ActivityPill activity={props.activity} />
 						<UsagePill usage={props.usage} />
 						<ContextMeter tokens={props.contextTokens} window={props.contextWindow} />
@@ -529,8 +529,8 @@ export function Composer(props: ComposerProps): ReactElement {
 		);
 	}
 
-/** 输入卡下方一排统计里的小字胶囊;三项共用同一形态。 */
-const DOCK_PILL = "flex h-7 items-center gap-1 rounded-md px-2 text-[12px] leading-[18px] font-medium text-foreground-subtle transition-colors hover:bg-surface-hover";
+/** 输入卡下方一排统计里的小字胶囊;三项共用同一形态,内部不折行,窄了整枚换行。 */
+const DOCK_PILL = "flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[12px] leading-[18px] font-medium text-foreground-subtle transition-colors hover:bg-surface-hover";
 
 /** 活动胶囊:轮数、步数与生成速度,点开看各段耗时。没有可展示的耗时时退成纯读数。 */
 function ActivityPill({ activity }: { readonly activity: ActivitySummary }): ReactElement | null {
