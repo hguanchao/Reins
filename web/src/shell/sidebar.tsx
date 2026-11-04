@@ -3,7 +3,7 @@ import {
 	ArchiveRestore,
 	Blocks,
 	CalendarClock,
-	ChevronRight,
+	ChevronDown,
 	Ellipsis,
 	Folder,
 	FolderPlus,
@@ -24,7 +24,13 @@ import { cn } from "../components/ui/cn.ts";
 import { relativeTime, workspaceName } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
 import type { SessionSummary } from "../protocol.ts";
-import { archivedFilterLabel, buildSessionRows, type ArchivedFilter, type SessionRow } from "./session-tree.ts";
+import {
+	archivedFilterLabel,
+	buildSessionRows,
+	sidebarSectionVisibility,
+	type ArchivedFilter,
+	type SessionRow,
+} from "./session-tree.ts";
 
 export type GlobalPanelId = "plugins" | "schedules";
 
@@ -56,7 +62,8 @@ const ARCHIVED_FILTERS: readonly ArchivedFilter[] = ["hide", "show", "only"];
 export function Sidebar(props: SidebarProps): ReactElement {
 	const [query, setQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
-	const [workspaceOpen, setWorkspaceOpen] = useState(true);
+	const [tasksOpen, setTasksOpen] = useState(true);
+	const [spacesOpen, setSpacesOpen] = useState(true);
 	const [archivedFilter, setArchivedFilter] = useState<ArchivedFilter>("hide");
 	const searchInput = useRef<HTMLInputElement | null>(null);
 	const bridge = desktopBridge();
@@ -75,9 +82,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		searchInput.current?.focus({ preventScroll: true });
 	}, [searchOpen]);
 
-	useEffect(() => {
-		if (query.trim().length > 0) setWorkspaceOpen(true);
-	}, [query]);
+	const sectionOpen = sidebarSectionVisibility(query.trim().length > 0, tasksOpen, spacesOpen);
 
 	const viewOptions: MenuEntry[] = [
 		{ type: "label", label: "分组" },
@@ -170,9 +175,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 						</div>
 					) : (
 						<>
-							<span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-foreground-subtlest">
-								工作区
-							</span>
+							<span className="min-w-0 flex-1" />
 							<Button
 								variant="ghost"
 								size="icon-sm"
@@ -217,38 +220,64 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				</div>
 
 				<div className="min-h-0 flex-1 overflow-y-auto pb-4">
-					<WorkspaceRow
-						name={workspaceName(props.cwd) || "Reins"}
-						open={workspaceOpen}
-						onToggle={() => setWorkspaceOpen((value) => !value)}
-						onNewSession={props.onNewSession}
-						onArchiveFilter={() => {
-							const index = ARCHIVED_FILTERS.indexOf(archivedFilter);
-							setArchivedFilter(ARCHIVED_FILTERS[(index + 1) % ARCHIVED_FILTERS.length] ?? "hide");
-						}}
+					<SectionHeader
+						label="任务"
+						count={rows.length}
+						open={sectionOpen.tasks}
+						onToggle={() => setTasksOpen((value) => !value)}
+						addLabel="新建会话"
+						onAdd={props.onNewSession}
 					/>
-					{!workspaceOpen ? null : rows.length === 0 ? (
-						<div className="flex flex-col items-center gap-2 px-3 pt-20 text-[13px] leading-5 text-foreground-subtlest">
-							<Archive className="size-6 text-foreground-subtlest" />
-							<span>{query.length > 0 ? "没有匹配的会话" : "还没有会话"}</span>
+					<div className="sidebar-section-motion" data-open={sectionOpen.tasks || undefined}>
+						<div className="sidebar-section-content">
+							{rows.length === 0 ? (
+								<div className="flex flex-col items-center gap-2 px-3 py-6 text-[13px] leading-5 text-foreground-subtlest">
+									<Archive className="size-6 text-foreground-subtlest" />
+									<span>{query.length > 0 ? "没有匹配的会话" : "还没有会话"}</span>
+								</div>
+							) : (
+								<div className="flex flex-col gap-0.5">
+									{rows.map((row) => (
+										<SessionRowView
+											key={row.id}
+											row={row}
+											current={row.id === props.currentId && props.activePanel === undefined}
+											running={props.running && row.id === props.currentId}
+											onSwitch={() => props.onSwitch(row.id)}
+											onArchive={() => props.onArchive(row.id)}
+											onDelete={() => props.onDelete(row.id)}
+											onRestore={() => props.onRestore(row.id)}
+											onTogglePin={() => props.onTogglePin(row.id)}
+										/>
+									))}
+								</div>
+							)}
 						</div>
-					) : (
-						<div className="flex flex-col gap-0.5">
-							{rows.map((row) => (
-								<SessionRowView
-									key={row.id}
-									row={row}
-									current={row.id === props.currentId && props.activePanel === undefined}
-									running={props.running && row.id === props.currentId}
-									onSwitch={() => props.onSwitch(row.id)}
-									onArchive={() => props.onArchive(row.id)}
-									onDelete={() => props.onDelete(row.id)}
-									onRestore={() => props.onRestore(row.id)}
-									onTogglePin={() => props.onTogglePin(row.id)}
-								/>
-							))}
+					</div>
+
+					<SectionHeader
+						label="空间"
+						count={1}
+						open={sectionOpen.spaces}
+						onToggle={() => setSpacesOpen((value) => !value)}
+						addLabel="添加工作区"
+						onAdd={() => {
+							void bridge?.chooseWorkspace();
+						}}
+						addDisabled={bridge === undefined}
+					/>
+					<div className="sidebar-section-motion" data-open={sectionOpen.spaces || undefined}>
+						<div className="sidebar-section-content">
+							<WorkspaceRow
+								name={workspaceName(props.cwd) || "Reins"}
+								onNewSession={props.onNewSession}
+								onArchiveFilter={() => {
+									const index = ARCHIVED_FILTERS.indexOf(archivedFilter);
+									setArchivedFilter(ARCHIVED_FILTERS[(index + 1) % ARCHIVED_FILTERS.length] ?? "hide");
+								}}
+							/>
 						</div>
-					)}
+					</div>
 				</div>
 			</div>
 
@@ -298,43 +327,66 @@ function PanelRow({
 	);
 }
 
-function WorkspaceRow({
-	name,
+/**
+ * 分组标题：吸顶、12px 加粗、折叠箭头与 hover 才出现的「+」。
+ * 两段共用一套形态（任务 / 空间），与 WorkBuddy 的 Tasks / Workspaces 对应。
+ */
+function SectionHeader({
+	label,
+	count,
 	open,
 	onToggle,
-	onNewSession,
-	onArchiveFilter,
+	addLabel,
+	onAdd,
+	addDisabled,
 }: {
-	readonly name: string;
+	readonly label: string;
+	readonly count: number;
 	readonly open: boolean;
 	onToggle(): void;
-	onNewSession(): void;
-	onArchiveFilter(): void;
+	readonly addLabel: string;
+	onAdd(): void;
+	readonly addDisabled?: boolean;
 }): ReactElement {
 	return (
-		<div className="group/workspace flex h-[34px] items-center gap-1.5 rounded-md px-2">
+		<div className="group/section sticky top-0 z-10 flex h-[30px] items-center gap-1 rounded-md bg-sidebar px-2">
 			<button
 				type="button"
 				onClick={onToggle}
 				aria-expanded={open}
 				className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
 			>
-				<span className="relative flex size-4 shrink-0 items-center justify-center text-foreground-subtle">
-					<Folder
-						className={cn(
-							"size-4 transition-opacity",
-							open ? "group-hover/workspace:opacity-0" : "opacity-0",
-						)}
-					/>
-					<ChevronRight
-						className={cn(
-							"absolute size-3.5 transition-all",
-							open ? "rotate-90 opacity-0 group-hover/workspace:opacity-100" : "opacity-100",
-						)}
-					/>
-				</span>
-				<span className="min-w-0 flex-1 truncate text-[14px] leading-5">{name}</span>
+				<ChevronDown className={cn("size-3.5 shrink-0 text-foreground-subtlest transition-transform", !open && "-rotate-90")} />
+				<span className="truncate text-[12px] leading-4 font-semibold text-foreground-subtle">{label}</span>
+				<span className="shrink-0 text-[12px] leading-4 text-foreground-subtlest">{count}</span>
 			</button>
+			<button
+				type="button"
+				aria-label={addLabel}
+				title={addLabel}
+				disabled={addDisabled}
+				onClick={onAdd}
+				className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtlest opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground group-hover/section:opacity-100 group-focus-within/section:opacity-100 disabled:hidden"
+			>
+				<FolderPlus className="size-3.5" />
+			</button>
+		</div>
+	);
+}
+
+function WorkspaceRow({
+	name,
+	onNewSession,
+	onArchiveFilter,
+}: {
+	readonly name: string;
+	onNewSession(): void;
+	onArchiveFilter(): void;
+}): ReactElement {
+	return (
+		<div className="group/workspace flex h-[34px] items-center gap-1.5 rounded-md px-2">
+			<Folder className="size-4 shrink-0 text-foreground-subtle" />
+			<span className="min-w-0 flex-1 truncate text-[14px] leading-5">{name}</span>
 			<span className="hidden shrink-0 items-center gap-1 group-hover/workspace:flex group-focus-within/workspace:flex">
 				<button
 					type="button"

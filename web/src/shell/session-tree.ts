@@ -78,6 +78,23 @@ export function buildSessionRows(input: SessionListInput): readonly SessionRow[]
 	});
 }
 
+/**
+ * 侧栏两段分组的可见性。
+ *
+ * 「任务」装会话、「空间」装工作区文件夹；搜索时两段都展开，避免把命中的会话藏进折叠里
+ * ——使用者搜到了却看不见,是最难理解的一种「没找到」。
+ */
+export function sidebarSectionVisibility(
+	searching: boolean,
+	taskOpen: boolean,
+	spaceOpen: boolean,
+): { readonly tasks: boolean; readonly spaces: boolean } {
+	return {
+		tasks: searching || taskOpen,
+		spaces: searching || spaceOpen,
+	};
+}
+
 /** 视图选项菜单的归档范围文案。 */
 export function archivedFilterLabel(filter: ArchivedFilter): string {
 	if (filter === "show") return "显示归档";

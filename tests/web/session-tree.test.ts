@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { SessionSummary } from "#web/protocol.ts";
-import { archivedFilterLabel, buildSessionRows } from "#web/shell/session-tree.ts";
+import { archivedFilterLabel, buildSessionRows, sidebarSectionVisibility } from "#web/shell/session-tree.ts";
 
 const sessions: readonly SessionSummary[] = [
 	{ id: "a", title: "修复登录", updatedAt: "2026-11-03T10:00:00.000Z" },
@@ -167,5 +167,16 @@ describe("当前会话补行", () => {
 			rows.map((row) => row.id),
 			["a"],
 		);
+	});
+});
+
+describe("分组可见性", () => {
+	it("各段按自己的折叠状态", () => {
+		assert.deepEqual(sidebarSectionVisibility(false, true, false), { tasks: true, spaces: false });
+		assert.deepEqual(sidebarSectionVisibility(false, false, true), { tasks: false, spaces: true });
+	});
+
+	it("搜索时两段强制展开,命中的会话不会被藏进折叠里", () => {
+		assert.deepEqual(sidebarSectionVisibility(true, false, false), { tasks: true, spaces: true });
 	});
 });
