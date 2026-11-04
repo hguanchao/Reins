@@ -1,0 +1,307 @@
+/*
+ * 消息轨迹：右缘刻度条与悬停展开的提问面板。
+ *
+ * 几何全部来自组件注入的 --rail-* 变量：收起与展开是同一份 DOM 的两套坐标，
+ * 形态过渡靠 clip-path 裁切与条目位移完成，滚动位置由组件在动画落定后一次性提交。
+ */
+
+.message-rail {
+	--rail-collapsed-width: 40px;
+	--rail-panel-min-width: 96px;
+	--rail-panel-max-width: 320px;
+	--rail-radius: 16px;
+	--rail-expand-duration: 543ms;
+	--rail-expand-easing: cubic-bezier(0.16, 1, 0.3, 1);
+	--rail-collapse-duration: 343ms;
+	--rail-collapse-easing: cubic-bezier(0.45, 0, 0.3, 1);
+
+	position: absolute;
+	top: 50%;
+	right: 16px;
+	width: var(--rail-collapsed-width);
+	height: var(--rail-outer-height);
+	transform: translateY(-50%);
+	pointer-events: none;
+}
+
+.message-rail__panel-outer {
+	position: absolute;
+	top: 50%;
+	right: 0;
+	transform: translateY(-50%);
+	width: max-content;
+	min-width: var(--rail-panel-min-width);
+	max-width: var(--rail-panel-max-width);
+	height: 100%;
+	pointer-events: none;
+}
+
+/* 收起时只露出右缘一条刻度带；展开时裁切整体打开成面板 */
+.message-rail__panel {
+	position: relative;
+	width: max-content;
+	min-width: var(--rail-panel-min-width);
+	max-width: var(--rail-panel-max-width);
+	height: 100%;
+	overflow: hidden;
+	border-radius: var(--rail-radius);
+	clip-path: inset(
+		var(--rail-closed-inset-y) 0 var(--rail-closed-inset-y) calc(100% - var(--rail-collapsed-width))
+			round var(--rail-radius)
+	);
+	transition:
+		clip-path var(--rail-collapse-duration) var(--rail-collapse-easing);
+}
+
+.message-rail__surface {
+	position: absolute;
+	top: var(--rail-closed-inset-y);
+	right: 0;
+	bottom: var(--rail-closed-inset-y);
+	left: calc(100% - var(--rail-collapsed-width));
+	border: 0.5px solid var(--popover-border);
+	border-radius: var(--rail-radius);
+	background: color-mix(in srgb, var(--popover) 90%, transparent);
+	backdrop-filter: blur(12px);
+	box-shadow: var(--elevation-prominent);
+	opacity: 0;
+	transition:
+		top var(--rail-collapse-duration) var(--rail-collapse-easing),
+		bottom var(--rail-collapse-duration) var(--rail-collapse-easing),
+		left var(--rail-collapse-duration) var(--rail-collapse-easing),
+		opacity var(--rail-collapse-duration) var(--rail-collapse-easing);
+}
+
+/* 量宽样本：撑出面板宽度，本身不可见 */
+.message-rail__sizer {
+	display: grid;
+	width: max-content;
+	height: 0;
+	padding: 0 44px 0 24px;
+	overflow: hidden;
+	visibility: hidden;
+	white-space: nowrap;
+	font-size: 12px;
+	line-height: 20px;
+}
+
+.message-rail__list {
+	position: absolute;
+	top: var(--rail-open-inset-y);
+	right: 0;
+	width: 100%;
+	height: var(--rail-expanded-height);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-width: none;
+}
+
+.message-rail__list::-webkit-scrollbar {
+	display: none;
+}
+
+.message-rail__list--fade-top {
+	mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 100%);
+}
+
+.message-rail__list--fade-bottom {
+	mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 20px), transparent 100%);
+}
+
+.message-rail__list--fade-top.message-rail__list--fade-bottom {
+	mask-image: linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+}
+
+.message-rail__rows {
+	position: relative;
+	height: var(--rail-rows-height);
+}
+
+/*
+ * 条目同时承载两套坐标：收起时 translateY 定在刻度位，展开时定在行位，
+ * 顶部 -13px 让 translateY 恰好落在中心点上。
+ */
+.message-rail__item {
+	position: absolute;
+	top: -13px;
+	left: 0;
+	right: 0;
+	height: 26px;
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
+	padding: 3px 8px 3px 24px;
+	border: 0;
+	background: none;
+	color: var(--foreground-subtlest);
+	font-family: inherit;
+	font-size: 12px;
+	line-height: 20px;
+	text-align: right;
+	cursor: default;
+	pointer-events: none;
+	transform: translateY(calc(var(--rail-tick-y) + var(--rail-compact-offset, 0px)));
+	transition:
+		transform var(--rail-collapse-duration) var(--rail-collapse-easing),
+		color var(--rail-collapse-duration) var(--rail-collapse-easing);
+}
+
+.message-rail__text {
+	flex: 1 0 0;
+	min-width: 0;
+	align-self: stretch;
+	margin-right: 36px;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 1;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	opacity: 0;
+	transform: translateX(16px);
+	transition:
+		opacity var(--rail-collapse-duration) var(--rail-collapse-easing),
+		transform var(--rail-collapse-duration) var(--rail-collapse-easing);
+}
+
+.message-rail__tick {
+	position: absolute;
+	top: 50%;
+	right: 16px;
+	width: 8px;
+	height: 0;
+	border-top: 2px solid color-mix(in srgb, var(--foreground) 20%, transparent);
+	transform: translateY(-50%);
+	transition:
+		right var(--rail-collapse-duration) var(--rail-collapse-easing),
+		width var(--rail-collapse-duration) var(--rail-collapse-easing),
+		border-top-color var(--rail-collapse-duration) var(--rail-collapse-easing);
+}
+
+.message-rail__item--active .message-rail__tick {
+	border-top-color: var(--foreground);
+}
+
+/* 展开态：面板向左长出，条目换到行坐标，文本与刻度线依次亮起 */
+.message-rail--open .message-rail__panel {
+	clip-path: inset(var(--rail-open-inset-y) 0 var(--rail-open-inset-y) 0 round var(--rail-radius));
+	pointer-events: auto;
+	transition-duration: var(--rail-expand-duration);
+	transition-timing-function: var(--rail-expand-easing);
+}
+
+.message-rail--open .message-rail__surface {
+	top: var(--rail-open-inset-y);
+	bottom: var(--rail-open-inset-y);
+	left: 0;
+	opacity: 1;
+	transition-duration: var(--rail-expand-duration);
+	transition-timing-function: var(--rail-expand-easing);
+}
+
+.message-rail--open .message-rail__list {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border) transparent;
+}
+
+.message-rail--open .message-rail__list::-webkit-scrollbar {
+	display: block;
+}
+
+.message-rail--open .message-rail__item {
+	cursor: pointer;
+	pointer-events: auto;
+	transform: translateY(calc(var(--rail-row-y) + var(--rail-expanded-offset, 0px)));
+	transition-duration: var(--rail-expand-duration);
+	transition-timing-function: var(--rail-expand-easing);
+}
+
+.message-rail--open .message-rail__text {
+	opacity: 1;
+	transform: none;
+	transition-duration: var(--rail-expand-duration);
+	transition-timing-function: var(--rail-expand-easing);
+}
+
+.message-rail--open .message-rail__tick {
+	right: 8px;
+	transition-duration: var(--rail-expand-duration);
+	transition-timing-function: var(--rail-expand-easing);
+}
+
+.message-rail--open .message-rail__item--hovered {
+	color: var(--foreground);
+}
+
+.message-rail--open .message-rail__item--hovered .message-rail__text {
+	transform: translateX(12px);
+}
+
+.message-rail--open .message-rail__item--hovered .message-rail__tick {
+	width: 16px;
+	border-top-color: currentColor;
+}
+
+.message-rail--open .message-rail__item--active {
+	color: var(--foreground);
+	font-weight: 500;
+}
+
+.message-rail--open .message-rail__item--active .message-rail__text {
+	transform: none;
+}
+
+.message-rail--open .message-rail__item--active .message-rail__tick {
+	width: 24px;
+	border-top-color: currentColor;
+}
+
+/* 展开动画落定后，面板内的悬停反馈换成短促过渡 */
+.message-rail--settled .message-rail__item,
+.message-rail--settled .message-rail__text,
+.message-rail--settled .message-rail__tick {
+	transition-duration: 180ms;
+	transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 提交滚动的瞬间关掉过渡，位置跳变才不会被打散成动画 */
+.message-rail[data-scroll-commit] .message-rail__item,
+.message-rail[data-scroll-commit] .message-rail__text,
+.message-rail[data-scroll-commit] .message-rail__tick {
+	transition: none !important;
+}
+
+.message-rail__hit {
+	position: absolute;
+	top: 50%;
+	right: 0;
+	width: var(--rail-collapsed-width);
+	height: var(--rail-compact-height);
+	transform: translateY(-50%);
+	border: 0;
+	padding: 0;
+	background: none;
+	cursor: default;
+	pointer-events: auto;
+}
+
+.message-rail--open .message-rail__hit {
+	pointer-events: none;
+}
+
+.message-rail__hit:focus-visible,
+.message-rail__item:focus-visible {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.message-rail__panel,
+	.message-rail__surface,
+	.message-rail__item,
+	.message-rail__text,
+	.message-rail__tick {
+		transition: none !important;
+	}
+}
