@@ -33,6 +33,8 @@ export interface SidebarProps {
 	readonly archived: readonly SessionSummary[];
 	readonly pinned: ReadonlySet<string>;
 	readonly currentId: string;
+	/** 当前会话还没有任何内容（尚未发送第一条消息），侧栏不为它补行 */
+	readonly currentIsDraft: boolean;
 	readonly running: boolean;
 	readonly cwd: string;
 	readonly version: string;
@@ -58,29 +60,15 @@ export function Sidebar(props: SidebarProps): ReactElement {
 	const [archivedFilter, setArchivedFilter] = useState<ArchivedFilter>("hide");
 	const searchInput = useRef<HTMLInputElement | null>(null);
 	const bridge = desktopBridge();
-	const knownCurrent =
-		props.currentId.length === 0 ||
-		props.sessions.some((session) => session.id === props.currentId) ||
-		props.archived.some((session) => session.id === props.currentId);
 	const rows = buildSessionRows({
 		sessions: props.sessions,
 		archived: props.archived,
 		pinned: props.pinned,
 		query,
 		archivedFilter,
+		currentId: props.currentId,
+		currentIsDraft: props.currentIsDraft,
 	});
-	const normalizedQuery = query.trim().toLowerCase();
-	const currentRow: SessionRow | undefined =
-		!knownCurrent && archivedFilter !== "only" && "新会话".includes(normalizedQuery)
-			? {
-					id: props.currentId,
-					title: "新会话",
-					updatedAt: new Date().toISOString(),
-					pinned: false,
-					archived: false,
-				}
-			: undefined;
-	const displayRows = currentRow === undefined ? rows : [currentRow, ...rows];
 
 	useEffect(() => {
 		if (!searchOpen) return;
@@ -239,14 +227,14 @@ export function Sidebar(props: SidebarProps): ReactElement {
 							setArchivedFilter(ARCHIVED_FILTERS[(index + 1) % ARCHIVED_FILTERS.length] ?? "hide");
 						}}
 					/>
-					{!workspaceOpen ? null : displayRows.length === 0 ? (
+					{!workspaceOpen ? null : rows.length === 0 ? (
 						<div className="flex flex-col items-center gap-2 px-3 pt-20 text-[13px] leading-5 text-foreground-subtlest">
 							<Archive className="size-6 text-foreground-subtlest" />
 							<span>{query.length > 0 ? "没有匹配的会话" : "还没有会话"}</span>
 						</div>
 					) : (
 						<div className="flex flex-col gap-0.5">
-							{displayRows.map((row) => (
+							{rows.map((row) => (
 								<SessionRowView
 									key={row.id}
 									row={row}

@@ -22,6 +22,8 @@ describe("会话列表投影", () => {
 			pinned: new Set(["c"]),
 			query: "",
 			archivedFilter: "hide",
+			currentId: "",
+			currentIsDraft: false,
 		});
 		assert.deepEqual(
 			rows.map((row) => row.id),
@@ -39,6 +41,8 @@ describe("会话列表投影", () => {
 			pinned: new Set(),
 			query: "",
 			archivedFilter: "show",
+			currentId: "",
+			currentIsDraft: false,
 		});
 		assert.equal(rows.length, 4);
 		assert.equal(rows.at(-1)?.archived, true);
@@ -51,6 +55,8 @@ describe("会话列表投影", () => {
 			pinned: new Set(),
 			query: "",
 			archivedFilter: "only",
+			currentId: "",
+			currentIsDraft: false,
 		});
 		assert.deepEqual(
 			rows.map((row) => row.id),
@@ -65,6 +71,8 @@ describe("会话列表投影", () => {
 			pinned: new Set(),
 			query: " 修复 ",
 			archivedFilter: "hide",
+			currentId: "",
+			currentIsDraft: false,
 		});
 		assert.deepEqual(
 			rows.map((row) => row.id),
@@ -76,5 +84,88 @@ describe("会话列表投影", () => {
 		assert.equal(archivedFilterLabel("hide"), "隐藏归档");
 		assert.equal(archivedFilterLabel("show"), "显示归档");
 		assert.equal(archivedFilterLabel("only"), "只看归档");
+	});
+});
+
+describe("当前会话补行", () => {
+	it("草稿会话不补行：没发送消息前不该出现在工作区列表里", () => {
+		const rows = buildSessionRows({
+			sessions,
+			archived,
+			pinned: new Set(),
+			query: "",
+			archivedFilter: "hide",
+			currentId: "draft",
+			currentIsDraft: true,
+		});
+		assert.deepEqual(
+			rows.map((row) => row.id),
+			["a", "b", "c"],
+		);
+	});
+
+	it("非草稿又不在清单里的当前会话补一行，排在最前", () => {
+		const rows = buildSessionRows({
+			sessions,
+			archived,
+			pinned: new Set(),
+			query: "",
+			archivedFilter: "hide",
+			currentId: "outside",
+			currentIsDraft: false,
+		});
+		assert.deepEqual(
+			rows.map((row) => row.id),
+			["outside", "a", "b", "c"],
+		);
+		assert.equal(rows[0]?.title, "新会话");
+	});
+
+	it("当前会话已在清单里时不重复补行", () => {
+		const rows = buildSessionRows({
+			sessions,
+			archived,
+			pinned: new Set(),
+			query: "",
+			archivedFilter: "hide",
+			currentId: "a",
+			currentIsDraft: false,
+		});
+		assert.deepEqual(
+			rows.map((row) => row.id),
+			["a", "b", "c"],
+		);
+	});
+
+	it("只看归档时不补行", () => {
+		const rows = buildSessionRows({
+			sessions,
+			archived,
+			pinned: new Set(),
+			query: "",
+			archivedFilter: "only",
+			currentId: "outside",
+			currentIsDraft: false,
+		});
+		assert.deepEqual(
+			rows.map((row) => row.id),
+			["z"],
+		);
+	});
+
+	it("搜索词对不上时不补行", () => {
+		const rows = buildSessionRows({
+			sessions,
+			archived,
+			pinned: new Set(),
+			query: "修复",
+			archivedFilter: "hide",
+			currentId: "outside",
+			currentIsDraft: false,
+		});
+		assert.deepEqual(
+			rows.map((row) => row.id),
+			["a"],
+		);
 	});
 });

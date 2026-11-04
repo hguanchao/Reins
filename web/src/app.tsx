@@ -134,15 +134,17 @@ export function App(): ReactElement {
 		setCanGoForward(historyIndexRef.current < historyRef.current.length - 1);
 	}, []);
 
-	/** 会话切换后记一笔浏览历史；后退/前进自己触发的切换不重复入栈。 */
+	/** 会话切换后记一笔浏览历史；后退/前进自己触发的切换不重复入栈，草稿会话不入栈。 */
 	const rememberSession = useCallback(
-		(id: string): void => {
+		(id: string, draft: boolean): void => {
 			if (id.length === 0) return;
 			if (navigatingRef.current) {
 				navigatingRef.current = false;
 				updateHistoryButtons();
 				return;
 			}
+			// 草稿还没落在磁盘上，后退回来只会撞上「会话不存在」；想回到空白页再点一次新会话即可
+			if (draft) return;
 			const history = historyRef.current;
 			if (history.length === 0) {
 				historyRef.current = [id];
@@ -200,7 +202,7 @@ export function App(): ReactElement {
 				setEffort(state.effort);
 				setModel(state.model);
 				setSessionId(state.sessionId);
-				rememberSession(state.sessionId);
+				rememberSession(state.sessionId, session.entries.length === 0);
 				setCwd(state.cwd);
 				setContextWindow(state.contextWindow);
 				setContextTokens(state.contextTokens);
@@ -464,7 +466,9 @@ export function App(): ReactElement {
 				{ kind: "notice", text: error instanceof Error ? error.message : String(error), tone: "error" },
 			]);
 		});
-	}, []);
+		// 首条消息落盘的瞬间会话才在磁盘上存在,这里让侧栏及时补上真实条目
+		refreshSessions();
+	}, [refreshSessions]);
 
 	const stop = useCallback((): void => {
 		void api.abort().catch(() => {});
@@ -792,6 +796,7 @@ export function App(): ReactElement {
 						archived={archived}
 						pinned={pinned}
 						currentId={sessionId}
+						currentIsDraft={lines.length === 0}
 						running={running}
 						cwd={cwd}
 						version={settings?.version ?? ""}
