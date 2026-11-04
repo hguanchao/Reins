@@ -4,14 +4,19 @@ import {
 	Blocks,
 	CalendarClock,
 	ChevronDown,
+	ChevronsDownUp,
+	ChevronsUpDown,
+	CirclePlus,
 	Ellipsis,
 	Folder,
+	FolderOpen,
 	FolderPlus,
+	ListX,
+	Pencil,
 	Pin,
 	Search,
 	Settings,
 	SlidersHorizontal,
-	SquarePen,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -19,7 +24,7 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import { BrandMark } from "../components/brand-mark.tsx";
 import { StateDot } from "../components/state-dot.tsx";
-import { Button, Menu, type MenuEntry } from "../components/ui/index.ts";
+import { Button, Dialog, Menu, type MenuEntry } from "../components/ui/index.ts";
 import { cn } from "../components/ui/cn.ts";
 import { relativeTime, workspaceName } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
@@ -43,6 +48,8 @@ export interface SidebarProps {
 	readonly currentIsDraft: boolean;
 	readonly running: boolean;
 	readonly cwd: string;
+	/** 工作区在侧栏里的显示名；桌面端改名后由壳回报，浏览器回落到目录名 */
+	readonly workspaceLabel: string | undefined;
 	readonly version: string;
 	readonly connected: boolean;
 	readonly activePanel: GlobalPanelId | undefined;
@@ -54,9 +61,12 @@ export interface SidebarProps {
 	onTogglePin(id: string): void;
 	onOpenPanel(panel: GlobalPanelId): void;
 	onOpenSettings(): void;
+	/** 侧栏里改了工作区显示名（桌面壳持久化；浏览器不回调） */
+	onRenameWorkspace?(name: string): void;
 }
 
 const ARCHIVED_FILTERS: readonly ArchivedFilter[] = ["hide", "show", "only"];
+
 
 /** 侧栏：品牌、新会话、全局面板、工作区浏览区与底部设置。 */
 export function Sidebar(props: SidebarProps): ReactElement {
@@ -66,7 +76,6 @@ export function Sidebar(props: SidebarProps): ReactElement {
 	const [spacesOpen, setSpacesOpen] = useState(true);
 	const [archivedFilter, setArchivedFilter] = useState<ArchivedFilter>("hide");
 	const searchInput = useRef<HTMLInputElement | null>(null);
-	const bridge = desktopBridge();
 	const rows = buildSessionRows({
 		sessions: props.sessions,
 		archived: props.archived,
@@ -83,6 +92,31 @@ export function Sidebar(props: SidebarProps): ReactElement {
 	}, [searchOpen]);
 
 	const sectionOpen = sidebarSectionVisibility(query.trim().length > 0, tasksOpen, spacesOpen);
+	// 两段都展开时才算「全展开」：一键收起；其余状态一键全展开
+	const allOpen = sectionOpen.tasks && sectionOpen.spaces;
+	const toggleAllSections = (): void => {
+		setTasksOpen(!allOpen);
+		setSpacesOpen(!allOpen);
+	};
+	// 工作区「更多」菜单里的重命名弹窗
+	const [renameOpen, setRenameOpen] = useState(false);
+	const [renameValue, setRenameValue] = useState("");
+	const bridge = desktopBridge();
+	const workspaceDisplay = props.workspaceLabel ?? (workspaceName(props.cwd) || "Reins");
+
+	/** 保存重命名:名字先落到桌面壳(持久化),壳确认后界面才跟着改名。 */
+	const saveRename = (): void => {
+		const name = renameValue.trim();
+		if (name.length === 0) return;
+		const persist = async (): Promise<void> => {
+			const ok = (await bridge?.renameWorkspace(name)) ?? false;
+			if (!ok) return;
+			props.onRenameWorkspace?.(name);
+			setRenameOpen(false);
+		};
+		void persist().catch(() => {});
+	};
+
 
 	const viewOptions: MenuEntry[] = [
 		{ type: "label", label: "分组" },
@@ -115,19 +149,14 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				)}
 			</div>
 
-			<button
-				type="button"
-				onClick={props.onNewSession}
-				className="group/new relative mx-0.5 mt-2 mb-3 flex h-[38px] shrink-0 items-center justify-center gap-1.5 overflow-hidden rounded-md border-[0.5px] border-border bg-card px-3 text-[14px] leading-[22px] font-medium transition-colors hover:bg-surface-hover"
-			>
-				<SquarePen className="size-3.5 shrink-0" />
-				<span className="min-w-0 truncate">新会话</span>
-				<span className="absolute right-3 shrink-0 text-[12px] font-normal text-foreground-subtlest opacity-0 transition-opacity group-hover/new:opacity-100">
-					Ctrl N
-				</span>
-			</button>
-
-			<nav className="mb-2 flex shrink-0 flex-col gap-0.5">
+			<nav className="mt-2 mb-2 flex shrink-0 flex-col gap-0.5">
+				<PanelRow
+					icon={<CirclePlus className="size-4" />}
+					label="新建任务"
+					hint="Ctrl N"
+					active={false}
+					onClick={props.onNewSession}
+				/>
 				<PanelRow
 					icon={<Blocks className="size-4" />}
 					label="插件"
@@ -205,6 +234,16 @@ export function Sidebar(props: SidebarProps): ReactElement {
 							<Button
 								variant="ghost"
 								size="icon-sm"
+								aria-label={allOpen ? "收起所有工作区" : "展开所有工作区"}
+								title={allOpen ? "收起所有工作区" : "展开所有工作区"}
+								className="size-7 rounded-sm text-foreground-subtle hover:bg-surface-hover"
+								onClick={toggleAllSections}
+							>
+								{allOpen ? <ChevronsDownUp className="size-3.5" /> : <ChevronsUpDown className="size-3.5" />}
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon-sm"
 								aria-label="添加工作区"
 								title="添加工作区"
 								disabled={bridge === undefined}
@@ -269,8 +308,30 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					<div className="sidebar-section-motion" data-open={sectionOpen.spaces || undefined}>
 						<div className="sidebar-section-content">
 							<WorkspaceRow
-								name={workspaceName(props.cwd) || "Reins"}
+								name={workspaceDisplay}
 								onNewSession={props.onNewSession}
+								onOpenFolder={
+									bridge === undefined
+										? undefined
+										: () => {
+												bridge.openWorkspaceFolder();
+											}
+								}
+								onRename={
+									bridge === undefined
+										? undefined
+										: () => {
+												setRenameValue(workspaceDisplay);
+												setRenameOpen(true);
+											}
+								}
+								onRemove={
+									bridge === undefined
+										? undefined
+										: () => {
+												void bridge.chooseWorkspace();
+											}
+								}
 								onArchiveFilter={() => {
 									const index = ARCHIVED_FILTERS.indexOf(archivedFilter);
 									setArchivedFilter(ARCHIVED_FILTERS[(index + 1) % ARCHIVED_FILTERS.length] ?? "hide");
@@ -296,6 +357,34 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					</span>
 				)}
 			</div>
+
+			<Dialog
+				open={renameOpen}
+				onClose={() => setRenameOpen(false)}
+				title="重命名空间"
+				footer={
+					<>
+						<Button variant="outline" onClick={() => setRenameOpen(false)}>
+							取消
+						</Button>
+						<Button variant="primary" disabled={renameValue.trim().length === 0} onClick={saveRename}>
+							保存
+						</Button>
+					</>
+				}
+			>
+				<input
+					value={renameValue}
+					onChange={(event) => setRenameValue(event.target.value)}
+					onKeyDown={(event) => {
+						if (event.key === "Enter") saveRename();
+					}}
+					placeholder="空间名称"
+					aria-label="空间名称"
+					autoFocus
+					className="h-9 w-full rounded-md border-[0.5px] border-input-border bg-input px-3 text-[14px] leading-[22px] outline-none focus:border-input-border-focused"
+				/>
+			</Dialog>
 		</aside>
 	);
 }
@@ -303,11 +392,14 @@ export function Sidebar(props: SidebarProps): ReactElement {
 function PanelRow({
 	icon,
 	label,
+	hint,
 	active,
 	onClick,
 }: {
 	readonly icon: ReactElement;
 	readonly label: string;
+	/** 行尾的浅色小字提示（如快捷键）；hover 时出现 */
+	readonly hint?: string;
 	readonly active: boolean;
 	onClick(): void;
 }): ReactElement {
@@ -317,12 +409,17 @@ function PanelRow({
 			onClick={onClick}
 			aria-current={active ? "page" : undefined}
 			className={cn(
-				"mx-0.5 flex min-h-9 items-center gap-2 rounded-md px-2 py-[7px] text-left text-[14px] leading-[22px] transition-colors hover:bg-surface-hover",
+				"group/panel mx-0.5 flex min-h-9 items-center gap-2 rounded-md px-2 py-[7px] text-left text-[14px] leading-[22px] transition-colors hover:bg-surface-hover",
 				active && "bg-selected",
 			)}
 		>
 			<span className="flex size-4 shrink-0 items-center justify-center">{icon}</span>
 			<span className="min-w-0 flex-1 truncate">{label}</span>
+			{hint === undefined ? null : (
+				<span className="shrink-0 text-[12px] leading-4 font-normal text-foreground-subtlest opacity-0 transition-opacity group-hover/panel:opacity-100">
+					{hint}
+				</span>
+			)}
 		</button>
 	);
 }
@@ -374,47 +471,63 @@ function SectionHeader({
 	);
 }
 
+/**
+ * 空间段里的一行工作区。
+ *
+ * 行首图标与「空间」标题左缘对齐（同为 px-2 网格），行尾 hover 出新建任务与更多菜单；
+ * 打开文件夹/重命名/移除只在桌面壳里有实体动作，浏览器里省略。
+ */
 function WorkspaceRow({
 	name,
 	onNewSession,
+	onOpenFolder,
+	onRename,
+	onRemove,
 	onArchiveFilter,
 }: {
 	readonly name: string;
 	onNewSession(): void;
+	readonly onOpenFolder?: () => void;
+	readonly onRename?: () => void;
+	readonly onRemove?: () => void;
 	onArchiveFilter(): void;
 }): ReactElement {
+	const entries: MenuEntry[] = [
+		...(onOpenFolder === undefined ? [] : [{ type: "item" as const, key: "open", label: "打开文件夹", icon: FolderOpen, onSelect: onOpenFolder }]),
+		...(onRename === undefined ? [] : [{ type: "item" as const, key: "rename", label: "重命名", icon: Pencil, onSelect: onRename }]),
+		...(onRemove === undefined ? [] : [{ type: "item" as const, key: "remove", label: "从列表中移除", icon: ListX, danger: true, onSelect: onRemove }]),
+		{ type: "separator" as const },
+		{ type: "item" as const, key: "archived", label: "切换归档显示", onSelect: onArchiveFilter },
+	];
+
 	return (
-		<div className="group/workspace flex h-[34px] items-center gap-1.5 rounded-md px-2">
+		// 行首图标与「空间」二字对齐：标题里折叠箭头 + 间距的进深，用左内边距补齐
+		<div className="group/workspace flex h-[34px] items-center gap-1.5 rounded-md pr-2 pl-7 hover:bg-surface-hover">
 			<Folder className="size-4 shrink-0 text-foreground-subtle" />
 			<span className="min-w-0 flex-1 truncate text-[14px] leading-5">{name}</span>
-			<span className="hidden shrink-0 items-center gap-1 group-hover/workspace:flex group-focus-within/workspace:flex">
+			<span className="hidden shrink-0 items-center gap-0.5 group-hover/workspace:flex group-focus-within/workspace:flex">
 				<button
 					type="button"
-					aria-label="在此工作区新建会话"
-					title="新建会话"
+					aria-label="在此工作区新建任务"
+					title="新建任务"
 					onClick={onNewSession}
-					className="flex size-4 items-center justify-center text-foreground-subtlest hover:text-foreground"
+					className="flex size-5 items-center justify-center rounded-sm text-foreground-subtlest hover:bg-surface-strong hover:text-foreground"
 				>
-					<SquarePen className="size-3.5" />
+					<CirclePlus className="size-3.5" />
 				</button>
 				<Menu
 					trigger={({ toggle }) => (
 						<button
 							type="button"
-							aria-label="工作区操作"
-							title="工作区操作"
+							aria-label="空间操作"
+							title="空间操作"
 							onClick={toggle}
-							className="flex size-4 items-center justify-center text-foreground-subtlest hover:text-foreground"
+							className="flex size-5 items-center justify-center rounded-sm text-foreground-subtlest hover:bg-surface-strong hover:text-foreground"
 						>
 							<Ellipsis className="size-3.5" />
 						</button>
 					)}
-					entries={[
-						{ type: "item", key: "rename", label: "重命名（未接入）", disabled: true, onSelect: () => {} },
-						{ type: "item", key: "remove", label: "移除工作区（未接入）", disabled: true, onSelect: () => {} },
-						{ type: "separator" },
-						{ type: "item", key: "archived", label: "切换归档显示", onSelect: onArchiveFilter },
-					]}
+					entries={entries}
 				/>
 			</span>
 		</div>

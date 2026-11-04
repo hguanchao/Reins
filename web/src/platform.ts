@@ -1,6 +1,11 @@
 /** 桌面壳注入的能力；浏览器里不存在，相关入口据此隐藏。 */
 export interface ReinsDesktopBridge {
 	chooseWorkspace(): Promise<boolean>;
+	/** 用系统资源管理器打开当前工作区目录 */
+	openWorkspaceFolder(): void;
+	/** 工作区在侧栏里的显示名；没改过名时为空 */
+	workspaceName(): Promise<string | undefined>;
+	renameWorkspace(name: string): Promise<boolean>;
 	setTheme(theme: "zai-dark" | "zai-light"): void;
 }
 

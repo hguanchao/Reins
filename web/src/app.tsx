@@ -17,7 +17,7 @@ import { MessageRail } from "./chat/message-rail.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
 import { ToastHost, toast } from "./components/ui/index.ts";import { ScrollFadeViewport } from "./components/ui/scroll-fade-viewport.tsx";
 import { workspaceName } from "./lib/format.ts";
-import { hasNativeTitlebar } from "./platform.ts";
+import { desktopBridge, hasNativeTitlebar } from "./platform.ts";
 import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
 import { GitPane } from "./panels/git-pane.tsx";
@@ -89,6 +89,8 @@ export function App(): ReactElement {
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
+	// 工作区在侧栏里的显示名:桌面壳改名后回传,浏览器端本地保存
+	const [workspaceLabel, setWorkspaceLabel] = useState<string | undefined>(undefined);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
 	// 记住这次收起是不是窄窗自动做的：变宽后要还回去；用户亲手收起的另当别论
 	const [autoCollapsed, setAutoCollapsed] = useState(window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
@@ -694,6 +696,18 @@ export function App(): ReactElement {
 		document.title = currentTitle === "新会话" ? "Reins" : `${currentTitle} · Reins`;
 	}, [currentTitle]);
 
+	// 工作区显示名由桌面壳持久化:启动时取一次,改名后壳回报;取不到就回落目录名
+	useEffect(() => {
+		const bridge = desktopBridge();
+		if (bridge === undefined) return;
+		void bridge
+			.workspaceName()
+			.then((name) => {
+				if (name !== undefined) setWorkspaceLabel(name);
+			})
+			.catch(() => {});
+	}, []);
+
 	const sidePane = (
 		<SidePane
 			tabs={sideTabs}
@@ -830,6 +844,7 @@ export function App(): ReactElement {
 						currentIsDraft={lines.length === 0}
 						running={running}
 						cwd={cwd}
+						workspaceLabel={workspaceLabel}
 						version={settings?.version ?? ""}
 						connected={connectionOk}
 						activePanel={activePanel}
@@ -851,6 +866,7 @@ export function App(): ReactElement {
 							setSideFullscreen(false);
 						}}
 						onOpenSettings={() => setSettingsOpen(true)}
+						onRenameWorkspace={setWorkspaceLabel}
 					/>
 				}
 				rightbar={sidePane}

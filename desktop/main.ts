@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { parseReadyLine } from "#src/web/ready-line.ts";
+import { workspaceNameOf, writeWorkspaceName } from "#src/workspace/name.ts";
 
 /**
  * 桌面壳的主进程。
@@ -42,6 +43,11 @@ function lastWorkspace(): string | undefined {
 	} catch {
 		return undefined;
 	}
+}
+
+/** 工作区显示名按路径键存一张表;重命名只改这张表,不碰磁盘目录名。 */
+function workspaceNamesFile(): string {
+	return join(app.getPath("userData"), "workspace-names.json");
 }
 
 /**
@@ -189,11 +195,13 @@ async function run(): Promise<void> {
 			preload: join(buildDir, "preload.cjs"),
 		},
 	});
-	let server: ServerHandle | undefined;
-	let serverGeneration = 0;
-	let serverOrigin: string | undefined;
+let server: ServerHandle | undefined;
+let serverGeneration = 0;
+let serverOrigin: string | undefined;
+/** 当前服务所在的工作区路径；「打开文件夹」用它 */
+let workspacePath: string | undefined;
 
-	const attachServer = (handle: ServerHandle): void => {
+const attachServer = (handle: ServerHandle): void => {
 		const generation = ++serverGeneration;
 		server = handle;
 		serverOrigin = new URL(handle.url).origin;
@@ -232,12 +240,26 @@ async function run(): Promise<void> {
 			attachServer(next);
 			previous?.child.kill();
 			rememberWorkspace(picked);
+			workspacePath = picked;
 			await window.loadURL(next.url);
 			return true;
 		} catch (error) {
 			dialog.showErrorBox("切换工作区失败", error instanceof Error ? error.message : String(error));
 			return false;
 		}
+	});
+
+	// 「打开文件夹」交给系统资源管理器；失败只在界面上无感，不值得打断
+	ipcMain.handle("workspace:reveal", () => {
+		if (workspacePath !== undefined) void shell.openPath(workspacePath);
+	});
+
+	// 工作区在侧栏里的显示名;与路径分开存,重命名不改磁盘上的目录
+	ipcMain.handle("workspace:name", () => workspaceNameOf(workspaceNamesFile(), workspacePath));
+
+	ipcMain.handle("workspace:rename", (_event, name: unknown) => {
+		if (typeof name !== "string" || workspacePath === undefined) return false;
+		return writeWorkspaceName(workspaceNamesFile(), workspacePath, name);
 	});
 
 	await window.loadURL(LOADING_PAGE);
@@ -251,6 +273,7 @@ async function run(): Promise<void> {
 		app.quit();
 		return;
 	}
+	workspacePath = workspace;
 
 	try {
 		const handle = await startServer(workspace);
