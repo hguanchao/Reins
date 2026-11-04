@@ -7,6 +7,8 @@ export interface ConversationHeaderProps {
 	readonly blank: boolean;
 	readonly workspace: string;
 	readonly title: string;
+	/** 桌面壳的后退/前进安家在标题栏;浏览器没有标题栏,帧头继续承载 */
+	readonly showNavigation: boolean;
 	readonly canGoBack: boolean;
 	readonly canGoForward: boolean;
 	readonly rightbarOpen: boolean;
@@ -47,12 +49,16 @@ function UtilityButton({
 export function ConversationHeader(props: ConversationHeaderProps): ReactElement {
 	const utilities = (
 		<div className="flex shrink-0 items-center gap-1">
-			<UtilityButton label="后退" disabled={!props.canGoBack} onClick={props.onBack}>
-				<ArrowLeft className="size-4" />
-			</UtilityButton>
-			<UtilityButton label="前进" disabled={!props.canGoForward} onClick={props.onForward}>
-				<ArrowRight className="size-4" />
-			</UtilityButton>
+			{props.showNavigation ? (
+				<>
+					<UtilityButton label="后退" disabled={!props.canGoBack} onClick={props.onBack}>
+						<ArrowLeft className="size-4" />
+					</UtilityButton>
+					<UtilityButton label="前进" disabled={!props.canGoForward} onClick={props.onForward}>
+						<ArrowRight className="size-4" />
+					</UtilityButton>
+				</>
+			) : null}
 			<UtilityButton
 				label={props.rightbarOpen ? "关闭面板" : "打开面板"}
 				onClick={props.onToggleRightbar}

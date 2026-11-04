@@ -17,6 +17,7 @@ import { MessageRail } from "./chat/message-rail.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
 import { ToastHost, toast } from "./components/ui/index.ts";import { ScrollFadeViewport } from "./components/ui/scroll-fade-viewport.tsx";
 import { workspaceName } from "./lib/format.ts";
+import { hasNativeTitlebar } from "./platform.ts";
 import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
 import { GitPane } from "./panels/git-pane.tsx";
@@ -727,6 +728,7 @@ export function App(): ReactElement {
 				blank={draft}
 				workspace={workspaceName(cwd) || "Reins"}
 				title={currentTitle}
+				showNavigation={!hasNativeTitlebar()}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
 				rightbarOpen={sideOpen}
@@ -815,6 +817,10 @@ export function App(): ReactElement {
 				}
 				onToggleSidebar={toggleSidebar}
 				onNewSession={newTask}
+				canGoBack={canGoBack}
+				canGoForward={canGoForward}
+				onBack={goBack}
+				onForward={goForward}
 				sidebar={
 					<Sidebar
 						sessions={sessions}

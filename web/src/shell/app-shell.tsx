@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactElement, type ReactNode } from "react";
 
 import { cn } from "../components/ui/cn.ts";
+import { hasNativeTitlebar } from "../platform.ts";
 import { CaptionBar } from "./caption-bar.tsx";
 import { computeColumns } from "./columns.ts";
 
@@ -84,6 +85,11 @@ export interface AppShellProps {
 	onRightbarWidth(width: number): void;
 	onToggleSidebar(): void;
 	onNewSession(): void;
+	/** 会话浏览历史;标题栏承载后退/前进(仅桌面壳有标题栏) */
+	readonly canGoBack: boolean;
+	readonly canGoForward: boolean;
+	onBack(): void;
+	onForward(): void;
 }
 
 /**
@@ -105,12 +111,16 @@ export function AppShell({
 	onRightbarWidth,
 	onToggleSidebar,
 	onNewSession,
+	canGoBack,
+	canGoForward,
+	onBack,
+	onForward,
 }: AppShellProps): ReactElement {
 	const frame = useRef<HTMLDivElement | null>(null);
 	const [viewport, setViewport] = useState(() => (typeof window === "undefined" ? 0 : window.innerWidth));
 	const [dragging, setDragging] = useState(false);
 	const [animating, setAnimating] = useState(false);
-	const hasCaption = document.documentElement.dataset.windowsTitlebar !== undefined;
+	const hasCaption = hasNativeTitlebar();
 
 	useLayoutEffect(() => {
 		const element = frame.current;
@@ -156,6 +166,10 @@ export function AppShell({
 					sidebarCollapsed={sidebarCollapsed}
 					onToggleSidebar={onToggleSidebar}
 					onNewSession={onNewSession}
+					canGoBack={canGoBack}
+					canGoForward={canGoForward}
+					onBack={onBack}
+					onForward={onForward}
 				/>
 			) : null}
 			<div
