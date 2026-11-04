@@ -1,4 +1,5 @@
 import {
+	AppWindow,
 	Archive,
 	ArchiveRestore,
 	Blocks,
@@ -6,11 +7,15 @@ import {
 	ChevronDown,
 	ChevronsDownUp,
 	ChevronsUpDown,
+	Circle,
+	CircleCheck,
 	CirclePlus,
 	Ellipsis,
 	Folder,
 	FolderOpen,
 	FolderPlus,
+	Forward,
+	ListChecks,
 	ListX,
 	Pencil,
 	Pin,
@@ -63,6 +68,11 @@ export interface SidebarProps {
 	onOpenSettings(): void;
 	/** 侧栏里改了工作区显示名（桌面壳持久化；浏览器不回调） */
 	onRenameWorkspace?(name: string): void;
+	/** 任务重命名：界面层显示名覆盖，服务端标题不动 */
+	onRenameSession(id: string, title: string): void;
+	/** 批量归档 / 批量删除；服务端会跳过当前会话 */
+	onArchiveMany(ids: readonly string[]): void;
+	onDeleteMany(ids: readonly string[]): void;
 }
 
 const ARCHIVED_FILTERS: readonly ArchivedFilter[] = ["hide", "show", "only"];
@@ -115,6 +125,35 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			setRenameOpen(false);
 		};
 		void persist().catch(() => {});
+	};
+
+	// 任务「更多」菜单里的重命名弹窗；记住目标会话，确认时才写覆盖
+	const [taskRename, setTaskRename] = useState<{ readonly id: string; readonly value: string } | undefined>(undefined);
+
+	// 批量操作：进入选择模式后行点击改为勾选，底栏统一归档/删除
+	const [batchMode, setBatchMode] = useState(false);
+	const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+	const toggleSelected = (id: string): void => {
+		setSelected((current) => {
+			const next = new Set(current);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	};
+	const exitBatch = (): void => {
+		setBatchMode(false);
+		setSelected(new Set());
+	};
+	const archiveSelected = (): void => {
+		if (selected.size === 0) return;
+		props.onArchiveMany([...selected]);
+		exitBatch();
+	};
+	const deleteSelected = (): void => {
+		if (selected.size === 0) return;
+		props.onDeleteMany([...selected]);
+		exitBatch();
 	};
 
 
@@ -282,11 +321,26 @@ export function Sidebar(props: SidebarProps): ReactElement {
 											row={row}
 											current={row.id === props.currentId && props.activePanel === undefined}
 											running={props.running && row.id === props.currentId}
+											batchMode={batchMode}
+											selected={selected.has(row.id)}
+											onToggleSelect={() => toggleSelected(row.id)}
 											onSwitch={() => props.onSwitch(row.id)}
 											onArchive={() => props.onArchive(row.id)}
 											onDelete={() => props.onDelete(row.id)}
 											onRestore={() => props.onRestore(row.id)}
 											onTogglePin={() => props.onTogglePin(row.id)}
+											onRename={() => setTaskRename({ id: row.id, value: row.title })}
+											onBatch={() => {
+												setBatchMode(true);
+												setSelected(new Set([row.id]));
+											}}
+											onOpenFolder={
+												bridge === undefined
+													? undefined
+													: () => {
+															bridge.openWorkspaceFolder();
+														}
+											}
 										/>
 									))}
 								</div>
@@ -342,6 +396,39 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				</div>
 			</div>
 
+			{batchMode ? (
+				<div className="mb-1 flex h-9 shrink-0 items-center gap-1 rounded-md border-[0.5px] border-border bg-card px-2">
+					<span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-foreground-subtle">
+						已选 {selected.size} 项
+					</span>
+					<button
+						type="button"
+						disabled={selected.size === 0}
+						onClick={archiveSelected}
+						className="flex h-7 items-center gap-1 rounded-sm px-2 text-[13px] leading-5 text-foreground-subtle transition-colors hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-40"
+					>
+						<Archive className="size-3.5" />
+						归档
+					</button>
+					<button
+						type="button"
+						disabled={selected.size === 0}
+						onClick={deleteSelected}
+						className="flex h-7 items-center gap-1 rounded-sm px-2 text-[13px] leading-5 text-destructive transition-colors hover:bg-surface-hover disabled:pointer-events-none disabled:opacity-40"
+					>
+						<Trash2 className="size-3.5" />
+						删除
+					</button>
+					<button
+						type="button"
+						onClick={exitBatch}
+						className="flex h-7 items-center rounded-sm px-2 text-[13px] leading-5 text-foreground-subtle transition-colors hover:bg-surface-hover"
+					>
+						取消
+					</button>
+				</div>
+			) : null}
+
 			<div className="mt-1 flex h-[42px] shrink-0 items-center gap-2 rounded-md px-2.5 transition-colors hover:bg-surface-hover">
 				<button
 					type="button"
@@ -381,6 +468,48 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					}}
 					placeholder="空间名称"
 					aria-label="空间名称"
+					autoFocus
+					className="h-9 w-full rounded-md border-[0.5px] border-input-border bg-input px-3 text-[14px] leading-[22px] outline-none focus:border-input-border-focused"
+				/>
+			</Dialog>
+
+			<Dialog
+				open={taskRename !== undefined}
+				onClose={() => setTaskRename(undefined)}
+				title="重命名任务"
+				footer={
+					<>
+						<Button variant="outline" onClick={() => setTaskRename(undefined)}>
+							取消
+						</Button>
+						<Button
+							variant="primary"
+							disabled={taskRename === undefined || taskRename.value.trim().length === 0}
+							onClick={() => {
+								if (taskRename === undefined) return;
+								const title = taskRename.value.trim();
+								if (title.length === 0) return;
+								props.onRenameSession(taskRename.id, title);
+								setTaskRename(undefined);
+							}}
+						>
+							保存
+						</Button>
+					</>
+				}
+			>
+				<input
+					value={taskRename?.value ?? ""}
+					onChange={(event) => setTaskRename((current) => (current === undefined ? current : { ...current, value: event.target.value }))}
+					onKeyDown={(event) => {
+						if (event.key !== "Enter" || taskRename === undefined) return;
+						const title = taskRename.value.trim();
+						if (title.length === 0) return;
+						props.onRenameSession(taskRename.id, title);
+						setTaskRename(undefined);
+					}}
+					placeholder="任务名称"
+					aria-label="任务名称"
 					autoFocus
 					className="h-9 w-full rounded-md border-[0.5px] border-input-border bg-input px-3 text-[14px] leading-[22px] outline-none focus:border-input-border-focused"
 				/>
@@ -426,7 +555,7 @@ function PanelRow({
 
 /**
  * 分组标题：吸顶、12px 加粗、折叠箭头与 hover 才出现的「+」。
- * 两段共用一套形态（任务 / 空间），与 WorkBuddy 的 Tasks / Workspaces 对应。
+ * 两段共用一套形态（任务 / 空间）：任务装会话，空间装工作区文件夹。
  */
 function SectionHeader({
 	label,
@@ -534,54 +663,96 @@ function WorkspaceRow({
 	);
 }
 
+/**
+ * 任务行。
+ *
+ * 普通模式下 hover 出「更多」菜单（置顶/重命名/分享任务 ─ 独立窗口/打开文件夹/批量操作
+ * ─ 归档/删除）；批量模式下整行变成勾选框，点行即选中/取消，菜单收起，统一动作由底栏发起。
+ * 分享任务与独立窗口还没有对应能力，先禁用占位。
+ */
 function SessionRowView({
 	row,
 	current,
 	running,
+	batchMode,
+	selected,
+	onToggleSelect,
 	onSwitch,
 	onArchive,
 	onDelete,
 	onRestore,
 	onTogglePin,
+	onRename,
+	onBatch,
+	onOpenFolder,
 }: {
 	readonly row: SessionRow;
 	readonly current: boolean;
 	readonly running: boolean;
+	readonly batchMode: boolean;
+	readonly selected: boolean;
+	onToggleSelect(): void;
 	onSwitch(): void;
 	onArchive(): void;
 	onDelete(): void;
 	onRestore(): void;
 	onTogglePin(): void;
+	onRename(): void;
+	onBatch(): void;
+	readonly onOpenFolder?: () => void;
 }): ReactElement {
 	const entries: MenuEntry[] = row.archived
 		? [{ type: "item", key: "restore", label: "恢复", icon: ArchiveRestore, onSelect: onRestore }]
 		: [
 				{ type: "item", key: "pin", label: row.pinned ? "取消置顶" : "置顶", icon: Pin, onSelect: onTogglePin },
-				{
-					type: "item",
-					key: "rename",
-					label: "重命名（未接入）",
-					disabled: true,
-					onSelect: () => {},
-				},
-				{
-					type: "item",
-					key: "fork",
-					label: "在新会话中分支（未接入）",
-					disabled: true,
-					onSelect: () => {},
-				},
+				{ type: "item", key: "rename", label: "重命名", icon: Pencil, onSelect: onRename },
+				{ type: "item", key: "share", label: "分享任务（未接入）", icon: Forward, disabled: true, onSelect: () => {} },
+				{ type: "separator" },
+				{ type: "item", key: "window", label: "在独立窗口中打开（未接入）", icon: AppWindow, disabled: true, onSelect: () => {} },
+				...(onOpenFolder === undefined
+					? []
+					: [{ type: "item" as const, key: "open", label: "打开文件夹", icon: FolderOpen, onSelect: onOpenFolder }]),
+				{ type: "item", key: "batch", label: "批量操作", icon: ListChecks, onSelect: onBatch },
+				{ type: "separator" },
 				{ type: "item", key: "archive", label: "归档", icon: Archive, disabled: current, onSelect: onArchive },
 				{
 					type: "item",
 					key: "delete",
-					label: "删除",
+					label: "删除任务",
 					icon: Trash2,
 					danger: true,
 					disabled: current,
 					onSelect: onDelete,
 				},
 			];
+
+	if (batchMode) {
+		// 归档行不可勾选：服务端的批量归档/删除只作用于活动清单，勾了也是静默无效
+		return (
+			<button
+				type="button"
+				onClick={row.archived ? undefined : onToggleSelect}
+				disabled={row.archived}
+				aria-pressed={selected}
+				title={row.title}
+				className={cn(
+					"flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[14px] leading-5 transition-colors",
+					selected ? "bg-selected" : "hover:bg-surface-hover",
+					row.archived && "cursor-default text-foreground-subtlest hover:bg-transparent",
+				)}
+			>
+				{selected ? (
+					<CircleCheck className="size-4 shrink-0 text-(--business-blue)" />
+				) : (
+					<Circle className="size-4 shrink-0 text-foreground-subtlest" />
+				)}
+				<span className="min-w-0 flex-1 truncate">{row.title}</span>
+				<span className="shrink-0 text-[10px] leading-4 text-foreground-subtlest">
+					{row.archived ? "已归档" : relativeTime(row.updatedAt)}
+				</span>
+			</button>
+		);
+	}
 
 	return (
 		<div

@@ -2,6 +2,7 @@ import { ArrowDown } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 	type CSSProperties,
@@ -43,6 +44,7 @@ import type {
 	WebEvent,
 } from "./protocol.ts";
 import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./state/usage.ts";
+import { putSessionTitle, readSessionTitles, withSessionTitles } from "./state/session-titles.ts";
 import { SettingsPage } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
@@ -76,6 +78,8 @@ export function App(): ReactElement {
 	const [cwd, setCwd] = useState("");
 	const [sessions, setSessions] = useState<readonly SessionSummary[]>([]);
 	const [archived, setArchived] = useState<readonly SessionSummary[]>([]);
+	// 任务重命名的显示名覆盖（本机存储）；列表与页头标题都叠上它
+	const [sessionTitles, setSessionTitles] = useState(readSessionTitles);
 	const [settings, setSettings] = useState<SettingsSnapshot | undefined>(undefined);
 	const [model, setModel] = useState<ModelInfo>({ provider: "", model: "", name: "" });
 	const [approvalMode, setApprovalMode] = useState<ApprovalMode>("ask");
@@ -468,6 +472,25 @@ export function App(): ReactElement {
 		});
 	}, []);
 
+	/** 任务重命名：只写本机显示名覆盖，服务端标题不变。 */
+	const renameSession = useCallback((id: string, title: string): void => {
+		setSessionTitles((current) => putSessionTitle(current, id, title));
+	}, []);
+
+	/** 批量归档/删除：复用服务端的多选接口，当前会话由服务端跳过。 */
+	const archiveMany = useCallback(
+		(ids: readonly string[]): void => {
+			void api.archiveSessions(ids).then(refreshSessions).catch(() => {});
+		},
+		[refreshSessions],
+	);
+	const deleteMany = useCallback(
+		(ids: readonly string[]): void => {
+			void api.deleteSessions(ids).then(refreshSessions).catch(() => {});
+		},
+		[refreshSessions],
+	);
+
 	const switchSession = useCallback(
 		(id: string): void => {
 			setActivePanel(undefined);
@@ -690,7 +713,8 @@ export function App(): ReactElement {
 	};
 
 	const draft = lines.length === 0 && !running && activePanel === undefined;
-	const currentTitle = sessions.find((session) => session.id === sessionId)?.title ?? "新会话";
+	const displaySessions = useMemo(() => withSessionTitles(sessions, sessionTitles), [sessions, sessionTitles]);
+	const currentTitle = displaySessions.find((session) => session.id === sessionId)?.title ?? "新会话";
 
 	useEffect(() => {
 		document.title = currentTitle === "新会话" ? "Reins" : `${currentTitle} · Reins`;
@@ -837,7 +861,7 @@ export function App(): ReactElement {
 				onForward={goForward}
 				sidebar={
 					<Sidebar
-						sessions={sessions}
+						sessions={displaySessions}
 						archived={archived}
 						pinned={pinned}
 						currentId={sessionId}
@@ -867,6 +891,9 @@ export function App(): ReactElement {
 						}}
 						onOpenSettings={() => setSettingsOpen(true)}
 						onRenameWorkspace={setWorkspaceLabel}
+						onRenameSession={renameSession}
+						onArchiveMany={archiveMany}
+						onDeleteMany={deleteMany}
 					/>
 				}
 				rightbar={sidePane}
@@ -891,7 +918,7 @@ export function App(): ReactElement {
 			) : null}
 			<CommandPalette
 				open={commandOpen}
-				sessions={sessions}
+				sessions={displaySessions}
 				onClose={() => setCommandOpen(false)}
 				onNewTask={() => {
 					setCommandOpen(false);
