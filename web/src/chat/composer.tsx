@@ -3,6 +3,7 @@ import {
 	AtSign,
 	ChevronDown,
 	Database,
+	Gauge,
 	Map as MapIcon,
 	Plus,
 	Settings2,
@@ -27,6 +28,7 @@ import { api } from "../api.ts";
 import { Menu, Popover, Tooltip, cn, toast, type MenuEntry } from "../components/ui/index.ts";
 import { formatCost } from "../lib/format.ts";
 import type {
+	ActivitySummary,
 	ApprovalMode,
 	ModelInfo,
 	SettingsModel,
@@ -34,6 +36,7 @@ import type {
 	ThinkingLevel,
 	UsageSummary,
 } from "../protocol.ts";
+import { formatDuration } from "../lib/format.ts";
 
 const MAX_INPUT_HEIGHT = 336;
 
@@ -71,6 +74,7 @@ export interface ComposerProps {
 	readonly contextTokens: number | undefined;
 	readonly contextWindow: number | undefined;
 	readonly usage: UsageSummary;
+	readonly activity: ActivitySummary;
 	readonly hero?: boolean;
 	onSend(text: string): void;
 	onStop(): void;
@@ -300,6 +304,14 @@ export function Composer(props: ComposerProps): ReactElement {
 		? "正在回复…"
 		: "描述你想要构建的内容, / 调用指令, @ 文件或对话";
 
+	// 输入卡下方那排统计:三项都还没数据(草稿会话)时整行不出现,免得留一条空白
+	const hasDock =
+		props.activity.steps > 0 ||
+		props.usage.requests > 0 ||
+		(props.contextTokens !== undefined &&
+			props.contextWindow !== undefined &&
+			props.contextWindow > 0);
+
 	return (
 		<div className="relative w-full">
 			{suggestion !== undefined && suggestion.items.length > 0 ? (
@@ -440,9 +452,6 @@ export function Composer(props: ComposerProps): ReactElement {
 					</div>
 
 					<div className="ml-auto flex min-w-0 items-center gap-3">
-						<UsagePill usage={props.usage} />
-						<ContextUsage tokens={props.contextTokens} window={props.contextWindow} />
-
 						{effortLevels.length <= 1 ? null : (
 							<Menu
 								trigger={({ toggle }) => (
@@ -505,10 +514,67 @@ export function Composer(props: ComposerProps): ReactElement {
 								<ArrowUp className="size-4" />
 							</button>
 						)}
+						</div>
 					</div>
 				</div>
+
+				{hasDock ? (
+					<div className="mt-1 flex items-center justify-center gap-3">
+						<ActivityPill activity={props.activity} />
+						<UsagePill usage={props.usage} />
+						<ContextMeter tokens={props.contextTokens} window={props.contextWindow} />
+					</div>
+				) : null}
 			</div>
-		</div>
+		);
+	}
+
+/** 输入卡下方一排统计里的小字胶囊;三项共用同一形态。 */
+const DOCK_PILL = "flex h-7 items-center gap-1 rounded-md px-2 text-[12px] leading-[18px] font-medium text-foreground-subtle transition-colors hover:bg-surface-hover";
+
+/** 活动胶囊:轮数、步数与生成速度,点开看各段耗时。没有可展示的耗时时退成纯读数。 */
+function ActivityPill({ activity }: { readonly activity: ActivitySummary }): ReactElement | null {
+	if (activity.steps === 0) return null;
+	const speed =
+		activity.decodeMs > 0 ? Math.round(activity.decodeTokens / (activity.decodeMs / 1000)) : null;
+	const rows: readonly (readonly [string, string])[] = [
+		...(activity.llmMs > 0 ? ([["请求耗时", formatDuration(activity.llmMs)]] as const) : []),
+		...(activity.toolMs > 0 ? ([["工具耗时", formatDuration(activity.toolMs)]] as const) : []),
+		...(activity.ttftCount > 0
+			? ([["首字延迟", formatDuration(Math.round(activity.ttftMs / activity.ttftCount))]] as const)
+			: []),
+		...(speed !== null ? ([["生成速度", `${speed} tok/s`]] as const) : []),
+	];
+
+	const label = (
+		<span className="flex items-center gap-1">
+			<span>
+				{activity.turns} 轮 · {activity.steps} 步
+			</span>
+			{speed !== null ? <span className="text-foreground-subtlest">· {speed} tok/s</span> : null}
+		</span>
+	);
+	if (rows.length === 0) {
+		return (
+			<Tooltip label="会话暂无计时数据">
+				<span className={DOCK_PILL}>
+					<Gauge className="size-3.5 shrink-0" />
+					{label}
+				</span>
+			</Tooltip>
+		);
+	}
+	return (
+		<Popover
+			trigger={({ toggle }) => (
+				<button type="button" onClick={toggle} aria-label="活动统计" className={DOCK_PILL}>
+					<Gauge className="size-3.5 shrink-0" />
+					{label}
+				</button>
+			)}
+		>
+			<DetailRows rows={rows} />
+		</Popover>
 	);
 }
 
@@ -535,41 +601,20 @@ function UsagePill({ usage }: { readonly usage: UsageSummary }): ReactElement | 
 	return (
 		<Popover
 			trigger={({ toggle }) => (
-				<button
-					type="button"
-					onClick={toggle}
-					aria-label="用量统计"
-					className="flex h-7 items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium text-foreground-subtle transition-colors hover:bg-surface-hover"
-				>
+				<button type="button" onClick={toggle} aria-label="用量统计" className={DOCK_PILL}>
 					<Database className="size-3.5 shrink-0" />
 					<span>{formatTokens(usage.total)}</span>
-					{hit !== null ? (
-						<>
-							<span className="text-foreground-subtlest">·</span>
-							<span>命中 {hit}%</span>
-						</>
-					) : null}
+					{hit !== null ? <span className="text-foreground-subtlest">· 命中 {hit}%</span> : null}
 				</button>
 			)}
 		>
-			<div className="w-56 px-2.5 py-2" aria-label="用量统计">
-				{rows.map(([label, value]) => (
-					<div key={label} className="flex h-7 items-center justify-between text-[13px] leading-5">
-						<span className="text-foreground-subtle">{label}</span>
-						<span className="tabular-nums text-foreground">{value}</span>
-					</div>
-				))}
-			</div>
+			<DetailRows rows={rows} />
 		</Popover>
 	);
 }
 
-/** 明细行用的精确计数:千分位分组,与胶囊上的缩写互补。 */
-function exactCount(value: number): string {
-	return value.toLocaleString("en-US");
-}
-
-function ContextUsage({
+/** 上下文计:环形读数 + 百分比,点开看当前窗口占用。 */
+function ContextMeter({
 	tokens,
 	window: contextWindow,
 }: {
@@ -578,32 +623,66 @@ function ContextUsage({
 }): ReactElement | null {
 	if (tokens === undefined || contextWindow === undefined || contextWindow <= 0) return null;
 	const ratio = Math.min(1, tokens / contextWindow);
-	const size = 18;
+	const percent = Math.round(ratio * 100);
+	const size = 14;
 	const stroke = 2;
 	const radius = (size - stroke) / 2;
 	const circumference = 2 * Math.PI * radius;
-	const label = `上下文 ${formatTokens(tokens)} / ${formatTokens(contextWindow)}（${Math.round(ratio * 100)}%）`;
 
 	return (
-		<Tooltip label={label}>
-			<span className="inline-flex size-7 items-center justify-center">
-				<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
-					<circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--border)" strokeWidth={stroke} />
-					<circle
-						cx={size / 2}
-						cy={size / 2}
-						r={radius}
-						fill="none"
-						stroke="var(--business-blue)"
-						strokeWidth={stroke}
-						strokeLinecap="round"
-						strokeDasharray={circumference}
-						strokeDashoffset={circumference * (1 - ratio)}
-					/>
-				</svg>
-			</span>
-		</Tooltip>
+		<Popover
+			trigger={({ toggle }) => (
+				<button type="button" onClick={toggle} aria-label="上下文占用" className={DOCK_PILL}>
+					<svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90 shrink-0" aria-hidden="true">
+						<circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--border)" strokeWidth={stroke} />
+						<circle
+							cx={size / 2}
+							cy={size / 2}
+							r={radius}
+							fill="none"
+							stroke="var(--business-blue)"
+							strokeWidth={stroke}
+							strokeLinecap="round"
+							strokeDasharray={circumference}
+							strokeDashoffset={circumference * (1 - ratio)}
+						/>
+					</svg>
+					<span className="tabular-nums">{percent}%</span>
+				</button>
+			)}
+		>
+			<div className="w-56 px-2.5 py-2" aria-label="上下文占用">
+				<div className="flex h-7 items-center justify-between text-[13px] leading-5">
+					<span className="text-foreground-subtle">上下文已用 {percent}%</span>
+					<span className="tabular-nums text-foreground">
+						~{formatTokens(tokens)} / {formatTokens(contextWindow)}
+					</span>
+				</div>
+				<div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
+					<div className="h-full rounded-full bg-[var(--business-blue)]" style={{ width: `${percent}%` }} />
+				</div>
+			</div>
+		</Popover>
 	);
+}
+
+/** 胶囊浮层里的「名称 — 数值」行。 */
+function DetailRows({ rows }: { readonly rows: readonly (readonly [string, string])[] }): ReactElement {
+	return (
+		<div className="w-56 px-2.5 py-2">
+			{rows.map(([label, value]) => (
+				<div key={label} className="flex h-7 items-center justify-between text-[13px] leading-5">
+					<span className="text-foreground-subtle">{label}</span>
+					<span className="tabular-nums text-foreground">{value}</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
+/** 明细行用的精确计数:千分位分组,与胶囊上的缩写互补。 */
+function exactCount(value: number): string {
+	return value.toLocaleString("en-US");
 }
 
 function formatTokens(value: number): string {

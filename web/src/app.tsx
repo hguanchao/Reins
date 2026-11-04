@@ -37,10 +37,11 @@ import type {
 	SettingsSnapshot,
 	SkillInfo,
 	ThinkingLevel,
+	ActivitySummary,
 	UsageSummary,
 	WebEvent,
 } from "./protocol.ts";
-import { applyUsageRecorded } from "./state/usage.ts";
+import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./state/usage.ts";
 import { SettingsPage } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
@@ -80,6 +81,7 @@ export function App(): ReactElement {
 	const [contextWindow, setContextWindow] = useState<number | undefined>(undefined);
 	const [contextTokens, setContextTokens] = useState<number | undefined>(undefined);
 	const [usage, setUsage] = useState<UsageSummary>({ requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: undefined });
+	const [activity, setActivity] = useState<ActivitySummary>({ turns: 0, steps: 0, llmMs: 0, toolMs: 0, ttftMs: 0, ttftCount: 0, decodeTokens: 0, decodeMs: 0 });
 	const [git, setGit] = useState<GitStatus | null>(null);
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
@@ -210,6 +212,7 @@ export function App(): ReactElement {
 				setContextWindow(state.contextWindow);
 				setContextTokens(state.contextTokens);
 				setUsage(state.usage);
+				setActivity(state.activity);
 				setLines(linesFromEntries(session.entries));
 				setLoadError(undefined);
 			} catch (error) {
@@ -273,6 +276,7 @@ export function App(): ReactElement {
 							details: event.details,
 						})),
 					);
+					setActivity((current) => applyToolDuration(current, event.durationMs));
 					return;
 				case "turn_end":
 					setLines(sealStreaming);
@@ -280,6 +284,7 @@ export function App(): ReactElement {
 				case "usage_recorded":
 					if (event.contextTokens !== undefined) setContextTokens(event.contextTokens);
 					setUsage((current) => applyUsageRecorded(current, event));
+					setActivity((current) => applyActivityRecorded(current, event));
 					return;
 				case "retrying":
 					setLines((current) => [
@@ -473,6 +478,7 @@ export function App(): ReactElement {
 		});
 		// 首条消息落盘的瞬间会话才在磁盘上存在,这里让侧栏及时补上真实条目
 		refreshSessions();
+		setActivity((current) => ({ ...current, turns: current.turns + 1 }));
 	}, [refreshSessions]);
 
 	const stop = useCallback((): void => {
@@ -652,6 +658,7 @@ export function App(): ReactElement {
 		contextTokens,
 		contextWindow,
 		usage,
+		activity,
 		onSend: send,
 		onStop: stop,
 		onApprovalMode: changeApprovalMode,

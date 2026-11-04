@@ -2,6 +2,7 @@ import { ChevronRight, CircleAlert } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
 import { DiffView } from "../components/diff-view.tsx";
+import { formatDuration } from "../lib/format.ts";
 import { cn } from "../components/ui/cn.ts";
 import type { ToolLine } from "../transcript/lines.ts";
 import { detailText, diffOf, diffStats, toolIcon, toolLabel, toolPrimary } from "./tool-meta.ts";
@@ -76,9 +77,4 @@ export function ToolCallRow({ line }: { readonly line: ToolLine }): ReactElement
 			) : null}
 		</div>
 	);
-}
-
-function formatDuration(ms: number): string {
-	if (ms < 1000) return `${ms}ms`;
-	return `${(ms / 1000).toFixed(1)}s`;
 }

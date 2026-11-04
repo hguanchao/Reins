@@ -48,6 +48,17 @@ export interface WebState {
 		readonly total: number;
 		readonly cost: number | undefined;
 	};
+	/** 会话活动统计;耗时没记到的请求不进累计 */
+	readonly activity: {
+		readonly turns: number;
+		readonly steps: number;
+		readonly llmMs: number;
+		readonly toolMs: number;
+		readonly ttftMs: number;
+		readonly ttftCount: number;
+		readonly decodeTokens: number;
+		readonly decodeMs: number;
+	};
 }
 
 /** 传输层对装配层的全部要求;每一条都能用假实现独立测试。 */

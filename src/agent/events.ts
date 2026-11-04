@@ -61,6 +61,10 @@ export type AgentEvent =
 			readonly cacheRead: number;
 			/** 本次请求写入缓存的 token */
 			readonly cacheWrite: number;
+			/** 本次请求从发出到读完的耗时;压缩用量没有计时,省略 */
+			readonly llmMs?: number;
+			/** 首个增量到达前的等待;非流式或没等到增量时省略 */
+			readonly ttftMs?: number;
 			/** 这次请求之后上下文有多大；压缩用量没有这个含义，省略 */
 			readonly contextTokens?: number;
 			/** 这笔用量的金额；模型没配单价时省略 */

@@ -27,7 +27,7 @@ import { configFilePath, providersFilePath } from "#src/config/paths.ts";
 import { applyLiveConfig } from "#src/config/reload.ts";
 import { updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
 import type { Session } from "#src/session/session.ts";
-import { lastContextTokens, sumUsage } from "#src/session/usage.ts";
+import { lastContextTokens, sumActivity, sumUsage } from "#src/session/usage.ts";
 import { defaultSkillRoots, discoverSkills } from "#src/skills/discover.ts";
 import { readVersion } from "#src/version.ts";
 import {
@@ -270,6 +270,7 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		snapshot: () => {
 			const id = approvals.pendingId();
 			const usage = sumUsage(session.entries());
+			const activity = sumActivity(session.entries());
 			return {
 				running: running || compacting,
 				approval: id === undefined ? undefined : { id, request: approvals.pending() },
@@ -290,6 +291,16 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 					cacheWrite: usage.cacheWrite,
 					total: usage.total,
 					cost: usage.cost,
+				},
+				activity: {
+					turns: activity.turns,
+					steps: activity.steps,
+					llmMs: activity.llmMs,
+					toolMs: activity.toolMs,
+					ttftMs: activity.ttftMs,
+					ttftCount: activity.ttftCount,
+					decodeTokens: activity.decodeTokens,
+					decodeMs: activity.decodeMs,
 				},
 			};
 		},

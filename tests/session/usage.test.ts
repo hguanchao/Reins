@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { cacheHitRate, contextTokens, describeUsage, lastContextTokens, sumUsage } from "#src/session/usage.ts";
+import { cacheHitRate, contextTokens, describeUsage, lastContextTokens, sumActivity, sumUsage } from "#src/session/usage.ts";
 import type { SessionEntry } from "#src/session/port.ts";
 
 const T = "2026-01-01T00:00:00Z";
@@ -163,5 +163,63 @@ describe("用量说明", () => {
 	it("便宜金额多留几位小数", () => {
 		const cheap = describeUsage(sumUsage([usage("turn", { input: 1, output: 1, total: 2 }, 0.000012)]));
 		assert.match(cheap, /cost: \$0\.000012/);
+	});
+});
+
+describe("活动统计", () => {
+	function toolResult(durationMs: number | undefined): SessionEntry {
+		return {
+			type: "message",
+			id: `t-${Math.random()}`,
+			parentId: null,
+			timestamp: T,
+			message: { role: "toolResult", toolCallId: "c1", toolName: "bash", content: "ok", isError: false },
+			...(durationMs === undefined ? {} : { durationMs }),
+		};
+	}
+
+	function timedUsage(llmMs: number | undefined, ttftMs: number | undefined, output: number): SessionEntry {
+		const base = usage("turn", { input: 100, output, total: 100 + output }, undefined);
+		return {
+			...base,
+			...(llmMs === undefined ? {} : { llmMs }),
+			...(ttftMs === undefined ? {} : { ttftMs }),
+		} as SessionEntry;
+	}
+
+	it("轮数、步数与工具耗时从条目推出", () => {
+		const prompt: SessionEntry = {
+			type: "message",
+			id: "m1",
+			parentId: null,
+			timestamp: T,
+			message: { role: "user", content: "先看登录" },
+		};
+		const totals = sumActivity([
+			prompt,
+			toolResult(1_200),
+			toolResult(undefined),
+			timedUsage(2_500, 400, 300),
+			usage("compact", { input: 10, output: 5, total: 15 }, undefined),
+		]);
+		assert.deepEqual(
+			[totals.turns, totals.steps, totals.toolMs, totals.llmMs, totals.ttftMs, totals.ttftCount],
+			[1, 1, 1_200, 2_500, 400, 1],
+		);
+	});
+
+	it("解码窗口是请求耗时减去首字等待", () => {
+		const totals = sumActivity([timedUsage(2_500, 400, 300)]);
+		assert.deepEqual([totals.decodeTokens, totals.decodeMs], [300, 2_100]);
+	});
+
+	it("旧会话没记耗时的请求只进步数", () => {
+		const totals = sumActivity([timedUsage(undefined, undefined, 100)]);
+		assert.deepEqual([totals.steps, totals.llmMs, totals.decodeTokens, totals.decodeMs], [1, 0, 0, 0]);
+	});
+
+	it("空会话全为零", () => {
+		assert.deepEqual(sumActivity([]).steps, 0);
+		assert.deepEqual(sumActivity([]).toolMs, 0);
 	});
 });

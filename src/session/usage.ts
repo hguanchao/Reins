@@ -86,6 +86,64 @@ export function cacheHitRate(totals: UsageTotals): number {
 	return inputSide === 0 ? 0 : totals.cacheRead / inputSide;
 }
 
+/** 会话的活动统计：轮数、步数与各段耗时，全部从落盘条目推出，压缩不丢。 */
+export interface ActivityTotals {
+	/** 用户发出的提问数 */
+	readonly turns: number;
+	/** 主对话的请求次数（压缩与子代理不计） */
+	readonly steps: number;
+	/** 各次请求从发出到读完的累计耗时；没记时的旧会话请求不进来 */
+	readonly llmMs: number;
+	/** 工具从发起到落回的累计耗时 */
+	readonly toolMs: number;
+	/** 首字延迟的累计与计数；两者相除才是平均，没有计数的请求不参与 */
+	readonly ttftMs: number;
+	readonly ttftCount: number;
+	/** 参与速度计算的输出 token 与对应的解码窗口（请求耗时减去首字等待） */
+	readonly decodeTokens: number;
+	readonly decodeMs: number;
+}
+
+/**
+ * 从条目推出活动统计。
+ *
+ * 与用量一样只认落盘的事实：耗时记在哪笔条目上就算哪笔，旧会话没记时的请求直接跳过，
+ * 不拿估算冒充实测。工具耗时记在工具结果条目上，压缩改写上下文也不会丢。
+ */
+export function sumActivity(entries: readonly SessionEntry[]): ActivityTotals {
+	const totals = {
+		turns: 0,
+		steps: 0,
+		llmMs: 0,
+		toolMs: 0,
+		ttftMs: 0,
+		ttftCount: 0,
+		decodeTokens: 0,
+		decodeMs: 0,
+	};
+	for (const entry of entries) {
+		if (entry.type === "message") {
+			if (entry.message.role === "user") totals.turns += 1;
+			else if (entry.message.role === "toolResult" && entry.durationMs !== undefined) {
+				totals.toolMs += Math.max(0, entry.durationMs);
+			}
+			continue;
+		}
+		if (entry.type !== "usage" || entry.kind !== "turn") continue;
+		totals.steps += 1;
+		if (entry.llmMs === undefined) continue;
+		totals.llmMs += entry.llmMs;
+		totals.decodeTokens += entry.usage.output;
+		const wait = entry.ttftMs ?? 0;
+		totals.decodeMs += Math.max(0, entry.llmMs - wait);
+		if (entry.ttftMs !== undefined) {
+			totals.ttftMs += entry.ttftMs;
+			totals.ttftCount += 1;
+		}
+	}
+	return totals;
+}
+
 /**
  * 一次请求结束时上下文有多大。
  *

@@ -48,6 +48,20 @@ export interface UsageSummary {
 	cost: number | undefined;
 }
 
+/** 会话的活动统计;没记到耗时的请求不进累计,所以各项可能都为零而请求并不为零。 */
+export interface ActivitySummary {
+	/** 用户发出的提问数 */
+	turns: number;
+	/** 主对话的请求次数 */
+	steps: number;
+	llmMs: number;
+	toolMs: number;
+	ttftMs: number;
+	ttftCount: number;
+	decodeTokens: number;
+	decodeMs: number;
+}
+
 /** /api/state 的形状:首屏与重连的单一事实来源。 */
 export interface StateInfo {
 	running: boolean;
@@ -62,6 +76,7 @@ export interface StateInfo {
 	contextWindow: number | undefined;
 	contextTokens: number | undefined;
 	usage: UsageSummary;
+	activity: ActivitySummary;
 }
 
 export interface SkillInfo {
@@ -183,6 +198,8 @@ export type WebEvent =
 			output: number;
 			cacheRead: number;
 			cacheWrite: number;
+			llmMs?: number;
+			ttftMs?: number;
 			contextTokens?: number;
 			cost?: number;
 	  }

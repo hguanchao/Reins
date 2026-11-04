@@ -39,6 +39,11 @@ export interface SessionHeaderEntry {
 export interface SessionMessageEntry extends SessionEntryBase {
 	readonly type: "message";
 	readonly message: LlmMessage;
+	/**
+	 * 工具结果从发起到落回的耗时。只对 toolResult 消息有意义：它不进对话内容，只供统计
+	 * 与界面还原折叠行指标，历史重放因此不用再从事件里猜。
+	 */
+	readonly durationMs?: number;
 }
 
 /**
@@ -84,6 +89,10 @@ export interface SessionUsageEntry extends SessionEntryBase {
 	/** 这笔用量是哪个环节产生的 */
 	readonly kind: "turn" | "compact" | "subagent";
 	readonly usage: LlmUsage;
+	/** 这次请求从发出到响应读完的耗时;没计时（旧会话、压缩）时省略 */
+	readonly llmMs?: number;
+	/** 首个增量到达前的等待;非流式或没等到增量时省略 */
+	readonly ttftMs?: number;
 	/**
 	 * 这次请求的金额（美元）。模型没配单价时为空。
 	 *

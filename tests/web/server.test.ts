@@ -62,6 +62,16 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 				total: 2_345,
 				cost: 0.01,
 			},
+			activity: {
+				turns: 1,
+				steps: 2,
+				llmMs: 5_400,
+				toolMs: 900,
+				ttftMs: 700,
+				ttftCount: 2,
+				decodeTokens: 345,
+				decodeMs: 4_700,
+			},
 		}),
 		session: () => ({ id: "s1", cwd: "/work", entries: state.entries }),
 		sessions: () => [{ id: "s1", title: "first", updatedAt: "2026-01-01T00:00:00Z" }],
@@ -215,6 +225,16 @@ describe("web 传输层", () => {
 				cacheWrite: 200,
 				total: 2_345,
 				cost: 0.01,
+			},
+			activity: {
+				turns: 1,
+				steps: 2,
+				llmMs: 5_400,
+				toolMs: 900,
+				ttftMs: 700,
+				ttftCount: 2,
+				decodeTokens: 345,
+				decodeMs: 4_700,
 			},
 		});
 

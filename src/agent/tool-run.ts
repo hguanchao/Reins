@@ -19,6 +19,8 @@ export interface ToolOutcome {
 	readonly isError: boolean;
 	/** 工具自己的结构化结果，只给界面用 */
 	readonly details?: unknown;
+	/** 执行耗时；拒绝与参数错误没有执行，省略 */
+	readonly durationMs?: number;
 }
 
 /**
@@ -135,6 +137,7 @@ async function runOne(call: LlmToolCallBlock, deps: ToolRunDeps): Promise<ToolOu
 		toolName: call.name,
 		content: result.content,
 		isError: result.isError,
+		durationMs: result.durationMs,
 	};
 	await report(deps, {
 		...outcome,

@@ -27,7 +27,11 @@ export function formatTokens(value: number): string {
 
 export function formatDuration(ms: number): string {
 	if (ms < 1000) return `${ms}ms`;
-	return `${(ms / 1000).toFixed(1)}s`;
+	const seconds = ms / 1000;
+	// 一分钟以内给到 0.1s;再长用「分 + 秒」,累计耗时读起来不再是一长串秒数
+	if (seconds < 60) return `${seconds.toFixed(1)}s`;
+	const whole = Math.round(seconds);
+	return `${Math.floor(whole / 60)}分${whole % 60}秒`;
 }
 
 export function formatCost(value: number | undefined): string | undefined {

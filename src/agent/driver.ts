@@ -140,12 +140,15 @@ export class TurnDriver {
 		// 使用者按了中断，却仍然花掉一次完整的模型调用。
 		if (signal.aborted) stop.abort();
 		else signal.addEventListener("abort", onOuterAbort, { once: true });
+		// 请求耗时与首字延迟从这里开始算：流建立、增量、结果全在窗口内
+		const startedAt = Date.now();
+		let firstDeltaAt: number | undefined;
 		const stream = this.#deps.client.stream(this.#buildRequest(stop.signal));
 		try {
 			for await (const event of stream) {
-				if (event.type === "text_delta") await this.emit({ type: "text_delta", text: event.text });
-				else if (event.type === "reasoning_delta") {
-					await this.emit({ type: "reasoning_delta", text: event.text });
+				if (event.type === "text_delta" || event.type === "reasoning_delta") {
+					firstDeltaAt ??= Date.now();
+					await this.emit({ type: event.type, text: event.text });
 				} else if (event.type === "tool_call_start") {
 					// 参数还在流里，工具没开始跑；界面据此把「响应」与「调用工具」分开
 					await this.emit({ type: "writing_tool_call", name: event.name });
@@ -161,6 +164,7 @@ export class TurnDriver {
 		}
 
 		const result = await stream.result();
+		const llmMs = Math.max(0, Date.now() - startedAt);
 		await this.emit({ type: "turn_end", stopReason: result.stopReason });
 
 		// 规模与用量都以提供方回报为准：这是唯一能反映真实上下文大小的数字。
@@ -170,12 +174,15 @@ export class TurnDriver {
 			const total = contextTokens(result.usage);
 			if (total > 0) this.#contextTokens = total;
 			const cost = computeCost(this.#deps.model.cost, result.usage);
+			const ttftMs = firstDeltaAt === undefined ? undefined : Math.max(0, firstDeltaAt - startedAt);
 			await this.#deps.session.append({
 				type: "usage",
 				provider: this.#deps.provider.id,
 				model: this.#deps.model.id,
 				kind: "turn",
 				usage: result.usage,
+				llmMs,
+				...(ttftMs === undefined ? {} : { ttftMs }),
 				cost,
 			});
 			await this.emit({
@@ -186,6 +193,8 @@ export class TurnDriver {
 				output: result.usage.output,
 				cacheRead: result.usage.cacheRead,
 				cacheWrite: result.usage.cacheWrite,
+				llmMs,
+				...(ttftMs === undefined ? {} : { ttftMs }),
 				contextTokens: total,
 				...(cost === undefined ? {} : { cost }),
 			});
@@ -260,6 +269,7 @@ export class TurnDriver {
 						content: outcome.content,
 						isError: outcome.isError,
 					},
+					...(outcome.durationMs === undefined ? {} : { durationMs: outcome.durationMs }),
 				});
 			},
 			onUpdate: (call, text) => {
