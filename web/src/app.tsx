@@ -403,30 +403,25 @@ export function App(): ReactElement {
 	}, [running, refreshGit]);
 
 	useEffect(() => {
-		let timer = 0;
 		const onResize = (): void => {
-			window.clearTimeout(timer);
-			timer = window.setTimeout(() => {
-				const action = autoSidebarAction(window.innerWidth, sidebarCollapsed, autoCollapsed);
-				if (action === true) {
-					setSidebarCollapsed(true);
-					setAutoCollapsed(true);
-				} else if (action === false) {
-					setSidebarCollapsed(false);
-					setAutoCollapsed(false);
-				}
-				const available = window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth);
-				if (sideOpen && available < 720) {
-					setSideOpen(false);
-					setSideFullscreen(false);
-				}
-			}, 300);
+			// 收起即时:去抖延迟的每一帧里侧栏都占着 280px,窄窗的中间列被挤到变形;
+			// 阈值附近不翻转靠的是展开侧的余量,不靠去抖
+			const action = autoSidebarAction(window.innerWidth, sidebarCollapsed, autoCollapsed);
+			if (action === true) {
+				setSidebarCollapsed(true);
+				setAutoCollapsed(true);
+			} else if (action === false) {
+				setSidebarCollapsed(false);
+				setAutoCollapsed(false);
+			}
+			const available = window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth);
+			if (sideOpen && available < 720) {
+				setSideOpen(false);
+				setSideFullscreen(false);
+			}
 		};
 		window.addEventListener("resize", onResize);
-		return () => {
-			window.clearTimeout(timer);
-			window.removeEventListener("resize", onResize);
-		};
+		return () => window.removeEventListener("resize", onResize);
 	}, [sidebarCollapsed, sidebarWidth, sideOpen, autoCollapsed]);
 
 	/** 使用者亲手收展侧栏（按钮或 Ctrl+B）：自动收起的来作废，之后不再代为展开。 */

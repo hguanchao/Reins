@@ -11,6 +11,8 @@ export const SIDEBAR_MIN = 264;
 export const SIDEBAR_MAX = 420;
 export const SIDEBAR_COLLAPSED = 0;
 export const SIDEBAR_AUTO_COLLAPSE = 1024;
+/** 展开比收起高一档余量:拖拽在阈值附近晃动时不会收了又展、展了又收 */
+export const SIDEBAR_AUTO_EXPAND = SIDEBAR_AUTO_COLLAPSE + 64;
 export const CENTER_MIN = 400;
 export const RIGHTBAR_MIN = 300;
 export const RIGHTBAR_DEFAULT_RATIO = 0.45;
@@ -23,8 +25,8 @@ export function clampSidebar(width: number): number {
 /**
  * 窗口宽度变化后的侧栏动作：true 收起、false 展开、undefined 维持现状。
  *
- * 窄窗自动收起的侧栏随窗口变宽自动还回；用户亲手收起的不代劳——自动替使用者做主两次，
- * 比少做一次更讨人嫌。
+ * 收起即时——迟疑的每一帧里侧栏都还占着 280px，中间列被挤到变形；展开滞后一档余量，
+ * 拖拽在阈值附近晃动时不会收了又展、展了又收。用户亲手收起的不代劳。
  */
 export function autoSidebarAction(
 	innerWidth: number,
@@ -32,7 +34,7 @@ export function autoSidebarAction(
 	autoCollapsed: boolean,
 ): boolean | undefined {
 	if (innerWidth < SIDEBAR_AUTO_COLLAPSE) return collapsed ? undefined : true;
-	return autoCollapsed ? false : undefined;
+	return autoCollapsed && innerWidth >= SIDEBAR_AUTO_EXPAND ? false : undefined;
 }
 
 export function defaultRightbarWidth(viewport: number): number {

@@ -33,8 +33,9 @@ describe("窄窗自动收展", () => {
 		assert.equal(autoSidebarAction(800, true, true), undefined);
 	});
 
-	it("自动收起的在窗口变宽后还回去", () => {
-		assert.equal(autoSidebarAction(1440, true, true), false);
+	it("自动收起的在窗口过余量后才还回去", () => {
+		assert.equal(autoSidebarAction(1040, true, true), undefined);
+		assert.equal(autoSidebarAction(1088, true, true), false);
 	});
 
 	it("用户亲手收起的不代劳", () => {
