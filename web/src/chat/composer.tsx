@@ -38,7 +38,11 @@ import type {
 } from "../protocol.ts";
 import { formatDuration } from "../lib/format.ts";
 
-const MAX_INPUT_HEIGHT = 336;
+/** 输入区最多显示 5 行；第 6 行起 textarea 内部滚动（行高 24px + 上内边距 4px） */
+const INPUT_LINE_HEIGHT = 24;
+const INPUT_MAX_LINES = 5;
+const INPUT_PADDING_TOP = 4;
+const MAX_INPUT_HEIGHT = INPUT_PADDING_TOP + INPUT_LINE_HEIGHT * INPUT_MAX_LINES;
 
 const APPROVAL_LABELS: Record<ApprovalMode, string> = {
 	ask: "逐次询问",
@@ -357,10 +361,16 @@ export function Composer(props: ComposerProps): ReactElement {
 					placeholder={placeholder}
 					aria-label="输入消息"
 					className={cn(
-						"w-full resize-none bg-transparent px-3.5 pt-1 pb-0 leading-6 text-foreground outline-none placeholder:text-foreground-subtlest",
-						props.hero ? "min-h-[52px]" : "min-h-[36px]",
-					)}
-					style={{ lineHeight: "24px", fontSize: "var(--content-font-size)" }}
+					"w-full resize-none bg-transparent pb-0 text-foreground outline-none placeholder:text-foreground-subtlest",
+					props.hero ? "min-h-[52px]" : "min-h-[36px]",
+				)}
+				style={{
+					paddingTop: INPUT_PADDING_TOP,
+					paddingLeft: 14,
+					paddingRight: 14,
+					lineHeight: INPUT_LINE_HEIGHT,
+					fontSize: "var(--content-font-size)",
+				}}
 				/>
 
 				<div className="flex min-w-0 flex-wrap items-center justify-between gap-3 px-2 pt-0.5 pb-1.5">
