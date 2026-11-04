@@ -45,12 +45,14 @@ import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./
 import { SettingsPage } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
+	autoSidebarAction,
 	clampSidebar,
 	defaultRightbarWidth,
 	RIGHTBAR_MAX_RATIO,
 	RIGHTBAR_MIN,
 	SIDEBAR_AUTO_COLLAPSE,
-} from "./shell/columns.ts";import { CommandPalette } from "./shell/command-palette.tsx";
+} from "./shell/columns.ts";
+import { CommandPalette } from "./shell/command-palette.tsx";
 import { ConversationHeader } from "./shell/conversation-header.tsx";
 import type { GlobalPanelId } from "./shell/sidebar.tsx";
 import { Sidebar } from "./shell/sidebar.tsx";
@@ -87,6 +89,8 @@ export function App(): ReactElement {
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
+	// 记住这次收起是不是窄窗自动做的：变宽后要还回去；用户亲手收起的另当别论
+	const [autoCollapsed, setAutoCollapsed] = useState(window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
 	const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
 	const [sideTabs, setSideTabs] = useState<readonly SideTab[]>([]);
 	const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
@@ -403,7 +407,14 @@ export function App(): ReactElement {
 		const onResize = (): void => {
 			window.clearTimeout(timer);
 			timer = window.setTimeout(() => {
-				if (window.innerWidth < SIDEBAR_AUTO_COLLAPSE) setSidebarCollapsed(true);
+				const action = autoSidebarAction(window.innerWidth, sidebarCollapsed, autoCollapsed);
+				if (action === true) {
+					setSidebarCollapsed(true);
+					setAutoCollapsed(true);
+				} else if (action === false) {
+					setSidebarCollapsed(false);
+					setAutoCollapsed(false);
+				}
 				const available = window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth);
 				if (sideOpen && available < 720) {
 					setSideOpen(false);
@@ -416,7 +427,13 @@ export function App(): ReactElement {
 			window.clearTimeout(timer);
 			window.removeEventListener("resize", onResize);
 		};
-	}, [sidebarCollapsed, sidebarWidth, sideOpen]);
+	}, [sidebarCollapsed, sidebarWidth, sideOpen, autoCollapsed]);
+
+	/** 使用者亲手收展侧栏（按钮或 Ctrl+B）：自动收起的来作废，之后不再代为展开。 */
+	const toggleSidebar = useCallback((): void => {
+		setAutoCollapsed(false);
+		setSidebarCollapsed((value) => !value);
+	}, []);
 
 	const onScroll = useCallback((): void => {
 		const element = scrollRef.current;
@@ -610,7 +627,7 @@ export function App(): ReactElement {
 			const command = event.ctrlKey || event.metaKey;
 			if (command && event.key.toLowerCase() === "b") {
 				event.preventDefault();
-				setSidebarCollapsed((value) => !value);
+				toggleSidebar();
 				return;
 			}
 			if (command && event.key.toLowerCase() === "k") {
@@ -801,7 +818,7 @@ export function App(): ReactElement {
 						),
 					)
 				}
-				onToggleSidebar={() => setSidebarCollapsed((value) => !value)}
+				onToggleSidebar={toggleSidebar}
 				onNewSession={newTask}
 				sidebar={
 					<Sidebar

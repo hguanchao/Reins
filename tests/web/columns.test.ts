@@ -6,6 +6,7 @@ import {
 	RIGHTBAR_MIN,
 	SIDEBAR_MAX,
 	SIDEBAR_MIN,
+	autoSidebarAction,
 	clampSidebar,
 	computeColumns,
 	defaultRightbarWidth,
@@ -20,6 +21,28 @@ describe("侧栏宽度收敛", () => {
 
 	it("四舍五入到整数像素", () => {
 		assert.equal(clampSidebar(280.6), 281);
+	});
+});
+
+describe("窄窗自动收展", () => {
+	it("窄窗里展开着的侧栏要收起", () => {
+		assert.equal(autoSidebarAction(800, false, false), true);
+	});
+
+	it("窄窗里已经收起的不重复动作", () => {
+		assert.equal(autoSidebarAction(800, true, true), undefined);
+	});
+
+	it("自动收起的在窗口变宽后还回去", () => {
+		assert.equal(autoSidebarAction(1440, true, true), false);
+	});
+
+	it("用户亲手收起的不代劳", () => {
+		assert.equal(autoSidebarAction(1440, true, false), undefined);
+	});
+
+	it("宽窗里展开着的不动作", () => {
+		assert.equal(autoSidebarAction(1440, false, false), undefined);
 	});
 });
 

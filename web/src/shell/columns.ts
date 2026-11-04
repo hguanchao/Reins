@@ -20,6 +20,21 @@ export function clampSidebar(width: number): number {
 	return Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width)));
 }
 
+/**
+ * 窗口宽度变化后的侧栏动作：true 收起、false 展开、undefined 维持现状。
+ *
+ * 窄窗自动收起的侧栏随窗口变宽自动还回；用户亲手收起的不代劳——自动替使用者做主两次，
+ * 比少做一次更讨人嫌。
+ */
+export function autoSidebarAction(
+	innerWidth: number,
+	collapsed: boolean,
+	autoCollapsed: boolean,
+): boolean | undefined {
+	if (innerWidth < SIDEBAR_AUTO_COLLAPSE) return collapsed ? undefined : true;
+	return autoCollapsed ? false : undefined;
+}
+
 export function defaultRightbarWidth(viewport: number): number {
 	return Math.round(viewport * RIGHTBAR_DEFAULT_RATIO);
 }
