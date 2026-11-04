@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactElement, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type PointerEvent, type ReactElement, type ReactNode } from "react";
 
 import { cn } from "../components/ui/cn.ts";
 import { hasNativeTitlebar } from "../platform.ts";
@@ -145,7 +145,9 @@ export function AppShell({
 		};
 	}, []);
 
-	useEffect(() => {
+	// 过渡只在翻转后的短暂窗口里开启(拖拽与窗口缩放时不动画),但必须用 layout effect:
+	// 普通 effect 在绘制之后才跑,过渡属性到场时列宽早已跳变完,动画就时有时无
+	useLayoutEffect(() => {
 		setAnimating(true);
 		const timer = window.setTimeout(() => setAnimating(false), 320);
 		return () => window.clearTimeout(timer);
