@@ -20,6 +20,7 @@ import type {
 	SkillInfo,
 	StateInfo,
 	ThinkingLevel,
+	WorkspaceSummary,
 	WebEvent,
 } from "./protocol.ts";
 
@@ -45,8 +46,18 @@ export const api = {
 	async state(): Promise<ServeState> {
 		return (await request("/api/state")) as ServeState;
 	},
-	async session(): Promise<{ id: string; cwd: string; entries: readonly SessionEntry[] }> {
-		return (await request("/api/session")) as { id: string; cwd: string; entries: readonly SessionEntry[] };
+	async session(): Promise<{
+		id: string;
+		cwd: string;
+		workspacePath?: string | null;
+		entries: readonly SessionEntry[];
+	}> {
+		return (await request("/api/session")) as {
+			id: string;
+			cwd: string;
+			workspacePath?: string | null;
+			entries: readonly SessionEntry[];
+		};
 	},
 	async skills(): Promise<readonly SkillInfo[]> {
 		return (await request("/api/skills")) as readonly SkillInfo[];
@@ -56,6 +67,9 @@ export const api = {
 	},
 	async sessions(): Promise<readonly SessionSummary[]> {
 		return (await request("/api/sessions")) as readonly SessionSummary[];
+	},
+	async workspaces(): Promise<readonly WorkspaceSummary[]> {
+		return (await request("/api/workspaces")) as readonly WorkspaceSummary[];
 	},
 	async archivedSessions(): Promise<readonly SessionSummary[]> {
 		return (await request("/api/sessions/archived")) as readonly SessionSummary[];
@@ -84,9 +98,13 @@ export const api = {
 	async switchSession(id: string): Promise<void> {
 		await request("/api/session/switch", { method: "POST", body: JSON.stringify({ id }) });
 	},
-	async newSession(): Promise<void> {
-		await request("/api/session/new", { method: "POST" });
+	async newSession(workspacePath: string | null): Promise<void> {
+		await request("/api/session/new", {
+			method: "POST",
+			body: JSON.stringify({ workspacePath }),
+		});
 	},
+
 	async models(): Promise<readonly ModelInfo[]> {
 		return (await request("/api/models")) as readonly ModelInfo[];
 	},

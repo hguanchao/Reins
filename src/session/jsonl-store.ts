@@ -119,6 +119,8 @@ export class JsonlSessionStore implements SessionStore {
 				updatedAt: modifiedAt(file),
 				entryCount: parsed.entries.length,
 				title,
+				cwd: header?.cwd ?? "",
+				workspacePath: header?.workspacePath,
 				forkedFrom: header?.forkedFrom,
 			});
 		}
@@ -148,10 +150,11 @@ class JsonlWriter implements SessionWriter {
 		this.#header = {
 			type: "session",
 			version: SESSION_VERSION,
-			id: options.id,
-			timestamp: new Date().toISOString(),
-			cwd: options.cwd,
-			...(options.forkedFrom === undefined ? {} : { forkedFrom: options.forkedFrom }),
+				id: options.id,
+				timestamp: new Date().toISOString(),
+				cwd: options.cwd,
+				...(options.workspacePath === undefined ? {} : { workspacePath: options.workspacePath }),
+				...(options.forkedFrom === undefined ? {} : { forkedFrom: options.forkedFrom }),
 		};
 	}
 
@@ -241,15 +244,21 @@ export function parseSessionText(text: string): ParsedSessionFile {
 			continue;
 		}
 		const record = parsed as Record<string, unknown>;
-		if (record["type"] === "session") {
-			// 会话头至少要有 id 与版本:续聊按 id 找文件,版本对不上时 open 会拒绝读取
-			if (typeof record["id"] !== "string" || typeof record["version"] !== "number") {
-				skippedLines += 1;
+			if (record["type"] === "session") {
+				// 会话头至少要有 id、版本和运行目录；项目归属允许缺失以兼容旧会话
+				const workspacePath = record["workspacePath"];
+				if (
+					typeof record["id"] !== "string" ||
+					typeof record["version"] !== "number" ||
+					typeof record["cwd"] !== "string" ||
+					("workspacePath" in record && workspacePath !== null && typeof workspacePath !== "string")
+				) {
+					skippedLines += 1;
+					continue;
+				}
+				header = parsed as SessionHeaderEntry;
 				continue;
 			}
-			header = parsed as SessionHeaderEntry;
-			continue;
-		}
 		if (!isEntryType(record["type"]) || !entryLooksIntact(record)) {
 			// 认得条目才敢往下走：不认识的类型多半是更高版本写的，猜着读只会读出一段错的历史;
 			// 认得但关键字段残缺的同样拒收,否则坏形状会在回放消费点炸成运行时错误

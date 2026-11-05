@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, MessageSquarePlus, PanelLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, MessageSquarePlus, PanelLeft, Search } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
 import { cn } from "../components/ui/cn.ts";
@@ -14,6 +14,7 @@ export function CaptionBar({
 	sidebarCollapsed,
 	onToggleSidebar,
 	onNewSession,
+	onOpenSearch,
 	canGoBack,
 	canGoForward,
 	onBack,
@@ -22,6 +23,8 @@ export function CaptionBar({
 	readonly sidebarCollapsed: boolean;
 	onToggleSidebar(): void;
 	onNewSession(): void;
+	/** 打开会话搜索：侧栏收起时先展开侧栏（展开逻辑由应用层处理） */
+	onOpenSearch(): void;
 	readonly canGoBack: boolean;
 	readonly canGoForward: boolean;
 	onBack(): void;
@@ -63,6 +66,15 @@ export function CaptionBar({
 					<MessageSquarePlus className="size-4" />
 				</button>
 			) : null}
+			<button
+				type="button"
+				aria-label="搜索会话"
+				title="搜索会话"
+				onClick={onOpenSearch}
+				className={button}
+			>
+				<Search className="size-4" />
+			</button>
 			{navButton("后退", canGoBack, onBack, <ArrowLeft className="size-4" />)}
 			{navButton("前进", canGoForward, onForward, <ArrowRight className="size-4" />)}
 		</div>

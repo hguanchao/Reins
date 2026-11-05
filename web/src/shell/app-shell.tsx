@@ -85,6 +85,7 @@ export interface AppShellProps {
 	onRightbarWidth(width: number): void;
 	onToggleSidebar(): void;
 	onNewSession(): void;
+	onOpenSearch(): void;
 	/** 会话浏览历史;标题栏承载后退/前进(仅桌面壳有标题栏) */
 	readonly canGoBack: boolean;
 	readonly canGoForward: boolean;
@@ -111,6 +112,7 @@ export function AppShell({
 	onRightbarWidth,
 	onToggleSidebar,
 	onNewSession,
+	onOpenSearch,
 	canGoBack,
 	canGoForward,
 	onBack,
@@ -168,6 +170,7 @@ export function AppShell({
 					sidebarCollapsed={sidebarCollapsed}
 					onToggleSidebar={onToggleSidebar}
 					onNewSession={onNewSession}
+					onOpenSearch={onOpenSearch}
 					canGoBack={canGoBack}
 					canGoForward={canGoForward}
 					onBack={onBack}

@@ -66,15 +66,34 @@ export interface WebServerDeps {
 	/** 当前运行状态:回合、待审批、审批方式、当前模型与应用版本,重连首屏用 */
 	snapshot(): WebState;
 	/** 会话全量:浏览器首屏重放用 */
-	session(): { readonly id: string; readonly cwd: string; readonly entries: readonly unknown[] };
+		session(): {
+			readonly id: string;
+			readonly cwd: string;
+			readonly workspacePath?: string | null;
+			readonly entries: readonly unknown[];
+		};
 	/** 本工作区的会话清单,按更新时间从新到旧 */
-	sessions(): readonly { readonly id: string; readonly title: string | undefined; readonly updatedAt: string }[];
+	sessions(): readonly {
+		readonly id: string;
+		readonly title: string | undefined;
+		readonly updatedAt: string;
+		readonly cwd?: string;
+		readonly workspacePath?: string | null;
+	}[];
+	/** 已登记空间及显示名 */
+	workspaces?(): readonly { readonly path: string; readonly name: string }[];
 	/** 切换到既有会话;回合进行中返回 false */
 	switchSession(id: string): boolean;
-	/** 开一个新会话;回合进行中返回 false */
-	newSession(): boolean;
+	/** 开一个新会话;null 表示不绑定项目 */
+	newSession(workspacePath: string | null): boolean;
 	/** 已归档的会话清单 */
-	archivedSessions(): readonly { readonly id: string; readonly title: string | undefined; readonly updatedAt: string }[];
+		archivedSessions(): readonly {
+			readonly id: string;
+			readonly title: string | undefined;
+			readonly updatedAt: string;
+			readonly cwd?: string;
+			readonly workspacePath?: string | null;
+		}[];
 	/** 批量删除会话,返回实际删除的个数;当前会话由装配层跳过 */
 	deleteSessions(ids: readonly string[]): number;
 	/** 批量归档会话,返回实际归档的个数;当前会话由装配层跳过 */
@@ -301,14 +320,18 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			sendJson(res, 200, deps.session());
 			return;
 		}
-		if (req.method === "GET" && path === "/api/sessions") {
-			sendJson(res, 200, deps.sessions());
-			return;
-		}
-		if (req.method === "GET" && path === "/api/sessions/archived") {
-			sendJson(res, 200, deps.archivedSessions());
-			return;
-		}
+			if (req.method === "GET" && path === "/api/sessions") {
+				sendJson(res, 200, deps.sessions());
+				return;
+			}
+			if (req.method === "GET" && path === "/api/workspaces") {
+				sendJson(res, 200, deps.workspaces?.() ?? []);
+				return;
+			}
+			if (req.method === "GET" && path === "/api/sessions/archived") {
+				sendJson(res, 200, deps.archivedSessions());
+				return;
+			}
 		if (req.method === "POST" && path === "/api/sessions/delete") {
 			const body = await readJsonBody(req);
 			const ids = body?.["ids"];
@@ -454,7 +477,13 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			return;
 		}
 		if (path === "/api/session/new") {
-			if (!deps.newSession()) {
+			const body = await readJsonBody(req);
+			const workspacePath = body?.["workspacePath"];
+			if (workspacePath !== undefined && workspacePath !== null && typeof workspacePath !== "string") {
+				sendJson(res, 400, { error: "workspacePath must be a string or null" });
+				return;
+			}
+			if (!deps.newSession(typeof workspacePath === "string" ? workspacePath : null)) {
 				sendJson(res, 409, { error: "cannot switch now" });
 				return;
 			}

@@ -10,11 +10,15 @@ import { createSession } from "#src/cli/session/target.ts";
  * 装载期失败，此时新建会话仍可用（只留在内存里），但必须说出来：使用者以为历史留在磁盘上、
  * 事后去找却发现什么都没有，是最难查的一种失败。
  */
-export function createSessionFor(workRoot: string, store: SessionStore | undefined): Session {
+export function createSessionFor(
+	workRoot: string,
+	store: SessionStore | undefined,
+	workspacePath: string | null = null,
+): Session {
 	if (store === undefined) {
 		writeStderr("No session store is available, this session will not be saved to a file\n");
 	}
-	return createSession(workRoot, store);
+	return createSession(workRoot, store, workspacePath);
 }
 
 /** 会话菜单里的一行标题：控制字符会弄乱面板，统一换成空格。 */

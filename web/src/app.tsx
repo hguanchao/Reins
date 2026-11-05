@@ -37,6 +37,7 @@ import type {
 	PluginInfo,
 	SessionSummary,
 	SettingsSnapshot,
+	WorkspaceSummary,
 	SkillInfo,
 	ThinkingLevel,
 	ActivitySummary,
@@ -66,6 +67,12 @@ import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } 
 const STICK_THRESHOLD = 80;
 const SIDEBAR_DEFAULT = 280;
 
+interface SessionTarget {
+	readonly id: string;
+	readonly cwd: string;
+	readonly workspacePath?: string | null;
+}
+
 /** 界面主组件：装配三栏骨架、会话状态与事件流。 */
 export function App(): ReactElement {
 	const theme = useTheme();
@@ -76,7 +83,9 @@ export function App(): ReactElement {
 	const [connected, setConnected] = useState(false);
 	const [sessionId, setSessionId] = useState("");
 	const [cwd, setCwd] = useState("");
+	const [currentWorkspacePath, setCurrentWorkspacePath] = useState<string | null | undefined>(undefined);
 	const [sessions, setSessions] = useState<readonly SessionSummary[]>([]);
+	const [workspaces, setWorkspaces] = useState<readonly WorkspaceSummary[]>([]);
 	const [archived, setArchived] = useState<readonly SessionSummary[]>([]);
 	// 任务重命名的显示名覆盖（本机存储）；列表与页头标题都叠上它
 	const [sessionTitles, setSessionTitles] = useState(readSessionTitles);
@@ -93,8 +102,6 @@ export function App(): ReactElement {
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
-	// 工作区在侧栏里的显示名:桌面壳改名后回传,浏览器端本地保存
-	const [workspaceLabel, setWorkspaceLabel] = useState<string | undefined>(undefined);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
 	// 记住这次收起是不是窄窗自动做的：变宽后要还回去；用户亲手收起的另当别论
 	const [autoCollapsed, setAutoCollapsed] = useState(window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
@@ -105,6 +112,8 @@ export function App(): ReactElement {
 	const [sideFullscreen, setSideFullscreen] = useState(false);
 	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	// 会话搜索框的显隐：入口在标题栏，框体在侧栏，状态放在应用层居中调度
+	const [searchOpen, setSearchOpen] = useState(false);
 	const [commandOpen, setCommandOpen] = useState(false);
 	const [activePanel, setActivePanel] = useState<GlobalPanelId | undefined>(undefined);
 	const [pinned, setPinned] = useState<ReadonlySet<string>>(readPinnedSessions);
@@ -114,13 +123,14 @@ export function App(): ReactElement {
 	const stickToBottom = useRef(true);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const everConnected = useRef(false);
-	const historyRef = useRef<string[]>([]);
+	const historyRef = useRef<SessionTarget[]>([]);
 	const historyIndexRef = useRef(-1);
 	const navigatingRef = useRef(false);
 
 	const refreshSessions = useCallback((): void => {
 		void api.sessions().then(setSessions).catch(() => {});
 		void api.archivedSessions().then(setArchived).catch(() => {});
+		void api.workspaces().then(setWorkspaces).catch(() => {});
 	}, []);
 
 	const refreshSettings = useCallback((): void => {
@@ -150,23 +160,57 @@ export function App(): ReactElement {
 		setCanGoForward(historyIndexRef.current < historyRef.current.length - 1);
 	}, []);
 
-	/** 会话切换后记一笔浏览历史；后退/前进自己触发的切换不重复入栈，草稿会话不入栈。 */
+	/** 跨项目打开任务时由桌面壳换服务进程；同一工作区内复用当前服务。 */
+	const openSessionTarget = useCallback(
+			(target: SessionTarget): void => {
+				if (running && (target.workspacePath ?? target.cwd) !== cwd) {
+					toast("当前任务运行中，完成后才能切换工作区", "info");
+					return;
+				}
+				setActivePanel(undefined);
+			setSideFullscreen(false);
+			if (target.id === sessionId) return;
+			setSettingsOpen(false);
+			const targetRoot = target.workspacePath ?? target.cwd;
+			if (targetRoot === cwd) {
+				void api.switchSession(target.id).catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+				return;
+			}
+			const bridge = desktopBridge();
+			if (bridge === undefined) {
+				toast("此任务属于其他工作区，请在桌面端打开", "error");
+				return;
+			}
+			void bridge
+				.openSession(target.workspacePath ?? null, target.cwd, target.id)
+				.then((opened) => {
+					if (!opened) toast("无法打开此任务所在的工作区", "error");
+				})
+				.catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+		},
+			[cwd, running, sessionId],
+	);
+
+	/** 会话切换后记一笔浏览历史；草稿不入栈。 */
 	const rememberSession = useCallback(
-		(id: string, draft: boolean): void => {
-			if (id.length === 0) return;
+		(target: SessionTarget, draft: boolean): void => {
+			if (target.id.length === 0) return;
 			if (navigatingRef.current) {
 				navigatingRef.current = false;
 				updateHistoryButtons();
 				return;
 			}
-			// 草稿还没落在磁盘上，后退回来只会撞上「会话不存在」；想回到空白页再点一次新会话即可
 			if (draft) return;
 			const history = historyRef.current;
 			if (history.length === 0) {
-				historyRef.current = [id];
+				historyRef.current = [target];
 				historyIndexRef.current = 0;
-			} else if (history[historyIndexRef.current] !== id) {
-				const next = [...history.slice(0, historyIndexRef.current + 1), id];
+			} else if (history[historyIndexRef.current]?.id !== target.id) {
+				const next = [...history.slice(0, historyIndexRef.current + 1), target];
 				historyRef.current = next;
 				historyIndexRef.current = next.length - 1;
 			}
@@ -178,32 +222,22 @@ export function App(): ReactElement {
 	const goBack = useCallback((): void => {
 		if (historyIndexRef.current <= 0) return;
 		historyIndexRef.current -= 1;
-		const id = historyRef.current[historyIndexRef.current];
-		if (id === undefined) return;
+		const target = historyRef.current[historyIndexRef.current];
+		if (target === undefined) return;
 		navigatingRef.current = true;
 		updateHistoryButtons();
-		setActivePanel(undefined);
-		setSideFullscreen(false);
-		void api.switchSession(id).catch((error: unknown) => {
-			navigatingRef.current = false;
-			toast(error instanceof Error ? error.message : String(error), "error");
-		});
-	}, [updateHistoryButtons]);
+		openSessionTarget(target);
+	}, [openSessionTarget, updateHistoryButtons]);
 
 	const goForward = useCallback((): void => {
 		if (historyIndexRef.current >= historyRef.current.length - 1) return;
 		historyIndexRef.current += 1;
-		const id = historyRef.current[historyIndexRef.current];
-		if (id === undefined) return;
+		const target = historyRef.current[historyIndexRef.current];
+		if (target === undefined) return;
 		navigatingRef.current = true;
 		updateHistoryButtons();
-		setActivePanel(undefined);
-		setSideFullscreen(false);
-		void api.switchSession(id).catch((error: unknown) => {
-			navigatingRef.current = false;
-			toast(error instanceof Error ? error.message : String(error), "error");
-		});
-	}, [updateHistoryButtons]);
+		openSessionTarget(target);
+	}, [openSessionTarget, updateHistoryButtons]);
 
 	const reload = useCallback((): void => {
 		stickToBottom.current = true;
@@ -216,11 +250,19 @@ export function App(): ReactElement {
 				setApprovalMode(state.approvalMode);
 				setPlanMode(state.planMode);
 				setEffort(state.effort);
-				setModel(state.model);
-				setSessionId(state.sessionId);
-				rememberSession(state.sessionId, session.entries.length === 0);
-				setCwd(state.cwd);
-				setContextWindow(state.contextWindow);
+					setModel(state.model);
+					setSessionId(state.sessionId);
+					rememberSession(
+						{
+							id: session.id,
+							cwd: session.cwd,
+							workspacePath: session.workspacePath,
+						},
+						session.entries.length === 0,
+					);
+					setCwd(state.cwd);
+					setCurrentWorkspacePath(session.workspacePath);
+					setContextWindow(state.contextWindow);
 				setContextTokens(state.contextTokens);
 				setUsage(state.usage);
 				setActivity(state.activity);
@@ -437,6 +479,13 @@ export function App(): ReactElement {
 		setSidebarCollapsed((value) => !value);
 	}, []);
 
+	/** 标题栏的搜索入口：侧栏收起时先展开（并取消自动收起的记忆），再点亮搜索框。 */
+	const openSearch = useCallback((): void => {
+		setAutoCollapsed(false);
+		setSidebarCollapsed(false);
+		setSearchOpen(true);
+	}, []);
+
 	const onScroll = useCallback((): void => {
 		const element = scrollRef.current;
 		if (element === null) return;
@@ -453,14 +502,37 @@ export function App(): ReactElement {
 		element.scrollTop = element.scrollHeight;
 	}, []);
 
-	const newTask = useCallback((): void => {
-		setSettingsOpen(false);
-		setActivePanel(undefined);
-		setSideFullscreen(false);
-		void api.newSession().catch((error: unknown) => {
-			toast(error instanceof Error ? error.message : String(error), "error");
-		});
-	}, []);
+	const newTask = useCallback(
+			(workspacePath: string | null = null): void => {
+				if (running && workspacePath !== null && workspacePath !== cwd) {
+					toast("当前任务运行中，完成后才能新建其他工作区的任务", "info");
+					return;
+				}
+				setSettingsOpen(false);
+			setActivePanel(undefined);
+			setSideFullscreen(false);
+			if (workspacePath === null || workspacePath === cwd) {
+				void api.newSession(workspacePath).catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+				return;
+			}
+			const bridge = desktopBridge();
+			if (bridge === undefined) {
+				toast("只能在当前工作区创建任务", "error");
+				return;
+			}
+			void bridge
+				.newTaskInWorkspace(workspacePath)
+				.then((created) => {
+					if (!created) toast("无法在此项目中新建任务", "error");
+				})
+				.catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+		},
+		[cwd, running],
+	);
 
 	const togglePin = useCallback((id: string): void => {
 		setPinned((current) => {
@@ -477,6 +549,17 @@ export function App(): ReactElement {
 		setSessionTitles((current) => putSessionTitle(current, id, title));
 	}, []);
 
+	const renameWorkspace = useCallback((path: string, name: string): void => {
+		setWorkspaces((current) => current.map((workspace) =>
+			workspace.path === path ? { ...workspace, name } : workspace,
+		));
+	}, []);
+
+	const removeWorkspace = useCallback((path: string): void => {
+		setWorkspaces((current) => current.filter((workspace) => workspace.path !== path));
+		refreshSessions();
+	}, [refreshSessions]);
+
 	/** 批量归档/删除：复用服务端的多选接口，当前会话由服务端跳过。 */
 	const archiveMany = useCallback(
 		(ids: readonly string[]): void => {
@@ -492,16 +575,14 @@ export function App(): ReactElement {
 	);
 
 	const switchSession = useCallback(
-		(id: string): void => {
-			setActivePanel(undefined);
-			setSideFullscreen(false);
-			if (id === sessionId) return;
-			setSettingsOpen(false);
-			void api.switchSession(id).catch((error: unknown) => {
-				toast(error instanceof Error ? error.message : String(error), "error");
+		(session: SessionSummary): void => {
+			openSessionTarget({
+				id: session.id,
+				cwd: session.cwd ?? cwd,
+				workspacePath: session.workspacePath,
 			});
 		},
-		[sessionId],
+		[cwd, openSessionTarget],
 	);
 
 	const send = useCallback((text: string): void => {
@@ -720,17 +801,6 @@ export function App(): ReactElement {
 		document.title = currentTitle === "新会话" ? "Reins" : `${currentTitle} · Reins`;
 	}, [currentTitle]);
 
-	// 工作区显示名由桌面壳持久化:启动时取一次,改名后壳回报;取不到就回落目录名
-	useEffect(() => {
-		const bridge = desktopBridge();
-		if (bridge === undefined) return;
-		void bridge
-			.workspaceName()
-			.then((name) => {
-				if (name !== undefined) setWorkspaceLabel(name);
-			})
-			.catch(() => {});
-	}, []);
 
 	const sidePane = (
 		<SidePane
@@ -855,6 +925,7 @@ export function App(): ReactElement {
 				}
 				onToggleSidebar={toggleSidebar}
 				onNewSession={newTask}
+				onOpenSearch={openSearch}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
 				onBack={goBack}
@@ -865,12 +936,15 @@ export function App(): ReactElement {
 						pinned={pinned}
 						currentId={sessionId}
 						currentIsDraft={lines.length === 0}
+						currentWorkspacePath={currentWorkspacePath}
 						running={running}
 						cwd={cwd}
-						workspaceLabel={workspaceLabel}
+						workspaces={workspaces}
 						version={settings?.version ?? ""}
 						connected={connectionOk}
 						activePanel={activePanel}
+						searchOpen={searchOpen}
+						onSearchOpenChange={setSearchOpen}
 						onNewSession={newTask}
 						onSwitch={switchSession}
 						onArchive={(id) => {
@@ -886,7 +960,8 @@ export function App(): ReactElement {
 							setSideFullscreen(false);
 						}}
 						onOpenSettings={() => setSettingsOpen(true)}
-						onRenameWorkspace={setWorkspaceLabel}
+						onRenameWorkspace={renameWorkspace}
+						onRemoveWorkspace={removeWorkspace}
 						onRenameSession={renameSession}
 						onArchiveMany={archiveMany}
 						onDeleteMany={deleteMany}

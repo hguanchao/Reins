@@ -1,4 +1,4 @@
-import type { SessionSummary } from "../protocol.ts";
+import type { SessionSummary, WorkspaceSummary } from "../protocol.ts";
 
 /** 侧栏会话列表的可见行。归档会话不在侧栏出现，恢复与删除走设置页的「已归档会话」。 */
 export interface SessionRow {
@@ -6,6 +6,8 @@ export interface SessionRow {
 	readonly title: string;
 	readonly updatedAt: string;
 	readonly pinned: boolean;
+	readonly cwd: string;
+	readonly workspacePath: string | null | undefined;
 }
 
 export interface SessionListInput {
@@ -16,14 +18,18 @@ export interface SessionListInput {
 	readonly currentId: string;
 	/** 当前会话还没有任何内容：它没落在磁盘上，清单里补行反而会让空会话提前露面 */
 	readonly currentIsDraft: boolean;
+	readonly currentCwd?: string;
+	readonly currentWorkspacePath?: string | null;
 }
 
 function toRow(session: SessionSummary, pinned: ReadonlySet<string>): SessionRow {
 	return {
 		id: session.id,
 		title: session.title ?? "新会话",
-		updatedAt: session.updatedAt,
-		pinned: pinned.has(session.id),
+			updatedAt: session.updatedAt,
+			pinned: pinned.has(session.id),
+			cwd: session.cwd ?? "",
+			workspacePath: session.workspacePath,
 	};
 }
 
@@ -45,6 +51,8 @@ function currentSessionRow(input: SessionListInput): SessionRow | undefined {
 		title: "新会话",
 		updatedAt: new Date().toISOString(),
 		pinned: false,
+		cwd: input.currentCwd ?? "",
+		workspacePath: input.currentWorkspacePath,
 	};
 	return matches(row, input.query.trim()) ? row : undefined;
 }
@@ -58,6 +66,30 @@ export function buildSessionRows(input: SessionListInput): readonly SessionRow[]
 		if (left.pinned === right.pinned) return 0;
 		return left.pinned ? -1 : 1;
 	});
+}
+
+export interface WorkspaceSessionGroup {
+	readonly workspace: WorkspaceSummary;
+	readonly rows: readonly SessionRow[];
+}
+
+export interface SessionGroups {
+	readonly unassigned: readonly SessionRow[];
+	readonly workspaces: readonly WorkspaceSessionGroup[];
+}
+
+/** 按显式项目归属分组；没有可用项目路径的任务留在顶层。 */
+export function buildSessionGroups(
+	input: SessionListInput & { readonly workspaces: readonly WorkspaceSummary[] },
+): SessionGroups {
+	const rows = buildSessionRows(input);
+	return {
+		unassigned: rows.filter((row) => row.workspacePath === null || row.workspacePath === undefined),
+		workspaces: input.workspaces.map((workspace) => ({
+			workspace,
+			rows: rows.filter((row) => row.workspacePath === workspace.path),
+		})),
+	};
 }
 
 /**

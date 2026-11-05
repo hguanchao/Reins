@@ -53,7 +53,7 @@ export function CommandPalette({
 	onToggleTheme(): void;
 	onToggleSidePane(): void;
 	onCompact(): void;
-	onSwitchSession(id: string): void;
+		onSwitchSession(session: SessionSummary): void;
 	onOpenFile(path: string): void;
 }): ReactElement | null {
 	const [query, setQuery] = useState("");
@@ -111,7 +111,7 @@ export function CommandPalette({
 				label: session.title ?? "新任务",
 				hint: relativeTime(session.updatedAt),
 				icon: Sparkles,
-				run: () => onSwitchSession(session.id),
+				run: () => onSwitchSession(session),
 			}));
 
 		const fileItems: PaletteItem[] = files.map((path) => ({

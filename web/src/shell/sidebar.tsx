@@ -7,7 +7,7 @@ import {
 	ChevronsUpDown,
 	Circle,
 	CircleCheck,
-	CirclePlus,
+	MessageSquarePlus,
 	Ellipsis,
 	Folder,
 	FolderOpen,
@@ -18,7 +18,6 @@ import {
 	Pin,
 	Search,
 	Settings,
-	SlidersHorizontal,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -28,10 +27,10 @@ import { BrandMark } from "../components/brand-mark.tsx";
 import { StateDot } from "../components/state-dot.tsx";
 import { Button, Dialog, Menu, type MenuEntry } from "../components/ui/index.ts";
 import { cn } from "../components/ui/cn.ts";
-import { relativeTime, workspaceName } from "../lib/format.ts";
+import { relativeTime } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
-import type { SessionSummary } from "../protocol.ts";
-import { buildSessionRows, sidebarSectionVisibility, type SessionRow } from "./session-tree.ts";
+import type { SessionSummary, WorkspaceSummary } from "../protocol.ts";
+import { buildSessionGroups, sidebarSectionVisibility, type SessionRow } from "./session-tree.ts";
 
 export type GlobalPanelId = "plugins" | "schedules";
 
@@ -41,22 +40,25 @@ export interface SidebarProps {
 	readonly currentId: string;
 	/** 当前会话还没有任何内容（尚未发送第一条消息），侧栏不为它补行 */
 	readonly currentIsDraft: boolean;
+	readonly currentWorkspacePath?: string | null;
 	readonly running: boolean;
 	readonly cwd: string;
-	/** 工作区在侧栏里的显示名；桌面端改名后由壳回报，浏览器回落到目录名 */
-	readonly workspaceLabel: string | undefined;
+	readonly workspaces: readonly WorkspaceSummary[];
 	readonly version: string;
 	readonly connected: boolean;
 	readonly activePanel: GlobalPanelId | undefined;
-	onNewSession(): void;
-	onSwitch(id: string): void;
+	/** 搜索框显隐：入口在顶部标题栏，状态上提到应用层，Escape/清除按钮从这里回关 */
+	readonly searchOpen: boolean;
+	onSearchOpenChange(open: boolean): void;
+	onNewSession(workspacePath?: string | null): void;
+	onSwitch(session: SessionSummary): void;
 	onArchive(id: string): void;
 	onDelete(id: string): void;
 	onTogglePin(id: string): void;
 	onOpenPanel(panel: GlobalPanelId): void;
 	onOpenSettings(): void;
-	/** 侧栏里改了工作区显示名（桌面壳持久化；浏览器不回调） */
-	onRenameWorkspace?(name: string): void;
+	onRenameWorkspace?(path: string, name: string): void;
+	onRemoveWorkspace?(path: string): void;
 	/** 任务重命名：界面层显示名覆盖，服务端标题不动 */
 	onRenameSession(id: string, title: string): void;
 	/** 批量归档 / 批量删除；服务端会跳过当前会话 */
@@ -67,47 +69,57 @@ export interface SidebarProps {
 /** 侧栏：品牌、新会话、全局面板、工作区浏览区与底部设置。 */
 export function Sidebar(props: SidebarProps): ReactElement {
 	const [query, setQuery] = useState("");
-	const [searchOpen, setSearchOpen] = useState(false);
 	const [tasksOpen, setTasksOpen] = useState(true);
 	const [spacesOpen, setSpacesOpen] = useState(true);
+	const [workspaceOpen, setWorkspaceOpen] = useState<Readonly<Record<string, boolean>>>({});
 	const searchInput = useRef<HTMLInputElement | null>(null);
-	const rows = buildSessionRows({
+	const groups = buildSessionGroups({
 		sessions: props.sessions,
+		workspaces: props.workspaces,
 		pinned: props.pinned,
 		query,
 		currentId: props.currentId,
 		currentIsDraft: props.currentIsDraft,
+		currentCwd: props.cwd,
+		currentWorkspacePath: props.currentWorkspacePath,
 	});
+	const rows = groups.unassigned;
 
 	useEffect(() => {
-		if (!searchOpen) return;
+		if (!props.searchOpen) return;
 		searchInput.current?.focus({ preventScroll: true });
-	}, [searchOpen]);
+	}, [props.searchOpen]);
 
 	const sectionOpen = sidebarSectionVisibility(query.trim().length > 0, tasksOpen, spacesOpen);
-	// 两段都展开时才算「全展开」：一键收起；其余状态一键全展开
-	const allOpen = sectionOpen.tasks && sectionOpen.spaces;
+	const allWorkspacesOpen = groups.workspaces.every(({ workspace }) => workspaceOpen[workspace.path] ?? true);
+	const allOpen = sectionOpen.tasks && sectionOpen.spaces && allWorkspacesOpen;
 	const toggleAllSections = (): void => {
-		setTasksOpen(!allOpen);
-		setSpacesOpen(!allOpen);
+		const open = !allOpen;
+		setTasksOpen(open);
+		setSpacesOpen(open);
+		setWorkspaceOpen(Object.fromEntries(groups.workspaces.map(({ workspace }) => [workspace.path, open])));
 	};
 	// 工作区「更多」菜单里的重命名弹窗
-	const [renameOpen, setRenameOpen] = useState(false);
+	const [workspaceRename, setWorkspaceRename] = useState<WorkspaceSummary | undefined>(undefined);
 	const [renameValue, setRenameValue] = useState("");
 	const bridge = desktopBridge();
-	const workspaceDisplay = props.workspaceLabel ?? (workspaceName(props.cwd) || "Reins");
 
-	/** 保存重命名:名字先落到桌面壳(持久化),壳确认后界面才跟着改名。 */
+	/** 先持久化空间显示名，成功后再更新界面。 */
 	const saveRename = (): void => {
+		const target = workspaceRename;
 		const name = renameValue.trim();
-		if (name.length === 0) return;
+		if (target === undefined || name.length === 0) return;
 		const persist = async (): Promise<void> => {
-			const ok = (await bridge?.renameWorkspace(name)) ?? false;
+			const ok = (await bridge?.renameWorkspace(target.path, name)) ?? false;
 			if (!ok) return;
-			props.onRenameWorkspace?.(name);
-			setRenameOpen(false);
+			props.onRenameWorkspace?.(target.path, name);
+			setWorkspaceRename(undefined);
 		};
 		void persist().catch(() => {});
+	};
+
+	const toggleWorkspace = (path: string): void => {
+		setWorkspaceOpen((current) => ({ ...current, [path]: !(current[path] ?? true) }));
 	};
 
 	// 任务「更多」菜单里的重命名弹窗；记住目标会话，确认时才写覆盖
@@ -140,15 +152,45 @@ export function Sidebar(props: SidebarProps): ReactElement {
 	};
 
 
-	const viewOptions: MenuEntry[] = [
-		{ type: "label", label: "分组" },
-		{ type: "item", key: "group-workspace", label: "按工作区", checked: true, onSelect: () => {} },
-		{ type: "item", key: "group-flat", label: "全部会话（未接入）", checked: false, disabled: true, onSelect: () => {} },
-		{ type: "separator" },
-		{ type: "label", label: "排序" },
-		{ type: "item", key: "order-updated", label: "按更新时间", checked: true, onSelect: () => {} },
-		{ type: "item", key: "order-manual", label: "手动排序（未接入）", checked: false, disabled: true, onSelect: () => {} },
-	];
+	const renderRows = (items: readonly SessionRow[], emptyMessage?: string): ReactElement | null => {
+		if (items.length === 0) {
+			return emptyMessage === undefined ? null : (
+				<div className="flex flex-col items-center gap-2 px-3 py-6 text-[13px] leading-5 text-foreground-subtlest">
+					<Archive className="size-6 text-foreground-subtlest" />
+					<span>{emptyMessage}</span>
+				</div>
+			);
+		}
+		return (
+			<div className="flex flex-col gap-0.5">
+				{items.map((row) => (
+					<SessionRowView
+						key={row.id}
+						row={row}
+						current={row.id === props.currentId && props.activePanel === undefined}
+						running={props.running && row.id === props.currentId}
+						batchMode={batchMode}
+						selected={selected.has(row.id)}
+						onToggleSelect={() => toggleSelected(row.id)}
+						onSwitch={() => props.onSwitch(row)}
+						onArchive={() => props.onArchive(row.id)}
+						onDelete={() => props.onDelete(row.id)}
+						onTogglePin={() => props.onTogglePin(row.id)}
+						onRename={() => setTaskRename({ id: row.id, value: row.title })}
+						onBatch={() => {
+							setBatchMode(true);
+							setSelected(new Set([row.id]));
+						}}
+						onOpenFolder={
+							bridge === undefined
+								? undefined
+								: () => bridge.openWorkspaceFolder((row.workspacePath ?? row.cwd) || props.cwd)
+						}
+					/>
+				))}
+			</div>
+		);
+	};
 
 	return (
 		<aside className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar px-3 pt-1.5 pb-1.5 text-foreground">
@@ -164,11 +206,11 @@ export function Sidebar(props: SidebarProps): ReactElement {
 
 			<nav className="mt-2 mb-2 flex shrink-0 flex-col gap-0.5">
 				<PanelRow
-					icon={<CirclePlus className="size-4" />}
+					icon={<MessageSquarePlus className="size-4" />}
 					label="新建任务"
 					hint="Ctrl N"
 					active={false}
-					onClick={props.onNewSession}
+					onClick={() => props.onNewSession(null)}
 				/>
 				<PanelRow
 					icon={<Blocks className="size-4" />}
@@ -185,8 +227,9 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			</nav>
 
 			<div className="flex min-h-0 flex-1 flex-col">
-				<div className="mb-1 flex h-9 shrink-0 items-center gap-1 pl-1">
-					{searchOpen ? (
+				{/* 搜索入口移到了顶部标题栏；这里只在搜索时呈现输入行，平时整行消失 */}
+				{props.searchOpen ? (
+					<div className="mb-1 flex h-9 shrink-0 items-center gap-1 pl-1">
 						<div className="flex h-[30px] min-w-0 flex-1 items-center gap-0 rounded-md border-[0.5px] border-border-hover px-2">
 							<Search className="size-3.5 shrink-0 text-foreground-subtlest" />
 							<input
@@ -197,7 +240,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 									if (event.key !== "Escape") return;
 									event.preventDefault();
 									setQuery("");
-									setSearchOpen(false);
+									props.onSearchOpenChange(false);
 								}}
 								placeholder="搜索会话"
 								aria-label="搜索会话"
@@ -208,68 +251,15 @@ export function Sidebar(props: SidebarProps): ReactElement {
 								aria-label="清除搜索"
 								onClick={() => {
 									setQuery("");
-									setSearchOpen(false);
+									props.onSearchOpenChange(false);
 								}}
 								className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtle hover:bg-surface-hover"
 							>
 								<X className="size-3" />
 							</button>
 						</div>
-					) : (
-						<>
-							<span className="min-w-0 flex-1" />
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								aria-label="搜索会话"
-								title="搜索会话"
-								className="size-7 rounded-sm text-foreground-subtle hover:bg-surface-hover"
-								onClick={() => setSearchOpen(true)}
-							>
-								<Search className="size-3.5" />
-							</Button>
-							<Menu
-								trigger={({ toggle }) => (
-									<Button
-										variant="ghost"
-										size="icon-sm"
-										aria-label="视图选项"
-										title="视图选项"
-										className="size-7 rounded-sm text-foreground-subtle hover:bg-surface-hover"
-										onClick={toggle}
-									>
-										<SlidersHorizontal className="size-3.5" />
-									</Button>
-								)}
-								entries={viewOptions}
-								className="min-w-[200px]"
-							/>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								aria-label={allOpen ? "收起所有工作区" : "展开所有工作区"}
-								title={allOpen ? "收起所有工作区" : "展开所有工作区"}
-								className="size-7 rounded-sm text-foreground-subtle hover:bg-surface-hover"
-								onClick={toggleAllSections}
-							>
-								{allOpen ? <ChevronsDownUp className="size-3.5" /> : <ChevronsUpDown className="size-3.5" />}
-							</Button>
-							<Button
-								variant="ghost"
-								size="icon-sm"
-								aria-label="添加工作区"
-								title="添加工作区"
-								disabled={bridge === undefined}
-								className="size-7 rounded-sm text-foreground-subtle hover:bg-surface-hover"
-								onClick={() => {
-									void bridge?.chooseWorkspace();
-								}}
-							>
-								<FolderPlus className="size-4" />
-							</Button>
-						</>
-					)}
-				</div>
+					</div>
+				) : null}
 
 				<div className="min-h-0 flex-1 overflow-y-auto pb-4">
 					<SectionHeader
@@ -277,53 +267,17 @@ export function Sidebar(props: SidebarProps): ReactElement {
 						count={rows.length}
 						open={sectionOpen.tasks}
 						onToggle={() => setTasksOpen((value) => !value)}
-						addLabel="新建会话"
-						onAdd={props.onNewSession}
+							addLabel="新建任务"
+							addIcon={<MessageSquarePlus className="size-3.5" />}
+							onAdd={() => props.onNewSession(null)}
 					/>
 					<div className="sidebar-section-motion" data-open={sectionOpen.tasks || undefined}>
-						<div className="sidebar-section-content">
-							{rows.length === 0 ? (
-								<div className="flex flex-col items-center gap-2 px-3 py-6 text-[13px] leading-5 text-foreground-subtlest">
-									<Archive className="size-6 text-foreground-subtlest" />
-									<span>{query.length > 0 ? "没有匹配的会话" : "还没有会话"}</span>
-								</div>
-							) : (
-								<div className="flex flex-col gap-0.5">
-									{rows.map((row) => (
-										<SessionRowView
-											key={row.id}
-											row={row}
-											current={row.id === props.currentId && props.activePanel === undefined}
-											running={props.running && row.id === props.currentId}
-											batchMode={batchMode}
-											selected={selected.has(row.id)}
-											onToggleSelect={() => toggleSelected(row.id)}
-											onSwitch={() => props.onSwitch(row.id)}
-											onArchive={() => props.onArchive(row.id)}
-											onDelete={() => props.onDelete(row.id)}
-													onTogglePin={() => props.onTogglePin(row.id)}
-											onRename={() => setTaskRename({ id: row.id, value: row.title })}
-											onBatch={() => {
-												setBatchMode(true);
-												setSelected(new Set([row.id]));
-											}}
-											onOpenFolder={
-												bridge === undefined
-													? undefined
-													: () => {
-															bridge.openWorkspaceFolder();
-														}
-											}
-										/>
-									))}
-								</div>
-							)}
-						</div>
+						<div className="sidebar-section-content">{renderRows(rows, query.length > 0 ? "没有匹配的会话" : "暂无未绑定任务")}</div>
 					</div>
 
 					<SectionHeader
 						label="空间"
-						count={1}
+						count={props.workspaces.length}
 						open={sectionOpen.spaces}
 						onToggle={() => setSpacesOpen((value) => !value)}
 						addLabel="添加工作区"
@@ -331,35 +285,48 @@ export function Sidebar(props: SidebarProps): ReactElement {
 							void bridge?.chooseWorkspace();
 						}}
 						addDisabled={bridge === undefined}
+						trailing={
+							/* 折叠所有分组：与「+」同款 hover 显隐 */
+							<button
+								type="button"
+								aria-label={allOpen ? "收起所有分组" : "展开所有分组"}
+								title={allOpen ? "收起所有分组" : "展开所有分组"}
+								onClick={toggleAllSections}
+								className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtlest opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground group-hover/section:opacity-100 group-focus-within/section:opacity-100"
+							>
+								{allOpen ? <ChevronsDownUp className="size-3.5" /> : <ChevronsUpDown className="size-3.5" />}
+							</button>
+						}
 					/>
 					<div className="sidebar-section-motion" data-open={sectionOpen.spaces || undefined}>
 						<div className="sidebar-section-content">
-							<WorkspaceRow
-								name={workspaceDisplay}
-								onNewSession={props.onNewSession}
-								onOpenFolder={
-									bridge === undefined
-										? undefined
-										: () => {
-												bridge.openWorkspaceFolder();
-											}
-								}
-								onRename={
-									bridge === undefined
-										? undefined
-										: () => {
-												setRenameValue(workspaceDisplay);
-												setRenameOpen(true);
-											}
-								}
-								onRemove={
-									bridge === undefined
-										? undefined
-										: () => {
-												void bridge.chooseWorkspace();
-											}
-								}
-							/>
+							{groups.workspaces.map(({ workspace, rows: workspaceRows }) => {
+										const isOpen = query.trim().length > 0 || (workspaceOpen[workspace.path] ?? true);
+								return (
+									<div key={workspace.path}>
+										<WorkspaceRow
+											workspace={workspace}
+											open={isOpen}
+											onToggle={() => toggleWorkspace(workspace.path)}
+											onNewSession={() => props.onNewSession(workspace.path)}
+											onOpenFolder={bridge === undefined ? undefined : () => bridge.openWorkspaceFolder(workspace.path)}
+											onRename={bridge === undefined ? undefined : () => {
+												setRenameValue(workspace.name);
+												setWorkspaceRename(workspace);
+											}}
+											onRemove={bridge === undefined ? undefined : () => {
+												void bridge.removeWorkspace(workspace.path).then((removed) => {
+													if (removed) props.onRemoveWorkspace?.(workspace.path);
+												}).catch(() => {});
+											}}
+										/>
+										<div className="sidebar-section-motion" data-open={sectionOpen.spaces && isOpen || undefined}>
+											{/* 缩进 22px：会话行内偏移(8+16+4)后，标题正好落在项目标题的 62px 列上 */}
+											<div className="sidebar-section-content ml-[22px]">{renderRows(workspaceRows)}</div>
+										</div>
+									</div>
+								);
+							})}
 						</div>
 					</div>
 				</div>
@@ -415,12 +382,12 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			</div>
 
 			<Dialog
-				open={renameOpen}
-				onClose={() => setRenameOpen(false)}
+				open={workspaceRename !== undefined}
+				onClose={() => setWorkspaceRename(undefined)}
 				title="重命名空间"
 				footer={
 					<>
-						<Button variant="outline" onClick={() => setRenameOpen(false)}>
+							<Button variant="outline" onClick={() => setWorkspaceRename(undefined)}>
 							取消
 						</Button>
 						<Button variant="primary" disabled={renameValue.trim().length === 0} onClick={saveRename}>
@@ -499,7 +466,8 @@ function PanelRow({
 	/** 行尾的浅色小字提示（如快捷键）；hover 时出现 */
 	readonly hint?: string;
 	readonly active: boolean;
-	onClick(): void;
+	// 属性式函数类型：事件回调必须显式包一层，避免处理程序把点击事件当业务参数收走
+	readonly onClick: () => void;
 }): ReactElement {
 	return (
 		<button
@@ -507,7 +475,8 @@ function PanelRow({
 			onClick={onClick}
 			aria-current={active ? "page" : undefined}
 			className={cn(
-				"group/panel mx-0.5 flex min-h-9 items-center gap-2 rounded-md px-2 py-[7px] text-left text-[14px] leading-[22px] transition-colors hover:bg-surface-hover",
+				// 图标落 20px 首列、文字落 40px 内容列（与文件夹图标、未绑定任务标题同列）
+				"group/panel flex min-h-9 items-center gap-1 rounded-md px-2 py-[7px] text-left text-[14px] leading-[22px] transition-colors hover:bg-surface-hover",
 				active && "bg-selected",
 			)}
 		>
@@ -532,16 +501,21 @@ function SectionHeader({
 	open,
 	onToggle,
 	addLabel,
+	addIcon,
 	onAdd,
 	addDisabled,
+	trailing,
 }: {
 	readonly label: string;
 	readonly count: number;
 	readonly open: boolean;
 	onToggle(): void;
 	readonly addLabel: string;
+	readonly addIcon?: ReactElement;
 	onAdd(): void;
 	readonly addDisabled?: boolean;
+	/** 段标题右侧的附加动作（如折叠所有分组）；显隐由调用方自行控制 */
+	readonly trailing?: ReactElement;
 }): ReactElement {
 	return (
 		<div className="group/section sticky top-0 z-10 flex h-[30px] items-center gap-1 rounded-md bg-sidebar px-2">
@@ -551,9 +525,19 @@ function SectionHeader({
 				aria-expanded={open}
 				className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
 			>
-				<ChevronDown className={cn("size-3.5 shrink-0 text-foreground-subtlest transition-transform", !open && "-rotate-90")} />
-				<span className="truncate text-[12px] leading-4 font-semibold text-foreground-subtle">{label}</span>
-				<span className="shrink-0 text-[12px] leading-4 text-foreground-subtlest">{count}</span>
+				{/* 标题顶到行首，计数紧随其后成「空间(1)」，折叠箭头再跟在计数后；0 是噪音，不显示 */}
+				<span className="truncate text-[12px] leading-4 font-semibold text-foreground-subtle">
+					{label}
+					{count > 0 ? <span className="text-foreground-subtlest">({count})</span> : null}
+				</span>
+				{/* 展开态箭头静默，hover/键盘聚焦才现身；折叠态恒显，提示段内有内容 */}
+				<ChevronDown
+					className={cn(
+						"size-3.5 shrink-0 text-foreground-subtlest transition-[transform,opacity]",
+						!open && "-rotate-90",
+						open && "opacity-0 group-hover/section:opacity-100 group-focus-within/section:opacity-100",
+					)}
+				/>
 			</button>
 			<button
 				type="button"
@@ -563,8 +547,9 @@ function SectionHeader({
 				onClick={onAdd}
 				className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtlest opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground group-hover/section:opacity-100 group-focus-within/section:opacity-100 disabled:hidden"
 			>
-				<FolderPlus className="size-3.5" />
+					{addIcon ?? <FolderPlus className="size-3.5" />}
 			</button>
+			{trailing}
 		</div>
 	);
 }
@@ -572,17 +557,22 @@ function SectionHeader({
 /**
  * 空间段里的一行工作区。
  *
- * 行首图标与「空间」标题左缘对齐（同为 px-2 网格），行尾 hover 出新建任务与更多菜单；
+ * 文件夹图标落 40px 内容列，开/合状态用 FolderOpen/Folder 表达，项目标题落 62px 列；
+ * 行尾 hover 出新建任务与更多菜单；
  * 打开文件夹/重命名/移除只在桌面壳里有实体动作，浏览器里省略。
  */
 function WorkspaceRow({
-	name,
+	workspace,
+	open,
+	onToggle,
 	onNewSession,
 	onOpenFolder,
 	onRename,
 	onRemove,
 }: {
-	readonly name: string;
+	readonly workspace: WorkspaceSummary;
+	readonly open: boolean;
+	onToggle(): void;
 	onNewSession(): void;
 	readonly onOpenFolder?: () => void;
 	readonly onRename?: () => void;
@@ -595,19 +585,31 @@ function WorkspaceRow({
 	];
 
 	return (
-		// 行首图标与「空间」二字对齐：标题里折叠箭头 + 间距的进深，用左内边距补齐
 		<div className="group/workspace flex h-[34px] items-center gap-1.5 rounded-md pr-2 pl-7 hover:bg-surface-hover">
-			<Folder className="size-4 shrink-0 text-foreground-subtle" />
-			<span className="min-w-0 flex-1 truncate text-[14px] leading-5">{name}</span>
+			<button
+				type="button"
+				aria-expanded={open}
+				aria-label={`${open ? "收起" : "展开"}项目 ${workspace.name}`}
+				onClick={onToggle}
+				className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+			>
+				{/* 开合状态由目录图标本身表达：展开是打开的文件夹，折叠是合上的 */}
+				{open ? (
+					<FolderOpen className="size-4 shrink-0 text-foreground-subtle" />
+				) : (
+					<Folder className="size-4 shrink-0 text-foreground-subtle" />
+				)}
+				<span className="min-w-0 flex-1 truncate text-[14px] leading-5">{workspace.name}</span>
+			</button>
 			<span className="hidden shrink-0 items-center gap-0.5 group-hover/workspace:flex group-focus-within/workspace:flex">
 				<button
 					type="button"
-					aria-label="在此工作区新建任务"
+					aria-label={`在 ${workspace.name} 中新建任务`}
 					title="新建任务"
 					onClick={onNewSession}
 					className="flex size-5 items-center justify-center rounded-sm text-foreground-subtlest hover:bg-surface-strong hover:text-foreground"
 				>
-					<CirclePlus className="size-3.5" />
+					<MessageSquarePlus className="size-3.5" />
 				</button>
 				<Menu
 					trigger={({ toggle }) => (

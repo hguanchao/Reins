@@ -8,13 +8,17 @@ import { contextBridge, ipcRenderer } from "electron";
  */
 contextBridge.exposeInMainWorld("reinsDesktop", {
 	chooseWorkspace: (): Promise<boolean> => ipcRenderer.invoke("workspace:choose") as Promise<boolean>,
-	openWorkspaceFolder: (): void => {
-		void ipcRenderer.invoke("workspace:reveal");
-	},
-	workspaceName: (): Promise<string | undefined> =>
-		ipcRenderer.invoke("workspace:name") as Promise<string | undefined>,
-	renameWorkspace: (name: string): Promise<boolean> =>
-		ipcRenderer.invoke("workspace:rename", name) as Promise<boolean>,
+		openWorkspaceFolder: (path?: string): void => {
+			void ipcRenderer.invoke("workspace:reveal", path);
+		},
+		renameWorkspace: (path: string, name: string): Promise<boolean> =>
+			ipcRenderer.invoke("workspace:rename", path, name) as Promise<boolean>,
+		removeWorkspace: (path: string): Promise<boolean> =>
+			ipcRenderer.invoke("workspace:remove", path) as Promise<boolean>,
+		openSession: (workspacePath: string | null, cwd: string, id: string): Promise<boolean> =>
+			ipcRenderer.invoke("workspace:open-session", workspacePath, cwd, id) as Promise<boolean>,
+		newTaskInWorkspace: (path: string): Promise<boolean> =>
+			ipcRenderer.invoke("workspace:new-task", path) as Promise<boolean>,
 	setTheme: (theme: "zai-dark" | "zai-light"): void => {
 		void ipcRenderer.invoke("window:set-theme", theme);
 	},

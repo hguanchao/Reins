@@ -33,6 +33,14 @@ export interface SessionSummary {
 	id: string;
 	title: string | undefined;
 	updatedAt: string;
+	cwd?: string;
+	/** null/undefined 表示未绑定项目；string 表示所属空间 */
+	workspacePath?: string | null;
+}
+
+export interface WorkspaceSummary {
+	path: string;
+	name: string;
 }
 
 /** 会话的累计用量;金额缺省说明有请求没配单价,不拿 0 冒充「不要钱」。 */

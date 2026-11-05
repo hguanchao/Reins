@@ -26,6 +26,7 @@ import { currentLeafOf, currentPathOf, pathTo } from "#src/session/tree.ts";
 interface SessionOptions {
 	readonly id: string;
 	readonly cwd: string;
+	readonly workspacePath?: string | null;
 	/** 落盘位置；null 表示只在内存里 */
 	readonly file: string | null;
 	/** 落盘通道。file 非 null 时必须给：没有通道就写不下去，这件事必须在构造时暴露 */
@@ -37,6 +38,7 @@ interface SessionOptions {
 export class Session implements SessionPort {
 	readonly id: string;
 	readonly cwd: string;
+	readonly workspacePath: string | null | undefined;
 	readonly path: string | null;
 
 	readonly #entries: SessionEntry[] = [];
@@ -53,6 +55,7 @@ export class Session implements SessionPort {
 		}
 		this.id = options.id;
 		this.cwd = options.cwd;
+		this.workspacePath = options.workspacePath;
 		this.path = options.file;
 		this.#writer = options.writer;
 
@@ -79,6 +82,7 @@ export class Session implements SessionPort {
 		return new Session({
 			id: opened.header.id,
 			cwd: opened.header.cwd,
+			workspacePath: opened.header.workspacePath,
 			file,
 			writer: store.append(file),
 			entries: opened.entries,
@@ -93,14 +97,15 @@ export class Session implements SessionPort {
 	 */
 	static fork(
 		source: Session,
-		options: {
-			readonly id: string;
-			readonly cwd: string;
-			readonly file: string;
-			readonly store: SessionStore;
-			/** 分叉点；省略时取会话当前的位置 */
-			readonly at?: string;
-		},
+			options: {
+				readonly id: string;
+				readonly cwd: string;
+				readonly workspacePath?: string | null;
+				readonly file: string;
+				readonly store: SessionStore;
+				/** 分叉点；省略时取会话当前的位置 */
+				readonly at?: string;
+			},
 	): Session {
 		const at = options.at ?? source.leafId;
 		if (at === null) throw new Error("This session has no entries to fork from");
@@ -110,6 +115,7 @@ export class Session implements SessionPort {
 		const writer = options.store.create({
 			id: options.id,
 			cwd: options.cwd,
+			workspacePath: options.workspacePath,
 			file: options.file,
 			forkedFrom,
 		});
@@ -129,6 +135,7 @@ export class Session implements SessionPort {
 		return new Session({
 			id: options.id,
 			cwd: options.cwd,
+			workspacePath: options.workspacePath,
 			file: options.file,
 			writer,
 			entries: path,

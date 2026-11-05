@@ -12,12 +12,22 @@ import type { SessionListing, SessionStore } from "#src/session/store.ts";
  * 会话文件要等到真正写入时才建立：启动后只问一句、或直接出错退出，不该在磁盘上留下空会话。
  * 没有会话仓库时退回内存会话，这件事由调用方负责告诉使用者。
  */
-export function createSession(workRoot: string, store: SessionStore | undefined): Session {
+export function createSession(
+	workRoot: string,
+	store: SessionStore | undefined,
+	workspacePath: string | null = null,
+): Session {
 	const id = randomBytes(8).toString("hex");
-	if (store === undefined) return new Session({ id, cwd: workRoot, file: null });
+	if (store === undefined) return new Session({ id, cwd: workRoot, workspacePath, file: null });
 
 	const file = sessionFilePath(workRoot);
-	return new Session({ id, cwd: workRoot, file, writer: store.create({ id, cwd: workRoot, file }) });
+	return new Session({
+		id,
+		cwd: workRoot,
+		workspacePath,
+		file,
+		writer: store.create({ id, cwd: workRoot, workspacePath, file }),
+	});
 }
 
 /**
@@ -49,6 +59,23 @@ export function listSessions(workRoot: string, store: SessionStore): readonly Se
 	return listings.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
+/** 跨多个已登记工作区列出会话；同一会话若被多处存储，只展示第一次找到的副本。 */
+export function listSessionsAcross(
+	workRoots: readonly string[],
+	store: SessionStore,
+): readonly SessionListing[] {
+	const seen = new Set<string>();
+	const listings: SessionListing[] = [];
+	for (const workRoot of workRoots) {
+		for (const listing of listSessions(workRoot, store)) {
+			if (seen.has(listing.id)) continue;
+			seen.add(listing.id);
+			listings.push(listing);
+		}
+	}
+	return listings.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
 /** 退出全屏界面后留在主屏上的命令，使用者也据此回到同一个会话。 */
 export function resumeCommand(id: string): string {
 	return `reins --resume ${id}`;
@@ -67,6 +94,23 @@ export function listArchivedSessions(workRoot: string, store: SessionStore): rea
 		const archived = archivedDirectory(directory);
 		if (!existsSync(archived)) continue;
 		for (const listing of store.list(archived)) {
+			if (seen.has(listing.id)) continue;
+			seen.add(listing.id);
+			listings.push(listing);
+		}
+	}
+	return listings.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+/** 跨多个已登记工作区列出已归档会话。 */
+export function listArchivedSessionsAcross(
+	workRoots: readonly string[],
+	store: SessionStore,
+): readonly SessionListing[] {
+	const seen = new Set<string>();
+	const listings: SessionListing[] = [];
+	for (const workRoot of workRoots) {
+		for (const listing of listArchivedSessions(workRoot, store)) {
 			if (seen.has(listing.id)) continue;
 			seen.add(listing.id);
 			listings.push(listing);
@@ -133,6 +177,33 @@ export function restoreSessions(workRoot: string, store: SessionStore, ids: read
 	return restored;
 }
 
+/** 将批量会话操作应用到各已登记工作区。 */
+export function deleteSessionsAcross(
+	workRoots: readonly string[],
+	store: SessionStore,
+	ids: readonly string[],
+	skip: readonly string[],
+): number {
+	return workRoots.reduce((total, workRoot) => total + deleteSessions(workRoot, store, ids, skip), 0);
+}
+
+export function archiveSessionsAcross(
+	workRoots: readonly string[],
+	store: SessionStore,
+	ids: readonly string[],
+	skip: readonly string[],
+): number {
+	return workRoots.reduce((total, workRoot) => total + archiveSessions(workRoot, store, ids, skip), 0);
+}
+
+export function restoreSessionsAcross(
+	workRoots: readonly string[],
+	store: SessionStore,
+	ids: readonly string[],
+): number {
+	return workRoots.reduce((total, workRoot) => total + restoreSessions(workRoot, store, ids), 0);
+}
+
 /**
  * 从会话的当前末尾分叉出一个新会话。
  *
@@ -142,6 +213,7 @@ export function forkSession(source: Session, workRoot: string, store: SessionSto
 	return Session.fork(source, {
 		id: randomBytes(8).toString("hex"),
 		cwd: workRoot,
+		workspacePath: source.workspacePath,
 		file: sessionFilePath(workRoot),
 		store,
 	});

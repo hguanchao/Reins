@@ -318,6 +318,28 @@ function GeneralSection({
 				</span>
 			</SettingRow>
 
+			<SettingRow title="会话分组" description="侧栏任务区的分组方式。">
+				<div className="flex items-center gap-1">
+					<span className="flex h-7 items-center rounded-sm bg-surface px-2.5 text-[12px] leading-[18px]">
+						按工作区
+					</span>
+					<span className="flex h-7 items-center rounded-sm px-2.5 text-[12px] leading-[18px] text-foreground-subtlest opacity-50">
+						全部会话（未接入）
+					</span>
+				</div>
+			</SettingRow>
+
+			<SettingRow title="会话排序" description="侧栏各分组内任务的排序。">
+				<div className="flex items-center gap-1">
+					<span className="flex h-7 items-center rounded-sm bg-surface px-2.5 text-[12px] leading-[18px]">
+						按更新时间
+					</span>
+					<span className="flex h-7 items-center rounded-sm px-2.5 text-[12px] leading-[18px] text-foreground-subtlest opacity-50">
+						手动排序（未接入）
+					</span>
+				</div>
+			</SettingRow>
+
 			<SettingRow title="繁杂时的发送行为" description="智能体运行时 Enter 与发送按钮的行为。">
 				<div className="flex items-center gap-1">
 					<span className="flex h-7 items-center rounded-sm bg-surface px-2.5 text-[12px] leading-[18px]">

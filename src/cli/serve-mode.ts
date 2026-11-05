@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describeError } from "#src/shared/describe-error.ts";
@@ -14,12 +15,12 @@ import {
 } from "#src/cli/pipeline.ts";
 import { createSessionFor } from "#src/cli/session/factory.ts";
 import {
-	archiveSessions,
-	deleteSessions,
-	listArchivedSessions,
-	listSessions,
+	archiveSessionsAcross,
+	deleteSessionsAcross,
+	listArchivedSessionsAcross,
+	listSessionsAcross,
 	resumeSession,
-	restoreSessions,
+	restoreSessionsAcross,
 } from "#src/cli/session/target.ts";
 import type { ModelSelection } from "#src/config/selection.ts";
 import type { ApprovalMode } from "#src/config/file.ts";
@@ -42,7 +43,16 @@ import {
 	type ApprovalAnswer,
 } from "#src/permission/policy.ts";
 import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
+import {
+	canonicalWorkspacePath,
+	listKnownWorkspaces,
+	listWorkspaces,
+	registerWorkspace,
+	registeredWorkspace,
+} from "#src/workspace/catalog.ts";
 import { gitDiff, gitStatus } from "#src/workspace/git.ts";
+import { workspaceNameOf } from "#src/workspace/name.ts";
+import type { SessionListing } from "#src/session/store.ts";
 import type { McpControl } from "#src/mcp/service.ts";
 import { fileTree, readWorkspaceFile, searchWorkspaceFiles } from "#src/web/files.ts";
 import { createWebServer, type WebServerDeps } from "#src/web/server.ts";
@@ -62,7 +72,13 @@ const APPROVAL_ANSWERS: readonly ApprovalAnswer[] = ["once", "always", "deny"];
 /** 审批方式的合法取值;与 config.toml 的语义一致,切换不落盘。 */
 const APPROVAL_MODES: readonly ApprovalMode[] = ["ask", "auto", "yolo"];
 
-export async function runServeMode(options: CliOptions): Promise<number> {
+interface ServeStartup {
+	readonly desktopManaged?: boolean;
+	readonly resumeSessionId?: string;
+	readonly newWorkspacePath?: string;
+}
+
+export async function runServeMode(options: CliOptions, startup: ServeStartup = {}): Promise<number> {
 	const loaded = await loadSelection(options);
 	if (!loaded.ok) {
 		writeStderr(`${loaded.error.display}\n`);
@@ -75,6 +91,7 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	const providersFile = options.providersPath ?? providersFilePath();
 
 	const workRoot = process.cwd();
+	if (!startup.desktopManaged) registerWorkspace(workRoot);
 	const workspace = new WorkspaceBoundary(workRoot);
 	const instructions = (): readonly PromptInstruction[] =>
 		readInstructions(defaultInstructionSources(workRoot, loaded.trusted));
@@ -105,7 +122,21 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	for (const line of pipeline.pluginReport) writeStderr(`reins: ${line.text}\n`);
 
 	const sessionStore = host.sessionStore();
-	let session = createSessionFor(workRoot, sessionStore);
+	let session: Session;
+	if (startup.resumeSessionId !== undefined) {
+		if (sessionStore === undefined) throw new Error("Cannot resume a session without a session store");
+		session = resumeSession(workRoot, startup.resumeSessionId, sessionStore);
+	} else {
+		let workspacePath: string | null = null;
+		if (startup.newWorkspacePath !== undefined) {
+			const registered = registeredWorkspace(startup.newWorkspacePath);
+			if (registered === undefined || !samePath(registered, workRoot)) {
+				throw new Error("New task workspace is not the active registered workspace");
+			}
+			workspacePath = registered;
+		}
+		session = createSessionFor(workRoot, sessionStore, workspacePath);
+	}
 	const compactor = createCompactor(config, initialSelection);
 	// 模型可在会话内热切换:只换主模型,压缩与审批模型保持启动时的选择(切模型不重建它们,
 	// 语义是「下一轮回答换脑子」,不悄悄改审计链路)
@@ -139,15 +170,46 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	let currentAbort: AbortController | undefined;
 	let currentRun: Promise<void> | undefined;
 
-	/** 会话清单;侧栏的「任务列表」就是它。没有会话存储(插件缺席)时为空清单。 */
-	const sessions = (): readonly { id: string; title: string | undefined; updatedAt: string }[] =>
-		sessionStore === undefined
-			? []
-			: listSessions(workRoot, sessionStore).map((item) => ({
-					id: item.id,
-					title: item.title,
-					updatedAt: item.updatedAt,
-				}));
+	const workspaceRoots = (): readonly string[] => uniquePaths([...listKnownWorkspaces(), workRoot]);
+	const workspaceFor = (
+		workspacePath: string | null | undefined,
+		cwd: string,
+		visiblePaths: readonly string[],
+	): string | null => {
+		if (workspacePath === null) return null;
+		let candidate = workspacePath;
+		if (candidate === undefined) {
+			if (cwd.length === 0) return null;
+			try {
+				candidate = canonicalWorkspacePath(cwd);
+			} catch {
+				return null;
+			}
+		}
+		return visiblePaths.find((path) => samePath(path, candidate)) ?? null;
+	};
+	const sessionSummary = (item: SessionListing, visiblePaths: readonly string[]) => ({
+		id: item.id,
+		title: item.title,
+		updatedAt: item.updatedAt,
+		cwd: item.cwd,
+		workspacePath: workspaceFor(item.workspacePath, item.cwd, visiblePaths),
+	});
+
+	/** 所有已登记空间的会话；旧会话仅在 cwd 精确匹配登记路径时归入项目。 */
+	const sessions = () => {
+		if (sessionStore === undefined) return [];
+		const visiblePaths = listWorkspaces();
+		return listSessionsAcross(workspaceRoots(), sessionStore).map((item) => sessionSummary(item, visiblePaths));
+	};
+
+	const visibleWorkspaces = () => {
+		const namesFile = process.env["REINS_WORKSPACE_NAMES_FILE"];
+		return listWorkspaces().map((path) => ({
+			path,
+			name: ((namesFile === undefined ? undefined : workspaceNameOf(namesFile, path)) ?? basename(path)) || path,
+		}));
+	};
 
 	/** 切会话/新建会话都只在空闲时允许:正在跑的回合属于旧会话,切断它等于毁掉结果。 */
 	const switchToSession = (id: string): boolean => {
@@ -164,38 +226,46 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 		return true;
 	};
 
-	const startNewSession = (): boolean => {
+	const startNewSession = (workspacePath: string | null): boolean => {
 		if (running || compacting) return false;
+		let association: string | null = null;
+		if (workspacePath !== null) {
+			try {
+				association = registeredWorkspace(workspacePath) ?? null;
+			} catch {
+				return false;
+			}
+			if (association === null || !samePath(association, workRoot)) return false;
+		}
 		void session.close();
-		session = createSessionFor(workRoot, sessionStore);
+		session = createSessionFor(workRoot, sessionStore, association);
 		broadcast({ type: "session_switched" });
 		return true;
 	};
 
 	/** 归档/删除的公共护栏:当前会话永远跳过,回合进行中一律不动。 */
-	const archivedList = (): readonly { id: string; title: string | undefined; updatedAt: string }[] =>
-		sessionStore === undefined
-			? []
-			: listArchivedSessions(workRoot, sessionStore).map((item) => ({
-					id: item.id,
-					title: item.title,
-					updatedAt: item.updatedAt,
-				}));
+	const archivedList = () => {
+		if (sessionStore === undefined) return [];
+		const visiblePaths = listWorkspaces();
+		return listArchivedSessionsAcross(workspaceRoots(), sessionStore).map((item) =>
+			sessionSummary(item, visiblePaths),
+		);
+	};
 
 	const removeSessions = (ids: readonly string[]): number =>
 		running || compacting || sessionStore === undefined
 			? 0
-			: deleteSessions(workRoot, sessionStore, ids, [session.id]);
+			: deleteSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
 
 	const stashSessions = (ids: readonly string[]): number =>
 		running || compacting || sessionStore === undefined
 			? 0
-			: archiveSessions(workRoot, sessionStore, ids, [session.id]);
+			: archiveSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
 
 	const unstashSessions = (ids: readonly string[]): number =>
 		running || compacting || sessionStore === undefined
 			? 0
-			: restoreSessions(workRoot, sessionStore, ids);
+			: restoreSessionsAcross(workspaceRoots(), sessionStore, ids);
 
 	const modelList = (): readonly { provider: string; model: string; name: string }[] =>
 		providersConfig.providers.flatMap((provider) =>
@@ -304,8 +374,14 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 				},
 			};
 		},
-		session: () => ({ id: session.id, cwd: session.cwd, entries: session.entries() }),
+		session: () => ({
+			id: session.id,
+			cwd: session.cwd,
+			workspacePath: workspaceFor(session.workspacePath, session.cwd, listWorkspaces()),
+			entries: session.entries(),
+		}),
 		sessions,
+		workspaces: visibleWorkspaces,
 		switchSession: switchToSession,
 		newSession: startNewSession,
 		archivedSessions: archivedList,
@@ -446,6 +522,35 @@ export async function runServeMode(options: CliOptions): Promise<number> {
 	});
 	await session.close();
 	return exitCode;
+}
+
+function uniquePaths(paths: readonly string[]): readonly string[] {
+	const seen = new Set<string>();
+	const unique: string[] = [];
+	for (const path of paths) {
+		const resolved = resolve(path);
+		const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		unique.push(path);
+	}
+	return unique;
+}
+
+function samePath(left: string, right: string): boolean {
+	const leftPath = canonicalPathForComparison(left);
+	const rightPath = canonicalPathForComparison(right);
+	return process.platform === "win32"
+		? leftPath.toLowerCase() === rightPath.toLowerCase()
+		: leftPath === rightPath;
+}
+
+function canonicalPathForComparison(path: string): string {
+	try {
+		return canonicalWorkspacePath(path);
+	} catch {
+		return resolve(path);
+	}
 }
 
 /** 界面构建产物目录:环境变量优先(桌面打包传 unpacked 路径),否则按仓库布局推导。 */

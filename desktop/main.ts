@@ -3,7 +3,14 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { parseReadyLine } from "#src/web/ready-line.ts";
-import { workspaceNameOf, writeWorkspaceName } from "#src/workspace/name.ts";
+import {
+	canonicalWorkspacePath,
+	listKnownWorkspaces,
+	registerWorkspace,
+	registeredWorkspace,
+	unregisterWorkspace,
+} from "#src/workspace/catalog.ts";
+import { writeWorkspaceName } from "#src/workspace/name.ts";
 
 /**
  * 桌面壳的主进程。
@@ -34,6 +41,12 @@ function isDirectory(path: string): boolean {
 	}
 }
 
+function sameWorkspacePath(left: string, right: string): boolean {
+	return process.platform === "win32"
+		? left.toLowerCase() === right.toLowerCase()
+		: left === right;
+}
+
 function lastWorkspace(): string | undefined {
 	const file = join(app.getPath("userData"), "last-workspace.json");
 	try {
@@ -60,16 +73,26 @@ function workspaceNamesFile(): string {
 function resolveStartupWorkspace(): string {
 	const override = process.env.REINS_WORKSPACE;
 	if (override !== undefined && isDirectory(override)) {
-		rememberWorkspace(override);
-		return override;
+		const canonical = registerWorkspace(override);
+		rememberWorkspace(canonical);
+		return canonical;
 	}
 	const previous = lastWorkspace();
-	if (previous !== undefined) return previous;
+	if (previous !== undefined) {
+		const canonical = canonicalWorkspacePath(previous);
+		const known = listKnownWorkspaces().some((path) => sameWorkspacePath(path, canonical));
+		if (known) {
+			rememberWorkspace(canonical);
+			return canonical;
+		}
+		return registerWorkspace(canonical);
+	}
 
 	const fallback = join(app.getPath("userData"), "workspace");
 	mkdirSync(fallback, { recursive: true });
-	rememberWorkspace(fallback);
-	return fallback;
+	const canonical = registerWorkspace(fallback);
+	rememberWorkspace(canonical);
+	return canonical;
 }
 
 /** 界面里的「打开工作区」只负责选目录；重启服务与换页由调用方完成。 */
@@ -84,12 +107,25 @@ async function chooseWorkspace(window: BrowserWindow): Promise<string | undefine
 	return picked !== undefined && isDirectory(picked) ? picked : undefined;
 }
 
+interface ServerStartup {
+	readonly resumeSessionId?: string;
+	readonly createWorkspaceTask?: boolean;
+}
+
 /** 拉起打包好的服务进程,等 stdout 上的就绪行;报错行落进拒绝理由。 */
-function startServer(workspace: string): Promise<ServerHandle> {
+function startServer(workspace: string, startup: ServerStartup = {}): Promise<ServerHandle> {
 	return new Promise((resolveStart, rejectStart) => {
 		const child = spawn(process.execPath, [join(buildDir, "server.mjs")], {
-			cwd: workspace,
-			env: { ...process.env, ELECTRON_RUN_AS_NODE: "1", REINS_UI_DIST: uiDist },
+				cwd: workspace,
+				env: {
+					...process.env,
+					ELECTRON_RUN_AS_NODE: "1",
+					REINS_UI_DIST: uiDist,
+					REINS_WORKSPACE_NAMES_FILE: workspaceNamesFile(),
+					REINS_DESKTOP_RESUME_SESSION: startup.resumeSessionId ?? "",
+					REINS_DESKTOP_NEW_SESSION_WORKSPACE:
+						startup.createWorkspaceTask === true ? workspace : "",
+				},
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		let buffered = "";
@@ -215,6 +251,28 @@ const attachServer = (handle: ServerHandle): void => {
 		});
 	};
 
+	const restartServer = async (
+		path: string,
+		startup: ServerStartup,
+		failureTitle: string,
+		rememberAsWorkspace = true,
+	): Promise<boolean> => {
+		const previous = server;
+		try {
+			const canonical = canonicalWorkspacePath(path);
+			const next = await startServer(canonical, startup);
+			attachServer(next);
+			previous?.child.kill();
+			if (rememberAsWorkspace) rememberWorkspace(canonical);
+			workspacePath = canonical;
+			await window.loadURL(next.url);
+			return true;
+		} catch (error) {
+			dialog.showErrorBox(failureTitle, error instanceof Error ? error.message : String(error));
+			return false;
+		}
+	};
+
 	window.on("closed", () => {
 		// 窗口是壳的唯一出口:关窗即收摊,服务进程跟着退
 		server?.child.kill();
@@ -233,33 +291,53 @@ const attachServer = (handle: ServerHandle): void => {
 	ipcMain.handle("workspace:choose", async () => {
 		const picked = await chooseWorkspace(window);
 		if (picked === undefined) return false;
+		const wasVisible = registeredWorkspace(picked) !== undefined;
+		const canonical = registerWorkspace(picked);
+		const opened = await restartServer(canonical, {}, "切换工作区失败");
+		if (!opened && !wasVisible) unregisterWorkspace(canonical);
+		return opened;
+	});
 
-		const previous = server;
+	ipcMain.handle("workspace:open-session", async (_event, path: unknown, cwd: unknown, id: unknown) => {
+		if (typeof cwd !== "string" || typeof id !== "string" || id.length === 0) return false;
+		let target: string;
 		try {
-			const next = await startServer(picked);
-			attachServer(next);
-			previous?.child.kill();
-			rememberWorkspace(picked);
-			workspacePath = picked;
-			await window.loadURL(next.url);
-			return true;
-		} catch (error) {
-			dialog.showErrorBox("切换工作区失败", error instanceof Error ? error.message : String(error));
+			target = typeof path === "string" ? registeredWorkspace(path) ?? "" : canonicalWorkspacePath(cwd);
+		} catch {
 			return false;
 		}
+		if (target.length === 0) return false;
+		return restartServer(
+			target,
+			{ resumeSessionId: id },
+			"切换任务失败",
+			typeof path === "string",
+		);
+	});
+
+	ipcMain.handle("workspace:new-task", async (_event, path: unknown) => {
+		if (typeof path !== "string") return false;
+		const target = registeredWorkspace(path);
+		if (target === undefined) return false;
+		return restartServer(target, { createWorkspaceTask: true }, "新建项目任务失败");
+	});
+
+	ipcMain.handle("workspace:remove", (_event, path: unknown) => {
+		if (typeof path !== "string" || registeredWorkspace(path) === undefined) return false;
+		return unregisterWorkspace(path);
 	});
 
 	// 「打开文件夹」交给系统资源管理器；失败只在界面上无感，不值得打断
-	ipcMain.handle("workspace:reveal", () => {
-		if (workspacePath !== undefined) void shell.openPath(workspacePath);
+	ipcMain.handle("workspace:reveal", (_event, path: unknown) => {
+		const target = typeof path === "string" && isDirectory(path) ? path : workspacePath;
+		if (target !== undefined) void shell.openPath(target);
 	});
 
-	// 工作区在侧栏里的显示名;与路径分开存,重命名不改磁盘上的目录
-	ipcMain.handle("workspace:name", () => workspaceNameOf(workspaceNamesFile(), workspacePath));
-
-	ipcMain.handle("workspace:rename", (_event, name: unknown) => {
-		if (typeof name !== "string" || workspacePath === undefined) return false;
-		return writeWorkspaceName(workspaceNamesFile(), workspacePath, name);
+	ipcMain.handle("workspace:rename", (_event, path: unknown, name: unknown) => {
+		if (typeof path !== "string" || typeof name !== "string" || registeredWorkspace(path) === undefined) {
+			return false;
+		}
+		return writeWorkspaceName(workspaceNamesFile(), path, name);
 	});
 
 	await window.loadURL(LOADING_PAGE);
