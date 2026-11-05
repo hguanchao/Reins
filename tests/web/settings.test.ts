@@ -65,7 +65,7 @@ describe("设置快照", () => {
 			selection: { provider, model, compactModel: undefined, reviewModel: undefined },
 			providers: [provider],
 			mcpServers: [{ name: "demo", type: "stdio", disabled: false }],
-			plugins: [{ name: "plugin", kind: "declarative" }],
+			plugins: [{ name: "plugin", kind: "declarative", disabled: false }],
 			skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
 		});
 

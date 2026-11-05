@@ -25,7 +25,7 @@ export interface SessionListInput {
 function toRow(session: SessionSummary, pinned: ReadonlySet<string>): SessionRow {
 	return {
 		id: session.id,
-		title: session.title ?? "新会话",
+		title: session.title ?? "新任务",
 			updatedAt: session.updatedAt,
 			pinned: pinned.has(session.id),
 			cwd: session.cwd ?? "",
@@ -48,7 +48,7 @@ function currentSessionRow(input: SessionListInput): SessionRow | undefined {
 	if (known) return undefined;
 	const row: SessionRow = {
 		id: input.currentId,
-		title: "新会话",
+		title: "新任务",
 		updatedAt: new Date().toISOString(),
 		pinned: false,
 		cwd: input.currentCwd ?? "",
@@ -76,6 +76,16 @@ export interface WorkspaceSessionGroup {
 export interface SessionGroups {
 	readonly unassigned: readonly SessionRow[];
 	readonly workspaces: readonly WorkspaceSessionGroup[];
+}
+
+/** 一次切换空间下所有项目的展开状态，不改变顶层任务和空间段的状态。 */
+export function toggleAllWorkspaceGroups(
+	groups: readonly WorkspaceSessionGroup[],
+	openState: Readonly<Record<string, boolean>>,
+): Readonly<Record<string, boolean>> {
+	const allOpen = groups.every(({ workspace }) => openState[workspace.path] ?? true);
+	const nextOpen = !allOpen;
+	return Object.fromEntries(groups.map(({ workspace }) => [workspace.path, nextOpen]));
 }
 
 /** 按显式项目归属分组；没有可用项目路径的任务留在顶层。 */

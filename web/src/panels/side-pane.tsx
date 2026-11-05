@@ -133,7 +133,7 @@ export function SidePane(props: SidePaneProps): ReactElement {
 					<PlaceholderPanel
 						icon={<SquareTerminal className="size-8" />}
 						title="终端面板尚未接入"
-						description="当前版本的内置终端仍在宿主侧运行，界面还没有嵌入交互式终端。"
+						description="当前版本的内置终端仍在 Reins 侧运行，界面还没有嵌入交互式终端。"
 					/>
 				) : (
 					props.children
@@ -241,7 +241,7 @@ function PlaceholderPanel({
 }
 
 function guideDescription(kind: SideTabKind): string {
-	if (kind === "files") return "浏览工作区文件";
+	if (kind === "files") return "浏览项目文件";
 	if (kind === "git") return "查看变更与 diff";
 	if (kind === "skills") return "已发现的技能";
 	if (kind === "plugins") return "已装载插件";

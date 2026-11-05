@@ -40,8 +40,8 @@ export function PanelPage({
 						{actions}
 						<button
 							type="button"
-							aria-label="返回会话"
-							title="返回会话"
+							aria-label="返回任务"
+							title="返回任务"
 							onClick={onClose}
 							className="flex size-7 items-center justify-center rounded-sm text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
 						>
@@ -59,7 +59,7 @@ export function PanelPage({
 								className={cn(
 									"relative -mb-px px-1 pb-2.5 text-[13px] leading-4 font-medium transition-colors",
 									tab.id === activeTab
-										? "text-(--business-blue)"
+										? "text-(--accent)"
 										: "text-foreground-subtlest hover:text-foreground-subtle",
 								)}
 							>
@@ -67,7 +67,7 @@ export function PanelPage({
 								<span
 									className={cn(
 										"absolute inset-x-0 bottom-0 h-0.5 rounded-full",
-										tab.id === activeTab ? "bg-(--business-blue)" : "bg-transparent",
+										tab.id === activeTab ? "bg-(--accent)" : "bg-transparent",
 									)}
 								/>
 							</button>

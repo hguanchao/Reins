@@ -12,7 +12,7 @@ const VARIANTS: Record<ButtonVariant, string> = {
 	ghost: "text-foreground hover:bg-surface-hover",
 	outline: "border border-border bg-transparent text-foreground hover:bg-surface-hover",
 	danger: "bg-destructive text-foreground-inverse hover:opacity-90",
-	link: "text-icon-blue underline-offset-4 hover:underline",
+	link: "text-foreground underline underline-offset-4",
 };
 
 const SIZES: Record<ButtonSize, string> = {

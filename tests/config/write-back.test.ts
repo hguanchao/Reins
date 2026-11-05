@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { parseConfig } from "#src/config/file.ts";
-import { updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
+import {
+	appendMcpServerSection,
+	updateModelSelection,
+	updateUserConfigValue,
+} from "#src/config/write-back.ts";
 
 const directory = mkdtempSync(join(tmpdir(), "reins-write-back-"));
 after(() => rmSync(directory, { recursive: true, force: true }));
@@ -120,5 +124,79 @@ describe("写回模型选择", () => {
 		// 写到根级会让下次加载报「未知键」，整份配置失效
 		assert.doesNotMatch(text, /^trusted =/m);
 		assert.deepEqual(parseConfig(text, file).plugins.trusted, ["/a"]);
+	});
+});
+
+describe("追加 MCP server", () => {
+	it("在已有分段后追加新段，保留注释并能重新加载", () => {
+		const file = join(directory, "mcp.toml");
+		writeFileSync(
+			file,
+			'# 保留这行注释\nprovider = "p"\nmodel = "m"\n\n[mcp_servers.old]\ntype = "stdio"\ncommand = "node"\n',
+			"utf8",
+		);
+
+		appendMcpServerSection(
+			"docs",
+			{ type: "http", url: "https://example.com/mcp", headers: { Authorization: "Bearer demo" } },
+			file,
+		);
+
+		const text = readFileSync(file, "utf8");
+		assert.match(text, /# 保留这行注释/);
+		const config = parseConfig(text, file);
+		assert.deepEqual(
+			config.mcpServers.map((server) => [server.name, server.type, server.url]),
+			[
+				["old", "stdio", undefined],
+				["docs", "http", "https://example.com/mcp"],
+			],
+		);
+	});
+
+	it("配置使用 camelCase 时沿用原表名", () => {
+		const file = join(directory, "mcp-camel.toml");
+		writeFileSync(
+			file,
+			'provider = "p"\nmodel = "m"\n\n[mcpServers.old]\ntype = "http"\nurl = "https://old.example.com"\n',
+			"utf8",
+		);
+
+		appendMcpServerSection("docs", { type: "http", url: "https://example.com/mcp" }, file);
+
+		const text = readFileSync(file, "utf8");
+		assert.doesNotMatch(text, /\[mcp_servers\./);
+		assert.deepEqual(
+			parseConfig(text, file).mcpServers.map((server) => server.name),
+			["old", "docs"],
+		);
+	});
+
+	it("同名 server 与无法扩展的内联表都拒绝写入", () => {
+		const duplicate = join(directory, "mcp-duplicate.toml");
+		writeFileSync(
+			duplicate,
+			'provider = "p"\nmodel = "m"\n\n[mcp_servers.old]\ntype = "http"\nurl = "https://old.example.com"\n',
+			"utf8",
+		);
+		const before = readFileSync(duplicate, "utf8");
+		assert.throws(
+			() => appendMcpServerSection("old", { type: "http", url: "https://new.example.com" }, duplicate),
+			/已存在/,
+		);
+		assert.equal(readFileSync(duplicate, "utf8"), before);
+
+		const inline = join(directory, "mcp-inline.toml");
+		writeFileSync(
+			inline,
+			'provider = "p"\nmodel = "m"\nmcp_servers = { old = { type = "http", url = "https://old.example.com" } }\n',
+			"utf8",
+		);
+		const inlineBefore = readFileSync(inline, "utf8");
+		assert.throws(
+			() => appendMcpServerSection("docs", { type: "http", url: "https://example.com" }, inline),
+			/无法追加 MCP 服务器/,
+		);
+		assert.equal(readFileSync(inline, "utf8"), inlineBefore);
 	});
 });

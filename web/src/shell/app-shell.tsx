@@ -81,6 +81,8 @@ export interface AppShellProps {
 	readonly sidebar: ReactNode;
 	readonly children: ReactNode;
 	readonly rightbar?: ReactNode;
+	/** 被设置页等覆盖时移出焦点与可访问性树，避免 Tab 落回后台界面 */
+	readonly inactive?: boolean;
 	onSidebarWidth(width: number): void;
 	onRightbarWidth(width: number): void;
 	onToggleSidebar(): void;
@@ -108,6 +110,7 @@ export function AppShell({
 	sidebar,
 	children,
 	rightbar,
+	inactive,
 	onSidebarWidth,
 	onRightbarWidth,
 	onToggleSidebar,
@@ -164,7 +167,11 @@ export function AppShell({
 	const rightbarBase = useRef(0);
 
 	return (
-		<div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-sidebar">
+		<div
+			inert={inactive || undefined}
+			aria-hidden={inactive || undefined}
+			className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-sidebar"
+		>
 			{hasCaption ? (
 				<CaptionBar
 					sidebarCollapsed={sidebarCollapsed}

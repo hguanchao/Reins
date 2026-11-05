@@ -92,10 +92,10 @@ export function CommandPalette({
 	const items = useMemo<readonly PaletteItem[]>(() => {
 		const needle = query.trim().toLowerCase();
 		const allCommands: PaletteItem[] = [
-			{ key: "new", kind: "command", label: "新任务", hint: "Ctrl N", icon: MessageCirclePlus, run: onNewTask },
+			{ key: "new", kind: "command", label: "新建任务", hint: "Ctrl N", icon: MessageCirclePlus, run: onNewTask },
 			{ key: "settings", kind: "command", label: "打开设置", icon: Settings2, run: onSettings },
 			{ key: "theme", kind: "command", label: "切换主题", icon: Sun, run: onToggleTheme },
-			{ key: "side", kind: "command", label: "开合侧面板", icon: PanelRight, run: onToggleSidePane },
+			{ key: "side", kind: "command", label: "显示/隐藏侧面板", icon: PanelRight, run: onToggleSidePane },
 			{ key: "compact", kind: "command", label: "压缩上下文", icon: Square, run: onCompact },
 		];
 		const commands = allCommands.filter(
@@ -188,7 +188,7 @@ export function CommandPalette({
 							setIndex(0);
 						}}
 						onKeyDown={onKeyDown}
-						placeholder="搜索命令、会话或文件…"
+						placeholder="搜索命令、任务或文件…"
 						className="min-w-0 flex-1 bg-transparent text-ui-base text-foreground outline-none placeholder:text-foreground-subtlest"
 						aria-label="命令面板搜索"
 					/>
@@ -221,7 +221,7 @@ export function CommandPalette({
 										<span className="shrink-0 text-ui-xs text-foreground-subtlest">{item.hint}</span>
 									)}
 									<span className="shrink-0 text-ui-xs text-foreground-subtlest">
-										{item.kind === "command" ? "命令" : item.kind === "session" ? "会话" : "文件"}
+										{item.kind === "command" ? "命令" : item.kind === "session" ? "任务" : "文件"}
 									</span>
 								</button>
 							);

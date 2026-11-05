@@ -38,3 +38,31 @@ export function formatCost(value: number | undefined): string | undefined {
 	if (value === undefined) return undefined;
 	return `$${value < 0.01 ? value.toFixed(6) : value.toFixed(4)}`;
 }
+
+/** 插件实现形态的内部值不该原样展示给使用者。 */
+export function pluginKindLabel(kind: string): string {
+	switch (kind) {
+		case "dsh":
+			return "DSH 兼容";
+		case "pi":
+			return "Pi 兼容";
+		case "declarative":
+			return "声明式";
+		default:
+			return kind;
+	}
+}
+
+/** 沙箱模式配置值的中文名。 */
+export function sandboxLabel(mode: string): string {
+	switch (mode) {
+		case "off":
+			return "关闭";
+		case "workspace":
+			return "仅工作区";
+		case "read-only":
+			return "只读";
+		default:
+			return mode;
+	}
+}

@@ -41,11 +41,14 @@ export type McpToolSink = (tool: AnyToolDefinition) => void;
  * 运行期的 MCP 管理动作。
  *
  * 「重连一个 server」「检查全部连接」面向 /mcps 页；「等待启动收口」面向首条消息——
- * 仍在握手的 server 给一个限时窗口，超时照常放行。新增或删除 server 仍然要改配置并重启。
+ * 仍在握手的 server 给一个限时窗口，超时照常放行。新增 server 可以在运行中接入；
+ * 删除仍要改配置并重启。
  */
 export interface McpControl {
 	reconnect(name: string): Promise<string>;
 	healthCheck(): Promise<readonly string[]>;
+	/** 运行中接入一个新的 server；同名 server 会被拒绝 */
+	addServer(server: McpServerConfig): void;
 	/** 限时等待全部 server 脱离 connecting；整个进程只等第一次，之后直接放行。 */
 	awaitStartup(): Promise<void>;
 }
@@ -408,6 +411,21 @@ export function startMcpServers(options: McpServiceOptions): McpStatusSource {
 			return connection.reconnect();
 		},
 		healthCheck: async () => Promise.all(connections.map((connection) => connection.healthCheck())),
+		addServer: (server) => {
+			if (connections.some((connection) => connection.name === server.name)) {
+				throw new Error(`MCP server already exists: ${server.name}`);
+			}
+			const connection = new McpConnection(
+				server,
+				options.cwd,
+				options.version,
+				options.unregisterTool,
+				options.transportFactory,
+			);
+			connections.push(connection);
+			// 与启动时一致：后台连接，连不上只影响这个 server 的状态
+			void connection.start(options.registerTool);
+		},
 		awaitStartup,
 	});
 

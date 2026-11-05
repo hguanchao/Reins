@@ -4,8 +4,9 @@ import { dirname } from "node:path";
 import { describeError } from "#src/shared/describe-error.ts";
 import { ConfigError } from "#src/config/error.ts";
 import { configFilePath } from "#src/config/paths.ts";
+import { serializeKey, serializeValue } from "#src/config/toml/serialize.ts";
 import { TomlDocument } from "#src/config/toml/index.ts";
-import type { ConfigValue } from "#src/config/value.ts";
+import type { ConfigTable, ConfigValue } from "#src/config/value.ts";
 
 /**
  * 用户级配置的定点回写。
@@ -63,7 +64,7 @@ function mutateUserConfig(file: string, mutate: (document: TomlDocument) => void
 		hasBom = source.startsWith("\uFEFF");
 		document = new TomlDocument(hasBom ? source.slice(1) : source);
 	} catch (error) {
-		throw new ConfigError(`Cannot read config: ${describeError(error)}`, { file });
+		throw new ConfigError(`无法读取配置：${describeError(error)}`, { file });
 	}
 
 	try {
@@ -80,7 +81,58 @@ function mutateUserConfig(file: string, mutate: (document: TomlDocument) => void
 			throw error;
 		}
 	} catch (error) {
-		throw new ConfigError(`Cannot write config: ${describeError(error)}`, { file });
+		throw new ConfigError(`无法写入配置：${describeError(error)}`, { file });
+	}
+}
+
+/**
+ * 追加一个 MCP server 段。
+ *
+ * MCP server 在配置里是以名字为键的表，已有 `[mcp_servers.old]` 段时定点写入新键会被
+ * 文档模型拒绝，因此这里直接追加一个完整段，保留原有注释与排版。新文本先解析一遍：
+ * `mcp_servers` 写成内联表时不能再扩展成分节，这种情况要报错而不是留下坏配置。
+ */
+export function appendMcpServerSection(
+	name: string,
+	values: Readonly<ConfigTable>,
+	file: string = configFilePath(),
+): void {
+	const source = existsSync(file) ? readFileSync(file, "utf8") : "";
+	const hasBom = source.startsWith("\uFEFF");
+	const body = hasBom ? source.slice(1) : source;
+	const document = new TomlDocument(body);
+	const tableName =
+		document.get(["mcp_servers"]) !== undefined
+			? "mcp_servers"
+			: document.get(["mcpServers"]) !== undefined
+				? "mcpServers"
+				: "mcp_servers";
+	if (document.get([tableName, name]) !== undefined) {
+		throw new ConfigError(`MCP 服务器 ${name} 已存在`, { file });
+	}
+
+	const lines = [
+		`[${serializeKey(tableName)}.${serializeKey(name)}]`,
+		...Object.entries(values).map(
+			([key, value]) => `${serializeKey(key)} = ${serializeValue(value)}`,
+		),
+	];
+	const separator = body.length === 0 ? "" : body.endsWith("\n") ? "\n" : "\n\n";
+	const next = `${body}${separator}${lines.join("\n")}\n`;
+	try {
+		new TomlDocument(next);
+	} catch (error) {
+		throw new ConfigError(`无法追加 MCP 服务器：${describeError(error)}`, { file });
+	}
+
+	mkdirSync(dirname(file), { recursive: true });
+	const temporary = `${file}.${process.pid}.tmp`;
+	try {
+		writeFileSync(temporary, hasBom ? `\uFEFF${next}` : next, "utf8");
+		renameSync(temporary, file);
+	} catch (error) {
+		rmSync(temporary, { force: true });
+		throw new ConfigError(`无法写入配置：${describeError(error)}`, { file });
 	}
 }
 

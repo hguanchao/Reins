@@ -50,12 +50,15 @@ export function Menu({
 	align = "end",
 	className,
 	wrapperClassName,
+	zIndex,
 }: {
 	readonly trigger: (state: { readonly open: boolean; toggle(): void }) => ReactNode;
 	readonly entries: readonly MenuEntry[];
 	readonly align?: "start" | "end";
 	readonly className?: string;
 	readonly wrapperClassName?: string;
+	/** 面板与点击遮罩的层级；放在设置页等高层容器里时由调用方抬高 */
+	readonly zIndex?: number;
 }): ReactElement {
 	const [open, setOpen] = useState(false);
 	const [position, setPosition] = useState<PanelPosition | undefined>(undefined);
@@ -118,12 +121,21 @@ export function Menu({
 	};
 
 	return (
-		<div ref={triggerRef} className={cn("relative inline-flex", wrapperClassName)}>
+		<div
+			ref={triggerRef}
+			data-menu-open={open || undefined}
+			className={cn("relative inline-flex", wrapperClassName)}
+		>
 			{trigger({ open, toggle: () => setOpen((value) => !value) })}
 			{open
 				? createPortal(
 						<>
-							<div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
+							<div
+								className="fixed inset-0 z-40"
+								style={zIndex === undefined ? undefined : { zIndex }}
+								aria-hidden="true"
+								onClick={() => setOpen(false)}
+							/>
 							<div
 								ref={panelRef}
 								role="menu"
@@ -135,6 +147,7 @@ export function Menu({
 									left: position?.left,
 									right: position?.right,
 									maxHeight: position?.maxHeight,
+									...(zIndex === undefined ? {} : { zIndex: zIndex + 1 }),
 								}}
 									className={cn(
 										"menu-material z-50 min-w-52 overflow-y-auto rounded-[16px] p-1 animate-pop",

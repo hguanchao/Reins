@@ -96,6 +96,7 @@ export interface SkillInfo {
 export interface PluginInfo {
 	name: string;
 	kind: string;
+	disabled: boolean;
 }
 
 export interface ModelCost {
@@ -117,6 +118,74 @@ export interface SettingsModel {
 	cost: ModelCost | undefined;
 }
 
+export type ModelModality = "text" | "image";
+
+/** 提供方编辑用的完整模型声明；高级字段原样保留，表单只改常用项。 */
+export interface ProviderModel {
+	id: string;
+	name: string;
+	api: string;
+	baseUrl: string;
+	reasoning: boolean;
+	thinkingLevelMap: Partial<Record<ThinkingLevel, string | null>>;
+	input: readonly ModelModality[];
+	cost?: ModelCost;
+	contextWindow?: number;
+	maxTokens?: number;
+	maxTokensField: "max_tokens" | "max_completion_tokens";
+	headers: Record<string, string>;
+}
+
+export interface ProviderView {
+	id: string;
+	name: string;
+	baseUrl?: string;
+	api?: string;
+	hasApiKey: boolean;
+	headers: Record<string, string>;
+	promptCacheKey: boolean;
+	models: readonly ProviderModel[];
+}
+
+export interface ProviderInput {
+	id: string;
+	name: string;
+	baseUrl?: string;
+	api?: string;
+	apiKey?: string;
+	headers?: Record<string, string>;
+	promptCacheKey?: boolean;
+	models: readonly ProviderModel[];
+}
+
+/** 个性化指令：正文保存在用户级规则文件里，下一回合生效。 */
+export interface PersonalizationSnapshot {
+	path: string;
+	text: string;
+	bytes: number;
+	maxBytes: number;
+}
+
+/** 新建用户级技能的表单。 */
+export interface SkillInput {
+	name: string;
+	description: string;
+	content: string;
+}
+
+export type McpServerType = "stdio" | "http" | "sse";
+
+/** 新增 MCP server 的表单；stdio 用 command/args/env，http 与 sse 用 url/headers。 */
+export interface McpServerInput {
+	name: string;
+	type: McpServerType;
+	command?: string;
+	args?: readonly string[];
+	url?: string;
+	headers?: Readonly<Record<string, string>>;
+	env?: Readonly<Record<string, string>>;
+}
+
 export interface SettingsSnapshot {
 	version: string;
 	configPath: string;
@@ -132,7 +201,7 @@ export interface SettingsSnapshot {
 	reviewModel: string | undefined;
 	models: readonly SettingsModel[];
 	mcpServers: readonly { name: string; type: string; disabled: boolean }[];
-	plugins: readonly { name: string; kind: string }[];
+	plugins: readonly { name: string; kind: string; disabled: boolean }[];
 	skills: readonly { name: string; description: string; path: string }[];
 }
 

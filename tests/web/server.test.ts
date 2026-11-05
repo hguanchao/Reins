@@ -24,6 +24,7 @@ interface FakeState {
 	entries: readonly unknown[];
 	listeners: Set<(event: unknown) => void>;
 	emit(event: unknown): void;
+	personalizationText: string;
 }
 
 function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state: FakeState } {
@@ -39,6 +40,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		emit(event) {
 			for (const listener of state.listeners) listener(event);
 		},
+		personalizationText: "keep answers short",
 	};
 	const deps: WebServerDeps = {
 		snapshot: () => ({
@@ -85,7 +87,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		archiveSessions: (ids) => ids.length,
 		restoreSessions: (ids) => ids.length,
 		skills: () => [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
-		plugins: () => [{ name: "demo", kind: "declarative" }],
+		plugins: () => [{ name: "demo", kind: "declarative", disabled: false }],
 		settings: () => ({
 			version: "1.0.0",
 			configPath: "/config.toml",
@@ -105,6 +107,23 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 			skills: [],
 		}),
 		applySettings: () => ({ ok: true }),
+		personalization: () => ({
+			path: "/home/.reins/AGENTS.md",
+			text: state.personalizationText,
+			bytes: Buffer.byteLength(state.personalizationText, "utf8"),
+			maxBytes: 32 * 1024,
+		}),
+		savePersonalization: (text) => {
+			if (text.length > 100) return { ok: false, error: "too long" };
+			state.personalizationText = text;
+			return { ok: true };
+		},
+		createSkill: (body) => ({ ok: typeof body["name"] === "string" }),
+		uploadSkill: (body) => ({ ok: typeof body["content"] === "string" }),
+		providers: () => [],
+		saveProvider: async (body) => ({ ok: typeof body["provider"] === "object" }),
+		deleteProvider: async (body) => ({ ok: typeof body["id"] === "string" }),
+		addMcpServer: async (body) => ({ ok: typeof body["name"] === "string" }),
 		fileTree: () => ({ path: "", entries: [] }),
 		fileRead: () => ({
 			path: "a.txt",
@@ -447,6 +466,87 @@ describe("web 传输层", () => {
 			body: JSON.stringify({ sandbox: "off" }),
 		});
 		assert.equal(invalidUpdate.status, 400);
+
+		const personalization = await fetch(`${base}/api/personalization`, {
+			headers: { "x-reins-token": TOKEN },
+		});
+		assert.equal(personalization.status, 200);
+		assert.equal(((await personalization.json()) as { text: string }).text, "keep answers short");
+		const saved = await fetch(`${base}/api/personalization`, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ text: "answer in Chinese" }),
+		});
+		assert.equal(saved.status, 200);
+		assert.equal(((await saved.json()) as { text: string }).text, "answer in Chinese");
+		const missingText = await fetch(`${base}/api/personalization`, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(missingText.status, 400);
+		const tooLong = await fetch(`${base}/api/personalization`, {
+			method: "PUT",
+			headers,
+			body: JSON.stringify({ text: "x".repeat(101) }),
+		});
+		assert.equal(tooLong.status, 400);
+
+		const skill = await fetch(`${base}/api/skills`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "writer", description: "写文档", content: "写清楚" }),
+		});
+		assert.equal(skill.status, 200);
+		const invalidSkill = await fetch(`${base}/api/skills`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidSkill.status, 400);
+
+		const upload = await fetch(`${base}/api/skills/upload`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ content: "---\nname: uploaded\ndescription: 上传\n---\n正文" }),
+		});
+		assert.equal(upload.status, 200);
+		const invalidUpload = await fetch(`${base}/api/skills/upload`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidUpload.status, 400);
+
+		const mcp = await fetch(`${base}/api/mcp-servers`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "docs", type: "http", url: "https://example.com/mcp" }),
+		});
+		assert.equal(mcp.status, 200);
+		const invalidMcp = await fetch(`${base}/api/mcp-servers`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidMcp.status, 400);
+
+		const providers = await fetch(`${base}/api/providers`, {
+			headers: { "x-reins-token": TOKEN },
+		});
+		assert.deepEqual(await providers.json(), []);
+		const savedProvider = await fetch(`${base}/api/providers`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ provider: { id: "p1" } }),
+		});
+		assert.equal(savedProvider.status, 200);
+		const deletedProvider = await fetch(`${base}/api/providers/delete`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ id: "p1" }),
+		});
+		assert.equal(deletedProvider.status, 200);
 
 		const plan = await fetch(`${base}/api/plan-mode`, {
 			method: "POST",

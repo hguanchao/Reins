@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { SessionSummary } from "#web/protocol.ts";
-import { buildSessionRows, sidebarSectionVisibility } from "#web/shell/session-tree.ts";
+import { buildSessionRows, sidebarSectionVisibility, toggleAllWorkspaceGroups } from "#web/shell/session-tree.ts";
 
 const sessions: readonly SessionSummary[] = [
 	{ id: "a", title: "修复登录", updatedAt: "2026-11-03T10:00:00.000Z" },
@@ -33,8 +33,8 @@ describe("会话列表投影", () => {
 		assert.equal(list[1]?.title, "修复登录");
 	});
 
-	it("没有标题的会话显示为新会话", () => {
-		assert.equal(rows()[1]?.title, "新会话");
+	it("没有标题的会话显示为新任务", () => {
+		assert.equal(rows()[1]?.title, "新任务");
 	});
 
 	it("搜索忽略大小写，只匹配标题", () => {
@@ -61,7 +61,7 @@ describe("当前会话补行", () => {
 			list.map((row) => row.id),
 			["outside", "a", "b", "c"],
 		);
-		assert.equal(list[0]?.title, "新会话");
+		assert.equal(list[0]?.title, "新任务");
 	});
 
 	it("当前会话已在清单里时不重复补行", () => {
@@ -89,5 +89,29 @@ describe("分组可见性", () => {
 
 	it("搜索时两段强制展开，命中的会话不会被藏进折叠里", () => {
 		assert.deepEqual(sidebarSectionVisibility(true, false, false), { tasks: true, spaces: true });
+	});
+});
+
+describe("空间项目分组折叠", () => {
+	const groups = [
+		{ workspace: { path: "/项目/a", name: "项目 A" }, rows: [] },
+		{ workspace: { path: "/项目/b", name: "项目 B" }, rows: [] },
+	] as const;
+
+	it("全部展开时只收起空间下的所有项目", () => {
+		assert.deepEqual(toggleAllWorkspaceGroups(groups, {}), {
+			"/项目/a": false,
+			"/项目/b": false,
+		});
+	});
+
+	it("存在已收起项目时一次展开所有项目", () => {
+		assert.deepEqual(
+			toggleAllWorkspaceGroups(groups, { "/项目/a": false, "/项目/b": true }),
+			{
+				"/项目/a": true,
+				"/项目/b": true,
+			},
+		);
 	});
 });

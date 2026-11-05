@@ -1,7 +1,9 @@
 import { Blocks, Plus, Store } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
-import { Button, Menu } from "../components/ui/index.ts";
+import { Button, Menu, toast } from "../components/ui/index.ts";
+import { pluginKindLabel } from "../lib/format.ts";
+import { desktopBridge } from "../platform.ts";
 import type { PluginInfo } from "../protocol.ts";
 import { PanelPage } from "../shell/panel-page.tsx";
 
@@ -16,12 +18,45 @@ export function PluginsPage({
 	const [tab, setTab] = useState("installed");
 	const [selected, setSelected] = useState<PluginInfo | undefined>(undefined);
 	const [detailTab, setDetailTab] = useState("overview");
+	const bridge = desktopBridge();
+
+	const installPlugin = (): void => {
+		if (bridge === undefined) return;
+		void bridge
+			.installPlugin()
+			.then((result) => {
+				if (!result.ok) {
+					if (result.error !== "已取消") toast(result.error ?? "安装插件失败", "error");
+					return;
+				}
+				toast(`插件 ${result.name ?? ""} 已安装，正在重启 Reins…`);
+			})
+			.catch((cause: unknown) =>
+				toast(cause instanceof Error ? cause.message : String(cause), "error"),
+			);
+	};
+
+	const togglePlugin = (plugin: PluginInfo): void => {
+		if (bridge === undefined) return;
+		void bridge
+			.togglePlugin(plugin.name, !plugin.disabled)
+			.then((result) => {
+				if (!result.ok) {
+					toast(result.error ?? "更新插件状态失败", "error");
+					return;
+				}
+				toast(plugin.disabled ? "插件已启用，正在重启 Reins…" : "插件已禁用，正在重启 Reins…");
+			})
+			.catch((cause: unknown) =>
+				toast(cause instanceof Error ? cause.message : String(cause), "error"),
+			);
+	};
 
 	if (selected !== undefined) {
 		return (
 			<PanelPage
 				title={selected.name}
-				description={`插件类型：${selected.kind}`}
+				description={`插件类型：${pluginKindLabel(selected.kind)}`}
 				onClose={onClose}
 				tabs={[
 					{ id: "overview", label: "概览" },
@@ -50,25 +85,37 @@ export function PluginsPage({
 							<div className="min-w-0 flex-1">
 								<div className="text-[14px] leading-[22px] font-medium">{selected.name}</div>
 								<div className="mt-1 flex items-center gap-1.5 text-[12px] leading-[18px] text-foreground-subtlest">
-									<span className="size-1.5 rounded-full bg-success" />
-									已启用
+									<span
+										className={
+											selected.disabled
+												? "size-1.5 rounded-full bg-foreground-subtlest"
+												: "size-1.5 rounded-full bg-success"
+										}
+									/>
+									{selected.disabled ? "已禁用" : "已启用"}
 								</div>
 							</div>
-							<Button variant="outline" size="sm" className="h-7 rounded-sm px-3 text-[12px]" disabled>
-								停用
+							<Button
+								variant="outline"
+								size="sm"
+								className="h-7 rounded-sm px-3 text-[12px]"
+								disabled={bridge === undefined}
+								onClick={() => togglePlugin(selected)}
+							>
+								{selected.disabled ? "启用" : "停用"}
 							</Button>
 						</div>
 						<PluginInfoRow label="标识" value={selected.name} />
-						<PluginInfoRow label="类型" value={selected.kind} />
-						<PluginInfoRow label="来源" value="宿主进程内注册" />
+						<PluginInfoRow label="类型" value={pluginKindLabel(selected.kind)} />
+						<PluginInfoRow label="来源" value="Reins 进程内注册" />
 						<p className="m-0 pt-2 text-[12px] leading-[18px] text-foreground-subtlest">
-							插件的配置表单、启停与卸载尚未接入；当前展示宿主已装载的注册信息。
+							配置表单与日志尚未接入；启停可在这里操作，卸载在扩展管理中。
 						</p>
 					</div>
 				) : detailTab === "config" ? (
-					<PlaceholderCard title="配置表单尚未接入" text="插件没有声明可视化配置项，当前只读取宿主装载状态。" />
+					<PlaceholderCard title="配置表单尚未接入" text="插件没有声明可视化配置项，当前只读取 Reins 装载状态。" />
 				) : (
-					<PlaceholderCard title="插件日志尚未接入" text="宿主还没有把插件运行日志转发到界面。" />
+					<PlaceholderCard title="插件日志尚未接入" text="Reins 还没有把插件运行日志转发到界面。" />
 				)}
 			</PanelPage>
 		);
@@ -95,9 +142,15 @@ export function PluginsPage({
 						</Button>
 					)}
 					entries={[
-						{ type: "label", label: "尚未接入" },
+						{ type: "label", label: "安装来源" },
 						{ type: "item", key: "market", label: "从插件市场安装", disabled: true, onSelect: () => {} },
-						{ type: "item", key: "local", label: "从本地安装", disabled: true, onSelect: () => {} },
+						{
+							type: "item",
+							key: "local",
+							label: bridge === undefined ? "从本地安装（桌面端可用）" : "从本地安装",
+							disabled: bridge === undefined,
+							onSelect: installPlugin,
+						},
 						{ type: "item", key: "author", label: "创建插件包", disabled: true, onSelect: () => {} },
 					]}
 				/>
@@ -127,12 +180,18 @@ export function PluginsPage({
 											{plugin.name}
 										</span>
 										<span className="shrink-0 rounded-xs border-[0.5px] border-border px-1.5 text-[11px] leading-4 text-foreground-subtle">
-											{plugin.kind}
+											{pluginKindLabel(plugin.kind)}
 										</span>
 									</div>
 									<div className="mt-1 flex items-center gap-1.5 text-[12px] leading-[18px] text-foreground-subtlest">
-										<span className="size-1.5 rounded-full bg-success" />
-										已启用
+										<span
+											className={
+												plugin.disabled
+													? "size-1.5 rounded-full bg-foreground-subtlest"
+													: "size-1.5 rounded-full bg-success"
+											}
+										/>
+										{plugin.disabled ? "已禁用" : "已启用"}
 									</div>
 								</div>
 							</button>
@@ -144,7 +203,7 @@ export function PluginsPage({
 					<Store className="size-10 text-foreground-subtlest" />
 					<div className="text-[14px] leading-[22px] font-medium">插件市场尚未接入</div>
 					<p className="m-0 max-w-[380px] text-[13px] leading-5 text-foreground-subtlest">
-						当前版本只展示已经装载的插件。市场检索、安装与版本更新需要宿主侧的插件仓库支持。
+						当前版本只展示已经装载的插件；桌面端可以从本地安装。市场检索、安装与版本更新需要 Reins 提供插件仓库支持。
 					</p>
 				</div>
 			)}

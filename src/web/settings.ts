@@ -44,7 +44,7 @@ export interface SettingsSnapshot {
 	readonly reviewModel: string | undefined;
 	readonly models: readonly SettingsModel[];
 	readonly mcpServers: readonly { readonly name: string; readonly type: string; readonly disabled: boolean }[];
-	readonly plugins: readonly { readonly name: string; readonly kind: string }[];
+	readonly plugins: readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
 	readonly skills: readonly { readonly name: string; readonly description: string; readonly path: string }[];
 }
 
@@ -67,7 +67,7 @@ export function describeSettings(input: {
 	readonly selection: ModelSelection;
 	readonly providers: readonly ProviderEntry[];
 	readonly mcpServers: readonly { readonly name: string; readonly type: string; readonly disabled: boolean }[];
-	readonly plugins: readonly { readonly name: string; readonly kind: string }[];
+	readonly plugins: readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
 	readonly skills: readonly { readonly name: string; readonly description: string; readonly path: string }[];
 }): SettingsSnapshot {
 	return {

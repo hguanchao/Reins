@@ -1,7 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { configFilePath, pluginsDir } from "#src/config/paths.ts";
+import { updateUserConfigValue } from "#src/config/write-back.ts";
+import { withPluginDisabled } from "#src/plugins/disabled.ts";
+import { scanDeclarativePlugins } from "#src/plugins/declarative.ts";
 import { parseReadyLine } from "#src/web/ready-line.ts";
 import {
 	canonicalWorkspacePath,
@@ -98,10 +102,10 @@ function resolveStartupWorkspace(): string {
 /** 界面里的「打开工作区」只负责选目录；重启服务与换页由调用方完成。 */
 async function chooseWorkspace(window: BrowserWindow): Promise<string | undefined> {
 	const result = await dialog.showOpenDialog(window, {
-		title: "打开工作区",
+		title: "选择项目",
 		defaultPath: lastWorkspace(),
 		properties: ["openDirectory", "createDirectory"],
-		buttonLabel: "打开",
+		buttonLabel: "选择",
 	});
 	const picked = result.filePaths[0];
 	return picked !== undefined && isDirectory(picked) ? picked : undefined;
@@ -245,7 +249,7 @@ const attachServer = (handle: ServerHandle): void => {
 			// 切换工作区时旧进程会被主动结束，它的退出不该被当成崩溃
 			if (generation !== serverGeneration) return;
 			if (!window.isDestroyed()) {
-				dialog.showErrorBox("Reins 已退出", `服务进程结束(exit ${code ?? "unknown"})。`);
+				dialog.showErrorBox("Reins 已退出", `服务进程已结束（退出码 ${code ?? "未知"}）。`);
 			}
 			app.quit();
 		});
@@ -273,6 +277,26 @@ const attachServer = (handle: ServerHandle): void => {
 		}
 	};
 
+	/** 插件写盘后重启服务：先让 IPC 响应回到界面，再整页重载。 */
+	const restartSoon = (failureTitle: string): void => {
+		setTimeout(() => {
+			void restartServer(workspacePath ?? process.cwd(), {}, failureTitle);
+		}, 700);
+	};
+
+	const setPluginDisabled = (name: string, disabled: boolean): void => {
+		updateUserConfigValue(
+			["plugins", "disabled"],
+			(current) => {
+				const list = Array.isArray(current)
+					? current.filter((item): item is string => typeof item === "string")
+					: [];
+				return [...withPluginDisabled(list, name, disabled)];
+			},
+			configFilePath(),
+		);
+	};
+
 	window.on("closed", () => {
 		// 窗口是壳的唯一出口:关窗即收摊,服务进程跟着退
 		server?.child.kill();
@@ -293,7 +317,7 @@ const attachServer = (handle: ServerHandle): void => {
 		if (picked === undefined) return false;
 		const wasVisible = registeredWorkspace(picked) !== undefined;
 		const canonical = registerWorkspace(picked);
-		const opened = await restartServer(canonical, {}, "切换工作区失败");
+		const opened = await restartServer(canonical, {}, "切换项目失败");
 		if (!opened && !wasVisible) unregisterWorkspace(canonical);
 		return opened;
 	});
@@ -338,6 +362,79 @@ const attachServer = (handle: ServerHandle): void => {
 			return false;
 		}
 		return writeWorkspaceName(workspaceNamesFile(), path, name);
+	});
+
+	// 插件管理：本地安装、启停与卸载。写盘后重启服务，让插件宿主重新装载。
+	ipcMain.handle("plugins:install", async () => {
+		const picked = await dialog.showOpenDialog(window, {
+			title: "安装本地插件",
+			properties: ["openDirectory"],
+			buttonLabel: "安装",
+		});
+		const source = picked.filePaths[0];
+		if (picked.canceled || source === undefined) return { ok: false, error: "已取消" };
+		const entry = basename(source);
+		if (entry.length === 0) return { ok: false, error: "请选择插件目录" };
+		const target = join(pluginsDir(), entry);
+		if (existsSync(target)) return { ok: false, error: "同名插件目录已存在" };
+		try {
+			mkdirSync(pluginsDir(), { recursive: true });
+			cpSync(source, target, {
+				recursive: true,
+				filter: (path) => {
+					const name = basename(path);
+					return name !== "node_modules" && name !== ".git";
+				},
+			});
+			const scan = scanDeclarativePlugins(pluginsDir());
+			const plugin = scan.plugins.find((item) => item.root === target);
+			if (plugin === undefined) {
+				rmSync(target, { recursive: true, force: true });
+				return { ok: false, error: "这个目录不是有效的声明式插件（缺少 plugin.json 等清单）" };
+			}
+			restartSoon("安装插件后重启失败");
+			return { ok: true, name: plugin.name };
+		} catch (error) {
+			rmSync(target, { recursive: true, force: true });
+			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+		}
+	});
+
+	ipcMain.handle("plugins:toggle", (_event, name: unknown, disabled: unknown) => {
+		if (typeof name !== "string" || name.length === 0 || typeof disabled !== "boolean") {
+			return { ok: false, error: "参数无效" };
+		}
+		const scan = scanDeclarativePlugins(pluginsDir());
+		if (!scan.plugins.some((plugin) => plugin.name === name)) {
+			return { ok: false, error: "插件不存在" };
+		}
+		try {
+			setPluginDisabled(name, disabled);
+			restartSoon("更新插件状态后重启失败");
+			return { ok: true };
+		} catch (error) {
+			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+		}
+	});
+
+	ipcMain.handle("plugins:uninstall", (_event, name: unknown) => {
+		if (typeof name !== "string" || name.length === 0) return { ok: false, error: "参数无效" };
+		const directory = pluginsDir();
+		const plugin = scanDeclarativePlugins(directory).plugins.find((item) => item.name === name);
+		const safeName = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name);
+		const codeFile = join(directory, `${name}.ts`);
+		if (plugin === undefined && !(safeName && existsSync(codeFile))) {
+			return { ok: false, error: "插件不存在" };
+		}
+		try {
+			if (plugin !== undefined) rmSync(plugin.root, { recursive: true, force: true });
+			else rmSync(codeFile, { force: true });
+			setPluginDisabled(name, false);
+			restartSoon("卸载插件后重启失败");
+			return { ok: true };
+		} catch (error) {
+			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+		}
 	});
 
 	await window.loadURL(LOADING_PAGE);

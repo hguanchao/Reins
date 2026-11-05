@@ -30,7 +30,7 @@ import { cn } from "../components/ui/cn.ts";
 import { relativeTime } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
 import type { SessionSummary, WorkspaceSummary } from "../protocol.ts";
-import { buildSessionGroups, sidebarSectionVisibility, type SessionRow } from "./session-tree.ts";
+import { buildSessionGroups, sidebarSectionVisibility, toggleAllWorkspaceGroups, type SessionRow } from "./session-tree.ts";
 
 export type GlobalPanelId = "plugins" | "schedules";
 
@@ -91,13 +91,9 @@ export function Sidebar(props: SidebarProps): ReactElement {
 	}, [props.searchOpen]);
 
 	const sectionOpen = sidebarSectionVisibility(query.trim().length > 0, tasksOpen, spacesOpen);
-	const allWorkspacesOpen = groups.workspaces.every(({ workspace }) => workspaceOpen[workspace.path] ?? true);
-	const allOpen = sectionOpen.tasks && sectionOpen.spaces && allWorkspacesOpen;
-	const toggleAllSections = (): void => {
-		const open = !allOpen;
-		setTasksOpen(open);
-		setSpacesOpen(open);
-		setWorkspaceOpen(Object.fromEntries(groups.workspaces.map(({ workspace }) => [workspace.path, open])));
+	const allWorkspaceGroupsOpen = groups.workspaces.every(({ workspace }) => workspaceOpen[workspace.path] ?? true);
+	const onToggleAllWorkspaceGroups = (): void => {
+		setWorkspaceOpen((current) => toggleAllWorkspaceGroups(groups.workspaces, current));
 	};
 	// 工作区「更多」菜单里的重命名弹窗
 	const [workspaceRename, setWorkspaceRename] = useState<WorkspaceSummary | undefined>(undefined);
@@ -195,7 +191,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 	return (
 		<aside className="flex h-full min-h-0 flex-col overflow-hidden bg-sidebar px-3 pt-1.5 pb-1.5 text-foreground">
 			<div className="flex h-10 shrink-0 items-center gap-2 pl-1">
-				<BrandMark size={24} className="text-foreground" />
+				<BrandMark size={24} />
 				<span className="min-w-0 truncate text-[18px] leading-6 font-semibold tracking-[0.04em]">Reins</span>
 				{props.version.length === 0 ? null : (
 					<span className="ml-auto shrink-0 font-mono text-[10px] leading-4 text-foreground-subtlest">
@@ -242,8 +238,8 @@ export function Sidebar(props: SidebarProps): ReactElement {
 									setQuery("");
 									props.onSearchOpenChange(false);
 								}}
-								placeholder="搜索会话"
-								aria-label="搜索会话"
+								placeholder="搜索任务"
+								aria-label="搜索任务"
 								className="min-w-0 flex-1 bg-transparent px-1 text-[13px] leading-[18px] outline-none placeholder:text-foreground-subtlest"
 							/>
 							<button
@@ -267,12 +263,9 @@ export function Sidebar(props: SidebarProps): ReactElement {
 						count={rows.length}
 						open={sectionOpen.tasks}
 						onToggle={() => setTasksOpen((value) => !value)}
-							addLabel="新建任务"
-							addIcon={<MessageSquarePlus className="size-3.5" />}
-							onAdd={() => props.onNewSession(null)}
 					/>
 					<div className="sidebar-section-motion" data-open={sectionOpen.tasks || undefined}>
-						<div className="sidebar-section-content">{renderRows(rows, query.length > 0 ? "没有匹配的会话" : "暂无未绑定任务")}</div>
+						<div className="sidebar-section-content">{renderRows(rows, query.length > 0 ? "没有匹配的任务" : "暂无任务")}</div>
 					</div>
 
 					<SectionHeader
@@ -280,21 +273,21 @@ export function Sidebar(props: SidebarProps): ReactElement {
 						count={props.workspaces.length}
 						open={sectionOpen.spaces}
 						onToggle={() => setSpacesOpen((value) => !value)}
-						addLabel="添加工作区"
+						addLabel="添加项目"
 						onAdd={() => {
 							void bridge?.chooseWorkspace();
 						}}
 						addDisabled={bridge === undefined}
-						trailing={
-							/* 折叠所有分组：与「+」同款 hover 显隐 */
+						action={
+							/* 折叠空间下所有项目：排在添加按钮之前，与「+」同款 hover 显隐 */
 							<button
 								type="button"
-								aria-label={allOpen ? "收起所有分组" : "展开所有分组"}
-								title={allOpen ? "收起所有分组" : "展开所有分组"}
-								onClick={toggleAllSections}
-								className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtlest opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground group-hover/section:opacity-100 group-focus-within/section:opacity-100"
+								aria-label={allWorkspaceGroupsOpen ? "收起所有分组" : "展开所有分组"}
+								title={allWorkspaceGroupsOpen ? "收起所有分组" : "展开所有分组"}
+								onClick={onToggleAllWorkspaceGroups}
+								className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtlest opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground group-hover/section:opacity-100 group-has-focus-visible/section:opacity-100"
 							>
-								{allOpen ? <ChevronsDownUp className="size-3.5" /> : <ChevronsUpDown className="size-3.5" />}
+								{allWorkspaceGroupsOpen ? <ChevronsDownUp className="size-3.5" /> : <ChevronsUpDown className="size-3.5" />}
 							</button>
 						}
 					/>
@@ -321,8 +314,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 											}}
 										/>
 										<div className="sidebar-section-motion" data-open={sectionOpen.spaces && isOpen || undefined}>
-											{/* 缩进 22px：会话行内偏移(8+16+4)后，标题正好落在项目标题的 62px 列上 */}
-											<div className="sidebar-section-content ml-[22px]">{renderRows(workspaceRows)}</div>
+											<div className="sidebar-section-content">{renderRows(workspaceRows)}</div>
 										</div>
 									</div>
 								);
@@ -384,7 +376,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			<Dialog
 				open={workspaceRename !== undefined}
 				onClose={() => setWorkspaceRename(undefined)}
-				title="重命名空间"
+				title="重命名项目"
 				footer={
 					<>
 							<Button variant="outline" onClick={() => setWorkspaceRename(undefined)}>
@@ -402,8 +394,8 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					onKeyDown={(event) => {
 						if (event.key === "Enter") saveRename();
 					}}
-					placeholder="空间名称"
-					aria-label="空间名称"
+					placeholder="项目名称"
+					aria-label="项目名称"
 					autoFocus
 					className="h-9 w-full rounded-md border-[0.5px] border-input-border bg-input px-3 text-[14px] leading-[22px] outline-none focus:border-input-border-focused"
 				/>
@@ -504,18 +496,18 @@ function SectionHeader({
 	addIcon,
 	onAdd,
 	addDisabled,
-	trailing,
+	action,
 }: {
 	readonly label: string;
 	readonly count: number;
 	readonly open: boolean;
 	onToggle(): void;
-	readonly addLabel: string;
+	readonly addLabel?: string;
 	readonly addIcon?: ReactElement;
-	onAdd(): void;
+	onAdd?(): void;
 	readonly addDisabled?: boolean;
-	/** 段标题右侧的附加动作（如折叠所有分组）；显隐由调用方自行控制 */
-	readonly trailing?: ReactElement;
+	/** 段标题右侧、添加按钮之前的附加动作（如折叠所有分组）；显隐由调用方自行控制 */
+	readonly action?: ReactElement;
 }): ReactElement {
 	return (
 		<div className="group/section sticky top-0 z-10 flex h-[30px] items-center gap-1 rounded-md bg-sidebar px-2">
@@ -523,33 +515,33 @@ function SectionHeader({
 				type="button"
 				onClick={onToggle}
 				aria-expanded={open}
-				className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+				className="flex h-5 min-w-0 flex-1 items-center gap-1.5 text-left leading-none"
 			>
-				{/* 标题顶到行首，计数紧随其后成「空间(1)」，折叠箭头再跟在计数后；0 是噪音，不显示 */}
+				{/* 标题和计数紧随标题排列，折叠箭头跟在计数之后；仅交互时显现 */}
 				<span className="truncate text-[12px] leading-4 font-semibold text-foreground-subtle">
 					{label}
 					{count > 0 ? <span className="text-foreground-subtlest">({count})</span> : null}
 				</span>
-				{/* 展开态箭头静默，hover/键盘聚焦才现身；折叠态恒显，提示段内有内容 */}
 				<ChevronDown
 					className={cn(
-						"size-3.5 shrink-0 text-foreground-subtlest transition-[transform,opacity]",
+						"size-3.5 shrink-0 text-foreground-subtlest opacity-0 transition-[transform,opacity] group-hover/section:opacity-100 group-has-focus-visible/section:opacity-100",
 						!open && "-rotate-90",
-						open && "opacity-0 group-hover/section:opacity-100 group-focus-within/section:opacity-100",
 					)}
 				/>
 			</button>
-			<button
-				type="button"
-				aria-label={addLabel}
-				title={addLabel}
-				disabled={addDisabled}
-				onClick={onAdd}
-				className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtlest opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground group-hover/section:opacity-100 group-focus-within/section:opacity-100 disabled:hidden"
-			>
+			{action}
+			{addLabel === undefined || onAdd === undefined ? null : (
+				<button
+					type="button"
+					aria-label={addLabel}
+					title={addLabel}
+					disabled={addDisabled}
+					onClick={onAdd}
+					className="flex size-5 shrink-0 items-center justify-center rounded-sm text-foreground-subtlest opacity-0 transition-opacity hover:bg-surface-hover hover:text-foreground group-hover/section:opacity-100 group-has-focus-visible/section:opacity-100 disabled:hidden"
+				>
 					{addIcon ?? <FolderPlus className="size-3.5" />}
-			</button>
-			{trailing}
+				</button>
+			)}
 		</div>
 	);
 }
@@ -557,7 +549,7 @@ function SectionHeader({
 /**
  * 空间段里的一行工作区。
  *
- * 文件夹图标落 40px 内容列，开/合状态用 FolderOpen/Folder 表达，项目标题落 62px 列；
+ * 文件夹图标与段标题同列，开/合状态用 FolderOpen/Folder 表达，项目标题紧随其后；
  * 行尾 hover 出新建任务与更多菜单；
  * 打开文件夹/重命名/移除只在桌面壳里有实体动作，浏览器里省略。
  */
@@ -585,13 +577,13 @@ function WorkspaceRow({
 	];
 
 	return (
-		<div className="group/workspace flex h-[34px] items-center gap-1.5 rounded-md pr-2 pl-7 hover:bg-surface-hover">
+		<div className="group/workspace flex h-[34px] items-center gap-1.5 rounded-md pr-2 pl-2 hover:bg-surface-hover">
 			<button
 				type="button"
 				aria-expanded={open}
 				aria-label={`${open ? "收起" : "展开"}项目 ${workspace.name}`}
 				onClick={onToggle}
-				className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+				className="flex min-w-0 flex-1 items-center gap-1 text-left"
 			>
 				{/* 开合状态由目录图标本身表达：展开是打开的文件夹，折叠是合上的 */}
 				{open ? (
@@ -601,7 +593,7 @@ function WorkspaceRow({
 				)}
 				<span className="min-w-0 flex-1 truncate text-[14px] leading-5">{workspace.name}</span>
 			</button>
-			<span className="hidden shrink-0 items-center gap-0.5 group-hover/workspace:flex group-focus-within/workspace:flex">
+			<span className="hidden shrink-0 items-center gap-0.5 group-hover/workspace:flex group-has-focus-visible/workspace:flex group-has-[[data-menu-open]]/workspace:flex">
 				<button
 					type="button"
 					aria-label={`在 ${workspace.name} 中新建任务`}
@@ -615,8 +607,8 @@ function WorkspaceRow({
 					trigger={({ toggle }) => (
 						<button
 							type="button"
-							aria-label="空间操作"
-							title="空间操作"
+							aria-label="项目操作"
+							title="项目操作"
 							onClick={toggle}
 							className="flex size-5 items-center justify-center rounded-sm text-foreground-subtlest hover:bg-surface-strong hover:text-foreground"
 						>
@@ -691,7 +683,7 @@ function SessionRowView({
 				)}
 			>
 				{selected ? (
-					<CircleCheck className="size-4 shrink-0 text-(--business-blue)" />
+					<CircleCheck className="size-4 shrink-0 text-(--accent)" />
 				) : (
 					<Circle className="size-4 shrink-0 text-foreground-subtlest" />
 				)}
@@ -719,16 +711,16 @@ function SessionRowView({
 			>
 				{row.title}
 			</button>
-			<span className="flex shrink-0 items-center gap-1.5 text-[10px] leading-4 text-foreground-subtlest group-hover/session:hidden group-focus-within/session:hidden">
+			<span className="flex shrink-0 items-center gap-1.5 text-[10px] leading-4 text-foreground-subtlest group-hover/session:hidden group-has-focus-visible/session:hidden group-has-[[data-menu-open]]/session:hidden">
 				<span className="whitespace-nowrap">{relativeTime(row.updatedAt)}</span>
 			</span>
-			<span className="hidden shrink-0 items-center group-hover/session:flex group-focus-within/session:flex">
+			<span className="hidden shrink-0 items-center group-hover/session:flex group-has-focus-visible/session:flex group-has-[[data-menu-open]]/session:flex">
 				<Menu
 					trigger={({ toggle }) => (
 						<button
 							type="button"
-							aria-label="会话操作"
-							title="会话操作"
+							aria-label="任务操作"
+							title="任务操作"
 							onClick={toggle}
 							className="flex size-4 items-center justify-center text-foreground-subtlest hover:text-foreground"
 						>

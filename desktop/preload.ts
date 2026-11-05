@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld("reinsDesktop", {
 			ipcRenderer.invoke("workspace:open-session", workspacePath, cwd, id) as Promise<boolean>,
 		newTaskInWorkspace: (path: string): Promise<boolean> =>
 			ipcRenderer.invoke("workspace:new-task", path) as Promise<boolean>,
+		installPlugin: (): Promise<{ ok: boolean; name?: string; error?: string }> =>
+			ipcRenderer.invoke("plugins:install") as Promise<{ ok: boolean; name?: string; error?: string }>,
+		togglePlugin: (name: string, disabled: boolean): Promise<{ ok: boolean; error?: string }> =>
+			ipcRenderer.invoke("plugins:toggle", name, disabled) as Promise<{ ok: boolean; error?: string }>,
+		uninstallPlugin: (name: string): Promise<{ ok: boolean; error?: string }> =>
+			ipcRenderer.invoke("plugins:uninstall", name) as Promise<{ ok: boolean; error?: string }>,
 	setTheme: (theme: "zai-dark" | "zai-light"): void => {
 		void ipcRenderer.invoke("window:set-theme", theme);
 	},

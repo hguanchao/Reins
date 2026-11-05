@@ -21,7 +21,7 @@ import {
  */
 
 /** SKILL.md 里能被识别出来的两项；其余字段留给以后，现在读了也没处用。 */
-interface Frontmatter {
+export interface SkillFrontmatter {
 	name: string | undefined;
 	description: string | undefined;
 }
@@ -106,7 +106,7 @@ function discoverRoot(root: SkillRoot): readonly SkillInfo[] {
 		const path = join(root.directory, SKILL_FILE);
 		const contents = readSkillFile(path);
 		if (contents === undefined) return [];
-		const front = parseFrontmatter(contents);
+		const front = parseSkillFrontmatter(contents);
 		return [
 			{
 				name: front.name ?? basename(root.directory),
@@ -131,7 +131,7 @@ function discoverRoot(root: SkillRoot): readonly SkillInfo[] {
 		const contents = readSkillFile(path);
 		if (contents === undefined) continue;
 
-		const front = parseFrontmatter(contents);
+		const front = parseSkillFrontmatter(contents);
 		skills.push({
 			name: front.name ?? entry,
 			description: front.description ?? "",
@@ -168,14 +168,14 @@ function readSkillFile(path: string): string | undefined {
  *
  * 没有 frontmatter、没有收尾的 `---` 都按空处理，名称回退到目录名。
  */
-function parseFrontmatter(contents: string): Frontmatter {
+export function parseSkillFrontmatter(contents: string): SkillFrontmatter {
 	const lines = contents.split(/\r?\n/);
 	if (lines[0]?.trim() !== FRONTMATTER_FENCE) return { name: undefined, description: undefined };
 
 	const end = lines.findIndex((line, index) => index > 0 && line.trim() === FRONTMATTER_FENCE);
 	if (end < 0) return { name: undefined, description: undefined };
 
-	const front: Frontmatter = { name: undefined, description: undefined };
+	const front: SkillFrontmatter = { name: undefined, description: undefined };
 	for (let index = 1; index < end; index += 1) {
 		const line = lines[index] ?? "";
 		const separator = line.indexOf(":");

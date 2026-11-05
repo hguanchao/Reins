@@ -164,7 +164,7 @@ export function App(): ReactElement {
 	const openSessionTarget = useCallback(
 			(target: SessionTarget): void => {
 				if (running && (target.workspacePath ?? target.cwd) !== cwd) {
-					toast("当前任务运行中，完成后才能切换工作区", "info");
+					toast("当前任务运行中，完成后才能切换项目", "info");
 					return;
 				}
 				setActivePanel(undefined);
@@ -180,13 +180,13 @@ export function App(): ReactElement {
 			}
 			const bridge = desktopBridge();
 			if (bridge === undefined) {
-				toast("此任务属于其他工作区，请在桌面端打开", "error");
+				toast("此任务属于其他项目，请在桌面端打开", "error");
 				return;
 			}
 			void bridge
 				.openSession(target.workspacePath ?? null, target.cwd, target.id)
 				.then((opened) => {
-					if (!opened) toast("无法打开此任务所在的工作区", "error");
+					if (!opened) toast("无法打开此任务所在的项目", "error");
 				})
 				.catch((error: unknown) => {
 					toast(error instanceof Error ? error.message : String(error), "error");
@@ -505,7 +505,7 @@ export function App(): ReactElement {
 	const newTask = useCallback(
 			(workspacePath: string | null = null): void => {
 				if (running && workspacePath !== null && workspacePath !== cwd) {
-					toast("当前任务运行中，完成后才能新建其他工作区的任务", "info");
+					toast("当前任务运行中，完成后才能新建其他项目的任务", "info");
 					return;
 				}
 				setSettingsOpen(false);
@@ -519,7 +519,7 @@ export function App(): ReactElement {
 			}
 			const bridge = desktopBridge();
 			if (bridge === undefined) {
-				toast("只能在当前工作区创建任务", "error");
+				toast("只能在当前项目创建任务", "error");
 				return;
 			}
 			void bridge
@@ -725,6 +725,8 @@ export function App(): ReactElement {
 	}, [sideOpen]);
 
 	useEffect(() => {
+		// 设置页占满窗口，后台会话的快捷键不应穿透到被遮住的界面
+		if (settingsOpen) return;
 		const onKeyDown = (event: globalThis.KeyboardEvent): void => {
 			const command = event.ctrlKey || event.metaKey;
 			if (command && event.key.toLowerCase() === "b") {
@@ -761,7 +763,7 @@ export function App(): ReactElement {
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [answer, approval, newTask, running, stop]);
+	}, [answer, approval, newTask, running, settingsOpen, stop]);
 
 	const activeTab = sideTabs.find((tab) => tab.id === activeTabId);
 	const connectionOk = connected || !everConnected.current;
@@ -795,10 +797,10 @@ export function App(): ReactElement {
 
 	const draft = lines.length === 0 && !running && activePanel === undefined;
 	const displaySessions = useMemo(() => withSessionTitles(sessions, sessionTitles), [sessions, sessionTitles]);
-	const currentTitle = displaySessions.find((session) => session.id === sessionId)?.title ?? "新会话";
+	const currentTitle = displaySessions.find((session) => session.id === sessionId)?.title ?? "新任务";
 
 	useEffect(() => {
-		document.title = currentTitle === "新会话" ? "Reins" : `${currentTitle} · Reins`;
+		document.title = currentTitle === "新任务" ? "Reins" : `${currentTitle} · Reins`;
 	}, [currentTitle]);
 
 
@@ -909,6 +911,7 @@ export function App(): ReactElement {
 	return (
 		<>
 			<AppShell
+				inactive={settingsOpen}
 				sidebarWidth={sidebarWidth}
 				sidebarCollapsed={sidebarCollapsed}
 				rightbarWidth={sideWidth}
@@ -977,13 +980,19 @@ export function App(): ReactElement {
 				<SettingsPage
 					settings={settings}
 					archived={archived}
+					usage={usage}
+					activity={activity}
 					themeMode={theme.mode}
 					onThemeMode={theme.setMode}
 					onClose={() => setSettingsOpen(false)}
 					onUpdate={updateSettings}
 					onModel={changeModel}
+					onRefresh={refreshSettings}
 					onRestore={(id) => {
 						void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
+					}}
+					onDeleteArchived={(id) => {
+						void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
 					}}
 				/>
 			) : null}

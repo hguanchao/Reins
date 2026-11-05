@@ -192,14 +192,16 @@
 
 	.md a {
 		position: relative;
-		color: var(--icon-blue);
+		color: var(--foreground);
 		font-weight: 500;
-		text-decoration: none;
+		text-decoration: underline;
+		text-decoration-color: color-mix(in srgb, var(--foreground) 30%, transparent);
+		text-underline-offset: 3px;
 	}
 
 	.md a:hover {
-		text-decoration: underline dotted;
-		text-underline-offset: 3px;
+		text-decoration-style: dotted;
+		text-decoration-color: currentColor;
 	}
 
 	.md ul,

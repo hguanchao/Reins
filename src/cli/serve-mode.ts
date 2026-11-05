@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,14 +26,20 @@ import type { ModelSelection } from "#src/config/selection.ts";
 import type { ApprovalMode } from "#src/config/file.ts";
 import { configFilePath, providersFilePath } from "#src/config/paths.ts";
 import { applyLiveConfig } from "#src/config/reload.ts";
-import { updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
+import { appendMcpServerSection, updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
+import { writeProviders } from "#src/config/providers-write.ts";
 import type { Session } from "#src/session/session.ts";
 import { lastContextTokens, sumActivity, sumUsage } from "#src/session/usage.ts";
+import { createUserSkill, createUserSkillFromContent, parseSkillDraft, parseSkillUpload } from "#src/skills/create.ts";
 import { defaultSkillRoots, discoverSkills } from "#src/skills/discover.ts";
 import { readVersion } from "#src/version.ts";
+import { mcpServerTable, parseMcpServerInput } from "#src/web/mcp-servers.ts";
+import { mergeProvider, providerViews, removeProvider } from "#src/web/providers.ts";
 import {
 	defaultInstructionSources,
 	readInstructions,
+	readPersonalization,
+	writePersonalization,
 	type PromptInstruction,
 } from "#src/agent/instructions.ts";
 import { ApprovalBroker } from "#src/permission/approval.ts";
@@ -84,7 +90,9 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		writeStderr(`${loaded.error.display}\n`);
 		return 1;
 	}
-	const { config: initialConfig, selection: initialSelection, providersConfig } = loaded.value;
+	const { config: initialConfig, selection: initialSelection } = loaded.value;
+	/** providers.json 可在设置页编辑；保存后重载这份清单与当前选择。 */
+	let providersConfig = loaded.value.providersConfig;
 	/** 可热更新的配置项会在设置页改动时整体替换；驱动每轮新建，下一轮就读到新值。 */
 	let config = initialConfig;
 	const configFile = options.configPath ?? configFilePath();
@@ -294,6 +302,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			plugins: pipeline.declarative.plugins.map((plugin) => ({
 				name: plugin.name,
 				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
+				disabled: config.plugins.disabled.includes(plugin.name),
 			})),
 			skills: discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map((skill) => ({
 				name: skill.name,
@@ -333,6 +342,39 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			fields,
 		);
 		if (update.approval !== undefined) policy.setMode(update.approval);
+		return { ok: true };
+	};
+
+	/** 新建与上传共用同一份重名判断：项目级同名技能会盖住用户级，不能只看目标目录。 */
+	const skillExists = (name: string): boolean =>
+		discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).some((skill) => skill.name === name);
+
+	/** 提供方写回失败时恢复原文件；providers.json 里有 API Key，不能留下半份。 */
+	const restoreProviders = (original: string | undefined): void => {
+		if (original === undefined) {
+			rmSync(providersFile, { force: true });
+			return;
+		}
+		const temporary = `${providersFile}.${process.pid}.restore.tmp`;
+		try {
+			writeFileSync(temporary, original, "utf8");
+			renameSync(temporary, providersFile);
+		} catch {
+			rmSync(temporary, { force: true });
+		}
+	};
+
+	/** 重新解析配置与提供方；当前模型被删掉时 loadSelection 会返回可恢复错误。 */
+	const reloadProviders = async (): Promise<{ readonly ok: boolean; readonly error?: string }> => {
+		const reloaded = await loadSelection(options);
+		if (!reloaded.ok) return { ok: false, error: describeError(reloaded.error) };
+		providersConfig = reloaded.value.providersConfig;
+		selection = reloaded.value.selection;
+		config = {
+			...config,
+			provider: reloaded.value.config.provider,
+			model: reloaded.value.config.model,
+		};
 		return { ok: true };
 	};
 
@@ -398,9 +440,172 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			pipeline.declarative.plugins.map((plugin) => ({
 				name: plugin.name,
 				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
+				disabled: config.plugins.disabled.includes(plugin.name),
 			})),
 		settings: settingsSnapshot,
 		applySettings,
+		personalization: readPersonalization,
+		savePersonalization: (text) => {
+			try {
+				writePersonalization(text);
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		providers: () => providerViews(providersConfig),
+		saveProvider: async (body) => {
+			const input = body["provider"];
+			if (typeof input !== "object" || input === null || Array.isArray(input)) {
+				return { ok: false, error: "提供方数据无效" };
+			}
+			const draft = input as Record<string, unknown>;
+			const id = draft["id"];
+			if (typeof id !== "string") return { ok: false, error: "请填写提供方 ID" };
+			if (id === selection.provider.id) {
+				const models = draft["models"];
+				if (
+					Array.isArray(models) &&
+					!models.some(
+						(model) =>
+							typeof model === "object" &&
+							model !== null &&
+							(model as Record<string, unknown>)["id"] === selection.model.id,
+					)
+				) {
+					return { ok: false, error: "当前正在使用该模型，请先切换到其他模型" };
+				}
+			}
+
+			const merged = mergeProvider(providersConfig, draft, providersFile);
+			if (!merged.ok || merged.config === undefined) {
+				return { ok: false, error: merged.error ?? "提供方配置无效" };
+			}
+			const original = existsSync(providersFile) ? readFileSync(providersFile, "utf8") : undefined;
+			try {
+				writeProviders(merged.config, providersFile);
+				const reloaded = await reloadProviders();
+				if (!reloaded.ok) {
+					restoreProviders(original);
+					return { ok: false, error: reloaded.error ?? "无法重新加载提供方" };
+				}
+				return { ok: true };
+			} catch (error) {
+				restoreProviders(original);
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		deleteProvider: async (body) => {
+			const id = body["id"];
+			if (typeof id !== "string" || id.length === 0) {
+				return { ok: false, error: "缺少提供方 ID" };
+			}
+			if (id === selection.provider.id) {
+				return { ok: false, error: "当前正在使用该提供方，请先切换模型" };
+			}
+			const removed = removeProvider(providersConfig, id, providersFile);
+			if (!removed.ok || removed.config === undefined) {
+				return { ok: false, error: removed.error ?? "提供方配置无效" };
+			}
+			const original = existsSync(providersFile) ? readFileSync(providersFile, "utf8") : undefined;
+			try {
+				writeProviders(removed.config, providersFile);
+				const reloaded = await reloadProviders();
+				if (!reloaded.ok) {
+					restoreProviders(original);
+					return { ok: false, error: reloaded.error ?? "无法重新加载提供方" };
+				}
+				return { ok: true };
+			} catch (error) {
+				restoreProviders(original);
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		createSkill: (body) => {
+			const parsed = parseSkillDraft(body);
+			if (!parsed.ok || parsed.draft === undefined) {
+				return { ok: false, error: parsed.error ?? "技能配置无效" };
+			}
+			const draft = parsed.draft;
+			if (skillExists(draft.name)) {
+				return { ok: false, error: `技能 ${draft.name} 已存在` };
+			}
+			try {
+				createUserSkill(draft);
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		uploadSkill: (body) => {
+			const parsed = parseSkillUpload(body);
+			if (!parsed.ok || parsed.draft === undefined) {
+				return { ok: false, error: parsed.error ?? "技能配置无效" };
+			}
+			const draft = parsed.draft;
+			if (skillExists(draft.name)) {
+				return { ok: false, error: `技能 ${draft.name} 已存在` };
+			}
+			try {
+				createUserSkillFromContent(draft.name, draft.content);
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		addMcpServer: async (body) => {
+			const parsed = parseMcpServerInput(body);
+			if (!parsed.ok || parsed.draft === undefined) {
+				return { ok: false, error: parsed.error ?? "MCP 服务器配置无效" };
+			}
+			const draft = parsed.draft;
+			if (config.mcpServers.some((server) => server.name === draft.name)) {
+				return { ok: false, error: `MCP 服务器 ${draft.name} 已存在` };
+			}
+
+			const original = existsSync(configFile) ? readFileSync(configFile, "utf8") : undefined;
+			const previousConfig = config;
+			const restore = (): void => {
+				if (original === undefined) {
+					rmSync(configFile, { force: true });
+					return;
+				}
+				const temporary = `${configFile}.${process.pid}.restore.tmp`;
+				try {
+					writeFileSync(temporary, original, "utf8");
+					renameSync(temporary, configFile);
+				} catch {
+					rmSync(temporary, { force: true });
+				}
+			};
+
+			try {
+				appendMcpServerSection(draft.name, mcpServerTable(draft), configFile);
+				const reloaded = await loadSelection(options);
+				if (!reloaded.ok) {
+					restore();
+					return { ok: false, error: describeError(reloaded.error) };
+				}
+				const server = reloaded.value.config.mcpServers.find((item) => item.name === draft.name);
+				if (server === undefined) {
+					restore();
+					return { ok: false, error: "写入配置后没有找到 MCP 服务器" };
+				}
+				config = { ...config, mcpServers: reloaded.value.config.mcpServers };
+				try {
+					mcpControl?.addServer(server);
+				} catch (error) {
+					config = previousConfig;
+					restore();
+					return { ok: false, error: describeError(error) };
+				}
+				return { ok: true };
+			} catch (error) {
+				config = previousConfig;
+				restore();
+				return { ok: false, error: describeError(error) };
+			}
+		},
 		fileTree: (path) => fileTree(workspace, path),
 		fileRead: (path) => readWorkspaceFile(workspace, path),
 		fileSearch: (query, limit) => searchWorkspaceFiles(workspace, query, limit),

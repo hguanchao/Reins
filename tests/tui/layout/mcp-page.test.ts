@@ -34,6 +34,7 @@ describe("MCP 管理页", () => {
 				return `Reconnected ${name}: 2 tools`;
 			},
 			healthCheck: async () => ["alpha: ok", "beta: failed"],
+			addServer: () => {},
 			awaitStartup: async () => {},
 		};
 		const running = runTui({
@@ -98,6 +99,7 @@ describe("MCP 管理页", () => {
 			mcpControl: {
 				reconnect: async (name) => `Reconnected ${name}`,
 				healthCheck: async () => [],
+				addServer: () => {},
 				awaitStartup: async () => {},
 			},
 			stdin: input,
@@ -123,6 +125,7 @@ describe("MCP 管理页", () => {
 		const control: McpControl = {
 			reconnect: async (name) => `Reconnected ${name}`,
 			healthCheck: async () => [],
+			addServer: () => {},
 			awaitStartup: async () => {},
 		};
 		const running = runTui({

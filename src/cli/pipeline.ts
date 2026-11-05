@@ -250,7 +250,10 @@ export async function assemblePipeline(options: {
 
 	// 声明式插件只提供文件：技能目录与 MCP 声明在这里汇总，代码插件仍走 external.ts
 	const declarative = scanDeclarativePlugins();
-	const mcp = mergeMcpServers(config.mcpServers, declarative.plugins);
+	const disabled = disabledPlugins(config);
+	// 被 plugins.disabled 点名的声明式插件不再贡献 MCP、pi 或 dsh 扩展；清单仍保留给设置页
+	const activeDeclarative = declarative.plugins.filter((plugin) => !disabled.has(plugin.name));
+	const mcp = mergeMcpServers(config.mcpServers, activeDeclarative);
 
 	// MCP 是宿主能力：插件层整个不可用也照常连接。远端工具与核心工具走同一条管线，
 	// 但按 bundled 记账——它们的声明来自外部，只读标注不可信
@@ -266,7 +269,7 @@ export async function assemblePipeline(options: {
 	});
 	options.onStage?.("mcp");
 
-	reportExternalFailures(await loadExternalPlugins(host, disabledPlugins(config)));
+	reportExternalFailures(await loadExternalPlugins(host, disabled));
 
 	// pi 扩展与 dsh 插件走同一条外部插件管线：同一信任级别、同一失败收集。装载结论并入报告。
 	const extensionContext =
@@ -281,13 +284,13 @@ export async function assemblePipeline(options: {
 	const piCollectors: PiExtensionCollector[] =
 		extensionContext === undefined
 			? []
-			: declarative.plugins
+			: activeDeclarative
 					.filter((plugin) => !plugin.cordis && plugin.extensions.length > 0)
 					.map((plugin) => piExtensionPlugin(plugin, extensionContext));
 	const dshCollectors: DshExtensionCollector[] =
 		extensionContext === undefined
 			? []
-			: declarative.plugins
+			: activeDeclarative
 					.filter((plugin) => plugin.cordis && plugin.extensions.length > 0)
 					.map((plugin) =>
 						dshExtensionPlugin(plugin, {
@@ -328,7 +331,7 @@ export async function assemblePipeline(options: {
 			sandboxWarnings: warnings,
 			declarative,
 			pluginReport: [
-				...describeDeclarativeScan(declarative, mcp.warnings),
+				...describeDeclarativeScan({ ...declarative, plugins: activeDeclarative }, mcp.warnings),
 				...describePiOutcomes(piCollectors, piFailures),
 				...describeDshOutcomes(dshCollectors, dshFailures),
 			],

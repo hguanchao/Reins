@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 import type { FileContent, FileSearchHit, FileTree } from "#src/web/files.ts";
+import type { ProviderView } from "#src/web/providers.ts";
 import { parseSettingsUpdate, type SettingsSnapshot, type SettingsUpdate } from "#src/web/settings.ts";
 import type { GitStatus } from "#src/workspace/git.ts";
 
@@ -103,11 +104,32 @@ export interface WebServerDeps {
 	/** 发现的技能清单(技能库面板) */
 	skills(): readonly { readonly name: string; readonly description: string; readonly path: string }[];
 	/** 已装载的插件清单(插件市场面板) */
-	plugins(): readonly { readonly name: string; readonly kind: string }[];
+	plugins(): readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
 	/** 设置页快照 */
 	settings(): SettingsSnapshot;
 	/** 应用可热更新的设置;返回错误说明时前端直接展示 */
 	applySettings(update: SettingsUpdate): { readonly ok: boolean; readonly error?: string };
+	/** 个性化指令原文;超大或不可读时抛错,由传输层回 500 */
+	personalization(): {
+		readonly path: string;
+		readonly text: string;
+		readonly bytes: number;
+		readonly maxBytes: number;
+	};
+	/** 写回个性化指令;超过预算或写入失败时返回错误说明 */
+	savePersonalization(text: string): { readonly ok: boolean; readonly error?: string };
+	/** 新建用户级技能;校验失败或目录已存在时返回错误说明 */
+	createSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
+	/** 上传一个 SKILL.md;要求 frontmatter 自带 name 与 description */
+	uploadSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
+	/** 新增 MCP server 并热接入;写盘或重载配置失败时返回错误说明 */
+	addMcpServer(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
+	/** 本机提供方清单;API Key 只返回是否已保存 */
+	providers(): readonly ProviderView[];
+	/** 新增或更新提供方;写盘后重载当前模型选择 */
+	saveProvider(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
+	/** 删除提供方;当前正在使用的那一个由装配层拒绝 */
+	deleteProvider(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
 	/** 读取工作区目录的一层条目 */
 	fileTree(path: string): FileTree;
 	/** 读取一个文本文件 */
@@ -366,6 +388,36 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			sendJson(res, 200, deps.skills());
 			return;
 		}
+		if (req.method === "POST" && path === "/api/skills") {
+			const body = await readJsonBody(req);
+			const result = deps.createSkill(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法创建技能" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (req.method === "POST" && path === "/api/skills/upload") {
+			const body = await readJsonBody(req);
+			const result = deps.uploadSkill(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法上传技能" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (req.method === "POST" && path === "/api/mcp-servers") {
+			const body = await readJsonBody(req);
+			const result = await deps.addMcpServer(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法添加 MCP 服务器" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
 		if (req.method === "GET" && path === "/api/plugins") {
 			sendJson(res, 200, deps.plugins());
 			return;
@@ -374,8 +426,55 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			sendJson(res, 200, deps.models());
 			return;
 		}
+		if (req.method === "GET" && path === "/api/providers") {
+			sendJson(res, 200, deps.providers());
+			return;
+		}
+		if (req.method === "POST" && path === "/api/providers") {
+			const body = await readJsonBody(req);
+			const result = await deps.saveProvider(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法保存提供方" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (req.method === "POST" && path === "/api/providers/delete") {
+			const body = await readJsonBody(req);
+			const result = await deps.deleteProvider(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法删除提供方" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
 		if (req.method === "GET" && path === "/api/settings") {
 			sendJson(res, 200, deps.settings());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/personalization") {
+			try {
+				sendJson(res, 200, deps.personalization());
+			} catch (error) {
+				sendJson(res, 500, { error: errorMessage(error) });
+			}
+			return;
+		}
+		if (req.method === "PUT" && path === "/api/personalization") {
+			const body = await readJsonBody(req);
+			const text = body?.["text"];
+			if (typeof text !== "string") {
+				sendJson(res, 400, { error: "缺少个性化指令内容" });
+				return;
+			}
+			const result = deps.savePersonalization(text);
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法保存个性化指令" });
+				return;
+			}
+			sendJson(res, 200, deps.personalization());
 			return;
 		}
 		if (req.method === "GET" && path === "/api/files/tree") {

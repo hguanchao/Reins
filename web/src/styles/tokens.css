@@ -72,7 +72,7 @@
 	--color-primary-foreground: var(--primary-foreground);
 	--color-secondary: var(--secondary);
 	--color-accent: var(--accent);
-	--color-icon-blue: var(--icon-blue);
+	--color-accent-soft: var(--accent-soft);
 	--color-success: var(--success);
 	--color-success-surface: var(--success-surface);
 	--color-success-surface-foreground: var(--success-surface-foreground);
@@ -168,8 +168,9 @@
 	--primary: #0f1115;
 	--primary-foreground: #ffffff;
 	--secondary: #ebedf2;
-	--accent: #edf3fe;
-	--icon-blue: #418ce6;
+	/* 交互强调只走黑白：按钮、选中态与进度不再引入彩色，与品牌标识的单色体系一致 */
+	--accent: #0f1115;
+	--accent-soft: #f5f6f7;
 
 	--success: #22c55e;
 	--success-surface: #e6faed;
@@ -183,13 +184,13 @@
 	--diff-added: #01a241;
 	--diff-removed: #ba2723;
 
-	--user-message-bubble: #edf3fe;
+	--user-message-bubble: #f5f6f7;
 	--tag: #f5f6f7;
 	--tooltip: #1b1b1c;
 	--tooltip-foreground: #f9fafb;
 	--toast: #1b1b1c;
-	--progress-surface: #edf3fe;
-	--progress-surface-foreground: #418ce6;
+	--progress-surface: #f5f6f7;
+	--progress-surface-foreground: #0f1115;
 	--idle-task: #7c5cff;
 	--idle-task-surface: #f3f0ff;
 
@@ -200,7 +201,7 @@
 	--git-untracked: #01a241;
 	--find-highlight: #fff2cc;
 	--find-highlight-active: #f7ad31;
-	--resize-handle: #418ce6;
+	--resize-handle: #81858c;
 
 	--interaction-confirmation-surface: #e6faed;
 	--interaction-confirmation-foreground: #166b32;
@@ -208,18 +209,16 @@
 	--terminal-bg: #f9fafb;
 	--terminal-fg: #0f1115;
 
-	--focus-ring: #418ce6;
-	--business-blue: #418ce6;
-	--business-blue-soft: #e4edfd;
-	--bubble: #edf3fe;
-	--bubble-strong: #d3e2ff;
+	--focus-ring: #0f1115;
+	--bubble: #f5f6f7;
+	--bubble-strong: #ebedf2;
 	--code-block: #f9fafb;
 	--code-block-banner: #f9fafb;
 	--sidebar-nav-active: #ebedf2;
 	--warn-label: #dd8629;
 	--label-shimmer: rgba(15, 17, 21, 0.3);
-	--deep-diving: color-mix(in srgb, #418ce6 70%, #0e3074);
-	--deep-diving-shimmer: color-mix(in srgb, #418ce6 30%, #0e3074);
+	--deep-diving: #61666b;
+	--deep-diving-shimmer: #0f1115;
 }
 
 [data-theme="zai-dark"] {
@@ -270,8 +269,8 @@
 	--primary: #f9fafb;
 	--primary-foreground: #151517;
 	--secondary: #2c2c2e;
-	--accent: #1e2a3d;
-	--icon-blue: #7aaaff;
+	--accent: #f9fafb;
+	--accent-soft: #2c2c2e;
 
 	--success: #22c55e;
 	--success-surface: #233c2c;
@@ -290,8 +289,8 @@
 	--tooltip: #2c2c2e;
 	--tooltip-foreground: #f9fafb;
 	--toast: #2c2c2e;
-	--progress-surface: #253349;
-	--progress-surface-foreground: #7aaaff;
+	--progress-surface: #2c2c2e;
+	--progress-surface-foreground: #f9fafb;
 	--idle-task: #9e77ed;
 	--idle-task-surface: #241c3a;
 
@@ -302,7 +301,7 @@
 	--git-untracked: #41c977;
 	--find-highlight: #3d321a;
 	--find-highlight-active: #f7ad31;
-	--resize-handle: #7aaaff;
+	--resize-handle: #81858c;
 
 	--interaction-confirmation-surface: #233c2c;
 	--interaction-confirmation-foreground: #4ed17e;
@@ -310,9 +309,7 @@
 	--terminal-bg: #151517;
 	--terminal-fg: #f9fafb;
 
-	--focus-ring: #7aaaff;
-	--business-blue: #7aaaff;
-	--business-blue-soft: #28354a;
+	--focus-ring: #f9fafb;
 	--bubble: #2c2c2e;
 	--bubble-strong: #353638;
 	--code-block: #1f1f21;
@@ -320,6 +317,6 @@
 	--sidebar-nav-active: #2c2c2e;
 	--warn-label: #f7ad31;
 	--label-shimmer: rgba(255, 255, 255, 0.45);
-	--deep-diving: color-mix(in srgb, #7aaaff 55%, #adb2b8);
-	--deep-diving-shimmer: color-mix(in srgb, #93c5fd 65%, #7aaaff);
+	--deep-diving: #adb2b8;
+	--deep-diving-shimmer: #f9fafb;
 }

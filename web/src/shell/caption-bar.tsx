@@ -58,8 +58,8 @@ export function CaptionBar({
 			{sidebarCollapsed ? (
 				<button
 					type="button"
-					aria-label="新建会话"
-					title="新建会话 (Ctrl N)"
+					aria-label="新建任务"
+					title="新建任务 (Ctrl N)"
 					onClick={onNewSession}
 					className={button}
 				>
@@ -68,8 +68,8 @@ export function CaptionBar({
 			) : null}
 			<button
 				type="button"
-				aria-label="搜索会话"
-				title="搜索会话"
+				aria-label="搜索任务"
+				title="搜索任务"
 				onClick={onOpenSearch}
 				className={button}
 			>

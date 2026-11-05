@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
@@ -7,7 +7,10 @@ import { after, describe, it } from "node:test";
 import {
 	defaultInstructionSources,
 	MAX_INSTRUCTION_BYTES,
+	personalizationPath,
 	readInstructions,
+	readPersonalization,
+	writePersonalization,
 } from "#src/agent/instructions.ts";
 
 const created: string[] = [];
@@ -78,6 +81,50 @@ describe("规则文件发现", () => {
 			[join(work, "CLAUDE.md")],
 		);
 		assert.equal(sources[0]?.label, "CLAUDE.md");
+	});
+});
+
+describe("个性化指令", () => {
+	it("没有用户规则时新建 AGENTS.md，并支持读写往返", () => {
+		const { home } = workspace();
+		const path = join(home, "AGENTS.md");
+
+		assert.equal(personalizationPath(), path);
+		assert.deepEqual(readPersonalization(), {
+			path,
+			text: "",
+			bytes: 0,
+			maxBytes: MAX_INSTRUCTION_BYTES,
+		});
+
+		writePersonalization("回答保持简洁");
+		assert.equal(readFileSync(path, "utf8"), "回答保持简洁");
+		assert.equal(readPersonalization().text, "回答保持简洁");
+		assert.equal(readPersonalization().bytes, Buffer.byteLength("回答保持简洁"));
+	});
+
+	it("优先编辑当前生效的 AGENTS.override.md", () => {
+		const { home } = workspace();
+		const override = join(home, "AGENTS.override.md");
+		writeFileSync(override, "旧规则", "utf8");
+
+		assert.equal(personalizationPath(), override);
+		assert.equal(readPersonalization().text, "旧规则");
+
+		writePersonalization("新规则");
+		assert.equal(readFileSync(override, "utf8"), "新规则");
+	});
+
+	it("超过提示词预算时拒绝写入，且不改动原文件", () => {
+		const { home } = workspace();
+		const path = join(home, "AGENTS.md");
+		writeFileSync(path, "原有内容", "utf8");
+
+		assert.throws(
+			() => writePersonalization("a".repeat(MAX_INSTRUCTION_BYTES + 1)),
+			/32 KB/,
+		);
+		assert.equal(readFileSync(path, "utf8"), "原有内容");
 	});
 });
 

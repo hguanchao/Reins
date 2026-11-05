@@ -13,11 +13,16 @@ import type {
 	FileTree,
 	GitStatus,
 	ModelInfo,
+	McpServerInput,
+	PersonalizationSnapshot,
 	PluginInfo,
+	ProviderInput,
+	ProviderView,
 	SessionEntry,
 	SessionSummary,
 	SettingsSnapshot,
 	SkillInfo,
+	SkillInput,
 	StateInfo,
 	ThinkingLevel,
 	WorkspaceSummary,
@@ -125,6 +130,33 @@ export const api = {
 			method: "POST",
 			body: JSON.stringify(update),
 		})) as SettingsSnapshot;
+	},
+	async personalization(): Promise<PersonalizationSnapshot> {
+		return (await request("/api/personalization")) as PersonalizationSnapshot;
+	},
+	async savePersonalization(text: string): Promise<PersonalizationSnapshot> {
+		return (await request("/api/personalization", {
+			method: "PUT",
+			body: JSON.stringify({ text }),
+		})) as PersonalizationSnapshot;
+	},
+	async createSkill(input: SkillInput): Promise<void> {
+		await request("/api/skills", { method: "POST", body: JSON.stringify(input) });
+	},
+	async uploadSkill(content: string): Promise<void> {
+		await request("/api/skills/upload", { method: "POST", body: JSON.stringify({ content }) });
+	},
+	async addMcpServer(input: McpServerInput): Promise<void> {
+		await request("/api/mcp-servers", { method: "POST", body: JSON.stringify(input) });
+	},
+	async providers(): Promise<readonly ProviderView[]> {
+		return (await request("/api/providers")) as readonly ProviderView[];
+	},
+	async saveProvider(provider: ProviderInput): Promise<void> {
+		await request("/api/providers", { method: "POST", body: JSON.stringify({ provider }) });
+	},
+	async deleteProvider(id: string): Promise<void> {
+		await request("/api/providers/delete", { method: "POST", body: JSON.stringify({ id }) });
 	},
 	async setPlanMode(enabled: boolean): Promise<void> {
 		await request("/api/plan-mode", { method: "POST", body: JSON.stringify({ enabled }) });

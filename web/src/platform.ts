@@ -1,3 +1,9 @@
+export interface PluginActionResult {
+	readonly ok: boolean;
+	readonly name?: string;
+	readonly error?: string;
+}
+
 /** 桌面壳注入的能力；浏览器里不存在，相关入口据此隐藏。 */
 export interface ReinsDesktopBridge {
 	chooseWorkspace(): Promise<boolean>;
@@ -7,6 +13,12 @@ export interface ReinsDesktopBridge {
 	removeWorkspace(path: string): Promise<boolean>;
 	openSession(workspacePath: string | null, cwd: string, id: string): Promise<boolean>;
 	newTaskInWorkspace(path: string): Promise<boolean>;
+	/** 选择本地插件目录并安装；成功后服务进程会重启 */
+	installPlugin(): Promise<PluginActionResult>;
+	/** 启停插件；成功后服务进程会重启 */
+	togglePlugin(name: string, disabled: boolean): Promise<PluginActionResult>;
+	/** 卸载插件；成功后服务进程会重启 */
+	uninstallPlugin(name: string): Promise<PluginActionResult>;
 	setTheme(theme: "zai-dark" | "zai-light"): void;
 }
 

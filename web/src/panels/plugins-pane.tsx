@@ -1,6 +1,7 @@
 import { Blocks } from "lucide-react";
 import type { ReactElement } from "react";
 
+import { pluginKindLabel } from "../lib/format.ts";
 import type { PluginInfo } from "../protocol.ts";
 
 /** 已装载的插件清单；本轮只展示，不提供装卸。 */
@@ -24,7 +25,7 @@ export function PluginsPane({ plugins }: { readonly plugins: readonly PluginInfo
 							>
 								<span className="min-w-0 flex-1 truncate text-ui-base text-foreground">{plugin.name}</span>
 								<span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-ui-xs text-foreground-subtle">
-									{plugin.kind}
+									{pluginKindLabel(plugin.kind)}
 								</span>
 							</div>
 						))}

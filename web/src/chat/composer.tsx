@@ -92,7 +92,10 @@ export interface ComposerProps {
 	onCompact(): void;
 }
 
-/** 输入卡：正文、工具栏、发送圆钮；欢迎页与停靠态共用同一张卡。 */
+/**
+ * 输入卡：正文、工具栏、发送圆钮；欢迎页与停靠态共用同一张卡。
+ * 圆角用连续圆角（squircle），收口比普通圆弧更接近苹果式的平滑过渡。
+ */
 export function Composer(props: ComposerProps): ReactElement {
 	const [text, setText] = useState("");
 	const [suggestion, setSuggestion] = useState<MentionSuggestion | undefined>(undefined);
@@ -349,7 +352,7 @@ export function Composer(props: ComposerProps): ReactElement {
 
 			<div
 				className={cn(
-					"flex w-full flex-col gap-3 rounded-[28px] bg-input pt-2 shadow-[var(--elevation-soft)]",
+					"flex w-full flex-col gap-3 rounded-[40px] bg-input pt-2 shadow-[var(--elevation-soft)] [corner-shape:squircle]",
 					"transition-shadow",
 				)}
 			>
@@ -389,7 +392,7 @@ export function Composer(props: ComposerProps): ReactElement {
 								</button>
 							)}
 							entries={[
-								{ type: "item", key: "new", label: "新会话", icon: SquarePen, onSelect: props.onNewTask },
+								{ type: "item", key: "new", label: "新建任务", icon: SquarePen, onSelect: props.onNewTask },
 								{ type: "item", key: "settings", label: "设置", icon: Settings2, onSelect: props.onSettings },
 								{ type: "separator" },
 								{
@@ -428,7 +431,7 @@ export function Composer(props: ComposerProps): ReactElement {
 							className={cn(
 								"flex h-7 items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium transition-colors",
 								props.planMode
-									? "bg-[var(--business-blue-soft)] text-(--business-blue)"
+									? "bg-[var(--accent-soft)] text-(--accent)"
 									: "text-foreground-subtle hover:bg-surface-hover",
 							)}
 							aria-pressed={props.planMode}
@@ -508,7 +511,7 @@ export function Composer(props: ComposerProps): ReactElement {
 								aria-label="停止生成"
 								title="停止 (Esc)"
 								onClick={props.onStop}
-								className="grid size-[34px] shrink-0 -translate-y-0.5 place-items-center rounded-full bg-[var(--business-blue)] text-white transition-colors hover:opacity-90"
+								className="grid size-[34px] shrink-0 -translate-y-0.5 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:opacity-90"
 							>
 								<Square className="size-3.5 fill-current" />
 							</button>
@@ -519,7 +522,7 @@ export function Composer(props: ComposerProps): ReactElement {
 								title="发送 (Enter)"
 								disabled={text.trim().length === 0}
 								onClick={submit}
-								className="grid size-[34px] shrink-0 -translate-y-0.5 place-items-center rounded-full bg-[var(--business-blue)] text-white transition-colors hover:opacity-90 disabled:cursor-default disabled:opacity-40"
+								className="grid size-[34px] shrink-0 -translate-y-0.5 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:cursor-default disabled:opacity-40"
 							>
 								<ArrowUp className="size-4" />
 							</button>
@@ -566,7 +569,7 @@ function ActivityPill({ activity }: { readonly activity: ActivitySummary }): Rea
 	);
 	if (rows.length === 0) {
 		return (
-			<Tooltip label="会话暂无计时数据">
+			<Tooltip label="任务暂无计时数据">
 				<span className={DOCK_PILL}>
 					<Gauge className="size-3.5 shrink-0" />
 					{label}
@@ -650,7 +653,7 @@ function ContextMeter({
 							cy={size / 2}
 							r={radius}
 							fill="none"
-							stroke="var(--business-blue)"
+							stroke="var(--accent)"
 							strokeWidth={stroke}
 							strokeLinecap="round"
 							strokeDasharray={circumference}
@@ -669,7 +672,7 @@ function ContextMeter({
 					</span>
 				</div>
 				<div className="h-1 overflow-hidden rounded-full bg-[var(--border)]">
-					<div className="h-full rounded-full bg-[var(--business-blue)]" style={{ width: `${percent}%` }} />
+					<div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${percent}%` }} />
 				</div>
 			</div>
 		</Popover>

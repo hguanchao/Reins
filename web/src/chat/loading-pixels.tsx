@@ -3,9 +3,9 @@ import type { ReactElement } from "react";
 import { BrandMark } from "../components/brand-mark.tsx";
 import { cn } from "../components/ui/cn.ts";
 
-/** 运行中状态：小号鱼形 + 流光文字，替代传统的三点加载。 */
+/** 运行中状态：小号品牌标识 + 流光文字，替代传统的三点加载。 */
 export function LoadingPixels({
-	label = "深度求索中",
+	label = "正在思考",
 	elapsed,
 	className,
 }: {
@@ -19,7 +19,7 @@ export function LoadingPixels({
 			role="status"
 			aria-label={label}
 		>
-			<BrandMark size={14} className="text-(--deep-diving)" />
+			<BrandMark size={14} />
 			<span className="animate-gradient-text font-medium">{label} ···</span>
 			{elapsed === undefined ? null : (
 				<span className="font-mono text-[11px] tabular-nums text-foreground-subtlest">{elapsed}</span>

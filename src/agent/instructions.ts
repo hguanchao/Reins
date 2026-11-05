@@ -1,8 +1,19 @@
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import {
+	closeSync,
+	existsSync,
+	mkdirSync,
+	openSync,
+	readFileSync,
+	readSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { basename } from "node:path";
+import { basename, dirname, join } from "node:path";
 
-import { projectInstructionFiles, userInstructionFiles } from "#src/config/paths.ts";
+import { configDir, projectInstructionFiles, userInstructionFiles } from "#src/config/paths.ts";
 
 /**
  * 规则文件（AGENTS.md）的发现与读取。
@@ -67,6 +78,67 @@ function userLabel(path: string): string {
 			? `~${rest}`
 			: path;
 	return label.replaceAll("\\", "/");
+}
+
+/** 读取上限：编辑页要一次显示全文，这里给一个远高于预算的硬上限，避免误读超大文件。 */
+const MAX_PERSONALIZATION_READ_BYTES = 1024 * 1024;
+
+/** 个性化指令的落盘文件：优先写当前生效的用户规则文件，都没有时新建 AGENTS.md。 */
+export function personalizationPath(): string {
+	const file = pickInstructionFile(userInstructionFiles());
+	if (file !== undefined) return file;
+	return join(configDir(), "AGENTS.md");
+}
+
+export interface PersonalizationText {
+	readonly path: string;
+	readonly text: string;
+	readonly bytes: number;
+	/** 系统提示词对规则文件的总预算；超过后模型只能读到截断内容 */
+	readonly maxBytes: number;
+}
+
+/** 读取个性化指令原文；文件不存在时返回空内容。 */
+export function readPersonalization(): PersonalizationText {
+	const path = personalizationPath();
+	let text = "";
+	if (existsSync(path)) {
+		const info = statSync(path);
+		if (!info.isFile()) throw new Error(`个性化指令路径不是文件：${path}`);
+		if (info.size > MAX_PERSONALIZATION_READ_BYTES) {
+			throw new Error("个性化指令文件过大，无法在界面中编辑");
+		}
+		text = readFileSync(path, "utf8").replace(/^\uFEFF/, "");
+	}
+	return {
+		path,
+		text,
+		bytes: Buffer.byteLength(text, "utf8"),
+		maxBytes: MAX_INSTRUCTION_BYTES,
+	};
+}
+
+/**
+ * 写回个性化指令。
+ *
+ * 超过预算时直接拒绝：界面若显示保存成功、模型却只读到截断内容，使用者会以为指令已经
+ * 完整生效。先写临时文件再改名，避免写到一半失败毁掉原有内容。
+ */
+export function writePersonalization(text: string): void {
+	const bytes = Buffer.byteLength(text, "utf8");
+	if (bytes > MAX_INSTRUCTION_BYTES) {
+		throw new Error(`个性化指令不能超过 ${MAX_INSTRUCTION_BYTES / 1024} KB`);
+	}
+	const path = personalizationPath();
+	mkdirSync(dirname(path), { recursive: true });
+	const temporary = `${path}.${process.pid}.tmp`;
+	try {
+		writeFileSync(temporary, text, "utf8");
+		renameSync(temporary, path);
+	} catch (error) {
+		rmSync(temporary, { force: true });
+		throw error;
+	}
 }
 
 /**
