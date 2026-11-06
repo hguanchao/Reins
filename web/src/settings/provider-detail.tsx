@@ -47,6 +47,7 @@ export function ProviderDetail({
 	onSaved(id: string): void;
 	onDeleted(): void;
 }): ReactElement {
+	const [name, setName] = useState(provider.name);
 	const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? "");
 	const [api, setApi] = useState(provider.api ?? "");
 	const [apiKey, setApiKey] = useState("");
@@ -57,12 +58,14 @@ export function ProviderDetail({
 	const [error, setError] = useState<string | undefined>(undefined);
 
 	const dirty =
+		name.trim() !== provider.name ||
 		baseUrl !== (provider.baseUrl ?? "") ||
 		api !== (provider.api ?? "") ||
 		apiKey.trim().length > 0 ||
 		JSON.stringify(models) !== JSON.stringify(provider.models);
 
 	const reset = (): void => {
+		setName(provider.name);
 		setBaseUrl(provider.baseUrl ?? "");
 		setApi(provider.api ?? "");
 		setApiKey("");
@@ -76,7 +79,7 @@ export function ProviderDetail({
 		setError(undefined);
 		const input: ProviderInput = {
 			id: provider.id,
-			name: provider.name,
+			name: name.trim().length === 0 ? provider.name : name.trim(),
 			baseUrl: baseUrl.trim(),
 			api,
 			headers: provider.headers,
@@ -104,9 +107,12 @@ export function ProviderDetail({
 				<span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface text-foreground-subtle">
 					<Pencil className="size-2.5" />
 				</span>
-				<span className="min-w-0 flex-1 truncate text-[14px] leading-5 font-semibold">
-					{provider.name}
-				</span>
+				<input
+					value={name}
+					onChange={(event) => setName(event.target.value)}
+					aria-label="提供方名称"
+					className="min-w-0 flex-1 truncate rounded-sm bg-transparent text-[14px] leading-5 font-semibold outline-none focus:bg-surface"
+				/>
 				{error === undefined ? null : (
 					<span className="shrink-0 text-[11px] leading-4 text-destructive">{error}</span>
 				)}
