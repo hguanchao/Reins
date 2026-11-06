@@ -18,7 +18,9 @@ await build({
 	// 打包后按 import.meta.url 找 package.json 必然断裂,版本号在构建期注入
 	define: { REINS_BUNDLED_VERSION: JSON.stringify(version) },
 	banner: {
-		js: `import { createRequire } from "node:module";\nconst require = createRequire(import.meta.url);`,
+		// 绑定名加前缀：依赖里也可能 `import { createRequire }`，同名顶层绑定会让整份 bundle
+		// 直接语法错误（fflate 就是这种情况）。
+		js: `import { createRequire as __reinsCreateRequire } from "node:module";\nconst require = __reinsCreateRequire(import.meta.url);`,
 	},
 	// jsonc-parser 的 main 指向 UMD 包装:require 是工厂参数,esbuild 只能留成动态调用,
 	// 打包后解析不到相对路径。它的 lib/esm 是静态导入的等价实现,直接指过去。
