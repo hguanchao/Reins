@@ -8,6 +8,7 @@ import {
 	app,
 	dialog,
 	ipcMain,
+	nativeImage,
 	nativeTheme,
 	shell,
 } from "electron";
@@ -202,8 +203,9 @@ async function run(): Promise<void> {
 	app.setAboutPanelOptions({ applicationName: "Reins", applicationVersion: app.getVersion() });
 	// 菜单不显示,只为保住重载/开发者工具的快捷键
 	Menu.setApplicationMenu(HIDDEN_MENU);
-	// Windows 的 toast 需要与安装包 appId 一致的 AUMID；开发模式没有快捷方式时可能不显示
-	app.setAppUserModelId("com.reins.desktop");
+	// Windows 的 toast 需要与安装包 appId 一致的 AUMID。开发模式没有同 ID 的快捷方式，
+	// 设了反而会让任务栏回退到 electron.exe 的图标，所以只在打包后设置。
+	if (app.isPackaged) app.setAppUserModelId("com.reins.desktop");
 	ipcMain.handle("window:set-theme", (event, theme: unknown) => {
 		const window = BrowserWindow.fromWebContents(event.sender);
 		if (window === null) return;
@@ -247,13 +249,14 @@ async function run(): Promise<void> {
 	// 窗口先出:静态 loading 页毫秒级可见,选目录、拉服务都排在它后面,
 	// 双击后的等待从「干瞪眼」变成「页内转圈」
 	// 无边框窗：Windows 用原生标题栏覆盖层保留系统窗控，页面只负责 40px 拖拽条
+	const windowIcon = nativeImage.createFromPath(join(buildDir, "icon.ico"));
 	const window = new BrowserWindow({
 		width: 1180,
 		height: 820,
 		minWidth: 880,
 		minHeight: 600,
 		title: "Reins",
-		icon: join(buildDir, "icon.ico"),
+		...(windowIcon.isEmpty() ? {} : { icon: windowIcon }),
 		backgroundColor: nativeTheme.shouldUseDarkColors ? "#151517" : "#f9fafb",
 		show: false,
 		titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
@@ -271,6 +274,8 @@ async function run(): Promise<void> {
 			preload: join(buildDir, "preload.cjs"),
 		},
 	});
+	// 构造参数里的 icon 在部分 Windows 版本上会被任务栏忽略，创建后再显式设一次
+	if (process.platform !== "darwin" && !windowIcon.isEmpty()) window.setIcon(windowIcon);
 let server: ServerHandle | undefined;
 let serverGeneration = 0;
 let serverOrigin: string | undefined;
