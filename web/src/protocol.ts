@@ -115,6 +115,14 @@ export interface PluginInfo {
 	disabled: boolean;
 }
 
+export type PluginLogLevel = "debug" | "info" | "warn" | "error";
+
+export interface PluginLogLine {
+	at: string;
+	level: PluginLogLevel;
+	message: string;
+}
+
 export interface ModelCost {
 	input: number;
 	output: number;

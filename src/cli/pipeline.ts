@@ -269,7 +269,7 @@ export async function assemblePipeline(options: {
 	});
 	options.onStage?.("mcp");
 
-	reportExternalFailures(await loadExternalPlugins(host, disabled));
+	reportExternalFailures(host, await loadExternalPlugins(host, disabled));
 
 	// pi 扩展与 dsh 插件走同一条外部插件管线：同一信任级别、同一失败收集。装载结论并入报告。
 	const extensionContext =
@@ -284,18 +284,34 @@ export async function assemblePipeline(options: {
 	const piCollectors: PiExtensionCollector[] =
 		extensionContext === undefined
 			? []
-			: activeDeclarative
-					.filter((plugin) => !plugin.cordis && plugin.extensions.length > 0)
-					.map((plugin) => piExtensionPlugin(plugin, extensionContext));
+				: activeDeclarative
+						.filter((plugin) => !plugin.cordis && plugin.extensions.length > 0)
+						.map((plugin) =>
+							piExtensionPlugin(plugin, {
+								...extensionContext,
+								notify: (message) => {
+									host.logs.record(plugin.name, "info", message);
+									extensionContext.notify(message);
+								},
+							}),
+						);
 	const dshCollectors: DshExtensionCollector[] =
 		extensionContext === undefined
 			? []
 			: activeDeclarative
 					.filter((plugin) => plugin.cordis && plugin.extensions.length > 0)
-					.map((plugin) =>
-						dshExtensionPlugin(plugin, {
-							...extensionContext,
-							skills: () => discoverSkills(defaultSkillRoots(workRoot, extensionContext.projectTrusted)),
+						.map((plugin) =>
+							dshExtensionPlugin(plugin, {
+								...extensionContext,
+								notify: (message) => {
+									host.logs.record(plugin.name, "info", message);
+									extensionContext.notify(message);
+								},
+								log: (level, message) => {
+									host.logs.record(plugin.name, level, message);
+									writeStderr(`${message}\n`);
+								},
+								skills: () => discoverSkills(defaultSkillRoots(workRoot, extensionContext.projectTrusted)),
 							webFetch: async (url, signal) => {
 								const page = await fetchWebPage(url, DEFAULT_WEB_FETCH_LIMITS, { signal });
 								return {
@@ -342,8 +358,9 @@ export async function assemblePipeline(options: {
 	}
 }
 
-function reportExternalFailures(failures: readonly PluginFailure[]): void {
+function reportExternalFailures(host: PluginHost, failures: readonly PluginFailure[]): void {
 	for (const failure of failures) {
+		host.logs.record(failure.plugin, "error", failure.message);
 		writeStderr(`External plugin ${failure.plugin} failed to load: ${failure.message}\n`);
 	}
 }

@@ -532,6 +532,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
 				disabled: config.plugins.disabled.includes(plugin.name),
 			})),
+		pluginLogs: (name, limit) => pipeline.host.logs.lines(name, limit),
 		settings: settingsSnapshot,
 		applySettings,
 		personalization: readPersonalization,

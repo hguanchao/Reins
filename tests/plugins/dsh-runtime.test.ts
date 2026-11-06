@@ -29,6 +29,7 @@ function fakeApi() {
 		registerSandboxBackend: () => {},
 		registerPermissionRule: () => {},
 		registerSessionStore: () => {},
+		log: () => {},
 	};
 	return { api: api as PluginApi, tools, commands };
 }

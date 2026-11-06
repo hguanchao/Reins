@@ -3,6 +3,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
+import { PLUGIN_LOG_LIMIT, type PluginLogLine } from "#src/plugins/logs.ts";
 import type { FileContent, FileSearchHit, FileTree } from "#src/web/files.ts";
 import type { McpServerDraft } from "#src/web/mcp-servers.ts";
 import type { ProviderView } from "#src/web/providers.ts";
@@ -111,6 +112,8 @@ export interface WebServerDeps {
 	skills(): readonly SettingsSkill[];
 	/** 已装载的插件清单(插件市场面板) */
 	plugins(): readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
+	/** 某个插件最近的运行日志;没有日志时返回空表 */
+	pluginLogs(name: string, limit: number): readonly PluginLogLine[];
 	/** 设置页快照 */
 	settings(): SettingsSnapshot;
 	/** 应用可热更新的设置;返回错误说明时前端直接展示 */
@@ -480,6 +483,21 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 		}
 		if (req.method === "GET" && path === "/api/plugins") {
 			sendJson(res, 200, deps.plugins());
+			return;
+		}
+		if (req.method === "GET" && path === "/api/plugins/logs") {
+			const name = url.searchParams.get("name");
+			if (name === null || name.length === 0) {
+				sendJson(res, 400, { error: "name is required" });
+				return;
+			}
+			const rawLimit = url.searchParams.get("limit");
+			const limit = rawLimit === null ? PLUGIN_LOG_LIMIT : Number.parseInt(rawLimit, 10);
+			if (!Number.isFinite(limit) || limit <= 0) {
+				sendJson(res, 400, { error: "limit must be a positive integer" });
+				return;
+			}
+			sendJson(res, 200, { lines: deps.pluginLogs(name, limit) });
 			return;
 		}
 		if (req.method === "GET" && path === "/api/models") {

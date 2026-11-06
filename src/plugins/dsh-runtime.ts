@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { isObject } from "#src/plugins/dsh-shim/shared.ts";
 import type { DeclarativePlugin } from "#src/plugins/declarative.ts";
 import type { Plugin, PluginApi, PluginFailure, PluginReportLine } from "#src/plugins/host.ts";
+import type { PluginLogLevel } from "#src/plugins/logs.ts";
 import type { ToolContext, ToolResult } from "#src/tools/contract.ts";
 import type { JsonSchema } from "#src/tools/schema.ts";
 import { writeForwarders } from "#src/plugins/shims.ts";
@@ -49,6 +50,8 @@ export interface DshExtensionContext {
 	}>;
 	/** 扩展往界面上写一行信息；print 模式落 stderr，界面模式进状态 */
 	readonly notify: (message: string) => void;
+	/** 带级别的运行日志；缺省时退回 notify，保证老调用方仍能输出 */
+	readonly log?: (level: PluginLogLevel, message: string) => void;
 }
 
 export interface DshLoadOutcome {
@@ -143,6 +146,11 @@ function createDshRuntime(input: {
 	const cleanups: (() => unknown)[] = [];
 	/** 插件登记的提示词段；第一轮只登记，不接入系统提示词 */
 	const promptSections: string[] = [];
+
+	const writeLog = (level: PluginLogLevel, message: string): void => {
+		if (context.log !== undefined) context.log(level, message);
+		else context.notify(`[dsh] ${message}`);
+	};
 
 	const base: Record<PropertyKey, unknown> = {
 		inject: (_names: readonly string[], callback: (injected: unknown) => unknown): unknown => callback(ctxRef),
@@ -256,9 +264,9 @@ function createDshRuntime(input: {
 			},
 		},
 		logger: {
-			info: (message: string) => context.notify(`[dsh] ${message}`),
-			warn: (message: string) => context.notify(`[dsh] ${message}`),
-			error: (message: string) => context.notify(`[dsh] ${message}`),
+			info: (message: string) => writeLog("info", message),
+			warn: (message: string) => writeLog("warn", message),
+			error: (message: string) => writeLog("error", message),
 			debug: () => {},
 		},
 	};

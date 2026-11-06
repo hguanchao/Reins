@@ -96,6 +96,10 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 			},
 		],
 		plugins: () => [{ name: "demo", kind: "declarative", disabled: false }],
+		pluginLogs: (name) =>
+			name === "demo"
+				? [{ at: "2026-01-01T00:00:00.000Z", level: "info", message: "loaded" }]
+				: [],
 		settings: () => ({
 			version: "1.0.0",
 			configPath: "/config.toml",
@@ -656,6 +660,18 @@ describe("web 传输层", () => {
 			body: JSON.stringify({}),
 		});
 		assert.equal(invalidReconnect.status, 400);
+
+		const pluginLogs = await fetch(`${base}/api/plugins/logs?name=demo`, { headers });
+		assert.equal(pluginLogs.status, 200);
+		assert.deepEqual(await pluginLogs.json(), {
+			lines: [{ at: "2026-01-01T00:00:00.000Z", level: "info", message: "loaded" }],
+		});
+		const missingPluginName = await fetch(`${base}/api/plugins/logs`, { headers });
+		assert.equal(missingPluginName.status, 400);
+		const invalidPluginLimit = await fetch(`${base}/api/plugins/logs?name=demo&limit=0`, {
+			headers,
+		});
+		assert.equal(invalidPluginLimit.status, 400);
 
 		const providers = await fetch(`${base}/api/providers`, {
 			headers: { "x-reins-token": TOKEN },

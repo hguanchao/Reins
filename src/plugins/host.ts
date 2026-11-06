@@ -1,4 +1,5 @@
 import { describeError } from "#src/shared/describe-error.ts";
+import { PluginLogBuffer, type PluginLogLevel } from "#src/plugins/logs.ts";
 import type { PermissionPolicy, PermissionRule } from "#src/permission/policy.ts";
 import type { SandboxBackend } from "#src/sandbox/policy.ts";
 import type { SessionStore } from "#src/session/store.ts";
@@ -34,6 +35,8 @@ export interface PluginApi {
 	registerPermissionRule(rule: PermissionRule): void;
 	/** 替换会话的落盘方式。内置实现先装好，后注册的生效。 */
 	registerSessionStore(store: SessionStore): void;
+	/** 写一行运行日志；界面按插件名归属展示。 */
+	log(level: PluginLogLevel, message: string): void;
 }
 
 export interface Plugin {
@@ -98,6 +101,8 @@ export class PluginHost {
 	readonly #commands = new Map<string, PluginCommand>();
 	readonly #backends: SandboxBackend[] = [];
 	#sessionStore: SessionStore | undefined;
+	/** 所有插件共用一份日志缓冲，按插件名分桶 */
+	readonly logs = new PluginLogBuffer();
 
 	/**
 	 * builtins 是产品自带的实现，在构造时就装好。
@@ -178,14 +183,17 @@ export class PluginHost {
 
 		for (const plugin of plugins) {
 			const pending = newPending();
+			this.logs.record(plugin.name, "info", "loading");
 			try {
-				await plugin.setup(this.#api(pending, source));
+				await plugin.setup(this.#api(plugin.name, pending, source));
 				pending.open = false;
 				this.#commit(pending, source);
+				this.logs.record(plugin.name, "info", "loaded");
 			} catch (error) {
 				// 装载失败的那一代同样作废：它不该还能往注册表里补东西
 				pending.open = false;
 				pending.stale = true;
+				this.logs.record(plugin.name, "error", describeError(error));
 				failures.push({
 					plugin: plugin.name,
 					message: describeError(error),
@@ -196,7 +204,7 @@ export class PluginHost {
 		return failures;
 	}
 
-	#api(pending: Pending, source: ToolSource): PluginApi {
+	#api(pluginName: string, pending: Pending, source: ToolSource): PluginApi {
 		const assertLive = (): void => {
 			if (pending.stale) {
 				throw new Error("This plugin context is stale: its setup failed, so later registrations are refused");
@@ -253,6 +261,10 @@ export class PluginHost {
 					return;
 				}
 				pending.store = store;
+			},
+			log: (level, message) => {
+				assertLive();
+				this.logs.record(pluginName, level, message);
 			},
 		};
 	}

@@ -53,6 +53,34 @@ describe("插件宿主", () => {
 		assert.ok(host.sessionStore() !== undefined);
 	});
 
+	it("记录装载生命周期与插件自己写的日志", async () => {
+		const { host } = await hostWith(
+			pluginOf("demo", (api) => {
+				api.log("warn", "hello");
+			}),
+		);
+		assert.deepEqual(
+			host.logs.lines("demo").map((line) => [line.level, line.message]),
+			[
+				["info", "loading"],
+				["warn", "hello"],
+				["info", "loaded"],
+			],
+		);
+	});
+
+	it("装载失败也写进日志", async () => {
+		const { host } = await hostWith(
+			pluginOf("broken", () => {
+				throw new Error("boom");
+			}),
+		);
+		const lines = host.logs.lines("broken");
+		assert.equal(lines[0]?.message, "loading");
+		assert.equal(lines[1]?.level, "error");
+		assert.match(lines[1]?.message ?? "", /boom/);
+	});
+
 	it("拒绝原型链名字与含控制字符的命令名", async () => {
 		const proto = await hostWith(
 			pluginOf("bad-proto", (api) => {

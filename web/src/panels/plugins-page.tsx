@@ -1,13 +1,27 @@
 import { Blocks, Plus, Store } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
+import { api } from "../api.ts";
 import { Button, Menu, toast } from "../components/ui/index.ts";
 import { pluginKindLabel } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
-import type { PluginInfo } from "../protocol.ts";
+import type { PluginInfo, PluginLogLevel, PluginLogLine } from "../protocol.ts";
 import { PanelPage } from "../shell/panel-page.tsx";
 
-/** 插件管理页：已安装清单、详情占位与市场占位。 */
+const LOG_COLORS: Record<PluginLogLevel, string> = {
+	debug: "text-foreground-subtlest",
+	info: "text-foreground-subtle",
+	warn: "text-warning",
+	error: "text-destructive",
+};
+
+/** 日志时间只显示时分秒；解析失败时原样显示，不让坏数据拖垮整页。 */
+function formatLogTime(at: string): string {
+	const date = new Date(at);
+	return Number.isNaN(date.getTime()) ? at : date.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+/** 插件管理页：已安装清单、详情、运行日志与市场占位。 */
 export function PluginsPage({
 	plugins,
 	onClose,
@@ -18,7 +32,43 @@ export function PluginsPage({
 	const [tab, setTab] = useState("installed");
 	const [selected, setSelected] = useState<PluginInfo | undefined>(undefined);
 	const [detailTab, setDetailTab] = useState("overview");
+	const [logs, setLogs] = useState<readonly PluginLogLine[]>([]);
+	const [logsLoading, setLogsLoading] = useState(false);
+	const [logsError, setLogsError] = useState<string | undefined>(undefined);
+	const [logsVersion, setLogsVersion] = useState(0);
 	const bridge = desktopBridge();
+
+	// 日志页签打开时轮询；插件日志是内存缓冲，没有推送通道，轮询比再开一条 SSE 简单
+	useEffect(() => {
+		if (selected === undefined || detailTab !== "logs") return;
+		let cancelled = false;
+		const load = (initial: boolean): void => {
+			if (initial) {
+				setLogsLoading(true);
+				setLogsError(undefined);
+			}
+			void api
+				.pluginLogs(selected.name)
+				.then((lines) => {
+					if (cancelled) return;
+					setLogs(lines);
+					setLogsError(undefined);
+				})
+				.catch((cause: unknown) => {
+					if (cancelled) return;
+					setLogsError(cause instanceof Error ? cause.message : String(cause));
+				})
+				.finally(() => {
+					if (!cancelled && initial) setLogsLoading(false);
+				});
+		};
+		load(true);
+		const timer = window.setInterval(() => load(false), 2000);
+		return () => {
+			cancelled = true;
+			window.clearInterval(timer);
+		};
+	}, [selected, detailTab, logsVersion]);
 
 	const installPlugin = (): void => {
 		if (bridge === undefined) return;
@@ -109,13 +159,57 @@ export function PluginsPage({
 						<PluginInfoRow label="类型" value={pluginKindLabel(selected.kind)} />
 						<PluginInfoRow label="来源" value="Reins 进程内注册" />
 						<p className="m-0 pt-2 text-[12px] leading-[18px] text-foreground-subtlest">
-							配置表单与日志尚未接入；启停可在这里操作，卸载在扩展管理中。
+							配置表单尚未接入；启停可在这里操作，运行日志在「日志」页签，卸载在扩展管理中。
 						</p>
 					</div>
 				) : detailTab === "config" ? (
 					<PlaceholderCard title="配置表单尚未接入" text="插件没有声明可视化配置项，当前只读取 Reins 装载状态。" />
 				) : (
-					<PlaceholderCard title="插件日志尚未接入" text="Reins 还没有把插件运行日志转发到界面。" />
+					<div className="flex flex-col gap-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
+							<span className="text-[11px] leading-4 text-foreground-subtlest">
+								最近 {logs.length} 条 · 每 2 秒刷新
+							</span>
+							<Button
+								variant="outline"
+								size="sm"
+								className="h-7 rounded-sm px-3 text-[12px]"
+								onClick={() => setLogsVersion((value) => value + 1)}
+							>
+								刷新
+							</Button>
+						</div>
+						{logsLoading ? (
+							<div className="rounded-xl border-[0.5px] border-border bg-card px-4 py-5 text-[12px] leading-[18px] text-foreground-subtlest">
+								正在读取日志…
+							</div>
+						) : logsError !== undefined ? (
+							<div className="rounded-xl border-[0.5px] border-border bg-card px-4 py-5 text-[12px] leading-[18px] text-destructive">
+								{logsError}
+							</div>
+						) : logs.length === 0 ? (
+							<PlaceholderCard
+								title="还没有日志"
+								text="插件装载与运行期的日志会出现在这里；重启 Reins 后清空。"
+							/>
+						) : (
+							<div className="flex max-h-[calc(100vh-220px)] flex-col gap-1 overflow-y-auto rounded-xl border-[0.5px] border-border bg-card p-3 font-mono text-[11px] leading-[18px]">
+								{logs.map((line, index) => (
+									<div key={`${line.at}-${index}`} className="flex gap-2">
+										<span className="shrink-0 text-foreground-subtlest">
+											{formatLogTime(line.at)}
+										</span>
+										<span className={`w-10 shrink-0 uppercase ${LOG_COLORS[line.level]}`}>
+											{line.level}
+										</span>
+										<span className="min-w-0 whitespace-pre-wrap break-all text-foreground-subtle">
+											{line.message}
+										</span>
+									</div>
+								))}
+							</div>
+						)}
+					</div>
 				)}
 			</PanelPage>
 		);
@@ -168,6 +262,8 @@ export function PluginsPage({
 								onClick={() => {
 									setSelected(plugin);
 									setDetailTab("overview");
+									setLogs([]);
+									setLogsError(undefined);
 								}}
 								className="flex items-start gap-3 rounded-xl border-[0.5px] border-card-border bg-card p-3.5 text-left transition-colors hover:bg-surface-hover"
 							>

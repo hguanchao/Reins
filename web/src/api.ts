@@ -17,6 +17,7 @@ import type {
 	NotifyMode,
 	PersonalizationSnapshot,
 	PluginInfo,
+	PluginLogLine,
 	ProviderInput,
 	ProviderView,
 	SessionEntry,
@@ -72,6 +73,12 @@ export const api = {
 	},
 	async plugins(): Promise<readonly PluginInfo[]> {
 		return (await request("/api/plugins")) as readonly PluginInfo[];
+	},
+	async pluginLogs(name: string, limit = 200): Promise<readonly PluginLogLine[]> {
+		const body = (await request(
+			`/api/plugins/logs?name=${encodeURIComponent(name)}&limit=${limit}`,
+		)) as { lines?: readonly PluginLogLine[] };
+		return body.lines ?? [];
 	},
 	async sessions(): Promise<readonly SessionSummary[]> {
 		return (await request("/api/sessions")) as readonly SessionSummary[];
