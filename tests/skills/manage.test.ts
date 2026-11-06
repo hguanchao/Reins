@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import { skillsDir } from "#src/config/paths.ts";
-import { createUserSkill, createUserSkillFromContent } from "#src/skills/create.ts";
 import { discoverSkills, type SkillInfo } from "#src/skills/discover.ts";
 import {
 	deleteUserSkill,
@@ -28,6 +27,13 @@ function userSkills(): readonly SkillInfo[] {
 	return discoverSkills([{ directory: skillsDir(), scope: "user" }]);
 }
 
+/** 直接写一份 SKILL.md；manage 的测试不依赖上传或创建流程。 */
+function writeUserSkill(name: string, content: string): void {
+	const directory = join(skillsDir(), name);
+	mkdirSync(directory, { recursive: true });
+	writeFileSync(join(directory, "SKILL.md"), content, "utf8");
+}
+
 function outsideSkill(): SkillInfo {
 	const directory = mkdtempSync(join(tmpdir(), "reins-skill-outside-"));
 	created.push(directory);
@@ -46,7 +52,7 @@ after(() => {
 describe("技能读取", () => {
 	it("返回 description 与正文", () => {
 		home();
-		createUserSkill({ name: "writer", description: "写文档", content: "# 步骤\n\n写正文" });
+		writeUserSkill("writer", "---\nname: writer\ndescription: 写文档\n---\n\n# 步骤\n\n写正文\n");
 		const skill = userSkills()[0];
 		assert.ok(skill);
 		const content = readSkillContent(skill);
@@ -59,7 +65,7 @@ describe("技能读取", () => {
 describe("技能更新", () => {
 	it("只替换 description 与正文，保留额外 frontmatter", () => {
 		home();
-		createUserSkillFromContent(
+		writeUserSkill(
 			"writer",
 			"---\nname: writer\ndescription: >\n  old text\nlicense: MIT\n---\n\nold body\n",
 		);
@@ -80,7 +86,7 @@ describe("技能更新", () => {
 
 	it("名称不可修改", () => {
 		home();
-		createUserSkill({ name: "writer", description: "写文档", content: "正文" });
+		writeUserSkill("writer", "---\nname: writer\ndescription: 写文档\n---\n\n正文\n");
 		const skill = userSkills()[0];
 		assert.ok(skill);
 		assert.throws(
@@ -113,7 +119,7 @@ describe("技能更新", () => {
 describe("技能删除", () => {
 	it("删除技能目录", () => {
 		home();
-		createUserSkill({ name: "temp", description: "临时", content: "正文" });
+		writeUserSkill("temp", "---\nname: temp\ndescription: 临时\n---\n\n正文\n");
 		const skill = userSkills()[0];
 		assert.ok(skill);
 		deleteUserSkill(skill);

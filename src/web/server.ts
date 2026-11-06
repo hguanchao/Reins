@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 import { PLUGIN_LOG_LIMIT, type PluginLogLine } from "#src/plugins/logs.ts";
+import { MAX_SKILL_ARCHIVE_BYTES } from "#src/skills/upload.ts";
 import type { FileContent, FileSearchHit, FileTree } from "#src/web/files.ts";
 import type { McpServerDraft } from "#src/web/mcp-servers.ts";
 import type { ProviderView } from "#src/web/providers.ts";
@@ -127,10 +128,8 @@ export interface WebServerDeps {
 	};
 	/** 写回个性化指令;超过预算或写入失败时返回错误说明 */
 	savePersonalization(text: string): { readonly ok: boolean; readonly error?: string };
-	/** 新建用户级技能;校验失败或目录已存在时返回错误说明 */
-	createSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
-	/** 上传一个 SKILL.md;要求 frontmatter 自带 name 与 description */
-	uploadSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
+	/** 安装一个技能压缩包;压缩包内需包含一个 SKILL.md */
+	uploadSkill(archive: Uint8Array): { readonly ok: boolean; readonly error?: string };
 	/** 读取一个可编辑技能的 description 与正文;只读技能返回错误说明 */
 	skillContent(path: string): {
 		readonly ok: boolean;
@@ -322,6 +321,19 @@ function streamEvents(req: IncomingMessage, res: ServerResponse, deps: WebServer
 }
 
 /** 读请求体并按 JSON 解析;超限或解析失败返回 undefined。 */
+/** 读原始请求体;超过上限时返回 undefined,由调用方回 413。 */
+async function readBinaryBody(req: IncomingMessage, maxBytes: number): Promise<Uint8Array | undefined> {
+	const chunks: Buffer[] = [];
+	let size = 0;
+	for await (const chunk of req) {
+		const buffer = chunk as Buffer;
+		size += buffer.length;
+		if (size > maxBytes) return undefined;
+		chunks.push(buffer);
+	}
+	return Buffer.concat(chunks);
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | undefined> {
 	const chunks: Buffer[] = [];
 	let size = 0;
@@ -435,26 +447,6 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				return;
 			}
 			sendJson(res, 200, result.skill);
-			return;
-		}
-		if (req.method === "POST" && path === "/api/skills") {
-			const body = await readJsonBody(req);
-			const result = deps.createSkill(body ?? {});
-			if (!result.ok) {
-				sendJson(res, 400, { error: result.error ?? "无法创建技能" });
-				return;
-			}
-			sendJson(res, 200, { ok: true });
-			return;
-		}
-		if (req.method === "POST" && path === "/api/skills/upload") {
-			const body = await readJsonBody(req);
-			const result = deps.uploadSkill(body ?? {});
-			if (!result.ok) {
-				sendJson(res, 400, { error: result.error ?? "无法上传技能" });
-				return;
-			}
-			sendJson(res, 200, { ok: true });
 			return;
 		}
 		if (req.method === "GET" && path === "/api/mcp-servers/detail") {
@@ -709,6 +701,24 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				return;
 			}
 			sendJson(res, 200, deps.settings());
+			return;
+		}
+		if (path === "/api/skills/upload") {
+			const archive = await readBinaryBody(req, MAX_SKILL_ARCHIVE_BYTES);
+			if (archive === undefined) {
+				sendJson(res, 413, { error: `压缩包不能超过 ${MAX_SKILL_ARCHIVE_BYTES / 1024 / 1024} MB` });
+				return;
+			}
+			if (archive.length === 0) {
+				sendJson(res, 400, { error: "请选择 zip 压缩包" });
+				return;
+			}
+			const result = deps.uploadSkill(archive);
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法上传技能" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
 			return;
 		}
 		if (path === "/api/skills/update") {

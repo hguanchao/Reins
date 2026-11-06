@@ -131,8 +131,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 			state.personalizationText = text;
 			return { ok: true };
 		},
-		createSkill: (body) => ({ ok: typeof body["name"] === "string" }),
-		uploadSkill: (body) => ({ ok: typeof body["content"] === "string" }),
+		uploadSkill: (archive) => ({ ok: archive.length > 0 }),
 		skillContent: (path) =>
 			path === "/skills/writer/SKILL.md"
 				? { ok: true, skill: { name: "writer", description: "写文档", content: "正文" } }
@@ -521,31 +520,27 @@ describe("web 传输层", () => {
 		});
 		assert.equal(tooLong.status, 400);
 
-		const skill = await fetch(`${base}/api/skills`, {
+		// 新建技能已移除；旧入口现在落到 404
+		const removedCreateSkill = await fetch(`${base}/api/skills`, {
 			method: "POST",
 			headers,
 			body: JSON.stringify({ name: "writer", description: "写文档", content: "写清楚" }),
 		});
-		assert.equal(skill.status, 200);
-		const invalidSkill = await fetch(`${base}/api/skills`, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({}),
-		});
-		assert.equal(invalidSkill.status, 400);
+		assert.equal(removedCreateSkill.status, 404);
 
+		const uploadHeaders = { "x-reins-token": TOKEN, "content-type": "application/zip" };
 		const upload = await fetch(`${base}/api/skills/upload`, {
 			method: "POST",
-			headers,
-			body: JSON.stringify({ content: "---\nname: uploaded\ndescription: 上传\n---\n正文" }),
+			headers: uploadHeaders,
+			body: new Uint8Array([0x50, 0x4b, 1, 2, 3]),
 		});
 		assert.equal(upload.status, 200);
-		const invalidUpload = await fetch(`${base}/api/skills/upload`, {
+		const emptyUpload = await fetch(`${base}/api/skills/upload`, {
 			method: "POST",
-			headers,
-			body: JSON.stringify({}),
+			headers: uploadHeaders,
+			body: new Uint8Array(),
 		});
-		assert.equal(invalidUpload.status, 400);
+		assert.equal(emptyUpload.status, 400);
 
 		const skillContent = await fetch(
 			`${base}/api/skills/content?path=${encodeURIComponent("/skills/writer/SKILL.md")}`,

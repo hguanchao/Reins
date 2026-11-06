@@ -36,8 +36,9 @@ import {
 import { writeProviders } from "#src/config/providers-write.ts";
 import type { Session } from "#src/session/session.ts";
 import { lastContextTokens, sumActivity, sumUsage } from "#src/session/usage.ts";
-import { createUserSkill, createUserSkillFromContent, parseSkillDraft, parseSkillUpload } from "#src/skills/create.ts";
+import { parseSkillDraft } from "#src/skills/draft.ts";
 import { defaultSkillRoots, discoverSkills, type SkillInfo } from "#src/skills/discover.ts";
+import { installParsedSkill, parseSkillArchive } from "#src/skills/upload.ts";
 import {
 	deleteUserSkill,
 	isEditableSkill,
@@ -612,33 +613,13 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 				return { ok: false, error: describeError(error) };
 			}
 		},
-		createSkill: (body) => {
-			const parsed = parseSkillDraft(body);
-			if (!parsed.ok || parsed.draft === undefined) {
-				return { ok: false, error: parsed.error ?? "技能配置无效" };
-			}
-			const draft = parsed.draft;
-			if (skillExists(draft.name)) {
-				return { ok: false, error: `技能 ${draft.name} 已存在` };
-			}
+		uploadSkill: (archive) => {
 			try {
-				createUserSkill(draft);
-				return { ok: true };
-			} catch (error) {
-				return { ok: false, error: describeError(error) };
-			}
-		},
-		uploadSkill: (body) => {
-			const parsed = parseSkillUpload(body);
-			if (!parsed.ok || parsed.draft === undefined) {
-				return { ok: false, error: parsed.error ?? "技能配置无效" };
-			}
-			const draft = parsed.draft;
-			if (skillExists(draft.name)) {
-				return { ok: false, error: `技能 ${draft.name} 已存在` };
-			}
-			try {
-				createUserSkillFromContent(draft.name, draft.content);
+				const parsed = parseSkillArchive(archive);
+				if (skillExists(parsed.name)) {
+					return { ok: false, error: `技能 ${parsed.name} 已存在` };
+				}
+				installParsedSkill(parsed);
 				return { ok: true };
 			} catch (error) {
 				return { ok: false, error: describeError(error) };

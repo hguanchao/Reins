@@ -8,23 +8,18 @@ const FIELD =
 const AREA =
 	"w-full resize-y rounded-md border-[0.5px] border-input-border bg-input px-3 py-2 text-[13px] leading-5 outline-none transition-colors placeholder:text-foreground-subtlest focus:border-input-border-focused";
 
-/** 新建或编辑技能：名称、描述与 SKILL.md 正文；编辑时名称只读。 */
+/** 编辑技能：名称只读，描述与正文写回 SKILL.md。 */
 export function SkillDialog({
 	open,
 	skill,
 	onClose,
-	onCreated,
+	onSaved,
 }: {
 	readonly open: boolean;
-	/** 编辑目标；缺省时是新建 */
-	readonly skill?: { readonly path: string; readonly name: string };
+	readonly skill: { readonly path: string; readonly name: string };
 	onClose(): void;
-	onCreated(): void;
+	onSaved(): void;
 }): ReactElement {
-	// 用字符串做依赖：调用方每次渲染都可能新建对象，按对象比较会反复重新拉取正文
-	const skillPath = skill?.path;
-	const skillName = skill?.name;
-	const editing = skillPath !== undefined;
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [content, setContent] = useState("");
@@ -35,24 +30,16 @@ export function SkillDialog({
 
 	useEffect(() => {
 		if (!open) return;
+		setName(skill.name);
+		setDescription("");
+		setContent("");
 		setSaving(false);
 		setError(undefined);
 		setLoadError(undefined);
-		if (skillPath === undefined) {
-			setName("");
-			setDescription("");
-			setContent("");
-			setLoading(false);
-			return;
-		}
-
-		setName(skillName ?? "");
-		setDescription("");
-		setContent("");
 		setLoading(true);
 		let cancelled = false;
 		void api
-			.skillContent(skillPath)
+			.skillContent(skill.path)
 			.then((document) => {
 				if (cancelled) return;
 				setName(document.name);
@@ -69,7 +56,7 @@ export function SkillDialog({
 		return () => {
 			cancelled = true;
 		};
-	}, [open, skillPath, skillName]);
+	}, [open, skill.path, skill.name]);
 
 	const submit = (): void => {
 		if (saving || loading || loadError !== undefined) return;
@@ -82,23 +69,16 @@ export function SkillDialog({
 		}
 		setSaving(true);
 		setError(undefined);
-		const request =
-			editing && skillPath !== undefined
-				? api.updateSkill({
-						path: skillPath,
-						name: trimmedName,
-						description: trimmedDescription,
-						content: trimmedContent,
-					})
-				: api.createSkill({
-						name: trimmedName,
-						description: trimmedDescription,
-						content: trimmedContent,
-					});
-		void request
+		void api
+			.updateSkill({
+				path: skill.path,
+				name: trimmedName,
+				description: trimmedDescription,
+				content: trimmedContent,
+			})
 			.then(() => {
-				toast(editing ? "技能已保存" : "技能已创建");
-				onCreated();
+				toast("技能已保存");
+				onSaved();
 				onClose();
 			})
 			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
@@ -115,7 +95,7 @@ export function SkillDialog({
 		<Dialog
 			open={open}
 			onClose={onClose}
-			title={editing ? "编辑技能" : "新建技能"}
+			title="编辑技能"
 			footer={
 				<>
 					<Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
@@ -127,7 +107,7 @@ export function SkillDialog({
 						disabled={saving || loading || loadError !== undefined}
 						onClick={submit}
 					>
-						{saving ? (editing ? "保存中…" : "创建中…") : editing ? "保存" : "创建"}
+						{saving ? "保存中…" : "保存"}
 					</Button>
 				</>
 			}
@@ -139,17 +119,11 @@ export function SkillDialog({
 						value={name}
 						onChange={(event) => setName(event.target.value)}
 						onKeyDown={submitOnEnter}
-						placeholder="release-notes"
 						aria-label="技能名称"
-						disabled={editing || loading}
-						autoFocus={!editing}
+						disabled
 						className={FIELD}
 					/>
-					<span className="text-[11px] leading-4 text-foreground-subtlest">
-						{editing
-							? "编辑时名称不可修改。"
-							: "仅支持小写字母、数字、- 和 _，会作为技能目录名。"}
-					</span>
+					<span className="text-[11px] leading-4 text-foreground-subtlest">编辑时名称不可修改。</span>
 				</label>
 				<label className="flex flex-col gap-1">
 					<span className="text-[12px] leading-[18px] text-foreground-subtle">描述</span>

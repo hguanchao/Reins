@@ -95,7 +95,7 @@ const TAB_EMPTY: Record<Tab, { readonly icon: LucideIcon; readonly title: string
 	skill: {
 		icon: WandSparkles,
 		title: "还没有技能",
-		description: "用「+」新建或上传 SKILL.md，技能会从下一回合开始可用。",
+		description: "用「+」上传技能压缩包（.zip），技能会从下一回合开始可用。",
 	},
 	mcp: {
 		icon: Server,
@@ -115,7 +115,6 @@ export function ExtensionsSection({
 	const [tab, setTab] = useState<Tab>("all");
 	const [query, setQuery] = useState("");
 	const [infoOpen, setInfoOpen] = useState(false);
-	const [skillOpen, setSkillOpen] = useState(false);
 	const [uploadOpen, setUploadOpen] = useState(false);
 	const [mcpOpen, setMcpOpen] = useState(false);
 	const [mcpEditTarget, setMcpEditTarget] = useState<McpServerInput | undefined>(undefined);
@@ -154,11 +153,6 @@ export function ExtensionsSection({
 		{ id: "plugin", label: TAB_LABELS.plugin, count: counts.plugin },
 		{ id: "skill", label: TAB_LABELS.skill, count: counts.skill },
 		{ id: "mcp", label: TAB_LABELS.mcp, count: counts.mcp },
-	];
-
-	const skillEntries: readonly MenuEntry[] = [
-		{ type: "item", key: "new", label: "新建技能", icon: Plus, onSelect: () => setSkillOpen(true) },
-		{ type: "item", key: "upload", label: "上传技能", icon: Upload, onSelect: () => setUploadOpen(true) },
 	];
 
 	const pluginEntries: readonly MenuEntry[] = [
@@ -346,24 +340,15 @@ export function ExtensionsSection({
 						/>
 					</label>
 					{tab === "all" ? null : tab === "skill" ? (
-						<Menu
-							align="end"
-							zIndex={90}
-							entries={skillEntries}
-							trigger={({ open, toggle }) => (
-								<button
-									type="button"
-									aria-label="添加技能"
-									title="添加技能"
-									aria-haspopup="menu"
-									aria-expanded={open}
-									onClick={toggle}
-									className="flex size-8 items-center justify-center rounded-lg border-[0.5px] border-border bg-card text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-								>
-									<Plus className="size-3.5" />
-								</button>
-							)}
-						/>
+						<button
+							type="button"
+							aria-label="上传技能压缩包"
+							title="上传技能压缩包"
+							onClick={() => setUploadOpen(true)}
+							className="flex size-8 items-center justify-center rounded-lg border-[0.5px] border-border bg-card text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
+						>
+							<Upload className="size-3.5" />
+						</button>
 					) : tab === "plugin" ? (
 						<Menu
 							align="end"
@@ -486,21 +471,14 @@ export function ExtensionsSection({
 				</div>
 			</Dialog>
 
-			<SkillDialog
-				open={skillOpen}
-				onClose={() => setSkillOpen(false)}
-				onCreated={onRefresh}
-			/>
-			<SkillDialog
-				open={skillEditTarget !== undefined}
-				skill={
-					skillEditTarget?.path === undefined
-						? undefined
-						: { path: skillEditTarget.path, name: skillEditTarget.name }
-				}
-				onClose={() => setSkillEditTarget(undefined)}
-				onCreated={onRefresh}
-			/>
+			{skillEditTarget?.path === undefined ? null : (
+				<SkillDialog
+					open
+					skill={{ path: skillEditTarget.path, name: skillEditTarget.name }}
+					onClose={() => setSkillEditTarget(undefined)}
+					onSaved={onRefresh}
+				/>
+			)}
 			<SkillUploadDialog
 				open={uploadOpen}
 				onClose={() => setUploadOpen(false)}

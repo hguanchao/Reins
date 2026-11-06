@@ -44,6 +44,7 @@
 		"domino": "2.1.8",
 		"dompurify": "3.4.17",
 		"eventsource-parser": "4.1.2",
+		"fflate": "0.8.3",
 		"get-east-asian-width": "1.7.0",
 		"highlight.js": "11.11.2",
 		"ignore": "7.0.5",

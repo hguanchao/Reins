@@ -25,7 +25,6 @@ import type {
 	SettingsSnapshot,
 	SkillContent,
 	SkillInfo,
-	SkillInput,
 	SkillUpdateInput,
 	StateInfo,
 	ThinkingLevel,
@@ -151,11 +150,16 @@ export const api = {
 			body: JSON.stringify({ text }),
 		})) as PersonalizationSnapshot;
 	},
-	async createSkill(input: SkillInput): Promise<void> {
-		await request("/api/skills", { method: "POST", body: JSON.stringify(input) });
-	},
-	async uploadSkill(content: string): Promise<void> {
-		await request("/api/skills/upload", { method: "POST", body: JSON.stringify({ content }) });
+	async uploadSkillArchive(file: File): Promise<void> {
+		const response = await fetch("/api/skills/upload", {
+			method: "POST",
+			headers: { ...HEADERS, "content-type": "application/zip" },
+			body: file,
+		});
+		const body: unknown = await response.json().catch(() => undefined);
+		if (response.ok) return;
+		const message = (body as { error?: unknown } | undefined)?.["error"];
+		throw new Error(typeof message === "string" ? message : response.statusText);
 	},
 	async skillContent(path: string): Promise<SkillContent> {
 		return (await request(

@@ -2,7 +2,7 @@ import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:
 
 import { skillsDir } from "#src/config/paths.ts";
 import { isPathInside, resolveRealPath } from "#src/workspace/boundary.ts";
-import type { SkillDraft } from "#src/skills/create.ts";
+import type { SkillDraft } from "#src/skills/draft.ts";
 import { parseSkillFrontmatter, type SkillInfo } from "#src/skills/discover.ts";
 
 /**
