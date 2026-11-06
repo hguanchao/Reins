@@ -20,6 +20,7 @@ export interface ProviderView {
 	readonly hasApiKey: boolean;
 	readonly headers: Readonly<Record<string, string>>;
 	readonly promptCacheKey: boolean;
+	readonly enabled: boolean;
 	readonly models: readonly ModelEntry[];
 }
 
@@ -32,6 +33,7 @@ export function providerViews(config: ProvidersConfig): readonly ProviderView[] 
 		hasApiKey: provider.apiKey !== undefined && provider.apiKey.length > 0,
 		headers: provider.headers,
 		promptCacheKey: provider.promptCacheKey,
+		enabled: provider.enabled,
 		models: provider.models,
 	}));
 }
@@ -76,11 +78,17 @@ export function mergeProvider(
 		next["apiKey"] = apiKey.trim();
 	}
 
+	const enabled = next["enabled"];
+	if (enabled !== undefined && typeof enabled !== "boolean") {
+		return { ok: false, error: "提供方启用状态无效" };
+	}
+
 	const providers: Record<string, unknown> = {};
 	for (const provider of current.providers) {
-		if (provider.id !== id) providers[provider.id] = providerObject(provider);
+		providers[provider.id] = provider.id === id ? next : providerObject(provider);
 	}
-	providers[id] = next;
+	// 新增的提供方本来就不在 current 里，补到末尾；已有的保持原位，避免保存后列表跳序
+	if (!(id in providers)) providers[id] = next;
 	return validate(providers, file);
 }
 
@@ -111,6 +119,7 @@ function providerObject(provider: ProviderEntry): Record<string, unknown> {
 		apiKey: provider.apiKey,
 		headers: provider.headers,
 		promptCacheKey: provider.promptCacheKey,
+		enabled: provider.enabled,
 		models: provider.models,
 	};
 }

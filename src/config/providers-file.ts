@@ -109,6 +109,12 @@ export interface ProviderEntry {
 	 * 严格校验未知字段的网关会因此报错，所以默认关闭，由配置显式开启。
 	 */
 	readonly promptCacheKey: boolean;
+	/**
+	 * 是否参与模型选择。
+	 *
+	 * 关闭只影响能不能被新选中，配置与其密钥都保留：临时停用的通道不必删掉再重新填一遍。
+	 */
+	readonly enabled: boolean;
 	readonly models: readonly ModelEntry[];
 }
 
@@ -124,6 +130,7 @@ const PROVIDER_KEYS: readonly string[] = [
 	"apiKey",
 	"headers",
 	"promptCacheKey",
+	"enabled",
 	"models",
 ];
 const MODEL_KEYS: readonly string[] = [
@@ -178,6 +185,7 @@ function readProvider(source: ConfigSource, id: string): ProviderEntry {
 		apiKey: readString(source, [...path, "apiKey"]),
 		headers: readStringMap(source, [...path, "headers"]) ?? {},
 		promptCacheKey: readBoolean(source, [...path, "promptCacheKey"]) ?? false,
+		enabled: readBoolean(source, [...path, "enabled"]) ?? true,
 		models,
 	};
 }

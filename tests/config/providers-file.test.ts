@@ -69,3 +69,17 @@ describe("模型条目的解析", () => {
 		);
 	});
 });
+
+describe("提供方启用状态", () => {
+	it("缺省视为启用", () => {
+		assert.equal(firstProvider("")?.enabled, true);
+	});
+
+	it("显式关闭时读成 false", () => {
+		assert.equal(firstProvider('"enabled": false,')?.enabled, false);
+	});
+
+	it("不是布尔值时报错", () => {
+		assert.throws(() => firstProvider('"enabled": "no",'), /must be a boolean/);
+	});
+});

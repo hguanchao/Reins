@@ -31,6 +31,7 @@ function provider(overrides: Partial<ProviderEntry> = {}): ProviderEntry {
 		apiKey: "secret-key",
 		headers: {},
 		promptCacheKey: false,
+		enabled: true,
 		models: [model()],
 		...overrides,
 	};
@@ -46,6 +47,7 @@ describe("提供方视图", () => {
 		assert.equal(views[0]?.hasApiKey, true);
 		assert.equal("apiKey" in (views[0] ?? {}), false);
 		assert.equal(views[0]?.models[0]?.id, "m1");
+		assert.equal(views[0]?.enabled, true);
 	});
 });
 
@@ -101,5 +103,31 @@ describe("提供方写回校验", () => {
 		assert.deepEqual(removed.config?.providers.map((item) => item.id), ["p1"]);
 
 		assert.equal(removeProvider(config(), "p1", "/tmp/providers.json").ok, false);
+	});
+
+	it("只改启用状态时保留密钥与模型", () => {
+		const result = mergeProvider(config(), { id: "p1", enabled: false }, "/tmp/providers.json");
+		assert.equal(result.ok, true);
+		assert.equal(result.config?.providers[0]?.enabled, false);
+		assert.equal(result.config?.providers[0]?.apiKey, "secret-key");
+		assert.equal(result.config?.providers[0]?.models[0]?.id, "m1");
+	});
+
+	it("保存已有提供方时保持原有顺序", () => {
+		const third = provider({ id: "p3", name: "Provider Three", models: [model({ id: "m3" })] });
+		const result = mergeProvider(
+			config([provider(), provider({ id: "p2", name: "Provider Two" }), third]),
+			{ id: "p2", name: "Renamed" },
+			"/tmp/providers.json",
+		);
+		assert.equal(result.ok, true);
+		assert.deepEqual(result.config?.providers.map((item) => item.id), ["p1", "p2", "p3"]);
+		assert.equal(result.config?.providers[1]?.name, "Renamed");
+	});
+
+	it("启用状态不是布尔值时拒绝", () => {
+		const result = mergeProvider(config(), { id: "p1", enabled: "no" }, "/tmp/providers.json");
+		assert.equal(result.ok, false);
+		assert.match(result.error ?? "", /启用状态/);
 	});
 });

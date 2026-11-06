@@ -22,6 +22,7 @@ describe("providers.json 写回", () => {
 					apiKey: "secret",
 					headers: { "X-Test": "1" },
 					promptCacheKey: true,
+					enabled: true,
 					models: [
 						{
 							id: "m1",

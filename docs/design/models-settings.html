@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>模型设置 · 设计演示</title>
+<style>
+  /* 演示稿：单文件，仅用于评审，不代表实现代码 */
+  :root {
+    --ink: #0f1115;
+    --mut: #61666b;
+    --weak: #81858c;
+    --line: rgba(0, 0, 0, 0.12);
+    --line-soft: rgba(0, 0, 0, 0.08);
+    --bg: #fff;
+    --rail: #f9fafb;
+    --hover: rgba(38, 49, 72, 0.055);
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --mono: "SF Mono", "JetBrains Mono", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; padding: 18px; background: #ececee; color: var(--ink);
+    font-family: var(--sans); -webkit-font-smoothing: antialiased; display: flex; justify-content: center;
+  }
+  .app {
+    width: min(1120px, 100%); height: calc(100vh - 36px); display: flex; flex-direction: column;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow: hidden;
+  }
+
+  /* 窗口条 */
+  .chrome {
+    height: 34px; flex: 0 0 34px; display: flex; align-items: center; gap: 8px;
+    padding: 0 10px; border-bottom: 1px solid var(--line-soft); background: #fbfbfc;
+  }
+  .chrome .mark {
+    width: 16px; height: 16px; border-radius: 4px; background: var(--ink); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+  }
+  .chrome .sp { flex: 1; }
+  .chrome .wbtn { color: var(--weak); font-size: 11px; letter-spacing: 2px; }
+
+  .main { flex: 1; min-height: 0; display: flex; }
+
+  /* 设置导航 */
+  .nav {
+    width: 210px; flex: 0 0 210px; background: var(--rail);
+    border-right: 1px solid var(--line-soft); padding: 10px 10px 14px; display: flex; flex-direction: column;
+    overflow: auto;
+  }
+  .nav-back {
+    display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px;
+    border-radius: 7px; font-size: 12.5px; color: var(--mut); background: #f0f1f3;
+  }
+  .nav-group { margin-top: 16px; }
+  .nav-group > .label { padding: 0 8px 5px; font-size: 11px; color: var(--weak); }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; height: 29px; padding: 0 8px;
+    border-radius: 7px; font-size: 12.5px; color: var(--mut);
+  }
+  .nav-item.active { background: #ebedf2; color: var(--ink); }
+  .nav-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 10px 8px 0; font-size: 12px; color: var(--mut); }
+  .avatar { width: 22px; height: 22px; border-radius: 50%; background: #e6e7e9; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--mut); }
+
+  .content { flex: 1; min-width: 0; overflow: auto; padding: 22px 26px 26px; }
+  h1 { margin: 0; font-size: 27px; line-height: 34px; font-weight: 700; letter-spacing: -.02em; }
+  .sub { margin: 6px 0 0; font-size: 12.5px; color: var(--mut); }
+  .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .acts { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 4px; }
+
+  .ibtn {
+    width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--mut); cursor: pointer;
+  }
+  .ibtn:hover { color: var(--ink); background: var(--hover); }
+  .btn {
+    height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px;
+    border: 1px solid var(--line); background: #fff; border-radius: 6px;
+    font-size: 12px; color: var(--ink); cursor: pointer; white-space: nowrap;
+  }
+  .btn.solid { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 500; }
+  .btn.solid:hover { background: #2a2d33; }
+
+  /* 主从卡片 */
+  .panel {
+    margin-top: 16px; display: grid; grid-template-columns: 200px minmax(0, 1fr);
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden; height: min(525px, calc(100vh - 240px));
+  }
+  .plist { border-right: 1px solid var(--line-soft); padding: 10px 8px; overflow: auto; }
+  .pgroup { padding: 8px 8px 5px; font-size: 11px; color: var(--weak); }
+  .pitem {
+    width: 100%; height: 30px; display: flex; align-items: center; gap: 8px;
+    padding: 0 8px; border-radius: 6px; border: 1px solid transparent;
+    background: transparent; font-size: 12.5px; color: var(--ink); cursor: pointer; text-align: left;
+  }
+  .pitem:hover { background: var(--hover); }
+  .pitem.on { background: #fafafa; border-color: var(--line); }
+  .pitem .ico { width: 15px; height: 15px; flex: none; color: var(--mut); }
+  .pitem .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .dot.ok { background: var(--ok); }
+  .dot.warn { background: var(--warn); }
+
+  .detail { padding: 14px 18px 18px; min-width: 0; display: flex; flex-direction: column; }
+  .detail > * { max-width: 470px; }
+  .dhead { display: flex; align-items: center; gap: 8px; }
+  .dhead .ico { width: 17px; height: 17px; color: var(--mut); flex: none; }
+  .dhead h2 { margin: 0; font-size: 14px; font-weight: 600; flex: 1; min-width: 0; }
+  .sw {
+    width: 32px; height: 19px; flex: none; border-radius: 999px; border: 1px solid var(--line);
+    background: #e6e7e9; position: relative; cursor: pointer; padding: 0; transition: background .16s;
+  }
+  .sw::after {
+    content: ""; position: absolute; top: 1.5px; left: 2px; width: 13px; height: 13px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .16s;
+  }
+  .sw[aria-checked="true"] { background: var(--ink); border-color: var(--ink); }
+  .sw[aria-checked="true"]::after { transform: translateX(13px); }
+  .dots {
+    width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+    border: 0; background: transparent; border-radius: 5px; color: var(--mut); cursor: pointer;
+  }
+  .dots:hover { background: var(--hover); color: var(--ink); }
+
+  .field { margin-top: 12px; }
+  .field > label { display: block; margin-bottom: 5px; font-size: 12px; color: var(--mut); }
+  .input {
+    width: 100%; height: 32px; display: flex; align-items: center; gap: 8px;
+    padding: 0 9px; border: 1px solid var(--line-soft); border-radius: 7px;
+    background: #fff; font-size: 12.5px; color: var(--ink);
+  }
+  .input input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; }
+  .input input::placeholder { color: #a3a7ad; }
+  .input:focus-within { border-color: rgba(0,0,0,.3); }
+  .input.mono, .input.mono input { font-family: var(--mono); font-size: 11.5px; }
+  .sel {
+    width: 100%; height: 32px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 9px; border: 1px solid var(--line-soft); border-radius: 7px;
+    background: #fff; font-size: 12.5px; cursor: pointer;
+  }
+  .eye { color: var(--weak); background: transparent; border: 0; cursor: pointer; display: flex; }
+
+  .mtitle { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; }
+  .mtitle span { font-size: 12px; color: var(--mut); }
+  .addbtn {
+    height: 26px; padding: 0 9px; display: inline-flex; align-items: center; gap: 4px;
+    border: 0; border-radius: 6px; background: #eceef0; font-size: 12px; color: #5c6066; cursor: pointer;
+  }
+  .addbtn:hover { background: #e2e4e7; color: var(--ink); }
+
+  .empty {
+    margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px;
+    height: 52px; border: 1px dashed var(--line); border-radius: 8px;
+    font-size: 12px; color: var(--mut);
+  }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="chrome">
+    <span class="mark">R</span>
+    <span class="sp"></span>
+    <span class="wbtn">— □ ×</span>
+  </div>
+
+  <div class="main">
+    <aside class="nav">
+      <div class="nav-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        返回工作区
+      </div>
+
+      <div class="nav-group">
+        <div class="label">基础设置</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>常规</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>外观</div>
+        <div class="nav-item active"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>模型设置</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20"/></svg>浏览器控制</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>远程设备</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="12" x="2" y="6" rx="2"/><path d="M6 12h.01"/><path d="M10 12h.01"/><path d="M14 12h.01"/></svg>电脑控制</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="10" x="2" y="7" rx="2"/><path d="M7 7v10"/><path d="M11 7v10"/><path d="M15 7v10"/><path d="M19 7v10"/></svg>键盘快捷键</div>
+      </div>
+
+      <div class="nav-group">
+        <div class="label">Agent 能力</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>个性化</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 4 2 6h10c0-2 2-3 2-6a7 7 0 0 0-7-7Z"/><path d="M9 19h6"/></svg>记忆</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><path d="M14 6h5a2 2 0 0 1 2 2v2"/><path d="M10 18H5a2 2 0 0 1-2-2v-2"/></svg>子智能体</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>插件</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>MCP 服务器</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-3 7h6l-3 7"/><path d="M5 12h2"/><path d="M17 12h2"/></svg>技能</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>命令</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4H6a2 2 0 0 0-2 2v4"/><path d="M10 20H6a2 2 0 0 1-2-2v-4"/><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/></svg>钩子</div>
+      </div>
+
+      <div class="nav-group">
+        <div class="label">数据与统计</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>数据同步</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>使用统计</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 16V8"/><path d="M12 16V4"/><path d="M18 16v-6"/></svg>项目</div>
+        <div class="nav-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>归档管理</div>
+      </div>
+
+      <div class="nav-foot"><span class="avatar">初</span>初十_</div>
+    </aside>
+
+    <div class="content">
+      <div class="head">
+        <div>
+          <h1>模型设置</h1>
+          <p class="sub">管理自定义模型供应商，配置后可在聊天时选择使用。</p>
+        </div>
+        <div class="acts">
+          <button class="ibtn" aria-label="刷新">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+          </button>
+          <button class="btn solid">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            添加供应商
+          </button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <nav class="plist">
+          <div class="pgroup">智谱</div>
+          <button class="pitem">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6 6 0 0 0 6.3 9.4 4 4 0 0 0 7 17.9"/></svg>
+            <span class="name">BigModel</span><span class="dot ok"></span>
+          </button>
+          <button class="pitem">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+            <span class="name">Start Plan</span><span class="dot warn"></span>
+          </button>
+
+          <div class="pgroup">自定义供应商</div>
+          <button class="pitem">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+            <span class="name">magpie</span><span class="dot ok"></span>
+          </button>
+          <button class="pitem">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M4 12h16"/></svg>
+            <span class="name">AgentRouter</span><span class="dot ok"></span>
+          </button>
+          <button class="pitem on">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            <span class="name">新供应商</span><span class="dot warn"></span>
+          </button>
+        </nav>
+
+        <div class="detail">
+          <div class="dhead">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10a2.8 2.8 0 0 0-4-4L4 16v4 Z"/></svg>
+            <h2>新供应商</h2>
+            <button class="sw" role="switch" aria-checked="true" aria-label="启用新供应商"></button>
+            <button class="dots" aria-label="更多">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+            </button>
+          </div>
+
+          <div class="field">
+            <label>Base URL</label>
+            <div class="input mono"><input placeholder="https://api.example.com/v1"></div>
+          </div>
+
+          <div class="field">
+            <label>API 格式</label>
+            <div class="sel">
+              Anthropic Messages (/v1/messages)
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>API Key</label>
+            <div class="input">
+              <input placeholder="输入 API Key">
+              <button class="eye" aria-label="显示密钥">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="mtitle">
+            <span>模型列表</span>
+            <button class="addbtn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              添加模型
+            </button>
+          </div>
+
+          <div class="empty">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4"/></svg>
+            当前没有配置模型，添加模型后可在聊天中使用。
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  for (const sw of document.querySelectorAll(".sw")) {
+    sw.addEventListener("click", () => {
+      sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked") !== "true"));
+    });
+  }
+  for (const item of document.querySelectorAll(".pitem")) {
+    item.addEventListener("click", () => {
+      for (const other of document.querySelectorAll(".pitem")) other.classList.remove("on");
+      item.classList.add("on");
+    });
+  }
+</script>
+</body>
+</html>

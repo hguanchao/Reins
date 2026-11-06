@@ -10,7 +10,7 @@ import { EventStream } from "#src/llm/event-stream.ts";
 const POLICY: RetryPolicy = { maxRetries: 1, baseDelayMs: 1 };
 
 function provider(): ProviderEntry {
-	return { id: "p", name: "p", baseUrl: "https://x", api: undefined, apiKey: "k", headers: {}, promptCacheKey: false, models: [] };
+	return { id: "p", name: "p", baseUrl: "https://x", api: undefined, apiKey: "k", headers: {}, promptCacheKey: false, enabled: true, models: [] };
 }
 
 function model(api: string): ModelEntry {

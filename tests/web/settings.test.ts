@@ -30,6 +30,7 @@ const provider: ProviderEntry = {
 	apiKey: "k",
 	headers: {},
 	promptCacheKey: false,
+		enabled: true,
 	models: [model],
 };
 

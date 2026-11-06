@@ -168,6 +168,8 @@ export interface ProviderView {
 	hasApiKey: boolean;
 	headers: Record<string, string>;
 	promptCacheKey: boolean;
+	/** 关闭的提供方不出现在切换列表里，但配置仍然保留 */
+	enabled: boolean;
 	models: readonly ProviderModel[];
 }
 
@@ -179,6 +181,7 @@ export interface ProviderInput {
 	apiKey?: string;
 	headers?: Record<string, string>;
 	promptCacheKey?: boolean;
+	enabled?: boolean;
 	models: readonly ProviderModel[];
 }
 

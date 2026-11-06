@@ -17,7 +17,9 @@ import { createSessionFor } from "#src/cli/session/factory.ts";
 import {
 	archiveSessionsAcross,
 	deleteSessionsAcross,
+	listArchivedSessions,
 	listArchivedSessionsAcross,
+	listSessions,
 	listSessionsAcross,
 	resumeSession,
 	restoreSessionsAcross,
@@ -69,6 +71,7 @@ import {
 import { WorkspaceBoundary } from "#src/workspace/boundary.ts";
 import {
 	canonicalWorkspacePath,
+	dropWorkspace,
 	listKnownWorkspaces,
 	listWorkspaces,
 	registerWorkspace,
@@ -297,10 +300,34 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			? 0
 			: restoreSessionsAcross(workspaceRoots(), sessionStore, ids);
 
-	const modelList = (): readonly { provider: string; model: string; name: string }[] =>
-		providersConfig.providers.flatMap((provider) =>
-			provider.models.map((model) => ({ provider: provider.id, model: model.id, name: model.name })),
+	/**
+	 * 删除项目：把它名下的任务（活动与归档）一并永久删掉，不是归档。
+	 *
+	 * 名单取两路：一路按会话自己记的项目归属（界面上列在项目底下的就是这一批），一路按项目
+	 * 的会话目录——早先的会话没有归属标记，项目摘出清单后就没有谁会再扫到它们了。
+	 * 当前会话正属于这个项目时先离开它：还捏着写句柄的会话会把手下刚删掉的文件重新写出来。
+	 * 回合进行中一律不动，返回 0，界面上项目原样留着。
+	 */
+	const removeWorkspaceTree = (path: string): number => {
+		if (running || compacting || sessionStore === undefined) return 0;
+		const attributed = [...sessions(), ...archivedList()]
+			.filter((item) => item.workspacePath === path)
+			.map((item) => item.id);
+		const stored = [...listSessions(path, sessionStore), ...listArchivedSessions(path, sessionStore)].map(
+			(item) => item.id,
 		);
+		if (workspaceFor(session.workspacePath, session.cwd, listWorkspaces()) === path) startNewSession(null);
+		const deleted = deleteSessionsAcross(workspaceRoots(), sessionStore, [...attributed, ...stored], [session.id]);
+		dropWorkspace(path);
+		return deleted;
+	};
+
+	const modelList = (): readonly { provider: string; model: string; name: string }[] =>
+		providersConfig.providers
+			.filter((provider) => provider.enabled)
+			.flatMap((provider) =>
+				provider.models.map((model) => ({ provider: provider.id, model: model.id, name: model.name })),
+			);
 
 	const currentModel = (): { provider: string; model: string; name: string } => ({
 		provider: selection.provider.id,
@@ -520,6 +547,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		}),
 		sessions,
 		workspaces: visibleWorkspaces,
+		deleteWorkspace: removeWorkspaceTree,
 		switchSession: switchToSession,
 		newSession: startNewSession,
 		archivedSessions: archivedList,

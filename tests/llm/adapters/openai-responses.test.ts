@@ -24,6 +24,7 @@ function provider(overrides: Partial<ProviderEntry> = {}): ProviderEntry {
 		apiKey: "secret",
 		headers: {},
 		promptCacheKey: false,
+		enabled: true,
 		models: [],
 		...overrides,
 	};

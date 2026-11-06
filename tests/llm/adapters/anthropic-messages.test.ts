@@ -20,7 +20,7 @@ const DONE_EVENTS = [
 ];
 
 function provider(): ProviderEntry {
-	return { id: "p", name: "p", baseUrl: undefined, api: "anthropic-messages", apiKey: "k", headers: {}, promptCacheKey: false, models: [] };
+	return { id: "p", name: "p", baseUrl: undefined, api: "anthropic-messages", apiKey: "k", headers: {}, promptCacheKey: false, enabled: true, models: [] };
 }
 
 function model(input: readonly ModelEntry["input"][number][] = ["text"]): ModelEntry {

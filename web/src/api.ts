@@ -85,6 +85,14 @@ export const api = {
 	async workspaces(): Promise<readonly WorkspaceSummary[]> {
 		return (await request("/api/workspaces")) as readonly WorkspaceSummary[];
 	},
+	/** 删除项目：内核会连同其名下活动与归档任务一起永久删除，返回实际删除的任务数 */
+	async deleteWorkspace(path: string): Promise<number> {
+		const body = (await request("/api/workspaces/delete", {
+			method: "POST",
+			body: JSON.stringify({ path }),
+		})) as { deleted?: number };
+		return body.deleted ?? 0;
+	},
 	async archivedSessions(): Promise<readonly SessionSummary[]> {
 		return (await request("/api/sessions/archived")) as readonly SessionSummary[];
 	},
@@ -207,6 +215,9 @@ export const api = {
 	},
 	async deleteProvider(id: string): Promise<void> {
 		await request("/api/providers/delete", { method: "POST", body: JSON.stringify({ id }) });
+	},
+	async setProviderEnabled(id: string, enabled: boolean): Promise<void> {
+		await request("/api/providers", { method: "POST", body: JSON.stringify({ provider: { id, enabled } }) });
 	},
 	async setPlanMode(enabled: boolean): Promise<void> {
 		await request("/api/plan-mode", { method: "POST", body: JSON.stringify({ enabled }) });

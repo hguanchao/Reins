@@ -135,7 +135,7 @@ function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; s
 		},
 	};
 	return new TurnDriver({
-		provider: { id: "p", name: "p", baseUrl: "b", api: undefined, apiKey: undefined, headers: {}, promptCacheKey: false, models: [] },
+		provider: { id: "p", name: "p", baseUrl: "b", api: undefined, apiKey: undefined, headers: {}, promptCacheKey: false, enabled: true, models: [] },
 		model: {
 			id: "m1",
 			name: "m1",
