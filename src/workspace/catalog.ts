@@ -50,6 +50,20 @@ export function unregisterWorkspace(path: string): boolean {
 	return changed;
 }
 
+/**
+ * 删除一个项目：清单里的条目连同隐藏记录一起去掉。
+ *
+ * 保留隐藏记录是为了让「从侧栏移除」之后的历史任务还能查到；项目是连着任务一起删掉的，
+ * 再留着这条路径只会让会话扫描指向一个已经没有记录的目录。
+ */
+export function dropWorkspace(path: string): boolean {
+	const entries = readCatalog();
+	const next = entries.filter((entry) => !samePath(entry.path, path));
+	const changed = next.length !== entries.length;
+	if (changed) writeCatalog(next);
+	return changed;
+}
+
 /** 仅返回已登记且可见空间的规范路径。 */
 export function registeredWorkspace(path: string): string | undefined {
 	const canonical = canonicalWorkspacePath(path);

@@ -21,6 +21,7 @@ interface FakeState {
 	aborted: boolean;
 	resolved: Array<{ id: number; answer: string }>;
 	deleted: string[];
+	droppedWorkspaces: string[];
 	entries: readonly unknown[];
 	listeners: Set<(event: unknown) => void>;
 	emit(event: unknown): void;
@@ -35,6 +36,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		aborted: false,
 		resolved: [],
 		deleted: [],
+		droppedWorkspaces: [],
 		entries: [{ type: "message" }],
 		listeners: new Set(),
 		emit(event) {
@@ -86,6 +88,10 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		},
 		archiveSessions: (ids) => ids.length,
 		restoreSessions: (ids) => ids.length,
+		deleteWorkspace: (path) => {
+			state.droppedWorkspaces.push(path);
+			return 2;
+		},
 		skills: () => [
 			{
 				name: "writer",
@@ -422,6 +428,32 @@ describe("web 传输层", () => {
 		assert.equal(response.status, 200);
 		assert.deepEqual(await response.json(), { deleted: 2 });
 		assert.deepEqual(state.deleted, ["s1", "s2"]);
+	});
+
+	it("删除项目:带着路径转交内核,返回删除个数", async () => {
+		const { deps, state } = fakeDeps(undefined);
+		const server = await startServer(deps);
+		const base = `http://127.0.0.1:${server.port}`;
+		const headers = { "x-reins-token": TOKEN, "content-type": "application/json" };
+		const response = await fetch(`${base}/api/workspaces/delete`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ path: "/work/alpha" }),
+		});
+		assert.equal(response.status, 200);
+		assert.deepEqual(await response.json(), { deleted: 2 });
+		assert.deepEqual(state.droppedWorkspaces, ["/work/alpha"]);
+
+		// 空串与非字符串路径在入口就拦下，不该摸到删除逻辑
+		for (const payload of [{}, { path: "" }, { path: 7 }, { path: null }]) {
+			const rejected = await fetch(`${base}/api/workspaces/delete`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify(payload),
+			});
+			assert.equal(rejected.status, 400, JSON.stringify(payload));
+		}
+		assert.deepEqual(state.droppedWorkspaces, ["/work/alpha"]);
 	});
 
 	it("模型清单与切换、审批模式切换", async () => {

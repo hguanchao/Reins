@@ -132,7 +132,7 @@ export function deleteSessions(
 	skip: readonly string[],
 ): number {
 	let deleted = 0;
-	for (const directory of sessionDirectories(workRoot)) {
+	for (const directory of deletableDirectories(workRoot)) {
 		for (const listing of store.list(directory)) {
 			if (!ids.includes(listing.id) || skip.includes(listing.id)) continue;
 			rmSync(listing.file, { force: true });
@@ -140,6 +140,18 @@ export function deleteSessions(
 		}
 	}
 	return deleted;
+}
+
+/**
+ * 删除要扫的目录:活动目录之外还有归档目录。
+ *
+ * 界面上的「永久删除」和「删除项目」说的都是这些记录,只扫活动目录会留下删不掉的残档。
+ */
+function deletableDirectories(workRoot: string): readonly string[] {
+	return sessionDirectories(workRoot).flatMap((directory) => {
+		const archived = archivedDirectory(directory);
+		return existsSync(archived) ? [directory, archived] : [directory];
+	});
 }
 
 /** 批量归档:会话文件挪进所在目录的 archived 子目录,返回实际归档的个数。 */

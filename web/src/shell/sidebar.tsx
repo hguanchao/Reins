@@ -13,7 +13,6 @@ import {
 	FolderOpen,
 	FolderPlus,
 	ListChecks,
-	ListX,
 	Pencil,
 	Pin,
 	Search,
@@ -152,12 +151,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 
 	const renderRows = (items: readonly SessionRow[], emptyMessage?: string): ReactElement | null => {
 		if (items.length === 0) {
-			return emptyMessage === undefined ? null : (
-				<div className="flex flex-col items-center gap-2 px-3 py-6 text-[13px] leading-5 text-foreground-subtlest">
-					<Archive className="size-6 text-foreground-subtlest" />
-					<span>{emptyMessage}</span>
-				</div>
-			);
+			return emptyMessage === undefined ? null : <SectionEmpty text={emptyMessage} />;
 		}
 		return (
 			<div className="flex flex-col gap-0.5">
@@ -295,6 +289,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					/>
 					<div className="sidebar-section-motion" data-open={sectionOpen.spaces || undefined}>
 						<div className="sidebar-section-content">
+							{groups.workspaces.length === 0 ? <SectionEmpty text="暂无空间" /> : null}
 							{groups.workspaces.map(({ workspace, rows: workspaceRows }) => {
 										const isOpen = query.trim().length > 0 || (workspaceOpen[workspace.path] ?? true);
 								return (
@@ -309,14 +304,10 @@ export function Sidebar(props: SidebarProps): ReactElement {
 												setRenameValue(workspace.name);
 												setWorkspaceRename(workspace);
 											}}
-											onRemove={bridge === undefined ? undefined : () => {
-												void bridge.removeWorkspace(workspace.path).then((removed) => {
-													if (removed) props.onRemoveWorkspace?.(workspace.path);
-												}).catch(() => {});
-											}}
+										onRemove={bridge === undefined ? undefined : () => props.onRemoveWorkspace?.(workspace.path)}
 										/>
 										<div className="sidebar-section-motion" data-open={sectionOpen.spaces && isOpen || undefined}>
-											<div className="sidebar-section-content">{renderRows(workspaceRows)}</div>
+											<div className="sidebar-section-content">{renderRows(workspaceRows, "暂无任务")}</div>
 										</div>
 									</div>
 								);
@@ -549,11 +540,24 @@ function SectionHeader({
 }
 
 /**
+ * 空状态：只占一行，与行内文字同列。
+ *
+ * 段落空的时候需要的只是「这里没有东西」这一句话，图标卡片会在吸顶标题下面撑出一块
+ * 与内容无关的高度，任务与空间两段都只要一行。
+ */
+function SectionEmpty({ text }: { readonly text: string }): ReactElement {
+	return (
+		<div className="flex h-8 items-center pl-[28px] pr-2 text-[13px] leading-5 text-foreground-subtlest">{text}</div>
+	);
+}
+
+/**
  * 空间段里的一行工作区。
  *
  * 文件夹图标与段标题同列，开/合状态用 FolderOpen/Folder 表达，项目标题紧随其后；
  * 行尾 hover 出新建任务与更多菜单；
- * 打开文件夹/重命名/移除只在桌面壳里有实体动作，浏览器里省略。
+ * 打开文件夹/重命名只在桌面壳里有实体动作，浏览器里省略；删除项目本身走内核，
+ * 但入口与「添加项目」同门槛——浏览器既不能加也不能减，免得删完无从再加回来。
  */
 function WorkspaceRow({
 	workspace,
@@ -575,7 +579,7 @@ function WorkspaceRow({
 	const entries: MenuEntry[] = [
 		...(onOpenFolder === undefined ? [] : [{ type: "item" as const, key: "open", label: "打开文件夹", icon: FolderOpen, onSelect: onOpenFolder }]),
 		...(onRename === undefined ? [] : [{ type: "item" as const, key: "rename", label: "重命名", icon: Pencil, onSelect: onRename }]),
-		...(onRemove === undefined ? [] : [{ type: "item" as const, key: "remove", label: "从列表中移除", icon: ListX, danger: true, onSelect: onRemove }]),
+		...(onRemove === undefined ? [] : [{ type: "item" as const, key: "remove", label: "删除项目", icon: Trash2, danger: true, onSelect: onRemove }]),
 	];
 
 	return (

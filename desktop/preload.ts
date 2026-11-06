@@ -13,8 +13,6 @@ contextBridge.exposeInMainWorld("reinsDesktop", {
 		},
 		renameWorkspace: (path: string, name: string): Promise<boolean> =>
 			ipcRenderer.invoke("workspace:rename", path, name) as Promise<boolean>,
-		removeWorkspace: (path: string): Promise<boolean> =>
-			ipcRenderer.invoke("workspace:remove", path) as Promise<boolean>,
 		openSession: (workspacePath: string | null, cwd: string, id: string): Promise<boolean> =>
 			ipcRenderer.invoke("workspace:open-session", workspacePath, cwd, id) as Promise<boolean>,
 		newTaskInWorkspace: (path: string): Promise<boolean> =>

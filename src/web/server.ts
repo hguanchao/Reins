@@ -91,6 +91,8 @@ export interface WebServerDeps {
 	}[];
 	/** 已登记空间及显示名 */
 	workspaces?(): readonly { readonly path: string; readonly name: string }[];
+	/** 删除项目：连同其名下活动与归档会话一起永久删除，返回实际删除的会话数；回合进行中不动任何东西，返回 0 */
+	deleteWorkspace(path: string): number;
 	/** 切换到既有会话;回合进行中返回 false */
 	switchSession(id: string): boolean;
 	/** 开一个新会话;null 表示不绑定项目 */
@@ -429,6 +431,17 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				return;
 			}
 			sendJson(res, 200, { restored: deps.restoreSessions(ids as string[]) });
+			return;
+		}
+		// 删除项目是内核动作：任务归属、当前会话的让位都只有内核判得准，壳与界面都不参与
+		if (req.method === "POST" && path === "/api/workspaces/delete") {
+			const body = await readJsonBody(req);
+			const target = body?.["path"];
+			if (typeof target !== "string" || target.length === 0) {
+				sendJson(res, 400, { error: "path must be a non-empty string" });
+				return;
+			}
+			sendJson(res, 200, { deleted: deps.deleteWorkspace(target) });
 			return;
 		}
 		if (req.method === "GET" && path === "/api/skills") {

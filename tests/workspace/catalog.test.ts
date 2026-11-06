@@ -1,0 +1,96 @@
+import assert from "node:assert/strict";
+import { mkdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { describe, it } from "node:test";
+
+import {
+	dropWorkspace,
+	listKnownWorkspaces,
+	listWorkspaces,
+	registerWorkspace,
+	registeredWorkspace,
+	unregisterWorkspace,
+} from "#src/workspace/catalog.ts";
+
+/**
+ * 清单落在 REINS_HOME 下；每个用例用自己的临时主目录，登记的目录也建在它里面，
+ * 免得用例之间通过共享的 workspaces.json 互相影响。
+ */
+async function withHomes(run: (home: string, project: (name: string) => string) => Promise<void>): Promise<void> {
+	const home = join(tmpdir(), `reins-catalog-${Math.random().toString(16).slice(2)}`);
+	const previous = process.env["REINS_HOME"];
+	process.env["REINS_HOME"] = home;
+	mkdirSync(home, { recursive: true });
+
+	try {
+		await run(home, (name) => {
+			const directory = join(home, name);
+			mkdirSync(directory, { recursive: true });
+			return resolve(directory);
+		});
+	} finally {
+		if (previous === undefined) delete process.env["REINS_HOME"];
+		else process.env["REINS_HOME"] = previous;
+		rmSync(home, { recursive: true, force: true });
+	}
+}
+
+describe("项目登记清单", () => {
+	it("登记后能列出，重复登记不产生第二条", async () => {
+		await withHomes(async (home, project) => {
+			const alpha = project("alpha");
+			assert.equal(registerWorkspace(alpha), resolve(alpha));
+			assert.equal(registerWorkspace(alpha), resolve(alpha));
+			assert.deepEqual(listWorkspaces(), [resolve(alpha)]);
+			assert.equal(registeredWorkspace(alpha), resolve(alpha));
+			// 同一路径换个写法也不能多出一条
+			registerWorkspace(join(home, "alpha"));
+			assert.equal(listWorkspaces().length, 1);
+		});
+	});
+
+	it("从列表移除只改可见性，历史查找路径仍保留", async () => {
+		await withHomes(async (_home, project) => {
+			const alpha = project("alpha");
+			const beta = project("beta");
+			registerWorkspace(alpha);
+			registerWorkspace(beta);
+
+			assert.equal(unregisterWorkspace(alpha), true);
+			assert.deepEqual(listWorkspaces(), [resolve(beta)]);
+			// 移除的项目其历史任务还要能查到，所以路径本身仍在清单里
+			assert.deepEqual(listKnownWorkspaces(), [resolve(alpha), resolve(beta)]);
+			assert.equal(registeredWorkspace(alpha), undefined);
+			// 再登记一次是把条目恢复成可见，不是追加
+			registerWorkspace(alpha);
+			assert.deepEqual(listWorkspaces(), [resolve(alpha), resolve(beta)]);
+		});
+	});
+
+	it("删除项目连隐藏记录一起从清单里去掉", async () => {
+		await withHomes(async (_home, project) => {
+			const alpha = project("alpha");
+			const beta = project("beta");
+			registerWorkspace(alpha);
+			registerWorkspace(beta);
+			unregisterWorkspace(alpha);
+
+			assert.equal(dropWorkspace(beta), true);
+			assert.deepEqual(listKnownWorkspaces(), [resolve(alpha)]);
+
+			// 被移除过的条目也是同一项目的记录：删除要把它一并清掉，不留指向空目录的查找路径
+			assert.equal(dropWorkspace(alpha), true);
+			assert.deepEqual(listKnownWorkspaces(), []);
+		});
+	});
+
+	it("没登记过的路径删除时报告未改动", async () => {
+		await withHomes(async (_home, project) => {
+			registerWorkspace(project("alpha"));
+			assert.equal(dropWorkspace(project("beta")), false);
+			assert.equal(dropWorkspace(join(_home, "gone", "nowhere")), false);
+			assert.deepEqual(listKnownWorkspaces().length, 1);
+		});
+	});
+});

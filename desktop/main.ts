@@ -387,10 +387,7 @@ const attachServer = (handle: ServerHandle): void => {
 		return restartServer(target, { createWorkspaceTask: true }, "新建项目任务失败");
 	});
 
-	ipcMain.handle("workspace:remove", (_event, path: unknown) => {
-		if (typeof path !== "string" || registeredWorkspace(path) === undefined) return false;
-		return unregisterWorkspace(path);
-	});
+	// 「删除项目」不在这里：任务归属与当前会话的让位只有内核判得准，界面直接走 /api/workspaces/delete
 
 	// 「打开文件夹」交给系统资源管理器；失败只在界面上无感，不值得打断
 	ipcMain.handle("workspace:reveal", (_event, path: unknown) => {

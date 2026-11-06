@@ -598,10 +598,27 @@ export function App(): ReactElement {
 		));
 	}, []);
 
-	const removeWorkspace = useCallback((path: string): void => {
-		setWorkspaces((current) => current.filter((workspace) => workspace.path !== path));
-		refreshSessions();
-	}, [refreshSessions]);
+	/**
+	 * 删除项目：连同它名下的任务一起永久删除，动作在内核里完成。
+	 *
+	 * 删完一律按服务端结果刷新而不是本地剔除——回合正跑着的时候内核会拒绝，此时项目必须
+	 * 还留在列表里，本地先删就等于骗使用者说删掉了。
+	 */
+	const removeWorkspace = useCallback(
+		(path: string): void => {
+			if (running) {
+				toast("当前任务运行中，完成后才能删除项目", "info");
+				return;
+			}
+			void api
+				.deleteWorkspace(path)
+				.then(refreshSessions)
+				.catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+		},
+		[refreshSessions, running],
+	);
 
 	/** 批量归档/删除：复用服务端的多选接口，当前会话由服务端跳过。 */
 	const archiveMany = useCallback(
