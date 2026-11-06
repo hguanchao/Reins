@@ -3,8 +3,8 @@ import type { ReactElement } from "react";
 
 import { cn } from "../components/ui/cn.ts";
 import { sandboxLabel } from "../lib/format.ts";
-import type { ApprovalMode, SettingsSnapshot } from "../protocol.ts";
-import { Badge, SettingRow, SettingsCard, SettingsHeader } from "./controls.tsx";
+import type { ApprovalMode, NotifyMode, SettingsSnapshot } from "../protocol.ts";
+import { Badge, ChoiceGroup, SettingRow, SettingsCard, SettingsHeader } from "./controls.tsx";
 
 const APPROVAL_LABELS: Record<ApprovalMode, string> = {
 	ask: "逐次询问",
@@ -18,13 +18,20 @@ const APPROVAL_HINTS: Record<ApprovalMode, string> = {
 	yolo: "不询问，直接执行",
 };
 
+const NOTIFY_OPTIONS: readonly { readonly key: NotifyMode; readonly label: string }[] = [
+	{ key: "auto", label: "失焦时" },
+	{ key: "bell", label: "响铃" },
+	{ key: "desktop", label: "桌面通知" },
+	{ key: "off", label: "关闭" },
+];
+
 /** 常规：审批策略立即生效，其余运行环境与会话行为只读展示当前实现。 */
 export function GeneralSection({
 	settings,
 	onUpdate,
 }: {
 	readonly settings: SettingsSnapshot | undefined;
-	onUpdate(update: { approval?: ApprovalMode }): void;
+	onUpdate(update: { approval?: ApprovalMode; notify?: NotifyMode }): void;
 }): ReactElement {
 	return (
 		<div className="flex flex-col gap-7">
@@ -65,6 +72,25 @@ export function GeneralSection({
 				</div>
 				<p className="m-0 px-1 text-[11px] leading-4 text-foreground-subtlest">
 					审批策略立即生效，并写回本机配置。
+				</p>
+			</section>
+
+			<section className="flex flex-col gap-2">
+				<h2 className="m-0 px-1 text-[13px] leading-5 font-medium">通知</h2>
+				<SettingsCard>
+					<SettingRow
+						title="通知方式"
+						description="任务完成、失败与审批请求的提醒；响铃只在终端里生效。"
+					>
+						<ChoiceGroup
+							options={NOTIFY_OPTIONS}
+							selected={settings?.notify ?? "auto"}
+							onSelect={(notify) => onUpdate({ notify })}
+						/>
+					</SettingRow>
+				</SettingsCard>
+				<p className="m-0 px-1 text-[11px] leading-4 text-foreground-subtlest">
+					「失焦时」只在窗口不在前台时提醒；「桌面通知」每次都提醒；「关闭」不再提醒。
 				</p>
 			</section>
 

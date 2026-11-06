@@ -43,7 +43,7 @@ export const SANDBOX_MODES: readonly SandboxMode[] = ["off", "workspace", "read-
 
 export type NotifyMode = "auto" | "bell" | "desktop" | "off";
 
-const NOTIFY_MODES: readonly NotifyMode[] = ["auto", "bell", "desktop", "off"];
+export const NOTIFY_MODES: readonly NotifyMode[] = ["auto", "bell", "desktop", "off"];
 
 /** MCP server 的接入形态：stdio 起本地进程，http 与 sse 连远程端点。 */
 type McpServerType = "stdio" | "http" | "sse";

@@ -14,6 +14,7 @@ import type {
 	GitStatus,
 	ModelInfo,
 	McpServerInput,
+	NotifyMode,
 	PersonalizationSnapshot,
 	PluginInfo,
 	ProviderInput,
@@ -127,6 +128,7 @@ export const api = {
 	async updateSettings(update: {
 		effort?: ThinkingLevel;
 		approval?: ApprovalMode;
+		notify?: NotifyMode;
 	}): Promise<SettingsSnapshot> {
 		return (await request("/api/settings", {
 			method: "POST",

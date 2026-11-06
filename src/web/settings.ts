@@ -1,8 +1,10 @@
 import {
 	APPROVAL_MODES,
+	NOTIFY_MODES,
 	THINKING_LEVELS,
 	type ApprovalMode,
 	type Config,
+	type NotifyMode,
 	type ThinkingLevel,
 } from "#src/config/file.ts";
 import type { ModelCost, ModelEntry, ProviderEntry } from "#src/config/providers-file.ts";
@@ -55,6 +57,7 @@ export interface SettingsSnapshot {
 	readonly model: string;
 	readonly effort: ThinkingLevel;
 	readonly approval: ApprovalMode;
+	readonly notify: NotifyMode;
 	readonly sandbox: string;
 	readonly contextWindow: number | undefined;
 	readonly maxTokens: number | undefined;
@@ -69,6 +72,7 @@ export interface SettingsSnapshot {
 export interface SettingsUpdate {
 	readonly effort?: ThinkingLevel;
 	readonly approval?: ApprovalMode;
+	readonly notify?: NotifyMode;
 }
 
 export interface SettingsUpdateResult {
@@ -96,6 +100,7 @@ export function describeSettings(input: {
 		model: input.selection.model.id,
 		effort: input.config.reasoningEffort,
 		approval: input.config.approval,
+		notify: input.config.ui.notify,
 		sandbox: input.config.sandbox,
 		contextWindow: input.selection.model.contextWindow ?? input.config.contextWindow,
 		maxTokens: input.selection.model.maxTokens ?? input.config.maxTokens,
@@ -127,16 +132,19 @@ function describeModel(provider: ProviderEntry, model: ModelEntry): SettingsMode
 /**
  * 校验设置更新。
  *
- * 只接受两个可热更新的键；出现别的键时直接报错，而不是悄悄忽略——界面与后端对“哪些项能改”
+ * 只接受三个可热更新的键；出现别的键时直接报错，而不是悄悄忽略——界面与后端对“哪些项能改”
  * 的认识一旦分叉，使用者会以为改动生效了。
  */
 export function parseSettingsUpdate(body: Record<string, unknown>): SettingsUpdateResult {
-	const unknown = Object.keys(body).filter((key) => key !== "effort" && key !== "approval");
+	const unknown = Object.keys(body).filter(
+		(key) => key !== "effort" && key !== "approval" && key !== "notify",
+	);
 	if (unknown.length > 0) return { ok: false, error: `Unsupported settings: ${unknown.join(", ")}` };
 
 	const effort = body["effort"];
 	const approval = body["approval"];
-	if (effort === undefined && approval === undefined) {
+	const notify = body["notify"];
+	if (effort === undefined && approval === undefined && notify === undefined) {
 		return { ok: false, error: "No settings to update" };
 	}
 	if (effort !== undefined) {
@@ -149,12 +157,18 @@ export function parseSettingsUpdate(body: Record<string, unknown>): SettingsUpda
 			return { ok: false, error: `approval must be one of: ${APPROVAL_MODES.join(", ")}` };
 		}
 	}
+	if (notify !== undefined) {
+		if (typeof notify !== "string" || !NOTIFY_MODES.includes(notify as NotifyMode)) {
+			return { ok: false, error: `notify must be one of: ${NOTIFY_MODES.join(", ")}` };
+		}
+	}
 
 	return {
 		ok: true,
 		update: {
 			...(effort === undefined ? {} : { effort: effort as ThinkingLevel }),
 			...(approval === undefined ? {} : { approval: approval as ApprovalMode }),
+			...(notify === undefined ? {} : { notify: notify as NotifyMode }),
 		},
 	};
 }

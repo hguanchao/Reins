@@ -104,6 +104,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 			model: "m1",
 			effort: "off",
 			approval: "ask",
+			notify: "auto",
 			sandbox: "off",
 			contextWindow: 100_000,
 			maxTokens: 8_192,

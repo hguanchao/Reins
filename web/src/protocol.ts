@@ -21,6 +21,9 @@ export type ApprovalAnswer = "once" | "always" | "deny";
 
 export type ApprovalMode = "ask" | "auto" | "yolo";
 
+/** 通知方式：auto 只在窗口失焦时提醒，bell 仅终端响铃，desktop 总是弹桌面通知。 */
+export type NotifyMode = "auto" | "bell" | "desktop" | "off";
+
 export type ThinkingLevel = "off" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ModelInfo {
@@ -207,6 +210,7 @@ export interface SettingsSnapshot {
 	model: string;
 	effort: ThinkingLevel;
 	approval: ApprovalMode;
+	notify: NotifyMode;
 	sandbox: string;
 	contextWindow: number | undefined;
 	maxTokens: number | undefined;

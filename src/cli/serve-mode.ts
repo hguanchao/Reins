@@ -343,7 +343,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	 * 应用设置页的可写项。
 	 *
 	 * 先落盘再换内存：写配置失败时界面上的值不能先变，否则使用者会以为已经保存。只有能热
-	 * 更新的 effort 与 approval 走到这里，其余项由设置页标成需要重启。
+	 * 更新的 effort、approval 与 notify 走到这里，其余项由设置页标成需要重启。
 	 */
 	const applySettings = (update: SettingsUpdate): { ok: boolean; error?: string } => {
 		try {
@@ -353,6 +353,9 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			if (update.approval !== undefined) {
 				updateUserConfigValue(["approval"], () => update.approval as string, configFile);
 			}
+			if (update.notify !== undefined) {
+				updateUserConfigValue(["ui", "notify"], () => update.notify as string, configFile);
+			}
 		} catch (error) {
 			return { ok: false, error: describeError(error) };
 		}
@@ -360,12 +363,14 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		const fields: (keyof typeof config)[] = [];
 		if (update.effort !== undefined) fields.push("reasoningEffort");
 		if (update.approval !== undefined) fields.push("approval");
+		if (update.notify !== undefined) fields.push("ui");
 		config = applyLiveConfig(
 			config,
 			{
 				...config,
 				...(update.effort === undefined ? {} : { reasoningEffort: update.effort }),
 				...(update.approval === undefined ? {} : { approval: update.approval }),
+				...(update.notify === undefined ? {} : { ui: { ...config.ui, notify: update.notify } }),
 			},
 			fields,
 		);

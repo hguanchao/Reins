@@ -81,6 +81,7 @@ describe("设置快照", () => {
 		assert.equal(snapshot.model, "m");
 		assert.equal(snapshot.contextWindow, 128_000);
 		assert.equal(snapshot.effort, "high");
+		assert.equal(snapshot.notify, "auto");
 		assert.deepEqual(snapshot.models[0]?.thinkingLevels, ["off", "low", "medium", "high", "xhigh"]);
 		assert.deepEqual(snapshot.mcpServers[0], {
 			name: "demo",
@@ -94,14 +95,19 @@ describe("设置快照", () => {
 });
 
 describe("设置更新校验", () => {
-	it("接受可热更新的 effort 与 approval", () => {
+	it("接受可热更新的 effort、approval 与 notify", () => {
 		assert.deepEqual(parseSettingsUpdate({ effort: "max" }), { ok: true, update: { effort: "max" } });
 		assert.deepEqual(parseSettingsUpdate({ approval: "yolo" }), { ok: true, update: { approval: "yolo" } });
+		assert.deepEqual(parseSettingsUpdate({ notify: "desktop" }), {
+			ok: true,
+			update: { notify: "desktop" },
+		});
 	});
 
 	it("非法取值、未知键与空更新都报错", () => {
 		assert.equal(parseSettingsUpdate({ effort: "turbo" }).ok, false);
 		assert.equal(parseSettingsUpdate({ approval: "never" }).ok, false);
+		assert.equal(parseSettingsUpdate({ notify: "loud" }).ok, false);
 		assert.equal(parseSettingsUpdate({ sandbox: "off" }).ok, false);
 		assert.equal(parseSettingsUpdate({}).ok, false);
 	});

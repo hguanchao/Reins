@@ -17,6 +17,7 @@ import { cn } from "../components/ui/cn.ts";
 import type {
 	ActivitySummary,
 	ApprovalMode,
+	NotifyMode,
 	SessionSummary,
 	SettingsSnapshot,
 	ThinkingLevel,
@@ -86,7 +87,7 @@ export interface SettingsPageProps {
 	readonly themeMode: ThemeMode;
 	onThemeMode(mode: ThemeMode): void;
 	onClose(): void;
-	onUpdate(update: { effort?: ThinkingLevel; approval?: ApprovalMode }): void;
+	onUpdate(update: { effort?: ThinkingLevel; approval?: ApprovalMode; notify?: NotifyMode }): void;
 	onModel(provider: string, model: string): void;
 	onRestore(id: string): void;
 	onDeleteArchived(id: string): void;

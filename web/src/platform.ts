@@ -19,6 +19,8 @@ export interface ReinsDesktopBridge {
 	togglePlugin(name: string, disabled: boolean): Promise<PluginActionResult>;
 	/** 卸载插件；成功后服务进程会重启 */
 	uninstallPlugin(name: string): Promise<PluginActionResult>;
+	/** 弹一条系统通知；桌面壳不支持时返回 false */
+	notify(payload: { readonly title: string; readonly body: string }): Promise<boolean>;
 	setTheme(theme: "zai-dark" | "zai-light"): void;
 }
 

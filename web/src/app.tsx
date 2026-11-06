@@ -18,6 +18,7 @@ import { MessageRail } from "./chat/message-rail.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
 import { ToastHost, toast } from "./components/ui/index.ts";import { ScrollFadeViewport } from "./components/ui/scroll-fade-viewport.tsx";
 import { workspaceName } from "./lib/format.ts";
+import { sendDesktopNotification, shouldNotify } from "./lib/notify.ts";
 import { desktopBridge, hasNativeTitlebar } from "./platform.ts";
 import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
@@ -34,6 +35,7 @@ import type {
 	ApprovalRequest,
 	GitStatus,
 	ModelInfo,
+	NotifyMode,
 	PluginInfo,
 	SessionSummary,
 	SettingsSnapshot,
@@ -126,6 +128,11 @@ export function App(): ReactElement {
 	const historyRef = useRef<SessionTarget[]>([]);
 	const historyIndexRef = useRef(-1);
 	const navigatingRef = useRef(false);
+	/** 通知方式用 ref 保存：放进 handleEvent 的依赖会让 SSE 在设置变化时重连 */
+	const notifyModeRef = useRef<NotifyMode>("auto");
+	const runOutcomeRef = useRef<"running" | "done" | "error" | "aborted">("done");
+	const errorNotifiedRef = useRef(false);
+	const approvalNotifiedRef = useRef<number | undefined>(undefined);
 
 	const refreshSessions = useCallback((): void => {
 		void api.sessions().then(setSessions).catch(() => {});
@@ -150,6 +157,10 @@ export function App(): ReactElement {
 			})
 			.catch(() => {});
 	}, []);
+
+	useEffect(() => {
+		notifyModeRef.current = settings?.notify ?? "auto";
+	}, [settings?.notify]);
 
 	const refreshGit = useCallback((): void => {
 		void api.gitStatus().then(setGit).catch(() => setGit(null));
@@ -274,10 +285,18 @@ export function App(): ReactElement {
 		})();
 	}, [rememberSession]);
 
+	const maybeNotify = useCallback((title: string, body: string): void => {
+		if (!shouldNotify(notifyModeRef.current, document.hasFocus())) return;
+		sendDesktopNotification(title, body);
+	}, []);
+
 	const handleEvent = useCallback(
 		(event: WebEvent): void => {
 			switch (event.type) {
 				case "turn_start":
+					runOutcomeRef.current = "running";
+					errorNotifiedRef.current = false;
+					approvalNotifiedRef.current = undefined;
 					setLines(sealStreaming);
 					setRunning(true);
 					setAwaitingModel(true);
@@ -374,12 +393,23 @@ export function App(): ReactElement {
 					setLines((current) => [...current, { kind: "notice", text: event.message, tone: "info" }]);
 					return;
 				case "aborted":
+					runOutcomeRef.current = "aborted";
 					setLines((current) => [...current, { kind: "notice", text: "已停止", tone: "info" }]);
 					return;
 				case "error":
+					// error 后面通常还会跟一个 run_end；这里记下已提醒，避免再报一次「完成」
+					if (!errorNotifiedRef.current) {
+						errorNotifiedRef.current = true;
+						runOutcomeRef.current = "error";
+						maybeNotify("Reins 任务失败", "请回到窗口查看详情");
+					}
 					setLines((current) => [...current, { kind: "notice", text: event.message, tone: "error" }]);
 					return;
 				case "run_end":
+					if (runOutcomeRef.current !== "aborted" && !errorNotifiedRef.current) {
+						maybeNotify("Reins 任务完成", "任务已结束");
+					}
+					runOutcomeRef.current = "done";
 					setRunning(false);
 					setAwaitingModel(false);
 					setLines(sealStreaming);
@@ -387,6 +417,10 @@ export function App(): ReactElement {
 					refreshGit();
 					return;
 				case "approval_request":
+					if (approvalNotifiedRef.current !== event.id) {
+						approvalNotifiedRef.current = event.id;
+						maybeNotify("Reins 需要审批", "有新的操作等待确认");
+					}
 					setAwaitingModel(false);
 					setApproval({ id: event.id, request: event.request });
 					return;
@@ -394,6 +428,9 @@ export function App(): ReactElement {
 					setApproval(undefined);
 					return;
 				case "session_switched":
+					runOutcomeRef.current = "done";
+					errorNotifiedRef.current = false;
+					approvalNotifiedRef.current = undefined;
 					setLines([]);
 					setContextTokens(undefined);
 					setActivePanel(undefined);
@@ -407,7 +444,7 @@ export function App(): ReactElement {
 					return;
 			}
 		},
-		[reload, refreshGit, refreshSessions, refreshSettings],
+		[maybeNotify, reload, refreshGit, refreshSessions, refreshSettings],
 	);
 
 	useEffect(() => {
@@ -652,18 +689,21 @@ export function App(): ReactElement {
 			});
 	}, []);
 
-	const updateSettings = useCallback((update: { effort?: ThinkingLevel; approval?: ApprovalMode }): void => {
-		void api
-			.updateSettings(update)
-			.then((snapshot) => {
-				setSettings(snapshot);
-				setEffort(snapshot.effort);
-				setApprovalMode(snapshot.approval);
-			})
-			.catch((error: unknown) => {
-				toast(error instanceof Error ? error.message : String(error), "error");
-			});
-	}, []);
+	const updateSettings = useCallback(
+		(update: { effort?: ThinkingLevel; approval?: ApprovalMode; notify?: NotifyMode }): void => {
+			void api
+				.updateSettings(update)
+				.then((snapshot) => {
+					setSettings(snapshot);
+					setEffort(snapshot.effort);
+					setApprovalMode(snapshot.approval);
+				})
+				.catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+		},
+		[],
+	);
 
 	const openTab = useCallback((tab: SideTab): void => {
 		setSideTabs((current) => (current.some((item) => item.id === tab.id) ? current : [...current, tab]));

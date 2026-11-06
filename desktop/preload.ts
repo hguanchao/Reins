@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("reinsDesktop", {
 			ipcRenderer.invoke("plugins:toggle", name, disabled) as Promise<{ ok: boolean; error?: string }>,
 		uninstallPlugin: (name: string): Promise<{ ok: boolean; error?: string }> =>
 			ipcRenderer.invoke("plugins:uninstall", name) as Promise<{ ok: boolean; error?: string }>,
+		notify: (payload: { readonly title: string; readonly body: string }): Promise<boolean> =>
+			ipcRenderer.invoke("notification:show", payload) as Promise<boolean>,
 	setTheme: (theme: "zai-dark" | "zai-light"): void => {
 		void ipcRenderer.invoke("window:set-theme", theme);
 	},

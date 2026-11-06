@@ -1,7 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell } from "electron";
+import {
+	BrowserWindow,
+	Menu,
+	Notification,
+	app,
+	dialog,
+	ipcMain,
+	nativeTheme,
+	shell,
+} from "electron";
 import { configFilePath, pluginsDir } from "#src/config/paths.ts";
 import { updateUserConfigValue } from "#src/config/write-back.ts";
 import { withPluginDisabled } from "#src/plugins/disabled.ts";
@@ -193,6 +202,8 @@ async function run(): Promise<void> {
 	app.setAboutPanelOptions({ applicationName: "Reins", applicationVersion: app.getVersion() });
 	// 菜单不显示,只为保住重载/开发者工具的快捷键
 	Menu.setApplicationMenu(HIDDEN_MENU);
+	// Windows 的 toast 需要与安装包 appId 一致的 AUMID；开发模式没有快捷方式时可能不显示
+	app.setAppUserModelId("com.reins.desktop");
 	ipcMain.handle("window:set-theme", (event, theme: unknown) => {
 		const window = BrowserWindow.fromWebContents(event.sender);
 		if (window === null) return;
@@ -205,6 +216,31 @@ async function run(): Promise<void> {
 				height: 40,
 			});
 		}
+	});
+	ipcMain.handle("notification:show", (event, payload: unknown) => {
+		const window = BrowserWindow.fromWebContents(event.sender);
+		if (window === null) return false;
+		if (!Notification.isSupported()) return false;
+		if (typeof payload !== "object" || payload === null) return false;
+		const record = payload as { readonly title?: unknown; readonly body?: unknown };
+		if (typeof record.title !== "string" || typeof record.body !== "string") return false;
+		const title = record.title.trim().slice(0, 80);
+		const body = record.body.trim().slice(0, 200);
+		if (title.length === 0 || body.length === 0) return false;
+
+		const notification = new Notification({
+			title,
+			body,
+			icon: join(buildDir, "icon.ico"),
+		});
+		notification.on("click", () => {
+			if (window.isDestroyed()) return;
+			if (window.isMinimized()) window.restore();
+			window.show();
+			window.focus();
+		});
+		notification.show();
+		return true;
 	});
 	await app.whenReady();
 
