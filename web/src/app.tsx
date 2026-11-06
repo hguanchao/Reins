@@ -23,7 +23,6 @@ import { desktopBridge, hasNativeTitlebar } from "./platform.ts";
 import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
 import { GitPane } from "./panels/git-pane.tsx";
-import { PluginsPage } from "./panels/plugins-page.tsx";
 import { PluginsPane } from "./panels/plugins-pane.tsx";
 import { SchedulesPage } from "./panels/schedules-page.tsx";
 import { SidePane } from "./panels/side-pane.tsx";
@@ -48,7 +47,7 @@ import type {
 } from "./protocol.ts";
 import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./state/usage.ts";
 import { putSessionTitle, readSessionTitles, withSessionTitles } from "./state/session-titles.ts";
-import { SettingsPage } from "./settings/settings-page.tsx";
+import { SettingsPage, type SettingsSection } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
 	autoSidebarAction,
@@ -114,6 +113,8 @@ export function App(): ReactElement {
 	const [sideFullscreen, setSideFullscreen] = useState(false);
 	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	/** 设置页打开时落在哪一栏；侧栏「扩展管理」用它直接进扩展页 */
+	const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
 	// 会话搜索框的显隐：入口在标题栏，框体在侧栏，状态放在应用层居中调度
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [commandOpen, setCommandOpen] = useState(false);
@@ -156,6 +157,11 @@ export function App(): ReactElement {
 				setModel({ provider: snapshot.provider, model: snapshot.model, name: current?.name ?? snapshot.model });
 			})
 			.catch(() => {});
+	}, []);
+
+	const openSettings = useCallback((section: SettingsSection): void => {
+		setSettingsSection(section);
+		setSettingsOpen(true);
 	}, []);
 
 	useEffect(() => {
@@ -827,7 +833,7 @@ export function App(): ReactElement {
 		onModel: changeModel,
 		onEffort: changeEffort,
 		onNewTask: newTask,
-		onSettings: () => setSettingsOpen(true),
+		onSettings: () => openSettings("general"),
 		onCompact: () => {
 			void api.compact().catch((error: unknown) => {
 				toast(error instanceof Error ? error.message : String(error), "error");
@@ -868,9 +874,7 @@ export function App(): ReactElement {
 		</SidePane>
 	);
 
-	const main = activePanel === "plugins" ? (
-		<PluginsPage plugins={plugins} onClose={() => setActivePanel(undefined)} />
-	) : activePanel === "schedules" ? (
+	const main = activePanel === "schedules" ? (
 		<SchedulesPage onClose={() => setActivePanel(undefined)} />
 	) : (
 		<>
@@ -1002,7 +1006,8 @@ export function App(): ReactElement {
 							setSettingsOpen(false);
 							setSideFullscreen(false);
 						}}
-						onOpenSettings={() => setSettingsOpen(true)}
+						onOpenExtensions={() => openSettings("extensions")}
+						onOpenSettings={() => openSettings("general")}
 						onRenameWorkspace={renameWorkspace}
 						onRemoveWorkspace={removeWorkspace}
 						onRenameSession={renameSession}
@@ -1023,6 +1028,7 @@ export function App(): ReactElement {
 					usage={usage}
 					activity={activity}
 					themeMode={theme.mode}
+					initialSection={settingsSection}
 					onThemeMode={theme.setMode}
 					onClose={() => setSettingsOpen(false)}
 					onUpdate={updateSettings}
@@ -1046,7 +1052,7 @@ export function App(): ReactElement {
 				}}
 				onSettings={() => {
 					setCommandOpen(false);
-					setSettingsOpen(true);
+					openSettings("general");
 				}}
 				onToggleTheme={theme.toggle}
 				onToggleSidePane={toggleSidePane}

@@ -8,6 +8,7 @@ import {
 	Plus,
 	Puzzle,
 	RefreshCw,
+	ScrollText,
 	Search,
 	Server,
 	Store,
@@ -26,6 +27,7 @@ import { desktopBridge } from "../platform.ts";
 import type { McpServerInput, SettingsSnapshot } from "../protocol.ts";
 import { Badge, EmptyState, SettingsCard, SettingsHeader } from "./controls.tsx";
 import { McpServerDialog } from "./mcp-server-dialog.tsx";
+import { PluginLogsDialog } from "./plugin-logs-dialog.tsx";
 import { SkillDialog } from "./skill-dialog.tsx";
 import { SkillUploadDialog } from "./skill-upload-dialog.tsx";
 import {
@@ -124,6 +126,7 @@ export function ExtensionsSection({
 	const [skillDeleteTarget, setSkillDeleteTarget] = useState<ExtensionItem | undefined>(undefined);
 	const [skillDeleting, setSkillDeleting] = useState(false);
 	const [pluginRemoveTarget, setPluginRemoveTarget] = useState<ExtensionItem | undefined>(undefined);
+	const [pluginLogsTarget, setPluginLogsTarget] = useState<ExtensionItem | undefined>(undefined);
 	const bridge = desktopBridge();
 
 	// MCP 状态会从 connecting 走到 connected/unreachable；页签打开时轮询，离开就停
@@ -428,6 +431,9 @@ export function ExtensionsSection({
 											? () => setPluginRemoveTarget(item)
 											: undefined
 									}
+									onLogs={
+										item.kind === "plugin" ? () => setPluginLogsTarget(item) : undefined
+									}
 									status={mcpStatusOf(item)}
 									onEdit={
 										item.kind === "mcp"
@@ -511,6 +517,11 @@ export function ExtensionsSection({
 				</div>
 			</Dialog>
 
+			<PluginLogsDialog
+				name={pluginLogsTarget?.name}
+				onClose={() => setPluginLogsTarget(undefined)}
+			/>
+
 			<McpServerDialog
 				open={mcpEditTarget !== undefined}
 				server={mcpEditTarget}
@@ -573,6 +584,7 @@ function ExtensionRow({
 	last,
 	onToggle,
 	onUninstall,
+	onLogs,
 	onEdit,
 	onReconnect,
 	onDelete,
@@ -582,6 +594,7 @@ function ExtensionRow({
 	readonly last: boolean;
 	onToggle?(disabled: boolean): void;
 	onUninstall?(): void;
+	onLogs?(): void;
 	onEdit?(): void;
 	onReconnect?(): void;
 	onDelete?(): void;
@@ -676,6 +689,17 @@ function ExtensionRow({
 						</button>
 					)}
 				/>
+			)}
+			{onLogs === undefined ? null : (
+				<button
+					type="button"
+					aria-label={`查看插件 ${item.name} 的日志`}
+					title="查看日志"
+					onClick={onLogs}
+					className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtlest transition-colors hover:bg-surface-hover hover:text-foreground"
+				>
+					<ScrollText className="size-3.5" />
+				</button>
 			)}
 			{onUninstall === undefined ? null : (
 				<button

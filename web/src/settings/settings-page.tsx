@@ -34,7 +34,7 @@ import { PersonalizationSection } from "./personalization-section.tsx";
 import { filterSettingsNav } from "./settings-model.ts";
 import { UsageSection } from "./usage-section.tsx";
 
-type Section =
+export type SettingsSection =
 	| "general"
 	| "appearance"
 	| "models"
@@ -43,6 +43,8 @@ type Section =
 	| "usage"
 	| "archived"
 	| "about";
+
+type Section = SettingsSection;
 
 interface NavItem {
 	readonly id: Section;
@@ -85,6 +87,8 @@ export interface SettingsPageProps {
 	readonly usage: UsageSummary;
 	readonly activity: ActivitySummary;
 	readonly themeMode: ThemeMode;
+	/** 打开时落在哪一栏；侧栏「扩展管理」用它直接进扩展页 */
+	readonly initialSection?: SettingsSection;
 	onThemeMode(mode: ThemeMode): void;
 	onClose(): void;
 	onUpdate(update: { effort?: ThinkingLevel; approval?: ApprovalMode; notify?: NotifyMode }): void;
@@ -96,7 +100,7 @@ export interface SettingsPageProps {
 
 /** 设置页：左侧分组导航 + 右侧内容列，占满窗口而不是浮层。 */
 export function SettingsPage(props: SettingsPageProps): ReactElement {
-	const [section, setSection] = useState<Section>("general");
+	const [section, setSection] = useState<Section>(props.initialSection ?? "general");
 	const [query, setQuery] = useState("");
 	const groups = useMemo(() => filterSettingsNav(NAV, query), [query]);
 	const onClose = props.onClose;

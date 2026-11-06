@@ -32,7 +32,7 @@ import { desktopBridge } from "../platform.ts";
 import type { SessionSummary, WorkspaceSummary } from "../protocol.ts";
 import { buildSessionGroups, sidebarSectionVisibility, toggleAllWorkspaceGroups, type SessionRow } from "./session-tree.ts";
 
-export type GlobalPanelId = "plugins" | "schedules";
+export type GlobalPanelId = "schedules";
 
 export interface SidebarProps {
 	readonly sessions: readonly SessionSummary[];
@@ -56,6 +56,8 @@ export interface SidebarProps {
 	onDelete(id: string): void;
 	onTogglePin(id: string): void;
 	onOpenPanel(panel: GlobalPanelId): void;
+	/** 侧栏「扩展管理」直接进设置页的扩展分区 */
+	onOpenExtensions(): void;
 	onOpenSettings(): void;
 	onRenameWorkspace?(path: string, name: string): void;
 	onRemoveWorkspace?(path: string): void;
@@ -210,9 +212,9 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				/>
 				<PanelRow
 					icon={<Blocks className="size-4" />}
-					label="插件"
-					active={props.activePanel === "plugins"}
-					onClick={() => props.onOpenPanel("plugins")}
+					label="扩展管理"
+					active={false}
+					onClick={props.onOpenExtensions}
 				/>
 				<PanelRow
 					icon={<CalendarClock className="size-4" />}
