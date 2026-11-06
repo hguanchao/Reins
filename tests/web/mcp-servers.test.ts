@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { mcpServerTable, parseMcpServerInput } from "#src/web/mcp-servers.ts";
+import {
+	mcpServerDraft,
+	mcpServerTable,
+	parseMcpServerInput,
+	parseMcpServerName,
+} from "#src/web/mcp-servers.ts";
 
 describe("MCP server 表单校验", () => {
 	it("接受 stdio 的命令、参数与环境变量", () => {
@@ -66,6 +71,57 @@ describe("MCP server 表单校验", () => {
 		assert.equal(
 			parseMcpServerInput({ name: "x", type: "stdio", command: "node", env: { A: 1 } }).ok,
 			false,
+		);
+	});
+});
+
+describe("MCP server 名称与详情", () => {
+	it("只校验名称，供详情、删除与重连使用", () => {
+		assert.deepEqual(parseMcpServerName(" docs "), { ok: true, name: "docs" });
+		assert.equal(parseMcpServerName("").ok, false);
+		assert.equal(parseMcpServerName("../x").ok, false);
+		assert.equal(parseMcpServerName(undefined).ok, false);
+	});
+
+	it("把配置还原成表单形状", () => {
+		assert.deepEqual(
+			mcpServerDraft({
+				name: "filesystem",
+				type: "stdio",
+				command: "npx",
+				args: ["-y", "server"],
+				url: undefined,
+				headers: {},
+				env: { DEBUG: "1" },
+				timeoutSeconds: 30,
+				disabled: false,
+			}),
+			{
+				name: "filesystem",
+				type: "stdio",
+				command: "npx",
+				args: ["-y", "server"],
+				env: { DEBUG: "1" },
+			},
+		);
+		assert.deepEqual(
+			mcpServerDraft({
+				name: "docs",
+				type: "http",
+				command: undefined,
+				args: [],
+				url: "https://example.com/mcp",
+				headers: { Authorization: "Bearer demo" },
+				env: {},
+				timeoutSeconds: undefined,
+				disabled: false,
+			}),
+			{
+				name: "docs",
+				type: "http",
+				url: "https://example.com/mcp",
+				headers: { Authorization: "Bearer demo" },
+			},
 		);
 	});
 });

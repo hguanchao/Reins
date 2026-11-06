@@ -64,7 +64,7 @@ describe("设置快照", () => {
 			config,
 			selection: { provider, model, compactModel: undefined, reviewModel: undefined },
 			providers: [provider],
-			mcpServers: [{ name: "demo", type: "stdio", disabled: false }],
+			mcpServers: [{ name: "demo", type: "stdio", disabled: false, status: "connected", detail: "2 tools" }],
 			plugins: [{ name: "plugin", kind: "declarative", disabled: false }],
 			skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
 		});
@@ -74,7 +74,13 @@ describe("设置快照", () => {
 		assert.equal(snapshot.contextWindow, 128_000);
 		assert.equal(snapshot.effort, "high");
 		assert.deepEqual(snapshot.models[0]?.thinkingLevels, ["off", "low", "medium", "high", "xhigh"]);
-		assert.deepEqual(snapshot.mcpServers[0], { name: "demo", type: "stdio", disabled: false });
+		assert.deepEqual(snapshot.mcpServers[0], {
+			name: "demo",
+			type: "stdio",
+			disabled: false,
+			status: "connected",
+			detail: "2 tools",
+		});
 		assert.equal(snapshot.skills[0]?.name, "writer");
 	});
 });

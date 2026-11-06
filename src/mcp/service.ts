@@ -24,7 +24,7 @@ import {
  */
 
 /** 一个 server 当前的状态，交给界面排版用。 */
-interface McpStatus {
+export interface McpStatus {
 	readonly name: string;
 	/** connecting / connected / unreachable / disabled */
 	readonly status: string;
@@ -41,14 +41,18 @@ export type McpToolSink = (tool: AnyToolDefinition) => void;
  * 运行期的 MCP 管理动作。
  *
  * 「重连一个 server」「检查全部连接」面向 /mcps 页；「等待启动收口」面向首条消息——
- * 仍在握手的 server 给一个限时窗口，超时照常放行。新增 server 可以在运行中接入；
- * 删除仍要改配置并重启。
+ * 仍在握手的 server 给一个限时窗口，超时照常放行。新增、替换与删除都可以在运行中完成：
+ * 连接与工具都归这里管，改完配置后不必重启进程。
  */
 export interface McpControl {
 	reconnect(name: string): Promise<string>;
 	healthCheck(): Promise<readonly string[]>;
 	/** 运行中接入一个新的 server；同名 server 会被拒绝 */
 	addServer(server: McpServerConfig): void;
+	/** 停掉并移除一个 server；不存在时抛错 */
+	removeServer(name: string): void;
+	/** 用新配置替换同名 server；不存在时抛错。工具会先全部摘掉再重新登记。 */
+	replaceServer(server: McpServerConfig): void;
 	/** 限时等待全部 server 脱离 connecting；整个进程只等第一次，之后直接放行。 */
 	awaitStartup(): Promise<void>;
 }
@@ -110,6 +114,8 @@ class McpConnection {
 	/** 断线后的重连计划；手动重连会取消它，成功会把计数清零 */
 	#reconnectAttempts = 0;
 	#reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	/** 已被移除的 server 不再重连、不再登记工具；替换实现时旧连接也走这里收尾 */
+	#stopped = false;
 
 	constructor(
 		config: McpServerConfig,
@@ -134,6 +140,7 @@ class McpConnection {
 	}
 
 	async start(registerTool?: McpToolSink): Promise<void> {
+		if (this.#stopped) return;
 		if (this.#status === "disabled") return;
 		if (registerTool !== undefined) this.#registerTool = registerTool;
 		// 重连前先收掉旧连接：留着旧进程或旧 SSE 会让两个连接同时存在，工具调用落到哪个都不确定
@@ -200,6 +207,7 @@ class McpConnection {
 
 	/** 重连一个 server；已登记过的连接在重连后按新清单补差，而不是让人重启整个程序。 */
 	async reconnect(): Promise<string> {
+		if (this.#stopped) return `${this.name} has been removed`;
 		if (this.#status === "disabled") return `${this.name} is disabled in config.toml`;
 		// 手动重连是使用者的明确动作：作废排期里的自动重连，计数从头算
 		if (this.#reconnectTimer !== undefined) {
@@ -223,6 +231,7 @@ class McpConnection {
 
 	/** 健康检查；失败时把连接标成不可用，之后工具调用会明确报错而不是挂起。 */
 	async healthCheck(): Promise<string> {
+		if (this.#stopped) return `${this.name}: removed`;
 		if (this.#status === "disabled") return `${this.name}: disabled`;
 		if (this.#status !== "ready" || this.#client === undefined) {
 			const detail = this.#failure.length > 0 ? ` (${this.#failure})` : "";
@@ -243,6 +252,7 @@ class McpConnection {
 
 	/** 一行清单。连不上的必须把原因说出来，否则使用者只知道「没连上」。 */
 	status(): McpStatus {
+		if (this.#stopped) return { name: this.name, status: "disabled", detail: "" };
 		switch (this.#status) {
 			case "disabled":
 				return { name: this.name, status: "disabled", detail: "" };
@@ -266,6 +276,32 @@ class McpConnection {
 	}
 
 	/**
+	 * 停掉连接并摘掉它登记过的工具。
+	 *
+	 * 删除 server 与替换实现都走这里：先置 stopped，再收连接与定时器，最后注销工具。
+	 * 顺序不能反——重连定时器或 transport 的 onClose 一旦抢在前面，会把这个连接又拉起来。
+	 */
+	stop(): void {
+		if (this.#stopped) return;
+		this.#stopped = true;
+		if (this.#reconnectTimer !== undefined) {
+			clearTimeout(this.#reconnectTimer);
+			this.#reconnectTimer = undefined;
+		}
+		this.#connectionAbort?.abort();
+		this.#connectionAbort = undefined;
+		this.#client?.close();
+		this.#client = undefined;
+		if (this.#registered && this.#unregisterTool !== undefined) {
+			for (const tool of this.#tools) this.#unregisterTool(`${this.#config.name}_${tool}`);
+		}
+		this.#registered = false;
+		this.#tools = [];
+		this.#toolInfos = [];
+		this.#status = "disabled";
+	}
+
+	/**
 	 * 断线后的自动重连。
 	 *
 	 * 只对「曾经就绪」或「启动失败」的连接排期，退避序列耗尽就停在 failed：一个根本装不上的
@@ -273,6 +309,7 @@ class McpConnection {
 	 * /mcps 上如实显示 unreachable 与第几次尝试。
 	 */
 	#scheduleReconnect(): void {
+		if (this.#stopped) return;
 		if (this.#status === "disabled") return;
 		if (this.#reconnectTimer !== undefined) return;
 		const delay = RECONNECT_DELAYS_MS[this.#reconnectAttempts];
@@ -294,6 +331,7 @@ class McpConnection {
 	 * 断线路径处理，这里不重复定责。
 	 */
 	async #refreshTools(): Promise<void> {
+		if (this.#stopped) return;
 		const client = this.#client;
 		if (client === undefined || this.#status !== "ready" || !this.#registered) return;
 		let tools: readonly McpToolInfo[];
@@ -302,6 +340,8 @@ class McpConnection {
 		} catch {
 			return;
 		}
+		// 拉清单期间连接可能已被删除：这时不能再把工具登记回去
+		if (this.#stopped) return;
 		const previous = this.#tools;
 		this.#toolInfos = tools;
 		this.#tools = tools.map((tool) => tool.name);
@@ -310,6 +350,7 @@ class McpConnection {
 
 	/** 把注册表对齐到当前清单：下线的摘掉，新增的登记。 */
 	#applyToolDelta(previous: readonly string[]): void {
+		if (this.#stopped) return;
 		if (!this.#registered || this.#registerTool === undefined) return;
 		const next = new Set(this.#tools);
 		for (const name of previous) {
@@ -346,6 +387,7 @@ class McpConnection {
 		// 比让工具凭空消失更好查——工具消失只会表现为「模型忽然不调它了」。
 		// 只在当前连接确实可用时记失败：重连期间旧连接关闭也会走到这里，那不算新连接失败。
 		const onClose = (reason: string): void => {
+			if (this.#stopped) return;
 			if (this.#status !== "ready") return;
 			this.#failure = reason;
 			this.#status = "failed";
@@ -424,6 +466,27 @@ export function startMcpServers(options: McpServiceOptions): McpStatusSource {
 			);
 			connections.push(connection);
 			// 与启动时一致：后台连接，连不上只影响这个 server 的状态
+			void connection.start(options.registerTool);
+		},
+		removeServer: (name) => {
+			const index = connections.findIndex((connection) => connection.name === name);
+			if (index === -1) throw new Error(`Unknown MCP server: ${name}`);
+			connections[index].stop();
+			connections.splice(index, 1);
+		},
+		replaceServer: (server) => {
+			const index = connections.findIndex((connection) => connection.name === server.name);
+			if (index === -1) throw new Error(`Unknown MCP server: ${server.name}`);
+			// 先停旧连接：同名工具还在注册表里时直接登记新工具会被判重名
+			connections[index].stop();
+			const connection = new McpConnection(
+				server,
+				options.cwd,
+				options.version,
+				options.unregisterTool,
+				options.transportFactory,
+			);
+			connections[index] = connection;
 			void connection.start(options.registerTool);
 		},
 		awaitStartup,

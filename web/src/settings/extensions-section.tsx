@@ -2,7 +2,9 @@ import {
 	Blocks,
 	Check,
 	Minus,
+	MoreHorizontal,
 	PackagePlus,
+	Pencil,
 	Plus,
 	Puzzle,
 	RefreshCw,
@@ -14,12 +16,14 @@ import {
 	WandSparkles,
 	type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
+import { api } from "../api.ts";
+import { StateDot, type StateDotState } from "../components/state-dot.tsx";
 import { Button, Dialog, Menu, Switch, toast, type MenuEntry } from "../components/ui/index.ts";
 import { cn } from "../components/ui/cn.ts";
 import { desktopBridge } from "../platform.ts";
-import type { SettingsSnapshot } from "../protocol.ts";
+import type { McpServerInput, SettingsSnapshot } from "../protocol.ts";
 import { Badge, EmptyState, SettingsCard, SettingsHeader } from "./controls.tsx";
 import { McpServerDialog } from "./mcp-server-dialog.tsx";
 import { SkillDialog } from "./skill-dialog.tsx";
@@ -52,6 +56,29 @@ const KIND_ICONS: Record<ExtensionKind, LucideIcon> = {
 	skill: WandSparkles,
 	mcp: Server,
 };
+
+interface McpStatusView {
+	readonly state: StateDotState;
+	readonly label: string;
+	readonly detail: string;
+}
+
+/** 运行期状态映射成界面上的点与一句话；未知状态按未连接处理。 */
+function mcpStatusOf(item: ExtensionItem): McpStatusView | undefined {
+	if (item.kind !== "mcp") return undefined;
+	switch (item.status) {
+		case "connected":
+			return { state: "done", label: "已连接", detail: item.detail ?? "" };
+		case "connecting":
+			return { state: "ongoing", label: "连接中", detail: item.detail ?? "" };
+		case "unreachable":
+			return { state: "error", label: "连接失败", detail: item.detail ?? "" };
+		case "disabled":
+			return { state: "idle", label: "已禁用", detail: item.detail ?? "" };
+		default:
+			return { state: "idle", label: "未连接", detail: item.detail ?? "" };
+	}
+}
 
 /** 各分类没有内容时的空态；与「搜索无结果」分开，避免把空分类说成没搜到。 */
 const TAB_EMPTY: Record<Tab, { readonly icon: LucideIcon; readonly title: string; readonly description: string }> = {
@@ -91,8 +118,18 @@ export function ExtensionsSection({
 	const [skillOpen, setSkillOpen] = useState(false);
 	const [uploadOpen, setUploadOpen] = useState(false);
 	const [mcpOpen, setMcpOpen] = useState(false);
+	const [mcpEditTarget, setMcpEditTarget] = useState<McpServerInput | undefined>(undefined);
+	const [mcpDeleteTarget, setMcpDeleteTarget] = useState<ExtensionItem | undefined>(undefined);
+	const [mcpDeleting, setMcpDeleting] = useState(false);
 	const [pluginRemoveTarget, setPluginRemoveTarget] = useState<ExtensionItem | undefined>(undefined);
 	const bridge = desktopBridge();
+
+	// MCP 状态会从 connecting 走到 connected/unreachable；页签打开时轮询，离开就停
+	useEffect(() => {
+		if (tab !== "mcp") return;
+		const timer = window.setInterval(onRefresh, 3000);
+		return () => window.clearInterval(timer);
+	}, [tab, onRefresh]);
 
 	const items = extensionItems(settings);
 	const counts = countExtensions(items);
@@ -191,6 +228,44 @@ export function ExtensionsSection({
 			.catch((cause: unknown) =>
 				toast(cause instanceof Error ? cause.message : String(cause), "error"),
 			);
+	};
+
+	const editMcp = (item: ExtensionItem): void => {
+		void api
+			.mcpServer(item.name)
+			.then((server) => setMcpEditTarget(server))
+			.catch((cause: unknown) =>
+				toast(cause instanceof Error ? cause.message : String(cause), "error"),
+			);
+	};
+
+	const reconnectMcp = (item: ExtensionItem): void => {
+		void api
+			.reconnectMcpServer(item.name)
+			.then((message) => {
+				toast(message.length > 0 ? message : "已重连");
+				onRefresh();
+			})
+			.catch((cause: unknown) =>
+				toast(cause instanceof Error ? cause.message : String(cause), "error"),
+			);
+	};
+
+	const deleteMcp = (): void => {
+		const target = mcpDeleteTarget;
+		if (target === undefined || mcpDeleting) return;
+		setMcpDeleting(true);
+		void api
+			.deleteMcpServer(target.name)
+			.then(() => {
+				toast("MCP 服务器已删除");
+				setMcpDeleteTarget(undefined);
+				onRefresh();
+			})
+			.catch((cause: unknown) =>
+				toast(cause instanceof Error ? cause.message : String(cause), "error"),
+			)
+			.finally(() => setMcpDeleting(false));
 	};
 
 	return (
@@ -348,6 +423,10 @@ export function ExtensionsSection({
 											? () => setPluginRemoveTarget(item)
 											: undefined
 									}
+									status={mcpStatusOf(item)}
+									onEdit={item.kind === "mcp" ? () => editMcp(item) : undefined}
+									onReconnect={item.kind === "mcp" ? () => reconnectMcp(item) : undefined}
+									onDelete={item.kind === "mcp" ? () => setMcpDeleteTarget(item) : undefined}
 								/>
 							))}
 						</SettingsCard>
@@ -411,6 +490,34 @@ export function ExtensionsSection({
 					<p className="m-0 text-foreground">{pluginRemoveTarget?.name}</p>
 				</div>
 			</Dialog>
+
+			<McpServerDialog
+				open={mcpEditTarget !== undefined}
+				server={mcpEditTarget}
+				onClose={() => setMcpEditTarget(undefined)}
+				onCreated={onRefresh}
+			/>
+
+			<Dialog
+				open={mcpDeleteTarget !== undefined}
+				onClose={() => setMcpDeleteTarget(undefined)}
+				title="删除 MCP 服务器"
+				footer={
+					<>
+						<Button variant="outline" size="sm" disabled={mcpDeleting} onClick={() => setMcpDeleteTarget(undefined)}>
+							取消
+						</Button>
+						<Button variant="danger" size="sm" disabled={mcpDeleting} onClick={deleteMcp}>
+							{mcpDeleting ? "删除中…" : "删除"}
+						</Button>
+					</>
+				}
+			>
+				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
+					<p className="m-0">删除会从 config.toml 移除这个服务器，并立即断开连接；不能撤销。</p>
+					<p className="m-0 text-foreground">{mcpDeleteTarget?.name}</p>
+				</div>
+			</Dialog>
 		</div>
 	);
 }
@@ -420,13 +527,45 @@ function ExtensionRow({
 	last,
 	onToggle,
 	onUninstall,
+	onEdit,
+	onReconnect,
+	onDelete,
+	status,
 }: {
 	readonly item: ExtensionItem;
 	readonly last: boolean;
 	onToggle?(disabled: boolean): void;
 	onUninstall?(): void;
+	onEdit?(): void;
+	onReconnect?(): void;
+	onDelete?(): void;
+	readonly status?: McpStatusView;
 }): ReactElement {
 	const Icon = KIND_ICONS[item.kind];
+	const menuEntries: MenuEntry[] = [];
+	if (onEdit !== undefined) {
+		menuEntries.push({ type: "item", key: "edit", label: "编辑", icon: Pencil, onSelect: onEdit });
+	}
+	if (onReconnect !== undefined) {
+		menuEntries.push({
+			type: "item",
+			key: "reconnect",
+			label: "重连",
+			icon: RefreshCw,
+			onSelect: onReconnect,
+		});
+	}
+	if (onDelete !== undefined) {
+		menuEntries.push({
+			type: "item",
+			key: "delete",
+			label: "删除",
+			icon: Trash2,
+			danger: true,
+			onSelect: onDelete,
+		});
+	}
+
 	return (
 		<div
 			className={cn(
@@ -439,18 +578,25 @@ function ExtensionRow({
 			</span>
 			<div className="min-w-0 flex-1">
 				<div className="flex min-w-0 items-center gap-2">
+					{status === undefined ? null : <StateDot state={status.state} />}
 					<span className="min-w-0 truncate text-[13px] leading-5 font-medium">{item.name}</span>
 					{item.disabled ? <Badge tone="muted">已禁用</Badge> : null}
 				</div>
 				<div className="truncate text-[12px] leading-[18px] text-foreground-subtlest">
 					{item.description}
 				</div>
+				{status === undefined ? null : (
+					<div className="truncate text-[11px] leading-4 text-foreground-subtlest">
+						{status.label}
+						{status.detail.length === 0 ? "" : ` · ${status.detail}`}
+					</div>
+				)}
 			</div>
 			<span className="shrink-0 rounded-md bg-surface px-1.5 py-0.5 font-mono text-[10px] leading-4 text-foreground-subtle">
 				{item.meta}
 			</span>
 			{onToggle === undefined ? (
-				item.disabled ? (
+				status !== undefined ? null : item.disabled ? (
 					<Minus className="size-3.5 shrink-0 text-foreground-subtlest" aria-label="已禁用" />
 				) : (
 					<Check className="size-4 shrink-0 text-foreground-subtle" aria-label="已启用" />
@@ -460,6 +606,26 @@ function ExtensionRow({
 					checked={!item.disabled}
 					onCheckedChange={(checked) => onToggle(!checked)}
 					label={item.disabled ? `启用插件 ${item.name}` : `禁用插件 ${item.name}`}
+				/>
+			)}
+			{menuEntries.length === 0 ? null : (
+				<Menu
+					align="end"
+					zIndex={90}
+					entries={menuEntries}
+					trigger={({ open, toggle }) => (
+						<button
+							type="button"
+							aria-label={`管理 ${item.name}`}
+							title="更多操作"
+							aria-haspopup="menu"
+							aria-expanded={open}
+							onClick={toggle}
+							className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtlest transition-colors hover:bg-surface-hover hover:text-foreground"
+						>
+							<MoreHorizontal className="size-4" />
+						</button>
+					)}
 				/>
 			)}
 			{onUninstall === undefined ? null : (

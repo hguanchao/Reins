@@ -1,3 +1,4 @@
+import type { McpServerConfig } from "#src/config/file.ts";
 import type { ConfigTable } from "#src/config/value.ts";
 
 /**
@@ -35,6 +36,43 @@ export interface McpServerDraftResult {
 	readonly ok: boolean;
 	readonly draft?: McpServerDraft;
 	readonly error?: string;
+}
+
+export interface McpServerNameResult {
+	readonly ok: boolean;
+	readonly name?: string;
+	readonly error?: string;
+}
+
+/** 只校验 server 名；详情、删除与重连不需要整份配置。 */
+export function parseMcpServerName(value: unknown): McpServerNameResult {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		return { ok: false, error: "请填写名称" };
+	}
+	const name = value.trim();
+	if (!SERVER_NAME.test(name)) {
+		return { ok: false, error: "名称只能使用字母、数字、- 和 _" };
+	}
+	return { ok: true, name };
+}
+
+/** 把配置里的 server 还原成表单形状；编辑时用来预填。 */
+export function mcpServerDraft(server: McpServerConfig): McpServerDraft {
+	if (server.type === "stdio") {
+		return {
+			name: server.name,
+			type: "stdio",
+			command: server.command ?? "",
+			args: server.args,
+			env: server.env,
+		};
+	}
+	return {
+		name: server.name,
+		type: server.type,
+		url: server.url ?? "",
+		headers: server.headers,
+	};
 }
 
 export function parseMcpServerInput(body: Record<string, unknown>): McpServerDraftResult {

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 
 import type { FileContent, FileSearchHit, FileTree } from "#src/web/files.ts";
+import type { McpServerDraft } from "#src/web/mcp-servers.ts";
 import type { ProviderView } from "#src/web/providers.ts";
 import { parseSettingsUpdate, type SettingsSnapshot, type SettingsUpdate } from "#src/web/settings.ts";
 import type { GitStatus } from "#src/workspace/git.ts";
@@ -124,6 +125,18 @@ export interface WebServerDeps {
 	uploadSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
 	/** 新增 MCP server 并热接入;写盘或重载配置失败时返回错误说明 */
 	addMcpServer(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
+	/** 读取一个 MCP server 的完整配置;编辑表单预填用 */
+	mcpServerDetail(name: string): McpServerDraft | undefined;
+	/** 编辑 MCP server;写盘或运行期替换失败时返回错误说明 */
+	updateMcpServer(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
+	/** 删除 MCP server;写盘或运行期移除失败时返回错误说明 */
+	deleteMcpServer(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
+	/** 重连一个 MCP server;返回给界面显示的结果说明 */
+	reconnectMcpServer(body: Record<string, unknown>): Promise<{
+		readonly ok: boolean;
+		readonly error?: string;
+		readonly message?: string;
+	}>;
 	/** 本机提供方清单;API Key 只返回是否已保存 */
 	providers(): readonly ProviderView[];
 	/** 新增或更新提供方;写盘后重载当前模型选择 */
@@ -408,6 +421,20 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			sendJson(res, 200, { ok: true });
 			return;
 		}
+		if (req.method === "GET" && path === "/api/mcp-servers/detail") {
+			const name = url.searchParams.get("name");
+			if (name === null || name.length === 0) {
+				sendJson(res, 400, { error: "name is required" });
+				return;
+			}
+			const detail = deps.mcpServerDetail(name);
+			if (detail === undefined) {
+				sendJson(res, 404, { error: "MCP server not found" });
+				return;
+			}
+			sendJson(res, 200, detail);
+			return;
+		}
 		if (req.method === "POST" && path === "/api/mcp-servers") {
 			const body = await readJsonBody(req);
 			const result = await deps.addMcpServer(body ?? {});
@@ -631,6 +658,36 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				return;
 			}
 			sendJson(res, 200, deps.settings());
+			return;
+		}
+		if (path === "/api/mcp-servers/update") {
+			const body = await readJsonBody(req);
+			const result = await deps.updateMcpServer(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法更新 MCP 服务器" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/mcp-servers/delete") {
+			const body = await readJsonBody(req);
+			const result = await deps.deleteMcpServer(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法删除 MCP 服务器" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/mcp-servers/reconnect") {
+			const body = await readJsonBody(req);
+			const result = await deps.reconnectMcpServer(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法重连 MCP 服务器" });
+				return;
+			}
+			sendJson(res, 200, { ok: true, message: result.message ?? "" });
 			return;
 		}
 		if (path === "/api/plan-mode") {

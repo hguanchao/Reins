@@ -219,3 +219,55 @@ describe("tools/list_changed 增量刷新", () => {
 		assert.ok(harness.status()[0].detail.includes("a, c"));
 	});
 });
+
+describe("运行中移除与替换 server", () => {
+	it("移除 server 时注销它登记过的全部工具", async () => {
+		const harness = start([{ replies: OK_REPLIES(["a", "b"]) }]);
+		await flush();
+		assert.deepEqual([...harness.registered].sort(), ["srv_a", "srv_b"]);
+
+		harness.control.removeServer("srv");
+
+		assert.deepEqual(harness.status(), []);
+		assert.deepEqual([...harness.unregistered].sort(), ["srv_a", "srv_b"]);
+	});
+
+	it("移除后取消待执行的重连，不再把连接拉起来", async (t) => {
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+		const harness = start([
+			{ replies: {}, failPump: true },
+			{ replies: OK_REPLIES(["a"]) },
+		]);
+		await flush();
+		assert.equal(harness.status()[0]?.status, "unreachable");
+
+		harness.control.removeServer("srv");
+		await advance(t, RECONNECT_DELAYS_MS[0] + 100);
+
+		assert.deepEqual(harness.status(), []);
+		assert.deepEqual(harness.registered, []);
+	});
+
+	it("替换 server 时先摘旧工具，再按新清单登记", async () => {
+		const harness = start([
+			{ replies: OK_REPLIES(["a"]) },
+			{ replies: OK_REPLIES(["b"]) },
+		]);
+		await flush();
+		assert.deepEqual(harness.registered, ["srv_a"]);
+
+		harness.control.replaceServer({ ...SERVER, args: ["--new"] });
+		await flush();
+
+		assert.deepEqual(harness.unregistered, ["srv_a"]);
+		assert.deepEqual(harness.registered, ["srv_a", "srv_b"]);
+		assert.equal(harness.status()[0]?.status, "connected");
+	});
+
+	it("移除或替换不存在的 server 时报错", async () => {
+		const harness = start([{ replies: OK_REPLIES([]) }]);
+		await flush();
+		assert.throws(() => harness.control.removeServer("missing"), /Unknown MCP server/);
+		assert.throws(() => harness.control.replaceServer({ ...SERVER, name: "missing" }), /Unknown MCP server/);
+	});
+});

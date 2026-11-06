@@ -11,6 +11,9 @@ export interface ExtensionItem {
 	readonly description: string;
 	readonly meta: string;
 	readonly disabled: boolean;
+	/** MCP 的运行期连接状态；其他类型没有 */
+	readonly status?: string;
+	readonly detail?: string;
 }
 
 /** 把设置快照里的三类扩展摊平成清单；设置还没读到时返回空表。 */
@@ -40,6 +43,8 @@ export function extensionItems(settings: SettingsSnapshot | undefined): readonly
 			description: "MCP 服务器",
 			meta: server.type,
 			disabled: server.disabled,
+			status: server.status,
+			detail: server.detail,
 		})),
 	];
 }

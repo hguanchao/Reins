@@ -116,3 +116,80 @@ describe("TOML 文档", () => {
 		assert.equal(document.source, source);
 	});
 });
+
+describe("TOML 表段替换与删除", () => {
+	it("替换分节形式的表，保留段外注释与其他 server", () => {
+		const source = `# 顶部注释\n[mcp_servers.a]\ncommand = "old"\n\n[mcp_servers.b]\ncommand = "keep"\n`;
+		const document = new TomlDocument(source);
+		document.replaceSection(["mcp_servers", "a"], { command: "new", args: ["-y"] });
+		assert.equal(document.get(["mcp_servers", "a", "command"]), "new");
+		assert.deepEqual(document.get(["mcp_servers", "a", "args"]), ["-y"]);
+		assert.equal(document.get(["mcp_servers", "b", "command"]), "keep");
+		assert.match(document.source, /# 顶部注释/);
+		assert.match(document.source, /\[mcp_servers\.b\]/);
+		assert.doesNotMatch(document.source, /command = "old"/);
+	});
+
+	it("替换时连同子段一起收掉，改成内联表", () => {
+		const source = `[mcp_servers.a]\ncommand = "old"\n[mcp_servers.a.env]\nTOKEN = "x"\n[mcp_servers.b]\ncommand = "keep"\n`;
+		const document = new TomlDocument(source);
+		document.replaceSection(["mcp_servers", "a"], {
+			command: "new",
+			env: { TOKEN: "y" },
+		});
+		assert.deepEqual(document.get(["mcp_servers", "a", "env"]), { TOKEN: "y" });
+		assert.equal(document.get(["mcp_servers", "b", "command"]), "keep");
+		assert.doesNotMatch(document.source, /\[mcp_servers\.a\.env\]/);
+	});
+
+	it("删除目标段与子段，保留其他段", () => {
+		const source = `[mcp_servers.a]\ncommand = "old"\n[mcp_servers.a.env]\nTOKEN = "x"\n[mcp_servers.b]\ncommand = "keep"\n`;
+		const document = new TomlDocument(source);
+		document.removeSection(["mcp_servers", "a"]);
+		assert.equal(document.get(["mcp_servers", "a"]), undefined);
+		assert.equal(document.get(["mcp_servers", "b", "command"]), "keep");
+		assert.doesNotMatch(document.source, /mcp_servers\.a/);
+	});
+
+	it("内联表形式替换目标键，保留其他键", () => {
+		const source = `mcp_servers = { a = { command = "old" }, b = { command = "keep" } }\n`;
+		const document = new TomlDocument(source);
+		document.replaceSection(["mcp_servers", "a"], { command: "new" });
+		assert.deepEqual(document.get(["mcp_servers", "a"]), { command: "new" });
+		assert.deepEqual(document.get(["mcp_servers", "b"]), { command: "keep" });
+	});
+
+	it("内联表形式删除目标键，保留其他键", () => {
+		const source = `mcp_servers = { a = { command = "old" }, b = { command = "keep" } }\n`;
+		const document = new TomlDocument(source);
+		document.removeSection(["mcp_servers", "a"]);
+		assert.equal(document.get(["mcp_servers", "a"]), undefined);
+		assert.deepEqual(document.get(["mcp_servers", "b"]), { command: "keep" });
+	});
+
+	it("点号键形式没有独立段，替换与删除都明确拒绝", () => {
+		const source = `[mcp_servers]\na.command = "old"\n`;
+		const document = new TomlDocument(source);
+		assert.throws(
+			() => document.replaceSection(["mcp_servers", "a"], { command: "new" }),
+			/Cannot rewrite/,
+		);
+		assert.equal(document.source, source);
+		assert.throws(() => document.removeSection(["mcp_servers", "a"]), /Cannot remove/);
+		assert.equal(document.source, source);
+	});
+
+	it("目标不存在时拒绝替换与删除", () => {
+		const document = new TomlDocument(`[mcp_servers.b]\ncommand = "keep"\n`);
+		assert.throws(() => document.replaceSection(["mcp_servers", "a"], { command: "new" }), /Cannot rewrite/);
+		assert.throws(() => document.removeSection(["mcp_servers", "a"]), /Cannot remove/);
+	});
+
+	it("替换分节时沿用 CRLF", () => {
+		const source = `[mcp_servers.a]\r\ncommand = "old"\r\n[mcp_servers.b]\r\ncommand = "keep"\r\n`;
+		const document = new TomlDocument(source);
+		document.replaceSection(["mcp_servers", "a"], { command: "new" });
+		assert.match(document.source, /\[mcp_servers\.a\]\r\ncommand = "new"\r\n/);
+		assert.equal(document.source.includes("\n") && !document.source.includes("\r\n"), false);
+	});
+});

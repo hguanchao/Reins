@@ -23,17 +23,28 @@ import {
 	restoreSessionsAcross,
 } from "#src/cli/session/target.ts";
 import type { ModelSelection } from "#src/config/selection.ts";
-import type { ApprovalMode } from "#src/config/file.ts";
+import type { ApprovalMode, Config } from "#src/config/file.ts";
 import { configFilePath, providersFilePath } from "#src/config/paths.ts";
 import { applyLiveConfig } from "#src/config/reload.ts";
-import { appendMcpServerSection, updateModelSelection, updateUserConfigValue } from "#src/config/write-back.ts";
+import {
+	appendMcpServerSection,
+	removeMcpServerSection,
+	updateMcpServerSection,
+	updateModelSelection,
+	updateUserConfigValue,
+} from "#src/config/write-back.ts";
 import { writeProviders } from "#src/config/providers-write.ts";
 import type { Session } from "#src/session/session.ts";
 import { lastContextTokens, sumActivity, sumUsage } from "#src/session/usage.ts";
 import { createUserSkill, createUserSkillFromContent, parseSkillDraft, parseSkillUpload } from "#src/skills/create.ts";
 import { defaultSkillRoots, discoverSkills } from "#src/skills/discover.ts";
 import { readVersion } from "#src/version.ts";
-import { mcpServerTable, parseMcpServerInput } from "#src/web/mcp-servers.ts";
+import {
+	mcpServerDraft,
+	mcpServerTable,
+	parseMcpServerInput,
+	parseMcpServerName,
+} from "#src/web/mcp-servers.ts";
 import { mergeProvider, providerViews, removeProvider } from "#src/web/providers.ts";
 import {
 	defaultInstructionSources,
@@ -59,7 +70,7 @@ import {
 import { gitDiff, gitStatus } from "#src/workspace/git.ts";
 import { workspaceNameOf } from "#src/workspace/name.ts";
 import type { SessionListing } from "#src/session/store.ts";
-import type { McpControl } from "#src/mcp/service.ts";
+import type { McpControl, McpStatusSource } from "#src/mcp/service.ts";
 import { fileTree, readWorkspaceFile, searchWorkspaceFiles } from "#src/web/files.ts";
 import { createWebServer, type WebServerDeps } from "#src/web/server.ts";
 import { formatReadyLine } from "#src/web/ready-line.ts";
@@ -114,12 +125,16 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	});
 
 	let mcpControl: McpControl | undefined;
+	let mcpStatus: McpStatusSource | undefined;
 	const pipeline = await assemblePipeline({
 		config,
 		workRoot,
 		policy,
 		gate,
 		extensionContext: { mode: "tui", projectTrusted: loaded.trusted },
+		onMcpStatus: (source) => {
+			mcpStatus = source;
+		},
 		onMcpControl: (control) => {
 			mcpControl = control;
 		},
@@ -286,6 +301,21 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		name: selection.model.name,
 	});
 
+	/** 配置里的 server 与运行期状态按名字合并；配置存在但连接还没建时给出 unknown。 */
+	const mcpServerRows = () => {
+		const statuses = new Map((mcpStatus?.() ?? []).map((row) => [row.name, row]));
+		return config.mcpServers.map((server) => {
+			const live = statuses.get(server.name);
+			return {
+				name: server.name,
+				type: server.type,
+				disabled: server.disabled,
+				status: live?.status ?? (server.disabled ? "disabled" : "unknown"),
+				detail: live?.detail ?? "",
+			};
+		});
+	};
+
 	const settingsSnapshot = () =>
 		describeSettings({
 			version: readVersion(),
@@ -294,11 +324,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			config,
 			selection,
 			providers: providersConfig.providers,
-			mcpServers: config.mcpServers.map((server) => ({
-				name: server.name,
-				type: server.type,
-				disabled: server.disabled,
-			})),
+			mcpServers: mcpServerRows(),
 			plugins: pipeline.declarative.plugins.map((plugin) => ({
 				name: plugin.name,
 				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
@@ -376,6 +402,56 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			model: reloaded.value.config.model,
 		};
 		return { ok: true };
+	};
+
+	/**
+	 * MCP 配置写盘的共同外壳。
+	 *
+	 * 先备份原文，写盘并重新加载配置；任何一步失败都恢复文件与内存。运行期接入、替换或
+	 * 移除放在重载成功之后执行，失败同样回滚，避免配置文件与进程里的连接各说各话。
+	 */
+	const applyMcpConfigChange = async (
+		mutate: (file: string) => void,
+		runtime: (next: Config) => void,
+	): Promise<{ readonly ok: boolean; readonly error?: string }> => {
+		const original = existsSync(configFile) ? readFileSync(configFile, "utf8") : undefined;
+		const previousConfig = config;
+		const restore = (): void => {
+			if (original === undefined) {
+				rmSync(configFile, { force: true });
+				return;
+			}
+			const temporary = `${configFile}.${process.pid}.restore.tmp`;
+			try {
+				writeFileSync(temporary, original, "utf8");
+				renameSync(temporary, configFile);
+			} catch {
+				rmSync(temporary, { force: true });
+			}
+		};
+
+		try {
+			mutate(configFile);
+			const reloaded = await loadSelection(options);
+			if (!reloaded.ok) {
+				restore();
+				return { ok: false, error: describeError(reloaded.error) };
+			}
+			const next = reloaded.value.config;
+			config = { ...config, mcpServers: next.mcpServers };
+			try {
+				runtime(next);
+			} catch (error) {
+				config = previousConfig;
+				restore();
+				return { ok: false, error: describeError(error) };
+			}
+			return { ok: true };
+		} catch (error) {
+			config = previousConfig;
+			restore();
+			return { ok: false, error: describeError(error) };
+		}
 	};
 
 	const deps: WebServerDeps = {
@@ -562,47 +638,75 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			if (config.mcpServers.some((server) => server.name === draft.name)) {
 				return { ok: false, error: `MCP 服务器 ${draft.name} 已存在` };
 			}
-
-			const original = existsSync(configFile) ? readFileSync(configFile, "utf8") : undefined;
-			const previousConfig = config;
-			const restore = (): void => {
-				if (original === undefined) {
-					rmSync(configFile, { force: true });
-					return;
-				}
-				const temporary = `${configFile}.${process.pid}.restore.tmp`;
-				try {
-					writeFileSync(temporary, original, "utf8");
-					renameSync(temporary, configFile);
-				} catch {
-					rmSync(temporary, { force: true });
-				}
-			};
-
-			try {
-				appendMcpServerSection(draft.name, mcpServerTable(draft), configFile);
-				const reloaded = await loadSelection(options);
-				if (!reloaded.ok) {
-					restore();
-					return { ok: false, error: describeError(reloaded.error) };
-				}
-				const server = reloaded.value.config.mcpServers.find((item) => item.name === draft.name);
-				if (server === undefined) {
-					restore();
-					return { ok: false, error: "写入配置后没有找到 MCP 服务器" };
-				}
-				config = { ...config, mcpServers: reloaded.value.config.mcpServers };
-				try {
+			return applyMcpConfigChange(
+				(file) => appendMcpServerSection(draft.name, mcpServerTable(draft), file),
+				(next) => {
+					const server = next.mcpServers.find((item) => item.name === draft.name);
+					if (server === undefined) throw new Error("写入配置后没有找到 MCP 服务器");
 					mcpControl?.addServer(server);
-				} catch (error) {
-					config = previousConfig;
-					restore();
-					return { ok: false, error: describeError(error) };
-				}
-				return { ok: true };
+				},
+			);
+		},
+		mcpServerDetail: (name) => {
+			const server = config.mcpServers.find((item) => item.name === name);
+			return server === undefined ? undefined : mcpServerDraft(server);
+		},
+		updateMcpServer: async (body) => {
+			if (running || compacting) {
+				return { ok: false, error: "回合进行中，暂时不能修改 MCP 服务器" };
+			}
+			const parsed = parseMcpServerInput(body);
+			if (!parsed.ok || parsed.draft === undefined) {
+				return { ok: false, error: parsed.error ?? "MCP 服务器配置无效" };
+			}
+			const draft = parsed.draft;
+			const existing = config.mcpServers.find((server) => server.name === draft.name);
+			if (existing === undefined) {
+				return { ok: false, error: `MCP 服务器 ${draft.name} 不存在` };
+			}
+			const values = mcpServerTable(draft);
+			// 表单不暴露的高级项保持原值，避免编辑一次就丢掉
+			if (existing.timeoutSeconds !== undefined) values.timeout = existing.timeoutSeconds;
+			if (existing.disabled) values.disabled = true;
+			return applyMcpConfigChange(
+				(file) => updateMcpServerSection(draft.name, values, file),
+				(next) => {
+					const server = next.mcpServers.find((item) => item.name === draft.name);
+					if (server === undefined) throw new Error("写入配置后没有找到 MCP 服务器");
+					mcpControl?.replaceServer(server);
+				},
+			);
+		},
+		deleteMcpServer: async (body) => {
+			if (running || compacting) {
+				return { ok: false, error: "回合进行中，暂时不能修改 MCP 服务器" };
+			}
+			const parsed = parseMcpServerName(body["name"]);
+			if (!parsed.ok || parsed.name === undefined) {
+				return { ok: false, error: parsed.error ?? "MCP 服务器名称无效" };
+			}
+			const name = parsed.name;
+			if (!config.mcpServers.some((server) => server.name === name)) {
+				return { ok: false, error: `MCP 服务器 ${name} 不存在` };
+			}
+			return applyMcpConfigChange(
+				(file) => removeMcpServerSection(name, file),
+				() => mcpControl?.removeServer(name),
+			);
+		},
+		reconnectMcpServer: async (body) => {
+			const parsed = parseMcpServerName(body["name"]);
+			if (!parsed.ok || parsed.name === undefined) {
+				return { ok: false, error: parsed.error ?? "MCP 服务器名称无效" };
+			}
+			const name = parsed.name;
+			if (!config.mcpServers.some((server) => server.name === name)) {
+				return { ok: false, error: `MCP 服务器 ${name} 不存在` };
+			}
+			if (mcpControl === undefined) return { ok: false, error: "MCP 控制未就绪" };
+			try {
+				return { ok: true, message: await mcpControl.reconnect(name) };
 			} catch (error) {
-				config = previousConfig;
-				restore();
 				return { ok: false, error: describeError(error) };
 			}
 		},

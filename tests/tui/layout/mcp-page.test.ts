@@ -35,6 +35,8 @@ describe("MCP 管理页", () => {
 			},
 			healthCheck: async () => ["alpha: ok", "beta: failed"],
 			addServer: () => {},
+			removeServer: () => {},
+			replaceServer: () => {},
 			awaitStartup: async () => {},
 		};
 		const running = runTui({
@@ -96,12 +98,14 @@ describe("MCP 管理页", () => {
 			version: "1.2.3",
 			info: FOOTER_INFO,
 			mcpServers: () => rows,
-			mcpControl: {
-				reconnect: async (name) => `Reconnected ${name}`,
-				healthCheck: async () => [],
-				addServer: () => {},
-				awaitStartup: async () => {},
-			},
+				mcpControl: {
+					reconnect: async (name) => `Reconnected ${name}`,
+					healthCheck: async () => [],
+					addServer: () => {},
+					removeServer: () => {},
+					replaceServer: () => {},
+					awaitStartup: async () => {},
+				},
 			stdin: input,
 			stdout: output,
 		});
@@ -126,6 +130,8 @@ describe("MCP 管理页", () => {
 			reconnect: async (name) => `Reconnected ${name}`,
 			healthCheck: async () => [],
 			addServer: () => {},
+			removeServer: () => {},
+			replaceServer: () => {},
 			awaitStartup: async () => {},
 		};
 		const running = runTui({

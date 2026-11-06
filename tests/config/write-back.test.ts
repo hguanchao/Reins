@@ -7,6 +7,8 @@ import { after, describe, it } from "node:test";
 import { parseConfig } from "#src/config/file.ts";
 import {
 	appendMcpServerSection,
+	removeMcpServerSection,
+	updateMcpServerSection,
 	updateModelSelection,
 	updateUserConfigValue,
 } from "#src/config/write-back.ts";
@@ -198,5 +200,105 @@ describe("追加 MCP server", () => {
 			/无法追加 MCP 服务器/,
 		);
 		assert.equal(readFileSync(inline, "utf8"), inlineBefore);
+	});
+});
+
+describe("编辑与删除 MCP server", () => {
+	it("只替换目标段，保留其他段与注释", () => {
+		const file = join(directory, "mcp-update.toml");
+		writeFileSync(
+			file,
+			'# 保留这行注释\nprovider = "p"\nmodel = "m"\n\n[mcp_servers.old]\ntype = "stdio"\ncommand = "node"\n\n[mcp_servers.keep]\ntype = "http"\nurl = "https://keep.example.com"\n',
+			"utf8",
+		);
+
+		updateMcpServerSection("old", { type: "http", url: "https://new.example.com" }, file);
+
+		const text = readFileSync(file, "utf8");
+		assert.match(text, /# 保留这行注释/);
+		const config = parseConfig(text, file);
+		const old = config.mcpServers.find((server) => server.name === "old");
+		assert.equal(old?.type, "http");
+		assert.equal(old?.url, "https://new.example.com");
+		assert.equal(old?.command, undefined);
+		const keep = config.mcpServers.find((server) => server.name === "keep");
+		assert.equal(keep?.url, "https://keep.example.com");
+	});
+
+	it("删除目标段，保留其他段", () => {
+		const file = join(directory, "mcp-remove.toml");
+		writeFileSync(
+			file,
+			'provider = "p"\nmodel = "m"\n\n[mcp_servers.old]\ntype = "http"\nurl = "https://old.example.com"\n\n[mcp_servers.keep]\ntype = "http"\nurl = "https://keep.example.com"\n',
+			"utf8",
+		);
+
+		removeMcpServerSection("old", file);
+
+		const config = parseConfig(readFileSync(file, "utf8"), file);
+		assert.deepEqual(config.mcpServers.map((server) => server.name), ["keep"]);
+	});
+
+	it("camelCase 表名沿用原写法", () => {
+		const file = join(directory, "mcp-camel-update.toml");
+		writeFileSync(
+			file,
+			'provider = "p"\nmodel = "m"\n\n[mcpServers.old]\ntype = "http"\nurl = "https://old.example.com"\n',
+			"utf8",
+		);
+
+		updateMcpServerSection("old", { type: "http", url: "https://new.example.com" }, file);
+
+		const text = readFileSync(file, "utf8");
+		assert.doesNotMatch(text, /\[mcp_servers\./);
+		assert.equal(parseConfig(text, file).mcpServers[0]?.url, "https://new.example.com");
+	});
+
+	it("内联表形式可以编辑与删除", () => {
+		const file = join(directory, "mcp-inline-edit.toml");
+		writeFileSync(
+			file,
+			'provider = "p"\nmodel = "m"\nmcp_servers = { old = { type = "http", url = "https://old.example.com" }, keep = { type = "http", url = "https://keep.example.com" } }\n',
+			"utf8",
+		);
+
+		updateMcpServerSection("old", { type: "http", url: "https://new.example.com" }, file);
+		let config = parseConfig(readFileSync(file, "utf8"), file);
+		assert.equal(config.mcpServers.find((server) => server.name === "old")?.url, "https://new.example.com");
+		assert.equal(config.mcpServers.find((server) => server.name === "keep")?.url, "https://keep.example.com");
+
+		removeMcpServerSection("old", file);
+		config = parseConfig(readFileSync(file, "utf8"), file);
+		assert.deepEqual(config.mcpServers.map((server) => server.name), ["keep"]);
+	});
+
+	it("目标不存在时报错且不改文件", () => {
+		const file = join(directory, "mcp-missing.toml");
+		writeFileSync(
+			file,
+			'[mcp_servers.keep]\ntype = "http"\nurl = "https://keep.example.com"\n',
+			"utf8",
+		);
+		const before = readFileSync(file, "utf8");
+		assert.throws(() => updateMcpServerSection("missing", { type: "http", url: "https://x" }, file), /不存在/);
+		assert.equal(readFileSync(file, "utf8"), before);
+		assert.throws(() => removeMcpServerSection("missing", file), /不存在/);
+		assert.equal(readFileSync(file, "utf8"), before);
+	});
+
+	it("编辑与删除保留 CRLF", () => {
+		const file = join(directory, "mcp-crlf.toml");
+		writeFileSync(
+			file,
+			'[mcp_servers.old]\r\ntype = "http"\r\nurl = "https://old.example.com"\r\n\r\n[mcp_servers.keep]\r\ntype = "http"\r\nurl = "https://keep.example.com"\r\n',
+			"utf8",
+		);
+
+		updateMcpServerSection("old", { type: "http", url: "https://new.example.com" }, file);
+		removeMcpServerSection("keep", file);
+
+		const text = readFileSync(file, "utf8");
+		assert.match(text, /\r\n/);
+		assert.doesNotMatch(text, /(?<!\r)\n/);
 	});
 });

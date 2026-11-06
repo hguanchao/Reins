@@ -18,6 +18,12 @@ function samePath(left: readonly string[] | null, right: ConfigPath): boolean {
 	return left.every((part, index) => part === right[index]);
 }
 
+/** target 是 candidate 本身或它的祖先；用来找出一个表连同其子段。 */
+function isSameOrAncestor(target: readonly string[], candidate: readonly string[]): boolean {
+	if (candidate.length < target.length) return false;
+	return target.every((part, index) => part === candidate[index]);
+}
+
 /** 写入前后的深比较：回写是否真的落在目标路径上，只靠它判定。 */
 function sameValue(left: ConfigValue | undefined, right: ConfigValue): boolean {
 	if (left === right) return true;
@@ -116,6 +122,95 @@ export class TomlDocument implements ConfigSource {
 					"rewrite that table as a [section] and try again",
 			);
 		}
+	}
+
+	/**
+	 * 用一个新表替换已有表。
+	 *
+	 * 只处理能在原文里定位到独立范围的两种写法：`[a.b]` 分节（含子段）与
+	 * `a = { b = { ... } }` 内联表。点号键形式（`b.x = 1`）没有独立段，硬改会把键
+	 * 写到错误的层级，因此直接拒绝。
+	 */
+	replaceSection(path: readonly string[], values: ConfigTable): void {
+		if (path.length === 0) throw new Error("Key path for replace must not be empty");
+
+		const sections = this.#matchingSections(path);
+		if (sections.length > 0) {
+			const newline = this.#lineEnding();
+			const lines = [
+				`[${path.map(serializeKey).join(".")}]`,
+				...Object.entries(values).map(
+					([key, value]) => `${serializeKey(key)} = ${serializeValue(value)}`,
+				),
+			];
+			const start = Math.min(...sections.map((section) => section.headerStart));
+			const end = Math.max(...sections.map((section) => section.bodyEnd));
+			this.#load(
+				`${this.#source.slice(0, start)}${lines.join(newline)}${newline}${this.#source.slice(end)}`,
+			);
+			if (!sameValue(this.get(path), values)) {
+				throw new ConfigError(`Cannot replace table ${path.join(".")}`);
+			}
+			return;
+		}
+
+		// 内联表没有独立段，只能把父表的值整体换掉；set 会保住这个值在原文里的位置
+		const parent = this.#inlineParent(path);
+		if (parent !== undefined) {
+			const next: ConfigTable = { ...parent };
+			setTableValue(next, path[path.length - 1], values);
+			this.set(path.slice(0, -1), next);
+			return;
+		}
+
+		throw new ConfigError(
+			`Cannot rewrite ${path.join(".")}: use a [${path.slice(0, -1).join(".")}.<name>] section or an inline table`,
+		);
+	}
+
+	/** 删除一个表及其子段；写法限制与 replaceSection 相同。 */
+	removeSection(path: readonly string[]): void {
+		if (path.length === 0) throw new Error("Key path for remove must not be empty");
+
+		const sections = this.#matchingSections(path);
+		if (sections.length > 0) {
+			const start = Math.min(...sections.map((section) => section.headerStart));
+			const end = Math.max(...sections.map((section) => section.bodyEnd));
+			this.#load(`${this.#source.slice(0, start)}${this.#source.slice(end)}`);
+			if (this.get(path) !== undefined) {
+				throw new ConfigError(`Cannot remove table ${path.join(".")}`);
+			}
+			return;
+		}
+
+		const parent = this.#inlineParent(path);
+		if (parent !== undefined) {
+			const next: ConfigTable = { ...parent };
+			delete next[path[path.length - 1]];
+			this.set(path.slice(0, -1), next);
+			return;
+		}
+
+		throw new ConfigError(
+			`Cannot remove ${path.join(".")}: use a [${path.slice(0, -1).join(".")}.<name>] section or an inline table`,
+		);
+	}
+
+	/** 目标表及其全部子段；按原文顺序返回。 */
+	#matchingSections(path: readonly string[]): readonly TomlSection[] {
+		return this.#sections.filter(
+			(section) => section.path !== null && isSameOrAncestor(path, section.path),
+		);
+	}
+
+	/** 目标表的父表若是内联表，返回一份可安全修改的浅拷贝。 */
+	#inlineParent(path: readonly string[]): ConfigTable | undefined {
+		const parentPath = path.slice(0, -1);
+		if (parentPath.length === 0) return undefined;
+		const assignment = this.#assignments.find((item) => samePath(item.path, parentPath));
+		if (assignment === undefined) return undefined;
+		const current = this.get(parentPath);
+		return current !== undefined && isConfigTable(current) ? { ...current } : undefined;
 	}
 
 	#render(path: readonly string[], value: ConfigValue): RenderedWrite {

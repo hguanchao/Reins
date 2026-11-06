@@ -200,7 +200,14 @@ export interface SettingsSnapshot {
 	compactModel: string | undefined;
 	reviewModel: string | undefined;
 	models: readonly SettingsModel[];
-	mcpServers: readonly { name: string; type: string; disabled: boolean }[];
+	mcpServers: readonly {
+		name: string;
+		type: string;
+		disabled: boolean;
+		/** connecting / connected / unreachable / disabled / unknown */
+		status: string;
+		detail: string;
+	}[];
 	plugins: readonly { name: string; kind: string; disabled: boolean }[];
 	skills: readonly { name: string; description: string; path: string }[];
 }

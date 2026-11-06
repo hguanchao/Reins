@@ -149,6 +149,27 @@ export const api = {
 	async addMcpServer(input: McpServerInput): Promise<void> {
 		await request("/api/mcp-servers", { method: "POST", body: JSON.stringify(input) });
 	},
+	async mcpServer(name: string): Promise<McpServerInput> {
+		return (await request(
+			`/api/mcp-servers/detail?name=${encodeURIComponent(name)}`,
+		)) as McpServerInput;
+	},
+	async updateMcpServer(input: McpServerInput): Promise<void> {
+		await request("/api/mcp-servers/update", { method: "POST", body: JSON.stringify(input) });
+	},
+	async deleteMcpServer(name: string): Promise<void> {
+		await request("/api/mcp-servers/delete", {
+			method: "POST",
+			body: JSON.stringify({ name }),
+		});
+	},
+	async reconnectMcpServer(name: string): Promise<string> {
+		const body = (await request("/api/mcp-servers/reconnect", {
+			method: "POST",
+			body: JSON.stringify({ name }),
+		})) as { message?: string };
+		return body.message ?? "";
+	},
 	async providers(): Promise<readonly ProviderView[]> {
 		return (await request("/api/providers")) as readonly ProviderView[];
 	},

@@ -124,6 +124,16 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		saveProvider: async (body) => ({ ok: typeof body["provider"] === "object" }),
 		deleteProvider: async (body) => ({ ok: typeof body["id"] === "string" }),
 		addMcpServer: async (body) => ({ ok: typeof body["name"] === "string" }),
+		mcpServerDetail: (name) =>
+			name === "demo"
+				? { name: "demo", type: "stdio", command: "node", args: [], env: {} }
+				: undefined,
+		updateMcpServer: async (body) => ({ ok: typeof body["name"] === "string" }),
+		deleteMcpServer: async (body) => ({ ok: typeof body["name"] === "string" }),
+		reconnectMcpServer: async (body) => ({
+			ok: typeof body["name"] === "string",
+			message: "reconnected",
+		}),
 		fileTree: () => ({ path: "", entries: [] }),
 		fileRead: () => ({
 			path: "a.txt",
@@ -530,6 +540,58 @@ describe("web 传输层", () => {
 			body: JSON.stringify({}),
 		});
 		assert.equal(invalidMcp.status, 400);
+
+		const detail = await fetch(`${base}/api/mcp-servers/detail?name=demo`, { headers });
+		assert.equal(detail.status, 200);
+		assert.deepEqual(await detail.json(), {
+			name: "demo",
+			type: "stdio",
+			command: "node",
+			args: [],
+			env: {},
+		});
+		const missingDetail = await fetch(`${base}/api/mcp-servers/detail?name=missing`, { headers });
+		assert.equal(missingDetail.status, 404);
+
+		const updatedMcp = await fetch(`${base}/api/mcp-servers/update`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "docs", type: "http", url: "https://example.com/mcp2" }),
+		});
+		assert.equal(updatedMcp.status, 200);
+		const invalidMcpUpdate = await fetch(`${base}/api/mcp-servers/update`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidMcpUpdate.status, 400);
+
+		const deletedMcp = await fetch(`${base}/api/mcp-servers/delete`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "docs" }),
+		});
+		assert.equal(deletedMcp.status, 200);
+		const invalidDelete = await fetch(`${base}/api/mcp-servers/delete`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidDelete.status, 400);
+
+		const reconnectedMcp = await fetch(`${base}/api/mcp-servers/reconnect`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ name: "docs" }),
+		});
+		assert.equal(reconnectedMcp.status, 200);
+		assert.equal(((await reconnectedMcp.json()) as { message: string }).message, "reconnected");
+		const invalidReconnect = await fetch(`${base}/api/mcp-servers/reconnect`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidReconnect.status, 400);
 
 		const providers = await fetch(`${base}/api/providers`, {
 			headers: { "x-reins-token": TOKEN },

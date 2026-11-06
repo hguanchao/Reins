@@ -85,6 +85,13 @@ function mutateUserConfig(file: string, mutate: (document: TomlDocument) => void
 	}
 }
 
+/** 配置里 MCP 表实际用的写法；新增、编辑与删除都必须写回同一种。 */
+function mcpTableName(document: TomlDocument): string {
+	if (document.get(["mcp_servers"]) !== undefined) return "mcp_servers";
+	if (document.get(["mcpServers"]) !== undefined) return "mcpServers";
+	return "mcp_servers";
+}
+
 /**
  * 追加一个 MCP server 段。
  *
@@ -101,12 +108,7 @@ export function appendMcpServerSection(
 	const hasBom = source.startsWith("\uFEFF");
 	const body = hasBom ? source.slice(1) : source;
 	const document = new TomlDocument(body);
-	const tableName =
-		document.get(["mcp_servers"]) !== undefined
-			? "mcp_servers"
-			: document.get(["mcpServers"]) !== undefined
-				? "mcpServers"
-				: "mcp_servers";
+	const tableName = mcpTableName(document);
 	if (document.get([tableName, name]) !== undefined) {
 		throw new ConfigError(`MCP 服务器 ${name} 已存在`, { file });
 	}
@@ -134,5 +136,36 @@ export function appendMcpServerSection(
 		rmSync(temporary, { force: true });
 		throw new ConfigError(`无法写入配置：${describeError(error)}`, { file });
 	}
+}
+
+/**
+ * 替换一个已有 MCP server 段。
+ *
+ * 只重写目标段：其他 server 的注释与排版不动。timeout、disabled 这类表单不暴露的字段
+ * 由调用方先并进 values，避免编辑一次就把它们丢掉。
+ */
+export function updateMcpServerSection(
+	name: string,
+	values: Readonly<ConfigTable>,
+	file: string = configFilePath(),
+): void {
+	mutateUserConfig(file, (document) => {
+		const tableName = mcpTableName(document);
+		if (document.get([tableName, name]) === undefined) {
+			throw new ConfigError(`MCP 服务器 ${name} 不存在`, { file });
+		}
+		document.replaceSection([tableName, name], { ...values });
+	});
+}
+
+/** 删除一个已有 MCP server 段。 */
+export function removeMcpServerSection(name: string, file: string = configFilePath()): void {
+	mutateUserConfig(file, (document) => {
+		const tableName = mcpTableName(document);
+		if (document.get([tableName, name]) === undefined) {
+			throw new ConfigError(`MCP 服务器 ${name} 不存在`, { file });
+		}
+		document.removeSection([tableName, name]);
+	});
 }
 

@@ -40,7 +40,7 @@ describe("扩展清单", () => {
 		const settings = snapshot({
 			plugins: [{ name: "filesystem", kind: "dsh", disabled: false }],
 			skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
-			mcpServers: [{ name: "docs", type: "http", disabled: true }],
+			mcpServers: [{ name: "docs", type: "http", disabled: true, status: "connected", detail: "3 tools" }],
 		});
 
 		const items = extensionItems(settings);
@@ -53,6 +53,9 @@ describe("扩展清单", () => {
 			],
 		);
 		assert.deepEqual(countExtensions(items), { plugin: 1, skill: 1, mcp: 1 });
+		const mcp = items.find((item) => item.kind === "mcp");
+		assert.equal(mcp?.status, "connected");
+		assert.equal(mcp?.detail, "3 tools");
 	});
 
 	it("设置未读到时返回空清单", () => {
@@ -65,7 +68,7 @@ describe("扩展搜索", () => {
 		snapshot({
 			plugins: [{ name: "Filesystem", kind: "dsh", disabled: false }],
 			skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
-			mcpServers: [{ name: "docs", type: "http", disabled: false }],
+			mcpServers: [{ name: "docs", type: "http", disabled: false, status: "unreachable", detail: "timeout" }],
 		}),
 	);
 

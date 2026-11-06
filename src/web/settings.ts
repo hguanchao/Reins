@@ -29,6 +29,15 @@ export interface SettingsModel {
 	readonly cost: ModelCost | undefined;
 }
 
+export interface SettingsMcpServer {
+	readonly name: string;
+	readonly type: string;
+	readonly disabled: boolean;
+	/** 运行期连接状态；配置里存在但还没连上时也能看到 */
+	readonly status: string;
+	readonly detail: string;
+}
+
 export interface SettingsSnapshot {
 	readonly version: string;
 	readonly configPath: string;
@@ -43,7 +52,7 @@ export interface SettingsSnapshot {
 	readonly compactModel: string | undefined;
 	readonly reviewModel: string | undefined;
 	readonly models: readonly SettingsModel[];
-	readonly mcpServers: readonly { readonly name: string; readonly type: string; readonly disabled: boolean }[];
+	readonly mcpServers: readonly SettingsMcpServer[];
 	readonly plugins: readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
 	readonly skills: readonly { readonly name: string; readonly description: string; readonly path: string }[];
 }
@@ -66,7 +75,7 @@ export function describeSettings(input: {
 	readonly config: Config;
 	readonly selection: ModelSelection;
 	readonly providers: readonly ProviderEntry[];
-	readonly mcpServers: readonly { readonly name: string; readonly type: string; readonly disabled: boolean }[];
+	readonly mcpServers: readonly SettingsMcpServer[];
 	readonly plugins: readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
 	readonly skills: readonly { readonly name: string; readonly description: string; readonly path: string }[];
 }): SettingsSnapshot {

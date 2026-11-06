@@ -11,16 +11,27 @@ const FIELD =
 const AREA =
 	"w-full resize-y rounded-md border-[0.5px] border-input-border bg-input px-3 py-2 font-mono text-[12px] leading-5 outline-none transition-colors placeholder:text-foreground-subtlest focus:border-input-border-focused";
 
-/** 添加 MCP server：stdio 填命令，http/sse 填地址；请求头与环境变量按 KEY=VALUE 行输入。 */
+/** KEY=VALUE 对象还原成表单里的逐行文本。 */
+function formatPairs(pairs: Readonly<Record<string, string>> | undefined): string {
+	return Object.entries(pairs ?? {})
+		.map(([key, value]) => `${key}=${value}`)
+		.join("\n");
+}
+
+/** 添加或编辑 MCP server：stdio 填命令，http/sse 填地址；请求头与环境变量按 KEY=VALUE 行输入。 */
 export function McpServerDialog({
 	open,
+	server,
 	onClose,
 	onCreated,
 }: {
 	readonly open: boolean;
+	/** 编辑目标；缺省时是新增 */
+	readonly server?: McpServerInput;
 	onClose(): void;
 	onCreated(): void;
 }): ReactElement {
+	const editing = server !== undefined;
 	const [name, setName] = useState("");
 	const [type, setType] = useState<McpServerType>("stdio");
 	const [command, setCommand] = useState("");
@@ -33,16 +44,16 @@ export function McpServerDialog({
 
 	useEffect(() => {
 		if (!open) return;
-		setName("");
-		setType("stdio");
-		setCommand("");
-		setArgs("");
-		setEnv("");
-		setUrl("");
-		setHeaders("");
+		setName(server?.name ?? "");
+		setType(server?.type ?? "stdio");
+		setCommand(server?.type === "stdio" ? server.command ?? "" : "");
+		setArgs(server?.type === "stdio" ? (server.args ?? []).join("\n") : "");
+		setEnv(server?.type === "stdio" ? formatPairs(server.env) : "");
+		setUrl(server !== undefined && server.type !== "stdio" ? server.url ?? "" : "");
+		setHeaders(server !== undefined && server.type !== "stdio" ? formatPairs(server.headers) : "");
 		setSaving(false);
 		setError(undefined);
-	}, [open]);
+	}, [open, server]);
 
 	const submit = (): void => {
 		if (saving) return;
@@ -83,10 +94,10 @@ export function McpServerDialog({
 
 		setSaving(true);
 		setError(undefined);
-		void api
-			.addMcpServer(input)
+		const request = editing ? api.updateMcpServer(input) : api.addMcpServer(input);
+		void request
 			.then(() => {
-				toast("MCP 服务器已添加，正在后台连接");
+				toast(editing ? "MCP 服务器已保存，正在重新连接" : "MCP 服务器已添加，正在后台连接");
 				onCreated();
 				onClose();
 			})
@@ -104,14 +115,14 @@ export function McpServerDialog({
 		<Dialog
 			open={open}
 			onClose={onClose}
-			title="添加 MCP 服务器"
+			title={editing ? "编辑 MCP 服务器" : "添加 MCP 服务器"}
 			footer={
 				<>
 					<Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
 						取消
 					</Button>
 					<Button variant="primary" size="sm" disabled={saving} onClick={submit}>
-						{saving ? "添加中…" : "添加"}
+						{saving ? (editing ? "保存中…" : "添加中…") : editing ? "保存" : "添加"}
 					</Button>
 				</>
 			}
@@ -125,11 +136,12 @@ export function McpServerDialog({
 						onKeyDown={submitOnEnter}
 						placeholder="docs"
 						aria-label="MCP 服务器名称"
-						autoFocus
+						disabled={editing}
+						autoFocus={!editing}
 						className={FIELD}
 					/>
 					<span className="text-[11px] leading-4 text-foreground-subtlest">
-						用于工具名前缀，仅支持字母、数字、- 和 _。
+						{editing ? "编辑时名称不可修改。" : "用于工具名前缀，仅支持字母、数字、- 和 _。"}
 					</span>
 				</label>
 
