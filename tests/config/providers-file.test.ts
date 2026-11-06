@@ -70,6 +70,16 @@ describe("模型条目的解析", () => {
 	});
 });
 
+describe("模型列表", () => {
+	it("允许为空数组", () => {
+		const provider = parseProviders(
+			`{ "providers": { "p": { "baseUrl": "https://e.com/v1", "api": "openai-completions", "models": [] } } }`,
+			"providers.json",
+		).providers[0];
+		assert.deepEqual(provider?.models, []);
+	});
+});
+
 describe("提供方启用状态", () => {
 	it("缺省视为启用", () => {
 		assert.equal(firstProvider("")?.enabled, true);

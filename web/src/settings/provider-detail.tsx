@@ -207,9 +207,9 @@ export function ProviderDetail({
 			<div className="mt-2 flex items-center justify-between">
 				<span className="text-[12px] leading-[18px] text-foreground-subtle">模型列表</span>
 				<Button
-					variant="outline"
+					variant="ghost"
 					size="sm"
-					className="h-6 rounded-md px-2 text-[12px]"
+					className="h-6 rounded-md bg-surface px-2 text-[12px] text-foreground-subtle hover:bg-surface-strong"
 					onClick={() => setDialog({ index: undefined })}
 				>
 					<Plus className="size-3" />

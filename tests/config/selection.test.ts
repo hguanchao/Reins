@@ -64,13 +64,11 @@ describe("providers.json 解析", () => {
 		assert.throws(() => parseProviders(source, "p"), /Duplicate model m/);
 	});
 
-	it("空 providers 与空模型清单报错", () => {
+	it("空 providers 报错，空模型清单合法", () => {
 		assert.throws(() => parseProviders(`{}`, "p"), /Missing providers/);
 		assert.throws(() => parseProviders(`{"providers": {}}`, "p"), /at least one provider/);
-		assert.throws(
-			() => parseProviders(`{"providers": {"p": {"api": "a", "baseUrl": "b", "models": []}}}`, "p"),
-			/at least one model/,
-		);
+		const empty = parseProviders(`{"providers": {"p": {"api": "a", "baseUrl": "b", "models": []}}}`, "p");
+		assert.deepEqual(empty.providers[0]?.models, []);
 	});
 
 	it("单价表四项全写才合法", () => {

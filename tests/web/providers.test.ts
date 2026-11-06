@@ -74,13 +74,14 @@ describe("提供方写回校验", () => {
 		assert.equal(saved?.models[0]?.maxTokensField, "max_completion_tokens");
 	});
 
-	it("新提供方必须带至少一个模型", () => {
+	it("允许先建没有模型的提供方，之后再补", () => {
 		const result = mergeProvider(
 			config(),
 			{ id: "p2", name: "Provider Two", api: "openai-completions", baseUrl: "https://two.example.com", models: [] },
 			"/tmp/providers.json",
 		);
-		assert.equal(result.ok, false);
+		assert.equal(result.ok, true);
+		assert.deepEqual(result.config?.providers[1]?.models, []);
 	});
 
 	it("拒绝非法 ID 与未知字段", () => {

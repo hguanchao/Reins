@@ -207,14 +207,7 @@ function readModelList(
 			...(source.locationOf([...providerPath, "models"]) ?? {}),
 		});
 	}
-	if (value.length === 0) {
-		// 没有模型的 provider 无法被选中，属于配置疏漏而不是合法状态
-		throw new ConfigError(
-			`${describePath(providerPath)} must declare at least one model`,
-			source.locationOf(providerPath) ?? {},
-		);
-	}
-
+	// 空模型列表是合法状态：新建的提供方先落盘，再逐个补模型
 	const seen = new Set<string>();
 	const models: ModelEntry[] = [];
 	for (let index = 0; index < value.length; index += 1) {

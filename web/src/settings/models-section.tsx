@@ -6,7 +6,6 @@ import { Button } from "../components/ui/index.ts";
 import { cn } from "../components/ui/cn.ts";
 import type { ProviderView, SettingsSnapshot, ThinkingLevel } from "../protocol.ts";
 import { ProviderDetail } from "./provider-detail.tsx";
-import { ProviderDialog } from "./provider-dialog.tsx";
 
 /** 模型设置：左侧提供方导航，右侧该提供方的配置与模型列表。 */
 export function ModelsSection({
@@ -22,7 +21,7 @@ export function ModelsSection({
 }): ReactElement {
 	const [providers, setProviders] = useState<readonly ProviderView[] | undefined>(undefined);
 	const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
-	const [adding, setAdding] = useState(false);
+	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState<string | undefined>(undefined);
 
 	const load = useCallback((): void => {
@@ -44,6 +43,21 @@ export function ModelsSection({
 	}, [load]);
 
 	const selected = providers?.find((provider) => provider.id === selectedId);
+
+	/** 直接在右栏建一张空白表单，写盘后再补齐模型 */
+	const create = (): void => {
+		if (creating) return;
+		setCreating(true);
+		const id = `custom-${Date.now().toString(36)}`;
+		void api
+			.saveProvider({ id, name: "新供应商", api: "anthropic-messages", baseUrl: "", models: [] })
+			.then(() => {
+				setSelectedId(id);
+				load();
+			})
+			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+			.finally(() => setCreating(false));
+	};
 
 	const toggle = (provider: ProviderView, enabled: boolean): void => {
 		// 先落界面再发请求，失败按原值回滚
@@ -77,7 +91,7 @@ export function ModelsSection({
 					>
 						<RefreshCw className="size-3.5" />
 					</button>
-					<Button variant="primary" size="sm" onClick={() => setAdding(true)}>
+					<Button variant="primary" size="sm" disabled={creating} onClick={create}>
 						<Plus className="size-3.5" />
 						添加供应商
 					</Button>
@@ -91,13 +105,13 @@ export function ModelsSection({
 			) : providers.length === 0 ? (
 				<div className="flex flex-col items-center gap-3 rounded-xl border-[0.5px] border-dashed border-border px-6 py-16 text-center">
 					<span className="text-[13px] leading-5">还没有配置提供方</span>
-					<Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+					<Button variant="outline" size="sm" disabled={creating} onClick={create}>
 						<Plus className="size-3.5" />
 						添加供应商
 					</Button>
 				</div>
 			) : (
-				<div className="grid min-h-[525px] grid-cols-[200px_minmax(0,1fr)] overflow-hidden rounded-xl border-[0.5px] border-border">
+				<div className="grid min-h-[480px] grid-cols-[180px_minmax(0,1fr)] overflow-hidden rounded-xl border-[0.5px] border-border">
 					<nav aria-label="提供方" className="min-w-0 border-r-[0.5px] border-border">
 						<div className="px-3 pt-3 pb-1 text-[11px] leading-4 text-foreground-subtlest">
 							提供方
@@ -118,6 +132,9 @@ export function ModelsSection({
 												: "border-transparent hover:bg-surface-hover",
 										)}
 									>
+										<span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface text-[9px] leading-none font-semibold text-foreground-subtle">
+											{provider.name.slice(0, 1)}
+										</span>
 										<span className="min-w-0 flex-1 truncate">{provider.name}</span>
 										<span
 											className={cn(
@@ -172,16 +189,6 @@ export function ModelsSection({
 			{error === undefined ? null : (
 				<p className="m-0 text-[12px] leading-[18px] text-destructive">{error}</p>
 			)}
-
-			<ProviderDialog
-				open={adding}
-				provider={undefined}
-				onClose={() => setAdding(false)}
-				onSaved={() => {
-					load();
-					onRefresh();
-				}}
-			/>
 		</div>
 	);
 }
