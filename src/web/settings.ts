@@ -29,6 +29,15 @@ export interface SettingsModel {
 	readonly cost: ModelCost | undefined;
 }
 
+export interface SettingsSkill {
+	readonly name: string;
+	readonly description: string;
+	readonly path: string;
+	readonly scope: "user" | "project";
+	/** 只有 Reins 自己技能目录下的用户技能可编辑 */
+	readonly editable: boolean;
+}
+
 export interface SettingsMcpServer {
 	readonly name: string;
 	readonly type: string;
@@ -54,7 +63,7 @@ export interface SettingsSnapshot {
 	readonly models: readonly SettingsModel[];
 	readonly mcpServers: readonly SettingsMcpServer[];
 	readonly plugins: readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
-	readonly skills: readonly { readonly name: string; readonly description: string; readonly path: string }[];
+	readonly skills: readonly SettingsSkill[];
 }
 
 export interface SettingsUpdate {
@@ -77,7 +86,7 @@ export function describeSettings(input: {
 	readonly providers: readonly ProviderEntry[];
 	readonly mcpServers: readonly SettingsMcpServer[];
 	readonly plugins: readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
-	readonly skills: readonly { readonly name: string; readonly description: string; readonly path: string }[];
+	readonly skills: readonly SettingsSkill[];
 }): SettingsSnapshot {
 	return {
 		version: input.version,

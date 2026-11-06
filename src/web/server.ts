@@ -6,7 +6,12 @@ import { join, resolve, sep } from "node:path";
 import type { FileContent, FileSearchHit, FileTree } from "#src/web/files.ts";
 import type { McpServerDraft } from "#src/web/mcp-servers.ts";
 import type { ProviderView } from "#src/web/providers.ts";
-import { parseSettingsUpdate, type SettingsSnapshot, type SettingsUpdate } from "#src/web/settings.ts";
+import {
+	parseSettingsUpdate,
+	type SettingsSkill,
+	type SettingsSnapshot,
+	type SettingsUpdate,
+} from "#src/web/settings.ts";
 import type { GitStatus } from "#src/workspace/git.ts";
 
 /**
@@ -103,7 +108,7 @@ export interface WebServerDeps {
 	/** 批量恢复归档,返回实际恢复的个数 */
 	restoreSessions(ids: readonly string[]): number;
 	/** 发现的技能清单(技能库面板) */
-	skills(): readonly { readonly name: string; readonly description: string; readonly path: string }[];
+	skills(): readonly SettingsSkill[];
 	/** 已装载的插件清单(插件市场面板) */
 	plugins(): readonly { readonly name: string; readonly kind: string; readonly disabled: boolean }[];
 	/** 设置页快照 */
@@ -123,6 +128,20 @@ export interface WebServerDeps {
 	createSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
 	/** 上传一个 SKILL.md;要求 frontmatter 自带 name 与 description */
 	uploadSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
+	/** 读取一个可编辑技能的 description 与正文;只读技能返回错误说明 */
+	skillContent(path: string): {
+		readonly ok: boolean;
+		readonly skill?: {
+			readonly name: string;
+			readonly description: string;
+			readonly content: string;
+		};
+		readonly error?: string;
+	};
+	/** 更新一个用户技能;名称不可改 */
+	updateSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
+	/** 删除一个用户技能 */
+	deleteSkill(body: Record<string, unknown>): { readonly ok: boolean; readonly error?: string };
 	/** 新增 MCP server 并热接入;写盘或重载配置失败时返回错误说明 */
 	addMcpServer(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
 	/** 读取一个 MCP server 的完整配置;编辑表单预填用 */
@@ -401,6 +420,20 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			sendJson(res, 200, deps.skills());
 			return;
 		}
+		if (req.method === "GET" && path === "/api/skills/content") {
+			const skillPath = url.searchParams.get("path");
+			if (skillPath === null || skillPath.length === 0) {
+				sendJson(res, 400, { error: "path is required" });
+				return;
+			}
+			const result = deps.skillContent(skillPath);
+			if (!result.ok || result.skill === undefined) {
+				sendJson(res, 400, { error: result.error ?? "无法读取技能" });
+				return;
+			}
+			sendJson(res, 200, result.skill);
+			return;
+		}
 		if (req.method === "POST" && path === "/api/skills") {
 			const body = await readJsonBody(req);
 			const result = deps.createSkill(body ?? {});
@@ -658,6 +691,26 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				return;
 			}
 			sendJson(res, 200, deps.settings());
+			return;
+		}
+		if (path === "/api/skills/update") {
+			const body = await readJsonBody(req);
+			const result = deps.updateSkill(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法更新技能" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (path === "/api/skills/delete") {
+			const body = await readJsonBody(req);
+			const result = deps.deleteSkill(body ?? {});
+			if (!result.ok) {
+				sendJson(res, 400, { error: result.error ?? "无法删除技能" });
+				return;
+			}
+			sendJson(res, 200, { ok: true });
 			return;
 		}
 		if (path === "/api/mcp-servers/update") {

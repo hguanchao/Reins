@@ -86,7 +86,15 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		},
 		archiveSessions: (ids) => ids.length,
 		restoreSessions: (ids) => ids.length,
-		skills: () => [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
+		skills: () => [
+			{
+				name: "writer",
+				description: "写文档",
+				path: "/skills/writer/SKILL.md",
+				scope: "user",
+				editable: true,
+			},
+		],
 		plugins: () => [{ name: "demo", kind: "declarative", disabled: false }],
 		settings: () => ({
 			version: "1.0.0",
@@ -120,6 +128,12 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		},
 		createSkill: (body) => ({ ok: typeof body["name"] === "string" }),
 		uploadSkill: (body) => ({ ok: typeof body["content"] === "string" }),
+		skillContent: (path) =>
+			path === "/skills/writer/SKILL.md"
+				? { ok: true, skill: { name: "writer", description: "写文档", content: "正文" } }
+				: { ok: false, error: "技能不存在" },
+		updateSkill: (body) => ({ ok: typeof body["path"] === "string" }),
+		deleteSkill: (body) => ({ ok: typeof body["path"] === "string" }),
 		providers: () => [],
 		saveProvider: async (body) => ({ ok: typeof body["provider"] === "object" }),
 		deleteProvider: async (body) => ({ ok: typeof body["id"] === "string" }),
@@ -527,6 +541,55 @@ describe("web 传输层", () => {
 			body: JSON.stringify({}),
 		});
 		assert.equal(invalidUpload.status, 400);
+
+		const skillContent = await fetch(
+			`${base}/api/skills/content?path=${encodeURIComponent("/skills/writer/SKILL.md")}`,
+			{ headers },
+		);
+		assert.equal(skillContent.status, 200);
+		assert.deepEqual(await skillContent.json(), {
+			name: "writer",
+			description: "写文档",
+			content: "正文",
+		});
+		const missingSkillContent = await fetch(`${base}/api/skills/content`, { headers });
+		assert.equal(missingSkillContent.status, 400);
+		const unknownSkillContent = await fetch(
+			`${base}/api/skills/content?path=${encodeURIComponent("/skills/missing/SKILL.md")}`,
+			{ headers },
+		);
+		assert.equal(unknownSkillContent.status, 400);
+
+		const updatedSkill = await fetch(`${base}/api/skills/update`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({
+				path: "/skills/writer/SKILL.md",
+				name: "writer",
+				description: "新描述",
+				content: "新正文",
+			}),
+		});
+		assert.equal(updatedSkill.status, 200);
+		const invalidSkillUpdate = await fetch(`${base}/api/skills/update`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidSkillUpdate.status, 400);
+
+		const deletedSkill = await fetch(`${base}/api/skills/delete`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ path: "/skills/writer/SKILL.md" }),
+		});
+		assert.equal(deletedSkill.status, 200);
+		const invalidSkillDelete = await fetch(`${base}/api/skills/delete`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({}),
+		});
+		assert.equal(invalidSkillDelete.status, 400);
 
 		const mcp = await fetch(`${base}/api/mcp-servers`, {
 			method: "POST",

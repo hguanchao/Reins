@@ -21,8 +21,10 @@ import type {
 	SessionEntry,
 	SessionSummary,
 	SettingsSnapshot,
+	SkillContent,
 	SkillInfo,
 	SkillInput,
+	SkillUpdateInput,
 	StateInfo,
 	ThinkingLevel,
 	WorkspaceSummary,
@@ -145,6 +147,20 @@ export const api = {
 	},
 	async uploadSkill(content: string): Promise<void> {
 		await request("/api/skills/upload", { method: "POST", body: JSON.stringify({ content }) });
+	},
+	async skillContent(path: string): Promise<SkillContent> {
+		return (await request(
+			`/api/skills/content?path=${encodeURIComponent(path)}`,
+		)) as SkillContent;
+	},
+	async updateSkill(input: SkillUpdateInput): Promise<void> {
+		await request("/api/skills/update", { method: "POST", body: JSON.stringify(input) });
+	},
+	async deleteSkill(path: string): Promise<void> {
+		await request("/api/skills/delete", {
+			method: "POST",
+			body: JSON.stringify({ path }),
+		});
 	},
 	async addMcpServer(input: McpServerInput): Promise<void> {
 		await request("/api/mcp-servers", { method: "POST", body: JSON.stringify(input) });

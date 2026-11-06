@@ -121,6 +121,9 @@ export function ExtensionsSection({
 	const [mcpEditTarget, setMcpEditTarget] = useState<McpServerInput | undefined>(undefined);
 	const [mcpDeleteTarget, setMcpDeleteTarget] = useState<ExtensionItem | undefined>(undefined);
 	const [mcpDeleting, setMcpDeleting] = useState(false);
+	const [skillEditTarget, setSkillEditTarget] = useState<ExtensionItem | undefined>(undefined);
+	const [skillDeleteTarget, setSkillDeleteTarget] = useState<ExtensionItem | undefined>(undefined);
+	const [skillDeleting, setSkillDeleting] = useState(false);
 	const [pluginRemoveTarget, setPluginRemoveTarget] = useState<ExtensionItem | undefined>(undefined);
 	const bridge = desktopBridge();
 
@@ -266,6 +269,23 @@ export function ExtensionsSection({
 				toast(cause instanceof Error ? cause.message : String(cause), "error"),
 			)
 			.finally(() => setMcpDeleting(false));
+	};
+
+	const deleteSkill = (): void => {
+		const target = skillDeleteTarget;
+		if (target === undefined || target.path === undefined || skillDeleting) return;
+		setSkillDeleting(true);
+		void api
+			.deleteSkill(target.path)
+			.then(() => {
+				toast("技能已删除");
+				setSkillDeleteTarget(undefined);
+				onRefresh();
+			})
+			.catch((cause: unknown) =>
+				toast(cause instanceof Error ? cause.message : String(cause), "error"),
+			)
+			.finally(() => setSkillDeleting(false));
 	};
 
 	return (
@@ -424,9 +444,21 @@ export function ExtensionsSection({
 											: undefined
 									}
 									status={mcpStatusOf(item)}
-									onEdit={item.kind === "mcp" ? () => editMcp(item) : undefined}
+									onEdit={
+										item.kind === "mcp"
+											? () => editMcp(item)
+											: item.kind === "skill" && item.editable === true
+												? () => setSkillEditTarget(item)
+												: undefined
+									}
 									onReconnect={item.kind === "mcp" ? () => reconnectMcp(item) : undefined}
-									onDelete={item.kind === "mcp" ? () => setMcpDeleteTarget(item) : undefined}
+									onDelete={
+										item.kind === "mcp"
+											? () => setMcpDeleteTarget(item)
+											: item.kind === "skill" && item.editable === true
+												? () => setSkillDeleteTarget(item)
+												: undefined
+									}
 								/>
 							))}
 						</SettingsCard>
@@ -457,6 +489,16 @@ export function ExtensionsSection({
 			<SkillDialog
 				open={skillOpen}
 				onClose={() => setSkillOpen(false)}
+				onCreated={onRefresh}
+			/>
+			<SkillDialog
+				open={skillEditTarget !== undefined}
+				skill={
+					skillEditTarget?.path === undefined
+						? undefined
+						: { path: skillEditTarget.path, name: skillEditTarget.name }
+				}
+				onClose={() => setSkillEditTarget(undefined)}
 				onCreated={onRefresh}
 			/>
 			<SkillUploadDialog
@@ -516,6 +558,32 @@ export function ExtensionsSection({
 				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
 					<p className="m-0">删除会从 config.toml 移除这个服务器，并立即断开连接；不能撤销。</p>
 					<p className="m-0 text-foreground">{mcpDeleteTarget?.name}</p>
+				</div>
+			</Dialog>
+
+			<Dialog
+				open={skillDeleteTarget !== undefined}
+				onClose={() => setSkillDeleteTarget(undefined)}
+				title="删除技能"
+				footer={
+					<>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={skillDeleting}
+							onClick={() => setSkillDeleteTarget(undefined)}
+						>
+							取消
+						</Button>
+						<Button variant="danger" size="sm" disabled={skillDeleting} onClick={deleteSkill}>
+							{skillDeleting ? "删除中…" : "删除"}
+						</Button>
+					</>
+				}
+			>
+				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
+					<p className="m-0">删除会移除技能目录与 SKILL.md，不能撤销。</p>
+					<p className="m-0 text-foreground">{skillDeleteTarget?.name}</p>
 				</div>
 			</Dialog>
 		</div>
@@ -581,6 +649,9 @@ function ExtensionRow({
 					{status === undefined ? null : <StateDot state={status.state} />}
 					<span className="min-w-0 truncate text-[13px] leading-5 font-medium">{item.name}</span>
 					{item.disabled ? <Badge tone="muted">已禁用</Badge> : null}
+					{item.kind === "skill" && item.editable === false ? (
+						<Badge tone="muted">只读</Badge>
+					) : null}
 				</div>
 				<div className="truncate text-[12px] leading-[18px] text-foreground-subtlest">
 					{item.description}
@@ -596,7 +667,7 @@ function ExtensionRow({
 				{item.meta}
 			</span>
 			{onToggle === undefined ? (
-				status !== undefined ? null : item.disabled ? (
+				status !== undefined || item.kind === "skill" ? null : item.disabled ? (
 					<Minus className="size-3.5 shrink-0 text-foreground-subtlest" aria-label="已禁用" />
 				) : (
 					<Check className="size-4 shrink-0 text-foreground-subtle" aria-label="已启用" />

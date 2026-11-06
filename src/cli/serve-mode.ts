@@ -37,7 +37,13 @@ import { writeProviders } from "#src/config/providers-write.ts";
 import type { Session } from "#src/session/session.ts";
 import { lastContextTokens, sumActivity, sumUsage } from "#src/session/usage.ts";
 import { createUserSkill, createUserSkillFromContent, parseSkillDraft, parseSkillUpload } from "#src/skills/create.ts";
-import { defaultSkillRoots, discoverSkills } from "#src/skills/discover.ts";
+import { defaultSkillRoots, discoverSkills, type SkillInfo } from "#src/skills/discover.ts";
+import {
+	deleteUserSkill,
+	isEditableSkill,
+	readSkillContent,
+	updateUserSkill,
+} from "#src/skills/manage.ts";
 import { readVersion } from "#src/version.ts";
 import {
 	mcpServerDraft,
@@ -330,11 +336,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 				kind: plugin.cordis ? "dsh" : plugin.extensions.length > 0 ? "pi" : "declarative",
 				disabled: config.plugins.disabled.includes(plugin.name),
 			})),
-			skills: discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map((skill) => ({
-				name: skill.name,
-				description: skill.description,
-				path: skill.path,
-			})),
+			skills: discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map(skillInfo),
 		});
 
 	/**
@@ -374,6 +376,18 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	/** 新建与上传共用同一份重名判断：项目级同名技能会盖住用户级，不能只看目标目录。 */
 	const skillExists = (name: string): boolean =>
 		discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).some((skill) => skill.name === name);
+
+	/** 设置页与技能面板共用同一份形状；editable 由服务端判定，界面只负责显示。 */
+	const skillInfo = (skill: SkillInfo) => ({
+		name: skill.name,
+		description: skill.description,
+		path: skill.path,
+		scope: skill.scope,
+		editable: isEditableSkill(skill),
+	});
+
+	const findSkill = (path: string): SkillInfo | undefined =>
+		discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).find((skill) => skill.path === path);
 
 	/** 提供方写回失败时恢复原文件；providers.json 里有 API Key，不能留下半份。 */
 	const restoreProviders = (original: string | undefined): void => {
@@ -506,12 +520,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		deleteSessions: removeSessions,
 		archiveSessions: stashSessions,
 		restoreSessions: unstashSessions,
-		skills: () =>
-			discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map((skill) => ({
-				name: skill.name,
-				description: skill.description,
-				path: skill.path,
-			})),
+		skills: () => discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map(skillInfo),
 		plugins: () =>
 			pipeline.declarative.plugins.map((plugin) => ({
 				name: plugin.name,
@@ -624,6 +633,56 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			}
 			try {
 				createUserSkillFromContent(draft.name, draft.content);
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		skillContent: (path) => {
+			const skill = findSkill(path);
+			if (skill === undefined) return { ok: false, error: "技能不存在" };
+			if (!isEditableSkill(skill)) {
+				return { ok: false, error: `技能 ${skill.name} 是只读的` };
+			}
+			try {
+				return { ok: true, skill: readSkillContent(skill) };
+			} catch (error) {
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		updateSkill: (body) => {
+			const path = body["path"];
+			if (typeof path !== "string" || path.length === 0) {
+				return { ok: false, error: "缺少技能路径" };
+			}
+			const skill = findSkill(path);
+			if (skill === undefined) return { ok: false, error: "技能不存在" };
+			if (!isEditableSkill(skill)) {
+				return { ok: false, error: `技能 ${skill.name} 是只读的` };
+			}
+			const parsed = parseSkillDraft(body);
+			if (!parsed.ok || parsed.draft === undefined) {
+				return { ok: false, error: parsed.error ?? "技能配置无效" };
+			}
+			try {
+				updateUserSkill(skill, parsed.draft);
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: describeError(error) };
+			}
+		},
+		deleteSkill: (body) => {
+			const path = body["path"];
+			if (typeof path !== "string" || path.length === 0) {
+				return { ok: false, error: "缺少技能路径" };
+			}
+			const skill = findSkill(path);
+			if (skill === undefined) return { ok: false, error: "技能不存在" };
+			if (!isEditableSkill(skill)) {
+				return { ok: false, error: `技能 ${skill.name} 是只读的` };
+			}
+			try {
+				deleteUserSkill(skill);
 				return { ok: true };
 			} catch (error) {
 				return { ok: false, error: describeError(error) };
@@ -748,7 +807,14 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 				try {
 					const driver = createDriverFor(
 						{ config, selection, compactor },
-						{ registry, session, workspace, sandbox, instructions },
+						{
+							registry,
+							session,
+							workspace,
+							sandbox,
+							instructions,
+							skills: () => discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)),
+						},
 						(event) => broadcast(event),
 					);
 					// 首条消息前等 MCP 握手收口:不拿半套工具清单发第一次请求
@@ -773,7 +839,14 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			compacting = true;
 			const driver = createDriverFor(
 				{ config, selection, compactor },
-				{ registry, session, workspace, sandbox, instructions },
+				{
+					registry,
+					session,
+					workspace,
+					sandbox,
+					instructions,
+					skills: () => discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)),
+				},
 				(event) => broadcast(event),
 			);
 			const controller = new AbortController();

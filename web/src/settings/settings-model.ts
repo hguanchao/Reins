@@ -14,6 +14,10 @@ export interface ExtensionItem {
 	/** MCP 的运行期连接状态；其他类型没有 */
 	readonly status?: string;
 	readonly detail?: string;
+	/** 技能的文件位置、作用域与可编辑性；其他类型没有 */
+	readonly path?: string;
+	readonly scope?: "user" | "project";
+	readonly editable?: boolean;
 }
 
 /** 把设置快照里的三类扩展摊平成清单；设置还没读到时返回空表。 */
@@ -35,6 +39,9 @@ export function extensionItems(settings: SettingsSnapshot | undefined): readonly
 			description: skill.description,
 			meta: "技能",
 			disabled: false,
+			path: skill.path,
+			scope: skill.scope,
+			editable: skill.editable,
 		})),
 		...settings.mcpServers.map((server) => ({
 			kind: "mcp" as const,

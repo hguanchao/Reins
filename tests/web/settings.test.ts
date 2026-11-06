@@ -66,7 +66,15 @@ describe("设置快照", () => {
 			providers: [provider],
 			mcpServers: [{ name: "demo", type: "stdio", disabled: false, status: "connected", detail: "2 tools" }],
 			plugins: [{ name: "plugin", kind: "declarative", disabled: false }],
-			skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
+			skills: [
+				{
+					name: "writer",
+					description: "写文档",
+					path: "/skills/writer/SKILL.md",
+					scope: "user",
+					editable: true,
+				},
+			],
 		});
 
 		assert.equal(snapshot.provider, "p");

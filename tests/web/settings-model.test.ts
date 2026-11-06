@@ -39,7 +39,15 @@ describe("扩展清单", () => {
 	it("把插件、技能与 MCP 摊平成同一种行", () => {
 		const settings = snapshot({
 			plugins: [{ name: "filesystem", kind: "dsh", disabled: false }],
-			skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
+			skills: [
+				{
+					name: "writer",
+					description: "写文档",
+					path: "/skills/writer/SKILL.md",
+					scope: "user",
+					editable: true,
+				},
+			],
 			mcpServers: [{ name: "docs", type: "http", disabled: true, status: "connected", detail: "3 tools" }],
 		});
 
@@ -56,6 +64,9 @@ describe("扩展清单", () => {
 		const mcp = items.find((item) => item.kind === "mcp");
 		assert.equal(mcp?.status, "connected");
 		assert.equal(mcp?.detail, "3 tools");
+		const skill = items.find((item) => item.kind === "skill");
+		assert.equal(skill?.path, "/skills/writer/SKILL.md");
+		assert.equal(skill?.editable, true);
 	});
 
 	it("设置未读到时返回空清单", () => {
@@ -67,7 +78,15 @@ describe("扩展搜索", () => {
 	const items = extensionItems(
 		snapshot({
 			plugins: [{ name: "Filesystem", kind: "dsh", disabled: false }],
-			skills: [{ name: "writer", description: "写文档", path: "/skills/writer/SKILL.md" }],
+			skills: [
+				{
+					name: "writer",
+					description: "写文档",
+					path: "/skills/writer/SKILL.md",
+					scope: "user",
+					editable: true,
+				},
+			],
 			mcpServers: [{ name: "docs", type: "http", disabled: false, status: "unreachable", detail: "timeout" }],
 		}),
 	);

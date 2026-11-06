@@ -91,6 +91,19 @@ export interface SkillInfo {
 	name: string;
 	description: string;
 	path: string;
+	scope: "user" | "project";
+	/** 只有 Reins 自己技能目录下的用户技能可编辑 */
+	editable: boolean;
+}
+
+export interface SkillContent {
+	name: string;
+	description: string;
+	content: string;
+}
+
+export interface SkillUpdateInput extends SkillInput {
+	path: string;
 }
 
 export interface PluginInfo {
@@ -209,7 +222,13 @@ export interface SettingsSnapshot {
 		detail: string;
 	}[];
 	plugins: readonly { name: string; kind: string; disabled: boolean }[];
-	skills: readonly { name: string; description: string; path: string }[];
+	skills: readonly {
+		name: string;
+		description: string;
+		path: string;
+		scope: "user" | "project";
+		editable: boolean;
+	}[];
 }
 
 export interface FileTreeEntry {
