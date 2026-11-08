@@ -2,4 +2,13 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
 @import "./styles/base.css";
-@import "./styles/proof.css";
+/* 组件样式按区块顺序导入：层叠次序不可调换，调换会改变同优先级选择器的胜出方 */
+@import "./styles/layout.css";
+@import "./styles/sidebar.css";
+@import "./styles/chat.css";
+@import "./styles/gate.css";
+@import "./styles/composer.css";
+@import "./styles/panel.css";
+@import "./styles/settings.css";
+@import "./styles/controls.css";
+@import "./styles/responsive.css";

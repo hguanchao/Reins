@@ -1,0 +1,13 @@
+/* ============================ 17. 响应 ============================ */
+
+@media (max-width: 1180px) {
+	.app {
+		--sb-w: 212px;
+	}
+
+	.set-choices,
+	.stat-grid,
+	.theme-grid {
+		grid-template-columns: 1fr;
+	}
+}

@@ -1,0 +1,231 @@
+/* ============================ 12. 右面板 ============================ */
+
+.panel {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	overflow: hidden;
+	border-left: 1px solid var(--rule-2);
+	background: var(--sheet);
+}
+
+.panel-tabs {
+	flex: none;
+	display: flex;
+	align-items: flex-end;
+	height: 36px;
+	padding: 0 6px;
+	border-bottom: 1px solid var(--rule-2);
+}
+
+.ptab {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 35px;
+	padding: 0 9px;
+	font-size: var(--fs-11);
+	color: var(--ink-3);
+	transition: color var(--speed) var(--ease);
+}
+
+.ptab:hover {
+	color: var(--ink);
+}
+
+.ptab[aria-selected="true"] {
+	color: var(--ink);
+	font-weight: 500;
+}
+
+.ptab[aria-selected="true"]::after {
+	content: "";
+	position: absolute;
+	left: 6px;
+	right: 6px;
+	bottom: -1px;
+	height: 2px;
+	background: var(--ink);
+}
+
+.ptab .x {
+	display: grid;
+	place-items: center;
+	width: 14px;
+	height: 14px;
+	border-radius: 2px;
+	opacity: 0;
+}
+
+.ptab:hover .x {
+	opacity: 1;
+}
+
+.ptab .x:hover {
+	background: var(--wash-2);
+}
+
+.panel-tabs .pt-actions {
+	margin-left: auto;
+	display: flex;
+	gap: 1px;
+	padding-bottom: 4px;
+}
+
+.panel-tabs .pt-actions button {
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border-radius: var(--r-2);
+	color: var(--ink-3);
+}
+
+.panel-tabs .pt-actions button:hover {
+	background: var(--wash);
+	color: var(--ink);
+}
+
+.panel-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.panel-sec {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 9px 12px 5px;
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	letter-spacing: 0.13em;
+	text-transform: uppercase;
+	color: var(--ink-3);
+}
+
+.panel-sec .n {
+	margin-left: auto;
+	letter-spacing: 0;
+	color: var(--ink-4);
+}
+
+.tree {
+	padding: 0 6px 10px;
+}
+
+.tree-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 25px;
+	padding: 0 6px;
+	border-radius: var(--r-1);
+	font-size: var(--fs-12);
+	color: var(--ink-2);
+	cursor: pointer;
+	transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+	text-align: left;
+	width: 100%;
+}
+
+.tree-row:hover {
+	background: var(--wash);
+	color: var(--ink);
+}
+
+.tree-row .ic {
+	color: var(--ink-3);
+}
+
+.tree-row[aria-selected="true"] {
+	background: var(--wash-2);
+	color: var(--ink);
+	font-weight: 500;
+}
+
+.tree-row .badge {
+	margin-left: auto;
+	border: 0;
+	padding: 0;
+	height: auto;
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	color: var(--ink-3);
+}
+
+.tree-row .ind {
+	width: 10px;
+}
+
+.git-row {
+	display: grid;
+	grid-template-columns: 14px minmax(0, 1fr) auto;
+	gap: 7px;
+	align-items: center;
+	height: 26px;
+	padding: 0 8px;
+	border-radius: var(--r-1);
+	font-family: var(--mono);
+	font-size: var(--fs-11);
+	cursor: pointer;
+	text-align: left;
+	width: 100%;
+}
+
+.git-row:hover {
+	background: var(--wash);
+}
+
+.git-row .st-mk {
+	font-size: var(--fs-10);
+	font-weight: 700;
+	text-align: center;
+	color: var(--ink-2);
+}
+
+.git-row .fn {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--ink);
+}
+
+.git-row .fn em {
+	font-style: normal;
+	color: var(--ink-3);
+}
+
+.git-row .ct {
+	font-size: var(--fs-10);
+	color: var(--ink-3);
+}
+
+.git-row .ct b {
+	font-weight: 500;
+	color: var(--ink);
+}
+
+.term {
+	padding: 6px 12px 12px;
+	font-family: var(--mono);
+	font-size: var(--fs-11);
+	line-height: 1.78;
+	color: var(--ink-2);
+}
+
+.term .cmd {
+	color: var(--ink);
+}
+
+.term .cmd::before {
+	content: "$ ";
+	color: var(--ink-3);
+}
+
+.term .dim {
+	color: var(--ink-3);
+}
+

@@ -1,0 +1,510 @@
+/* ============================ 4. 侧栏 ============================ */
+
+.side {
+	/* 外壳把三栏各包了一层网格单元；这里显式撑满，竖分隔线才不会半途断掉 */
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	background: var(--paper);
+	border-right: 1px solid var(--rule);
+	overflow: hidden;
+}
+
+.side-top {
+	flex: none;
+	padding: 12px 10px 8px;
+}
+
+.side-brand {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 2px 4px 0;
+}
+
+.side-brand .brandmark {
+	width: 20px;
+	height: 20px;
+	font-size: var(--fs-10);
+}
+
+.side-brand .bn {
+	font-size: var(--fs-13);
+	font-weight: 600;
+	letter-spacing: -0.015em;
+}
+
+.side-brand .bv {
+	margin-left: auto;
+	padding: 0 4px;
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-1);
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	line-height: 14px;
+	letter-spacing: 0.06em;
+	color: var(--ink-3);
+}
+
+.btn-new {
+	margin-top: 12px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: 32px;
+	padding: 0 9px;
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-2);
+	background: var(--raise);
+	font-size: var(--fs-12);
+	font-weight: 500;
+	color: var(--ink);
+	transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+
+.btn-new:hover {
+	border-color: var(--rule-3);
+	box-shadow: var(--shadow-1);
+}
+
+.btn-new .k {
+	margin-left: auto;
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	letter-spacing: 0.04em;
+	color: var(--ink-3);
+}
+
+.side-search {
+	position: relative;
+	margin-top: 8px;
+}
+
+.side-search .ic {
+	position: absolute;
+	left: 9px;
+	top: 50%;
+	transform: translateY(-50%);
+	color: var(--ink-3);
+}
+
+.side-search input {
+	width: 100%;
+	height: 29px;
+	padding: 0 9px 0 28px;
+	border: 1px solid transparent;
+	border-radius: var(--r-2);
+	background: var(--wash);
+	font-size: var(--fs-12);
+	transition: background var(--speed) var(--ease), border-color var(--speed) var(--ease);
+}
+
+.side-search input::placeholder {
+	color: var(--ink-3);
+}
+
+.side-search input:focus {
+	background: var(--raise);
+	border-color: var(--rule-3);
+	outline: none;
+}
+
+.side-nav {
+	margin-top: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+}
+
+.nav-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 29px;
+	padding: 0 8px;
+	border-radius: var(--r-2);
+	font-size: var(--fs-12);
+	color: var(--ink-2);
+	transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+
+.nav-row:hover {
+	background: var(--wash);
+	color: var(--ink);
+}
+
+.nav-row .ic {
+	color: var(--ink-3);
+}
+
+.nav-row:hover .ic {
+	color: var(--ink-2);
+}
+
+.nav-row.is-on {
+	background: var(--wash-2);
+	color: var(--ink);
+	font-weight: 500;
+}
+
+.nav-row.is-on .ic {
+	color: var(--ink);
+}
+
+.side-scroll {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 4px 10px 10px;
+}
+
+.side-zone {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	margin: 18px 0 2px;
+	padding: 0 4px;
+	font-size: var(--fs-10);
+	font-weight: 500;
+	letter-spacing: 0.17em;
+	color: var(--ink-2);
+}
+
+.side-zone:first-child {
+	margin-top: 6px;
+}
+
+.side-zone + .side-sec {
+	margin-top: 4px;
+}
+
+.side-sec {
+	margin-top: 16px;
+}
+
+.side-sub {
+	margin-top: 5px;
+	padding: 0 4px;
+	font-size: var(--fs-10);
+	font-weight: 500;
+	letter-spacing: 0.17em;
+	line-height: 20px;
+	color: var(--ink-3);
+}
+
+/* 时间小节的折叠标题 */
+.side-sec-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 22px;
+	padding: 0 4px;
+	cursor: pointer;
+}
+
+.side-sec-head .ic {
+	color: var(--ink-4);
+	transition: transform var(--speed) var(--ease);
+}
+
+.side-sec-head .ic.open {
+	transform: rotate(90deg);
+}
+
+.side-sec-head .t {
+	flex: 1;
+}
+
+.side-sec-head:hover .t {
+	color: var(--ink-2);
+}
+
+.side-ws-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 4px;
+	border-radius: var(--r-1);
+	cursor: pointer;
+}
+
+.side-ws-head .ic {
+	color: var(--ink-4);
+	transition: transform var(--speed) var(--ease);
+}
+
+.side-ws-head .ic.open {
+	transform: rotate(90deg);
+}
+
+.side-ws-head:hover .ic {
+	color: var(--ink-2);
+}
+
+.side-ws-head .n {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: var(--fs-12);
+	font-weight: 500;
+	color: var(--ink);
+}
+
+.ws-more {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 20px;
+	height: 20px;
+	border-radius: var(--r-1);
+	color: var(--ink-3);
+	opacity: 0;
+	transition: opacity var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+
+.side-ws-head:hover .ws-more,
+.side-ws-head:focus-within .ws-more,
+.ws-more[aria-expanded="true"] {
+	opacity: 1;
+}
+
+.ws-more:hover {
+	background: var(--wash-2);
+	color: var(--ink);
+}
+
+.side-ws-head:has(.ws-more[aria-expanded="true"]) {
+	background: var(--wash);
+}
+
+.sess {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 30px;
+	padding: 0 8px;
+	margin-top: 1px;
+	border-radius: var(--r-2);
+	cursor: pointer;
+	transition: background var(--speed) var(--ease);
+}
+
+.sess:hover {
+	background: var(--wash);
+}
+
+.sess .st {
+	flex: none;
+}
+
+.sess .tt {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--fs-12);
+	color: var(--ink-2);
+	text-align: left;
+}
+
+.sess .tm {
+	flex: none;
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	color: var(--ink-4);
+	transition: opacity var(--speed) var(--ease);
+}
+
+.sess:hover .tm {
+	opacity: 0;
+}
+
+.sess .hover-actions {
+	position: absolute;
+	right: 6px;
+	top: 50%;
+	display: flex;
+	gap: 1px;
+	opacity: 0;
+	pointer-events: none;
+	transform: translate(4px, -50%);
+	transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
+}
+
+.sess:hover .hover-actions,
+.sess:focus-within .hover-actions,
+.sess:has(button[aria-expanded="true"]) .hover-actions {
+	opacity: 1;
+	transform: translate(0, -50%);
+	pointer-events: auto;
+}
+
+.sess:has(button[aria-expanded="true"]) {
+	background: var(--wash);
+}
+
+.sess:has(button[aria-expanded="true"]) .tm,
+.sess:has(button[aria-expanded="true"]) .badge {
+	opacity: 0;
+}
+
+.sess .hover-actions button {
+	display: grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	border-radius: var(--r-1);
+	color: var(--ink-3);
+}
+
+.sess .hover-actions button:hover {
+	background: var(--wash-2);
+	color: var(--ink);
+}
+
+.sess[aria-current="true"] {
+	background: var(--wash-2);
+}
+
+.sess[aria-current="true"] .tt {
+	color: var(--ink);
+	font-weight: 500;
+}
+
+.sess[aria-current="true"]::before {
+	content: "";
+	position: absolute;
+	left: 0;
+	top: 8px;
+	bottom: 8px;
+	width: 2px;
+	border-radius: 1px;
+	background: var(--ink);
+}
+
+/* 会话状态：形状 + 明度，不靠颜色 */
+.st-run,
+.st-wait,
+.st-done,
+.st-stop,
+.st-idle,
+.st-none {
+	display: inline-grid;
+	place-items: center;
+	width: 12px;
+	height: 12px;
+	flex: none;
+}
+
+.st-run .ic,
+.st-wait .ic,
+.st-done .ic,
+.st-stop .ic {
+	width: 11px;
+	height: 11px;
+}
+
+.st-run {
+	color: var(--ink);
+}
+
+.st-run .ic {
+	animation: reins-spin 0.9s linear infinite;
+}
+
+.st-wait {
+	color: var(--ink);
+}
+
+.st-done {
+	color: var(--ink-4);
+}
+
+.st-stop {
+	color: var(--ink-2);
+}
+
+.st-idle::after {
+	content: "";
+	width: 6px;
+	height: 6px;
+	border: 1px solid var(--ink-4);
+	border-radius: 50%;
+	opacity: 0.6;
+}
+
+.side-foot {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 9px 12px;
+	border-top: 1px solid var(--rule);
+}
+
+.side-foot .user {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	flex: 1;
+	min-width: 0;
+	font-size: var(--fs-11);
+	color: var(--ink-2);
+}
+
+.side-foot .av {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 19px;
+	height: 19px;
+	border: 1px solid var(--rule-2);
+	border-radius: 50%;
+	background: var(--wash-2);
+	font-family: var(--mono);
+	font-size: 9px;
+	color: var(--ink-2);
+}
+
+.side-foot .fbtn {
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border-radius: var(--r-2);
+	color: var(--ink-3);
+	transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+
+.side-foot .fbtn:hover {
+	background: var(--wash);
+	color: var(--ink);
+}
+
+/* 批量选择条 */
+.batch-bar {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin: 0 2px 8px;
+	padding: 4px 6px;
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-2);
+	background: var(--raise);
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+	color: var(--ink-3);
+}
+
+.batch-bar .grow {
+	flex: 1;
+}
+

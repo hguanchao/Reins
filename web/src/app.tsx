@@ -13,6 +13,7 @@ import { ApprovalCard } from "./chat/approval-card.tsx";
 import { Composer, type ComposerProps, type QueuedMessage, sessionReadout } from "./chat/composer.tsx";
 import { Hero } from "./chat/hero.tsx";
 import { MessageRail } from "./chat/message-rail.tsx";
+import { SelectionPopover } from "./chat/selection-popover.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
 import { ToastHost, toast } from "./components/ui/index.ts";
 import { workspaceName } from "./lib/format.ts";
@@ -30,7 +31,6 @@ import type {
 	ActivitySummary,
 	ApprovalAnswer,
 	ApprovalMode,
-	ApprovalRequest,
 	GitStatus,
 	ModelInfo,
 	NotifyMode,
@@ -43,12 +43,15 @@ import type {
 	UsageSummary,
 	WebEvent,
 } from "./protocol.ts";
+import type { PendingGate } from "./state/approval-shortcut.ts";
+import { dispatchEvent } from "./state/session-events.ts";
+import { useAppShortcuts } from "./state/use-app-shortcuts.ts";
+import { useResponsiveColumns } from "./state/use-responsive-columns.ts";
+import { useSelectionQuote } from "./state/use-selection-quote.ts";
 import { putSessionTitle, readSessionTitles, withSessionTitles } from "./state/session-titles.ts";
-import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./state/usage.ts";
 import { SettingsPage, type SettingsSection } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
-	autoSidebarAction,
 	clampRightbar,
 	clampSidebar,
 	defaultRightbarWidth,
@@ -61,7 +64,7 @@ import type { GlobalPanelId } from "./shell/sidebar.tsx";
 import { Sidebar } from "./shell/sidebar.tsx";
 import { readPinnedSessions, writePinnedSessions } from "./state/pinned.ts";
 import { useTheme } from "./state/theme.ts";
-import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
+import { linesFromEntries, type Line } from "./transcript/lines.ts";
 
 const STICK_THRESHOLD = 80;
 
@@ -69,12 +72,6 @@ interface SessionTarget {
 	readonly id: string;
 	readonly cwd: string;
 	readonly workspacePath?: string | null;
-}
-
-/** 待办槽位里排队的条目：模型提问与审批共用一条队列，先到先答。 */
-interface PendingGate {
-	readonly id: number;
-	readonly request: ApprovalRequest;
 }
 
 /** 界面主组件：装配三栏骨架、会话状态与事件流。 */
@@ -142,10 +139,10 @@ export function App(): ReactElement {
 	const [atBottom, setAtBottom] = useState(true);
 	const [queue, setQueue] = useState<readonly QueuedMessage[]>([]);
 	const [quote, setQuote] = useState<string | undefined>(undefined);
-	const [selection, setSelection] = useState<{ readonly x: number; readonly y: number; readonly below: boolean; readonly text: string } | undefined>(undefined);
 
 	const stickToBottom = useRef(true);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
+	const { selection, clear: clearSelection } = useSelectionQuote(scrollRef);
 	const everConnected = useRef(false);
 	const historyRef = useRef<SessionTarget[]>([]);
 	const historyIndexRef = useRef(-1);
@@ -314,154 +311,14 @@ export function App(): ReactElement {
 
 	const handleEvent = useCallback(
 		(event: WebEvent): void => {
-			switch (event.type) {
-				case "turn_start":
-					runOutcomeRef.current = "running";
-					errorNotifiedRef.current = false;
-					approvalNotifiedRef.current = undefined;
-					setLines(sealStreaming);
-					setRunning(true);
-					setAwaitingModel(true);
-					return;
-				case "writing_tool_call":
-					setAwaitingModel(false);
-					return;
-				case "text_delta":
-					setAwaitingModel(false);
-					setLines((current) => appendToLast(current, "assistant", event.text));
-					return;
-				case "reasoning_delta":
-					setAwaitingModel(false);
-					setLines((current) => appendToLast(current, "thinking", event.text));
-					return;
-				case "tool_start":
-					setAwaitingModel(false);
-					setLines((current) => [
-						...current,
-						{
-							kind: "tool",
-							callId: event.callId,
-							name: event.name,
-							args: event.args,
-							running: true,
-							isError: false,
-							durationMs: undefined,
-							summary: undefined,
-							detail: "",
-							content: undefined,
-							details: undefined,
-						},
-					]);
-					return;
-				case "tool_update":
-					setLines((current) =>
-						updateTool(current, event.callId, (line) => ({ ...line, detail: line.detail + event.text })),
-					);
-					return;
-				case "tool_end":
-					setLines((current) =>
-						updateTool(current, event.callId, (line) => ({
-							...line,
-							running: false,
-							isError: event.isError,
-							durationMs: event.durationMs,
-							summary: event.summary,
-							content: event.content,
-							details: event.details,
-						})),
-					);
-					setActivity((current) => applyToolDuration(current, event.durationMs));
-					return;
-				case "turn_end":
-					setLines(sealStreaming);
-					return;
-				case "usage_recorded":
-					if (event.contextTokens !== undefined) setContextTokens(event.contextTokens);
-					setUsage((current) => applyUsageRecorded(current, event));
-					setActivity((current) => applyActivityRecorded(current, event));
-					return;
-				case "retrying":
-					setLines((current) => [
-						...current,
-						{ kind: "notice", text: `重试中 (${event.attempt}/${event.maxAttempts})：${event.reason}`, tone: "info" },
-					]);
-					return;
-				case "compaction_start":
-					setLines((current) => [
-						...current,
-						{ kind: "notice", text: `压缩上下文：替换前 ${event.messages} 条消息`, tone: "info" },
-					]);
-					return;
-				case "compaction_end":
-					setLines((current) => [
-						...current,
-						{ kind: "notice", text: `压缩完成：~${event.tokensBefore} → ${event.tokensAfter} tokens`, tone: "info" },
-					]);
-					setContextTokens(event.tokensAfter);
-					return;
-				case "compaction_failed":
-				case "compaction_skipped":
-					setLines((current) => [...current, { kind: "notice", text: event.message, tone: "info" }]);
-					return;
-				case "notice":
-					setLines((current) => [...current, { kind: "notice", text: event.message, tone: "info" }]);
-					return;
-				case "aborted":
-					runOutcomeRef.current = "aborted";
-					setLines((current) => [...current, { kind: "notice", text: "已停止", tone: "info" }]);
-					return;
-				case "error":
-					// error 后面通常还会跟一个 run_end；这里记下已提醒，避免再报一次「完成」
-					if (!errorNotifiedRef.current) {
-						errorNotifiedRef.current = true;
-						runOutcomeRef.current = "error";
-						maybeNotify("Reins 任务失败", "请回到窗口查看详情");
-					}
-					setLines((current) => [...current, { kind: "notice", text: event.message, tone: "error" }]);
-					return;
-				case "run_end":
-					if (runOutcomeRef.current !== "aborted" && !errorNotifiedRef.current) {
-						maybeNotify("Reins 任务完成", "任务已结束");
-					}
-					runOutcomeRef.current = "done";
-					setRunning(false);
-					setAwaitingModel(false);
-					setDeferred(false);
-					setLines(sealStreaming);
-					refreshSessions();
-					refreshGit();
-					return;
-				case "approval_request":
-					if (approvalNotifiedRef.current !== event.id) {
-						approvalNotifiedRef.current = event.id;
-						maybeNotify("Reins 需要审批", "有新的操作等待确认");
-					}
-					setAwaitingModel(false);
-					setDeferred(false);
-					setApproval({ id: event.id, request: event.request });
-					return;
-				case "approval_cleared":
-					setApproval(undefined);
-					setDeferred(false);
-					return;
-				case "session_switched":
-					runOutcomeRef.current = "done";
-					errorNotifiedRef.current = false;
-					approvalNotifiedRef.current = undefined;
-					setLines([]);
-					setContextTokens(undefined);
-					setActivePanel(undefined);
-					setSideFullscreen(false);
-					setQueue([]);
-					setApproval(undefined);
-					reload();
-					refreshSessions();
-					refreshGit();
-					refreshSettings();
-					return;
-				default:
-					return;
-			}
+			dispatchEvent(event, {
+				outcome: runOutcomeRef,
+				errorNotified: errorNotifiedRef,
+				approvalNotified: approvalNotifiedRef,
+				setLines, setRunning, setAwaitingModel, setDeferred, setApproval,
+				setActivity, setUsage, setContextTokens, setQueue, setActivePanel, setSideFullscreen,
+				maybeNotify, reload, refreshSessions, refreshSettings, refreshGit,
+			});
 		},
 		[maybeNotify, reload, refreshGit, refreshSessions, refreshSettings],
 	);
@@ -507,25 +364,11 @@ export function App(): ReactElement {
 		return () => window.clearInterval(timer);
 	}, [running, refreshGit]);
 
-	useEffect(() => {
-		const onResize = (): void => {
-			const action = autoSidebarAction(window.innerWidth, sidebarCollapsed, autoCollapsed);
-			if (action === true) {
-				setSidebarCollapsed(true);
-				setAutoCollapsed(true);
-			} else if (action === false) {
-				setSidebarCollapsed(false);
-				setAutoCollapsed(false);
-			}
-			const available = window.innerWidth - (sidebarCollapsed ? 0 : sidebarWidth);
-			if (sideOpen && available < 720) {
-				setSideOpen(false);
-				setSideFullscreen(false);
-			}
-		};
-		window.addEventListener("resize", onResize);
-		return () => window.removeEventListener("resize", onResize);
-	}, [sidebarCollapsed, sidebarWidth, sideOpen, autoCollapsed]);
+	useResponsiveColumns({
+		sidebarCollapsed, sidebarWidth, sideOpen, autoCollapsed,
+		onSidebarCollapsed: setSidebarCollapsed, onAutoCollapsed: setAutoCollapsed,
+		onSideOpen: setSideOpen, onSideFullscreen: setSideFullscreen,
+	});
 
 	const toggleSidebar = useCallback((): void => {
 		setAutoCollapsed(false);
@@ -792,90 +635,19 @@ export function App(): ReactElement {
 		setSideOpen(true);
 	}, [sideOpen]);
 
-	/** 划选会话流文本：浮出「引用 / 复制」迷你工具条。 */
-	useEffect(() => {
-		const onSelection = (): void => {
-			const active = document.getSelection();
-			if (active === null || active.isCollapsed) {
-				setSelection(undefined);
-				return;
-			}
-			const text = active.toString().trim();
-			const container = scrollRef.current;
-			if (text.length === 0 || container === null || !container.contains(active.anchorNode)) {
-				setSelection(undefined);
-				return;
-			}
-			const rect = active.getRangeAt(0).getBoundingClientRect();
-			const below = rect.top < 80;
-			setSelection({ x: rect.left + rect.width / 2, y: below ? rect.bottom + 8 : rect.top - 8, below, text });
-		};
-		document.addEventListener("selectionchange", onSelection);
-		const clear = (): void => setSelection(undefined);
-		window.addEventListener("scroll", clear, true);
-		return () => {
-			document.removeEventListener("selectionchange", onSelection);
-			window.removeEventListener("scroll", clear, true);
-		};
-	}, []);
 
-	useEffect(() => {
-		// 设置页占满窗口，后台会话的快捷键不应穿透到被遮住的界面
-		if (settingsOpen) return;
-		const onKeyDown = (event: globalThis.KeyboardEvent): void => {
-			const command = event.ctrlKey || event.metaKey;
-			const target = event.target as HTMLElement | null;
-			const typing = target !== null && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
-			if (command && event.key === ",") {
-				event.preventDefault();
-				openSettings("general");
-				return;
-			}
-			if (command && event.key.toLowerCase() === "b") {
-				event.preventDefault();
-				toggleSidebar();
-				return;
-			}
-			if (command && event.key.toLowerCase() === "k") {
-				event.preventDefault();
-				setCommandOpen((value) => !value);
-				return;
-			}
-			if (command && event.key.toLowerCase() === "n") {
-				event.preventDefault();
-				newTask();
-				return;
-			}
-			if (command && event.key === "1" && !typing) {
-				event.preventDefault();
-				const levels = settings?.models.find((item) => item.model === model.model)?.thinkingLevels ?? [];
-				if (levels.length > 0) {
-					const index = levels.indexOf(effort);
-					const next = levels[(index + 1) % levels.length];
-					if (next !== undefined) changeEffort(next);
-				}
-				return;
-			}
-			if (event.key === "Escape" && running && !typing) {
-				event.preventDefault();
-				stop();
-				return;
-			}
-			if (typing || approval === undefined) return;
-			// 高危卡只接受点击：反射性连按不该成为放行不可逆操作的通道
-			if (approval.request.risk === "destructive") return;
-			const canAlways = approval.request.saveLabel !== undefined;
-			const map: Record<string, ApprovalAnswer> = { "1": "once", "3": "deny" };
-			map["2"] = canAlways ? "always" : "deny";
-			const value = map[event.key];
-			if (value !== undefined) {
-				event.preventDefault();
-				answer(approval.id, value);
-			}
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [answer, approval, changeEffort, effort, model.model, newTask, openSettings, running, settings?.models, stop, toggleSidebar]);
+	const thinkingLevels = useMemo(
+		() => settings?.models.find((item) => item.model === model.model)?.thinkingLevels ?? [],
+		[settings?.models, model.model],
+	);
+	const openGeneralSettings = useCallback((): void => openSettings("general"), [openSettings]);
+	const toggleCommandPalette = useCallback((): void => setCommandOpen((value) => !value), []);
+	useAppShortcuts({
+		settingsOpen, running, approval, effort, thinkingLevels,
+		onSettings: openGeneralSettings, onToggleSidebar: toggleSidebar,
+		onToggleCommand: toggleCommandPalette, onNewTask: newTask,
+		onEffort: changeEffort, onStop: stop, onAnswer: answer,
+	});
 
 	const activeTab = sideTabs.find((tab) => tab.id === activeTabId);
 	const connectionOk = connected || !everConnected.current;
@@ -1129,35 +901,7 @@ export function App(): ReactElement {
 			</AppShell>
 
 			{selection === undefined ? null : (
-				<div
-					className="sel-pop"
-					style={{
-						left: selection.x,
-						top: selection.y,
-						transform: `translate(-50%, ${selection.below ? "0" : "-100%"})`,
-					}}
-				>
-					<button
-						type="button"
-						onClick={() => {
-							setQuote(selection.text);
-							setSelection(undefined);
-							document.getSelection()?.removeAllRanges();
-						}}
-					>
-						引用
-					</button>
-					<button
-						type="button"
-						onClick={() => {
-							void navigator.clipboard.writeText(selection.text);
-							setSelection(undefined);
-							document.getSelection()?.removeAllRanges();
-						}}
-					>
-						复制
-					</button>
-				</div>
+				<SelectionPopover anchor={selection} onQuote={setQuote} onClose={clearSelection} />
 			)}
 
 			<ToastHost />

@@ -25,7 +25,9 @@ import { desktopBridge } from "../platform.ts";
 import type { SessionSummary, WorkspaceSummary } from "../protocol.ts";
 import { BUCKET_LABELS, bucketRows, buildSessionGroups, type SessionRow } from "./session-tree.ts";
 
-export type GlobalPanelId = "schedules";
+import type { GlobalPanelId } from "../panels/types.ts";
+
+export type { GlobalPanelId };
 
 export interface SidebarProps {
 	readonly sessions: readonly SessionSummary[];

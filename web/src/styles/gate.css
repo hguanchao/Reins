@@ -1,0 +1,540 @@
+/* ============================ 7. 审批闸门 ============================ */
+
+.gate {
+	margin: 16px 0;
+	overflow: hidden;
+	border: 1px solid var(--rule-3);
+	border-radius: var(--r-3);
+	background: var(--raise);
+	box-shadow: var(--shadow-1);
+}
+
+.gate-h {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 11px 14px;
+	border-bottom: 1px solid var(--rule);
+}
+
+.gate-h .mk {
+	display: grid;
+	place-items: center;
+	color: var(--ink);
+}
+
+.gate-h .mk .ic {
+	width: 15px;
+	height: 15px;
+}
+
+.gate-h .t {
+	font-size: var(--fs-13);
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.gate-h .tag {
+	padding: 1px 5px;
+	border: 1px solid var(--rule-3);
+	border-radius: var(--r-1);
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+	color: var(--ink-2);
+}
+
+.gate-h .tool-name {
+	margin-left: auto;
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+	color: var(--ink-3);
+}
+
+.gate-h .cnt {
+	margin-left: auto;
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+	font-weight: 400;
+	color: var(--ink-3);
+}
+
+.gate-h .tool-name + .cnt {
+	margin-left: 0;
+}
+
+.gate-b {
+	padding: 13px 14px 14px;
+}
+
+.gate-b .req {
+	margin: 0 0 3px;
+	font-size: var(--fs-14);
+	line-height: 1.62;
+	color: var(--ink);
+	overflow-wrap: anywhere;
+}
+
+.gate-b .sub {
+	margin: 0;
+	font-size: var(--fs-12);
+	line-height: 1.62;
+	color: var(--ink-2);
+	overflow-wrap: anywhere;
+}
+
+.gate-b .targets {
+	margin: 11px 0 0;
+	overflow: hidden;
+	border: 1px solid var(--rule);
+	border-radius: var(--r-2);
+	background: var(--sunken);
+}
+
+.gate-b .targets .row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 10px;
+	border-bottom: 1px solid var(--rule);
+	font-family: var(--mono);
+	font-size: var(--fs-11);
+	color: var(--ink-2);
+}
+
+.gate-b .targets .row:last-child {
+	border-bottom: 0;
+}
+
+.gate-b .targets .row .n {
+	margin-left: auto;
+	font-size: var(--fs-10);
+	color: var(--ink-3);
+}
+
+.gate-b .more {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	margin-top: 7px;
+	font-size: var(--fs-11);
+	color: var(--ink-3);
+}
+
+.gate-b .more:hover {
+	color: var(--ink);
+}
+
+.gate-b .meta {
+	margin: 9px 0 0;
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+	color: var(--ink-4);
+}
+
+.gate-f {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 7px;
+	padding: 11px 14px;
+	border-top: 1px solid var(--rule);
+	background: var(--sunken);
+}
+
+/* 越界：虚线描边 */
+.gate-ext {
+	border-style: dashed;
+}
+
+/* 高危：整块反白 */
+.gate-danger {
+	border-color: var(--fill);
+	background: var(--fill);
+	color: var(--fill-ink);
+}
+
+.gate-danger .gate-h {
+	border-bottom-color: color-mix(in srgb, var(--fill-ink) 26%, transparent);
+}
+
+.gate-danger .gate-h .mk,
+.gate-danger .gate-h .tag,
+.gate-danger .gate-h .tool-name {
+	color: var(--fill-ink);
+}
+
+.gate-danger .gate-h .tag {
+	border-color: color-mix(in srgb, var(--fill-ink) 34%, transparent);
+}
+
+.gate-danger .gate-h .tool-name {
+	opacity: 0.62;
+}
+
+.gate-danger .gate-b .req {
+	color: var(--fill-ink);
+	font-weight: 500;
+}
+
+.gate-danger .gate-b .sub {
+	color: var(--fill-ink);
+	opacity: 0.72;
+}
+
+.gate-danger .gate-b .targets {
+	border-color: color-mix(in srgb, var(--fill-ink) 30%, transparent);
+	background: transparent;
+}
+
+.gate-danger .gate-b .targets .row {
+	border-bottom-color: color-mix(in srgb, var(--fill-ink) 22%, transparent);
+	color: var(--fill-ink);
+}
+
+.gate-danger .gate-b .targets .row .n,
+.gate-danger .gate-b .more,
+.gate-danger .gate-b .meta {
+	color: var(--fill-ink);
+	opacity: 0.7;
+}
+
+.gate-danger .gate-f {
+	border-top-color: color-mix(in srgb, var(--fill-ink) 22%, transparent);
+	background: transparent;
+}
+
+.gate-danger .b-danger {
+	border-color: var(--danger-bright);
+	color: var(--danger-bright);
+}
+
+.gate-danger .b-danger:hover {
+	background: rgba(248, 81, 73, 0.16);
+}
+
+.gate-danger .b-line {
+	border-color: color-mix(in srgb, var(--fill-ink) 44%, transparent);
+	background: transparent;
+	color: var(--fill-ink);
+}
+
+.gate-danger .b-line:hover {
+	background: color-mix(in srgb, var(--fill-ink) 14%, transparent);
+	border-color: var(--fill-ink);
+}
+
+.gate-danger .b-solid {
+	border-color: var(--fill-ink);
+	background: var(--fill-ink);
+	color: var(--fill);
+}
+
+/* 已裁决：折成一条记录 */
+.gate.is-done {
+	box-shadow: none;
+}
+
+.gate.is-done .gate-h {
+	padding-bottom: 4px;
+	border-bottom: 0;
+}
+
+.gate.is-done .gate-b {
+	display: none;
+	border-top: 1px solid var(--rule);
+}
+
+.gate.is-done.is-open .gate-b {
+	display: block;
+}
+
+.gate-sum {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	width: 100%;
+	padding: 0 14px 9px;
+	text-align: left;
+}
+
+.gate-sum .cmd {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: var(--fs-11);
+	color: var(--ink-3);
+}
+
+.gate-sum .tm {
+	flex: none;
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	color: var(--ink-4);
+}
+
+.gate-sum .ck2 {
+	flex: none;
+	color: var(--ink-4);
+	transition: transform var(--speed) var(--ease);
+}
+
+.gate.is-done.is-open .gate-sum .ck2 {
+	transform: rotate(180deg);
+}
+
+/* ============================ 8. 模型提问卡 ============================ */
+
+.qcard {
+	display: flex;
+	flex-direction: column;
+	margin: 14px 0 2px;
+	overflow: hidden;
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-3);
+	background: var(--raise);
+	box-shadow: var(--shadow-1);
+}
+
+.qcard-h {
+	order: 1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--rule);
+	font-size: var(--fs-13);
+	font-weight: 600;
+}
+
+.qcard-h .mk {
+	display: grid;
+	place-items: center;
+	color: var(--ink);
+}
+
+.qcard-h .cnt {
+	margin-left: auto;
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+	font-weight: 400;
+	color: var(--ink-3);
+}
+
+.qcard-b {
+	order: 3;
+	padding: 5px;
+}
+
+.q-opt {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 7px 8px;
+	border-radius: var(--r-2);
+	text-align: left;
+	transition: background var(--speed) var(--ease);
+}
+
+.q-opt:hover {
+	background: var(--wash);
+}
+
+.q-opt[aria-checked="true"] {
+	background: var(--wash-2);
+}
+
+.q-opt .no {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 17px;
+	height: 17px;
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-1);
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	color: var(--ink-3);
+}
+
+.q-opt[aria-checked="true"] .no {
+	border-color: var(--fill);
+	background: var(--fill);
+	color: var(--fill-ink);
+}
+
+.q-opt .txt {
+	min-width: 0;
+}
+
+.q-opt .l {
+	display: block;
+	font-size: var(--fs-13);
+	color: var(--ink);
+}
+
+.q-opt .d {
+	display: block;
+	margin-top: 1px;
+	font-size: var(--fs-11);
+	color: var(--ink-3);
+}
+
+.q-opt .l .p {
+	font-family: var(--mono);
+	font-size: var(--fs-12);
+}
+
+.q-opt .ck {
+	margin-left: auto;
+	flex: none;
+	color: var(--ink);
+	opacity: 0;
+}
+
+.q-opt[aria-checked="true"] .ck {
+	opacity: 1;
+}
+
+.q-other {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 1px;
+	padding: 7px 8px;
+	border-radius: var(--r-2);
+	color: var(--ink-3);
+}
+
+.q-other:hover {
+	background: var(--wash);
+}
+
+.q-other input {
+	flex: 1;
+	min-width: 0;
+	font-size: var(--fs-12);
+	color: var(--ink);
+}
+
+.q-other input::placeholder {
+	color: var(--ink-3);
+}
+
+.qcard-f {
+	order: 4;
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	padding: 9px 10px;
+	border-top: 1px solid var(--rule);
+	background: var(--sunken);
+}
+
+.qcard-f .hint {
+	font-family: var(--mono);
+	font-size: var(--fs-9);
+	letter-spacing: 0.06em;
+	color: var(--ink-4);
+}
+
+.qcard-f .grow {
+	flex: 1;
+}
+
+.qcard-done {
+	order: 2;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 9px 14px;
+	font-size: var(--fs-12);
+	color: var(--ink-2);
+	text-align: left;
+}
+
+.qcard-done .k {
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+	color: var(--ink-4);
+}
+
+.qcard-done .v {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--ink);
+}
+
+.qcard-done .ck2 {
+	flex: none;
+	margin-left: auto;
+	color: var(--ink-4);
+	transition: transform var(--speed) var(--ease);
+}
+
+.qcard-done .collapse {
+	display: none;
+	font-size: var(--fs-11);
+	color: var(--ink-3);
+}
+
+.qcard.is-open .qcard-done .ck2 {
+	transform: rotate(180deg);
+}
+
+.qcard.is-open .qcard-done {
+	order: 4;
+	border-top: 1px solid var(--rule);
+}
+
+.qcard.is-open .qcard-done .k,
+.qcard.is-open .qcard-done .v {
+	display: none;
+}
+
+.qcard.is-open .qcard-done .collapse {
+	display: inline;
+}
+
+.qcard.is-open .qcard-done:hover {
+	background: var(--wash);
+}
+
+.qcard.is-answered {
+	box-shadow: none;
+}
+
+.qcard.is-answered .q-other,
+.qcard.is-answered .qcard-b,
+.qcard.is-answered .qcard-f {
+	display: none;
+}
+
+.qcard.is-answered .q-opt {
+	cursor: default;
+	pointer-events: none;
+}
+
+.qcard.is-answered.is-open .qcard-b {
+	display: block;
+	border-top: 1px solid var(--rule);
+}
+
+.qcard:not(.is-answered) .qcard-done {
+	display: none;
+}
+
+.qcard[hidden],
+.gate[hidden] {
+	display: none;
+}
+

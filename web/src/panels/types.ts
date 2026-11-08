@@ -10,3 +10,6 @@ export type SideTab =
 
 /** 新增页签菜单可选的类型。 */
 export type SideTabKind = "files" | "git" | "skills" | "plugins" | "browser" | "terminal";
+
+/** 占据整个主列的全局页面标识。 */
+export type GlobalPanelId = "schedules";
