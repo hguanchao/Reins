@@ -290,6 +290,7 @@ export function Composer(props: ComposerProps): ReactElement {
 					<span className={cn("chip ws-chip", props.workspacePath.length === 0 && "is-unbound")}>
 						<Popover
 							align="start"
+							placement="above"
 							trigger={({ toggle, open }) => (
 								<button
 									type="button"

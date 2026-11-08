@@ -142,24 +142,22 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					<span className="k">Ctrl N</span>
 				</button>
 
-				{props.searchOpen ? (
-					<div className="side-search">
-						<Search className="ic-14" />
-						<input
-							ref={searchInput}
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							onKeyDown={(event) => {
-								if (event.key !== "Escape") return;
-								event.preventDefault();
-								setQuery("");
-								props.onSearchOpenChange(false);
-							}}
-							placeholder="搜索任务"
-							aria-label="搜索任务"
-						/>
-					</div>
-				) : null}
+				<div className="side-search">
+					<Search className="ic-14" />
+					<input
+						ref={searchInput}
+						value={query}
+						onChange={(event) => setQuery(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key !== "Escape") return;
+							event.preventDefault();
+							setQuery("");
+							props.onSearchOpenChange(false);
+						}}
+						placeholder="搜索任务"
+						aria-label="搜索任务"
+					/>
+				</div>
 
 				<div className="side-nav">
 					<button
@@ -197,19 +195,11 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					{bridge === undefined ? null : (
 						<button
 							type="button"
+							className="zone-add"
 							aria-label="添加工作区"
 							title="添加工作区"
 							onClick={() => {
 								void bridge.chooseWorkspace();
-							}}
-							style={{
-								marginLeft: "auto",
-								display: "grid",
-								placeItems: "center",
-								width: 18,
-								height: 18,
-								borderRadius: "var(--r-1)",
-								color: "var(--ink-4)",
 							}}
 						>
 							<Plus className="ic-12" />

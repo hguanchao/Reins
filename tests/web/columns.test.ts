@@ -78,19 +78,25 @@ describe("三栏求解", () => {
 	it("右栏空间不足时整条让出，主列不被压缩", () => {
 		const widths = computeColumns(900, 244, 500);
 		assert.equal(widths.rightbar, 0);
-		assert.equal(widths.center, 900 - 244);
+		assert.equal(widths.center, 900 - 210);
 	});
 
 	it("窗口极窄时主列可以降为零", () => {
 		const widths = computeColumns(320, 244, 0);
-		assert.equal(widths.sidebar, 244);
-		assert.equal(widths.center, 76);
+		assert.equal(widths.sidebar, 210);
+		assert.equal(widths.center, 110);
 		assert.ok(widths.center < CENTER_MIN);
 	});
 
 	it("右栏下限 300、上限 420", () => {
 		assert.equal(computeColumns(1440, 244, 100).rightbar, RIGHTBAR_MIN);
 		assert.equal(computeColumns(2400, 244, 2000).rightbar, RIGHTBAR_MAX);
+	});
+
+	it("窄窗把侧栏收到设计稿的 210px，宽窗恢复 244", () => {
+		assert.equal(computeColumns(1064, 244, 0).sidebar, 210);
+		assert.equal(computeColumns(1180, 280, 0).sidebar, 210);
+		assert.equal(computeColumns(1440, 244, 0).sidebar, 244);
 	});
 
 	it("收起侧栏与关闭右栏都是零宽", () => {

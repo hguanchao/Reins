@@ -14,12 +14,6 @@ export const APPROVAL_LABELS: Record<ApprovalMode, string> = {
 	yolo: "直接放行",
 };
 
-export const APPROVAL_HINTS: Record<ApprovalMode, string> = {
-	ask: "每次写盘或执行命令都停下确认",
-	auto: "先由审查模型判断，风险高才问你",
-	yolo: "不再询问，路径边界仍然生效",
-};
-
 export const EFFORT_LABELS: Record<ThinkingLevel, string> = {
 	off: "关闭",
 	low: "低",

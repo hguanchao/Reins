@@ -1,0 +1,99 @@
+/*
+ * 全局动效层。
+ *
+ * 必须在所有组件样式之后导入：主题过渡要压过组件自己声明的 transition，
+ * 入场动画也只在面真正出现的那一次播放。具体 keyframes 定义在 base.css。
+ */
+
+@keyframes reins-rail-in {
+	from {
+		opacity: 0;
+		transform: translateY(-50%) translateX(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(-50%) translateX(0);
+	}
+}
+
+/* 主题切换时大面按 240ms 过渡底色与边线，避免明暗硬切 */
+body,
+.app,
+.caption,
+.side,
+.main,
+.panel,
+.chat-head,
+.composer,
+.gate,
+.pop,
+.blank,
+.set-pane,
+.diff,
+.msg-rail-pop,
+.back-latest {
+	transition:
+		background-color 240ms var(--ease),
+		border-color 240ms var(--ease),
+		color 240ms var(--ease);
+}
+
+/* 审批闸门稍晚入场并轻微放大回弹，先让页面稳住 */
+.gate {
+	animation: reins-gate-in 320ms var(--ease) 120ms both;
+}
+
+/* diff 整块淡入，行级 24ms 级联，读起来像逐行落笔 */
+.diff {
+	animation: reins-fade-in 300ms var(--ease) 180ms both;
+}
+
+.diff-b .dl {
+	animation: reins-fade-in 220ms var(--ease) both;
+}
+
+.diff-b .dl:nth-child(1) {
+	animation-delay: 200ms;
+}
+
+.diff-b .dl:nth-child(2) {
+	animation-delay: 224ms;
+}
+
+.diff-b .dl:nth-child(3) {
+	animation-delay: 248ms;
+}
+
+.diff-b .dl:nth-child(4) {
+	animation-delay: 272ms;
+}
+
+.diff-b .dl:nth-child(5) {
+	animation-delay: 296ms;
+}
+
+.diff-b .dl:nth-child(6) {
+	animation-delay: 320ms;
+}
+
+.diff-b .dl:nth-child(7) {
+	animation-delay: 344ms;
+}
+
+.diff-b .dl:nth-child(8) {
+	animation-delay: 368ms;
+}
+
+.diff-b .dl:nth-child(n + 9) {
+	animation-delay: 368ms;
+}
+
+/* 消息轨浮层从右侧滑入，动画里带上自身的垂直居中变换 */
+.msg-rail-pop {
+	animation: reins-rail-in 160ms var(--ease) both;
+}
+
+/* 设置页打开时内容区入场 */
+.set-main {
+	animation: reins-page-in 300ms var(--ease) both;
+}

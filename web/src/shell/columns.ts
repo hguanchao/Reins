@@ -11,6 +11,9 @@ export const SIDEBAR_DEFAULT = 244;
 export const SIDEBAR_MIN = 180;
 export const SIDEBAR_MAX = 320;
 export const SIDEBAR_COLLAPSED = 0;
+/** 设计稿在 1180px 以下把侧栏收到 210px，JS 列宽必须同步收敛。 */
+export const NARROW_WINDOW = 1180;
+export const SIDEBAR_NARROW = 210;
 export const SIDEBAR_AUTO_COLLAPSE = 1024;
 /** 展开比收起高一档余量:拖拽在阈值附近晃动时不会收了又展、展了又收 */
 export const SIDEBAR_AUTO_EXPAND = SIDEBAR_AUTO_COLLAPSE + 64;
@@ -57,7 +60,9 @@ export function clampRightbar(width: number, viewport: number): number {
  */
 export function computeColumns(viewport: number, sidebar: number, rightbar: number): ColumnWidths {
 	const width = Math.max(0, Math.round(viewport));
-	const resolvedSidebar = sidebar <= 0 ? SIDEBAR_COLLAPSED : clampSidebar(sidebar);
+	const rawSidebar = sidebar <= 0 ? SIDEBAR_COLLAPSED : clampSidebar(sidebar);
+	// 媒体查询改的 --sb-w 管不到 JS 算出来的列宽，这里补上同样的收敛规则
+	const resolvedSidebar = width <= NARROW_WINDOW ? Math.min(rawSidebar, SIDEBAR_NARROW) : rawSidebar;
 	const available = width - resolvedSidebar - CENTER_MIN;
 	const resolvedRight =
 		rightbar <= 0 || available < RIGHTBAR_MIN

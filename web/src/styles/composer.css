@@ -615,13 +615,12 @@
 	animation: reins-spin 2.4s linear infinite;
 }
 
-/* 上下文用量面板 */
-.model-panel,
-.mode-panel,
-.ctx-panel {
+/* 模式面板按设计稿收窄到 240px，模型与上下文面板沿用 260/240 */
+.model-panel {
 	width: 260px;
 }
 
+.mode-panel,
 .ctx-panel {
 	width: 240px;
 }

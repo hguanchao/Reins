@@ -29,11 +29,14 @@ export function Popover({
 	trigger,
 	children,
 	align = "end",
+	placement = "auto",
 	className,
 }: {
 	readonly trigger: (state: { readonly open: boolean; toggle(): void }) => ReactNode;
 	readonly children: ReactNode | ((close: () => void) => ReactNode);
 	readonly align?: "start" | "end";
+	/** 输入卡的浮层一律向上翻：向下会盖住下方的起点建议与状态条。 */
+	readonly placement?: "above" | "auto";
 	readonly className?: string;
 }): ReactElement {
 	const [open, setOpen] = useState(false);
@@ -44,7 +47,10 @@ export function Popover({
 		const rect = triggerRef.current?.getBoundingClientRect();
 		if (rect === undefined) return;
 		const spaceBelow = window.innerHeight - rect.bottom;
-		const openUp = spaceBelow < 300 && rect.top > spaceBelow;
+		// 输入卡贴着窗口下沿，设计稿的浮层固定用 bottom 贴触发行上沿；
+		// 只有上方真的放不下时才退回向下，避免整块跑出视口。
+		const openUp =
+			placement === "above" ? rect.top > 160 : spaceBelow < 300 && rect.top > spaceBelow;
 		const maxHeight = Math.max(160, Math.min(420, openUp ? rect.top - 12 : spaceBelow - 12));
 		const estimated = 300;
 		const useLeft =
@@ -56,7 +62,7 @@ export function Popover({
 				: { right: Math.max(8, window.innerWidth - rect.right) }),
 			maxHeight,
 		});
-	}, [align]);
+	}, [align, placement]);
 
 	useLayoutEffect(() => {
 		if (!open) return;

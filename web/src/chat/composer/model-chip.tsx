@@ -41,6 +41,7 @@ export function ModelChip({
 
 	return (
 		<Popover
+			placement="above"
 			trigger={({ toggle, open }) => (
 				<button
 					type="button"

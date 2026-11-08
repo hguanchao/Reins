@@ -3,7 +3,9 @@ import { type ReactElement } from "react";
 import { cn } from "../../components/ui/cn.ts";
 import { Popover } from "../../components/ui/popover.tsx";
 import type { ApprovalMode } from "../../protocol.ts";
-import { APPROVAL_LABELS, APPROVAL_HINTS } from "./model.ts";
+import { APPROVAL_LABELS } from "./model.ts";
+
+const MODE_ICONS = { ask: ShieldCheck, auto: Eye, yolo: Zap } as const;
 
 /** 模式选择器：芯片显示当前档名；浮层里计划模式置顶，审批方式其次。 */
 export function ModeChip({
@@ -21,6 +23,8 @@ export function ModeChip({
 	return (
 		<Popover
 			align="start"
+			placement="above"
+			className="mode-panel"
 			trigger={({ toggle, open }) => (
 				<button
 					type="button"
@@ -36,7 +40,7 @@ export function ModeChip({
 				</button>
 			)}
 		>
-			<div className="mode-panel">
+			<div>
 				<button type="button" className="pop-i plan-row" onClick={() => onPlanMode(!planMode)}>
 					<MapIcon className="ic-14" />
 					<span className="min-w-0 flex-1">计划模式</span>
@@ -44,22 +48,24 @@ export function ModeChip({
 						<i />
 					</span>
 				</button>
+				<div className="pop-sep" />
 				<div className={cn("ap-sec", planMode && "off")}>
 					<div className="sec-label">审批方式</div>
-					{(Object.keys(APPROVAL_LABELS) as ApprovalMode[]).map((mode) => (
-						<button
-							key={mode}
-							type="button"
-							className={cn("pop-i two", mode === approvalMode && "sel")}
-							onClick={() => onApprovalMode(mode)}
-						>
-							<span className="sk-col">
-								<span className="n">{APPROVAL_LABELS[mode]}</span>
-								<span className="d">{APPROVAL_HINTS[mode]}</span>
-							</span>
-							<Check className="ic-12 ck" />
-						</button>
-					))}
+					{(Object.keys(APPROVAL_LABELS) as ApprovalMode[]).map((mode) => {
+						const ModeIcon = MODE_ICONS[mode];
+						return (
+							<button
+								key={mode}
+								type="button"
+								className={cn("pop-i", mode === approvalMode && "sel")}
+								onClick={() => onApprovalMode(mode)}
+							>
+								<ModeIcon className="ic-14" />
+								<span className="min-w-0 flex-1">{APPROVAL_LABELS[mode]}</span>
+								<Check className="ic-12 ck" />
+							</button>
+						);
+					})}
 				</div>
 			</div>
 		</Popover>

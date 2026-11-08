@@ -19,6 +19,7 @@ export function ContextMeter({
 	return (
 		<Popover
 			align="start"
+			placement="above"
 			trigger={({ toggle }) => (
 				<button type="button" className="ctx" onClick={toggle} aria-label="上下文占用" title="上下文占用，点击查看构成">
 					<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">

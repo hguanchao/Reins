@@ -172,6 +172,32 @@
 	color: var(--ink-2);
 }
 
+/* 组头操作与设计稿一致：悬停才浮现，不占静态视觉重量 */
+.zone-add {
+	margin-left: auto;
+	display: grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	border-radius: var(--r-1);
+	color: var(--ink-4);
+	opacity: 0;
+	transition:
+		opacity var(--speed) var(--ease),
+		background var(--speed) var(--ease),
+		color var(--speed) var(--ease);
+}
+
+.side-zone:hover .zone-add,
+.zone-add:focus-visible {
+	opacity: 1;
+}
+
+.zone-add:hover {
+	background: var(--wash-2);
+	color: var(--ink);
+}
+
 .side-zone:first-child {
 	margin-top: 6px;
 }

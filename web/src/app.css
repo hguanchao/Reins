@@ -12,3 +12,5 @@
 @import "./styles/settings.css";
 @import "./styles/controls.css";
 @import "./styles/responsive.css";
+/* 动效层放最后：主题过渡与入场动画要压过组件自己的声明 */
+@import "./styles/motion.css";
