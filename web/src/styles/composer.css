@@ -349,6 +349,28 @@
 	font-family: var(--mono);
 }
 
+/* 分支浮层：当前分支打勾，其余分支由内核枚举后再补 */
+.br-picker {
+	min-width: 208px;
+}
+
+.br-picker .pop-i .n {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.br-picker .ck {
+	visibility: hidden;
+	color: var(--ink);
+}
+
+.br-picker .sel .ck {
+	visibility: visible;
+}
+
 .cbar {
 	display: flex;
 	align-items: center;

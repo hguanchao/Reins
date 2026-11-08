@@ -364,14 +364,16 @@
 	align-items: center;
 	justify-content: center;
 	overflow-y: auto;
-	padding: 0 28px;
+	/* 上下内边距不等，让整块内容相对视觉中心上移 3px，与设计稿的会话区一致 */
+	padding: 4px 28px 10px;
 }
 
 .blank-in {
-	/* demo 的 .flow 是 max-width:720px + 左右 28px 内边距，内容列因此是 664px */
+	/* 设计稿的内容列是 max-width:720px + 左右 28px 内边距，内容宽 664px；
+	   上下不加内边距，否则内容盒被撑高，居中后整体偏移 */
 	width: 100%;
 	max-width: 720px;
-	padding: 32px 28px;
+	padding: 0 28px;
 }
 
 /* 空态不设 44px 会话头：右面板开关退成一枚贴右上角的图标钮 */
@@ -410,7 +412,8 @@
 }
 
 .blank .lede {
-	margin: 12px 0 16px;
+	/* 设计稿的标题块带 26px 下边距（与段落自身 16px 折叠后净 26px），这里直接给足 */
+	margin: 12px 0 26px;
 	font-size: var(--fs-13);
 	line-height: 1.7;
 	color: var(--ink-3);

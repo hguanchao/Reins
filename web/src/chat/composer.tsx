@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, FolderOpen, GripVertical, Square, X, Zap } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, FolderOpen, GripVertical, Square, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactElement } from "react";
 import { api } from "../api.ts";
 import { cn } from "../components/ui/cn.ts";
@@ -333,10 +333,32 @@ export function Composer(props: ComposerProps): ReactElement {
 						<ChevronDown className="ic-12 ck" />
 					</span>
 					{props.branch === undefined ? null : (
-						<span className="chip br-chip" title={`当前分支 ${props.branch}`}>
-							<GitBranchIcon />
-							<span className="n">{props.branch}</span>
-						</span>
+						<Popover
+							align="start"
+							placement="above"
+							className="br-picker"
+							trigger={({ toggle, open }) => (
+								<button
+									type="button"
+									className="chip br-chip"
+									title="切换分支"
+									aria-haspopup="menu"
+									aria-expanded={open}
+									onClick={toggle}
+								>
+									<GitBranchIcon />
+									<span className="n">{props.branch}</span>
+									<ChevronDown className="ic-12" />
+								</button>
+							)}
+						>
+							<div className="pop-h">分支</div>
+							<div className="pop-i sel">
+								<GitBranchIcon />
+								<span className="n">{props.branch}</span>
+								<Check className="ic-12 ck" />
+							</div>
+						</Popover>
 					)}
 				</div>
 			) : null}
