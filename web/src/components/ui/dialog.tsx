@@ -55,7 +55,7 @@ export function Dialog({
 				<div className="dialog-h">
 					<span className="t">{title}</span>
 					<button type="button" className="dialog-x" aria-label="关闭" onClick={onClose}>
-						<X className="ic-14" />
+						<X className="ic ic-14" />
 					</button>
 				</div>
 				<div className="dialog-b">{children}</div>

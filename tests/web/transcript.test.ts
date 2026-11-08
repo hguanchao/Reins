@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { appendToLast, groupToolRuns, linesFromEntries, sealStreaming, updateTool, type Line } from "#web/transcript/lines.ts";
+import { appendToLast, groupToolRuns, linesFromEntries, sealStreaming, sealThinking, updateTool, type Line } from "#web/transcript/lines.ts";
 
 /**
  * 会话流状态逻辑的契约:增量拼接到哪一行、回合边界怎么封口、工具结果怎么回填。
@@ -162,5 +162,46 @@ describe("会话条目重放", () => {
 			{ type: "message", message: { role: "user", content: [{ type: "image", name: "a.png" }] } },
 		] as Parameters<typeof linesFromEntries>[0]);
 		assert.deepEqual(lines, [{ kind: "user", text: "[image: a.png]" }]);
+	});
+
+	it("条目携带的思考耗时按块顺序回填,缺了就不编", () => {
+		const lines = linesFromEntries([
+			{
+				type: "message",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "thinking", text: "第一段" },
+						{ type: "thinking", text: "第二段" },
+					],
+				},
+				thinkingMs: [8123],
+			},
+		] as Parameters<typeof linesFromEntries>[0]);
+		assert.deepEqual(lines, [
+			{ kind: "thinking", text: "第一段", open: false, durationMs: 8123 },
+			{ kind: "thinking", text: "第二段", open: false },
+		]);
+	});
+});
+
+describe("流式思考计时", () => {
+	it("思考段起表后,正文一到即封口并记下耗时", async () => {
+		const opened = appendToLast([], "thinking", "想着");
+		const stamped = opened.at(-1);
+		assert.ok(stamped?.kind === "thinking" && typeof stamped.startedAt === "number");
+		await new Promise((resolve) => setTimeout(resolve, 12));
+
+		const sealed = sealThinking(appendToLast(opened, "assistant", "正文"), Date.now());
+		const think = sealed.find((line) => line.kind === "thinking");
+		assert.ok(think?.kind === "thinking" && think.open === false);
+		assert.ok(think.durationMs !== undefined && think.durationMs >= 10);
+		// 正文行照常追加,思考行不吞掉它
+		assert.equal(sealed.at(-1)?.kind, "assistant");
+	});
+
+	it("没有打开的思考段时封口是空操作", () => {
+		const lines: Line[] = [{ kind: "assistant", text: "正文", open: true }];
+		assert.equal(sealThinking(lines, Date.now()), lines);
 	});
 });

@@ -3,8 +3,17 @@ import { useState, type ReactElement } from "react";
 import { Switch } from "../components/ui/index.ts";
 import { applyPreferences, readPreferences, savePreference, type Preferences } from "../state/preferences.ts";
 import type { ThemeMode } from "../state/theme.ts";
-import { applyUiFontSize, readUiFontSize, UI_FONT_SIZES } from "../state/ui-font.ts";
-import { Section, SettingsPane } from "./controls.tsx";
+import {
+	applyCodeFontSize,
+	applyUiFontSize,
+	CODE_FONT_SIZES,
+	DEFAULT_CODE_FONT_SIZE,
+	DEFAULT_UI_FONT_SIZE,
+	readCodeFontSize,
+	readUiFontSize,
+	UI_FONT_SIZES,
+} from "../state/ui-font.ts";
+import { SettingsPane } from "./controls.tsx";
 
 const THEMES: readonly { readonly mode: ThemeMode; readonly label: string; readonly dataTheme: string | undefined }[] = [
 	{ mode: "system", label: "跟随系统", dataTheme: undefined },
@@ -26,11 +35,17 @@ export function AppearanceSection({
 	onThemeMode(mode: ThemeMode): void;
 }): ReactElement {
 	const [fontSize, setFontSize] = useState(readUiFontSize);
+	const [codeSize, setCodeSize] = useState(readCodeFontSize);
 	const [preferences, setPreferences] = useState<Preferences>(readPreferences);
 
 	const changeFontSize = (next: number): void => {
 		setFontSize(next);
 		applyUiFontSize(next);
+	};
+
+	const changeCodeSize = (next: number): void => {
+		setCodeSize(next);
+		applyCodeFontSize(next);
 	};
 
 	const toggle = (key: keyof Preferences, value: boolean): void => {
@@ -40,17 +55,16 @@ export function AppearanceSection({
 		applyPreferences(next);
 	};
 
-	const index = Math.max(0, UI_FONT_SIZES.indexOf(fontSize as (typeof UI_FONT_SIZES)[number]));
-	const ratio = index / Math.max(1, UI_FONT_SIZES.length - 1);
-
 	return (
 		<SettingsPane
 			eyebrow="SETTINGS / APPEARANCE"
 			title="外观"
 			description="主题、字号与动效。改动立即生效，不需要重启。"
 		>
-			<Section name="主题">
-				<div className="theme-grid">
+			<div className="mono-label" style={{ fontSize: 9, marginBottom: 10, marginTop: 26 }}>
+				主题
+			</div>
+			<div className="theme-grid">
 					{THEMES.map((theme) => (
 						<button
 							key={theme.mode}
@@ -71,7 +85,7 @@ export function AppearanceSection({
 							<span className="cap">
 								{themeMode === theme.mode ? (
 									<svg
-										className="ic-12"
+										className="ic ic-12"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
@@ -87,55 +101,34 @@ export function AppearanceSection({
 							</span>
 						</button>
 					))}
-				</div>
-			</Section>
+			</div>
 
-			<Section name="界面字号" hint="只影响对话与界面文字，代码与终端字号不变">
-				<div className="slider-row">
-					<div className="slider">
-						<span className="track" />
-						<span className="fill" style={{ width: `${ratio * 100}%` }} />
-						{UI_FONT_SIZES.map((size, position) => (
-							<span
-								key={size}
-								style={{
-									position: "absolute",
-									left: `${(position / Math.max(1, UI_FONT_SIZES.length - 1)) * 100}%`,
-									top: -3,
-									width: 1,
-									height: 7,
-									background: "var(--rule-2)",
-								}}
-							/>
-						))}
-						<span className="knob" style={{ left: `${ratio * 100}%` }} />
-						<input
-							type="range"
-							min={0}
-							max={UI_FONT_SIZES.length - 1}
-							step={1}
-							value={index}
-							aria-label="界面字号"
-							onChange={(event) => {
-								const next = UI_FONT_SIZES[Number(event.target.value)];
-								if (next !== undefined) changeFontSize(next);
-							}}
-							style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" }}
-						/>
-					</div>
-					<span className="num" style={{ minWidth: 44, textAlign: "right", fontSize: "var(--fs-11)" }}>
-						{fontSize} px
-					</span>
-				</div>
-				<div className="slider-ticks">
-					{UI_FONT_SIZES.map((size) => (
-						<span key={size}>{size}</span>
-					))}
-				</div>
+			<div className="mono-label" style={{ fontSize: 9, marginBottom: 10, marginTop: 28 }}>
+				界面字号
+			</div>
+			<div>
+				<FontSlider
+					label="界面字号"
+					sizes={UI_FONT_SIZES}
+					value={fontSize}
+					onChange={changeFontSize}
+				/>
+			</div>
+
+			<div className="mono-label" style={{ fontSize: 9, marginBottom: 10, marginTop: 22 }}>
+				代码字号
+			</div>
+			<div>
+				<FontSlider
+					label="代码字号"
+					sizes={CODE_FONT_SIZES}
+					value={codeSize}
+					onChange={changeCodeSize}
+				/>
 				<div className="preview-box">
 					这是一段预览文字。所有文件工具在访问前都先校验目标是否落在工作区根目录内。
 				</div>
-			</Section>
+			</div>
 
 			<div className="switch-rows">
 				<div className="switch-row">
@@ -178,7 +171,8 @@ export function AppearanceSection({
 					type="button"
 					className="b b-line"
 					onClick={() => {
-						changeFontSize(14);
+						changeFontSize(DEFAULT_UI_FONT_SIZE);
+						changeCodeSize(DEFAULT_CODE_FONT_SIZE);
 						const next: Preferences = { reduceMotion: false, ligatures: true, toolExpand: false };
 						setPreferences(next);
 						applyPreferences(next);
@@ -191,5 +185,66 @@ export function AppearanceSection({
 				</button>
 			</div>
 		</SettingsPane>
+	);
+}
+
+/** 字号滑杆：离散档位 + 刻度读数，两档字号（界面/代码）共用同一形态。 */
+function FontSlider({
+	label,
+	sizes,
+	value,
+	onChange,
+}: {
+	readonly label: string;
+	readonly sizes: readonly number[];
+	readonly value: number;
+	onChange(next: number): void;
+}): ReactElement {
+	const index = Math.max(0, sizes.indexOf(value));
+	const ratio = index / Math.max(1, sizes.length - 1);
+	return (
+		<>
+			<div className="slider-row">
+				<div className="slider">
+					<span className="track" />
+					<span className="fill" style={{ width: `${ratio * 100}%` }} />
+					{sizes.map((size, position) => (
+						<span
+							key={size}
+							style={{
+								position: "absolute",
+								left: `${(position / Math.max(1, sizes.length - 1)) * 100}%`,
+								top: -3,
+								width: 1,
+								height: 7,
+								background: "var(--rule-2)",
+							}}
+						/>
+					))}
+					<span className="knob" style={{ left: `${ratio * 100}%` }} />
+					<input
+						type="range"
+						min={0}
+						max={sizes.length - 1}
+						step={1}
+						value={index}
+						aria-label={label}
+						onChange={(event) => {
+							const next = sizes[Number(event.target.value)];
+							if (next !== undefined) onChange(next);
+						}}
+						style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" }}
+					/>
+				</div>
+				<span className="num" style={{ minWidth: 44, textAlign: "right", fontSize: "var(--fs-11)" }}>
+					{value} px
+				</span>
+			</div>
+			<div className="slider-ticks">
+				{sizes.map((size) => (
+					<span key={size}>{size}</span>
+				))}
+			</div>
+		</>
 	);
 }

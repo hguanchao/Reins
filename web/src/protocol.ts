@@ -355,5 +355,5 @@ export type LlmUserBlock =
 	| { type: "image"; name?: string };
 
 export type SessionEntry =
-	| { type: "message"; message: LlmMessage }
+	| { type: "message"; message: LlmMessage; thinkingMs?: readonly number[] }
 	| { type: string };

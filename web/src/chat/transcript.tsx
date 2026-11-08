@@ -4,6 +4,7 @@ import { useState, type ReactElement } from "react";
 import { groupTurns, type Turn } from "../transcript/blocks.ts";
 import { groupToolRuns, type Line, type ToolLine } from "../transcript/lines.ts";
 import { MarkdownView } from "../transcript/markdown-view.tsx";
+import { ApprovalRecord } from "./approval-card.tsx";
 import { ThinkingBlock } from "./thinking-block.tsx";
 import { ToolRun } from "./tool-call-row.tsx";
 import { NoticeLine, UserMessage } from "./user-message.tsx";
@@ -24,13 +25,6 @@ function blocksOf(turn: Turn): readonly Block[] {
 		blocks.push({ kind: "line", line: block.line });
 	}
 	return blocks;
-}
-
-/** 思考块的摘要：取首句，压到 24 字内，读起来像一条注记而不是第二段正文。 */
-function thinkSummary(text: string): string {
-	const firstLine = text.replaceAll("\r\n", "\n").trim().split("\n")[0] ?? "";
-	const clean = firstLine.replace(/^[#>*\-\s]+/, "");
-	return clean.length > 24 ? `${clean.slice(0, 24)}…` : clean;
 }
 
 function TurnActions({
@@ -55,7 +49,7 @@ function TurnActions({
 		<div className="turn-actions">
 			{text === undefined ? null : (
 				<button type="button" onClick={copy} title={copied ? "已复制" : "复制"} aria-label="复制">
-					{copied ? <Check className="ic-12" /> : <Copy className="ic-12" />}
+					{copied ? <Check className="ic ic-12" /> : <Copy className="ic ic-12" />}
 				</button>
 			)}
 			{text !== undefined && onRegenerate !== undefined ? (
@@ -65,7 +59,7 @@ function TurnActions({
 					title="重新生成：把这条提问再发一次"
 					aria-label="重新生成"
 				>
-					<RefreshCw className="ic-12" />
+					<RefreshCw className="ic ic-12" />
 				</button>
 			) : null}
 			<button
@@ -76,7 +70,7 @@ function TurnActions({
 				aria-label="赞"
 				style={vote === "up" ? { color: "var(--ink)", background: "var(--wash)" } : undefined}
 			>
-				<ThumbsUp className="ic-12" />
+				<ThumbsUp className="ic ic-12" />
 			</button>
 			<button
 				type="button"
@@ -86,7 +80,7 @@ function TurnActions({
 				aria-label="踩"
 				style={vote === "down" ? { color: "var(--ink)", background: "var(--wash)" } : undefined}
 			>
-				<ThumbsDown className="ic-12" />
+				<ThumbsDown className="ic ic-12" />
 			</button>
 		</div>
 	);
@@ -132,10 +126,17 @@ function TurnView({
 							key={`think-${position}`}
 							text={block.line.text}
 							streaming={block.line.open}
-							summary={thinkSummary(block.line.text)}
+							durationMs={block.line.durationMs}
 						/>
 					) : block.line.kind === "notice" ? (
 						<NoticeLine key={`notice-${position}`} text={block.line.text} tone={block.line.tone} />
+					) : block.line.kind === "gate" ? (
+						<ApprovalRecord
+							key={`gate-${position}`}
+							request={block.line.request}
+							answer={block.line.answer}
+							at={block.line.at}
+						/>
 					) : null,
 				)}
 				{streaming || running ? null : (

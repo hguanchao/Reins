@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Globe, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import type { ApprovalAnswer, ApprovalRequest } from "../protocol.ts";
 
@@ -7,37 +7,43 @@ import type { ApprovalAnswer, ApprovalRequest } from "../protocol.ts";
  * 审批闸门。
  *
  * 三个层级对应三种重量：可逆用实线描边、越界用虚线、不可逆整卡反白。选项顺序永不改变——
- * 拒绝永远最左、允许永远最右，肌肉记忆比视觉一致性重要。高危卡不接受数字键（由应用层的
- * 键盘处理排除），只能逐个点击：反射性连按不该成为放行不可逆操作的通道。
+ * 拒绝永远最左、允许永远最右，肌肉记忆比视觉一致性重要。裁决类卡片不做「稍后」，只能答
+ * 或拒。高危卡不接受数字键（由应用层的键盘处理排除），只能逐个点击：反射性连按不该成为
+ * 放行不可逆操作的通道。
  */
 export function ApprovalCard({
 	request,
 	onAnswer,
 	count,
-	onDefer,
 }: {
 	readonly request: ApprovalRequest;
 	readonly onAnswer: (answer: ApprovalAnswer) => void;
 	/** 待办队列里的位置，例如「1 / 2」；单张卡不传 */
 	readonly count?: string;
-	/** 「稍后」：把卡收成一行，不是取消 */
-	readonly onDefer?: () => void;
 }): ReactElement {
 	const destructive = request.risk === "destructive";
 	const external = request.risk === "external";
 	const [more, setMore] = useState(false);
+	const card = useRef<HTMLDivElement | null>(null);
 	const TagIcon = destructive ? ShieldAlert : external ? Globe : ShieldCheck;
 	const hasPreview = request.preview !== undefined && request.preview.length > 0;
 
+	// 卡片出现即自动聚焦，但焦点落在卡片本身而不是任何按钮——默认焦点不可以是「允许」
+	useEffect(() => {
+		card.current?.focus({ preventScroll: true });
+	}, []);
+
 	return (
 		<div
+			ref={card}
+			tabIndex={-1}
 			role="alertdialog"
 			aria-label={`需要确认：${request.summary ?? request.detail}`}
 			className={`gate${destructive ? " gate-danger" : external ? " gate-ext" : ""}`}
 		>
 			<div className="gate-h">
 				<span className="mk">
-					<TagIcon className="ic-12" />
+					<TagIcon className="ic ic-12" />
 				</span>
 				<span className="t">需要确认</span>
 				<span className="tag">
@@ -54,7 +60,7 @@ export function ApprovalCard({
 				{hasPreview ? (
 					<>
 						<button type="button" className="more" onClick={() => setMore((value) => !value)} aria-expanded={more}>
-							<ChevronDown className="ic-12" style={more ? { transform: "rotate(180deg)" } : undefined} />
+							<ChevronDown className="ic ic-12" style={more ? { transform: "rotate(180deg)" } : undefined} />
 							{request.previewLabel ?? "查看完整请求"}
 						</button>
 						{more ? (
@@ -66,14 +72,8 @@ export function ApprovalCard({
 						) : null}
 					</>
 				) : null}
-				{destructive ? <p className="meta">此操作不可撤销；确认前请核对上面的目标与数量。</p> : null}
 			</div>
 			<div className="gate-f">
-				{onDefer === undefined ? null : (
-					<button type="button" className="b b-ghost b-sm" onClick={onDefer}>
-						稍后
-					</button>
-				)}
 				<button type="button" className="b b-danger b-sm" onClick={() => onAnswer("deny")}>
 					拒绝
 				</button>
@@ -117,7 +117,7 @@ export function ApprovalRecord({
 		>
 			<div className="gate-h">
 				<span className="mk">
-					{answer === "deny" ? <TriangleAlert className="ic-12" /> : <Check className="ic-12" />}
+					{answer === "deny" ? <TriangleAlert className="ic ic-12" /> : <Check className="ic ic-12" />}
 				</span>
 				<span className="t">{verdict}</span>
 				{destructive ? <span className="tag">不可逆</span> : external ? <span className="tag">工作区外</span> : null}
@@ -126,7 +126,7 @@ export function ApprovalRecord({
 			<button type="button" className="gate-sum" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
 				<span className="cmd">{command}</span>
 				<span className="tm">{at}</span>
-				<ChevronDown className="ic-12 ck2" />
+				<ChevronDown className="ic ic-12 ck2" />
 			</button>
 			<div className="gate-b">
 				<p className="req">{request.summary ?? request.detail}</p>

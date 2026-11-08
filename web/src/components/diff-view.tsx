@@ -1,3 +1,4 @@
+import { FileText } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { parseDiff, type DiffRow } from "../transcript/diff.ts";
@@ -36,6 +37,7 @@ export function DiffView({
 				<div key={`${section.path ?? "diff"}-${index}`} className="diff">
 					{showHeader ? (
 						<div className="diff-h">
+							<FileText className="ic ic-12" />
 							<span>{section.path ?? "diff"}</span>
 							<span className="stat">
 								<span className="num">+{section.added}</span>

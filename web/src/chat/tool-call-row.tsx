@@ -66,18 +66,18 @@ export function ToolCallRow({ line }: { readonly line: ToolLine }): ReactElement
 				className={`tool${line.running ? " running" : ""}${line.isError ? " failed" : ""}`}
 			>
 				<span className="ti">
-					<Icon className="ic-14" />
+					<Icon className="ic ic-14" />
 				</span>
 				<Summary name={line.name} args={line.args} />
 				<span className="ts">
 					{line.isError ? (
 						<span className="err">
-							<CircleX className="ic-12" />
+							<CircleX className="ic ic-12" />
 							{line.summary ?? "执行失败"}
 						</span>
 					) : line.running ? (
 						<>
-							<LoaderCircle className="ic-12 spin" />
+							<LoaderCircle className="ic ic-12 spin" />
 							{duration === undefined ? null : <span className="dur">{duration}</span>}
 						</>
 					) : (
@@ -126,11 +126,11 @@ function GroupRow({ group }: { readonly group: ToolGroup }): ReactElement {
 				className={`tool${running ? " running" : ""}${failed ? " failed" : ""}`}
 			>
 				<span className="ti">
-					<Icon className="ic-14" />
+					<Icon className="ic ic-14" />
 				</span>
 				<span className="sum">{parts.join(" · ")}</span>
 				<span className="ts">
-					{running ? <LoaderCircle className="ic-12 spin" /> : null}
+					{running ? <LoaderCircle className="ic ic-12 spin" /> : null}
 					{durationMs === 0 ? null : <span className="dur">{formatDuration(durationMs)}</span>}
 				</span>
 			</button>

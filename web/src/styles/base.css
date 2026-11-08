@@ -46,10 +46,6 @@
 		cursor: pointer;
 	}
 
-	button:disabled {
-		cursor: default;
-	}
-
 	input,
 	textarea {
 		background: none;
@@ -110,10 +106,10 @@
 }
 
 @layer components {
-	/* Markdown 正文：14px / 1.78，列表用短横而非圆点 */
+	/* Markdown 正文：随「界面字号」缩放，列表用短横而非圆点 */
 	.md {
 		color: var(--ink);
-		font-size: var(--md-size, var(--fs-14));
+		font-size: var(--ui-font-size, var(--fs-14));
 		line-height: 1.78;
 		letter-spacing: -0.003em;
 		overflow-wrap: anywhere;
@@ -256,7 +252,7 @@
 
 	.md code {
 		font-family: var(--mono);
-		font-size: var(--fs-12);
+		font-size: var(--code-font-size);
 		padding: 1px 5px;
 		border: 1px solid var(--rule);
 		border-radius: var(--r-1);
@@ -273,7 +269,7 @@
 		border-radius: 0;
 		background: transparent;
 		padding: 0;
-		font-size: var(--fs-11);
+		font-size: var(--code-font-size);
 		line-height: 1.72;
 	}
 
@@ -501,7 +497,7 @@
 }
 
 .spin {
-	animation: reins-spin 0.9s linear infinite;
+	animation: reins-spin 0.78s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -512,6 +508,16 @@
 		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
 		scroll-behavior: auto !important;
+	}
+
+	/* 扫光文字靠背景裁剪，冻结时长会停在不可见帧，必须整体替换为纯色文本 */
+	.sweep-text,
+	.think.live .th-head .lbl {
+		animation: none;
+		background: none;
+		-webkit-background-clip: initial;
+		background-clip: initial;
+		color: var(--ink-3);
 	}
 }
 

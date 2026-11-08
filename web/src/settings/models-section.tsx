@@ -99,7 +99,7 @@ export function ModelsSection({
 						))}
 						<button type="button" className="prov-add" onClick={create} disabled={creating}>
 							<svg
-								className="ic-12"
+								className="ic ic-12"
 								viewBox="0 0 24 24"
 								fill="none"
 								stroke="currentColor"

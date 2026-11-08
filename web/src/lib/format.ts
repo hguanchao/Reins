@@ -14,6 +14,11 @@ export function relativeTime(iso: string): string {
 	return new Date(time).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
+/** 当时刻度「14:12」；审批记录与消息轨的时间读数共用。 */
+export function clockTime(at: Date = new Date()): string {
+	return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
 export function workspaceName(cwd: string): string {
 	const parts = cwd.split(/[\\/]/).filter((part) => part.length > 0);
 	return parts[parts.length - 1] ?? cwd;

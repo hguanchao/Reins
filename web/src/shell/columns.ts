@@ -14,9 +14,8 @@ export const SIDEBAR_COLLAPSED = 0;
 /** 设计稿在 1180px 以下把侧栏收到 210px，JS 列宽必须同步收敛。 */
 export const NARROW_WINDOW = 1180;
 export const SIDEBAR_NARROW = 210;
-export const SIDEBAR_AUTO_COLLAPSE = 1024;
-/** 展开比收起高一档余量:拖拽在阈值附近晃动时不会收了又展、展了又收 */
-export const SIDEBAR_AUTO_EXPAND = SIDEBAR_AUTO_COLLAPSE + 64;
+/** 设计稿在 900px 以下把侧栏与面板整条藏掉，JS 列宽走同一断点。 */
+export const COMPACT_WINDOW = 900;
 export const CENTER_MIN = 400;
 export const RIGHTBAR_MIN = 300;
 export const RIGHTBAR_DEFAULT = 308;
@@ -25,21 +24,6 @@ export const RIGHTBAR_MAX_RATIO = 0.7;
 
 export function clampSidebar(width: number): number {
 	return Math.round(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, width)));
-}
-
-/**
- * 窗口宽度变化后的侧栏动作：true 收起、false 展开、undefined 维持现状。
- *
- * 收起即时——迟疑的每一帧里侧栏都还占着 280px，中间列被挤到变形；展开滞后一档余量，
- * 拖拽在阈值附近晃动时不会收了又展、展了又收。用户亲手收起的不代劳。
- */
-export function autoSidebarAction(
-	innerWidth: number,
-	collapsed: boolean,
-	autoCollapsed: boolean,
-): boolean | undefined {
-	if (innerWidth < SIDEBAR_AUTO_COLLAPSE) return collapsed ? undefined : true;
-	return autoCollapsed && innerWidth >= SIDEBAR_AUTO_EXPAND ? false : undefined;
 }
 
 /** 右面板默认宽度跟着 demo 的 308px，窄窗时才让位。 */
@@ -56,10 +40,14 @@ export function clampRightbar(width: number, viewport: number): number {
 
 /**
  * 右栏先让位，再允许主列被压缩；侧栏只按自己的上下限收敛。
+ * 900px 以下与设计稿一致：侧栏与面板整条隐藏。
  * `sidebar` 传 0 表示收起，`rightbar` 传 0 表示未打开。
  */
 export function computeColumns(viewport: number, sidebar: number, rightbar: number): ColumnWidths {
 	const width = Math.max(0, Math.round(viewport));
+	if (width <= COMPACT_WINDOW) {
+		return { sidebar: 0, center: width, rightbar: 0 };
+	}
 	const rawSidebar = sidebar <= 0 ? SIDEBAR_COLLAPSED : clampSidebar(sidebar);
 	// 媒体查询改的 --sb-w 管不到 JS 算出来的列宽，这里补上同样的收敛规则
 	const resolvedSidebar = width <= NARROW_WINDOW ? Math.min(rawSidebar, SIDEBAR_NARROW) : rawSidebar;

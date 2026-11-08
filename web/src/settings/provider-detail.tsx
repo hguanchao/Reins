@@ -16,6 +16,42 @@ const EFFORT_LABELS: Record<ThinkingLevel, string> = {
 	max: "最大",
 };
 
+/** 请求头编辑框的文本形态：每行一条「名称: 值」。 */
+function serializeHeaders(headers: Record<string, string>): string {
+	return Object.entries(headers)
+		.map(([key, value]) => `${key}: ${value}`)
+		.join("\n");
+}
+
+/** 请求头解析：整块 JSON 对象，或每行一条「名称: 值」；两者都不像就报错，不静默丢弃。 */
+function parseHeaders(text: string): Record<string, string> | undefined {
+	const trimmed = text.trim();
+	if (trimmed.length === 0) return {};
+	if (trimmed.startsWith("{")) {
+		try {
+			const value: unknown = JSON.parse(trimmed);
+			if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+			const result: Record<string, string> = {};
+			for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+				if (typeof item !== "string") return undefined;
+				result[key] = item;
+			}
+			return result;
+		} catch {
+			return undefined;
+		}
+	}
+	const result: Record<string, string> = {};
+	for (const line of trimmed.split("\n")) {
+		const cut = line.indexOf(":");
+		if (cut <= 0) return undefined;
+		const key = line.slice(0, cut).trim();
+		if (key.length === 0) return undefined;
+		result[key] = line.slice(cut + 1).trim();
+	}
+	return result;
+}
+
 /** API 格式：三种协议与产品实现一一对应，选中项后跟等宽路径。 */
 const API_FORMATS: readonly { readonly key: string; readonly name: string; readonly path: string }[] = [
 	{ key: "anthropic-messages", name: "Anthropic Messages", path: "/v1/messages" },
@@ -54,6 +90,7 @@ export function ProviderDetail({
 	const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? "");
 	const [api, setApi] = useState(provider.api ?? "anthropic-messages");
 	const [apiKey, setApiKey] = useState("");
+	const [headersText, setHeadersText] = useState(() => serializeHeaders(provider.headers));
 	const [models, setModels] = useState<readonly ProviderModel[]>(provider.models);
 	const [showKey, setShowKey] = useState(false);
 	const [apiOpen, setApiOpen] = useState(false);
@@ -68,6 +105,7 @@ export function ProviderDetail({
 		baseUrl !== (provider.baseUrl ?? "") ||
 		api !== (provider.api ?? "") ||
 		apiKey.trim().length > 0 ||
+		headersText.trim() !== serializeHeaders(provider.headers).trim() ||
 		JSON.stringify(models) !== JSON.stringify(provider.models);
 
 	const reset = (): void => {
@@ -75,6 +113,7 @@ export function ProviderDetail({
 		setBaseUrl(provider.baseUrl ?? "");
 		setApi(provider.api ?? "anthropic-messages");
 		setApiKey("");
+		setHeadersText(serializeHeaders(provider.headers));
 		setModels(provider.models);
 		setError(undefined);
 		setStatus("");
@@ -82,6 +121,11 @@ export function ProviderDetail({
 
 	const submit = (): void => {
 		if (saving) return;
+		const headers = parseHeaders(headersText);
+		if (headers === undefined) {
+			setError("请求头格式不对：用 JSON 对象，或每行一条「名称: 值」");
+			return;
+		}
 		setSaving(true);
 		setError(undefined);
 		const input: ProviderInput = {
@@ -89,7 +133,7 @@ export function ProviderDetail({
 			name: name.trim().length === 0 ? provider.name : name.trim(),
 			baseUrl: baseUrl.trim(),
 			api,
-			headers: provider.headers,
+			headers,
 			promptCacheKey: provider.promptCacheKey,
 			enabled: provider.enabled,
 			models,
@@ -173,7 +217,7 @@ export function ProviderDetail({
 				>
 					<span className="t">{format?.name ?? api}</span>
 					<span className="p">{format?.path}</span>
-					<ChevronDown className="ic-12 chev" />
+					<ChevronDown className="ic ic-12 chev" />
 				</button>
 				{apiOpen ? (
 					<div
@@ -200,7 +244,7 @@ export function ProviderDetail({
 								>
 									{item.path}
 								</span>
-								{item.key === api ? <Check className="ic-12 ck" /> : null}
+								{item.key === api ? <Check className="ic ic-12 ck" /> : null}
 							</button>
 						))}
 						<div className="pop-sep" />
@@ -237,16 +281,30 @@ export function ProviderDetail({
 						title={showKey ? "隐藏密钥" : "显示密钥"}
 						aria-label={showKey ? "隐藏密钥" : "显示密钥"}
 					>
-						{showKey ? <EyeOff className="ic-14" /> : <Eye className="ic-14" />}
+						{showKey ? <EyeOff className="ic ic-14" /> : <Eye className="ic ic-14" />}
 					</button>
 				</div>
+			</div>
+
+			<div className="field">
+				<div className="fl">请求头</div>
+				<textarea
+					className="form-area"
+					style={{ minHeight: 56 }}
+					value={headersText}
+					onChange={(event) => setHeadersText(event.target.value)}
+					placeholder={"X-Custom-Header: value\n支持 JSON 对象，或每行一条「名称: 值」"}
+					aria-label="请求头"
+					spellCheck={false}
+				/>
+				<div className="hint">随每次请求发送给这个供应商；留空表示没有额外请求头。</div>
 			</div>
 
 			<div className="field">
 				<div className="model-head">
 					<div className="fl">模型列表</div>
 					<button type="button" className="m-add" onClick={() => setDialog({ index: undefined })}>
-						<Plus className="ic-12" />
+						<Plus className="ic ic-12" />
 						添加模型
 					</button>
 				</div>
@@ -282,7 +340,18 @@ export function ProviderDetail({
 											title="编辑模型"
 											onClick={() => setDialog({ index })}
 										>
-											<Pencil className="ic-12" />
+											<Pencil className="ic ic-12" />
+										</button>
+										<button
+											type="button"
+											className="mrow-ico"
+											aria-label={`删除模型 ${model.id}`}
+											title="删除模型"
+											onClick={() =>
+												setModels((list) => list.filter((_, position) => position !== index))
+											}
+										>
+											<Trash2 className="ic ic-12" />
 										</button>
 									</span>
 								</div>
@@ -362,7 +431,7 @@ export function ProviderDetail({
 			>
 				<p style={{ margin: 0 }}>删除后 providers.json 中的这项配置会移除，不能撤销。</p>
 				<p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, color: "var(--ink)" }}>
-					<Trash2 className="ic-12" />
+					<Trash2 className="ic ic-12" />
 					{provider.name}
 				</p>
 			</Dialog>

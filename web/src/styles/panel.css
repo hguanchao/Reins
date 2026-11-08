@@ -146,6 +146,11 @@
 	font-weight: 500;
 }
 
+/* 选中行的文件名再提一档：整行底色之外，名字本身也要读得住 */
+.tree-row .rename {
+	color: var(--ink);
+}
+
 .tree-row .badge {
 	margin-left: auto;
 	border: 0;

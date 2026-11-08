@@ -1,7 +1,6 @@
 import {
 	Blocks,
 	Compass,
-	FileCode2,
 	Files,
 	GitBranch,
 	Globe,
@@ -64,7 +63,7 @@ export function SidePane(props: SidePaneProps): ReactElement {
 					aria-selected={props.activeId === undefined}
 					onClick={() => props.onSelect(undefined)}
 				>
-					<Compass className="ic-12" />
+					<Compass className="ic ic-12" />
 					指南
 				</button>
 
@@ -93,7 +92,7 @@ export function SidePane(props: SidePaneProps): ReactElement {
 								aria-expanded={open}
 								onClick={toggle}
 							>
-								<Plus className="ic-14" />
+								<Plus className="ic ic-14" />
 							</button>
 						)}
 					/>
@@ -103,10 +102,10 @@ export function SidePane(props: SidePaneProps): ReactElement {
 						title={props.fullscreen ? "退出全屏面板" : "全屏面板"}
 						onClick={props.onToggleFullscreen}
 					>
-						{props.fullscreen ? <Minimize2 className="ic-14" /> : <Maximize2 className="ic-14" />}
+						{props.fullscreen ? <Minimize2 className="ic ic-14" /> : <Maximize2 className="ic ic-14" />}
 					</button>
 					<button type="button" aria-label="关闭侧面板" title="关闭侧面板" onClick={props.onClosePane}>
-						<PanelRightClose className="ic-14" />
+						<PanelRightClose className="ic ic-14" />
 					</button>
 				</div>
 			</div>
@@ -152,7 +151,7 @@ function TabButton({
 			onClick={onSelect}
 			className="ptab group/tab shrink-0"
 		>
-			<Icon className="ic-12" />
+			<Icon className="ic ic-12" />
 			<span className="max-w-[120px] truncate">{tab.title}</span>
 			<span
 				className="x"
@@ -165,7 +164,7 @@ function TabButton({
 					onClose();
 				}}
 			>
-				<X className="ic-12" />
+				<X className="ic ic-12" />
 			</span>
 		</button>
 	);
@@ -175,7 +174,7 @@ function Placeholder({ title, description }: { readonly title: string; readonly 
 	return (
 		<div className="empty" style={{ paddingTop: 60 }}>
 			<span className="mk">
-				<Compass className="ic-14" />
+				<Compass className="ic ic-14" />
 			</span>
 			<span className="t">{title}</span>
 			<span className="d">{description}</span>
@@ -186,7 +185,10 @@ function Placeholder({ title, description }: { readonly title: string; readonly 
 function GuideBody({ onAdd }: { onAdd(kind: SideTabKind): void }): ReactElement {
 	return (
 		<div className="flex h-full flex-col items-center justify-center gap-2 px-5 pb-10">
-			<Compass className="mb-1 size-6" style={{ color: "var(--ink-3)" }} />
+			<Compass
+				className="mb-1"
+				style={{ width: "calc(var(--ui-font-size, 14px) * 24 / 14)", height: "calc(var(--ui-font-size, 14px) * 24 / 14)", color: "var(--ink-3)" }}
+			/>
 			<div className="mb-2 text-[var(--fs-12)]" style={{ color: "var(--ink-3)" }}>
 				打开一个面板开始
 			</div>
@@ -201,7 +203,7 @@ function GuideBody({ onAdd }: { onAdd(kind: SideTabKind): void }): ReactElement 
 							style={{ borderBottom: "1px solid var(--rule)" }}
 							className="flex items-center gap-2.5 py-2.5 text-left text-[var(--fs-12)]"
 						>
-							<Icon className="ic-14" style={{ color: "var(--ink-3)" }} />
+							<Icon className="ic ic-14" style={{ color: "var(--ink-3)" }} />
 							<span className="flex-1" style={{ color: "var(--ink-2)" }}>
 								{entry.label}
 							</span>
@@ -226,7 +228,6 @@ function guideDescription(kind: SideTabKind): string {
 }
 
 function iconOf(tab: SideTab) {
-	if (tab.kind === "code") return FileCode2;
 	if (tab.kind === "git") return GitBranch;
 	if (tab.kind === "skills") return Sparkles;
 	if (tab.kind === "plugins") return Blocks;

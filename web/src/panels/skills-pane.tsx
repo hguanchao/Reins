@@ -19,7 +19,7 @@ export function SkillsPane({ skills }: { readonly skills: readonly SkillInfo[] }
 					skills.map((skill) => (
 						<div key={skill.path} style={{ padding: "6px 6px 8px", borderBottom: "1px solid var(--rule)" }}>
 							<div className="flex items-center gap-2">
-								<Sparkles className="ic-12" style={{ color: "var(--ink-3)" }} />
+								<Sparkles className="ic ic-12" style={{ color: "var(--ink-3)" }} />
 								<span
 									className="text-[var(--fs-12)]"
 									style={{ color: "var(--ink)", fontFamily: "var(--mono)" }}

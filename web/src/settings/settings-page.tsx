@@ -137,14 +137,14 @@ export function SettingsPage(props: SettingsPageProps): ReactElement {
 			<aside className="side" style={{ borderRight: "1px solid var(--rule-2)" }}>
 				<div style={{ padding: "10px 10px 0" }}>
 					<button type="button" className="nav-row" onClick={onClose} style={{ height: 30, gap: 7 }}>
-						<svg className="ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+						<svg className="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
 							<path d="m12 19-7-7 7-7" />
 							<path d="M19 12H5" />
 						</svg>
 						<span>返回工作区</span>
 					</button>
 					<div className="side-search" style={{ marginTop: 8 }}>
-						<svg className="ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+						<svg className="ic ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
 							<path d="m21 21-4.34-4.34" />
 							<circle cx="11" cy="11" r="8" />
 						</svg>
@@ -183,23 +183,6 @@ export function SettingsPage(props: SettingsPageProps): ReactElement {
 							</div>
 						))
 					)}
-				</div>
-
-				<div
-					style={{
-						flex: "none",
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "space-between",
-						padding: "9px 14px",
-						borderTop: "1px solid var(--rule)",
-						fontFamily: "var(--mono)",
-						fontSize: "var(--fs-10)",
-						color: "var(--ink-4)",
-					}}
-				>
-					<span>本地模式</span>
-					<span>v{props.settings?.version ?? "—"}</span>
 				</div>
 			</aside>
 
@@ -308,7 +291,7 @@ function NavIcon({ name }: { readonly name: string }): ReactElement {
 
 	return (
 		<svg
-			className="ic-14"
+			className="ic ic-14"
 			viewBox="0 0 24 24"
 			fill="none"
 			stroke="currentColor"

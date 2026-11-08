@@ -64,14 +64,6 @@
 	background: var(--danger-soft);
 }
 
-.b-link {
-	height: auto;
-	padding: 0;
-	color: var(--ink);
-	text-decoration: underline;
-	text-underline-offset: 3px;
-}
-
 .b-sm {
 	height: 24px;
 	padding: 0 9px;
@@ -80,6 +72,7 @@
 
 .b:disabled {
 	opacity: 0.38;
+	cursor: not-allowed;
 }
 
 .b-danger:disabled,
@@ -221,6 +214,37 @@
 	margin: 0 auto;
 }
 
+/* 待办槽位：模型在等回答时，输入卡整块让位给这张卡；答完换回 */
+.dock-in.is-pending .composer {
+	display: none;
+}
+
+.dock-slot .gate {
+	margin: 0;
+}
+
+/* 空态的输入卡整卡浮起：投影加强一档，像一顶帽子扣在托板上 */
+.blank .comp-unit .composer {
+	box-shadow: var(--shadow-2);
+}
+
+/* 上下文溢出提示条：虚线描边，给出压缩动作，不擅自截断 */
+.ctx-over {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 8px;
+	padding: 8px 12px;
+	border: 1px dashed var(--rule-3);
+	border-radius: var(--r-3);
+	font-size: var(--fs-12);
+	color: var(--ink-2);
+}
+
+.ctx-over .grow {
+	flex: 1;
+}
+
 .composer {
 	position: relative;
 	border: 1px solid var(--rule-2);
@@ -245,7 +269,7 @@
 	background: none;
 	outline: none;
 	resize: none;
-	font-size: var(--content-font-size, var(--fs-14));
+	font-size: var(--ui-font-size, var(--fs-14));
 	line-height: 1.62;
 	color: var(--ink);
 }
@@ -411,11 +435,8 @@
 	color: var(--ink);
 }
 
-.chip .sep {
-	width: 1px;
-	height: 11px;
-	margin: 0 2px;
-	background: var(--rule-2);
+.chip .dot {
+	color: var(--ink-4);
 }
 
 .cbar .grow {
@@ -591,6 +612,7 @@
 	height: 14px;
 	padding: 0 10px;
 	white-space: nowrap;
+	cursor: default;
 }
 
 .status .s + .s {
@@ -600,6 +622,10 @@
 .status .s b {
 	font-weight: 500;
 	color: var(--ink);
+}
+
+.status .s:hover {
+	color: var(--ink-2);
 }
 
 .ctx {
@@ -615,13 +641,16 @@
 	transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
 }
 
+/* 圆环随界面基准缩放：CSS 宽高压过 svg 的宽高属性 */
+.ctx svg {
+	display: block;
+	width: calc(var(--ui-font-size, 14px) * 12 / 14);
+	height: calc(var(--ui-font-size, 14px) * 12 / 14);
+}
+
 .ctx:hover {
 	background: var(--wash);
 	color: var(--ink);
-}
-
-.ctx svg {
-	display: block;
 }
 
 .ctx .ring-bg {
@@ -637,9 +666,9 @@
 	animation: reins-spin 2.4s linear infinite;
 }
 
-/* 模式面板按设计稿收窄到 240px，模型与上下文面板沿用 260/240 */
+/* 模型面板 280px、模式与上下文面板 240px，均按设计稿 */
 .model-panel {
-	width: 260px;
+	width: 280px;
 }
 
 .mode-panel,

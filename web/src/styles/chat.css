@@ -38,14 +38,6 @@
 	letter-spacing: -0.012em;
 }
 
-.chat-head .title .ws {
-	flex: none;
-	font-family: var(--mono);
-	font-size: var(--fs-10);
-	letter-spacing: 0.06em;
-	color: var(--ink-4);
-}
-
 .chat-head .meta {
 	flex: none;
 	display: flex;
@@ -116,8 +108,9 @@
 
 .ask p {
 	margin: 0;
-	font-size: var(--content-font-size, var(--fs-14));
+	font-size: var(--ui-font-size, var(--fs-14));
 	line-height: 1.72;
+	font-weight: 450;
 	letter-spacing: -0.003em;
 	color: var(--ink);
 	white-space: pre-wrap;
@@ -223,6 +216,11 @@
 	display: flex;
 	flex-direction: column;
 	margin: 12px 0 6px;
+}
+
+/* 工具卡下内联 diff 的专属间距：与下一张工具卡留出一拍 */
+.tools .diff {
+	margin: 2px 0 12px;
 }
 
 .tgroup .tchildren {
@@ -336,7 +334,7 @@
 	border-radius: var(--r-2);
 	background: var(--sunken);
 	font-family: var(--mono);
-	font-size: var(--fs-11);
+	font-size: var(--code-font-size);
 	line-height: 1.72;
 	color: var(--ink-2);
 	white-space: pre-wrap;
@@ -504,7 +502,7 @@
 	border: 1px solid var(--rule);
 	border-radius: var(--r-2);
 	font-family: var(--mono);
-	font-size: var(--fs-11);
+	font-size: var(--code-font-size);
 	line-height: 1.7;
 }
 

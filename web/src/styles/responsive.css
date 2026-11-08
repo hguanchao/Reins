@@ -4,10 +4,4 @@
 	.app {
 		--sb-w: 210px;
 	}
-
-	.set-choices,
-	.stat-grid,
-	.theme-grid {
-		grid-template-columns: 1fr;
-	}
 }

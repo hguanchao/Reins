@@ -131,7 +131,6 @@ export function AppShell({
 	const frame = useRef<HTMLDivElement | null>(null);
 	const [viewport, setViewport] = useState(() => (typeof window === "undefined" ? 0 : window.innerWidth));
 	const [dragging, setDragging] = useState(false);
-	const [animating, setAnimating] = useState(false);
 
 	useLayoutEffect(() => {
 		const element = frame.current;
@@ -155,14 +154,6 @@ export function AppShell({
 			if (raf !== null) cancelAnimationFrame(raf);
 		};
 	}, []);
-
-	// 过渡只在翻转后的短暂窗口里开启（拖拽与窗口缩放时不动画），但必须用 layout effect：
-	// 普通 effect 在绘制之后才跑，过渡属性到场时列宽早已跳变完，动画就时有时无
-	useLayoutEffect(() => {
-		setAnimating(true);
-		const timer = window.setTimeout(() => setAnimating(false), 320);
-		return () => window.clearTimeout(timer);
-	}, [sidebarCollapsed, rightbarOpen]);
 
 	const cols = computeColumns(viewport, sidebarCollapsed ? 0 : sidebarWidth, rightbarOpen ? rightbarWidth : 0);
 	const fullscreen = rightbarOpen && rightbarFullscreen && cols.rightbar > 0;
@@ -188,13 +179,11 @@ export function AppShell({
 
 			<div
 				ref={frame}
-				className="relative grid min-h-0 overflow-hidden"
+				className="app-frame relative grid min-h-0 overflow-hidden"
 				style={{
 					gridColumn: "1 / -1",
 					gridRow: "2",
 					gridTemplateColumns: template,
-					transition:
-						animating && !dragging ? "grid-template-columns 300ms cubic-bezier(0.4, 0, 0.2, 1)" : "none",
 				}}
 				data-sidebar-collapsed={sidebarCollapsed || undefined}
 				data-rightbar-collapsed={cols.rightbar === 0 || undefined}

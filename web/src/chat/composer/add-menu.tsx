@@ -1,10 +1,14 @@
-import { AtSign, Blocks, ChevronRight, FolderOpen, Plus, Sparkles } from "lucide-react";
+import { AtSign, ChevronRight, Download, FolderOpen, Package, Paperclip, Plus, Puzzle, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { api } from "../../api.ts";
 import { desktopBridge } from "../../platform.ts";
 import type { McpServerInfo, SkillInfo } from "../../protocol.ts";
 import { serverStatusLabel } from "./model.ts";
 
-/** 加号浮层：根级四项，鼠标移入行时二级菜单在右侧级联浮出。 */
+/** 技能字母头像的类目色:按序循环取用,与用量图表同一套色板。 */
+const LETTER_COLORS = ["var(--cat-1)", "var(--cat-2)", "var(--cat-3)", "var(--cat-4)", "var(--cat-5)"] as const;
+
+/** 加号浮层：根级四项，鼠标移入行时二级菜单在右侧级联浮出；二级面板自带搜索。 */
 export function AddMenu({
 	skills,
 	mcpServers,
@@ -19,6 +23,9 @@ export function AddMenu({
 	onSettings(): void;
 }): ReactElement {
 	const [open, setOpen] = useState(false);
+	const [fileQuery, setFileQuery] = useState("");
+	const [fileHits, setFileHits] = useState<readonly string[]>([]);
+	const [skillQuery, setSkillQuery] = useState("");
 	const bridge = desktopBridge();
 	const ref = useRef<HTMLDivElement | null>(null);
 
@@ -26,12 +33,44 @@ export function AddMenu({
 		if (!open) return;
 		const onDown = (event: MouseEvent): void => {
 			if (ref.current !== null && !ref.current.contains(event.target as Node)) setOpen(false);
-		};
-		document.addEventListener("mousedown", onDown);
-		return () => document.removeEventListener("mousedown", onDown);
-	}, [open]);
+	};
+	document.addEventListener("mousedown", onDown);
+	// Esc 先关菜单:浮层开着时 Esc 的语义是「收起浮层」,不能落到输入卡变成打断回合
+	const onKey = (event: KeyboardEvent): void => {
+		if (event.key === "Escape") {
+			event.preventDefault();
+			event.stopPropagation();
+			setOpen(false);
+		}
+	};
+	// 捕获阶段监听:输入卡的 Esc(打断回合)绑在冒泡路径上,菜单必须先于它拿到按键
+	document.addEventListener("keydown", onKey, true);
+	return () => {
+		document.removeEventListener("mousedown", onDown);
+		document.removeEventListener("keydown", onKey, true);
+	};
+}, [open]);
+
+	// 文件搜索行:输入停稳后拉一次候选,与输入卡 @ 补全共用同一接口
+	useEffect(() => {
+		if (!open) return;
+		const query = fileQuery.trim();
+		if (query.length === 0) {
+			setFileHits([]);
+			return;
+		}
+		const timer = window.setTimeout(() => {
+			void api
+				.fileSearch(query, 6)
+				.then((hits) => setFileHits(hits.map((hit) => hit.path)))
+				.catch(() => {});
+		}, 150);
+		return () => window.clearTimeout(timer);
+	}, [open, fileQuery]);
 
 	const close = (): void => setOpen(false);
+
+	const matchedSkills = skills.filter((skill) => skill.name.toLowerCase().includes(skillQuery.trim().toLowerCase()));
 
 	return (
 		<div ref={ref} style={{ position: "relative", display: "inline-flex" }}>
@@ -44,7 +83,7 @@ export function AddMenu({
 				aria-expanded={open}
 				onClick={() => setOpen((value) => !value)}
 			>
-				<Plus className="ic-14" />
+				<Plus className="ic ic-14" />
 			</button>
 			{open ? (
 				<div
@@ -53,10 +92,10 @@ export function AddMenu({
 					style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 45 }}
 				>
 					<div className="add-row">
-						<button type="button" className="pop-i">
-							<AtSign className="ic-14" />
+						<button type="button" className="pop-i sub-trig">
+							<Paperclip className="ic ic-14" />
 							<span>添加文件</span>
-							<ChevronRight className="ic-12 ck" />
+							<ChevronRight className="ic ic-12 ck" />
 						</button>
 						<div className="sub-fly">
 							<div className="sub-panel">
@@ -68,6 +107,7 @@ export function AddMenu({
 										close();
 									}}
 								>
+									<AtSign className="ic ic-14" />
 									引用文件
 								</button>
 								{bridge === undefined ? null : (
@@ -79,6 +119,7 @@ export function AddMenu({
 											close();
 										}}
 									>
+										<FolderOpen className="ic ic-14" />
 										在资源管理器中打开
 									</button>
 								)}
@@ -87,46 +128,71 @@ export function AddMenu({
 					</div>
 
 					<div className="add-row">
-						<button type="button" className="pop-i">
-							<FolderOpen className="ic-14" />
+						<button type="button" className="pop-i sub-trig">
+							<AtSign className="ic ic-14" />
 							<span>引用工作区文件</span>
-							<ChevronRight className="ic-12 ck" />
+							<ChevronRight className="ic ic-12 ck" />
 						</button>
 						<div className="sub-fly">
 							<div className="sub-panel">
-								<button
-									type="button"
-									className="pop-i"
-									onClick={() => {
-										onInsert("@");
-										close();
-									}}
-								>
-									搜索文件…
-								</button>
-								<button
-									type="button"
-									className="pop-i"
-									onClick={() => {
-										onInsert(`${workspacePath} `);
-										close();
-									}}
-								>
-									引用整个工作区
-								</button>
+								<div className="sub-search">
+									<AtSign className="ic ic-12" />
+									<input
+										value={fileQuery}
+										onChange={(event) => setFileQuery(event.target.value)}
+										placeholder="搜索文件…"
+										aria-label="搜索文件"
+									/>
+								</div>
+								{fileHits.length === 0 ? (
+									<button
+										type="button"
+										className="pop-i"
+										onClick={() => {
+											onInsert(`${workspacePath} `);
+											close();
+										}}
+									>
+										<FolderOpen className="ic ic-14" />
+										引用整个工作区
+									</button>
+								) : (
+									fileHits.map((path) => (
+										<button
+											key={path}
+											type="button"
+											className="pop-i"
+											onClick={() => {
+												onInsert(`@${path} `);
+												close();
+											}}
+										>
+											<span className="path">{path}</span>
+										</button>
+									))
+								)}
 							</div>
 						</div>
 					</div>
 
 					<div className="add-row">
-						<button type="button" className="pop-i">
-							<Sparkles className="ic-14" />
+						<button type="button" className="pop-i sub-trig">
+							<Puzzle className="ic ic-14" />
 							<span>技能</span>
-							<ChevronRight className="ic-12 ck" />
+							<ChevronRight className="ic ic-12 ck" />
 						</button>
 						<div className="sub-fly">
 							<div className="sub-panel">
-								{skills.length === 0 ? (
+								<div className="sub-search">
+									<Puzzle className="ic ic-12" />
+									<input
+										value={skillQuery}
+										onChange={(event) => setSkillQuery(event.target.value)}
+										placeholder="搜索技能…"
+										aria-label="搜索技能"
+									/>
+								</div>
+								{matchedSkills.length === 0 ? (
 									<div className="pop-i two" style={{ pointerEvents: "none" }}>
 										<span className="sk-col">
 											<span className="n">还没有技能</span>
@@ -134,7 +200,7 @@ export function AddMenu({
 										</span>
 									</div>
 								) : (
-									skills.slice(0, 6).map((skill) => (
+									matchedSkills.slice(0, 6).map((skill, index) => (
 										<button
 											key={skill.path}
 											type="button"
@@ -144,6 +210,12 @@ export function AddMenu({
 												close();
 											}}
 										>
+											<span
+												className="letter"
+												style={{ background: LETTER_COLORS[index % LETTER_COLORS.length] }}
+											>
+												{skill.name.slice(0, 1).toUpperCase()}
+											</span>
 											<span className="sk-col">
 												<span className="n">{skill.name}</span>
 												<span className="d">{skill.description}</span>
@@ -151,15 +223,26 @@ export function AddMenu({
 										</button>
 									))
 								)}
-								<div className="pop-sep" />
 								<button
 									type="button"
-									className="pop-i"
+									className="pop-i pv-manage"
 									onClick={() => {
 										onSettings();
 										close();
 									}}
 								>
+									<Download className="ic ic-14" />
+									从本地添加技能
+								</button>
+								<button
+									type="button"
+									className="pop-i pv-manage"
+									onClick={() => {
+										onSettings();
+										close();
+									}}
+								>
+									<Settings2 className="ic ic-14" />
 									管理技能
 								</button>
 							</div>
@@ -167,10 +250,11 @@ export function AddMenu({
 					</div>
 
 					<div className="add-row">
-						<button type="button" className="pop-i">
-							<Blocks className="ic-14" />
+						<button type="button" className="pop-i sub-trig">
+							<Package className="ic ic-14" />
 							<span>连接器</span>
-							<ChevronRight className="ic-12 ck" />
+							<span className="badge">MCP</span>
+							<ChevronRight className="ic ic-12 ck" />
 						</button>
 						<div className="sub-fly">
 							<div className="sub-panel">
@@ -191,15 +275,15 @@ export function AddMenu({
 										</div>
 									))
 								)}
-								<div className="pop-sep" />
 								<button
 									type="button"
-									className="pop-i"
+									className="pop-i pv-manage"
 									onClick={() => {
 										onSettings();
 										close();
 									}}
 								>
+									<Settings2 className="ic ic-14" />
 									管理连接器
 								</button>
 							</div>

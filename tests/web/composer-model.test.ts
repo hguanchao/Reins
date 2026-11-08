@@ -4,8 +4,6 @@ import { describe, it } from "node:test";
 import {
 	APPROVAL_LABELS,
 	EFFORT_LABELS,
-	LINE_HEIGHT,
-	MAX_LINES,
 	MIN_LINES,
 	groupMentions,
 	hitRate,
@@ -132,9 +130,7 @@ describe("状态读数", () => {
 
 describe("共享常量", () => {
 	it("输入行数与档名保持单一来源", () => {
-		assert.equal(LINE_HEIGHT, 22);
 		assert.equal(MIN_LINES, 2);
-		assert.equal(MAX_LINES, 5);
 		assert.equal(APPROVAL_LABELS.ask, "逐次询问");
 		assert.equal(EFFORT_LABELS.max, "最大");
 	});

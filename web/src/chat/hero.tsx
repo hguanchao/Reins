@@ -1,4 +1,4 @@
-import { ArrowUpRight, GitCompare, PanelRight, PanelRightClose, Play, Search } from "lucide-react";
+import { ArrowUpRight, GitCompare, Play, Search } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
 /** 起点建议：三条真实可点的动作，点一下就把这句话填进输入卡。 */
@@ -13,32 +13,17 @@ const STARTS: readonly { readonly icon: typeof Search; readonly text: string }[]
  *
  * 三层信息自上而下：这是什么（36px 标题 + 一行说明）、在哪干活（卡帽与输入卡）、能做什么
  * （三条起点建议）。整屏唯一的展示级排版在这里，所以标题之外不再有第二个大字号。
- *
- * demo 的空态不设 44px 会话头；右面板开关收成右上角一枚图标钮，不占标题区。
+ * 设计稿的空态页固定不挂右面板，这里也不设面板开关。
  */
 export function Hero({
 	composer,
 	onStart,
-	rightbarOpen,
-	onToggleRightbar,
 }: {
 	readonly composer: ReactNode;
 	onStart(text: string): void;
-	readonly rightbarOpen: boolean;
-	onToggleRightbar(): void;
 }): ReactElement {
 	return (
 		<div className="blank">
-			<button
-				type="button"
-				className="blank-panel no-drag"
-				title={rightbarOpen ? "关闭面板" : "打开面板"}
-				aria-label={rightbarOpen ? "关闭面板" : "打开面板"}
-				onClick={onToggleRightbar}
-			>
-				{rightbarOpen ? <PanelRightClose className="ic-14" /> : <PanelRight className="ic-14" />}
-			</button>
-
 			<div className="blank-in">
 				<div className="eyebrow" style={{ marginBottom: 14 }}>
 					REINS · CODING AGENT
@@ -59,9 +44,9 @@ export function Hero({
 						const Icon = entry.icon;
 						return (
 							<button key={entry.text} type="button" onClick={() => onStart(entry.text)}>
-								<Icon className="ic-14" />
+								<Icon className="ic ic-14" />
 								<span className="grow">{entry.text}</span>
-								<ArrowUpRight className="ic-12" />
+								<ArrowUpRight className="ic ic-12" />
 							</button>
 						);
 					})}

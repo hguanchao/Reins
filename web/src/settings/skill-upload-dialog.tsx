@@ -94,7 +94,7 @@ export function SkillUploadDialog({
 					textAlign: "center",
 				}}
 			>
-				<Upload className="ic-18" style={{ color: "var(--ink-3)" }} />
+				<Upload className="ic ic-18" style={{ color: "var(--ink-3)" }} />
 				<span style={{ fontSize: "var(--fs-12)", fontWeight: 500 }}>
 					{file?.name ?? "选择一个技能压缩包（.zip）"}
 				</span>

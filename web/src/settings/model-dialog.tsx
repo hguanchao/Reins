@@ -22,10 +22,11 @@ export function ModelDialog({
 	onClose(): void;
 }): ReactElement {
 	const [id, setId] = useState("");
-	const [name, setName] = useState("");
 	const [contextWindow, setContextWindow] = useState("");
 	const [maxTokens, setMaxTokens] = useState("");
 	const [reasoning, setReasoning] = useState(false);
+	const [imageInput, setImageInput] = useState(false);
+	const [advOpen, setAdvOpen] = useState(false);
 	const [error, setError] = useState<string | undefined>(undefined);
 	// 每次打开重置一次，避免沿用上一次的输入
 	const [seed, setSeed] = useState<string | undefined>(undefined);
@@ -34,13 +35,23 @@ export function ModelDialog({
 		setSeed(key);
 		if (open) {
 			setId(model?.id ?? "");
-			setName(model?.name ?? "");
 			setContextWindow(model?.contextWindow === undefined ? "" : String(model.contextWindow));
 			setMaxTokens(model?.maxTokens === undefined ? "" : String(model.maxTokens));
 			setReasoning(model?.reasoning ?? false);
+			setImageInput((model?.input ?? ["text"]).includes("image"));
+			setAdvOpen(false);
 			setError(undefined);
 		}
 	}
+
+	const reset = (): void => {
+		setId(model?.id ?? "");
+		setContextWindow(model?.contextWindow === undefined ? "" : String(model.contextWindow));
+		setMaxTokens(model?.maxTokens === undefined ? "" : String(model.maxTokens));
+		setReasoning(model?.reasoning ?? false);
+		setImageInput((model?.input ?? ["text"]).includes("image"));
+		setError(undefined);
+	};
 
 	const submit = (): void => {
 		const trimmedId = id.trim();
@@ -54,12 +65,13 @@ export function ModelDialog({
 		}
 		onSubmit({
 			id: trimmedId,
-			name: name.trim().length === 0 ? trimmedId : name.trim(),
+			// 界面不再单独起「显示名称」：编辑时沿用原名，新建时用 ID
+			name: model?.name ?? trimmedId,
 			api: model?.api ?? patch.api,
 			baseUrl: model?.baseUrl ?? patch.baseUrl,
 			reasoning,
 			thinkingLevelMap: model?.thinkingLevelMap ?? {},
-			input: model?.input ?? ["text"],
+			input: imageInput ? ["text", "image"] : ["text"],
 			cost: model?.cost,
 			contextWindow: positive(contextWindow),
 			maxTokens: positive(maxTokens),
@@ -75,11 +87,15 @@ export function ModelDialog({
 			title={model === undefined ? "添加模型" : "编辑模型"}
 			footer={
 				<>
-					<button type="button" className="b b-line" onClick={onClose}>
+					<button type="button" className="b b-ghost b-sm" onClick={reset}>
+						重置表单
+					</button>
+					<span className="flex-1" />
+					<button type="button" className="b b-line b-sm" onClick={onClose}>
 						取消
 					</button>
-					<button type="button" className="b b-solid" onClick={submit}>
-						确定
+					<button type="button" className="b b-solid b-sm" onClick={submit}>
+						保存
 					</button>
 				</>
 			}
@@ -92,16 +108,6 @@ export function ModelDialog({
 					placeholder="如 claude-sonnet-4-6"
 					aria-label="模型 ID"
 					autoFocus
-					className="form-input"
-				/>
-			</label>
-			<label>
-				<span className="form-label">显示名称</span>
-				<input
-					value={name}
-					onChange={(event) => setName(event.target.value)}
-					placeholder="留空时用模型 ID"
-					aria-label="模型名称"
 					className="form-input"
 				/>
 			</label>
@@ -118,7 +124,7 @@ export function ModelDialog({
 					/>
 				</label>
 				<label>
-					<span className="form-label">最大输出</span>
+					<span className="form-label">最大输出 Token</span>
 					<input
 						value={maxTokens}
 						onChange={(event) => setMaxTokens(event.target.value)}
@@ -129,15 +135,39 @@ export function ModelDialog({
 					/>
 				</label>
 			</div>
-			<label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-				<input
-					type="checkbox"
-					checked={reasoning}
-					onChange={(event) => setReasoning(event.target.checked)}
-					style={{ width: 15, height: 15, accentColor: "var(--ink)" }}
-				/>
-				<span>支持思考等级</span>
-			</label>
+			<div>
+				<button
+					type="button"
+					className="b b-ghost b-sm"
+					style={{ padding: 0 }}
+					aria-expanded={advOpen}
+					onClick={() => setAdvOpen((value) => !value)}
+				>
+					高级配置
+				</button>
+				{advOpen ? (
+					<div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+						<label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+							<input
+								type="checkbox"
+								checked={imageInput}
+								onChange={(event) => setImageInput(event.target.checked)}
+								style={{ width: 15, height: 15, accentColor: "var(--ink)" }}
+							/>
+							<span>支持图片输入</span>
+						</label>
+						<label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+							<input
+								type="checkbox"
+								checked={reasoning}
+								onChange={(event) => setReasoning(event.target.checked)}
+								style={{ width: 15, height: 15, accentColor: "var(--ink)" }}
+							/>
+							<span>支持思考等级</span>
+						</label>
+					</div>
+				) : null}
+			</div>
 			{error === undefined ? null : <p className="form-error">{error}</p>}
 		</Dialog>
 	);

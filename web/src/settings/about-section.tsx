@@ -1,11 +1,10 @@
 import type { ReactElement } from "react";
 
-import { BrandMark } from "../components/brand-mark.tsx";
 import { sandboxLabel } from "../lib/format.ts";
 import type { SettingsSnapshot } from "../protocol.ts";
 import { Card, Row, Section, SettingsPane, Tag } from "./controls.tsx";
 
-/** 关于：版本、配置位置与运行方式。只读，只留「检查更新」「导出诊断包」两个动作。 */
+/** 关于：版本、配置位置与运行方式。设计稿在此页只留「检查更新」「导出诊断包」两个动作。 */
 export function AboutSection({
 	settings,
 }: {
@@ -16,12 +15,15 @@ export function AboutSection({
 			<Section name="版本">
 				<Card>
 					<div style={{ display: "flex", alignItems: "center", gap: 14, padding: 16 }}>
-						<BrandMark size={38} />
+						<span
+							className="brandmark"
+							style={{ width: 38, height: 38, fontSize: "var(--fs-16)", borderRadius: "var(--r-2)" }}
+						>
+							R
+						</span>
 						<div style={{ flex: 1, minWidth: 0 }}>
 							<div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-								<span style={{ fontSize: "var(--fs-20)", fontWeight: 600, letterSpacing: "0.01em" }}>
-									Reins
-								</span>
+								<span style={{ fontSize: 18, fontWeight: 600, letterSpacing: "0.01em" }}>Reins</span>
 								<span className="badge">预览版</span>
 							</div>
 							<div style={{ marginTop: 3, fontSize: "var(--fs-11)", color: "var(--ink-4)" }}>
@@ -83,8 +85,13 @@ export function AboutSection({
 						title="当前版本"
 						description="预览版不自动更新；新版本需要手动下载覆盖。"
 						value={<span className="v mono">v{settings?.version ?? "—"}</span>}
+						action={<button type="button" className="b b-line b-sm">检查更新</button>}
 					/>
-					<Row title="诊断信息" description="导出运行环境、扩展清单与最近日志，便于排查问题。" />
+					<Row
+						title="诊断信息"
+						description="导出运行环境、扩展清单与最近日志，便于排查问题。"
+						action={<button type="button" className="b b-line b-sm">导出诊断包</button>}
+					/>
 				</Card>
 			</Section>
 		</SettingsPane>

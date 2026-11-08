@@ -28,6 +28,11 @@
 	background: var(--fill);
 }
 
+/* 开关本体小,焦点环多退 1px,避免压到相邻行 */
+.sw:focus-visible {
+	outline-offset: 3px;
+}
+
 .sw[aria-checked="true"] i {
 	background: var(--fill-ink);
 	transform: translateX(14px);
@@ -291,8 +296,8 @@
 
 .pixel-load i {
 	display: block;
-	width: 4px;
-	height: 4px;
+	width: calc(var(--ui-font-size, 14px) * 4 / 14);
+	height: calc(var(--ui-font-size, 14px) * 4 / 14);
 	background: var(--ink);
 	animation: reins-px 1.15s var(--ease) infinite;
 }
@@ -376,24 +381,6 @@
 	padding: 0 28px;
 }
 
-/* 空态不设 44px 会话头：右面板开关退成一枚贴右上角的图标钮 */
-.blank-panel {
-	position: absolute;
-	top: 12px;
-	right: 16px;
-	display: grid;
-	place-items: center;
-	width: 28px;
-	height: 28px;
-	border-radius: var(--r-2);
-	color: var(--ink-3);
-}
-
-.blank-panel:hover {
-	background: var(--wash);
-	color: var(--ink);
-}
-
 .blank h1 {
 	margin: 0;
 	font-size: var(--fs-36);
@@ -404,11 +391,11 @@
 
 .blank .caret {
 	display: inline-block;
-	width: 6px;
-	height: 6px;
+	width: calc(var(--ui-font-size, 14px) * 6 / 14);
+	height: calc(var(--ui-font-size, 14px) * 6 / 14);
 	margin-left: 10px;
 	background: var(--ink);
-	vertical-align: 14px;
+	vertical-align: 0.5em;
 }
 
 .blank .lede {
@@ -524,7 +511,7 @@
 	display: grid;
 	place-items: center;
 	padding: 24px;
-	background: rgba(0, 0, 0, 0.28);
+	background: rgba(0, 0, 0, 0.3);
 	backdrop-filter: blur(3px);
 	animation: reins-fade-in 160ms var(--ease);
 }
@@ -532,12 +519,12 @@
 .dialog {
 	display: flex;
 	flex-direction: column;
-	width: min(560px, 100%);
-	max-height: min(760px, calc(100vh - 48px));
+	width: min(520px, 100%);
+	max-height: min(740px, calc(100vh - 48px));
 	border: 1px solid var(--rule-2);
 	border-radius: var(--r-4);
 	background: var(--raise);
-	box-shadow: var(--shadow-2);
+	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
 	animation: reins-pop 180ms var(--ease) both;
 }
 
@@ -605,16 +592,17 @@
 	gap: 5px;
 	margin-bottom: 6px;
 	font-size: var(--fs-11);
+	font-weight: 500;
 	color: var(--ink-2);
 }
 
 .form-input {
 	width: 100%;
 	height: 30px;
-	padding: 0 10px;
+	padding: 0 9px;
 	border: 1px solid var(--rule-2);
 	border-radius: var(--r-2);
-	background: var(--paper);
+	background: var(--raise);
 	font-size: var(--fs-12);
 	color: var(--ink);
 	transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
@@ -635,28 +623,33 @@
 	padding: 7px 9px;
 	border: 1px solid var(--rule-2);
 	border-radius: var(--r-2);
-	background: var(--paper);
-	font-family: var(--mono);
-	font-size: var(--fs-11);
+	background: var(--raise);
+	font-size: var(--fs-12);
 	line-height: 1.6;
 	color: var(--ink);
-	resize: vertical;
+	resize: none;
+}
+
+.form-area:hover {
+	border-color: var(--rule-3);
 }
 
 .form-area:focus {
 	border-color: var(--ink);
+	box-shadow: 0 0 0 3px var(--wash-2);
 	outline: none;
 }
 
 .form-hint {
 	font-size: var(--fs-10);
 	line-height: 1.55;
-	color: var(--ink-4);
+	color: var(--ink-3);
 }
 
+/* 错误态用墨色,不引入红色——红只留给「止损」语义 */
 .form-error {
 	font-size: var(--fs-11);
-	color: var(--danger);
+	color: var(--ink);
 }
 
 /* 命令面板 */
@@ -840,6 +833,28 @@
 	background: var(--raise);
 }
 
+/* 缩略图必须「所见即所得」：两张卡各自硬编码对应主题的配色，
+   否则同一屏幕里三张缩略图长得一样，主题预览就失去意义 */
+.theme-thumb[data-theme="zai-light"] {
+	--paper: #f6f6f5;
+	--sheet: #fdfdfc;
+	--raise: #ffffff;
+	--ink: #0b0b0b;
+	--ink-4: #b6b6b4;
+	--rule: rgba(0, 0, 0, 0.085);
+	--rule-2: rgba(0, 0, 0, 0.16);
+}
+
+.theme-thumb[data-theme="zai-dark"] {
+	--paper: #090909;
+	--sheet: #111111;
+	--raise: #191919;
+	--ink: #f2f2f0;
+	--ink-4: #494948;
+	--rule: rgba(255, 255, 255, 0.09);
+	--rule-2: rgba(255, 255, 255, 0.18);
+}
+
 .theme-card .cap {
 	display: flex;
 	align-items: center;
@@ -909,7 +924,7 @@
 	padding: 12px 13px;
 	border: 1px dashed var(--rule-2);
 	border-radius: var(--r-2);
-	font-size: var(--content-font-size, var(--fs-14));
+	font-size: var(--ui-font-size, var(--fs-14));
 	line-height: 1.7;
 	color: var(--ink-2);
 }

@@ -57,11 +57,11 @@ export function ModelChip({
 					<span>{model.name}</span>
 					{effort === "off" ? null : (
 						<>
-							<span className="sep" />
+							<span className="dot">·</span>
 							<span>思考 {EFFORT_LABELS[effort]}</span>
 						</>
 					)}
-					<ChevronDown className="ic-12" />
+					<ChevronDown className="ic ic-12" />
 				</button>
 			)}
 		>
@@ -89,7 +89,7 @@ export function ModelChip({
 								>
 									<span className="pv-logo">{item.name.slice(0, 1).toUpperCase()}</span>
 									<span className="min-w-0 flex-1 truncate">{item.name}</span>
-									<Check className="ic-12 pv-check" />
+									<Check className="ic ic-12 pv-check" />
 								</button>
 							))
 						)}
@@ -107,7 +107,7 @@ export function ModelChip({
 								aria-label="返回提供商列表"
 								onClick={() => setProviderId(undefined)}
 							>
-								<ChevronLeft className="ic-12" />
+								<ChevronLeft className="ic ic-12" />
 							</button>
 							<span className="mv-name">{entry.name}</span>
 						</div>
@@ -120,15 +120,15 @@ export function ModelChip({
 								onClick={() => onModel(entry.id, item.model)}
 							>
 								<span className="min-w-0 flex-1 truncate">{item.name}</span>
-								{item.model === model.model ? <Check className="ic-12 ck" /> : null}
+								{item.model === model.model ? <Check className="ic ic-12 ck" /> : null}
 							</button>
 						))}
 						{levels.length <= 1 ? null : (
 							<>
 								<div className="es-head">
 									<span className="l">思考强度</span>
-									<span className="k">Ctrl 1 循环</span>
 									<span className="v">{EFFORT_LABELS[effort]}</span>
+									<span className="k">Ctrl 1</span>
 								</div>
 								<div
 									className="es-track"
@@ -156,17 +156,13 @@ export function ModelChip({
 										if (next !== undefined) onEffort(next);
 									}}
 								>
-									{levels.map((level, index) => (
-										<span
-											key={`pt-${level}`}
-											className="pt"
-											style={{ left: `${(index / Math.max(1, levels.length - 1)) * 100}%` }}
-										/>
-									))}
-									<span
-										className="es-thumb"
-										style={{ left: `${(effortIndex / Math.max(1, levels.length - 1)) * 100}%` }}
-									/>
+									{/* 轨道微粒照设计稿摆位：五颗，高低错落，只做质感不做刻度 */}
+									<i className="pt" style={{ left: "18%", top: "32%" }} />
+									<i className="pt" style={{ left: "40%", top: "64%" }} />
+									<i className="pt" style={{ left: "58%", top: "26%" }} />
+									<i className="pt" style={{ left: "76%", top: "60%" }} />
+									<i className="pt" style={{ left: "90%", top: "30%" }} />
+									<span className="es-thumb" style={{ left: `${8 + (effortIndex / Math.max(1, levels.length - 1)) * 84}%` }} />
 								</div>
 							</>
 						)}

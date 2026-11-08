@@ -23,7 +23,7 @@ export function PluginsPane({ plugins }: { readonly plugins: readonly PluginInfo
 							className="flex items-center gap-2"
 							style={{ height: 30, padding: "0 6px", borderBottom: "1px solid var(--rule)" }}
 						>
-							<Blocks className="ic-12" style={{ color: "var(--ink-3)" }} />
+							<Blocks className="ic ic-12" style={{ color: "var(--ink-3)" }} />
 							<span className="min-w-0 flex-1 truncate text-[var(--fs-12)]" style={{ color: "var(--ink-2)" }}>
 								{plugin.name}
 							</span>

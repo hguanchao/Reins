@@ -239,12 +239,6 @@ export const api = {
 	async gitStatus(): Promise<GitStatus | null> {
 		return (await request("/api/git/status")) as GitStatus | null;
 	},
-	async gitDiff(path: string, staged: boolean): Promise<string | null> {
-		const body = (await request(
-			`/api/git/diff?path=${encodeURIComponent(path)}&staged=${staged ? "1" : "0"}`,
-		)) as { diff?: string | null };
-		return body.diff ?? null;
-	},
 	async send(text: string): Promise<void> {
 		await request("/api/message", { method: "POST", body: JSON.stringify({ text }) });
 	},

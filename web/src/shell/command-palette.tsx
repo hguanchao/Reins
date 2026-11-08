@@ -1,14 +1,13 @@
-import { FileText, MessageSquarePlus, PanelRight, Search, Settings2, Sparkles, Sun } from "lucide-react";
+import { MessageSquarePlus, PanelRight, Search, Settings2, Sparkles, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 
-import { api } from "../api.ts";
 import { relativeTime } from "../lib/format.ts";
 import type { SessionSummary } from "../protocol.ts";
 
 interface PaletteItem {
 	readonly key: string;
-	readonly group: "命令" | "任务" | "文件";
+	readonly group: "命令" | "任务";
 	readonly label: string;
 	readonly hint?: string;
 	readonly icon: typeof Search;
@@ -18,7 +17,7 @@ interface PaletteItem {
 /**
  * 命令面板。
  *
- * 三组共用一只输入框：命令、任务与文件。分组标题是等宽小字，键盘上下移动跨组连续。
+ * 两组共用一只输入框：命令与任务。分组标题是等宽小字，键盘上下移动跨组连续。
  */
 export function CommandPalette({
 	open,
@@ -30,7 +29,6 @@ export function CommandPalette({
 	onToggleSidePane,
 	onCompact,
 	onSwitchSession,
-	onOpenFile,
 }: {
 	readonly open: boolean;
 	readonly sessions: readonly SessionSummary[];
@@ -41,40 +39,17 @@ export function CommandPalette({
 	onToggleSidePane(): void;
 	onCompact(): void;
 	onSwitchSession(session: SessionSummary): void;
-	onOpenFile(path: string): void;
 }): ReactElement | null {
 	const [query, setQuery] = useState("");
 	const [index, setIndex] = useState(0);
-	const [files, setFiles] = useState<readonly string[]>([]);
 	const inputRef = useRef<HTMLInputElement | null>(null);
 
 	useEffect(() => {
 		if (!open) return;
 		setQuery("");
 		setIndex(0);
-		setFiles([]);
 		requestAnimationFrame(() => inputRef.current?.focus());
 	}, [open]);
-
-	useEffect(() => {
-		if (!open || query.trim().length === 0) {
-			setFiles([]);
-			return;
-		}
-		let cancelled = false;
-		const timer = window.setTimeout(() => {
-			void api
-				.fileSearch(query, 8)
-				.then((hits) => {
-					if (!cancelled) setFiles(hits.map((hit) => hit.path));
-				})
-				.catch(() => {});
-		}, 150);
-		return () => {
-			cancelled = true;
-			window.clearTimeout(timer);
-		};
-	}, [open, query]);
 
 	const items = useMemo<readonly PaletteItem[]>(() => {
 		const needle = query.trim().toLowerCase();
@@ -100,27 +75,8 @@ export function CommandPalette({
 				run: () => onSwitchSession(session),
 			}));
 
-		const fileItems: PaletteItem[] = files.map((path) => ({
-			key: `file-${path}`,
-			group: "文件" as const,
-			label: path,
-			icon: FileText,
-			run: () => onOpenFile(path),
-		}));
-
-		return [...commands, ...tasks, ...fileItems];
-	}, [
-		query,
-		sessions,
-		files,
-		onNewTask,
-		onSettings,
-		onToggleTheme,
-		onToggleSidePane,
-		onCompact,
-		onSwitchSession,
-		onOpenFile,
-	]);
+		return [...commands, ...tasks];
+	}, [query, sessions, onNewTask, onSettings, onToggleTheme, onToggleSidePane, onCompact, onSwitchSession]);
 
 	useEffect(() => {
 		setIndex((current) => (current >= items.length ? 0 : current));
@@ -165,7 +121,7 @@ export function CommandPalette({
 		>
 			<div className="palette" role="dialog" aria-modal="true" aria-label="命令面板">
 				<div className="palette-h">
-					<Search className="ic-14" />
+					<Search className="ic ic-14" />
 					<input
 						ref={inputRef}
 						value={query}
@@ -174,7 +130,7 @@ export function CommandPalette({
 							setIndex(0);
 						}}
 						onKeyDown={onKeyDown}
-						placeholder="搜索命令、任务或文件…"
+							placeholder="搜索命令或任务…"
 						aria-label="命令面板搜索"
 					/>
 					<span className="badge">Esc</span>
@@ -201,7 +157,7 @@ export function CommandPalette({
 											position === index ? { background: "var(--wash-2)", color: "var(--ink)" } : undefined
 										}
 									>
-										<Icon className="ic-14" />
+										<Icon className="ic ic-14" />
 										<span className="lbl">{item.label}</span>
 										{item.hint === undefined ? null : <span className="hint">{item.hint}</span>}
 									</button>

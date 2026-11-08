@@ -82,6 +82,35 @@
 	background: var(--raise);
 }
 
+/* 通知时机的下拉：菜单挂到 body 用 fixed 定位，避免被卡片 overflow 裁掉 */
+.sel-menu {
+	position: fixed;
+	z-index: 240;
+	width: 150px;
+	padding: 4px 0;
+	max-height: 240px;
+	overflow-y: auto;
+}
+
+.pop.sel-menu {
+	min-width: 0;
+}
+
+.sel-menu .pop-i .ck {
+	margin-left: auto;
+	opacity: 0;
+	color: var(--ink);
+}
+
+.sel-menu .pop-i[aria-selected="true"] {
+	background: var(--wash-2);
+	color: var(--ink);
+}
+
+.sel-menu .pop-i[aria-selected="true"] .ck {
+	opacity: 1;
+}
+
 .set-row {
 	display: flex;
 	align-items: center;
@@ -346,6 +375,12 @@
 	letter-spacing: 0.09em;
 	text-transform: uppercase;
 	color: var(--ink-4);
+}
+
+.field .hint {
+	font-size: var(--fs-10);
+	line-height: 1.55;
+	color: var(--ink-3);
 }
 
 .input-line {

@@ -4,7 +4,7 @@ import type { QueuedMessage } from "../chat/composer/model.ts";
 import type { ActivitySummary, UsageSummary, WebEvent } from "../protocol.ts";
 import type { GlobalPanelId } from "../panels/types.ts";
 import type { Line } from "../transcript/lines.ts";
-import { appendToLast, sealStreaming, updateTool } from "../transcript/lines.ts";
+import { appendToLast, sealStreaming, sealThinking, updateTool } from "../transcript/lines.ts";
 import type { PendingGate } from "./approval-shortcut.ts";
 import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./usage.ts";
 
@@ -22,7 +22,6 @@ export interface EventDeps {
 	readonly setLines: Dispatch<SetStateAction<readonly Line[]>>;
 	readonly setRunning: Dispatch<SetStateAction<boolean>>;
 	readonly setAwaitingModel: Dispatch<SetStateAction<boolean>>;
-	readonly setDeferred: Dispatch<SetStateAction<boolean>>;
 	readonly setApproval: Dispatch<SetStateAction<PendingGate | undefined>>;
 	readonly setActivity: Dispatch<SetStateAction<ActivitySummary>>;
 	readonly setUsage: Dispatch<SetStateAction<UsageSummary>>;
@@ -48,11 +47,13 @@ export function dispatchEvent(event: WebEvent, deps: EventDeps): void {
 			deps.setAwaitingModel(true);
 			return;
 		case "writing_tool_call":
+			// 参数流也算思考的终点:模型已经离开思考段
 			deps.setAwaitingModel(false);
+			deps.setLines((current) => sealThinking(current, Date.now()));
 			return;
 		case "text_delta":
 			deps.setAwaitingModel(false);
-			deps.setLines((current) => appendToLast(current, "assistant", event.text));
+			deps.setLines((current) => sealThinking(appendToLast(current, "assistant", event.text), Date.now()));
 			return;
 		case "reasoning_delta":
 			deps.setAwaitingModel(false);
@@ -61,7 +62,7 @@ export function dispatchEvent(event: WebEvent, deps: EventDeps): void {
 		case "tool_start":
 			deps.setAwaitingModel(false);
 			deps.setLines((current) => [
-				...current,
+				...sealThinking(current, Date.now()),
 				{
 					kind: "tool",
 					callId: event.callId,
@@ -97,7 +98,8 @@ export function dispatchEvent(event: WebEvent, deps: EventDeps): void {
 			deps.setActivity((current) => applyToolDuration(current, event.durationMs));
 			return;
 		case "turn_end":
-			deps.setLines(sealStreaming);
+			// 思考一路跑到回合结束的情况:这里没有正文来封口,回合结束兜底
+			deps.setLines((current) => sealStreaming(sealThinking(current, Date.now())));
 			return;
 		case "usage_recorded":
 			if (event.contextTokens !== undefined) deps.setContextTokens(event.contextTokens);
@@ -150,7 +152,6 @@ export function dispatchEvent(event: WebEvent, deps: EventDeps): void {
 			deps.outcome.current = "done";
 			deps.setRunning(false);
 			deps.setAwaitingModel(false);
-			deps.setDeferred(false);
 			deps.setLines(sealStreaming);
 			deps.refreshSessions();
 			deps.refreshGit();
@@ -161,12 +162,10 @@ export function dispatchEvent(event: WebEvent, deps: EventDeps): void {
 				deps.maybeNotify("Reins 需要审批", "有新的操作等待确认");
 			}
 			deps.setAwaitingModel(false);
-			deps.setDeferred(false);
 			deps.setApproval({ id: event.id, request: event.request });
 			return;
 		case "approval_cleared":
 			deps.setApproval(undefined);
-			deps.setDeferred(false);
 			return;
 		case "session_switched":
 			deps.outcome.current = "done";

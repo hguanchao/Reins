@@ -34,15 +34,20 @@ export function ModeChip({
 					aria-expanded={open}
 					title="计划模式与审批方式"
 				>
-					<Icon className="ic-12" />
+					<Icon className="ic ic-12" />
 					<span>{planMode ? "计划模式" : APPROVAL_LABELS[approvalMode]}</span>
-					<ChevronDown className="ic-12" />
+					<ChevronDown className="ic ic-12" />
 				</button>
 			)}
 		>
 			<div>
-				<button type="button" className="pop-i plan-row" onClick={() => onPlanMode(!planMode)}>
-					<MapIcon className="ic-14" />
+				<button
+					type="button"
+					className="pop-i plan-row"
+					title="开启后只读调研，先出方案再动手"
+					onClick={() => onPlanMode(!planMode)}
+				>
+					<MapIcon className="ic ic-14" />
 					<span className="min-w-0 flex-1">计划模式</span>
 					<span className="sw" aria-checked={planMode} role="switch" aria-label="计划模式">
 						<i />
@@ -60,9 +65,9 @@ export function ModeChip({
 								className={cn("pop-i", mode === approvalMode && "sel")}
 								onClick={() => onApprovalMode(mode)}
 							>
-								<ModeIcon className="ic-14" />
+								<ModeIcon className="ic ic-14" />
 								<span className="min-w-0 flex-1">{APPROVAL_LABELS[mode]}</span>
-								<Check className="ic-12 ck" />
+								<Check className="ic ic-12 ck" />
 							</button>
 						);
 					})}

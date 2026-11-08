@@ -8,8 +8,8 @@ import { cn } from "./cn.ts";
  * 视觉层级只有四种：实心（每屏最多一个主动作）、描边（次动作）、无框（三级动作）、
  * 危险描边（止损）。尺寸 24 / 28 / 34px 对应 11 / 12 / 14px 字。
  */
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "outline" | "danger" | "link";
-export type ButtonSize = "xs" | "sm" | "default" | "lg" | "icon-xs" | "icon-sm" | "icon" | "icon-lg";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "outline" | "danger";
+export type ButtonSize = "xs" | "sm" | "default" | "icon-xs" | "icon-sm" | "icon";
 
 const VARIANTS: Record<ButtonVariant, string> = {
 	primary: "b-solid",
@@ -17,18 +17,15 @@ const VARIANTS: Record<ButtonVariant, string> = {
 	ghost: "b-ghost",
 	outline: "b-line",
 	danger: "b-danger",
-	link: "b-link",
 };
 
 const SIZES: Record<ButtonSize, string> = {
 	xs: "b-sm",
 	sm: "b-sm",
 	default: "",
-	lg: "h-[34px] px-3.5 text-ui-base",
 	"icon-xs": "size-6 p-0",
 	"icon-sm": "size-7 p-0",
 	icon: "size-7 p-0",
-	"icon-lg": "size-9 p-0",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

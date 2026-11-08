@@ -1,4 +1,4 @@
-import { FolderOpen, Plus, ZapOff } from "lucide-react";
+import { FolderOpen, Plus } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
 import { api } from "../../api.ts";
 import { cn } from "../../components/ui/cn.ts";
@@ -28,7 +28,7 @@ export function WorkspacePicker({
 	return (
 		<>
 			<div className="wsp-search">
-				<svg className="ic-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+				<svg className="ic ic-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
 					<path d="m21 21-4.34-4.34" />
 					<circle cx="11" cy="11" r="8" />
 				</svg>
@@ -52,31 +52,27 @@ export function WorkspacePicker({
 							className={cn("pop-i", item.name === name && "on")}
 							onClick={() => onPick(item.path)}
 						>
-							<FolderOpen className="ic-14" />
+							<FolderOpen className="ic ic-14" />
 							<span className="n">{item.name}</span>
 						</button>
 					))
 				)}
 			</div>
-			<div className="pop-sep" />
-			{bridge === undefined ? null : (
-				<button
-					type="button"
-					className="pop-i"
-					onClick={() => {
-						void bridge.chooseWorkspace().then((chosen) => {
-							if (chosen) onPick(null);
-						});
-					}}
-				>
-					<Plus className="ic-14" />
-					打开本地文件夹…
-				</button>
-			)}
-			<button type="button" className="pop-i" onClick={() => onPick(null)}>
-				<ZapOff className="ic-14" />
-				不绑定工作区
-			</button>
-		</>
+				<div className="pop-sep" />
+				{bridge === undefined ? null : (
+					<button
+						type="button"
+						className="pop-i"
+						onClick={() => {
+							void bridge.chooseWorkspace().then((chosen) => {
+								if (chosen) onPick(null);
+							});
+						}}
+					>
+						<Plus className="ic ic-14" />
+						打开本地文件夹…
+					</button>
+				)}
+			</>
 	);
 }

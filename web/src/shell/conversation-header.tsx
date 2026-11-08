@@ -1,4 +1,4 @@
-import { Archive, Ellipsis, ExternalLink, PanelRight, PanelRightClose } from "lucide-react";
+import { Archive, Ellipsis, ExternalLink, FolderOpen } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { Menu, type MenuEntry } from "../components/ui/index.ts";
@@ -6,29 +6,23 @@ import { Menu, type MenuEntry } from "../components/ui/index.ts";
 /**
  * 会话头。
  *
- * 44px：标题在左，右侧是速率与费用读数（等宽 10px）与两枚图标钮。
- * 结构读数（轮数·步数、上下文）不在这里——它们在输入卡下方的状态条上。
+ * 44px：标题在左，右侧是速率与费用读数（等宽 10px）与两枚图标钮——
+ * 「在新窗口打开」与「更多」，与设计稿一致；面板开关只住在页签条上。
  */
 export function ConversationHeader({
 	title,
-	workspace,
 	meta,
-	rightbarOpen,
-	onToggleRightbar,
 	onArchive,
 	onReveal,
 }: {
 	readonly title: string;
-	readonly workspace: string;
 	/** 会话头只放速率与费用；轮数与 token 在状态条 */
 	readonly meta: readonly string[];
-	readonly rightbarOpen: boolean;
-	onToggleRightbar(): void;
 	onArchive(): void;
 	onReveal(): void;
 }): ReactElement {
 	const entries: MenuEntry[] = [
-		{ type: "item", key: "reveal", label: "在资源管理器中显示", icon: ExternalLink, onSelect: onReveal },
+		{ type: "item", key: "reveal", label: "在资源管理器中显示", icon: FolderOpen, onSelect: onReveal },
 		{ type: "item", key: "archive", label: "归档此任务", icon: Archive, onSelect: onArchive },
 	];
 
@@ -36,7 +30,6 @@ export function ConversationHeader({
 		<header className="chat-head">
 			<div className="title">
 				<h2>{title}</h2>
-				{workspace.length === 0 ? null : <span className="ws">{workspace}</span>}
 			</div>
 			{meta.length === 0 ? null : (
 				<div className="meta">
@@ -51,11 +44,11 @@ export function ConversationHeader({
 			<button
 				type="button"
 				className="hbtn"
-				title={rightbarOpen ? "关闭面板" : "打开面板"}
-				aria-label={rightbarOpen ? "关闭面板" : "打开面板"}
-				onClick={onToggleRightbar}
+				title="在新窗口打开"
+				aria-label="在新窗口打开"
+				onClick={() => window.open(window.location.href, "_blank")}
 			>
-				{rightbarOpen ? <PanelRightClose className="ic-14" /> : <PanelRight className="ic-14" />}
+				<ExternalLink className="ic ic-14" />
 			</button>
 			<Menu
 				align="end"
@@ -70,7 +63,7 @@ export function ConversationHeader({
 						aria-expanded={open}
 						onClick={toggle}
 					>
-						<Ellipsis className="ic-14" />
+						<Ellipsis className="ic ic-14" />
 					</button>
 				)}
 			/>

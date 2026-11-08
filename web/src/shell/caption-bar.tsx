@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Folder, PanelLeft, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Folder, PanelLeft, Search } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { hasNativeTitlebar } from "../platform.ts";
@@ -73,23 +73,23 @@ export function CaptionBar({
 				disabled={!canGoBack}
 				onClick={onBack}
 			>
-				<ChevronLeft className="ic" />
-			</button>
-			<button
-				type="button"
-				className="cbtn no-drag"
-				aria-label="前进"
-				title="前进"
-				disabled={!canGoForward}
-				onClick={onForward}
-			>
-				<ChevronRight className="ic" />
+					<ArrowLeft className="ic" />
+				</button>
+				<button
+					type="button"
+					className="cbtn no-drag"
+					aria-label="前进"
+					title="前进"
+					disabled={!canGoForward}
+					onClick={onForward}
+				>
+					<ArrowRight className="ic" />
 			</button>
 
 			<div className="crumb">
 				{workspace.length === 0 ? null : (
 					<>
-						<Folder className="ic-12" />
+						<Folder className="ic ic-12" />
 						<span>{workspace}</span>
 						<span className="sep">/</span>
 					</>

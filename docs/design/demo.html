@@ -18,17 +18,20 @@
 	--mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", Menlo,
 		"PingFang SC", "Microsoft YaHei", monospace;
 
-	/* 字号阶梯：只允许这九级 */
+	/* 字号阶梯：只允许这九级；界面基准(--fs-13)是设置项，默认 14，可调 12–18，
+	   其余各级随基准等比缩放；12 槽位并入基准——界面字与正文同档 */
 	--fs-9: 9px;
 	--fs-10: 10px;
 	--fs-11: 11px;
-	--fs-12: 12px;
-	--fs-13: 13px;
+	--fs-12: 14px;
+	--fs-13: 14px;
 	--fs-14: 14px;
 	--fs-16: 16px;
 	--fs-20: 20px;
 	--fs-27: 27px;
 	--fs-36: 36px;
+	/* 代码字号：代码块、diff 与终端输出，设置里可调 10–14 */
+	--code-font-size: 12px;
 
 	/* 圆角：桌面工具，克制到近乎直角 */
 	--r-1: 3px;
@@ -738,7 +741,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .sel-pop button:hover { background: var(--wash); color: var(--ink); }
 .say code, .inline-code {
-	font-family: var(--mono); font-size: var(--fs-12);
+	font-family: var(--mono); font-size: var(--code-font-size, var(--fs-12));
 	padding: 1px 5px; border-radius: var(--r-1);
 	background: var(--wash); border: 1px solid var(--rule);
 }
@@ -752,7 +755,7 @@ input, textarea { font: inherit; color: inherit; }
 	width: 5px; height: 1px; background: var(--ink-3);
 }
 
-/* 思考块:火花图标即思考语言;默认折叠一行,点击整行展开/收起,行尾箭头随开合旋转 */
+/* 思考块:大脑图标即思考语言;默认折叠一行,点击整行展开/收起 */
 .think {
 	margin: 12px 0 6px; padding: 2px 0 2px 12px;
 	border-left: 1px solid var(--rule-2);
@@ -768,7 +771,7 @@ input, textarea { font: inherit; color: inherit; }
 	max-width: 68ch;
 }
 .think.open .th-body { display: block; animation: fade-in 200ms var(--ease); }
-/* 思考中:火花图标脉动,文字保留扫光 */
+/* 思考中:大脑图标脉动,文字保留扫光 */
 .think.live .th-head .ic:first-child { color: var(--ink); animation: twinkle 1.6s var(--ease) infinite; }
 .think.live .th-head .lbl {
 	background: linear-gradient(90deg, var(--ink-3) 0%, var(--ink) 45%, var(--ink-3) 90%);
@@ -860,7 +863,7 @@ input, textarea { font: inherit; color: inherit; }
    缩进一律空格呈现,不透传制表符 */
 .diff {
 	margin: 0 0 8px; border: 1px solid var(--rule); border-radius: var(--r-2);
-	overflow: hidden; font-family: var(--mono); font-size: var(--fs-11); line-height: 1.7;
+	overflow: hidden; font-family: var(--mono); font-size: var(--code-font-size, var(--fs-12)); line-height: 1.7;
 }
 .diff-h {
 	display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 9px;
@@ -1562,7 +1565,7 @@ input, textarea { font: inherit; color: inherit; }
 .git-row .ct b { color: var(--ink); font-weight: 500; }
 
 .term {
-	font-family: var(--mono); font-size: var(--fs-11); line-height: 1.78;
+	font-family: var(--mono); font-size: var(--code-font-size, var(--fs-12)); line-height: 1.78;
 	padding: 6px 12px 12px; color: var(--ink-2);
 }
 .term .cmd { color: var(--ink); }
@@ -2353,9 +2356,9 @@ body, .app, .caption, .side, .main, .panel, .chat-head, .composer, .gate, .pop,
 				<div class="demo" style="font-size:14px;line-height:1.78">所有文件工具在访问前都先校验目标是否落在工作区根目录内。</div>
 			</div>
 			<div class="ts-row">
-				<div class="spec"><b>13 / 500</b>界面基准</div>
+				<div class="spec"><b>14 / 500</b>界面基准</div>
 				<div class="use">会话标题、按钮</div>
-				<div class="demo" style="font-size:13px;font-weight:500">为权限模块加上路径边界检查</div>
+				<div class="demo" style="font-size:14px;font-weight:500">为权限模块加上路径边界检查</div>
 			</div>
 			<div class="ts-row">
 				<div class="spec"><b>12 / 400</b>等宽</div>
@@ -2658,7 +2661,7 @@ body, .app, .caption, .side, .main, .panel, .chat-head, .composer, .gate, .pop,
 							<div class="think">
 								<div class="th-head">
 									<svg class="ic ic-12"><use href="#i-brain"/></svg>
-									<span>思考了 8 秒 · 3 个约束</span>
+									<span>思考了 8 秒</span>
 								</div>
 								<div class="th-body">
 									路径边界属于安全边界，按规范必须留在宿主，不能下放给插件。用 realpath 解析符号链接后再比对前缀，避免 <code>../</code> 与软链双重绕过。
@@ -3564,9 +3567,6 @@ body, .app, .caption, .side, .main, .panel, .chat-head, .composer, .gate, .pop,
 					<button class="nav-row" data-set="about"><svg class="ic ic-14"><use href="#i-info"/></svg><span>关于 Reins</span></button>
 				</div>
 			</div>
-			<div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-top:1px solid var(--rule);font-family:var(--mono);font-size:10px;color:var(--ink-4)">
-				<span>本地模式</span><span>v1.0.0</span>
-			</div>
 		</aside>
 
 		<!-- 设置内容 -->
@@ -3647,6 +3647,27 @@ body, .app, .caption, .side, .main, .panel, .chat-head, .composer, .gate, .pop,
 						</div>
 						<div style="margin-top:14px;padding:12px 13px;border:1px dashed var(--rule-2);border-radius:var(--r-2);font-size:14px;line-height:1.7;color:var(--ink-2)">
 							这是一段预览文字。所有文件工具在访问前都先校验目标是否落在工作区根目录内。
+						</div>
+					</div>
+
+					<!-- 代码字号：代码块、diff 与终端输出，独立于界面字号 -->
+					<div style="margin-top:28px">
+						<div class="mono-label" style="font-size:9px;margin-bottom:10px">代码字号</div>
+						<div style="display:flex;align-items:center;gap:14px">
+							<div style="flex:1;position:relative;height:20px;display:flex;align-items:center">
+								<div style="position:absolute;left:0;right:0;height:1px;background:var(--rule-2)"></div>
+								<div style="position:absolute;left:0;width:50%;height:2px;background:var(--ink)"></div>
+								<div style="position:absolute;left:50%;width:11px;height:11px;background:var(--ink);border-radius:50%;transform:translateX(-50%)"></div>
+								<div style="position:absolute;left:0;top:-3px;width:1px;height:7px;background:var(--rule-2)"></div>
+								<div style="position:absolute;left:25%;top:-3px;width:1px;height:7px;background:var(--rule-2)"></div>
+								<div style="position:absolute;left:50%;top:-3px;width:1px;height:7px;background:var(--rule-2)"></div>
+								<div style="position:absolute;left:75%;top:-3px;width:1px;height:7px;background:var(--rule-2)"></div>
+								<div style="position:absolute;left:100%;top:-3px;width:1px;height:7px;background:var(--rule-2)"></div>
+							</div>
+							<span class="num" style="font-size:11px;color:var(--ink);min-width:40px;text-align:right">12 px</span>
+						</div>
+						<div style="display:flex;justify-content:space-between;margin-top:5px;font-family:var(--mono);font-size:9px;color:var(--ink-4)">
+							<span>10</span><span>11</span><span>12</span><span>13</span><span>14</span>
 						</div>
 					</div>
 

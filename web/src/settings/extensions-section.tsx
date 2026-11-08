@@ -1,8 +1,8 @@
-import { Blocks, Puzzle, Server, Sparkles, Trash2 } from "lucide-react";
+import { Blocks, FileText, MoreVertical, Pencil, Puzzle, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Dialog } from "../components/ui/index.ts";
+import { Dialog, Menu, type MenuEntry } from "../components/ui/index.ts";
 import type { McpServerInfo, SettingsSnapshot } from "../protocol.ts";
 import { Card, Empty, Section, SettingsPane, Tag } from "./controls.tsx";
 import { McpServerDialog } from "./mcp-server-dialog.tsx";
@@ -126,7 +126,7 @@ export function ExtensionsSection({
 				<span style={{ flex: 1 }} />
 				<div className="input-line" style={{ width: 150, background: "var(--raise)" }}>
 					<svg
-						className="ic-12"
+						className="ic ic-12"
 						viewBox="0 0 24 24"
 						fill="none"
 						stroke="currentColor"
@@ -164,13 +164,7 @@ export function ExtensionsSection({
 							{group.items.map((item) => (
 								<div key={item.key} className="ext">
 									<span className="mk">
-										{group.kind === "skill" ? (
-											<Sparkles className="ic-14" />
-										) : group.kind === "mcp" ? (
-											<Server className="ic-14" />
-										) : (
-											<Puzzle className="ic-14" />
-										)}
+										<Puzzle className="ic ic-14" />
 									</span>
 									<div className="tx">
 										<div className="n">
@@ -298,7 +292,7 @@ function statusLabel(status: string | undefined): string {
 	}
 }
 
-/** 行尾动作：编辑、日志、删除。没有可用动作时整组不出现。 */
+/** 行尾动作：单枚溢出钮，展开 编辑 / 日志 / 删除；没有可用动作时整组不出现。 */
 function RowActions({
 	kind,
 	onEdit,
@@ -313,23 +307,33 @@ function RowActions({
 	if (onEdit === undefined && onLogs === undefined && onDelete === undefined) {
 		return kind === "skill" ? <span className="m">只读</span> : null;
 	}
+	const entries: MenuEntry[] = [
+		...(onEdit === undefined ? [] : [{ type: "item" as const, key: "edit", label: "编辑", icon: Pencil, onSelect: onEdit }]),
+		...(onLogs === undefined
+			? []
+			: [{ type: "item" as const, key: "logs", label: "查看日志", icon: FileText, onSelect: onLogs }]),
+		...(onEdit === undefined && onLogs === undefined ? [] : [{ type: "separator" as const }]),
+		...(onDelete === undefined
+			? []
+			: [{ type: "item" as const, key: "delete", label: "删除", icon: Trash2, danger: true, onSelect: onDelete }]),
+	];
 	return (
-		<span style={{ display: "flex", alignItems: "center", gap: 1, flex: "none" }}>
-			{onEdit === undefined ? null : (
-				<button type="button" className="more" title="编辑" aria-label="编辑" onClick={onEdit}>
-					<Puzzle className="ic-14" />
+		<Menu
+			align="end"
+			entries={entries}
+			trigger={({ toggle, open }) => (
+				<button
+					type="button"
+					className="more"
+					title="更多操作"
+					aria-label="更多操作"
+					aria-haspopup="menu"
+					aria-expanded={open}
+					onClick={toggle}
+				>
+					<MoreVertical className="ic ic-14" />
 				</button>
 			)}
-			{onLogs === undefined ? null : (
-				<button type="button" className="more" title="查看日志" aria-label="查看日志" onClick={onLogs}>
-					<Blocks className="ic-14" />
-				</button>
-			)}
-			{onDelete === undefined ? null : (
-				<button type="button" className="more" title="删除" aria-label="删除" onClick={onDelete}>
-					<Trash2 className="ic-14" />
-				</button>
-			)}
-		</span>
+		/>
 	);
 }

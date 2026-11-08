@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
-import { BrandMark } from "../components/brand-mark.tsx";
 import { Dialog, Menu, type MenuEntry } from "../components/ui/index.ts";
 import { relativeTime } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
@@ -42,7 +41,6 @@ export interface SidebarProps {
 	readonly cwd: string;
 	readonly workspaces: readonly WorkspaceSummary[];
 	readonly version: string;
-	readonly connected: boolean;
 	readonly activePanel: GlobalPanelId | undefined;
 	readonly searchOpen: boolean;
 	onSearchOpenChange(open: boolean): void;
@@ -131,19 +129,19 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		<aside className="side">
 			<div className="side-top">
 				<div className="side-brand">
-					<BrandMark size={20} />
+					<div className="brandmark">R</div>
 					<span className="bn">Reins</span>
 					{props.version.length === 0 ? null : <span className="bv">v{props.version}</span>}
 				</div>
 
 				<button type="button" className="btn-new" onClick={() => props.onNewSession(null)}>
-					<Plus className="ic-14" />
+					<Plus className="ic ic-14" />
 					<span>新建任务</span>
 					<span className="k">Ctrl N</span>
 				</button>
 
 				<div className="side-search">
-					<Search className="ic-14" />
+					<Search className="ic ic-14" />
 					<input
 						ref={searchInput}
 						value={query}
@@ -165,11 +163,11 @@ export function Sidebar(props: SidebarProps): ReactElement {
 						className={`nav-row${props.activePanel === "schedules" ? " is-on" : ""}`}
 						onClick={() => props.onOpenPanel("schedules")}
 					>
-						<CalendarClock className="ic-14" />
+						<CalendarClock className="ic ic-14" />
 						<span>定时任务</span>
 					</button>
 					<button type="button" className="nav-row" onClick={props.onOpenExtensions}>
-						<Blocks className="ic-14" />
+						<Blocks className="ic ic-14" />
 						<span>扩展管理</span>
 					</button>
 				</div>
@@ -190,22 +188,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					))
 				)}
 
-				<div className="side-zone">
-					工作区
-					{bridge === undefined ? null : (
-						<button
-							type="button"
-							className="zone-add"
-							aria-label="添加工作区"
-							title="添加工作区"
-							onClick={() => {
-								void bridge.chooseWorkspace();
-							}}
-						>
-							<Plus className="ic-12" />
-						</button>
-					)}
-				</div>
+				<div className="side-zone">工作区</div>
 
 				{groups.workspaces.length === 0 ? (
 					<div className="side-sub" style={{ color: "var(--ink-4)", letterSpacing: 0 }}>
@@ -258,10 +241,11 @@ export function Sidebar(props: SidebarProps): ReactElement {
 										onClick={() =>
 											setCollapsed((current) => ({ ...current, [workspace.path]: !(current[workspace.path] ?? false) }))
 										}
-										style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1 }}
+										/* 按钮的 UA 默认 text-align:center 会把拉伸后的组名居中，demo 里名字靠左 */
+										style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1, textAlign: "left" }}
 									>
-										<ChevronRight className={`ic-12${open ? " open" : ""}`} />
-										{open ? <FolderOpen className="ic-14" /> : <Folder className="ic-14" />}
+										<ChevronRight className={`ic ic-12${open ? " open" : ""}`} />
+										{open ? <FolderOpen className="ic ic-14" /> : <Folder className="ic ic-14" />}
 										<span className="n">{workspace.name}</span>
 									</button>
 									<Menu
@@ -276,7 +260,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 												aria-expanded={menuOpen}
 												onClick={toggle}
 											>
-												<Ellipsis className="ic-12" />
+												<Ellipsis className="ic ic-12" />
 											</button>
 										)}
 									/>
@@ -298,11 +282,11 @@ export function Sidebar(props: SidebarProps): ReactElement {
 
 			<div className="side-foot">
 				<div className="user">
-					<span className="av">R</span>
-					<span className="min-w-0 truncate">{props.connected ? "本地模式" : "连接已断开"}</span>
+					<span className="av">C</span>
+					<span className="min-w-0 truncate">本地模式</span>
 				</div>
 				<button type="button" className="fbtn" aria-label="设置" title="设置 (Ctrl ,)" onClick={props.onOpenSettings}>
-					<Settings className="ic-14" />
+					<Settings className="ic ic-14" />
 				</button>
 			</div>
 
@@ -482,7 +466,6 @@ function SessionRowView({
 			<button type="button" onClick={onSwitch} onDoubleClick={onRename} title={row.title} className="tt">
 				{row.title}
 			</button>
-			{row.pinned ? <Pin className="ic-12" style={{ flex: "none", color: "var(--ink-4)" }} /> : null}
 			<span className="tm">{relativeTime(row.updatedAt)}</span>
 			<span className="hover-actions">
 				<button
@@ -491,7 +474,7 @@ function SessionRowView({
 					title={row.pinned ? "取消置顶" : "置顶"}
 					onClick={onTogglePin}
 				>
-					<Pin className="ic-12" />
+					<Pin className="ic ic-12" />
 				</button>
 				<Menu
 					align="end"
@@ -505,7 +488,7 @@ function SessionRowView({
 							aria-expanded={open}
 							onClick={toggle}
 						>
-							<Ellipsis className="ic-12" />
+							<Ellipsis className="ic ic-12" />
 						</button>
 					)}
 				/>

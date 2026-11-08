@@ -85,8 +85,6 @@
 	--color-destructive: var(--danger);
 	--color-destructive-surface: var(--danger-soft);
 	--color-destructive-surface-foreground: var(--danger);
-	--color-diff-added: var(--diff-add-ink);
-	--color-diff-removed: var(--diff-del-ink);
 	--color-user-message-bubble: var(--wash);
 	--color-tag: var(--wash-2);
 	--color-tooltip: var(--fill);
@@ -120,16 +118,22 @@
 	--mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", Menlo,
 		"PingFang SC", "Microsoft YaHei", monospace;
 
-	--fs-9: 9px;
-	--fs-10: 10px;
-	--fs-11: 11px;
-	--fs-12: 12px;
-	--fs-13: 13px;
-	--fs-14: 14px;
-	--fs-16: 16px;
-	--fs-20: 20px;
-	--fs-27: 27px;
-	--fs-36: 36px;
+	/* 字阶以界面基准等比缩放：基准是设置项（默认 14，可调 12–18）。
+	   9–11 是小标签档；12/13 槽位并入基准——界面字（按钮、导航、菜单、会话行）
+	   与正文同档，层级交给字重与明度，与 Codex/ZCode 的做法一致 */
+	--fs-9: calc(var(--ui-font-size, 14px) * 9 / 14);
+	--fs-10: calc(var(--ui-font-size, 14px) * 10 / 14);
+	--fs-11: calc(var(--ui-font-size, 14px) * 11 / 14);
+	--fs-12: var(--ui-font-size, 14px);
+	--fs-13: var(--ui-font-size, 14px);
+	--fs-14: var(--ui-font-size, 14px);
+	--fs-16: calc(var(--ui-font-size, 14px) * 16 / 14);
+	--fs-20: calc(var(--ui-font-size, 14px) * 20 / 14);
+	--fs-27: calc(var(--ui-font-size, 14px) * 27 / 14);
+	--fs-36: calc(var(--ui-font-size, 14px) * 36 / 14);
+
+	/* 代码字号：代码块、行内代码、diff 与工具输出，独立于界面基准 */
+	--code-font-size: 12px;
 
 	--r-1: 3px;
 	--r-2: 5px;
@@ -139,6 +143,13 @@
 	--caption-h: 34px;
 	--speed: 160ms;
 	--ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+
+	/* 类目色:只用于数据图表与技能字母头像,不参与界面状态 */
+	--cat-1: #2fbf71;
+	--cat-2: #e8930c;
+	--cat-3: #8957e5;
+	--cat-4: #3b82f6;
+	--cat-5: #db61a2;
 
 	--paper: #f6f6f5;
 	--sheet: #fdfdfc;
@@ -161,8 +172,6 @@
 	--hatch-soft: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.06) 0 3px, transparent 3px 7px);
 	--diff-add-bg: #e9f6ec;
 	--diff-del-bg: #fdeded;
-	--diff-add-ink: #0b0b0b;
-	--diff-del-ink: #0b0b0b;
 	--danger: #cf222e;
 	--danger-soft: #fdeded;
 	--danger-bright: #f85149;
@@ -203,8 +212,6 @@
 	--hatch-soft: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.09) 0 3px, transparent 3px 7px);
 	--diff-add-bg: rgba(63, 185, 80, 0.14);
 	--diff-del-bg: rgba(248, 81, 73, 0.16);
-	--diff-add-ink: #8ee6a0;
-	--diff-del-ink: #f7a3a0;
 	--danger: #f85149;
 	--danger-soft: rgba(248, 81, 73, 0.16);
 	--danger-bright: #f85149;

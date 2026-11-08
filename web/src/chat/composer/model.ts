@@ -23,10 +23,8 @@ export const EFFORT_LABELS: Record<ThinkingLevel, string> = {
 	max: "最大",
 };
 
-/** 输入卡最多 5 行，第 6 行起内部滚动。 */
-export const LINE_HEIGHT = 22;
+/** 输入卡起始两行；高度上限 132px 由样式封顶，超出即内部滚动。 */
 export const MIN_LINES = 2;
-export const MAX_LINES = 5;
 
 /** 排队的一条消息：只在本机会话内存在，清空后整条收起。 */
 export interface QueuedMessage {

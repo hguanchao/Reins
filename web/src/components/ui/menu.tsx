@@ -176,10 +176,10 @@ export function Menu({
 											}}
 											className={cn("pop-i", entry.danger && "pop-danger", entry.checked === true && "sel")}
 										>
-											{Icon === undefined ? null : <Icon className="ic-14" />}
+											{Icon === undefined ? null : <Icon className="ic ic-14" />}
 											<span className="min-w-0 flex-1 truncate">{entry.label}</span>
 											{entry.hint === undefined ? null : <span className="k">{entry.hint}</span>}
-											{entry.checked === true ? <Check className="ic-12 ck" /> : null}
+											{entry.checked === true ? <Check className="ic ic-12 ck" /> : null}
 										</button>
 									);
 								})}

@@ -45,7 +45,7 @@ export function PanelPage({
 							onClick={onClose}
 							className="flex size-7 items-center justify-center rounded-sm text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
 						>
-							<X className="size-4" />
+							<X className="ic ic-14" />
 						</button>
 					</div>
 				</div>
@@ -59,15 +59,16 @@ export function PanelPage({
 								className={cn(
 									"relative -mb-px px-1 pb-2.5 text-[13px] leading-4 font-medium transition-colors",
 									tab.id === activeTab
-										? "text-(--accent)"
+										? "text-foreground"
 										: "text-foreground-subtlest hover:text-foreground-subtle",
 								)}
 							>
 								{tab.label}
+								{/* 页签指示与侧面板同一套：2px 方角墨线，不用圆角胶囊 */}
 								<span
 									className={cn(
-										"absolute inset-x-0 bottom-0 h-0.5 rounded-full",
-										tab.id === activeTab ? "bg-(--accent)" : "bg-transparent",
+										"absolute inset-x-0 bottom-0 h-0.5",
+										tab.id === activeTab ? "bg-foreground" : "bg-transparent",
 									)}
 								/>
 							</button>

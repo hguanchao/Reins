@@ -29,7 +29,6 @@ function harness() {
 	const lines = setter<readonly Line[]>([]);
 	const running = setter(false);
 	const awaiting = setter(false);
-	const deferred = setter(false);
 	const approval = setter<{ readonly id: number; readonly request: ApprovalRequest } | undefined>(undefined);
 	const activity = setter<ActivitySummary>({
 		turns: 0, steps: 0, llmMs: 0, toolMs: 0, ttftMs: 0, ttftCount: 0, decodeTokens: 0, decodeMs: 0,
@@ -51,7 +50,6 @@ function harness() {
 		setLines: lines.dispatch,
 		setRunning: running.dispatch,
 		setAwaitingModel: awaiting.dispatch,
-		setDeferred: deferred.dispatch,
 		setApproval: approval.dispatch,
 		setActivity: activity.dispatch,
 		setUsage: usage.dispatch,

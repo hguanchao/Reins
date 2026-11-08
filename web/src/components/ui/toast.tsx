@@ -48,7 +48,7 @@ export function ToastHost(): ReactElement {
 				const Icon = item.tone === "error" ? CircleAlert : Info;
 				return (
 					<div key={item.id} role="status" className="toast" data-tone={item.tone}>
-						<Icon className="ic-14" />
+						<Icon className="ic ic-14" />
 						<span className="min-w-0 break-words">{item.message}</span>
 					</div>
 				);

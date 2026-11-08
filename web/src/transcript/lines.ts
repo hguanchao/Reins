@@ -5,12 +5,20 @@
  * notice。历史重放(会话条目)与实时事件(增量拼接)都归约到同一个形状,渲染只有一份。
  */
 
-import type { LlmMessage, SessionEntry } from "../protocol.ts";
+import type { ApprovalAnswer, ApprovalRequest, LlmMessage, SessionEntry } from "../protocol.ts";
 
 export type Line =
 	| { kind: "user"; text: string }
 	| { kind: "assistant"; text: string; open: boolean }
-	| { kind: "thinking"; text: string; open: boolean }
+	| {
+			kind: "thinking";
+			text: string;
+			open: boolean;
+			/** 流式思考的起表时刻：封口时据此算出耗时；历史重放没有它，直接带 durationMs */
+			startedAt?: number;
+			/** 本段思考的耗时（毫秒）；思考折叠行的「N 秒」读数 */
+			durationMs?: number;
+	  }
 	| {
 			kind: "tool";
 			callId: string;
@@ -24,20 +32,34 @@ export type Line =
 			content: string | undefined;
 			details: unknown;
 	  }
-	| { kind: "notice"; text: string; tone: "info" | "error" };
+	| { kind: "notice"; text: string; tone: "info" | "error" }
+	/** 已裁决的审批记录：与 notice 同生命周期，只伴随当前会话，内核尚未持久化裁决 */
+	| { kind: "gate"; request: ApprovalRequest; answer: ApprovalAnswer; at: string };
 
 /** 会话条目重放成行;工具结果按 toolCallId 回填到对应调用行。 */
 export function linesFromEntries(entries: readonly SessionEntry[]): Line[] {
 	const lines: Line[] = [];
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
-		const message = (entry as { message: LlmMessage }).message;
+		const record = entry as { message: LlmMessage; thinkingMs?: readonly number[] };
+		const message = record.message;
 		if (message.role === "user") {
 			lines.push({ kind: "user", text: userText(message) });
 		} else if (message.role === "assistant") {
+			// 思考条目按内容顺序带各自的耗时,数到第几段就取第几个
+			let thinkingIndex = 0;
 			for (const block of message.content) {
 				if (block.type === "text") lines.push({ kind: "assistant", text: block.text, open: false });
-				else if (block.type === "thinking") lines.push({ kind: "thinking", text: block.text, open: false });
+				else if (block.type === "thinking") {
+					const durationMs = record.thinkingMs?.[thinkingIndex];
+					thinkingIndex += 1;
+					lines.push({
+						kind: "thinking",
+						text: block.text,
+						open: false,
+						...(durationMs === undefined ? {} : { durationMs }),
+					});
+				}
 				// 调用行先占位,紧跟的 toolResult 条目按 toolCallId 回填结论
 				else if (block.type === "toolCall") {
 					lines.push({
@@ -96,7 +118,30 @@ export function appendToLast(lines: readonly Line[], kind: "assistant" | "thinki
 		next[index] = { ...line, text: line.text + delta };
 		return next;
 	}
+	// 思考段起表:流式期间没有条目时间戳,耗时只能在封口时用起表时刻现算
+	if (kind === "thinking") {
+		return [...lines, { kind, text: delta, open: true, startedAt: Date.now() } as Line];
+	}
 	return [...lines, { kind, text: delta, open: true } as Line];
+}
+
+/**
+ * 封口打开着的思考段并记下耗时:「思考了 N 秒」的秒数只在思考结束的那一刻才知道。
+ * 正文增量、工具调用、回合结束都会终结思考,调用方在各自的事件里先走这一步。
+ */
+export function sealThinking(lines: readonly Line[], now: number): readonly Line[] {
+	let changed = false;
+	const next = lines.map((line) => {
+		if (line.kind !== "thinking" || !line.open) return line;
+		changed = true;
+		const durationMs = line.startedAt === undefined ? undefined : Math.max(0, now - line.startedAt);
+		return {
+			...line,
+			open: false,
+			...(durationMs === undefined ? {} : { durationMs }),
+		};
+	});
+	return changed ? next : lines;
 }
 
 /** 结束当前回合的流式行:之后的新回答另起一行。 */

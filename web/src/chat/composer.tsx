@@ -5,7 +5,7 @@ import { cn } from "../components/ui/cn.ts";
 import { Popover } from "../components/ui/popover.tsx";
 import { formatTokens } from "../lib/format.ts";
 import type { ActivitySummary, ApprovalMode, McpServerInfo, ModelInfo, SettingsModel, SkillInfo, ThinkingLevel, UsageSummary } from "../protocol.ts";
-import { LINE_HEIGHT, MIN_LINES, MAX_LINES, hitRate, mentionItems, groupMentions } from "./composer/model.ts";
+import { MIN_LINES, hitRate, mentionItems, groupMentions } from "./composer/model.ts";
 import type { MentionState, QueuedMessage } from "./composer/model.ts";
 import { PencilIcon, GitBranchIcon } from "./composer/icons.tsx";
 import { AddMenu } from "./composer/add-menu.tsx";
@@ -45,7 +45,7 @@ export interface ComposerProps {
 	onModel(provider: string, model: string): void;
 	onEffort(effort: ThinkingLevel): void;
 	onNewTask(workspacePath?: string | null): void;
-	onOpenSettings(): void;
+	onOpenSettings(section?: "general" | "models" | "extensions"): void;
 	onCompact(): void;
 	onQueueRemove(id: string): void;
 	onQueueEdit(id: string, text: string): void;
@@ -72,9 +72,9 @@ export function Composer(props: ComposerProps): ReactElement {
 	useEffect(() => {
 		const element = textareaRef.current;
 		if (element === null) return;
-		const max = LINE_HEIGHT * MAX_LINES + 16;
+		// 封顶 132px，与设计稿一致；超出即内部滚动
 		element.style.height = "auto";
-		element.style.height = `${Math.min(element.scrollHeight, max)}px`;
+		element.style.height = `${Math.min(element.scrollHeight, 132)}px`;
 	}, [text]);
 
 	// 划选文本「引用」：以 > 块写入输入框并聚焦
@@ -270,16 +270,17 @@ export function Composer(props: ComposerProps): ReactElement {
 		}
 	};
 
-	const placeholder = props.running
-		? "当前回合进行中，Enter 加入队列 · @ 引用文件 · $ 调用技能"
-		: props.blank === true
+	const placeholder =
+		props.blank === true
 			? "想做什么？按 Enter 开始…"
-			: "继续这个任务，Enter 发送 · @ 引用文件 · $ 调用技能…";
+			: "继续这个任务，Enter 加入队列 · @ 引用文件 · $ 调用技能…";
 
+	// 状态条跟着数据走：设计稿只在有读数的工作台页画了它，空态与全新任务不给一排 0
 	const hasStatus =
-		props.activity.steps > 0 ||
-		props.usage.requests > 0 ||
-		(props.contextTokens !== undefined && props.contextWindow !== undefined && props.contextWindow > 0);
+		props.blank !== true &&
+		(props.activity.steps > 0 ||
+			props.usage.requests > 0 ||
+			(props.contextTokens !== undefined && props.contextWindow !== undefined && props.contextWindow > 0));
 
 	const mentionList = mentionItems(mention, props.skills);
 
@@ -300,7 +301,7 @@ export function Composer(props: ComposerProps): ReactElement {
 									aria-expanded={open}
 									title="切换工作区"
 								>
-									<FolderOpen className="ic-14" />
+									<FolderOpen className="ic ic-14" />
 									<span className="n">
 										{props.workspaceName.length === 0 ? "选择工作区" : props.workspaceName}
 									</span>
@@ -327,10 +328,10 @@ export function Composer(props: ComposerProps): ReactElement {
 								aria-label="取消绑定工作区"
 								onClick={() => props.onNewTask(null)}
 							>
-								<X className="ic-12" />
+								<X className="ic ic-12" />
 							</button>
 						)}
-						<ChevronDown className="ic-12 ck" />
+						<ChevronDown className="ic ic-12 ck" />
 					</span>
 					{props.branch === undefined ? null : (
 						<Popover
@@ -348,7 +349,7 @@ export function Composer(props: ComposerProps): ReactElement {
 								>
 									<GitBranchIcon />
 									<span className="n">{props.branch}</span>
-									<ChevronDown className="ic-12" />
+									<ChevronDown className="ic ic-12" />
 								</button>
 							)}
 						>
@@ -356,7 +357,7 @@ export function Composer(props: ComposerProps): ReactElement {
 							<div className="pop-i sel">
 								<GitBranchIcon />
 								<span className="n">{props.branch}</span>
-								<Check className="ic-12 ck" />
+								<Check className="ic ic-12 ck" />
 							</div>
 						</Popover>
 					)}
@@ -419,7 +420,7 @@ export function Composer(props: ComposerProps): ReactElement {
 									setDragIndex(index);
 								}}
 							>
-								<GripVertical className="ic-12 grip" />
+								<GripVertical className="ic ic-12 grip" />
 								<span className="idx">{index + 1}</span>
 								{editing?.id === item.id ? (
 									<input
@@ -461,7 +462,7 @@ export function Composer(props: ComposerProps): ReactElement {
 									aria-label="立即发送"
 									onClick={() => props.onQueueSendNow(item.id)}
 								>
-									<Zap className="ic-12" style={{ fill: "currentColor" }} />
+									<Zap className="ic ic-12" style={{ fill: "currentColor" }} />
 								</button>
 								<button
 									type="button"
@@ -470,7 +471,7 @@ export function Composer(props: ComposerProps): ReactElement {
 									aria-label="撤回这条"
 									onClick={() => props.onQueueRemove(item.id)}
 								>
-									<X className="ic-12" />
+									<X className="ic ic-12" />
 								</button>
 							</div>
 						))}
@@ -485,7 +486,7 @@ export function Composer(props: ComposerProps): ReactElement {
 					rows={MIN_LINES}
 					placeholder={placeholder}
 					aria-label="输入消息"
-					style={{ minHeight: props.blank === true ? 88 : LINE_HEIGHT * MIN_LINES + 16 }}
+					style={{ minHeight: props.blank === true ? 88 : 52 }}
 				/>
 
 				<div className="cbar">
@@ -494,7 +495,7 @@ export function Composer(props: ComposerProps): ReactElement {
 						mcpServers={props.mcpServers}
 						workspacePath={props.workspacePath}
 						onInsert={insertToken}
-						onSettings={props.onOpenSettings}
+						onSettings={() => props.onOpenSettings("extensions")}
 					/>
 					<ModeChip
 						planMode={props.planMode}
@@ -510,11 +511,11 @@ export function Composer(props: ComposerProps): ReactElement {
 						levels={effortLevels}
 						onModel={props.onModel}
 						onEffort={props.onEffort}
-						onSettings={props.onOpenSettings}
+						onSettings={() => props.onOpenSettings("models")}
 					/>
 					{props.running ? (
 						<button type="button" className="send" title="停止 (Esc)" aria-label="停止生成" onClick={props.onStop}>
-							<Square className="ic-12" style={{ fill: "currentColor" }} />
+							<Square className="ic ic-12" style={{ fill: "currentColor" }} />
 						</button>
 					) : (
 						<button
@@ -525,7 +526,7 @@ export function Composer(props: ComposerProps): ReactElement {
 							disabled={text.trim().length === 0}
 							onClick={submit}
 						>
-							<ArrowUp className="ic-14" />
+							<ArrowUp className="ic ic-14" />
 						</button>
 					)}
 				</div>

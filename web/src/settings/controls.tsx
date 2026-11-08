@@ -71,6 +71,7 @@ export function Row({
 	title,
 	description,
 	value,
+	action,
 	children,
 	lead,
 }: {
@@ -78,6 +79,8 @@ export function Row({
 	readonly description?: string;
 	/** 只读读数：等宽小字或徽标 */
 	readonly value?: ReactNode;
+	/** 行尾的动作按钮 */
+	readonly action?: ReactNode;
 	readonly children?: ReactNode;
 	/** 行首的序号或图标 */
 	readonly lead?: ReactNode;
@@ -90,6 +93,7 @@ export function Row({
 				{description === undefined ? null : <div className="d">{description}</div>}
 			</div>
 			{value}
+			{action === undefined ? null : <div className="flex shrink-0 items-center gap-2">{action}</div>}
 			{children}
 		</div>
 	);
@@ -112,7 +116,7 @@ export function ChoiceCard({
 			<span className="ct">
 				{title}
 				<svg
-					className="ic-12 ck"
+					className="ic ic-12 ck"
 					viewBox="0 0 24 24"
 					fill="none"
 					stroke="currentColor"
@@ -155,7 +159,7 @@ export function Empty({
 	return (
 		<div className="empty" style={{ paddingTop: 40, paddingBottom: 40 }}>
 			<span className="mk">
-				<Icon className="ic-14" />
+				<Icon className="ic ic-14" />
 			</span>
 			<span className="t">{title}</span>
 			<span className="d">{description}</span>

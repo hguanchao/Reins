@@ -1,4 +1,4 @@
-import { ArrowDown, LoaderCircle } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import { api, openEventStream } from "./api.ts";
+import { clockTime } from "./lib/format.ts";
 import { ApprovalCard } from "./chat/approval-card.tsx";
 import { Composer, type ComposerProps, type QueuedMessage, sessionReadout } from "./chat/composer.tsx";
 import { Hero } from "./chat/hero.tsx";
@@ -19,7 +20,6 @@ import { ToastHost, toast } from "./components/ui/index.ts";
 import { workspaceName } from "./lib/format.ts";
 import { sendDesktopNotification, shouldNotify } from "./lib/notify.ts";
 import { desktopBridge } from "./platform.ts";
-import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
 import { GitPane } from "./panels/git-pane.tsx";
 import { PluginsPane } from "./panels/plugins-pane.tsx";
@@ -31,6 +31,7 @@ import type {
 	ActivitySummary,
 	ApprovalAnswer,
 	ApprovalMode,
+	ApprovalRequest,
 	GitStatus,
 	ModelInfo,
 	NotifyMode,
@@ -46,7 +47,6 @@ import type {
 import type { PendingGate } from "./state/approval-shortcut.ts";
 import { dispatchEvent } from "./state/session-events.ts";
 import { useAppShortcuts } from "./state/use-app-shortcuts.ts";
-import { useResponsiveColumns } from "./state/use-responsive-columns.ts";
 import { useSelectionQuote } from "./state/use-selection-quote.ts";
 import { putSessionTitle, readSessionTitles, withSessionTitles } from "./state/session-titles.ts";
 import { SettingsPage, type SettingsSection } from "./settings/settings-page.tsx";
@@ -55,7 +55,6 @@ import {
 	clampRightbar,
 	clampSidebar,
 	defaultRightbarWidth,
-	SIDEBAR_AUTO_COLLAPSE,
 	SIDEBAR_DEFAULT,
 } from "./shell/columns.ts";
 import { CommandPalette } from "./shell/command-palette.tsx";
@@ -81,7 +80,6 @@ export function App(): ReactElement {
 	const [running, setRunning] = useState(false);
 	const [awaitingModel, setAwaitingModel] = useState(false);
 	const [approval, setApproval] = useState<PendingGate | undefined>(undefined);
-	const [deferred, setDeferred] = useState(false);
 	const [connected, setConnected] = useState(false);
 	const [sessionId, setSessionId] = useState("");
 	const [cwd, setCwd] = useState("");
@@ -120,12 +118,12 @@ export function App(): ReactElement {
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
-	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
-	const [autoCollapsed, setAutoCollapsed] = useState(window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
 	const [sideTabs, setSideTabs] = useState<readonly SideTab[]>([]);
 	const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
-	const [sideOpen, setSideOpen] = useState(false);
+	// 工作台页面板常开(设计稿 ws 变体);空态页固定无面板(no-panel),靠 draft 时收起表达
+	const [sideOpen, setSideOpen] = useState(true);
 	const [sideFullscreen, setSideFullscreen] = useState(false);
 	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
@@ -315,7 +313,7 @@ export function App(): ReactElement {
 				outcome: runOutcomeRef,
 				errorNotified: errorNotifiedRef,
 				approvalNotified: approvalNotifiedRef,
-				setLines, setRunning, setAwaitingModel, setDeferred, setApproval,
+				setLines, setRunning, setAwaitingModel, setApproval,
 				setActivity, setUsage, setContextTokens, setQueue, setActivePanel, setSideFullscreen,
 				maybeNotify, reload, refreshSessions, refreshSettings, refreshGit,
 			});
@@ -364,19 +362,11 @@ export function App(): ReactElement {
 		return () => window.clearInterval(timer);
 	}, [running, refreshGit]);
 
-	useResponsiveColumns({
-		sidebarCollapsed, sidebarWidth, sideOpen, autoCollapsed,
-		onSidebarCollapsed: setSidebarCollapsed, onAutoCollapsed: setAutoCollapsed,
-		onSideOpen: setSideOpen, onSideFullscreen: setSideFullscreen,
-	});
-
 	const toggleSidebar = useCallback((): void => {
-		setAutoCollapsed(false);
 		setSidebarCollapsed((value) => !value);
 	}, []);
 
 	const openSearch = useCallback((): void => {
-		setAutoCollapsed(false);
 		setSidebarCollapsed(false);
 		setSearchOpen(true);
 	}, []);
@@ -527,12 +517,19 @@ export function App(): ReactElement {
 		void api.abort().catch(() => {});
 	}, []);
 
-	const answer = useCallback((id: number, value: ApprovalAnswer): void => {
+	const answer = useCallback((id: number, value: ApprovalAnswer, request?: ApprovalRequest): void => {
 		setApproval(undefined);
-		setDeferred(false);
-		void api.approve(id, value).catch((error: unknown) => {
-			toast(error instanceof Error ? error.message : String(error), "error");
-		});
+		void api
+			.approve(id, value)
+			.then(() => {
+				// 裁决记录进会话流：结论一行 + 放行了什么一行；内核暂不持久化，重载后不保留
+				if (request !== undefined) {
+					setLines((current) => [...current, { kind: "gate", request, answer: value, at: clockTime() }]);
+				}
+			})
+			.catch((error: unknown) => {
+				toast(error instanceof Error ? error.message : String(error), "error");
+			});
 	}, []);
 
 	const changeApprovalMode = useCallback((mode: ApprovalMode): void => {
@@ -598,13 +595,15 @@ export function App(): ReactElement {
 		setSideOpen(true);
 	}, []);
 
-	const openFile = useCallback(
-		(path: string): void => {
-			const name = path.split(/[\\/]/).pop() ?? path;
-			openTab({ id: `code:${path}`, kind: "code", title: name, path });
-		},
-		[openTab],
-	);
+	// 空态没有面板(demo no-panel);从空态进入会话时面板随工作台一起回来
+	const toggleSidePane = useCallback((): void => {
+		if (sideOpen) {
+			setSideOpen(false);
+			setSideFullscreen(false);
+			return;
+		}
+		setSideOpen(true);
+	}, [sideOpen]);
 
 	const addSideTab = useCallback(
 		(kind: SideTabKind): void => {
@@ -625,16 +624,6 @@ export function App(): ReactElement {
 			return next;
 		});
 	}, []);
-
-	const toggleSidePane = useCallback((): void => {
-		if (sideOpen) {
-			setSideOpen(false);
-			setSideFullscreen(false);
-			return;
-		}
-		setSideOpen(true);
-	}, [sideOpen]);
-
 
 	const thinkingLevels = useMemo(
 		() => settings?.models.find((item) => item.model === model.model)?.thinkingLevels ?? [],
@@ -677,7 +666,7 @@ export function App(): ReactElement {
 		onModel: changeModel,
 		onEffort: changeEffort,
 		onNewTask: newTask,
-		onOpenSettings: () => openSettings("general"),
+		onOpenSettings: (section = "general") => openSettings(section),
 		onCompact: () => {
 			void api.compact().catch((error: unknown) => {
 				toast(error instanceof Error ? error.message : String(error), "error");
@@ -708,6 +697,9 @@ export function App(): ReactElement {
 	const displaySessions = useMemo(() => withSessionTitles(sessions, sessionTitles), [sessions, sessionTitles]);
 	const currentTitle = displaySessions.find((session) => session.id === sessionId)?.title ?? "新任务";
 	const readout = sessionReadout(usage, activity);
+	// 上下文越过窗口九成时提示压缩：内核不擅自截断，压缩与否交给使用者
+	const contextOverflow =
+		contextTokens !== undefined && contextWindow !== undefined && contextWindow > 0 && contextTokens / contextWindow >= 0.9;
 
 	useEffect(() => {
 		document.title = currentTitle === "新任务" ? "Reins" : `${currentTitle} · Reins`;
@@ -727,11 +719,8 @@ export function App(): ReactElement {
 			onToggleFullscreen={() => setSideFullscreen((value) => !value)}
 			onAdd={addSideTab}
 		>
-			{activeTab?.kind === "files" ? <FilesPane git={git} onOpenFile={openFile} /> : null}
-			{activeTab?.kind === "code" ? <CodePane path={activeTab.path} /> : null}
-			{activeTab?.kind === "git" ? (
-				<GitPane status={git} onRefresh={refreshGit} onOpenFile={openFile} />
-			) : null}
+			{activeTab?.kind === "files" ? <FilesPane git={git} workspace={workspaceName(cwd)} /> : null}
+			{activeTab?.kind === "git" ? <GitPane status={git} onRefresh={refreshGit} /> : null}
 			{activeTab?.kind === "skills" ? <SkillsPane skills={skills} /> : null}
 			{activeTab?.kind === "plugins" ? <PluginsPane plugins={plugins} /> : null}
 		</SidePane>
@@ -744,10 +733,7 @@ export function App(): ReactElement {
 			{draft ? null : (
 				<ConversationHeader
 					title={currentTitle}
-					workspace={workspaceName(cwd)}
 					meta={readout}
-					rightbarOpen={sideOpen}
-					onToggleRightbar={toggleSidePane}
 					onArchive={() => {
 						void api.archiveSessions([sessionId]).then(refreshSessions).catch(() => {});
 					}}
@@ -760,12 +746,7 @@ export function App(): ReactElement {
 					无法连接：{loadError}
 				</div>
 			) : draft ? (
-				<Hero
-					composer={<Composer {...composerProps} blank />}
-					onStart={(text) => deliver(text)}
-					rightbarOpen={sideOpen}
-					onToggleRightbar={toggleSidePane}
-				/>
+				<Hero composer={<Composer {...composerProps} blank />} onStart={(text) => deliver(text)} />
 			) : (
 				<>
 					<div className="transcript-wrap">
@@ -794,7 +775,7 @@ export function App(): ReactElement {
 
 						{!atBottom ? (
 							<button type="button" className="back-latest" onClick={jumpToBottom}>
-								<ArrowDown className="ic-12" />
+								<ChevronDown className="ic ic-12" />
 								回到最新
 							</button>
 						) : null}
@@ -803,32 +784,26 @@ export function App(): ReactElement {
 					</div>
 
 					<div className="dock">
-						<div className="dock-in">
-							{/* 待办槽位：模型在等回答时，输入卡整块让位给这张卡；答完换回 */}
-							{approval === undefined || deferred ? null : (
-								<ApprovalCard
-									request={approval.request}
-									count="1 / 1"
-									onDefer={() => setDeferred(true)}
-									onAnswer={(value) => answer(approval.id, value)}
-								/>
-							)}
-							{deferred && approval !== undefined ? (
-								<button
-									type="button"
-									className="gate"
-									style={{ width: "100%", textAlign: "left" }}
-									onClick={() => setDeferred(false)}
-								>
-									<div className="gate-h" style={{ borderBottom: 0 }}>
-										<span className="mk">
-											<LoaderCircle className="ic-12" />
-										</span>
-										<span className="t">有一条请求待确认</span>
-										<span className="cnt">展开</span>
-									</div>
-								</button>
+						<div className={`dock-in${approval === undefined ? "" : " is-pending"}`}>
+							{contextOverflow ? (
+								<div className="ctx-over" role="status">
+									<span>上下文已接近窗口上限，压缩可把早期对话折成摘要</span>
+									<span className="grow" />
+									<button type="button" className="b b-ghost b-sm" onClick={composerProps.onCompact}>
+										压缩上下文
+									</button>
+								</div>
 							) : null}
+							{/* 待办槽位：模型在等回答时，输入卡整块让位给这张卡；答完换回 */}
+							{approval === undefined ? null : (
+								<div className="dock-slot">
+									<ApprovalCard
+										request={approval.request}
+										count="1 / 1"
+										onAnswer={(value) => answer(approval.id, value, approval.request)}
+									/>
+								</div>
+							)}
 							<Composer {...composerProps} />
 						</div>
 					</div>
@@ -846,7 +821,7 @@ export function App(): ReactElement {
 				sidebarWidth={sidebarWidth}
 				sidebarCollapsed={sidebarCollapsed}
 				rightbarWidth={sideWidth}
-				rightbarOpen={sideOpen}
+				rightbarOpen={sideOpen && !draft}
 				rightbarFullscreen={sideFullscreen}
 				workspace={draft ? "" : workspaceName(cwd)}
 				title={draft ? "新任务" : currentTitle}
@@ -870,7 +845,6 @@ export function App(): ReactElement {
 						cwd={cwd}
 						workspaces={workspaces}
 						version={settings?.version ?? ""}
-						connected={connectionOk}
 						activePanel={activePanel}
 						searchOpen={searchOpen}
 						onSearchOpenChange={setSearchOpen}
@@ -947,7 +921,6 @@ export function App(): ReactElement {
 					});
 				}}
 				onSwitchSession={switchSession}
-				onOpenFile={openFile}
 			/>
 		</>
 	);

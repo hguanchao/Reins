@@ -48,7 +48,7 @@ export function ContextMeter({
 					<div className="cx-head">
 						<span>上下文用量</span>
 						<button type="button" className="cx-close" onClick={close} aria-label="关闭">
-							<X className="ic-12" />
+							<X className="ic ic-12" />
 						</button>
 					</div>
 					<div className="cx-big">

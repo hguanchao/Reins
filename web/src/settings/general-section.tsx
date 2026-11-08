@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { createPortal } from "react-dom";
 
 import { sandboxLabel } from "../lib/format.ts";
 import type { ApprovalMode, NotifyMode, SettingsSnapshot } from "../protocol.ts";
@@ -37,14 +38,26 @@ export function GeneralSection({
 	onUpdate(update: { approval?: ApprovalMode; notify?: NotifyMode }): void;
 }): ReactElement {
 	const [notifyOpen, setNotifyOpen] = useState(false);
-	const notifyRef = useRef<HTMLDivElement | null>(null);
+	const [notifyPos, setNotifyPos] = useState<{ readonly top: number; readonly left: number }>({ top: 0, left: 0 });
+	const notifyRef = useRef<HTMLButtonElement | null>(null);
+	const menuRef = useRef<HTMLDivElement | null>(null);
 	const current = settings?.notify ?? "auto";
 	const currentLabel = NOTIFY_OPTIONS.find((option) => option.key === current)?.label ?? "失焦时";
+
+	// 菜单挂到 body 用 fixed 定位：卡片是 overflow:hidden，绝对定位的下拉会被下缘裁掉
+	const toggleNotify = (): void => {
+		const rect = notifyRef.current?.getBoundingClientRect();
+		if (rect !== undefined) setNotifyPos({ top: rect.bottom + 4, left: rect.right - 150 });
+		setNotifyOpen((value) => !value);
+	};
 
 	useEffect(() => {
 		if (!notifyOpen) return;
 		const onDown = (event: MouseEvent): void => {
-			if (notifyRef.current !== null && !notifyRef.current.contains(event.target as Node)) setNotifyOpen(false);
+			const target = event.target as Node;
+			if (menuRef.current?.contains(target) ?? false) return;
+			if (notifyRef.current?.contains(target) ?? false) return;
+			setNotifyOpen(false);
 		};
 		document.addEventListener("mousedown", onDown);
 		return () => document.removeEventListener("mousedown", onDown);
@@ -73,25 +86,25 @@ export function GeneralSection({
 
 			<Section name="通知">
 				<Card>
-					<Row
-						title="通知时机"
-						description="任务完成、失败与等待审批时的提醒；响铃只在终端里生效。"
-					>
-						<div ref={notifyRef} style={{ position: "relative", flex: "none", width: 150 }}>
+						<Row
+							title="通知时机"
+							description="任务完成、失败与等待审批时的提醒；响铃只在终端里生效。"
+						>
 							<button
+								ref={notifyRef}
 								type="button"
 								className="input-line"
-								style={{ width: "100%", background: "var(--raise)", cursor: "pointer" }}
+								style={{ width: 150, flex: "none", background: "var(--raise)", cursor: "pointer" }}
 								aria-haspopup="listbox"
 								aria-expanded={notifyOpen}
 								aria-label="通知时机"
-								onClick={() => setNotifyOpen((value) => !value)}
+								onClick={toggleNotify}
 							>
 								<span className="t" style={{ fontFamily: "var(--mono)", fontSize: "var(--fs-11)" }}>
 									{currentLabel}
 								</span>
 								<svg
-									className="ic-12 chev"
+									className="ic ic-12 chev"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
@@ -103,49 +116,7 @@ export function GeneralSection({
 									<path d="m6 9 6 6 6-6" />
 								</svg>
 							</button>
-							{notifyOpen ? (
-								<div
-									className="pop animate-pop"
-									role="listbox"
-									style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, width: "100%", zIndex: 30 }}
-								>
-									{NOTIFY_OPTIONS.map((option) => (
-										<button
-											key={option.key}
-											type="button"
-											role="option"
-											aria-selected={option.key === current}
-											className="pop-i two"
-											style={option.key === current ? { background: "var(--wash-2)" } : undefined}
-											onClick={() => {
-												onUpdate({ notify: option.key });
-												setNotifyOpen(false);
-											}}
-										>
-											<span className="sk-col">
-												<span className="n">{option.label}</span>
-												<span className="d">{option.hint}</span>
-											</span>
-											{option.key === current ? (
-												<svg
-													className="ic-12 ck"
-													viewBox="0 0 24 24"
-													fill="none"
-													stroke="currentColor"
-													strokeWidth="2"
-													strokeLinecap="round"
-													strokeLinejoin="round"
-													aria-hidden="true"
-												>
-													<path d="M20 6 9 17l-5-5" />
-												</svg>
-											) : null}
-										</button>
-									))}
-								</div>
-							) : null}
-						</div>
-					</Row>
+						</Row>
 				</Card>
 				<p className="set-note">「失焦时」只在窗口不在前台时提醒；「桌面通知」每次都提醒。</p>
 			</Section>
@@ -166,7 +137,51 @@ export function GeneralSection({
 				</Card>
 			</Section>
 
-			<Section name="任务列表">
+			{notifyOpen
+				? createPortal(
+						<div
+							ref={menuRef}
+							className="pop sel-menu animate-pop"
+							role="listbox"
+							aria-label="通知时机"
+							style={{ position: "fixed", top: notifyPos.top, left: notifyPos.left, zIndex: 240, width: 150 }}
+						>
+							{NOTIFY_OPTIONS.map((option) => (
+								<button
+									key={option.key}
+									type="button"
+									role="option"
+									aria-selected={option.key === current}
+									className="pop-i"
+									style={option.key === current ? { background: "var(--wash-2)" } : undefined}
+									onClick={() => {
+										onUpdate({ notify: option.key });
+										setNotifyOpen(false);
+									}}
+								>
+									{option.label}
+									{option.key === current ? (
+										<svg
+											className="ic ic-12 ck"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2"
+											strokeLinecap="round"
+											strokeLinejoin="round"
+											aria-hidden="true"
+										>
+											<path d="M20 6 9 17l-5-5" />
+										</svg>
+									) : null}
+								</button>
+							))}
+						</div>,
+						document.body,
+					)
+				: null}
+
+				<Section name="任务列表">
 				<Card>
 					<Row title="分组方式" description="侧栏任务区按项目归类。" value={<span className="v">按项目</span>} />
 					<Row title="排序" description="各组内按最近更新时间排列。" value={<span className="v">最近更新</span>} />
