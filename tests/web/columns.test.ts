@@ -3,24 +3,44 @@ import { describe, it } from "node:test";
 
 import {
 	CENTER_MIN,
+	RIGHTBAR_DEFAULT,
+	RIGHTBAR_MAX,
 	RIGHTBAR_MIN,
+	SIDEBAR_DEFAULT,
 	SIDEBAR_MAX,
 	SIDEBAR_MIN,
 	autoSidebarAction,
+	clampRightbar,
 	clampSidebar,
 	computeColumns,
 	defaultRightbarWidth,
 } from "#web/shell/columns.ts";
 
 describe("侧栏宽度收敛", () => {
-	it("低于下限抬到 264，高于上限压到 420", () => {
+	it("demo 基准 244px，拖拽范围 180–320", () => {
+		assert.equal(SIDEBAR_DEFAULT, 244);
+		assert.equal(SIDEBAR_MIN, 180);
+		assert.equal(SIDEBAR_MAX, 320);
 		assert.equal(clampSidebar(120), SIDEBAR_MIN);
 		assert.equal(clampSidebar(600), SIDEBAR_MAX);
-		assert.equal(clampSidebar(280), 280);
+		assert.equal(clampSidebar(244), 244);
 	});
 
 	it("四舍五入到整数像素", () => {
-		assert.equal(clampSidebar(280.6), 281);
+		assert.equal(clampSidebar(244.6), 245);
+	});
+});
+
+describe("右面板宽度收敛", () => {
+	it("默认 308px，拖拽范围 300–420", () => {
+		assert.equal(RIGHTBAR_DEFAULT, 308);
+		assert.equal(defaultRightbarWidth(1440), 308);
+		assert.equal(clampRightbar(100, 1440), RIGHTBAR_MIN);
+		assert.equal(clampRightbar(900, 1440), RIGHTBAR_MAX);
+	});
+
+	it("窄窗里不超过窗口 70%", () => {
+		assert.ok(clampRightbar(420, 500) <= Math.round(500 * 0.7));
 	});
 });
 
@@ -48,30 +68,29 @@ describe("窄窗自动收展", () => {
 });
 
 describe("三栏求解", () => {
-	it("常规窗口保留主列最小宽度并给出右栏", () => {
-		const widths = computeColumns(1440, 280, defaultRightbarWidth(1440));
-		assert.equal(widths.sidebar, 280);
-		assert.equal(widths.rightbar, 648);
-		assert.equal(widths.center, 1440 - 280 - 648);
+	it("常规窗口按 demo 给出 244 / 308 / 剩余", () => {
+		const widths = computeColumns(1440, SIDEBAR_DEFAULT, defaultRightbarWidth(1440));
+		assert.equal(widths.sidebar, 244);
+		assert.equal(widths.rightbar, 308);
+		assert.equal(widths.center, 1440 - 244 - 308);
 	});
 
 	it("右栏空间不足时整条让出，主列不被压缩", () => {
-		const widths = computeColumns(900, 280, 500);
+		const widths = computeColumns(900, 244, 500);
 		assert.equal(widths.rightbar, 0);
-		assert.equal(widths.center, 900 - 280);
+		assert.equal(widths.center, 900 - 244);
 	});
 
 	it("窗口极窄时主列可以降为零", () => {
-		const widths = computeColumns(320, 280, 0);
-		assert.equal(widths.sidebar, 280);
-		assert.equal(widths.center, 40);
+		const widths = computeColumns(320, 244, 0);
+		assert.equal(widths.sidebar, 244);
+		assert.equal(widths.center, 76);
 		assert.ok(widths.center < CENTER_MIN);
 	});
 
-	it("右栏下限 300，上限不超过窗口 70%", () => {
-		assert.equal(computeColumns(1440, 280, 100).rightbar, RIGHTBAR_MIN);
-		const wide = computeColumns(2400, 280, 2000);
-		assert.equal(wide.rightbar, Math.round(2400 * 0.7));
+	it("右栏下限 300、上限 420", () => {
+		assert.equal(computeColumns(1440, 244, 100).rightbar, RIGHTBAR_MIN);
+		assert.equal(computeColumns(2400, 244, 2000).rightbar, RIGHTBAR_MAX);
 	});
 
 	it("收起侧栏与关闭右栏都是零宽", () => {

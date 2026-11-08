@@ -41,8 +41,8 @@ interface PanelPosition {
 /**
  * 下拉菜单。
  *
- * 面板挂在 body 上而不是触发器的子树里：侧栏、页签栏都有 overflow-hidden，直接绝对定位
- * 会被裁掉，甚至让点击落到下层元素。固定定位按触发器矩形算位置，空间不够时向上翻。
+ * 面板挂在 body 上：侧栏、页签栏都有 overflow-hidden，直接绝对定位会被裁掉，甚至让点击
+ * 落到下层元素。固定定位按触发器矩形算位置，空间不够时向上翻。
  */
 export function Menu({
 	trigger,
@@ -57,7 +57,6 @@ export function Menu({
 	readonly align?: "start" | "end";
 	readonly className?: string;
 	readonly wrapperClassName?: string;
-	/** 面板与点击遮罩的层级；放在设置页等高层容器里时由调用方抬高 */
 	readonly zIndex?: number;
 }): ReactElement {
 	const [open, setOpen] = useState(false);
@@ -72,7 +71,7 @@ export function Menu({
 		const openUp = spaceBelow < 260 && rect.top > spaceBelow;
 		const maxHeight = Math.max(120, Math.min(384, openUp ? rect.top - 8 : spaceBelow - 8));
 		// 估算宽度只用于决定向左还是向右展开；贴边时换一侧，避免面板伸出窗口
-		const estimated = 360;
+		const estimated = 280;
 		const useLeft =
 			align === "start" ? rect.left + estimated <= window.innerWidth - 8 : rect.right - estimated < 8;
 		setPosition({
@@ -149,25 +148,19 @@ export function Menu({
 									maxHeight: position?.maxHeight,
 									...(zIndex === undefined ? {} : { zIndex: zIndex + 1 }),
 								}}
-									className={cn(
-										"menu-material z-50 min-w-52 overflow-y-auto rounded-[16px] p-1 animate-pop",
-										className,
-									)}
+								className={cn("pop animate-pop z-50 overflow-y-auto p-1", className)}
 							>
 								{entries.map((entry, index) => {
-										if (entry.type === "separator") {
-											return <div key={`sep-${index}`} role="separator" className="mx-1 my-1 h-px bg-border/70" />;
-										}
-										if (entry.type === "label") {
-											return (
-												<div
-													key={`label-${index}`}
-													className="px-2 pb-1 pt-1.5 text-[11px] font-medium text-foreground-subtlest"
-												>
-													{entry.label}
-												</div>
-											);
-										}
+									if (entry.type === "separator") {
+										return <div key={`sep-${index}`} role="separator" className="pop-sep" />;
+									}
+									if (entry.type === "label") {
+										return (
+											<div key={`label-${index}`} className="pop-h">
+												{entry.label}
+											</div>
+										);
+									}
 									const Icon = entry.icon;
 									return (
 										<button
@@ -181,20 +174,12 @@ export function Menu({
 												setOpen(false);
 												entry.onSelect();
 											}}
-												className={cn(
-													"flex min-h-7 w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-[13px] leading-5 transition-colors",
-													entry.danger
-														? "text-destructive hover:bg-destructive-surface"
-														: "text-foreground hover:bg-menu-hover",
-													entry.disabled && "pointer-events-none opacity-50",
-												)}
+											className={cn("pop-i", entry.danger && "pop-danger", entry.checked === true && "sel")}
 										>
-											{Icon === undefined ? null : <Icon className="size-4 shrink-0 text-foreground-subtlest" />}
+											{Icon === undefined ? null : <Icon className="ic-14" />}
 											<span className="min-w-0 flex-1 truncate">{entry.label}</span>
-											{entry.hint === undefined ? null : (
-												<span className="shrink-0 text-[11px] leading-4 text-foreground-subtlest">{entry.hint}</span>
-											)}
-											{entry.checked === true ? <Check className="size-3.5 shrink-0" /> : null}
+											{entry.hint === undefined ? null : <span className="k">{entry.hint}</span>}
+											{entry.checked === true ? <Check className="ic-12 ck" /> : null}
 										</button>
 									);
 								})}

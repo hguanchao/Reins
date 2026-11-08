@@ -2,28 +2,33 @@ import type { ButtonHTMLAttributes, ReactElement, ReactNode } from "react";
 
 import { cn } from "./cn.ts";
 
-/** 按钮的视觉层级；组件只选层级，不写具体颜色。 */
+/**
+ * 按钮。
+ *
+ * 视觉层级只有四种：实心（每屏最多一个主动作）、描边（次动作）、无框（三级动作）、
+ * 危险描边（止损）。尺寸 24 / 28 / 34px 对应 11 / 12 / 14px 字。
+ */
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "outline" | "danger" | "link";
 export type ButtonSize = "xs" | "sm" | "default" | "lg" | "icon-xs" | "icon-sm" | "icon" | "icon-lg";
 
 const VARIANTS: Record<ButtonVariant, string> = {
-	primary: "bg-primary text-primary-foreground hover:opacity-90",
-	secondary: "bg-secondary text-foreground hover:bg-secondary/80",
-	ghost: "text-foreground hover:bg-surface-hover",
-	outline: "border border-border bg-transparent text-foreground hover:bg-surface-hover",
-	danger: "bg-destructive text-foreground-inverse hover:opacity-90",
-	link: "text-foreground underline underline-offset-4",
+	primary: "b-solid",
+	secondary: "b-line",
+	ghost: "b-ghost",
+	outline: "b-line",
+	danger: "b-danger",
+	link: "b-link",
 };
 
 const SIZES: Record<ButtonSize, string> = {
-	xs: "h-6 rounded-xs px-2 text-[11px]",
-	sm: "h-7 rounded-sm px-3 text-[12px]",
-	default: "h-9 rounded-md px-3.5 text-[14px]",
-	lg: "h-9 rounded-md px-4 text-[14px]",
-	"icon-xs": "size-5 rounded-xs",
-	"icon-sm": "size-7 rounded-sm",
-	icon: "size-7 rounded-sm",
-	"icon-lg": "size-9 rounded-md",
+	xs: "b-sm",
+	sm: "b-sm",
+	default: "",
+	lg: "h-[34px] px-3.5 text-ui-base",
+	"icon-xs": "size-6 p-0",
+	"icon-sm": "size-7 p-0",
+	icon: "size-7 p-0",
+	"icon-lg": "size-9 p-0",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -39,17 +44,7 @@ export function Button({
 	...props
 }: ButtonProps): ReactElement {
 	return (
-		<button
-			type="button"
-			className={cn(
-				"inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors",
-				"disabled:pointer-events-none disabled:opacity-50",
-				VARIANTS[variant],
-				SIZES[size],
-				className,
-			)}
-			{...props}
-		>
+		<button type="button" className={cn("b shrink-0 select-none", VARIANTS[variant], SIZES[size], className)} {...props}>
 			{children}
 		</button>
 	);
@@ -68,13 +63,7 @@ export function IconButton({
 	readonly size?: ButtonSize;
 }): ReactElement {
 	return (
-		<Button
-			size={size}
-			aria-label={label}
-			title={label}
-			className={cn("text-foreground-subtle hover:text-foreground", className)}
-			{...props}
-		>
+		<Button size={size} aria-label={label} title={label} className={cn("b-ghost", className)} {...props}>
 			{children}
 		</Button>
 	);

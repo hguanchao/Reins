@@ -1,31 +1,10 @@
-import {
-	Blocks,
-	Check,
-	Minus,
-	MoreHorizontal,
-	PackagePlus,
-	Pencil,
-	Plus,
-	Puzzle,
-	RefreshCw,
-	ScrollText,
-	Search,
-	Server,
-	Store,
-	Trash2,
-	Upload,
-	WandSparkles,
-	type LucideIcon,
-} from "lucide-react";
+import { Blocks, Puzzle, Server, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { StateDot, type StateDotState } from "../components/state-dot.tsx";
-import { Button, Dialog, Menu, Switch, toast, type MenuEntry } from "../components/ui/index.ts";
-import { cn } from "../components/ui/cn.ts";
-import { desktopBridge } from "../platform.ts";
-import type { McpServerInput, SettingsSnapshot } from "../protocol.ts";
-import { Badge, EmptyState, SettingsCard, SettingsHeader } from "./controls.tsx";
+import { Dialog } from "../components/ui/index.ts";
+import type { McpServerInfo, SettingsSnapshot } from "../protocol.ts";
+import { Card, Empty, Section, SettingsPane, Tag } from "./controls.tsx";
 import { McpServerDialog } from "./mcp-server-dialog.tsx";
 import { PluginLogsDialog } from "./plugin-logs-dialog.tsx";
 import { SkillDialog } from "./skill-dialog.tsx";
@@ -40,73 +19,15 @@ import {
 
 type Tab = "all" | ExtensionKind;
 
-const TAB_LABELS: Record<Tab, string> = {
-	all: "全部",
-	plugin: "插件",
-	skill: "技能",
-	mcp: "MCP",
-};
+const TAB_LABELS: Record<Tab, string> = { all: "全部", plugin: "插件", skill: "技能", mcp: "MCP" };
+const KIND_LABELS: Record<ExtensionKind, string> = { plugin: "插件", skill: "技能", mcp: "MCP 服务器" };
 
-const KIND_LABELS: Record<ExtensionKind, string> = {
-	plugin: "插件",
-	skill: "技能",
-	mcp: "MCP 服务器",
-};
-
-const KIND_ICONS: Record<ExtensionKind, LucideIcon> = {
-	plugin: Puzzle,
-	skill: WandSparkles,
-	mcp: Server,
-};
-
-interface McpStatusView {
-	readonly state: StateDotState;
-	readonly label: string;
-	readonly detail: string;
-}
-
-/** 运行期状态映射成界面上的点与一句话；未知状态按未连接处理。 */
-function mcpStatusOf(item: ExtensionItem): McpStatusView | undefined {
-	if (item.kind !== "mcp") return undefined;
-	switch (item.status) {
-		case "connected":
-			return { state: "done", label: "已连接", detail: item.detail ?? "" };
-		case "connecting":
-			return { state: "ongoing", label: "连接中", detail: item.detail ?? "" };
-		case "unreachable":
-			return { state: "error", label: "连接失败", detail: item.detail ?? "" };
-		case "disabled":
-			return { state: "idle", label: "已禁用", detail: item.detail ?? "" };
-		default:
-			return { state: "idle", label: "未连接", detail: item.detail ?? "" };
-	}
-}
-
-/** 各分类没有内容时的空态；与「搜索无结果」分开，避免把空分类说成没搜到。 */
-const TAB_EMPTY: Record<Tab, { readonly icon: LucideIcon; readonly title: string; readonly description: string }> = {
-	all: {
-		icon: Blocks,
-		title: "还没有装载扩展",
-		description: "Reins 的核心能力全部内置；插件、技能与 MCP 服务器装载后会出现在这里。",
-	},
-	plugin: {
-		icon: Puzzle,
-		title: "还没有装载插件",
-		description: "插件市场尚未接入；桌面端可以安装本地插件，已装载的插件会出现在这里。",
-	},
-	skill: {
-		icon: WandSparkles,
-		title: "还没有技能",
-		description: "用「+」上传技能压缩包（.zip），技能会从下一回合开始可用。",
-	},
-	mcp: {
-		icon: Server,
-		title: "还没有 MCP 服务器",
-		description: "用「+」添加 stdio、http 或 sse 服务器，连接成功后工具会在下一回合可用。",
-	},
-};
-
-/** 扩展管理：插件、技能与 MCP 都来自宿主快照，这里只做清单、搜索与刷新。 */
+/**
+ * 扩展管理。
+ *
+ * 页签只做过滤（带数量），清单仍按类型分组——技能、MCP 与插件的心智不同，混在一起读不出
+ * 「我在管什么」。MCP 状态用徽标陈述（已连接 / 连接失败），不用彩色点。
+ */
 export function ExtensionsSection({
 	settings,
 	onRefresh,
@@ -116,18 +37,14 @@ export function ExtensionsSection({
 }): ReactElement {
 	const [tab, setTab] = useState<Tab>("all");
 	const [query, setQuery] = useState("");
-	const [infoOpen, setInfoOpen] = useState(false);
 	const [uploadOpen, setUploadOpen] = useState(false);
 	const [mcpOpen, setMcpOpen] = useState(false);
-	const [mcpEditTarget, setMcpEditTarget] = useState<McpServerInput | undefined>(undefined);
-	const [mcpDeleteTarget, setMcpDeleteTarget] = useState<ExtensionItem | undefined>(undefined);
-	const [mcpDeleting, setMcpDeleting] = useState(false);
-	const [skillEditTarget, setSkillEditTarget] = useState<ExtensionItem | undefined>(undefined);
-	const [skillDeleteTarget, setSkillDeleteTarget] = useState<ExtensionItem | undefined>(undefined);
-	const [skillDeleting, setSkillDeleting] = useState(false);
-	const [pluginRemoveTarget, setPluginRemoveTarget] = useState<ExtensionItem | undefined>(undefined);
-	const [pluginLogsTarget, setPluginLogsTarget] = useState<ExtensionItem | undefined>(undefined);
-	const bridge = desktopBridge();
+	const [mcpEdit, setMcpEdit] = useState<McpServerInfo | undefined>(undefined);
+	const [mcpDelete, setMcpDelete] = useState<ExtensionItem | undefined>(undefined);
+	const [skillEdit, setSkillEdit] = useState<ExtensionItem | undefined>(undefined);
+	const [skillDelete, setSkillDelete] = useState<ExtensionItem | undefined>(undefined);
+	const [logs, setLogs] = useState<string | undefined>(undefined);
+	const [busy, setBusy] = useState(false);
 
 	// MCP 状态会从 connecting 走到 connected/unreachable；页签打开时轮询，离开就停
 	useEffect(() => {
@@ -144,574 +61,275 @@ export function ExtensionsSection({
 		query,
 	);
 	const groups = (Object.keys(KIND_LABELS) as ExtensionKind[])
-		.map((kind) => ({
-			kind,
-			label: KIND_LABELS[kind],
-			items: filtered.filter((item) => item.kind === kind),
-		}))
+		.map((kind) => ({ kind, label: KIND_LABELS[kind], items: filtered.filter((item) => item.kind === kind) }))
 		.filter((group) => group.items.length > 0);
 
-	const tabs: readonly { readonly id: Tab; readonly label: string; readonly count: number }[] = [
-		{ id: "all", label: TAB_LABELS.all, count: items.length },
-		{ id: "plugin", label: TAB_LABELS.plugin, count: counts.plugin },
-		{ id: "skill", label: TAB_LABELS.skill, count: counts.skill },
-		{ id: "mcp", label: TAB_LABELS.mcp, count: counts.mcp },
-	];
-
-	const pluginEntries: readonly MenuEntry[] = [
-		{
-			type: "item",
-			key: "install",
-			label: bridge === undefined ? "安装本地插件（桌面端可用）" : "安装本地插件",
-			icon: PackagePlus,
-			disabled: bridge === undefined,
-			onSelect: () => installPlugin(),
-		},
-		{ type: "item", key: "market", label: "插件市场", icon: Store, onSelect: () => setInfoOpen(true) },
-	];
-
-	const installPlugin = (): void => {
-		if (bridge === undefined) {
-			toast("请在桌面端安装本地插件", "error");
-			return;
-		}
-		void bridge
-			.installPlugin()
-			.then((result) => {
-				if (!result.ok) {
-					if (result.error !== "已取消") toast(result.error ?? "安装插件失败", "error");
-					return;
-				}
-				toast(`插件 ${result.name ?? ""} 已安装，正在重启 Reins…`);
-			})
-			.catch((cause: unknown) =>
-				toast(cause instanceof Error ? cause.message : String(cause), "error"),
-			);
-	};
-
-	const togglePlugin = (name: string, disabled: boolean): void => {
-		if (bridge === undefined) {
-			toast("请在桌面端管理插件", "error");
-			return;
-		}
-		void bridge
-			.togglePlugin(name, disabled)
-			.then((result) => {
-				if (!result.ok) {
-					toast(result.error ?? "更新插件状态失败", "error");
-					return;
-				}
-				toast(disabled ? "插件已禁用，正在重启 Reins…" : "插件已启用，正在重启 Reins…");
-			})
-			.catch((cause: unknown) =>
-				toast(cause instanceof Error ? cause.message : String(cause), "error"),
-			);
-	};
-
-	const uninstallPlugin = (): void => {
-		const target = pluginRemoveTarget;
-		if (target === undefined) return;
-		if (bridge === undefined) {
-			toast("请在桌面端管理插件", "error");
-			return;
-		}
-		void bridge
-			.uninstallPlugin(target.name)
-			.then((result) => {
-				if (!result.ok) {
-					toast(result.error ?? "卸载插件失败", "error");
-					return;
-				}
-				setPluginRemoveTarget(undefined);
-				toast("插件已卸载，正在重启 Reins…");
-			})
-			.catch((cause: unknown) =>
-				toast(cause instanceof Error ? cause.message : String(cause), "error"),
-			);
-	};
-
-	const editMcp = (item: ExtensionItem): void => {
-		void api
-			.mcpServer(item.name)
-			.then((server) => setMcpEditTarget(server))
-			.catch((cause: unknown) =>
-				toast(cause instanceof Error ? cause.message : String(cause), "error"),
-			);
-	};
-
-	const reconnectMcp = (item: ExtensionItem): void => {
-		void api
-			.reconnectMcpServer(item.name)
-			.then((message) => {
-				toast(message.length > 0 ? message : "已重连");
-				onRefresh();
-			})
-			.catch((cause: unknown) =>
-				toast(cause instanceof Error ? cause.message : String(cause), "error"),
-			);
-	};
-
 	const deleteMcp = (): void => {
-		const target = mcpDeleteTarget;
-		if (target === undefined || mcpDeleting) return;
-		setMcpDeleting(true);
+		const target = mcpDelete;
+		if (target === undefined || busy) return;
+		setBusy(true);
 		void api
 			.deleteMcpServer(target.name)
 			.then(() => {
-				toast("MCP 服务器已删除");
-				setMcpDeleteTarget(undefined);
+				setMcpDelete(undefined);
 				onRefresh();
 			})
-			.catch((cause: unknown) =>
-				toast(cause instanceof Error ? cause.message : String(cause), "error"),
-			)
-			.finally(() => setMcpDeleting(false));
+			.finally(() => setBusy(false));
 	};
 
 	const deleteSkill = (): void => {
-		const target = skillDeleteTarget;
-		if (target === undefined || target.path === undefined || skillDeleting) return;
-		setSkillDeleting(true);
+		const target = skillDelete;
+		if (target === undefined || target.path === undefined || busy) return;
+		setBusy(true);
 		void api
 			.deleteSkill(target.path)
 			.then(() => {
-				toast("技能已删除");
-				setSkillDeleteTarget(undefined);
+				setSkillDelete(undefined);
 				onRefresh();
 			})
-			.catch((cause: unknown) =>
-				toast(cause instanceof Error ? cause.message : String(cause), "error"),
-			)
-			.finally(() => setSkillDeleting(false));
+			.finally(() => setBusy(false));
 	};
 
 	return (
-		<div className="flex flex-col gap-6">
-			<SettingsHeader
-				title="扩展管理"
-				description="管理本机已安装的插件、技能与 MCP 连接。"
-				action={
-					tab === "plugin" ? (
-						<Button
-							variant="outline"
-							size="sm"
-							className="h-8 rounded-lg px-3 text-[12px]"
-							onClick={() => setInfoOpen(true)}
-						>
-							<Store className="size-3.5" />
-							市场
-						</Button>
-					) : undefined
-				}
-			/>
-
-			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="flex flex-wrap items-center gap-0.5 rounded-lg bg-surface p-0.5">
-					{tabs.map((entry) => {
-						const active = entry.id === tab;
-						return (
-							<button
-								key={entry.id}
-								type="button"
-								onClick={() => setTab(entry.id)}
-								aria-pressed={active}
-								className={cn(
-									"flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] leading-[18px] transition-colors",
-									active
-										? "bg-card text-foreground shadow-[0_0_0_0.5px_var(--border)] dark:bg-surface-strong"
-										: "text-foreground-subtle hover:text-foreground",
-								)}
-							>
-								{entry.label}
-								<span className="rounded-full bg-surface px-1.5 text-[10px] leading-4 tabular-nums text-foreground-subtlest">
-									{entry.count}
-								</span>
-							</button>
-						);
-					})}
-				</div>
-
-				<div className="flex items-center gap-2">
-					<label className="flex h-8 w-[190px] items-center gap-1.5 rounded-lg border-[0.5px] border-border bg-card px-2 transition-colors focus-within:border-input-border-focused">
-						<Search className="size-3.5 shrink-0 text-foreground-subtlest" />
-						<input
-							value={query}
-							onChange={(event) => setQuery(event.target.value)}
-							placeholder="搜索扩展"
-							aria-label="搜索扩展"
-							className="min-w-0 flex-1 bg-transparent text-[12px] leading-[18px] outline-none placeholder:text-foreground-subtlest"
-						/>
-					</label>
-					{tab === "all" ? null : tab === "skill" ? (
-						<button
-							type="button"
-							aria-label="上传技能压缩包"
-							title="上传技能压缩包"
-							onClick={() => setUploadOpen(true)}
-							className="flex size-8 items-center justify-center rounded-lg border-[0.5px] border-border bg-card text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-						>
-							<Upload className="size-3.5" />
-						</button>
-					) : tab === "plugin" ? (
-						<Menu
-							align="end"
-							zIndex={90}
-							entries={pluginEntries}
-							trigger={({ open, toggle }) => (
-								<button
-									type="button"
-									aria-label="添加插件"
-									title="添加插件"
-									aria-haspopup="menu"
-									aria-expanded={open}
-									onClick={toggle}
-									className="flex size-8 items-center justify-center rounded-lg border-[0.5px] border-border bg-card text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-								>
-									<Plus className="size-3.5" />
-								</button>
-							)}
-						/>
-					) : (
-						<button
-							type="button"
-							aria-label="添加 MCP 服务器"
-							title="添加 MCP 服务器"
-							onClick={() => setMcpOpen(true)}
-							className="flex size-8 items-center justify-center rounded-lg border-[0.5px] border-border bg-card text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-						>
-							<Plus className="size-3.5" />
-						</button>
-					)}
-					<button
-						type="button"
-						aria-label="刷新扩展"
-						title="刷新扩展"
-						onClick={onRefresh}
-						className="flex size-8 items-center justify-center rounded-lg border-[0.5px] border-border bg-card text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-					>
-						<RefreshCw className="size-3.5" />
+		<SettingsPane
+			eyebrow="SETTINGS / EXTENSIONS"
+			title="扩展管理"
+			description="管理本机已装载的插件、技能与 MCP 连接。装载后从下一回合开始可用。"
+			action={
+				tab === "skill" ? (
+					<button type="button" className="b b-line b-sm" onClick={() => setUploadOpen(true)}>
+						上传技能
 					</button>
+				) : tab === "mcp" ? (
+					<button type="button" className="b b-line b-sm" onClick={() => setMcpOpen(true)}>
+						添加连接器
+					</button>
+				) : undefined
+			}
+		>
+			<div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 26, marginBottom: 4 }}>
+				<div className="xtabs" role="tablist">
+					{(["all", "plugin", "skill", "mcp"] as const).map((key) => (
+						<button
+							key={key}
+							type="button"
+							role="tab"
+							aria-selected={key === tab}
+							className="xtab"
+							onClick={() => setTab(key)}
+						>
+							{TAB_LABELS[key]}
+							<span className="c">{key === "all" ? items.length : counts[key as ExtensionKind]}</span>
+						</button>
+					))}
+				</div>
+				<span style={{ flex: 1 }} />
+				<div className="input-line" style={{ width: 150, background: "var(--raise)" }}>
+					<svg
+						className="ic-12"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						aria-hidden="true"
+					>
+						<path d="m21 21-4.34-4.34" />
+						<circle cx="11" cy="11" r="8" />
+					</svg>
+					<input
+						value={query}
+						onChange={(event) => setQuery(event.target.value)}
+						placeholder="搜索扩展"
+						aria-label="搜索扩展"
+						style={{ fontFamily: "var(--sans)", fontSize: "var(--fs-11)" }}
+					/>
 				</div>
 			</div>
 
 			{settings === undefined ? (
-				<div className="rounded-[16px] border-[0.5px] border-border bg-card px-4 py-6 text-[13px] leading-5 text-foreground-subtlest">
-					正在读取本机扩展…
-				</div>
+				<p className="set-note">正在读取本机扩展…</p>
 			) : items.length === 0 || (filtered.length === 0 && !searching) ? (
-				<EmptyState {...TAB_EMPTY[tab]} />
-			) : filtered.length === 0 ? (
-				<EmptyState
-					icon={Search}
-					title="没有匹配的扩展"
-					description="换一个名称、描述或类型关键词试试。"
+				<Empty
+					icon={Blocks}
+					title="还没有装载扩展"
+					description="Reins 的核心能力全部内置；插件、技能与 MCP 服务器装载后会出现在这里。"
 				/>
+			) : filtered.length === 0 ? (
+				<Empty icon={Blocks} title="没有匹配的扩展" description="换一个名称、描述或类型关键词试试。" />
 			) : (
 				groups.map((group) => (
-					<section key={group.kind} className="flex flex-col gap-2">
-						<h2 className="m-0 flex items-center gap-1.5 px-1 text-[13px] leading-5 font-medium">
-							{group.label}
-							<span className="text-[11px] leading-4 font-normal text-foreground-subtlest">
-								{group.items.length}
-							</span>
-						</h2>
-						<SettingsCard>
-							{group.items.map((item, index) => (
-								<ExtensionRow
-									key={item.key}
-									item={item}
-									last={index === group.items.length - 1}
-									onToggle={
-										item.kind === "plugin" && bridge !== undefined
-											? (disabled) => togglePlugin(item.name, disabled)
-											: undefined
-									}
-									onUninstall={
-										item.kind === "plugin" && bridge !== undefined
-											? () => setPluginRemoveTarget(item)
-											: undefined
-									}
-									onLogs={
-										item.kind === "plugin" ? () => setPluginLogsTarget(item) : undefined
-									}
-									status={mcpStatusOf(item)}
-									onEdit={
-										item.kind === "mcp"
-											? () => editMcp(item)
-											: item.kind === "skill" && item.editable === true
-												? () => setSkillEditTarget(item)
-												: undefined
-									}
-									onReconnect={item.kind === "mcp" ? () => reconnectMcp(item) : undefined}
-									onDelete={
-										item.kind === "mcp"
-											? () => setMcpDeleteTarget(item)
-											: item.kind === "skill" && item.editable === true
-												? () => setSkillDeleteTarget(item)
-												: undefined
-									}
-								/>
+					<Section key={group.kind} name={group.label} hint={String(group.items.length)}>
+						<Card>
+							{group.items.map((item) => (
+								<div key={item.key} className="ext">
+									<span className="mk">
+										{group.kind === "skill" ? (
+											<Sparkles className="ic-14" />
+										) : group.kind === "mcp" ? (
+											<Server className="ic-14" />
+										) : (
+											<Puzzle className="ic-14" />
+										)}
+									</span>
+									<div className="tx">
+										<div className="n">
+											{item.name}
+											{item.kind === "skill" ? (
+												<Tag tone="ghost">{item.scope === "project" ? "项目级" : "用户级"}</Tag>
+											) : item.kind === "mcp" ? (
+												<Tag tone={item.status === "connected" ? "line" : "dash"}>
+													{statusLabel(item.status)}
+												</Tag>
+											) : item.disabled ? (
+												<Tag tone="dash">已禁用</Tag>
+											) : (
+												<Tag tone="ghost">已启用</Tag>
+											)}
+										</div>
+										<div className="d">{item.detail ?? item.description}</div>
+									</div>
+									<span className="m">{item.meta}</span>
+									<RowActions
+										kind={item.kind}
+										onEdit={
+											item.kind === "mcp"
+												? () => setMcpEdit(settings.mcpServers.find((server) => server.name === item.name))
+												: item.kind === "skill" && item.editable === true
+													? () => setSkillEdit(item)
+													: undefined
+										}
+										onLogs={item.kind === "plugin" ? () => setLogs(item.name) : undefined}
+										onDelete={
+											item.kind === "mcp"
+												? () => setMcpDelete(item)
+												: item.kind === "skill" && item.editable === true
+													? () => setSkillDelete(item)
+													: undefined
+										}
+									/>
+								</div>
 							))}
-						</SettingsCard>
-					</section>
+						</Card>
+					</Section>
 				))
 			)}
 
-			<Dialog
-				open={infoOpen}
-				onClose={() => setInfoOpen(false)}
-				title="安装插件"
-				footer={
-					<Button variant="primary" size="sm" onClick={() => setInfoOpen(false)}>
-						知道了
-					</Button>
-				}
-			>
-				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
-					<p className="m-0">插件市场尚未接入，当前版本不能从这里检索或安装插件。</p>
-					<p className="m-0">
-						桌面端可以在「+」里从本地安装；也可以把插件放入 Reins 配置目录下的 plugins/
-						后重启 Reins。
-					</p>
-					<p className="m-0 text-foreground-subtlest">这里只展示 Reins 实际装载的插件，不会列出虚构的市场条目。</p>
-				</div>
-			</Dialog>
+			<p className="set-note">这里只展示实际装载的扩展，不列出市场条目；插件启用或禁用会重启 Reins。</p>
 
-			{skillEditTarget?.path === undefined ? null : (
+			<SkillUploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} onCreated={onRefresh} />
+			<McpServerDialog open={mcpOpen} onClose={() => setMcpOpen(false)} onCreated={onRefresh} />
+			<McpServerDialog
+				open={mcpEdit !== undefined}
+				server={
+					mcpEdit === undefined
+						? undefined
+						: {
+								name: mcpEdit.name,
+								type: mcpEdit.type === "stdio" ? "stdio" : mcpEdit.type === "sse" ? "sse" : "http",
+							}
+				}
+				onClose={() => setMcpEdit(undefined)}
+				onCreated={onRefresh}
+			/>
+			{skillEdit?.path === undefined ? null : (
 				<SkillDialog
 					open
-					skill={{ path: skillEditTarget.path, name: skillEditTarget.name }}
-					onClose={() => setSkillEditTarget(undefined)}
+					skill={{ path: skillEdit.path, name: skillEdit.name }}
+					onClose={() => setSkillEdit(undefined)}
 					onSaved={onRefresh}
 				/>
 			)}
-			<SkillUploadDialog
-				open={uploadOpen}
-				onClose={() => setUploadOpen(false)}
-				onCreated={onRefresh}
-			/>
-			<McpServerDialog
-				open={mcpOpen}
-				onClose={() => setMcpOpen(false)}
-				onCreated={onRefresh}
-			/>
+			<PluginLogsDialog name={logs} onClose={() => setLogs(undefined)} />
 
 			<Dialog
-				open={pluginRemoveTarget !== undefined}
-				onClose={() => setPluginRemoveTarget(undefined)}
-				title="卸载插件"
+				open={mcpDelete !== undefined}
+				onClose={() => setMcpDelete(undefined)}
+				title="删除连接器"
 				footer={
 					<>
-						<Button variant="outline" size="sm" onClick={() => setPluginRemoveTarget(undefined)}>
+						<button type="button" className="b b-line" onClick={() => setMcpDelete(undefined)}>
 							取消
-						</Button>
-						<Button variant="danger" size="sm" onClick={uninstallPlugin}>
-							卸载
-						</Button>
+						</button>
+						<button type="button" className="b b-danger" disabled={busy} onClick={deleteMcp}>
+							删除
+						</button>
 					</>
 				}
 			>
-				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
-					<p className="m-0">卸载会删除插件目录，不能撤销。</p>
-					<p className="m-0 text-foreground">{pluginRemoveTarget?.name}</p>
-				</div>
-			</Dialog>
-
-			<PluginLogsDialog
-				name={pluginLogsTarget?.name}
-				onClose={() => setPluginLogsTarget(undefined)}
-			/>
-
-			<McpServerDialog
-				open={mcpEditTarget !== undefined}
-				server={mcpEditTarget}
-				onClose={() => setMcpEditTarget(undefined)}
-				onCreated={onRefresh}
-			/>
-
-			<Dialog
-				open={mcpDeleteTarget !== undefined}
-				onClose={() => setMcpDeleteTarget(undefined)}
-				title="删除 MCP 服务器"
-				footer={
-					<>
-						<Button variant="outline" size="sm" disabled={mcpDeleting} onClick={() => setMcpDeleteTarget(undefined)}>
-							取消
-						</Button>
-						<Button variant="danger" size="sm" disabled={mcpDeleting} onClick={deleteMcp}>
-							{mcpDeleting ? "删除中…" : "删除"}
-						</Button>
-					</>
-				}
-			>
-				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
-					<p className="m-0">删除会从 config.toml 移除这个服务器，并立即断开连接；不能撤销。</p>
-					<p className="m-0 text-foreground">{mcpDeleteTarget?.name}</p>
-				</div>
+				<p style={{ margin: 0 }}>删除会从 config.toml 移除这个服务器并立即断开连接；不能撤销。</p>
+				<p style={{ margin: 0, color: "var(--ink)" }}>{mcpDelete?.name}</p>
 			</Dialog>
 
 			<Dialog
-				open={skillDeleteTarget !== undefined}
-				onClose={() => setSkillDeleteTarget(undefined)}
+				open={skillDelete !== undefined}
+				onClose={() => setSkillDelete(undefined)}
 				title="删除技能"
 				footer={
 					<>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={skillDeleting}
-							onClick={() => setSkillDeleteTarget(undefined)}
-						>
+						<button type="button" className="b b-line" onClick={() => setSkillDelete(undefined)}>
 							取消
-						</Button>
-						<Button variant="danger" size="sm" disabled={skillDeleting} onClick={deleteSkill}>
-							{skillDeleting ? "删除中…" : "删除"}
-						</Button>
+						</button>
+						<button type="button" className="b b-danger" disabled={busy} onClick={deleteSkill}>
+							删除
+						</button>
 					</>
 				}
 			>
-				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
-					<p className="m-0">删除会移除技能目录与 SKILL.md，不能撤销。</p>
-					<p className="m-0 text-foreground">{skillDeleteTarget?.name}</p>
-				</div>
+				<p style={{ margin: 0 }}>删除会移除技能目录与 SKILL.md，不能撤销。</p>
+				<p style={{ margin: 0, color: "var(--ink)" }}>{skillDelete?.name}</p>
 			</Dialog>
-		</div>
+		</SettingsPane>
 	);
 }
 
-function ExtensionRow({
-	item,
-	last,
-	onToggle,
-	onUninstall,
-	onLogs,
-	onEdit,
-	onReconnect,
-	onDelete,
-	status,
-}: {
-	readonly item: ExtensionItem;
-	readonly last: boolean;
-	onToggle?(disabled: boolean): void;
-	onUninstall?(): void;
-	onLogs?(): void;
-	onEdit?(): void;
-	onReconnect?(): void;
-	onDelete?(): void;
-	readonly status?: McpStatusView;
-}): ReactElement {
-	const Icon = KIND_ICONS[item.kind];
-	const menuEntries: MenuEntry[] = [];
-	if (onEdit !== undefined) {
-		menuEntries.push({ type: "item", key: "edit", label: "编辑", icon: Pencil, onSelect: onEdit });
+function statusLabel(status: string | undefined): string {
+	switch (status) {
+		case "connected":
+			return "已连接";
+		case "connecting":
+			return "连接中";
+		case "unreachable":
+			return "连接失败";
+		case "disabled":
+			return "已禁用";
+		default:
+			return "未连接";
 	}
-	if (onReconnect !== undefined) {
-		menuEntries.push({
-			type: "item",
-			key: "reconnect",
-			label: "重连",
-			icon: RefreshCw,
-			onSelect: onReconnect,
-		});
-	}
-	if (onDelete !== undefined) {
-		menuEntries.push({
-			type: "item",
-			key: "delete",
-			label: "删除",
-			icon: Trash2,
-			danger: true,
-			onSelect: onDelete,
-		});
-	}
+}
 
+/** 行尾动作：编辑、日志、删除。没有可用动作时整组不出现。 */
+function RowActions({
+	kind,
+	onEdit,
+	onLogs,
+	onDelete,
+}: {
+	readonly kind: ExtensionKind;
+	onEdit?: () => void;
+	onLogs?: () => void;
+	onDelete?: () => void;
+}): ReactElement | null {
+	if (onEdit === undefined && onLogs === undefined && onDelete === undefined) {
+		return kind === "skill" ? <span className="m">只读</span> : null;
+	}
 	return (
-		<div
-			className={cn(
-				"flex items-center gap-3 px-4 py-3",
-				last ? undefined : "border-b-[0.5px] border-border",
-			)}
-		>
-			<span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-surface text-foreground-subtle">
-				<Icon className="size-4" />
-			</span>
-			<div className="min-w-0 flex-1">
-				<div className="flex min-w-0 items-center gap-2">
-					{status === undefined ? null : <StateDot state={status.state} />}
-					<span className="min-w-0 truncate text-[13px] leading-5 font-medium">{item.name}</span>
-					{item.disabled ? <Badge tone="muted">已禁用</Badge> : null}
-					{item.kind === "skill" && item.editable === false ? (
-						<Badge tone="muted">只读</Badge>
-					) : null}
-				</div>
-				<div className="truncate text-[12px] leading-[18px] text-foreground-subtlest">
-					{item.description}
-				</div>
-				{status === undefined ? null : (
-					<div className="truncate text-[11px] leading-4 text-foreground-subtlest">
-						{status.label}
-						{status.detail.length === 0 ? "" : ` · ${status.detail}`}
-					</div>
-				)}
-			</div>
-			<span className="shrink-0 rounded-md bg-surface px-1.5 py-0.5 font-mono text-[10px] leading-4 text-foreground-subtle">
-				{item.meta}
-			</span>
-			{onToggle === undefined ? (
-				status !== undefined || item.kind === "skill" ? null : item.disabled ? (
-					<Minus className="size-3.5 shrink-0 text-foreground-subtlest" aria-label="已禁用" />
-				) : (
-					<Check className="size-4 shrink-0 text-foreground-subtle" aria-label="已启用" />
-				)
-			) : (
-				<Switch
-					checked={!item.disabled}
-					onCheckedChange={(checked) => onToggle(!checked)}
-					label={item.disabled ? `启用插件 ${item.name}` : `禁用插件 ${item.name}`}
-				/>
-			)}
-			{menuEntries.length === 0 ? null : (
-				<Menu
-					align="end"
-					zIndex={90}
-					entries={menuEntries}
-					trigger={({ open, toggle }) => (
-						<button
-							type="button"
-							aria-label={`管理 ${item.name}`}
-							title="更多操作"
-							aria-haspopup="menu"
-							aria-expanded={open}
-							onClick={toggle}
-							className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtlest transition-colors hover:bg-surface-hover hover:text-foreground"
-						>
-							<MoreHorizontal className="size-4" />
-						</button>
-					)}
-				/>
+		<span style={{ display: "flex", alignItems: "center", gap: 1, flex: "none" }}>
+			{onEdit === undefined ? null : (
+				<button type="button" className="more" title="编辑" aria-label="编辑" onClick={onEdit}>
+					<Puzzle className="ic-14" />
+				</button>
 			)}
 			{onLogs === undefined ? null : (
-				<button
-					type="button"
-					aria-label={`查看插件 ${item.name} 的日志`}
-					title="查看日志"
-					onClick={onLogs}
-					className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtlest transition-colors hover:bg-surface-hover hover:text-foreground"
-				>
-					<ScrollText className="size-3.5" />
+				<button type="button" className="more" title="查看日志" aria-label="查看日志" onClick={onLogs}>
+					<Blocks className="ic-14" />
 				</button>
 			)}
-			{onUninstall === undefined ? null : (
-				<button
-					type="button"
-					aria-label={`卸载插件 ${item.name}`}
-					title="卸载插件"
-					onClick={onUninstall}
-					className="flex size-7 shrink-0 items-center justify-center rounded-md text-foreground-subtlest transition-colors hover:bg-destructive-surface hover:text-destructive"
-				>
-					<Trash2 className="size-3.5" />
+			{onDelete === undefined ? null : (
+				<button type="button" className="more" title="删除" aria-label="删除" onClick={onDelete}>
+					<Trash2 className="ic-14" />
 				</button>
 			)}
-		</div>
+		</span>
 	);
 }

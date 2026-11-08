@@ -44,13 +44,13 @@ export function Popover({
 		const rect = triggerRef.current?.getBoundingClientRect();
 		if (rect === undefined) return;
 		const spaceBelow = window.innerHeight - rect.bottom;
-		const openUp = spaceBelow < 280 && rect.top > spaceBelow;
-		const maxHeight = Math.max(120, Math.min(320, openUp ? rect.top - 8 : spaceBelow - 8));
-		const estimated = 360;
+		const openUp = spaceBelow < 300 && rect.top > spaceBelow;
+		const maxHeight = Math.max(160, Math.min(420, openUp ? rect.top - 12 : spaceBelow - 12));
+		const estimated = 300;
 		const useLeft =
 			align === "start" ? rect.left + estimated <= window.innerWidth - 8 : rect.right - estimated < 8;
 		setPosition({
-			...(openUp ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+			...(openUp ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
 			...(useLeft
 				? { left: Math.max(8, rect.left) }
 				: { right: Math.max(8, window.innerWidth - rect.right) }),
@@ -95,10 +95,7 @@ export function Popover({
 									right: position?.right,
 									maxHeight: position?.maxHeight,
 								}}
-								className={cn(
-									"menu-material z-50 overflow-y-auto rounded-[16px] p-1.5 animate-pop",
-									className,
-								)}
+								className={cn("pop animate-pop z-50 overflow-y-auto", className)}
 							>
 								{typeof children === "function" ? children(() => setOpen(false)) : children}
 							</div>

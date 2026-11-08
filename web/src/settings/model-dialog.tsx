@@ -1,11 +1,8 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 
-import { Button, Dialog } from "../components/ui/index.ts";
+import { Dialog } from "../components/ui/index.ts";
 import type { ProviderModel } from "../protocol.ts";
-
-const FIELD =
-	"h-8 w-full rounded-md border-[0.5px] border-input-border bg-input px-2.5 text-[12px] leading-[18px] outline-none transition-colors placeholder:text-foreground-subtlest focus:border-input-border-focused";
 
 /** 单个模型的编辑弹层；新增时用提供方的协议与地址兜底。 */
 export function ModelDialog({
@@ -78,74 +75,70 @@ export function ModelDialog({
 			title={model === undefined ? "添加模型" : "编辑模型"}
 			footer={
 				<>
-					<Button variant="outline" size="sm" onClick={onClose}>
+					<button type="button" className="b b-line" onClick={onClose}>
 						取消
-					</Button>
-					<Button variant="primary" size="sm" onClick={submit}>
+					</button>
+					<button type="button" className="b b-solid" onClick={submit}>
 						确定
-					</Button>
+					</button>
 				</>
 			}
 		>
-			<div className="flex flex-col gap-3">
-				<label className="flex flex-col gap-1">
-					<span className="text-[12px] leading-[18px] text-foreground-subtle">模型 ID</span>
+			<label>
+				<span className="form-label">模型 ID</span>
+				<input
+					value={id}
+					onChange={(event) => setId(event.target.value)}
+					placeholder="如 claude-sonnet-4-6"
+					aria-label="模型 ID"
+					autoFocus
+					className="form-input"
+				/>
+			</label>
+			<label>
+				<span className="form-label">显示名称</span>
+				<input
+					value={name}
+					onChange={(event) => setName(event.target.value)}
+					placeholder="留空时用模型 ID"
+					aria-label="模型名称"
+					className="form-input"
+				/>
+			</label>
+			<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+				<label>
+					<span className="form-label">上下文窗口</span>
 					<input
-						value={id}
-						onChange={(event) => setId(event.target.value)}
-						placeholder="如 claude-sonnet-4-6"
-						aria-label="模型 ID"
-						autoFocus
-						className={FIELD}
+						value={contextWindow}
+						onChange={(event) => setContextWindow(event.target.value)}
+						inputMode="numeric"
+						placeholder="200000"
+						aria-label="上下文窗口"
+						className="form-input"
 					/>
 				</label>
-				<label className="flex flex-col gap-1">
-					<span className="text-[12px] leading-[18px] text-foreground-subtle">显示名称</span>
+				<label>
+					<span className="form-label">最大输出</span>
 					<input
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-						placeholder="留空时用模型 ID"
-						aria-label="模型名称"
-						className={FIELD}
+						value={maxTokens}
+						onChange={(event) => setMaxTokens(event.target.value)}
+						inputMode="numeric"
+						placeholder="可选"
+						aria-label="最大输出"
+						className="form-input"
 					/>
 				</label>
-				<div className="grid grid-cols-2 gap-3">
-					<label className="flex flex-col gap-1">
-						<span className="text-[12px] leading-[18px] text-foreground-subtle">上下文窗口</span>
-						<input
-							value={contextWindow}
-							onChange={(event) => setContextWindow(event.target.value)}
-							inputMode="numeric"
-							placeholder="200000"
-							aria-label="上下文窗口"
-							className={FIELD}
-						/>
-					</label>
-					<label className="flex flex-col gap-1">
-						<span className="text-[12px] leading-[18px] text-foreground-subtle">最大输出</span>
-						<input
-							value={maxTokens}
-							onChange={(event) => setMaxTokens(event.target.value)}
-							inputMode="numeric"
-							placeholder="可选"
-							aria-label="最大输出"
-							className={FIELD}
-						/>
-					</label>
-				</div>
-				<label className="flex items-center gap-2 text-[12px] leading-[18px] text-foreground-subtle">
-					<input
-						type="checkbox"
-						checked={reasoning}
-						onChange={(event) => setReasoning(event.target.checked)}
-						className="size-3.5 accent-(--accent)"
-					/>
-					支持思考等级
-				</label>
-				{error === undefined ? null : (
-					<p className="m-0 text-[12px] leading-[18px] text-destructive">{error}</p>
-				)}
 			</div>
+			<label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+				<input
+					type="checkbox"
+					checked={reasoning}
+					onChange={(event) => setReasoning(event.target.checked)}
+					style={{ width: 15, height: 15, accentColor: "var(--ink)" }}
+				/>
+				<span>支持思考等级</span>
+			</label>
+			{error === undefined ? null : <p className="form-error">{error}</p>}
 		</Dialog>
 	);
 }

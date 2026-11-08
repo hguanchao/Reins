@@ -1,17 +1,17 @@
-import { Info, RotateCw } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Button, toast } from "../components/ui/index.ts";
-import { cn } from "../components/ui/cn.ts";
 import type { PersonalizationSnapshot } from "../protocol.ts";
-import { SettingsHeader } from "./controls.tsx";
+import { Section, SettingsPane } from "./controls.tsx";
 import { formatKb, personalizationBytes } from "./settings-model.ts";
 
+const SNIPPETS: readonly string[] = ["用简体中文回答", "改代码前先读文件", "提交信息用祈使句"];
+
 /**
- * 个性化：编辑用户级规则文件。
+ * 个性化。
  *
- * 内容写回本机，不随项目走；每回合读取一次，因此保存后从下一次请求开始生效。
+ * 用户级规则文件，每回合读取一次：保存后从下一回合生效。这是唯一保留「取消 / 保存」的
+ * 设置页——它有真实草稿态，其余页面都是即时生效。
  */
 export function PersonalizationSection(): ReactElement {
 	const [snapshot, setSnapshot] = useState<PersonalizationSnapshot | undefined>(undefined);
@@ -21,9 +21,8 @@ export function PersonalizationSection(): ReactElement {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | undefined>(undefined);
 
-	const load = useCallback((): void => {
+	useEffect(() => {
 		setLoading(true);
-		setError(undefined);
 		void api
 			.personalization()
 			.then((next) => {
@@ -34,10 +33,6 @@ export function PersonalizationSection(): ReactElement {
 			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
 			.finally(() => setLoading(false));
 	}, []);
-
-	useEffect(() => {
-		load();
-	}, [load]);
 
 	const bytes = personalizationBytes(text);
 	const limit = snapshot?.maxBytes ?? 0;
@@ -53,22 +48,32 @@ export function PersonalizationSection(): ReactElement {
 			.then((next) => {
 				setSnapshot(next);
 				setSavedText(next.text);
-				toast("个性化指令已保存");
 			})
 			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
 			.finally(() => setSaving(false));
 	};
 
-	return (
-		<div className="flex flex-col gap-7">
-			<SettingsHeader
-				title="个性化"
-				description="添加自定义指令来个性化 Agent 的回复。指令会应用到本机 Agent 的后续回合，所有项目共用。"
-			/>
+	const append = (snippet: string): void => {
+		setText((current) =>
+			current.trim().length === 0 ? `- ${snippet}` : `${current.replace(/\s*$/, "")}\n- ${snippet}`,
+		);
+	};
 
-			<section className="flex flex-col gap-2">
-				<h2 className="m-0 px-1 text-[13px] leading-5 font-medium">自定义指令</h2>
-				<div className="rounded-[16px] border-[0.5px] border-border bg-card p-3 transition-colors focus-within:border-input-border-focused">
+	return (
+		<SettingsPane
+			eyebrow="SETTINGS / PERSONALIZATION"
+			title="个性化"
+			description="添加自定义指令来约束 Agent 的回复。指令对这台机器上的所有项目生效。"
+		>
+			<Section name="自定义指令" hint="每回合读取一次">
+				<div className="snips">
+					{SNIPPETS.map((snippet) => (
+						<button key={snippet} type="button" className="snip" onClick={() => append(snippet)}>
+							+ {snippet}
+						</button>
+					))}
+				</div>
+				<div className="rules">
 					<textarea
 						value={text}
 						onChange={(event) => setText(event.target.value)}
@@ -76,81 +81,78 @@ export function PersonalizationSection(): ReactElement {
 						aria-label="个性化指令"
 						disabled={loading || snapshot === undefined}
 						spellCheck={false}
-						className="block min-h-[240px] w-full resize-y rounded-[12px] bg-transparent px-2 py-1.5 text-[14px] leading-[24px] text-foreground outline-none placeholder:text-foreground-subtlest disabled:opacity-60"
 					/>
-					<div className="mt-1 flex flex-wrap items-center justify-between gap-3 border-t-[0.5px] border-border px-1 pt-2.5">
-						<span className="min-w-0 break-all font-mono text-[11px] leading-4 text-foreground-subtlest">
+					<div className="ft">
+						<span className="sp" title={snapshot?.path}>
 							{snapshot?.path ?? "—"}
 						</span>
-						<span
-							className={cn(
-								"shrink-0 font-mono text-[11px] leading-4 tabular-nums",
-								overLimit ? "text-destructive" : "text-foreground-subtlest",
-							)}
-						>
+						<span style={{ color: overLimit ? "var(--danger)" : undefined }}>
 							{formatKb(bytes)} / {snapshot === undefined ? "—" : formatKb(limit)}
 						</span>
 					</div>
 				</div>
-
-				<div className="flex flex-wrap items-center justify-between gap-3">
-					<p className="m-0 max-w-[520px] text-[11px] leading-4 text-foreground-subtlest">
+				<div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+					<p className="set-note" style={{ margin: 0, flex: 1 }}>
 						保存后从下一回合开始生效；这是用户级规则，不会写入任何项目。
 					</p>
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={!dirty || saving}
-							onClick={() => {
-								setText(savedText);
-								setError(undefined);
-							}}
-						>
-							取消
-						</Button>
-						<Button
-							variant="primary"
-							size="sm"
-							disabled={!dirty || saving || overLimit || snapshot === undefined}
-							onClick={save}
-						>
-							{saving ? "保存中…" : "保存"}
-						</Button>
-					</div>
+					<button
+						type="button"
+						className="b b-line b-sm"
+						disabled={!dirty || saving}
+						onClick={() => {
+							setText(savedText);
+							setError(undefined);
+						}}
+					>
+						取消
+					</button>
+					<button
+						type="button"
+						className="b b-solid b-sm"
+						disabled={!dirty || saving || overLimit}
+						onClick={save}
+					>
+						{saving ? "保存中…" : "保存"}
+					</button>
 				</div>
-
-				{overLimit ? (
-					<p className="m-0 text-[12px] leading-[18px] text-destructive">
-						已超过 {formatKb(limit)} 上限，请精简后再保存。
-					</p>
-				) : null}
 				{error === undefined ? null : (
-					<div className="flex flex-wrap items-center gap-2 text-[12px] leading-[18px] text-destructive">
-						<span>{error}</span>
-						<button
-							type="button"
-							onClick={load}
-							className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 hover:bg-surface-hover"
-						>
-							<RotateCw className="size-3" />
-							重试
-						</button>
-					</div>
+					<p className="set-note" style={{ color: "var(--danger)" }}>
+						{error}
+					</p>
 				)}
-			</section>
+			</Section>
 
-			<section className="flex flex-col gap-2">
-				<h2 className="m-0 px-1 text-[13px] leading-5 font-medium">生效方式</h2>
-				<div className="flex items-start gap-3 rounded-[16px] border-[0.5px] border-border bg-card px-4 py-3.5">
-					<Info className="mt-0.5 size-4 shrink-0 text-foreground-subtlest" />
-					<div className="flex flex-col gap-1.5 text-[12px] leading-[18px] text-foreground-subtle">
-						<span>用户级规则对这台机器上的所有项目生效，项目级 AGENTS.md 仍然优先。</span>
-						<span>同目录存在 AGENTS.override.md 时会覆盖 AGENTS.md，这里编辑的是当前生效的那一份。</span>
-						<span>规则文件与项目规则共享 32 KB 的提示词预算，超出部分会被截断。</span>
+			<Section name="生效方式">
+				<div className="set-card">
+					<div className="set-row">
+						<span className="v mono" style={{ color: "var(--ink-4)" }}>
+							01
+						</span>
+						<div className="txt">
+							<div className="t">先于项目规则注入</div>
+							<div className="d">用户级规则对所有项目生效；项目里的 AGENTS.md 仍然优先。</div>
+						</div>
+					</div>
+					<div className="set-row">
+						<span className="v mono" style={{ color: "var(--ink-4)" }}>
+							02
+						</span>
+						<div className="txt">
+							<div className="t">同目录 override 优先生效</div>
+							<div className="d">存在 AGENTS.override.md 时覆盖 AGENTS.md，这里编辑的是当前生效的那一份。</div>
+						</div>
+					</div>
+					<div className="set-row">
+						<span className="v mono" style={{ color: "var(--ink-4)" }}>
+							03
+						</span>
+						<div className="txt">
+							<div className="t">共享 32 KB 预算</div>
+							<div className="d">用户规则与项目规则合计 32 KB，超出部分会被截断。</div>
+						</div>
 					</div>
 				</div>
-			</section>
-		</div>
+			</Section>
+		</SettingsPane>
 	);
 }

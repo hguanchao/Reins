@@ -1,13 +1,16 @@
-import { Plus, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Button } from "../components/ui/index.ts";
-import { cn } from "../components/ui/cn.ts";
 import type { ProviderView, SettingsSnapshot, ThinkingLevel } from "../protocol.ts";
+import { Section, SettingsPane } from "./controls.tsx";
 import { ProviderDetail } from "./provider-detail.tsx";
 
-/** 模型设置：左侧提供方导航，右侧该提供方的配置与模型列表。 */
+/**
+ * 模型。
+ *
+ * 主从两栏：左 178px 是用户自己起的供应商名字，右侧是连接与模型清单。不按提供方各开一页，
+ * 换供应商是一等动作。Reins 不预置任何供应商，所有字段都可编辑。
+ */
 export function ModelsSection({
 	settings,
 	onModel,
@@ -24,23 +27,21 @@ export function ModelsSection({
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState<string | undefined>(undefined);
 
-	const load = useCallback((): void => {
+	const load = (): void => {
 		void api
 			.providers()
 			.then((list) => {
 				setProviders(list);
 				setSelectedId((current) =>
-					current !== undefined && list.some((provider) => provider.id === current)
-						? current
-						: list[0]?.id,
+					current !== undefined && list.some((provider) => provider.id === current) ? current : list[0]?.id,
 				);
 			})
 			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
-	}, []);
+	};
 
 	useEffect(() => {
 		load();
-	}, [load]);
+	}, []);
 
 	const selected = providers?.find((provider) => provider.id === selectedId);
 
@@ -61,9 +62,7 @@ export function ModelsSection({
 
 	const toggle = (provider: ProviderView, enabled: boolean): void => {
 		// 先落界面再发请求，失败按原值回滚
-		setProviders((list) =>
-			list?.map((item) => (item.id === provider.id ? { ...item, enabled } : item)),
-		);
+		setProviders((list) => list?.map((item) => (item.id === provider.id ? { ...item, enabled } : item)));
 		void api.setProviderEnabled(provider.id, enabled).catch((cause: unknown) => {
 			setProviders((list) =>
 				list?.map((item) => (item.id === provider.id ? { ...item, enabled: !enabled } : item)),
@@ -73,87 +72,58 @@ export function ModelsSection({
 	};
 
 	return (
-		<div className="flex flex-col gap-4">
-			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div className="min-w-0">
-					<h1 className="m-0 text-[27px] leading-9 font-bold tracking-[-0.02em]">模型设置</h1>
-					<p className="mt-1.5 mb-0 max-w-[560px] text-[12.5px] leading-[19px] text-foreground-subtle">
-						管理自定义模型供应商，配置后可在聊天时选择使用。
-					</p>
-				</div>
-				<div className="flex shrink-0 items-center gap-2 pt-1">
-					<button
-						type="button"
-						aria-label="刷新"
-						title="刷新"
-						onClick={load}
-						className="flex size-7 items-center justify-center rounded-md border-[0.5px] border-border bg-card text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-					>
-						<RefreshCw className="size-3.5" />
-					</button>
-					<Button variant="primary" size="sm" disabled={creating} onClick={create}>
-						<Plus className="size-3.5" />
-						添加供应商
-					</Button>
-				</div>
-			</div>
+		<SettingsPane
+			eyebrow="SETTINGS / MODELS"
+			title="模型"
+			description="Reins 不预置任何供应商；名称、地址、格式、密钥与模型都由你自己填写。"
+		>
+			<Section name="自定义供应商" hint={`${providers?.length ?? 0} 个`}>
+				<div className="set-split">
+					<div className="col-l">
+						<div className="lbl">供应商</div>
+						{providers?.map((provider) => (
+							<button
+								key={provider.id}
+								type="button"
+								className="prov"
+								aria-current={provider.id === selectedId}
+								onClick={() => setSelectedId(provider.id)}
+							>
+								<span className="mk">{provider.name.slice(0, 1).toUpperCase()}</span>
+								<span className="nm">{provider.name}</span>
+								<span
+									className={`dot${!provider.enabled ? " off" : provider.hasApiKey ? "" : " hollow"}`}
+									title={!provider.enabled ? "已停用" : provider.hasApiKey ? "已配置密钥" : "缺少密钥"}
+								/>
+							</button>
+						))}
+						<button type="button" className="prov-add" onClick={create} disabled={creating}>
+							<svg
+								className="ic-12"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="2"
+								strokeLinecap="round"
+								aria-hidden="true"
+							>
+								<path d="M5 12h14" />
+								<path d="M12 5v14" />
+							</svg>
+							添加供应商
+						</button>
+					</div>
 
-			{providers === undefined ? (
-				<div className="rounded-xl border-[0.5px] border-border px-4 py-10 text-center text-[12px] leading-[18px] text-foreground-subtlest">
-					正在读取提供方…
-				</div>
-			) : providers.length === 0 ? (
-				<div className="flex flex-col items-center gap-3 rounded-xl border-[0.5px] border-dashed border-border px-6 py-16 text-center">
-					<span className="text-[13px] leading-5">还没有配置提供方</span>
-					<Button variant="outline" size="sm" disabled={creating} onClick={create}>
-						<Plus className="size-3.5" />
-						添加供应商
-					</Button>
-				</div>
-			) : (
-				<div className="grid min-h-[480px] grid-cols-[180px_minmax(0,1fr)] overflow-hidden rounded-xl border-[0.5px] border-border">
-					<nav aria-label="提供方" className="min-w-0 border-r-[0.5px] border-border">
-						<div className="px-3 pt-3 pb-1 text-[11px] leading-4 text-foreground-subtlest">
-							提供方
-						</div>
-						<div className="flex flex-col gap-0.5 px-1.5 pb-3">
-							{providers.map((provider) => {
-								const active = provider.id === selectedId;
-								return (
-									<button
-										key={provider.id}
-										type="button"
-										aria-current={active ? "true" : undefined}
-										onClick={() => setSelectedId(provider.id)}
-										className={cn(
-											"flex h-[30px] items-center gap-2 rounded-md border-[0.5px] px-2 text-left text-[12.5px] leading-[18px] transition-colors",
-											active
-												? "border-border bg-card-selected"
-												: "border-transparent hover:bg-surface-hover",
-										)}
-									>
-										<span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface text-[9px] leading-none font-semibold text-foreground-subtle">
-											{provider.name.slice(0, 1)}
-										</span>
-										<span className="min-w-0 flex-1 truncate">{provider.name}</span>
-										<span
-											className={cn(
-												"size-1.5 shrink-0 rounded-full",
-												!provider.enabled
-													? "bg-border"
-													: provider.hasApiKey
-														? "bg-success"
-														: "bg-warning",
-											)}
-										/>
-									</button>
-								);
-							})}
-						</div>
-					</nav>
-
-					<div className="min-w-0 overflow-y-auto p-4">
-						{selected === undefined ? null : (
+					<div className="pd">
+						{selected === undefined ? (
+							<div className="pd-blank">
+								<div className="t">还没有供应商</div>
+								<p>添加一家兼容网关或本地推理服务；名称与所有字段都能随时修改。</p>
+								<button type="button" className="b b-solid b-sm" onClick={create} disabled={creating}>
+									添加供应商
+								</button>
+							</div>
+						) : (
 							<ProviderDetail
 								key={selected.id}
 								provider={selected}
@@ -166,8 +136,7 @@ export function ModelsSection({
 								levels={
 									settings === undefined || settings.provider !== selected.id
 										? []
-										: (settings.models.find((model) => model.model === settings.model)
-												?.thinkingLevels ?? [])
+										: (settings.models.find((model) => model.model === settings.model)?.thinkingLevels ?? [])
 								}
 								onSelectModel={onModel}
 								onUpdate={onUpdate}
@@ -184,11 +153,16 @@ export function ModelsSection({
 						)}
 					</div>
 				</div>
-			)}
-
-			{error === undefined ? null : (
-				<p className="m-0 text-[12px] leading-[18px] text-destructive">{error}</p>
-			)}
-		</div>
+				<p className="set-note">
+					Reins 不预置任何供应商：名称、Base URL、API 格式、密钥与模型都由你填写，改名不影响历史任务。密钥只写进本机{" "}
+					<span style={{ fontFamily: "var(--mono)" }}>providers.json</span>，界面默认遮蔽，点小眼睛可临时显示明文。
+				</p>
+				{error === undefined ? null : (
+					<p className="set-note" style={{ color: "var(--danger)" }}>
+						{error}
+					</p>
+				)}
+			</Section>
+		</SettingsPane>
 	);
 }

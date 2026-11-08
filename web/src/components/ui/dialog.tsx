@@ -2,16 +2,16 @@ import { X } from "lucide-react";
 import { useEffect, useRef, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { Button } from "./button.tsx";
 import { cn } from "./cn.ts";
 
-/** 模态对话框；打开时把焦点移进面板，Escape 与点遮罩都关闭。 */
+/** 模态对话框：正文独立滚动、底部操作固定；打开时把焦点移进面板，Escape 与点遮罩都关闭。 */
 export function Dialog({
 	open,
 	onClose,
 	title,
 	children,
 	footer,
+	wide,
 	className,
 }: {
 	readonly open: boolean;
@@ -19,6 +19,7 @@ export function Dialog({
 	readonly title: string;
 	readonly children: ReactNode;
 	readonly footer?: ReactNode;
+	readonly wide?: boolean;
 	readonly className?: string;
 }): ReactElement | null {
 	const panelRef = useRef<HTMLDivElement | null>(null);
@@ -37,39 +38,30 @@ export function Dialog({
 	}, [open, onClose]);
 
 	if (!open) return null;
-		return createPortal(
+	return createPortal(
+		<div
+			className="dialog-mask"
+			onMouseDown={(event) => {
+				if (event.target === event.currentTarget) onClose();
+			}}
+		>
 			<div
-				className="fixed inset-0 z-[80] flex items-center justify-center bg-black/25 p-4"
-				onMouseDown={(event) => {
-					if (event.target === event.currentTarget) onClose();
-				}}
+				ref={panelRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label={title}
+				className={cn("dialog", wide === true && "wide", className)}
 			>
-				<div
-					ref={panelRef}
-					role="dialog"
-					aria-modal="true"
-					aria-label={title}
-					className={cn(
-						"dialog-material w-full max-w-lg rounded-[28px] p-5 animate-panel-in",
-						className,
-					)}
-				>
-					<div className="mb-4 flex items-center justify-between gap-3">
-						<h2 className="text-[16px] leading-6 font-medium text-foreground">{title}</h2>
-						<Button
-							size="icon-sm"
-							variant="ghost"
-							aria-label="关闭"
-							className="rounded-sm"
-							onClick={onClose}
-						>
-							<X className="size-4" />
-						</Button>
-					</div>
-					{children}
-					{footer === undefined ? null : <div className="mt-5 flex justify-end gap-2">{footer}</div>}
+				<div className="dialog-h">
+					<span className="t">{title}</span>
+					<button type="button" className="dialog-x" aria-label="关闭" onClick={onClose}>
+						<X className="ic-14" />
+					</button>
 				</div>
-			</div>,
-			document.body,
-		);
+				<div className="dialog-b">{children}</div>
+				{footer === undefined ? null : <div className="dialog-f">{footer}</div>}
+			</div>
+		</div>,
+		document.body,
+	);
 }

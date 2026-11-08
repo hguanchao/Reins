@@ -1,92 +1,146 @@
-import { ShieldAlert } from "lucide-react";
-import type { ReactElement } from "react";
+import { Check, ChevronDown, Globe, ShieldAlert, ShieldCheck, TriangleAlert } from "lucide-react";
+import { useState, type ReactElement } from "react";
 
-import { cn } from "../components/ui/cn.ts";
 import type { ApprovalAnswer, ApprovalRequest } from "../protocol.ts";
 
-const DANGER_BUTTON =
-	"flex h-7 items-center justify-center rounded-sm border-[0.5px] border-border px-3 text-[12px] leading-[18px] text-foreground transition-colors hover:bg-surface-hover";
-const PRIMARY_BUTTON =
-	"flex h-7 items-center justify-center rounded-sm bg-primary px-3 text-[12px] leading-[18px] text-primary-foreground transition-opacity hover:opacity-90";
-
-/** 审批卡：风险、预览与三个结论在一张卡上，保持面板材质。 */
+/**
+ * 审批闸门。
+ *
+ * 三个层级对应三种重量：可逆用实线描边、越界用虚线、不可逆整卡反白。选项顺序永不改变——
+ * 拒绝永远最左、允许永远最右，肌肉记忆比视觉一致性重要。高危卡不接受数字键（由应用层的
+ * 键盘处理排除），只能逐个点击：反射性连按不该成为放行不可逆操作的通道。
+ */
 export function ApprovalCard({
 	request,
 	onAnswer,
+	count,
+	onDefer,
 }: {
 	readonly request: ApprovalRequest;
 	readonly onAnswer: (answer: ApprovalAnswer) => void;
+	/** 待办队列里的位置，例如「1 / 2」；单张卡不传 */
+	readonly count?: string;
+	/** 「稍后」：把卡收成一行，不是取消 */
+	readonly onDefer?: () => void;
 }): ReactElement {
 	const destructive = request.risk === "destructive";
 	const external = request.risk === "external";
+	const [more, setMore] = useState(false);
+	const TagIcon = destructive ? ShieldAlert : external ? Globe : ShieldCheck;
+	const hasPreview = request.preview !== undefined && request.preview.length > 0;
 
 	return (
-		<div className="animate-panel-in rounded-[20px] border-[0.5px] border-card-border bg-panel p-3 shadow-panel-elevated">
-			<div className="flex flex-col gap-3">
-				<div className="flex items-start gap-3">
-					<div
-						className={cn(
-							"mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg",
-							destructive ? "bg-destructive-surface text-destructive" : "bg-surface text-foreground-subtle",
-						)}
-					>
-						<ShieldAlert className="size-4" />
-					</div>
-					<div className="min-w-0 flex-1">
-						<div className="flex flex-wrap items-center gap-2">
-							<span className="text-[14px] leading-[22px] font-medium text-foreground">需要确认</span>
-							{request.risk.length === 0 ? null : (
-								<span
-									className={cn(
-										"rounded-xs border-[0.5px] border-border px-1.5 py-px text-[11px] leading-4",
-										destructive
-											? "border-destructive/30 text-destructive"
-											: external
-												? "border-warning/30 text-warning-surface-foreground"
-												: "text-foreground-subtle",
-									)}
-								>
-									{destructive ? "高风险" : external ? "外部访问" : request.risk}
-								</span>
-							)}
-							<span className="font-mono text-[11px] leading-4 text-foreground-subtlest">{request.tool}</span>
-						</div>
-						<p className="mt-1 break-words text-[14px] leading-[22px] text-foreground">
-							{request.summary ?? request.detail}
-						</p>
-						{request.summary !== undefined && request.summary !== request.detail ? (
-							<p className="mt-1 break-words text-[13px] leading-5 text-foreground-subtle">{request.detail}</p>
+		<div
+			role="alertdialog"
+			aria-label={`需要确认：${request.summary ?? request.detail}`}
+			className={`gate${destructive ? " gate-danger" : external ? " gate-ext" : ""}`}
+		>
+			<div className="gate-h">
+				<span className="mk">
+					<TagIcon className="ic-12" />
+				</span>
+				<span className="t">需要确认</span>
+				<span className="tag">
+					{destructive ? "高风险 · 不可逆" : external ? "工作区外" : request.risk.length === 0 ? "写文件" : request.risk}
+				</span>
+				{count === undefined ? null : <span className="cnt">{count}</span>}
+				<span className="tool-name">{request.tool}</span>
+			</div>
+			<div className="gate-b">
+				<p className="req">{request.summary ?? request.detail}</p>
+				{request.summary === undefined || request.summary === request.detail ? null : (
+					<p className="sub">{request.detail}</p>
+				)}
+				{hasPreview ? (
+					<>
+						<button type="button" className="more" onClick={() => setMore((value) => !value)} aria-expanded={more}>
+							<ChevronDown className="ic-12" style={more ? { transform: "rotate(180deg)" } : undefined} />
+							{request.previewLabel ?? "查看完整请求"}
+						</button>
+						{more ? (
+							<div className="targets">
+								<pre className="row" style={{ margin: 0 }}>
+									{request.preview}
+								</pre>
+							</div>
 						) : null}
-					</div>
-				</div>
+					</>
+				) : null}
+				{destructive ? <p className="meta">此操作不可撤销；确认前请核对上面的目标与数量。</p> : null}
+			</div>
+			<div className="gate-f">
+				{onDefer === undefined ? null : (
+					<button type="button" className="b b-ghost b-sm" onClick={onDefer}>
+						稍后
+					</button>
+				)}
+				<button type="button" className="b b-danger b-sm" onClick={() => onAnswer("deny")}>
+					拒绝
+				</button>
+				{request.saveLabel === undefined ? null : (
+					<button type="button" className="b b-line b-sm" onClick={() => onAnswer("always")}>
+						{request.saveShort ?? "总是允许"}
+					</button>
+				)}
+				<button type="button" className="b b-solid b-sm" onClick={() => onAnswer("once")}>
+					允许一次
+				</button>
+			</div>
+		</div>
+	);
+}
 
+/**
+ * 已裁决的审批记录。
+ *
+ * 首行给结论与来源标签，第二行给「放行了什么」+ 时间；点开才露出当时的完整请求。
+ * 只写「已允许一次」不够——两周后回看必须知道当时放行了哪条命令。
+ */
+export function ApprovalRecord({
+	request,
+	answer,
+	at,
+}: {
+	readonly request: ApprovalRequest;
+	readonly answer: ApprovalAnswer;
+	readonly at: string;
+}): ReactElement {
+	const [open, setOpen] = useState(false);
+	const destructive = request.risk === "destructive";
+	const external = request.risk === "external";
+	const verdict = answer === "deny" ? "已拒绝" : answer === "always" ? "已总是允许" : "已允许一次";
+	const command = request.preview?.split("\n")[0] ?? request.summary ?? request.detail;
+
+	return (
+		<div
+			className={`gate${destructive && answer !== "deny" ? " gate-danger" : external ? " gate-ext" : ""} is-done${open ? " is-open" : ""}`}
+		>
+			<div className="gate-h">
+				<span className="mk">
+					{answer === "deny" ? <TriangleAlert className="ic-12" /> : <Check className="ic-12" />}
+				</span>
+				<span className="t">{verdict}</span>
+				{destructive ? <span className="tag">不可逆</span> : external ? <span className="tag">工作区外</span> : null}
+				<span className="tool-name">{request.tool}</span>
+			</div>
+			<button type="button" className="gate-sum" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+				<span className="cmd">{command}</span>
+				<span className="tm">{at}</span>
+				<ChevronDown className="ic-12 ck2" />
+			</button>
+			<div className="gate-b">
+				<p className="req">{request.summary ?? request.detail}</p>
+				{request.summary === undefined || request.summary === request.detail ? null : (
+					<p className="sub">{request.detail}</p>
+				)}
 				{request.preview === undefined ? null : (
-					<details className="overflow-hidden rounded-lg border-[0.5px] border-border bg-code-block">
-						<summary className="cursor-pointer select-none px-4 py-2 text-[12px] leading-[18px] text-foreground-subtle">
-							{request.previewLabel ?? "详情"}
-						</summary>
-						<pre className="max-h-52 overflow-auto border-t-[0.5px] border-border px-4 py-3 font-mono text-[11px] leading-4 text-foreground-subtle">
+					<div className="targets">
+						<pre className="row" style={{ margin: 0 }}>
 							{request.preview}
 						</pre>
-					</details>
+					</div>
 				)}
-
-				<div className="flex flex-wrap items-center justify-end gap-2">
-					<span className="mr-auto text-[11px] leading-4 text-foreground-subtlest">
-						1 允许一次 · 2 {request.saveLabel === undefined ? "拒绝" : "总是允许"} · 3 拒绝
-					</span>
-					<button type="button" className={DANGER_BUTTON} onClick={() => onAnswer("deny")}>
-						拒绝
-					</button>
-					{request.saveLabel === undefined ? null : (
-						<button type="button" className={DANGER_BUTTON} onClick={() => onAnswer("always")}>
-							{request.saveShort ?? "总是允许"}
-						</button>
-					)}
-					<button type="button" className={PRIMARY_BUTTON} onClick={() => onAnswer("once")}>
-						允许一次
-					</button>
-				</div>
+				<p className="meta">你的决定 · 审批方式：逐次询问</p>
 			</div>
 		</div>
 	);

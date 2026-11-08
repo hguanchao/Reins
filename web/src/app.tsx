@@ -1,25 +1,23 @@
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, LoaderCircle } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	type CSSProperties,
 	type ReactElement,
 } from "react";
 
 import { api, openEventStream } from "./api.ts";
 import { ApprovalCard } from "./chat/approval-card.tsx";
-import { Composer, type ComposerProps } from "./chat/composer.tsx";
+import { Composer, type ComposerProps, type QueuedMessage, sessionReadout } from "./chat/composer.tsx";
 import { Hero } from "./chat/hero.tsx";
-import { LoadingPixels } from "./chat/loading-pixels.tsx";
 import { MessageRail } from "./chat/message-rail.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
-import { ToastHost, toast } from "./components/ui/index.ts";import { ScrollFadeViewport } from "./components/ui/scroll-fade-viewport.tsx";
+import { ToastHost, toast } from "./components/ui/index.ts";
 import { workspaceName } from "./lib/format.ts";
 import { sendDesktopNotification, shouldNotify } from "./lib/notify.ts";
-import { desktopBridge, hasNativeTitlebar } from "./platform.ts";
+import { desktopBridge } from "./platform.ts";
 import { CodePane } from "./panels/code-pane.tsx";
 import { FilesPane } from "./panels/files-pane.tsx";
 import { GitPane } from "./panels/git-pane.tsx";
@@ -29,6 +27,7 @@ import { SidePane } from "./panels/side-pane.tsx";
 import { SkillsPane } from "./panels/skills-pane.tsx";
 import type { SideTab, SideTabKind } from "./panels/types.ts";
 import type {
+	ActivitySummary,
 	ApprovalAnswer,
 	ApprovalMode,
 	ApprovalRequest,
@@ -41,21 +40,20 @@ import type {
 	WorkspaceSummary,
 	SkillInfo,
 	ThinkingLevel,
-	ActivitySummary,
 	UsageSummary,
 	WebEvent,
 } from "./protocol.ts";
-import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./state/usage.ts";
 import { putSessionTitle, readSessionTitles, withSessionTitles } from "./state/session-titles.ts";
+import { applyActivityRecorded, applyToolDuration, applyUsageRecorded } from "./state/usage.ts";
 import { SettingsPage, type SettingsSection } from "./settings/settings-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
 	autoSidebarAction,
+	clampRightbar,
 	clampSidebar,
 	defaultRightbarWidth,
-	RIGHTBAR_MAX_RATIO,
-	RIGHTBAR_MIN,
 	SIDEBAR_AUTO_COLLAPSE,
+	SIDEBAR_DEFAULT,
 } from "./shell/columns.ts";
 import { CommandPalette } from "./shell/command-palette.tsx";
 import { ConversationHeader } from "./shell/conversation-header.tsx";
@@ -66,12 +64,17 @@ import { useTheme } from "./state/theme.ts";
 import { appendToLast, linesFromEntries, sealStreaming, updateTool, type Line } from "./transcript/lines.ts";
 
 const STICK_THRESHOLD = 80;
-const SIDEBAR_DEFAULT = 280;
 
 interface SessionTarget {
 	readonly id: string;
 	readonly cwd: string;
 	readonly workspacePath?: string | null;
+}
+
+/** 待办槽位里排队的条目：模型提问与审批共用一条队列，先到先答。 */
+interface PendingGate {
+	readonly id: number;
+	readonly request: ApprovalRequest;
 }
 
 /** 界面主组件：装配三栏骨架、会话状态与事件流。 */
@@ -80,7 +83,8 @@ export function App(): ReactElement {
 	const [lines, setLines] = useState<readonly Line[]>([]);
 	const [running, setRunning] = useState(false);
 	const [awaitingModel, setAwaitingModel] = useState(false);
-	const [approval, setApproval] = useState<{ id: number; request: ApprovalRequest } | undefined>(undefined);
+	const [approval, setApproval] = useState<PendingGate | undefined>(undefined);
+	const [deferred, setDeferred] = useState(false);
 	const [connected, setConnected] = useState(false);
 	const [sessionId, setSessionId] = useState("");
 	const [cwd, setCwd] = useState("");
@@ -88,7 +92,6 @@ export function App(): ReactElement {
 	const [sessions, setSessions] = useState<readonly SessionSummary[]>([]);
 	const [workspaces, setWorkspaces] = useState<readonly WorkspaceSummary[]>([]);
 	const [archived, setArchived] = useState<readonly SessionSummary[]>([]);
-	// 任务重命名的显示名覆盖（本机存储）；列表与页头标题都叠上它
 	const [sessionTitles, setSessionTitles] = useState(readSessionTitles);
 	const [settings, setSettings] = useState<SettingsSnapshot | undefined>(undefined);
 	const [model, setModel] = useState<ModelInfo>({ provider: "", model: "", name: "" });
@@ -97,14 +100,30 @@ export function App(): ReactElement {
 	const [effort, setEffort] = useState<ThinkingLevel>("off");
 	const [contextWindow, setContextWindow] = useState<number | undefined>(undefined);
 	const [contextTokens, setContextTokens] = useState<number | undefined>(undefined);
-	const [usage, setUsage] = useState<UsageSummary>({ requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: undefined });
-	const [activity, setActivity] = useState<ActivitySummary>({ turns: 0, steps: 0, llmMs: 0, toolMs: 0, ttftMs: 0, ttftCount: 0, decodeTokens: 0, decodeMs: 0 });
+	const [usage, setUsage] = useState<UsageSummary>({
+		requests: 0,
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		total: 0,
+		cost: undefined,
+	});
+	const [activity, setActivity] = useState<ActivitySummary>({
+		turns: 0,
+		steps: 0,
+		llmMs: 0,
+		toolMs: 0,
+		ttftMs: 0,
+		ttftCount: 0,
+		decodeTokens: 0,
+		decodeMs: 0,
+	});
 	const [git, setGit] = useState<GitStatus | null>(null);
 	const [skills, setSkills] = useState<readonly SkillInfo[]>([]);
 	const [plugins, setPlugins] = useState<readonly PluginInfo[]>([]);
 	const [loadError, setLoadError] = useState<string | undefined>(undefined);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
-	// 记住这次收起是不是窄窗自动做的：变宽后要还回去；用户亲手收起的另当别论
 	const [autoCollapsed, setAutoCollapsed] = useState(window.innerWidth < SIDEBAR_AUTO_COLLAPSE);
 	const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
 	const [sideTabs, setSideTabs] = useState<readonly SideTab[]>([]);
@@ -113,9 +132,7 @@ export function App(): ReactElement {
 	const [sideFullscreen, setSideFullscreen] = useState(false);
 	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
-	/** 设置页打开时落在哪一栏；侧栏「扩展管理」用它直接进扩展页 */
 	const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
-	// 会话搜索框的显隐：入口在标题栏，框体在侧栏，状态放在应用层居中调度
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [commandOpen, setCommandOpen] = useState(false);
 	const [activePanel, setActivePanel] = useState<GlobalPanelId | undefined>(undefined);
@@ -123,13 +140,16 @@ export function App(): ReactElement {
 	const [canGoBack, setCanGoBack] = useState(false);
 	const [canGoForward, setCanGoForward] = useState(false);
 	const [atBottom, setAtBottom] = useState(true);
+	const [queue, setQueue] = useState<readonly QueuedMessage[]>([]);
+	const [quote, setQuote] = useState<string | undefined>(undefined);
+	const [selection, setSelection] = useState<{ readonly x: number; readonly y: number; readonly below: boolean; readonly text: string } | undefined>(undefined);
+
 	const stickToBottom = useRef(true);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const everConnected = useRef(false);
 	const historyRef = useRef<SessionTarget[]>([]);
 	const historyIndexRef = useRef(-1);
 	const navigatingRef = useRef(false);
-	/** 通知方式用 ref 保存：放进 handleEvent 的依赖会让 SSE 在设置变化时重连 */
 	const notifyModeRef = useRef<NotifyMode>("auto");
 	const runOutcomeRef = useRef<"running" | "done" | "error" | "aborted">("done");
 	const errorNotifiedRef = useRef(false);
@@ -179,12 +199,12 @@ export function App(): ReactElement {
 
 	/** 跨项目打开任务时由桌面壳换服务进程；同一工作区内复用当前服务。 */
 	const openSessionTarget = useCallback(
-			(target: SessionTarget): void => {
-				if (running && (target.workspacePath ?? target.cwd) !== cwd) {
-					toast("当前任务运行中，完成后才能切换项目", "info");
-					return;
-				}
-				setActivePanel(undefined);
+		(target: SessionTarget): void => {
+			if (running && (target.workspacePath ?? target.cwd) !== cwd) {
+				toast("当前任务运行中，完成后才能切换项目", "info");
+				return;
+			}
+			setActivePanel(undefined);
 			setSideFullscreen(false);
 			if (target.id === sessionId) return;
 			setSettingsOpen(false);
@@ -209,7 +229,7 @@ export function App(): ReactElement {
 					toast(error instanceof Error ? error.message : String(error), "error");
 				});
 		},
-			[cwd, running, sessionId],
+		[cwd, running, sessionId],
 	);
 
 	/** 会话切换后记一笔浏览历史；草稿不入栈。 */
@@ -263,23 +283,19 @@ export function App(): ReactElement {
 				const [state, session] = await Promise.all([api.state(), api.session()]);
 				setRunning(state.running);
 				setAwaitingModel(state.running && state.approval === undefined);
-				setApproval(state.approval);
+				setApproval(state.approval === undefined ? undefined : { id: state.approval.id, request: state.approval.request });
 				setApprovalMode(state.approvalMode);
 				setPlanMode(state.planMode);
 				setEffort(state.effort);
-					setModel(state.model);
-					setSessionId(state.sessionId);
-					rememberSession(
-						{
-							id: session.id,
-							cwd: session.cwd,
-							workspacePath: session.workspacePath,
-						},
-						session.entries.length === 0,
-					);
-					setCwd(state.cwd);
-					setCurrentWorkspacePath(session.workspacePath);
-					setContextWindow(state.contextWindow);
+				setModel(state.model);
+				setSessionId(state.sessionId);
+				rememberSession(
+					{ id: session.id, cwd: session.cwd, workspacePath: session.workspacePath },
+					session.entries.length === 0,
+				);
+				setCwd(state.cwd);
+				setCurrentWorkspacePath(session.workspacePath);
+				setContextWindow(state.contextWindow);
 				setContextTokens(state.contextTokens);
 				setUsage(state.usage);
 				setActivity(state.activity);
@@ -367,11 +383,7 @@ export function App(): ReactElement {
 				case "retrying":
 					setLines((current) => [
 						...current,
-						{
-							kind: "notice",
-							text: `重试中 (${event.attempt}/${event.maxAttempts})：${event.reason}`,
-							tone: "info",
-						},
+						{ kind: "notice", text: `重试中 (${event.attempt}/${event.maxAttempts})：${event.reason}`, tone: "info" },
 					]);
 					return;
 				case "compaction_start":
@@ -383,11 +395,7 @@ export function App(): ReactElement {
 				case "compaction_end":
 					setLines((current) => [
 						...current,
-						{
-							kind: "notice",
-							text: `压缩完成：~${event.tokensBefore} → ${event.tokensAfter} tokens`,
-							tone: "info",
-						},
+						{ kind: "notice", text: `压缩完成：~${event.tokensBefore} → ${event.tokensAfter} tokens`, tone: "info" },
 					]);
 					setContextTokens(event.tokensAfter);
 					return;
@@ -418,6 +426,7 @@ export function App(): ReactElement {
 					runOutcomeRef.current = "done";
 					setRunning(false);
 					setAwaitingModel(false);
+					setDeferred(false);
 					setLines(sealStreaming);
 					refreshSessions();
 					refreshGit();
@@ -428,10 +437,12 @@ export function App(): ReactElement {
 						maybeNotify("Reins 需要审批", "有新的操作等待确认");
 					}
 					setAwaitingModel(false);
+					setDeferred(false);
 					setApproval({ id: event.id, request: event.request });
 					return;
 				case "approval_cleared":
 					setApproval(undefined);
+					setDeferred(false);
 					return;
 				case "session_switched":
 					runOutcomeRef.current = "done";
@@ -441,6 +452,8 @@ export function App(): ReactElement {
 					setContextTokens(undefined);
 					setActivePanel(undefined);
 					setSideFullscreen(false);
+					setQueue([]);
+					setApproval(undefined);
 					reload();
 					refreshSessions();
 					refreshGit();
@@ -496,8 +509,6 @@ export function App(): ReactElement {
 
 	useEffect(() => {
 		const onResize = (): void => {
-			// 收起即时:去抖延迟的每一帧里侧栏都占着 280px,窄窗的中间列被挤到变形;
-			// 阈值附近不翻转靠的是展开侧的余量,不靠去抖
 			const action = autoSidebarAction(window.innerWidth, sidebarCollapsed, autoCollapsed);
 			if (action === true) {
 				setSidebarCollapsed(true);
@@ -516,13 +527,11 @@ export function App(): ReactElement {
 		return () => window.removeEventListener("resize", onResize);
 	}, [sidebarCollapsed, sidebarWidth, sideOpen, autoCollapsed]);
 
-	/** 使用者亲手收展侧栏（按钮或 Ctrl+B）：自动收起的来作废，之后不再代为展开。 */
 	const toggleSidebar = useCallback((): void => {
 		setAutoCollapsed(false);
 		setSidebarCollapsed((value) => !value);
 	}, []);
 
-	/** 标题栏的搜索入口：侧栏收起时先展开（并取消自动收起的记忆），再点亮搜索框。 */
 	const openSearch = useCallback((): void => {
 		setAutoCollapsed(false);
 		setSidebarCollapsed(false);
@@ -546,12 +555,12 @@ export function App(): ReactElement {
 	}, []);
 
 	const newTask = useCallback(
-			(workspacePath: string | null = null): void => {
-				if (running && workspacePath !== null && workspacePath !== cwd) {
-					toast("当前任务运行中，完成后才能新建其他项目的任务", "info");
-					return;
-				}
-				setSettingsOpen(false);
+		(workspacePath: string | null = null): void => {
+			if (running && workspacePath !== null && workspacePath !== cwd) {
+				toast("当前任务运行中，完成后才能新建其他项目的任务", "info");
+				return;
+			}
+			setSettingsOpen(false);
 			setActivePanel(undefined);
 			setSideFullscreen(false);
 			if (workspacePath === null || workspacePath === cwd) {
@@ -587,15 +596,14 @@ export function App(): ReactElement {
 		});
 	}, []);
 
-	/** 任务重命名：只写本机显示名覆盖，服务端标题不变。 */
 	const renameSession = useCallback((id: string, title: string): void => {
 		setSessionTitles((current) => putSessionTitle(current, id, title));
 	}, []);
 
 	const renameWorkspace = useCallback((path: string, name: string): void => {
-		setWorkspaces((current) => current.map((workspace) =>
-			workspace.path === path ? { ...workspace, name } : workspace,
-		));
+		setWorkspaces((current) =>
+			current.map((workspace) => (workspace.path === path ? { ...workspace, name } : workspace)),
+		);
 	}, []);
 
 	/**
@@ -620,20 +628,6 @@ export function App(): ReactElement {
 		[refreshSessions, running],
 	);
 
-	/** 批量归档/删除：复用服务端的多选接口，当前会话由服务端跳过。 */
-	const archiveMany = useCallback(
-		(ids: readonly string[]): void => {
-			void api.archiveSessions(ids).then(refreshSessions).catch(() => {});
-		},
-		[refreshSessions],
-	);
-	const deleteMany = useCallback(
-		(ids: readonly string[]): void => {
-			void api.deleteSessions(ids).then(refreshSessions).catch(() => {});
-		},
-		[refreshSessions],
-	);
-
 	const switchSession = useCallback(
 		(session: SessionSummary): void => {
 			openSessionTarget({
@@ -645,20 +639,46 @@ export function App(): ReactElement {
 		[cwd, openSessionTarget],
 	);
 
-	const send = useCallback((text: string): void => {
-		setActivePanel(undefined);
-		setSideFullscreen(false);
-		setLines((current) => [...current, { kind: "user", text }]);
-		void api.send(text).catch((error: unknown) => {
-			setLines((current) => [
-				...current,
-				{ kind: "notice", text: error instanceof Error ? error.message : String(error), tone: "error" },
-			]);
-		});
-		// 首条消息落盘的瞬间会话才在磁盘上存在,这里让侧栏及时补上真实条目
-		refreshSessions();
-		setActivity((current) => ({ ...current, turns: current.turns + 1 }));
-	}, [refreshSessions]);
+	/** 发送一条消息：运行中则入队，空闲则直接发出。 */
+	const deliver = useCallback(
+		(text: string): void => {
+			setActivePanel(undefined);
+			setSideFullscreen(false);
+			setLines((current) => [...current, { kind: "user", text }]);
+			void api.send(text).catch((error: unknown) => {
+				setLines((current) => [
+					...current,
+					{ kind: "notice", text: error instanceof Error ? error.message : String(error), tone: "error" },
+				]);
+			});
+			refreshSessions();
+			setActivity((current) => ({ ...current, turns: current.turns + 1 }));
+		},
+		[refreshSessions],
+	);
+
+	const send = useCallback(
+		(text: string): void => {
+			if (running) {
+				// 回合进行中按 Enter 不丢消息也不打断：进排队条，回合结束后依次发出
+				setQueue((current) => [...current, { id: `q-${Date.now()}-${current.length}`, text }]);
+				return;
+			}
+			deliver(text);
+		},
+		[deliver, running],
+	);
+
+	// 回合结束后把队列里的下一条发出去
+	const lastRunning = useRef(running);
+	useEffect(() => {
+		if (lastRunning.current && !running && queue.length > 0) {
+			const next = queue[0];
+			setQueue((current) => current.slice(1));
+			if (next !== undefined) deliver(next.text);
+		}
+		lastRunning.current = running;
+	}, [running, queue, deliver]);
 
 	const stop = useCallback((): void => {
 		void api.abort().catch(() => {});
@@ -666,6 +686,7 @@ export function App(): ReactElement {
 
 	const answer = useCallback((id: number, value: ApprovalAnswer): void => {
 		setApproval(undefined);
+		setDeferred(false);
 		void api.approve(id, value).catch((error: unknown) => {
 			toast(error instanceof Error ? error.message : String(error), "error");
 		});
@@ -734,22 +755,6 @@ export function App(): ReactElement {
 		setSideOpen(true);
 	}, []);
 
-	const openFilesTab = useCallback((): void => {
-		openTab({ id: "files", kind: "files", title: "文件" });
-	}, [openTab]);
-
-	const openGitTab = useCallback((): void => {
-		openTab({ id: "git", kind: "git", title: "Git" });
-	}, [openTab]);
-
-	const openSkillsTab = useCallback((): void => {
-		openTab({ id: "skills", kind: "skills", title: "技能" });
-	}, [openTab]);
-
-	const openPluginsTab = useCallback((): void => {
-		openTab({ id: "plugins", kind: "plugins", title: "插件" });
-	}, [openTab]);
-
 	const openFile = useCallback(
 		(path: string): void => {
 			const name = path.split(/[\\/]/).pop() ?? path;
@@ -760,14 +765,14 @@ export function App(): ReactElement {
 
 	const addSideTab = useCallback(
 		(kind: SideTabKind): void => {
-			if (kind === "files") openFilesTab();
-			else if (kind === "git") openGitTab();
-			else if (kind === "skills") openSkillsTab();
-			else if (kind === "plugins") openPluginsTab();
+			if (kind === "files") openTab({ id: "files", kind: "files", title: "文件" });
+			else if (kind === "git") openTab({ id: "git", kind: "git", title: "Git" });
+			else if (kind === "skills") openTab({ id: "skills", kind: "skills", title: "技能" });
+			else if (kind === "plugins") openTab({ id: "plugins", kind: "plugins", title: "插件" });
 			else if (kind === "browser") openTab({ id: "browser", kind: "browser", title: "浏览器" });
 			else openTab({ id: "terminal", kind: "terminal", title: "终端" });
 		},
-		[openFilesTab, openGitTab, openPluginsTab, openSkillsTab, openTab],
+		[openTab],
 	);
 
 	const closeTab = useCallback((id: string): void => {
@@ -787,11 +792,45 @@ export function App(): ReactElement {
 		setSideOpen(true);
 	}, [sideOpen]);
 
+	/** 划选会话流文本：浮出「引用 / 复制」迷你工具条。 */
+	useEffect(() => {
+		const onSelection = (): void => {
+			const active = document.getSelection();
+			if (active === null || active.isCollapsed) {
+				setSelection(undefined);
+				return;
+			}
+			const text = active.toString().trim();
+			const container = scrollRef.current;
+			if (text.length === 0 || container === null || !container.contains(active.anchorNode)) {
+				setSelection(undefined);
+				return;
+			}
+			const rect = active.getRangeAt(0).getBoundingClientRect();
+			const below = rect.top < 80;
+			setSelection({ x: rect.left + rect.width / 2, y: below ? rect.bottom + 8 : rect.top - 8, below, text });
+		};
+		document.addEventListener("selectionchange", onSelection);
+		const clear = (): void => setSelection(undefined);
+		window.addEventListener("scroll", clear, true);
+		return () => {
+			document.removeEventListener("selectionchange", onSelection);
+			window.removeEventListener("scroll", clear, true);
+		};
+	}, []);
+
 	useEffect(() => {
 		// 设置页占满窗口，后台会话的快捷键不应穿透到被遮住的界面
 		if (settingsOpen) return;
 		const onKeyDown = (event: globalThis.KeyboardEvent): void => {
 			const command = event.ctrlKey || event.metaKey;
+			const target = event.target as HTMLElement | null;
+			const typing = target !== null && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
+			if (command && event.key === ",") {
+				event.preventDefault();
+				openSettings("general");
+				return;
+			}
 			if (command && event.key.toLowerCase() === "b") {
 				event.preventDefault();
 				toggleSidebar();
@@ -807,14 +846,24 @@ export function App(): ReactElement {
 				newTask();
 				return;
 			}
-			const target = event.target as HTMLElement | null;
-			const typing = target !== null && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
+			if (command && event.key === "1" && !typing) {
+				event.preventDefault();
+				const levels = settings?.models.find((item) => item.model === model.model)?.thinkingLevels ?? [];
+				if (levels.length > 0) {
+					const index = levels.indexOf(effort);
+					const next = levels[(index + 1) % levels.length];
+					if (next !== undefined) changeEffort(next);
+				}
+				return;
+			}
 			if (event.key === "Escape" && running && !typing) {
 				event.preventDefault();
 				stop();
 				return;
 			}
 			if (typing || approval === undefined) return;
+			// 高危卡只接受点击：反射性连按不该成为放行不可逆操作的通道
+			if (approval.request.risk === "destructive") return;
 			const canAlways = approval.request.saveLabel !== undefined;
 			const map: Record<string, ApprovalAnswer> = { "1": "once", "3": "deny" };
 			map["2"] = canAlways ? "always" : "deny";
@@ -826,7 +875,7 @@ export function App(): ReactElement {
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [answer, approval, newTask, running, settingsOpen, stop]);
+	}, [answer, approval, changeEffort, effort, model.model, newTask, openSettings, running, settings?.models, stop, toggleSidebar]);
 
 	const activeTab = sideTabs.find((tab) => tab.id === activeTabId);
 	const connectionOk = connected || !everConnected.current;
@@ -839,10 +888,16 @@ export function App(): ReactElement {
 		model,
 		models: settings?.models ?? [],
 		skills,
+		mcpServers: settings?.mcpServers ?? [],
+		workspaceName: workspaceName(cwd),
+		workspacePath: currentWorkspacePath ?? "",
+		branch: git?.branch,
 		contextTokens,
 		contextWindow,
 		usage,
 		activity,
+		queue,
+		quote,
 		onSend: send,
 		onStop: stop,
 		onApprovalMode: changeApprovalMode,
@@ -850,22 +905,41 @@ export function App(): ReactElement {
 		onModel: changeModel,
 		onEffort: changeEffort,
 		onNewTask: newTask,
-		onSettings: () => openSettings("general"),
+		onOpenSettings: () => openSettings("general"),
 		onCompact: () => {
 			void api.compact().catch((error: unknown) => {
 				toast(error instanceof Error ? error.message : String(error), "error");
 			});
 		},
+		onQueueRemove: (id) => setQueue((current) => current.filter((item) => item.id !== id)),
+		onQueueEdit: (id, text) =>
+			setQueue((current) => current.map((item) => (item.id === id ? { ...item, text } : item))),
+		onQueueSendNow: (id) => {
+			const target = queue.find((item) => item.id === id);
+			if (target === undefined) return;
+			setQueue((current) => current.filter((item) => item.id !== id));
+			void api.abort().catch(() => {});
+			window.setTimeout(() => deliver(target.text), 120);
+		},
+		onQueueReorder: (from, to) =>
+			setQueue((current) => {
+				const next = [...current];
+				const [moved] = next.splice(from, 1);
+				if (moved === undefined) return current;
+				next.splice(to, 0, moved);
+				return next;
+			}),
+		onQuoteConsumed: () => setQuote(undefined),
 	};
 
 	const draft = lines.length === 0 && !running && activePanel === undefined;
 	const displaySessions = useMemo(() => withSessionTitles(sessions, sessionTitles), [sessions, sessionTitles]);
 	const currentTitle = displaySessions.find((session) => session.id === sessionId)?.title ?? "新任务";
+	const readout = sessionReadout(usage, activity);
 
 	useEffect(() => {
 		document.title = currentTitle === "新任务" ? "Reins" : `${currentTitle} · Reins`;
 	}, [currentTitle]);
-
 
 	const sidePane = (
 		<SidePane
@@ -895,82 +969,106 @@ export function App(): ReactElement {
 		<SchedulesPage onClose={() => setActivePanel(undefined)} />
 	) : (
 		<>
-			<ConversationHeader
-				blank={draft}
-				workspace={workspaceName(cwd) || "Reins"}
-				title={currentTitle}
-				showNavigation={!hasNativeTitlebar()}
-				canGoBack={canGoBack}
-				canGoForward={canGoForward}
-				rightbarOpen={sideOpen}
-				onBack={goBack}
-				onForward={goForward}
-				onToggleRightbar={toggleSidePane}
-			/>
+			{draft ? null : (
+				<ConversationHeader
+					title={currentTitle}
+					workspace={workspaceName(cwd)}
+					meta={readout}
+					rightbarOpen={sideOpen}
+					onToggleRightbar={toggleSidePane}
+					onArchive={() => {
+						void api.archiveSessions([sessionId]).then(refreshSessions).catch(() => {});
+					}}
+					onReveal={() => desktopBridge()?.openWorkspaceFolder(currentWorkspacePath ?? cwd)}
+				/>
+			)}
 
-			<div
-				className="flex min-h-0 flex-1 flex-col"
-				style={{ "--chat-content-width": "clamp(680px, 64%, 920px)" } as unknown as CSSProperties}
-			>
-				{loadError !== undefined ? (
-					<div className="flex flex-1 items-center justify-center px-6 text-[13px] text-destructive">
-						无法连接：{loadError}
-					</div>
-				) : draft ? (
-					<Hero
-						workspace={workspaceName(cwd)}
-						composer={<Composer {...composerProps} />}
-					/>
-				) : (
-					<>
-						<div className="relative min-h-0 flex-1">
-							<ScrollFadeViewport ref={scrollRef} onScroll={onScroll} className="h-full">
-								<div className="px-4">
-									<div className="mx-auto w-full max-w-[var(--chat-content-width)] pb-6 pt-4">
-										<TranscriptView lines={lines} />
-										{awaitingModel ? (
-											<div className="mt-4">
-												<LoadingPixels />
-											</div>
-										) : null}
+			{loadError !== undefined ? (
+				<div className="flex flex-1 items-center justify-center px-6 text-[var(--fs-13)]" style={{ color: "var(--danger)" }}>
+					无法连接：{loadError}
+				</div>
+			) : draft ? (
+				<Hero
+					composer={<Composer {...composerProps} blank />}
+					onStart={(text) => deliver(text)}
+					rightbarOpen={sideOpen}
+					onToggleRightbar={toggleSidePane}
+				/>
+			) : (
+				<>
+					<div className="transcript-wrap">
+						<div className="transcript" ref={scrollRef} onScroll={onScroll}>
+							<TranscriptView
+								lines={lines}
+								running={running}
+								onRegenerate={(text) => deliver(text)}
+							/>
+							{awaitingModel ? (
+								<div className="flow" style={{ paddingTop: 0 }}>
+									<div className="flex items-center gap-2 py-1">
+										<span className="pixel-load" aria-label="正在思考">
+											<i />
+											<i />
+											<i />
+											<i />
+										</span>
+										<span className="sweep-text text-[var(--fs-11)]" style={{ color: "var(--ink-3)" }}>
+											正在思考
+										</span>
 									</div>
 								</div>
-							</ScrollFadeViewport>
-							<MessageRail lines={lines} scrollRef={scrollRef} />
-							{!atBottom ? (
-								<button
-									type="button"
-									onClick={jumpToBottom}
-									title="回到底部"
-									aria-label="回到底部"
-									className="absolute bottom-4 right-[max(calc((100%_-_var(--chat-content-width))_/_2),16px)] z-20 flex size-[34px] items-center justify-center rounded-full border-0 bg-card text-foreground shadow-panel-elevated transition-colors hover:bg-surface-hover"
-								>
-									<ArrowDown className="size-4" />
-								</button>
 							) : null}
 						</div>
 
-						<div className="sticky bottom-0 shrink-0 bg-[linear-gradient(180deg,transparent_0px,var(--background)_36px)] px-4 pb-4 pt-6">
-							<div className="mx-auto w-full max-w-[var(--chat-content-width)]">
-								{approval === undefined ? null : (
-									<div className="mb-1.5">
-										<ApprovalCard
-											request={approval.request}
-											onAnswer={(value) => answer(approval.id, value)}
-										/>
+						{!atBottom ? (
+							<button type="button" className="back-latest" onClick={jumpToBottom}>
+								<ArrowDown className="ic-12" />
+								回到最新
+							</button>
+						) : null}
+
+						<MessageRail lines={lines} scrollRef={scrollRef} />
+					</div>
+
+					<div className="dock">
+						<div className="dock-in">
+							{/* 待办槽位：模型在等回答时，输入卡整块让位给这张卡；答完换回 */}
+							{approval === undefined || deferred ? null : (
+								<ApprovalCard
+									request={approval.request}
+									count="1 / 1"
+									onDefer={() => setDeferred(true)}
+									onAnswer={(value) => answer(approval.id, value)}
+								/>
+							)}
+							{deferred && approval !== undefined ? (
+								<button
+									type="button"
+									className="gate"
+									style={{ width: "100%", textAlign: "left" }}
+									onClick={() => setDeferred(false)}
+								>
+									<div className="gate-h" style={{ borderBottom: 0 }}>
+										<span className="mk">
+											<LoaderCircle className="ic-12" />
+										</span>
+										<span className="t">有一条请求待确认</span>
+										<span className="cnt">展开</span>
 									</div>
-								)}
-								<Composer {...composerProps} />
-							</div>
+								</button>
+							) : null}
+							<Composer {...composerProps} />
 						</div>
-					</>
-				)}
-			</div>
+					</div>
+				</>
+			)}
 		</>
 	);
 
 	return (
 		<>
+			{connectionOk ? null : <div className="conn-banner" role="status" aria-label="连接已断开，正在重连" />}
+
 			<AppShell
 				inactive={settingsOpen}
 				sidebarWidth={sidebarWidth}
@@ -978,17 +1076,11 @@ export function App(): ReactElement {
 				rightbarWidth={sideWidth}
 				rightbarOpen={sideOpen}
 				rightbarFullscreen={sideFullscreen}
+				workspace={draft ? "" : workspaceName(cwd)}
+				title={draft ? "新任务" : currentTitle}
 				onSidebarWidth={(width) => setSidebarWidth(clampSidebar(width))}
-				onRightbarWidth={(width) =>
-					setSideWidth(
-						Math.max(
-							RIGHTBAR_MIN,
-							Math.min(Math.round(window.innerWidth * RIGHTBAR_MAX_RATIO), Math.round(width)),
-						),
-					)
-				}
+				onRightbarWidth={(width) => setSideWidth(clampRightbar(width, window.innerWidth))}
 				onToggleSidebar={toggleSidebar}
-				onNewSession={newTask}
 				onOpenSearch={openSearch}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
@@ -1002,6 +1094,7 @@ export function App(): ReactElement {
 						currentIsDraft={lines.length === 0}
 						currentWorkspacePath={currentWorkspacePath}
 						running={running}
+						waiting={approval !== undefined}
 						cwd={cwd}
 						workspaces={workspaces}
 						version={settings?.version ?? ""}
@@ -1028,14 +1121,44 @@ export function App(): ReactElement {
 						onRenameWorkspace={renameWorkspace}
 						onRemoveWorkspace={removeWorkspace}
 						onRenameSession={renameSession}
-						onArchiveMany={archiveMany}
-						onDeleteMany={deleteMany}
 					/>
 				}
 				rightbar={sidePane}
 			>
 				{main}
 			</AppShell>
+
+			{selection === undefined ? null : (
+				<div
+					className="sel-pop"
+					style={{
+						left: selection.x,
+						top: selection.y,
+						transform: `translate(-50%, ${selection.below ? "0" : "-100%"})`,
+					}}
+				>
+					<button
+						type="button"
+						onClick={() => {
+							setQuote(selection.text);
+							setSelection(undefined);
+							document.getSelection()?.removeAllRanges();
+						}}
+					>
+						引用
+					</button>
+					<button
+						type="button"
+						onClick={() => {
+							void navigator.clipboard.writeText(selection.text);
+							setSelection(undefined);
+							document.getSelection()?.removeAllRanges();
+						}}
+					>
+						复制
+					</button>
+				</div>
+			)}
 
 			<ToastHost />
 			{settingsOpen ? (

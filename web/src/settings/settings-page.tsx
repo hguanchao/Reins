@@ -1,19 +1,5 @@
-import {
-	Activity,
-	Archive,
-	ArrowLeft,
-	Blocks,
-	Cpu,
-	Info,
-	Palette,
-	Search,
-	Settings2,
-	UserRound,
-	type LucideIcon,
-} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 
-import { cn } from "../components/ui/cn.ts";
 import type {
 	ActivitySummary,
 	ApprovalMode,
@@ -24,6 +10,7 @@ import type {
 	UsageSummary,
 } from "../protocol.ts";
 import type { ThemeMode } from "../state/theme.ts";
+import { WindowControls } from "../shell/caption-bar.tsx";
 import { AboutSection } from "./about-section.tsx";
 import { AppearanceSection } from "./appearance-section.tsx";
 import { ArchivedSection } from "./archived-section.tsx";
@@ -44,40 +31,39 @@ export type SettingsSection =
 	| "archived"
 	| "about";
 
-type Section = SettingsSection;
-
 interface NavItem {
-	readonly id: Section;
+	readonly id: SettingsSection;
 	readonly label: string;
-	readonly icon: LucideIcon;
+	readonly icon: string;
 }
 
+/** 五组平级分区，用留白分组，不加分隔线。 */
 const NAV: readonly { readonly label: string; readonly items: readonly NavItem[] }[] = [
 	{
 		label: "基础设置",
 		items: [
-			{ id: "general", label: "常规", icon: Settings2 },
-			{ id: "appearance", label: "外观", icon: Palette },
-			{ id: "models", label: "模型设置", icon: Cpu },
+			{ id: "general", label: "常规", icon: "settings-2" },
+			{ id: "appearance", label: "外观", icon: "palette" },
+			{ id: "models", label: "模型", icon: "cpu" },
 		],
 	},
 	{
 		label: "Agent 能力",
 		items: [
-			{ id: "personalization", label: "个性化", icon: UserRound },
-			{ id: "extensions", label: "扩展管理", icon: Blocks },
+			{ id: "personalization", label: "个性化", icon: "user-round" },
+			{ id: "extensions", label: "扩展管理", icon: "blocks" },
 		],
 	},
 	{
 		label: "数据",
 		items: [
-			{ id: "usage", label: "使用统计", icon: Activity },
-			{ id: "archived", label: "已归档任务", icon: Archive },
+			{ id: "usage", label: "使用统计", icon: "activity" },
+			{ id: "archived", label: "已归档任务", icon: "archive" },
 		],
 	},
 	{
 		label: "关于",
-		items: [{ id: "about", label: "关于 Reins", icon: Info }],
+		items: [{ id: "about", label: "关于 Reins", icon: "info" }],
 	},
 ];
 
@@ -87,7 +73,6 @@ export interface SettingsPageProps {
 	readonly usage: UsageSummary;
 	readonly activity: ActivitySummary;
 	readonly themeMode: ThemeMode;
-	/** 打开时落在哪一栏；侧栏「扩展管理」用它直接进扩展页 */
 	readonly initialSection?: SettingsSection;
 	onThemeMode(mode: ThemeMode): void;
 	onClose(): void;
@@ -98,9 +83,14 @@ export interface SettingsPageProps {
 	onRefresh(): void;
 }
 
-/** 设置页：左侧分组导航 + 右侧内容列，占满窗口而不是浮层。 */
+/**
+ * 设置页。
+ *
+ * 占满窗口：左侧常驻导航（五组，小号宽字距组标题），右侧 660px 内容列——切页时标题列不横移。
+ * 除「个性化」「模型」这类编辑文本的分区外没有页脚保存，设置项即时生效。
+ */
 export function SettingsPage(props: SettingsPageProps): ReactElement {
-	const [section, setSection] = useState<Section>(props.initialSection ?? "general");
+	const [section, setSection] = useState<SettingsSection>(props.initialSection ?? "general");
 	const [query, setQuery] = useState("");
 	const groups = useMemo(() => filterSettingsNav(NAV, query), [query]);
 	const onClose = props.onClose;
@@ -120,108 +110,214 @@ export function SettingsPage(props: SettingsPageProps): ReactElement {
 	}, [onClose]);
 
 	return (
-		<div
-			role="region"
-			aria-label="设置"
-			className="fixed inset-0 z-[70] flex flex-col bg-sidebar text-foreground outline-none"
-		>
-			<div className="drag-region h-(--caption-height) shrink-0" />
-			<div className="flex min-h-0 flex-1">
-				<aside className="flex w-[244px] shrink-0 flex-col border-r-[0.5px] border-border px-3 pb-3">
-					<button
-						type="button"
-						onClick={props.onClose}
-						className="flex h-9 shrink-0 items-center gap-2 rounded-lg px-2.5 text-[13px] leading-5 text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-					>
-						<ArrowLeft className="size-4" />
-						返回工作区
-					</button>
+		<div className="app set-page" role="region" aria-label="设置">
+			<div className="caption drag-region">
+				<button
+					type="button"
+					className="cbtn no-drag"
+					aria-label="返回工作区"
+					title="返回工作区 (Esc)"
+					onClick={onClose}
+				>
+					<svg className="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+						<path d="m12 19-7-7 7-7" />
+						<path d="M19 12H5" />
+					</svg>
+				</button>
+				<div className="crumb">
+					<span>设置</span>
+					<span className="sep">/</span>
+					<span className="now">
+						{NAV.flatMap((group) => group.items).find((item) => item.id === section)?.label}
+					</span>
+				</div>
+				<WindowControls />
+			</div>
 
-					<label className="mt-3 flex h-8 shrink-0 items-center gap-1.5 rounded-lg border-[0.5px] border-border bg-background px-2">
-						<Search className="size-3.5 shrink-0 text-foreground-subtlest" />
+			<aside className="side" style={{ borderRight: "1px solid var(--rule-2)" }}>
+				<div style={{ padding: "10px 10px 0" }}>
+					<button type="button" className="nav-row" onClick={onClose} style={{ height: 30, gap: 7 }}>
+						<svg className="ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+							<path d="m12 19-7-7 7-7" />
+							<path d="M19 12H5" />
+						</svg>
+						<span>返回工作区</span>
+					</button>
+					<div className="side-search" style={{ marginTop: 8 }}>
+						<svg className="ic-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+							<path d="m21 21-4.34-4.34" />
+							<circle cx="11" cy="11" r="8" />
+						</svg>
 						<input
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
 							placeholder="搜索设置"
 							aria-label="搜索设置"
-							className="min-w-0 flex-1 bg-transparent text-[12px] leading-[18px] outline-none placeholder:text-foreground-subtlest"
 						/>
-					</label>
+					</div>
+				</div>
 
-					<nav className="mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto">
-						{groups.length === 0 ? (
-							<div className="px-2.5 py-4 text-[12px] leading-[18px] text-foreground-subtlest">
-								没有匹配的设置项
-							</div>
-						) : (
-							groups.map((group) => (
-								<div key={group.label} className="flex flex-col pb-3">
-									<div className="px-2.5 pt-3 pb-1 text-[11px] leading-4 font-medium text-foreground-subtlest">
-										{group.label}
-									</div>
-									{group.items.map((item) => {
-										const Icon = item.icon;
-										const active = item.id === section;
-										return (
-											<button
-												key={item.id}
-												type="button"
-												aria-current={active ? "page" : undefined}
-												onClick={() => setSection(item.id)}
-												className={cn(
-													"flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[13px] leading-5 transition-colors",
-													active
-														? "bg-[var(--sidebar-nav-active)] text-foreground"
-														: "text-foreground-subtle hover:bg-surface-hover hover:text-foreground",
-												)}
-											>
-												<Icon className="size-4 shrink-0" />
-												<span className="min-w-0 flex-1 truncate">{item.label}</span>
-											</button>
-										);
-									})}
+				<div className="side-scroll" style={{ paddingTop: 6 }}>
+					{groups.length === 0 ? (
+						<div className="side-sub" style={{ letterSpacing: 0, color: "var(--ink-4)" }}>
+							没有匹配的设置项
+						</div>
+					) : (
+						groups.map((group) => (
+							<div key={group.label} className="side-sec" style={{ marginTop: 10 }}>
+								<div className="side-sub" style={{ paddingLeft: 4 }}>
+									{group.label}
 								</div>
-							))
-						)}
-					</nav>
+								{group.items.map((item) => (
+									<button
+										key={item.id}
+										type="button"
+										aria-current={item.id === section ? "page" : undefined}
+										onClick={() => setSection(item.id)}
+										className={`nav-row${item.id === section ? " is-on" : ""}`}
+									>
+										<NavIcon name={item.icon} />
+										<span>{item.label}</span>
+									</button>
+								))}
+							</div>
+						))
+					)}
+				</div>
 
-					<div className="flex shrink-0 items-center justify-between px-2.5 pt-2 text-[11px] leading-4 text-foreground-subtlest">
-						<span>本地模式</span>
-						<span className="font-mono">v{props.settings?.version ?? "—"}</span>
-					</div>
-				</aside>
+				<div
+					style={{
+						flex: "none",
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "space-between",
+						padding: "9px 14px",
+						borderTop: "1px solid var(--rule)",
+						fontFamily: "var(--mono)",
+						fontSize: "var(--fs-10)",
+						color: "var(--ink-4)",
+					}}
+				>
+					<span>本地模式</span>
+					<span>v{props.settings?.version ?? "—"}</span>
+				</div>
+			</aside>
 
-				<main className="min-w-0 flex-1 overflow-y-auto bg-background">
-					<div className="mx-auto flex w-full max-w-[860px] flex-col px-[clamp(28px,5vw,64px)] pt-12 pb-20">
-						{section === "general" ? (
-							<GeneralSection settings={props.settings} onUpdate={props.onUpdate} />
-						) : section === "appearance" ? (
-							<AppearanceSection themeMode={props.themeMode} onThemeMode={props.onThemeMode} />
-						) : section === "models" ? (
-							<ModelsSection
-								settings={props.settings}
-								onModel={props.onModel}
-								onUpdate={props.onUpdate}
-								onRefresh={props.onRefresh}
-							/>
-						) : section === "personalization" ? (
-							<PersonalizationSection />
-						) : section === "extensions" ? (
-							<ExtensionsSection settings={props.settings} onRefresh={props.onRefresh} />
-						) : section === "usage" ? (
-							<UsageSection usage={props.usage} activity={props.activity} />
-						) : section === "archived" ? (
-							<ArchivedSection
-								archived={props.archived}
-								onRestore={props.onRestore}
-								onDelete={props.onDeleteArchived}
-							/>
-						) : (
-							<AboutSection settings={props.settings} />
-						)}
-					</div>
-				</main>
+			<div className="main scroll">
+				<div className="set-main">
+					{section === "general" ? (
+						<GeneralSection settings={props.settings} onUpdate={props.onUpdate} />
+					) : section === "appearance" ? (
+						<AppearanceSection themeMode={props.themeMode} onThemeMode={props.onThemeMode} />
+					) : section === "models" ? (
+						<ModelsSection
+							settings={props.settings}
+							onModel={props.onModel}
+							onUpdate={props.onUpdate}
+							onRefresh={props.onRefresh}
+						/>
+					) : section === "personalization" ? (
+						<PersonalizationSection />
+					) : section === "extensions" ? (
+						<ExtensionsSection settings={props.settings} onRefresh={props.onRefresh} />
+					) : section === "usage" ? (
+						<UsageSection usage={props.usage} activity={props.activity} />
+					) : section === "archived" ? (
+						<ArchivedSection
+							archived={props.archived}
+							onRestore={props.onRestore}
+							onDelete={props.onDeleteArchived}
+						/>
+					) : (
+						<AboutSection settings={props.settings} />
+					)}
+				</div>
 			</div>
 		</div>
+	);
+}
+
+/** 导航图标：直接内联路径，避免为八个小图标各引一次组件。 */
+function NavIcon({ name }: { readonly name: string }): ReactElement {
+	const paths: Readonly<Record<string, ReactElement>> = {
+		"settings-2": (
+			<>
+				<path d="M14 17H5" />
+				<path d="M19 7h-9" />
+				<circle cx="17" cy="17" r="3" />
+				<circle cx="7" cy="7" r="3" />
+			</>
+		),
+		palette: (
+			<>
+				<path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
+				<circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+				<circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+				<circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+				<circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+			</>
+		),
+		cpu: (
+			<>
+				<path d="M12 20v2" />
+				<path d="M12 2v2" />
+				<path d="M17 20v2" />
+				<path d="M17 2v2" />
+				<path d="M2 12h2" />
+				<path d="M2 17h2" />
+				<path d="M2 7h2" />
+				<path d="M20 12h2" />
+				<path d="M20 17h2" />
+				<path d="M20 7h2" />
+				<path d="M7 20v2" />
+				<path d="M7 2v2" />
+				<rect x="4" y="4" width="16" height="16" rx="2" />
+				<rect x="8" y="8" width="8" height="8" rx="1" />
+			</>
+		),
+		"user-round": (
+			<>
+				<circle cx="12" cy="8" r="5" />
+				<path d="M20 21a8 8 0 0 0-16 0" />
+			</>
+		),
+		blocks: (
+			<>
+				<path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2" />
+				<rect x="14" y="2" width="8" height="8" rx="1" />
+			</>
+		),
+		activity: (
+			<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
+		),
+		archive: (
+			<>
+				<rect width="20" height="5" x="2" y="3" rx="1" />
+				<path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+				<path d="M10 12h4" />
+			</>
+		),
+		info: (
+			<>
+				<circle cx="12" cy="12" r="10" />
+				<path d="M12 16v-4" />
+				<path d="M12 8h.01" />
+			</>
+		),
+	};
+
+	return (
+		<svg
+			className="ic-14"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			{paths[name]}
+		</svg>
 	);
 }

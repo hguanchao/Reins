@@ -1,140 +1,165 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
-import { cn } from "../components/ui/cn.ts";
+/**
+ * 设置页骨架。
+ *
+ * 八页共用一套：等宽小标 + 27px 标题 + 一句说明 + 2px 墨线，正文用行式卡片承载。
+ * 不画卡片外框包住整页——标题本身就是分隔。
+ */
+export function SettingsPane({
+	eyebrow,
+	title,
+	description,
+	action,
+	children,
+}: {
+	readonly eyebrow: string;
+	readonly title: string;
+	readonly description: string;
+	readonly action?: ReactNode;
+	readonly children: ReactNode;
+}): ReactElement {
+	return (
+		<div className="set-pane">
+			<div className="set-hd">
+				<div className="row">
+					<div>
+						<div className="eyebrow">{eyebrow}</div>
+						<h1>{title}</h1>
+						<p>{description}</p>
+					</div>
+					{action === undefined ? null : <div className="flex shrink-0 items-center gap-2">{action}</div>}
+				</div>
+			</div>
+			{children}
+		</div>
+	);
+}
 
-/** 设置页的通用骨架：页头、卡片、设置行与分段选择。 */
-export function SettingsHeader({
+/** 一个设置小节：小标题 + 右侧一句说明（可省）+ 内容 + 底部注记。 */
+export function Section({
+	name,
+	hint,
+	children,
+	note,
+}: {
+	readonly name: string;
+	readonly hint?: string;
+	readonly children: ReactNode;
+	/** 小节下方的补充说明，用最弱明度，不承载唯一操作信息 */
+	readonly note?: ReactNode;
+}): ReactElement {
+	return (
+		<div className="set-sec">
+			<div className="set-sec-h">
+				<span className="n">{name}</span>
+				{hint === undefined ? null : <span className="h">{hint}</span>}
+			</div>
+			{children}
+			{note === undefined ? null : <p className="set-note">{note}</p>}
+		</div>
+	);
+}
+
+/** 行式卡片：标题与说明在左，状态 / 开关 / 按钮统一靠右。 */
+export function Card({ children }: { readonly children: ReactNode }): ReactElement {
+	return <div className="set-card">{children}</div>;
+}
+
+export function Row({
+	title,
+	description,
+	value,
+	children,
+	lead,
+}: {
+	readonly title: string;
+	readonly description?: string;
+	/** 只读读数：等宽小字或徽标 */
+	readonly value?: ReactNode;
+	readonly children?: ReactNode;
+	/** 行首的序号或图标 */
+	readonly lead?: ReactNode;
+}): ReactElement {
+	return (
+		<div className="set-row">
+			{lead}
+			<div className="txt">
+				<div className="t">{title}</div>
+				{description === undefined ? null : <div className="d">{description}</div>}
+			</div>
+			{value}
+			{children}
+		</div>
+	);
+}
+
+/** 并排选择卡：三个选项的差别在「打断程度」，必须并排比较。 */
+export function ChoiceCard({
+	title,
+	description,
+	selected,
+	onSelect,
+}: {
+	readonly title: string;
+	readonly description: string;
+	readonly selected: boolean;
+	onSelect(): void;
+}): ReactElement {
+	return (
+		<button type="button" className="choice" aria-pressed={selected} onClick={onSelect}>
+			<span className="ct">
+				{title}
+				<svg
+					className="ic-12 ck"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					strokeWidth="2"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M20 6 9 17l-5-5" />
+				</svg>
+			</span>
+			<span className="cd">{description}</span>
+		</button>
+	);
+}
+
+/** 徽标：状态用徽标而不是彩色圆点。 */
+export function Tag({
+	children,
+	tone = "line",
+}: {
+	readonly children: ReactNode;
+	readonly tone?: "line" | "solid" | "ghost" | "dash";
+}): ReactElement {
+	return <span className={`badge lg${tone === "line" ? "" : ` ${tone}`}`}>{children}</span>;
+}
+
+/** 空态：图标框 + 一句标题 + 一句说明 + 一个动作。 */
+export function Empty({
+	icon: Icon,
 	title,
 	description,
 	action,
 }: {
+	readonly icon: LucideIcon;
 	readonly title: string;
 	readonly description: string;
 	readonly action?: ReactNode;
 }): ReactElement {
 	return (
-		<div className="flex flex-wrap items-start justify-between gap-4">
-			<div className="min-w-0">
-				<h1 className="m-0 text-[28px] leading-9 font-semibold tracking-[-0.01em]">{title}</h1>
-				<p className="mt-2 mb-0 max-w-[620px] text-[13px] leading-5 text-foreground-subtle">
-					{description}
-				</p>
-			</div>
-			{action === undefined ? null : <div className="flex shrink-0 items-center gap-2">{action}</div>}
-		</div>
-	);
-}
-
-export function SettingsCard({
-	children,
-	className,
-}: {
-	readonly children: ReactNode;
-	readonly className?: string;
-}): ReactElement {
-	return (
-		<div
-			className={cn(
-				"flex flex-col rounded-[16px] border-[0.5px] border-border bg-card",
-				className,
-			)}
-		>
-			{children}
-		</div>
-	);
-}
-
-export function SettingRow({
-	title,
-	description,
-	children,
-}: {
-	readonly title: string;
-	readonly description: string;
-	readonly children: ReactNode;
-}): ReactElement {
-	return (
-		<div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b-[0.5px] border-border px-4 py-3.5 last:border-b-0">
-			<div className="flex min-w-0 flex-1 basis-[280px] flex-col gap-0.5">
-				<span className="text-[13px] leading-5">{title}</span>
-				<span className="text-[12px] leading-[18px] text-foreground-subtlest">{description}</span>
-			</div>
-			<div className="shrink-0">{children}</div>
-		</div>
-	);
-}
-
-export function ChoiceGroup<T extends string>({
-	options,
-	selected,
-	onSelect,
-}: {
-	readonly options: readonly { readonly key: T; readonly label: string }[];
-	readonly selected: T;
-	onSelect(key: T): void;
-}): ReactElement {
-	return (
-		<div className="flex items-center gap-0.5 rounded-lg bg-surface p-0.5">
-			{options.map((option) => (
-				<button
-					key={option.key}
-					type="button"
-					onClick={() => onSelect(option.key)}
-					aria-pressed={option.key === selected}
-					className={cn(
-						"h-7 rounded-md px-2.5 text-[12px] leading-[18px] transition-colors",
-						option.key === selected
-							? "bg-card text-foreground shadow-[0_0_0_0.5px_var(--border)] dark:bg-surface-strong"
-							: "text-foreground-subtle hover:text-foreground",
-					)}
-				>
-					{option.label}
-				</button>
-			))}
-		</div>
-	);
-}
-
-export function Badge({
-	children,
-	tone = "neutral",
-}: {
-	readonly children: ReactNode;
-	readonly tone?: "neutral" | "success" | "muted";
-}): ReactElement {
-	return (
-		<span
-			className={cn(
-				"inline-flex h-5 items-center rounded-full px-2 text-[11px] leading-4",
-				tone === "success"
-					? "bg-success-surface text-success-surface-foreground"
-					: tone === "muted"
-						? "bg-surface text-foreground-subtlest"
-						: "bg-surface text-foreground-subtle",
-			)}
-		>
-			{children}
-		</span>
-	);
-}
-
-export function EmptyState({
-	icon: Icon,
-	title,
-	description,
-}: {
-	readonly icon: LucideIcon;
-	readonly title: string;
-	readonly description: string;
-}): ReactElement {
-	return (
-		<div className="flex flex-col items-center gap-2 rounded-[16px] border-[0.5px] border-border bg-card px-6 py-16 text-center">
-			<Icon className="size-8 text-foreground-subtlest" />
-			<div className="mt-1 text-[14px] leading-[22px] font-medium">{title}</div>
-			<p className="m-0 max-w-[420px] text-[12px] leading-[18px] text-foreground-subtlest">
-				{description}
-			</p>
+		<div className="empty" style={{ paddingTop: 40, paddingBottom: 40 }}>
+			<span className="mk">
+				<Icon className="ic-14" />
+			</span>
+			<span className="t">{title}</span>
+			<span className="d">{description}</span>
+			{action}
 		</div>
 	);
 }

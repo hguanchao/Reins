@@ -1,6 +1,5 @@
-/* Tailwind 入口：令牌、全局基座与组件样式分别放在 styles/ 下。 */
+/* Tailwind 入口：令牌、全局基座、应用组件样式依次导入。 */
 @import "tailwindcss";
 @import "./styles/tokens.css";
 @import "./styles/base.css";
-@import "./styles/message-rail.css";
-@import "./styles/sidebar-section.css";
+@import "./styles/proof.css";

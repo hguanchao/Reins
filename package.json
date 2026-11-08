@@ -1,6 +1,7 @@
 {
 	"name": "@reins/cli",
 	"version": "1.0.0",
+	"description": "Reins —— 运行在终端与桌面的编码智能体：描述任务、审阅执行、合入成果。",
 	"private": true,
 	"type": "module",
 	"main": "desktop/build/main.cjs",

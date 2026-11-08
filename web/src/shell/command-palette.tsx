@@ -1,38 +1,25 @@
-import {
-	FileText,
-	MessageCirclePlus,
-	PanelRight,
-	Search,
-	Settings2,
-	Sparkles,
-	Square,
-	Sun,
-} from "lucide-react";
-import {
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	type KeyboardEvent,
-	type ReactElement,
-} from "react";
+import { FileText, MessageSquarePlus, PanelRight, Search, Settings2, Sparkles, Sun } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 
 import { api } from "../api.ts";
-import { cn } from "../components/ui/cn.ts";
 import { relativeTime } from "../lib/format.ts";
 import type { SessionSummary } from "../protocol.ts";
 
 interface PaletteItem {
 	readonly key: string;
-	readonly kind: "command" | "session" | "file";
+	readonly group: "命令" | "任务" | "文件";
 	readonly label: string;
 	readonly hint?: string;
 	readonly icon: typeof Search;
 	run(): void;
 }
 
-/** 命令面板：动作、会话与文件搜索共用一个输入框。 */
+/**
+ * 命令面板。
+ *
+ * 三组共用一只输入框：命令、任务与文件。分组标题是等宽小字，键盘上下移动跨组连续。
+ */
 export function CommandPalette({
 	open,
 	sessions,
@@ -53,7 +40,7 @@ export function CommandPalette({
 	onToggleTheme(): void;
 	onToggleSidePane(): void;
 	onCompact(): void;
-		onSwitchSession(session: SessionSummary): void;
+	onSwitchSession(session: SessionSummary): void;
 	onOpenFile(path: string): void;
 }): ReactElement | null {
 	const [query, setQuery] = useState("");
@@ -91,23 +78,22 @@ export function CommandPalette({
 
 	const items = useMemo<readonly PaletteItem[]>(() => {
 		const needle = query.trim().toLowerCase();
-		const allCommands: PaletteItem[] = [
-			{ key: "new", kind: "command", label: "新建任务", hint: "Ctrl N", icon: MessageCirclePlus, run: onNewTask },
-			{ key: "settings", kind: "command", label: "打开设置", icon: Settings2, run: onSettings },
-			{ key: "theme", kind: "command", label: "切换主题", icon: Sun, run: onToggleTheme },
-			{ key: "side", kind: "command", label: "显示/隐藏侧面板", icon: PanelRight, run: onToggleSidePane },
-			{ key: "compact", kind: "command", label: "压缩上下文", icon: Square, run: onCompact },
-		];
-		const commands = allCommands.filter(
+		const commands: readonly PaletteItem[] = ([
+			{ key: "new", group: "命令", label: "新建任务", hint: "Ctrl N", icon: MessageSquarePlus, run: onNewTask },
+			{ key: "settings", group: "命令", label: "打开设置", hint: "Ctrl ,", icon: Settings2, run: onSettings },
+			{ key: "theme", group: "命令", label: "切换主题", icon: Sun, run: onToggleTheme },
+			{ key: "side", group: "命令", label: "显示/隐藏侧面板", icon: PanelRight, run: onToggleSidePane },
+			{ key: "compact", group: "命令", label: "压缩上下文", icon: Sparkles, run: onCompact },
+		] satisfies readonly PaletteItem[]).filter(
 			(item) => needle.length === 0 || item.label.toLowerCase().includes(needle),
 		);
 
-		const sessionItems: PaletteItem[] = sessions
+		const tasks: PaletteItem[] = sessions
 			.filter((session) => needle.length === 0 || (session.title ?? "新任务").toLowerCase().includes(needle))
 			.slice(0, 8)
 			.map((session) => ({
 				key: `session-${session.id}`,
-				kind: "session",
+				group: "任务" as const,
 				label: session.title ?? "新任务",
 				hint: relativeTime(session.updatedAt),
 				icon: Sparkles,
@@ -116,13 +102,13 @@ export function CommandPalette({
 
 		const fileItems: PaletteItem[] = files.map((path) => ({
 			key: `file-${path}`,
-			kind: "file",
+			group: "文件" as const,
 			label: path,
 			icon: FileText,
 			run: () => onOpenFile(path),
 		}));
 
-		return [...commands, ...sessionItems, ...fileItems];
+		return [...commands, ...tasks, ...fileItems];
 	}, [
 		query,
 		sessions,
@@ -172,14 +158,14 @@ export function CommandPalette({
 
 	return createPortal(
 		<div
-			className="fixed inset-0 z-[90] flex items-start justify-center bg-black/60 px-4 pt-[12vh] backdrop-blur-xs"
+			className="palette-mask"
 			onMouseDown={(event) => {
 				if (event.target === event.currentTarget) onClose();
 			}}
 		>
-			<div className="w-full max-w-xl overflow-hidden rounded-2xl border border-popover-border bg-popover shadow-md animate-pop">
-				<div className="flex h-12 items-center gap-2 border-b border-border/50 px-4">
-					<Search className="size-4 shrink-0 text-foreground-subtlest" />
+			<div className="palette" role="dialog" aria-modal="true" aria-label="命令面板">
+				<div className="palette-h">
+					<Search className="ic-14" />
 					<input
 						ref={inputRef}
 						value={query}
@@ -189,46 +175,42 @@ export function CommandPalette({
 						}}
 						onKeyDown={onKeyDown}
 						placeholder="搜索命令、任务或文件…"
-						className="min-w-0 flex-1 bg-transparent text-ui-base text-foreground outline-none placeholder:text-foreground-subtlest"
 						aria-label="命令面板搜索"
 					/>
-					<span className="rounded-md border border-border px-1.5 py-0.5 font-mono text-ui-xs text-foreground-subtlest">
-						Esc
-					</span>
+					<span className="badge">Esc</span>
 				</div>
-				<div className="max-h-[min(60vh,28rem)] overflow-y-auto p-1">
+				<div className="palette-b">
 					{items.length === 0 ? (
-						<div className="px-3 py-6 text-center text-ui-sm text-foreground-subtlest">没有匹配项</div>
+						<div className="empty" style={{ padding: 24 }}>
+							<span className="d">没有匹配项</span>
+						</div>
 					) : (
-						items.map((item, itemIndex) => {
+						items.map((item, position) => {
 							const Icon = item.icon;
+							const head = item.group !== items[position - 1]?.group ? item.group : undefined;
 							return (
-								<button
-									key={item.key}
-									type="button"
-									onMouseEnter={() => setIndex(itemIndex)}
-									onClick={() => choose(item)}
-									className={cn(
-										"flex min-h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-ui-base transition-colors",
-										itemIndex === index
-											? "bg-selected text-foreground"
-											: "text-foreground-subtle hover:bg-surface-hover",
-									)}
-								>
-									<Icon className="size-4 shrink-0 text-foreground-subtlest" />
-									<span className="min-w-0 flex-1 truncate">{item.label}</span>
-									{item.hint === undefined ? null : (
-										<span className="shrink-0 text-ui-xs text-foreground-subtlest">{item.hint}</span>
-									)}
-									<span className="shrink-0 text-ui-xs text-foreground-subtlest">
-										{item.kind === "command" ? "命令" : item.kind === "session" ? "任务" : "文件"}
-									</span>
-								</button>
+								<div key={item.key}>
+									{head === undefined ? null : <div className="palette-g">{head}</div>}
+									<button
+										type="button"
+										aria-selected={position === index}
+										onMouseEnter={() => setIndex(position)}
+										onClick={() => choose(item)}
+										className="palette-i"
+										style={
+											position === index ? { background: "var(--wash-2)", color: "var(--ink)" } : undefined
+										}
+									>
+										<Icon className="ic-14" />
+										<span className="lbl">{item.label}</span>
+										{item.hint === undefined ? null : <span className="hint">{item.hint}</span>}
+									</button>
+								</div>
 							);
 						})
 					)}
 				</div>
-				<div className="flex items-center gap-3 border-t border-border/50 px-4 py-2 text-ui-xs text-foreground-subtlest">
+				<div className="palette-f">
 					<span>↑↓ 选择</span>
 					<span>Enter 执行</span>
 					<span>Esc 关闭</span>

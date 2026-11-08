@@ -1,15 +1,9 @@
 import { useEffect, useState, type KeyboardEvent, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Button, Dialog, toast } from "../components/ui/index.ts";
+import { Dialog, toast } from "../components/ui/index.ts";
 import type { McpServerInput, McpServerType } from "../protocol.ts";
-import { ChoiceGroup } from "./controls.tsx";
 import { parseArgumentLines, parseKeyValueLines } from "./settings-model.ts";
-
-const FIELD =
-	"h-9 w-full rounded-md border-[0.5px] border-input-border bg-input px-3 text-[13px] leading-5 outline-none transition-colors placeholder:text-foreground-subtlest focus:border-input-border-focused";
-const AREA =
-	"w-full resize-y rounded-md border-[0.5px] border-input-border bg-input px-3 py-2 font-mono text-[12px] leading-5 outline-none transition-colors placeholder:text-foreground-subtlest focus:border-input-border-focused";
 
 /** KEY=VALUE 对象还原成表单里的逐行文本。 */
 function formatPairs(pairs: Readonly<Record<string, string>> | undefined): string {
@@ -46,10 +40,10 @@ export function McpServerDialog({
 		if (!open) return;
 		setName(server?.name ?? "");
 		setType(server?.type ?? "stdio");
-		setCommand(server?.type === "stdio" ? server.command ?? "" : "");
+		setCommand(server?.type === "stdio" ? (server.command ?? "") : "");
 		setArgs(server?.type === "stdio" ? (server.args ?? []).join("\n") : "");
 		setEnv(server?.type === "stdio" ? formatPairs(server.env) : "");
-		setUrl(server !== undefined && server.type !== "stdio" ? server.url ?? "" : "");
+		setUrl(server !== undefined && server.type !== "stdio" ? (server.url ?? "") : "");
 		setHeaders(server !== undefined && server.type !== "stdio" ? formatPairs(server.headers) : "");
 		setSaving(false);
 		setError(undefined);
@@ -118,119 +112,112 @@ export function McpServerDialog({
 			title={editing ? "编辑 MCP 服务器" : "添加 MCP 服务器"}
 			footer={
 				<>
-					<Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
+					<button type="button" className="b b-line" disabled={saving} onClick={onClose}>
 						取消
-					</Button>
-					<Button variant="primary" size="sm" disabled={saving} onClick={submit}>
+					</button>
+					<button type="button" className="b b-solid" disabled={saving} onClick={submit}>
 						{saving ? (editing ? "保存中…" : "添加中…") : editing ? "保存" : "添加"}
-					</Button>
+					</button>
 				</>
 			}
 		>
-			<div className="flex flex-col gap-3">
-				<label className="flex flex-col gap-1">
-					<span className="text-[12px] leading-[18px] text-foreground-subtle">名称</span>
-					<input
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-						onKeyDown={submitOnEnter}
-						placeholder="docs"
-						aria-label="MCP 服务器名称"
-						disabled={editing}
-						autoFocus={!editing}
-						className={FIELD}
-					/>
-					<span className="text-[11px] leading-4 text-foreground-subtlest">
-						{editing ? "编辑时名称不可修改。" : "用于工具名前缀，仅支持字母、数字、- 和 _。"}
-					</span>
-				</label>
+			<label>
+				<span className="form-label">名称</span>
+				<input
+					value={name}
+					onChange={(event) => setName(event.target.value)}
+					onKeyDown={submitOnEnter}
+					placeholder="docs"
+					aria-label="MCP 服务器名称"
+					disabled={editing}
+					autoFocus={!editing}
+					className="form-input"
+				/>
+				<span className="form-hint">
+					{editing ? "编辑时名称不可修改。" : "用于工具名前缀，仅支持字母、数字、- 和 _。"}
+				</span>
+			</label>
 
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<span className="text-[12px] leading-[18px] text-foreground-subtle">传输方式</span>
-					<ChoiceGroup
-						options={[
-							{ key: "stdio", label: "stdio" },
-							{ key: "http", label: "http" },
-							{ key: "sse", label: "sse" },
-						]}
-						selected={type}
-						onSelect={(next) => setType(next)}
-					/>
+			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+				<span className="form-label" style={{ margin: 0 }}>
+					传输方式
+				</span>
+				<div className="seg">
+					{(["stdio", "http", "sse"] as const).map((option) => (
+						<button key={option} type="button" aria-pressed={option === type} onClick={() => setType(option)}>
+							{option}
+						</button>
+					))}
 				</div>
-				<p className="m-0 text-[11px] leading-4 text-foreground-subtlest">
-					{type === "stdio"
-						? "在本地启动进程；参数每行一个。"
-						: "连接远程端点；请求头按 KEY=VALUE 每行一个。"}
-				</p>
-
-				{type === "stdio" ? (
-					<>
-						<label className="flex flex-col gap-1">
-							<span className="text-[12px] leading-[18px] text-foreground-subtle">命令</span>
-							<input
-								value={command}
-								onChange={(event) => setCommand(event.target.value)}
-								onKeyDown={submitOnEnter}
-								placeholder="npx"
-								aria-label="启动命令"
-								className={FIELD}
-							/>
-						</label>
-						<label className="flex flex-col gap-1">
-							<span className="text-[12px] leading-[18px] text-foreground-subtle">参数</span>
-							<textarea
-								value={args}
-								onChange={(event) => setArgs(event.target.value)}
-								placeholder={"-y\n@modelcontextprotocol/server-filesystem\nE:/work"}
-								aria-label="启动参数"
-								className={`${AREA} min-h-[76px]`}
-							/>
-						</label>
-						<label className="flex flex-col gap-1">
-							<span className="text-[12px] leading-[18px] text-foreground-subtle">
-								环境变量 <span className="text-foreground-subtlest">（可选）</span>
-							</span>
-							<textarea
-								value={env}
-								onChange={(event) => setEnv(event.target.value)}
-								placeholder={"DEBUG=1\nTOKEN=..."}
-								aria-label="环境变量"
-								className={`${AREA} min-h-[64px]`}
-							/>
-						</label>
-					</>
-				) : (
-					<>
-						<label className="flex flex-col gap-1">
-							<span className="text-[12px] leading-[18px] text-foreground-subtle">地址</span>
-							<input
-								value={url}
-								onChange={(event) => setUrl(event.target.value)}
-								onKeyDown={submitOnEnter}
-								placeholder="https://example.com/mcp"
-								aria-label="MCP 服务器地址"
-								className={FIELD}
-							/>
-						</label>
-						<label className="flex flex-col gap-1">
-							<span className="text-[12px] leading-[18px] text-foreground-subtle">
-								请求头 <span className="text-foreground-subtlest">（可选）</span>
-							</span>
-							<textarea
-								value={headers}
-								onChange={(event) => setHeaders(event.target.value)}
-								placeholder={"Authorization=Bearer ...\nX-Project=reins"}
-								aria-label="请求头"
-								className={`${AREA} min-h-[64px]`}
-							/>
-						</label>
-					</>
-				)}
-
-				{error === undefined ? null : (
-					<p className="m-0 text-[12px] leading-[18px] text-destructive">{error}</p>
-				)}
 			</div>
+			<p className="form-hint">
+				{type === "stdio" ? "在本地启动进程；参数每行一个。" : "连接远程端点；请求头按 KEY=VALUE 每行一个。"}
+			</p>
+
+			{type === "stdio" ? (
+				<>
+					<label>
+						<span className="form-label">命令</span>
+						<input
+							value={command}
+							onChange={(event) => setCommand(event.target.value)}
+							onKeyDown={submitOnEnter}
+							placeholder="npx"
+							aria-label="启动命令"
+							className="form-input"
+						/>
+					</label>
+					<label>
+						<span className="form-label">参数</span>
+						<textarea
+							value={args}
+							onChange={(event) => setArgs(event.target.value)}
+							placeholder={"-y\n@modelcontextprotocol/server-filesystem\nE:/work"}
+							aria-label="启动参数"
+							className="form-area"
+							style={{ minHeight: 76 }}
+						/>
+					</label>
+					<label>
+						<span className="form-label">环境变量（可选）</span>
+						<textarea
+							value={env}
+							onChange={(event) => setEnv(event.target.value)}
+							placeholder={"DEBUG=1\nTOKEN=..."}
+							aria-label="环境变量"
+							className="form-area"
+							style={{ minHeight: 64 }}
+						/>
+					</label>
+				</>
+			) : (
+				<>
+					<label>
+						<span className="form-label">地址</span>
+						<input
+							value={url}
+							onChange={(event) => setUrl(event.target.value)}
+							onKeyDown={submitOnEnter}
+							placeholder="https://example.com/mcp"
+							aria-label="MCP 服务器地址"
+							className="form-input"
+						/>
+					</label>
+					<label>
+						<span className="form-label">请求头（可选）</span>
+						<textarea
+							value={headers}
+							onChange={(event) => setHeaders(event.target.value)}
+							placeholder={"Authorization=Bearer ...\nX-Project=reins"}
+							aria-label="请求头"
+							className="form-area"
+							style={{ minHeight: 64 }}
+						/>
+					</label>
+				</>
+			)}
+
+			{error === undefined ? null : <p className="form-error">{error}</p>}
 		</Dialog>
 	);
 }

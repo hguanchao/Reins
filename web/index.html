@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="theme-color" content="#f9fafb" />
+		<meta name="theme-color" content="#f6f6f5" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" media="(prefers-color-scheme: light)" />
 		<link rel="icon" type="image/svg+xml" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
 		<link rel="icon" href="/favicon.ico" sizes="any" />
@@ -26,11 +26,12 @@
 				document.documentElement.classList.toggle("dark", dark);
 				document
 					.querySelector('meta[name="theme-color"]')
-					?.setAttribute("content", dark ? "#1b1b1c" : "#f9fafb");
-				// 桌面壳使用原生标题栏覆盖，页面给标题栏让出 40px
+					?.setAttribute("content", dark ? "#090909" : "#f6f6f5");
+				// 桌面壳用原生窗控覆盖：Windows 在右、macOS 在左，页面据此让位
 				if (window.reinsDesktop !== undefined) {
-					document.documentElement.dataset.windowsTitlebar = "";
-					document.documentElement.style.setProperty("--caption-height", "40px");
+					const platform = /Windows/i.test(navigator.userAgent) ? "win" : "mac";
+					document.documentElement.dataset.titlebarPlatform = platform;
+					document.documentElement.style.setProperty("--caption-h", "34px");
 				}
 			})();
 		</script>

@@ -170,16 +170,16 @@ const LOADING_PAGE =
 	"data:text/html;charset=utf-8," +
 	encodeURIComponent(`<!doctype html><meta charset="utf-8"><title>Reins</title>
 <style>
-	body{margin:0;background:#f9fafb;color:#61666b;font-family:"Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+	body{margin:0;background:#f6f6f5;color:#545454;font-family:"Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
 		height:100vh;display:flex;align-items:center;justify-content:center}
 	.c{text-align:center}
 	.s{width:24px;height:24px;margin:0 auto 14px;border-radius:50%;
-		border:2px solid #e5e7eb;border-top-color:#0f1115;animation:r 0.8s linear infinite}
+		border:2px solid rgba(0,0,0,.16);border-top-color:#0b0b0b;animation:r 0.8s linear infinite}
 	p{margin:0;font-size:13px;letter-spacing:0.02em}
 	@keyframes r{to{transform:rotate(360deg)}}
 	@media (prefers-color-scheme: dark){
-		body{background:#151517;color:#81858c}
-		.s{border-color:#2c2c2e;border-top-color:#f9fafb}
+		body{background:#090909;color:#a5a5a1}
+		.s{border-color:rgba(255,255,255,.18);border-top-color:#f2f2f0}
 	}
 </style><div class="c"><div class="s"></div><p>正在启动 Reins</p></div>`);
 
@@ -210,12 +210,12 @@ async function run(): Promise<void> {
 		const window = BrowserWindow.fromWebContents(event.sender);
 		if (window === null) return;
 		const dark = theme === "zai-dark";
-		window.setBackgroundColor(dark ? "#151517" : "#f9fafb");
+		window.setBackgroundColor(dark ? "#090909" : "#f6f6f5");
 		if (process.platform === "win32") {
 			window.setTitleBarOverlay({
-				color: dark ? "#1b1b1c" : "#f9fafb",
-				symbolColor: dark ? "#f9fafb" : "#0f1115",
-				height: 40,
+				color: dark ? "#090909" : "#f6f6f5",
+				symbolColor: dark ? "#f2f2f0" : "#0b0b0b",
+				height: 34,
 			});
 		}
 	});
@@ -248,7 +248,7 @@ async function run(): Promise<void> {
 
 	// 窗口先出:静态 loading 页毫秒级可见,选目录、拉服务都排在它后面,
 	// 双击后的等待从「干瞪眼」变成「页内转圈」
-	// 无边框窗：Windows 用原生标题栏覆盖层保留系统窗控，页面只负责 40px 拖拽条
+	// 无边框窗：Windows 用原生标题栏覆盖层保留系统窗控，页面只负责 34px 拖拽条
 	const windowIcon = nativeImage.createFromPath(join(buildDir, "icon.ico"));
 	const window = new BrowserWindow({
 		width: 1180,
@@ -257,15 +257,15 @@ async function run(): Promise<void> {
 		minHeight: 600,
 		title: "Reins",
 		...(windowIcon.isEmpty() ? {} : { icon: windowIcon }),
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#151517" : "#f9fafb",
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#090909" : "#f6f6f5",
 		show: false,
 		titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
 		...(process.platform === "win32"
 			? {
 					titleBarOverlay: {
-						color: nativeTheme.shouldUseDarkColors ? "#1b1b1c" : "#f9fafb",
-						symbolColor: nativeTheme.shouldUseDarkColors ? "#f9fafb" : "#0f1115",
-						height: 40,
+						color: nativeTheme.shouldUseDarkColors ? "#090909" : "#f6f6f5",
+						symbolColor: nativeTheme.shouldUseDarkColors ? "#f2f2f0" : "#0b0b0b",
+						height: 34,
 					},
 				}
 			: {}),

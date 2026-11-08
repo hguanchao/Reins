@@ -1,77 +1,80 @@
-import { ChevronDown, Folder, FolderOpen } from "lucide-react";
+import { ArrowUpRight, GitCompare, PanelRight, PanelRightClose, Play, Search } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 
-import { BrandMark } from "../components/brand-mark.tsx";
-import { Menu } from "../components/ui/index.ts";
-import { desktopBridge } from "../platform.ts";
+/** 起点建议：三条真实可点的动作，点一下就把这句话填进输入卡。 */
+const STARTS: readonly { readonly icon: typeof Search; readonly text: string }[] = [
+	{ icon: Search, text: "读懂这个项目：目录结构、技术栈与入口" },
+	{ icon: Play, text: "跑一遍测试，把失败的修掉" },
+	{ icon: GitCompare, text: "审阅当前未提交的改动" },
+];
 
-/** 新会话欢迎页：品牌标题、工作区选择与输入卡。 */
+/**
+ * 新建任务空态。
+ *
+ * 三层信息自上而下：这是什么（36px 标题 + 一行说明）、在哪干活（卡帽与输入卡）、能做什么
+ * （三条起点建议）。整屏唯一的展示级排版在这里，所以标题之外不再有第二个大字号。
+ *
+ * demo 的空态不设 44px 会话头；右面板开关收成右上角一枚图标钮，不占标题区。
+ */
 export function Hero({
-	workspace,
 	composer,
+	onStart,
+	rightbarOpen,
+	onToggleRightbar,
 }: {
-	readonly workspace: string;
 	readonly composer: ReactNode;
+	onStart(text: string): void;
+	readonly rightbarOpen: boolean;
+	onToggleRightbar(): void;
 }): ReactElement {
-	const bridge = desktopBridge();
 	return (
-		<div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-6">
-			<div className="flex w-full max-w-[calc(var(--chat-content-width)_+_32px)] flex-col gap-3 pb-8">
-				<div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-3 text-[26px] leading-8 font-medium text-foreground">
-					<BrandMark size={34} />
-					<span className="flex min-w-0 flex-wrap items-center justify-center gap-x-[7px] gap-y-1">
-						<span>探索未至之境</span>
-						<span className="mt-0.5 self-start rounded-full border-[0.5px] border-border bg-[var(--accent-soft)] px-[7px] pb-px pt-[1px] font-mono text-[12px] leading-[18px] font-medium text-(--accent)">
-							预览版
-						</span>
-					</span>
+		<div className="blank">
+			<button
+				type="button"
+				className="blank-panel no-drag"
+				title={rightbarOpen ? "关闭面板" : "打开面板"}
+				aria-label={rightbarOpen ? "关闭面板" : "打开面板"}
+				onClick={onToggleRightbar}
+			>
+				{rightbarOpen ? <PanelRightClose className="ic-14" /> : <PanelRight className="ic-14" />}
+			</button>
+
+			<div className="blank-in">
+				<div className="eyebrow" style={{ marginBottom: 14 }}>
+					REINS · CODING AGENT
+				</div>
+				<h1>
+					今天做什么？
+					<span className="caret" />
+				</h1>
+				<p className="lede">Reins 是一款运行在终端与桌面的编码智能体。描述任务、审阅执行、合入成果。</p>
+
+				{composer}
+
+				<div className="starts">
+					<div className="mono-label" style={{ marginBottom: 8, fontSize: 9 }}>
+						从这里开始
+					</div>
+					{STARTS.map((entry) => {
+						const Icon = entry.icon;
+						return (
+							<button key={entry.text} type="button" onClick={() => onStart(entry.text)}>
+								<Icon className="ic-14" />
+								<span className="grow">{entry.text}</span>
+								<ArrowUpRight className="ic-12" />
+							</button>
+						);
+					})}
 				</div>
 
-				<div className="flex min-w-0 flex-col gap-3">
-					<div className="flex items-center pl-2">
-						<Menu
-							align="start"
-							trigger={({ toggle, open }) => (
-								<button
-									type="button"
-									onClick={toggle}
-									aria-label="选择项目"
-									aria-haspopup="menu"
-									aria-expanded={open}
-									className="flex min-h-7 max-w-[min(100%,360px)] items-center gap-1 rounded-sm px-2 text-[13px] leading-5 font-medium text-foreground transition-colors hover:bg-surface-hover aria-expanded:bg-surface-hover"
-								>
-									{workspace.length === 0 ? (
-										<Folder className="size-4 shrink-0" />
-									) : (
-										<FolderOpen className="size-4 shrink-0" />
-									)}
-									<span className="min-w-0 truncate">{workspace || "选择项目"}</span>
-									<ChevronDown className="size-3 shrink-0 text-foreground-subtlest" />
-								</button>
-							)}
-							entries={[
-								{ type: "label", label: "项目" },
-								{
-									type: "item",
-									key: "current",
-									label: workspace || "当前项目",
-									checked: workspace.length > 0,
-									onSelect: () => {},
-								},
-								{ type: "separator" },
-								{
-									type: "item",
-									key: "open",
-									label: bridge === undefined ? "打开其他项目（桌面端可用）" : "打开其他项目…",
-									disabled: bridge === undefined,
-									onSelect: () => {
-										void bridge?.chooseWorkspace();
-									},
-								},
-							]}
-						/>
-					</div>
-					{composer}
+				<div className="keys">
+					<span>Enter 发送</span>
+					<span className="dot">·</span>
+					<span>Shift Enter 换行</span>
+					<span className="dot">·</span>
+					<span>@ 引用文件</span>
+					<span className="dot">·</span>
+					<span>$ 调用技能</span>
 				</div>
 			</div>
 		</div>

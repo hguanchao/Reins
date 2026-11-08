@@ -1,21 +1,19 @@
 /*
  * 设计令牌。
  *
- * 颜色、字号与阴影全部走语义名：组件只写 bg-card、text-foreground-subtle 这类工具类，
- * 不出现具体色值。两套主题只在下面的变量块里替换，组件本身不感知明暗。
+ * 一套中性色阶：界面零彩色，强调色就是墨本身；明暗两套主题共用同一组语义名，只替换明度。
+ * 唯一例外是 diff 的增删行底色与「止损」红——它们承载内容与动作语义，不承担界面状态。
+ *
+ * 组件只写语义名，不写具体色值；字号只允许使用下面这十级阶梯。
  */
 
 @custom-variant dark (&:where([data-theme="zai-dark"], [data-theme="zai-dark"] *));
 
 @theme inline {
-	--font-sans:
-		-apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
-		"Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
-	--font-mono:
-		"SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", Menlo,
-		Courier, "PingFang SC", "Microsoft YaHei";
+	--font-sans: var(--sans);
+	--font-mono: var(--mono);
 
-	/* 界面字号固定，正文内容随设置缩放；技术内容使用独立字号 */
+	/* 十级阶梯 */
 	--text-ui-xl: 20px;
 	--text-ui-xl--line-height: 28px;
 	--text-ui-lg: 16px;
@@ -28,295 +26,194 @@
 	--text-ui-sm--line-height: 18px;
 	--text-ui-xs: 11px;
 	--text-ui-xs--line-height: 16px;
-	--text-ui-settings-title: 20px;
-	--text-ui-settings-title--line-height: 28px;
+	--text-ui-settings-title: 27px;
 
-	--shadow-composer-soft: var(--elevation-soft);
-	--shadow-panel-elevated: var(--elevation-panel);
-	--shadow-panel-prominent: var(--elevation-prominent);
-	--shadow-panel-soft: var(--elevation-soft);
+	--radius-xs: var(--r-1);
+	--radius-sm: var(--r-2);
+	--radius-md: var(--r-3);
+	--radius-lg: var(--r-4);
 
-	--color-background: var(--background);
-	--color-background-alt: var(--background-alt);
-	--color-background-win-alt: var(--background-win-alt);
-	--color-sidebar: var(--sidebar);
-	--color-header: var(--header);
-	--color-panel: var(--panel);
-	--color-card: var(--card);
-	--color-card-selected: var(--card-selected);
-	--color-card-border: var(--card-border);
-	--color-input: var(--input);
-	--color-input-focused: var(--input-focused);
-	--color-input-border: var(--input-border);
-	--color-input-border-hover: var(--input-border-hover);
-	--color-input-border-focused: var(--input-border-focused);
-	--color-menu: var(--menu);
-	--color-menu-hover: var(--menu-hover);
-	--color-popover: var(--popover);
-	--color-popover-header: var(--popover-header);
-	--color-popover-border: var(--popover-border);
-	--color-surface: var(--surface);
-	--color-surface-hover: var(--surface-hover);
-	--color-surface-strong: var(--surface-strong);
-	--color-selected: var(--selected);
-	--color-hover: var(--hover);
-	--color-border: var(--border);
-	--color-border-hover: var(--border-hover);
-	--color-foreground: var(--foreground);
-	--color-foreground-subtle: var(--foreground-subtle);
-	--color-foreground-subtlest: var(--foreground-subtlest);
-	--color-foreground-inverse: var(--foreground-inverse);
-	--color-remote-foreground-muted: var(--remote-foreground-muted);
-	--color-brand: var(--brand);
-	--color-primary: var(--primary);
-	--color-primary-foreground: var(--primary-foreground);
-	--color-secondary: var(--secondary);
-	--color-accent: var(--accent);
-	--color-accent-soft: var(--accent-soft);
-	--color-success: var(--success);
-	--color-success-surface: var(--success-surface);
-	--color-success-surface-foreground: var(--success-surface-foreground);
-	--color-warning: var(--warning);
-	--color-warning-surface: var(--warning-surface);
-	--color-warning-surface-foreground: var(--warning-surface-foreground);
-	--color-destructive: var(--destructive);
-	--color-destructive-surface: var(--destructive-surface);
-	--color-destructive-surface-foreground: var(--destructive-surface-foreground);
-	--color-diff-added: var(--diff-added);
-	--color-diff-removed: var(--diff-removed);
-	--color-user-message-bubble: var(--user-message-bubble);
-	--color-tag: var(--tag);
-	--color-tooltip: var(--tooltip);
-	--color-tooltip-foreground: var(--tooltip-foreground);
-	--color-toast: var(--toast);
-	--color-progress-surface: var(--progress-surface);
-	--color-progress-surface-foreground: var(--progress-surface-foreground);
-	--color-idle-task: var(--idle-task);
-	--color-idle-task-surface: var(--idle-task-surface);
-	--color-git-modified: var(--git-modified);
-	--color-git-added: var(--git-added);
-	--color-git-deleted: var(--git-deleted);
-	--color-git-renamed: var(--git-renamed);
-	--color-git-untracked: var(--git-untracked);
-	--color-find-highlight: var(--find-highlight);
-	--color-find-highlight-active: var(--find-highlight-active);
-	--color-resize-handle: var(--resize-handle);
-	--color-interaction-confirmation-surface: var(--interaction-confirmation-surface);
-	--color-interaction-confirmation-foreground: var(--interaction-confirmation-foreground);
-	--color-markdown-inline-code: var(--markdown-inline-code);
-	--color-terminal-bg: var(--terminal-bg);
-	--color-terminal-fg: var(--terminal-fg);
+	--shadow-composer-soft: var(--shadow-1);
+	--shadow-panel-elevated: var(--shadow-2);
+	--shadow-panel-prominent: var(--shadow-2);
+	--shadow-panel-soft: var(--shadow-1);
+
+	/* 语义名到工具类；旧组件哪怕还没换成组件类，也会落在这套灰度里 */
+	--color-background: var(--sheet);
+	--color-background-alt: var(--paper);
+	--color-background-win-alt: var(--paper);
+	--color-sidebar: var(--paper);
+	--color-header: var(--paper);
+	--color-panel: var(--sheet);
+	--color-card: var(--raise);
+	--color-card-selected: var(--wash-2);
+	--color-card-border: var(--rule-2);
+	--color-input: var(--raise);
+	--color-input-focused: var(--raise);
+	--color-input-border: var(--rule-2);
+	--color-input-border-hover: var(--rule-3);
+	--color-input-border-focused: var(--ink);
+	--color-menu: var(--raise);
+	--color-menu-hover: var(--wash);
+	--color-popover: var(--raise);
+	--color-popover-header: var(--sunken);
+	--color-popover-border: var(--rule-3);
+	--color-surface: var(--sunken);
+	--color-surface-hover: var(--wash);
+	--color-surface-strong: var(--wash-2);
+	--color-selected: var(--wash-2);
+	--color-hover: var(--wash);
+	--color-border: var(--rule);
+	--color-border-hover: var(--rule-2);
+	--color-foreground: var(--ink);
+	--color-foreground-subtle: var(--ink-2);
+	--color-foreground-subtlest: var(--ink-3);
+	--color-foreground-inverse: var(--fill-ink);
+	--color-remote-foreground-muted: var(--ink-2);
+	--color-brand: var(--ink);
+	--color-primary: var(--fill);
+	--color-primary-foreground: var(--fill-ink);
+	--color-secondary: var(--wash-2);
+	--color-accent: var(--ink);
+	--color-accent-soft: var(--wash-2);
+	--color-success: var(--ink-2);
+	--color-success-surface: var(--wash);
+	--color-success-surface-foreground: var(--ink);
+	--color-warning: var(--ink-2);
+	--color-warning-surface: var(--wash);
+	--color-warning-surface-foreground: var(--ink);
+	--color-destructive: var(--danger);
+	--color-destructive-surface: var(--danger-soft);
+	--color-destructive-surface-foreground: var(--danger);
+	--color-diff-added: var(--diff-add-ink);
+	--color-diff-removed: var(--diff-del-ink);
+	--color-user-message-bubble: var(--wash);
+	--color-tag: var(--wash-2);
+	--color-tooltip: var(--fill);
+	--color-tooltip-foreground: var(--fill-ink);
+	--color-toast: var(--raise);
+	--color-progress-surface: var(--wash-2);
+	--color-progress-surface-foreground: var(--ink);
+	--color-idle-task: var(--ink-3);
+	--color-idle-task-surface: var(--wash);
+	--color-git-modified: var(--ink-2);
+	--color-git-added: var(--ink);
+	--color-git-deleted: var(--ink-3);
+	--color-git-renamed: var(--ink-2);
+	--color-git-untracked: var(--ink);
+	--color-find-highlight: var(--wash-2);
+	--color-find-highlight-active: var(--ink-4);
+	--color-resize-handle: var(--rule-3);
+	--color-interaction-confirmation-surface: var(--wash-2);
+	--color-interaction-confirmation-foreground: var(--ink);
+	--color-markdown-inline-code: var(--wash);
+	--color-terminal-bg: var(--sunken);
+	--color-terminal-fg: var(--ink);
 }
 
 :root,
 [data-theme="zai-light"] {
 	color-scheme: light;
-	--ui-font-size: 14px;
-	--content-font-size: 14px;
 
-	/* 几何与材质 */
-	--radius-xs: 4px;
-	--radius-sm: 8px;
-	--radius-md: 12px;
-	--radius-lg: 16px;
-	--radius-xl: 20px;
-	--radius-panel: 28px;
-	--caption-height: 0px;
-	--elevation-stroke-color: rgba(0, 0, 0, 0.16);
-	--elevation-stroke: 0 0 0 0.5px var(--elevation-stroke-color);
-	--elevation-panel:
-		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.03), 0 0 16px 0 rgba(0, 0, 0, 0.02);
-	--elevation-prominent:
-		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.04), 0 0 20px 0 rgba(0, 0, 0, 0.05);
-	--elevation-soft:
-		var(--elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.03), 0 0 24px 0 rgba(0, 0, 0, 0.03);
+	--sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+		"Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+	--mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", Menlo,
+		"PingFang SC", "Microsoft YaHei", monospace;
 
-	--background: #ffffff;
-	--background-alt: #f9fafb;
-	--background-win-alt: #f9fafb;
-	--sidebar: #f9fafb;
-	--header: #ffffff;
-	--panel: #ffffff;
-	--card: #ffffff;
-	--card-selected: #f5f6f7;
-	--card-border: rgba(0, 0, 0, 0.16);
-	--input: #ffffff;
-	--input-focused: #ffffff;
-	--input-border: rgba(0, 0, 0, 0.1);
-	--input-border-hover: rgba(0, 0, 0, 0.12);
-	--input-border-focused: rgba(0, 0, 0, 0.16);
-	--menu: rgba(248, 249, 250, 0.94);
-	--menu-hover: rgba(38, 49, 72, 0.06);
-	--popover: rgba(248, 249, 250, 0.97);
-	--popover-header: #f9fafb;
-	--popover-border: rgba(0, 0, 0, 0.08);
-	--surface: #f5f6f7;
-	--surface-hover: rgba(38, 49, 72, 0.06);
-	--surface-strong: #ebedf2;
-	--selected: rgba(38, 49, 72, 0.08);
-	--hover: rgba(38, 49, 72, 0.06);
-	--border: rgba(0, 0, 0, 0.12);
-	--border-hover: rgba(0, 0, 0, 0.16);
+	--fs-9: 9px;
+	--fs-10: 10px;
+	--fs-11: 11px;
+	--fs-12: 12px;
+	--fs-13: 13px;
+	--fs-14: 14px;
+	--fs-16: 16px;
+	--fs-20: 20px;
+	--fs-27: 27px;
+	--fs-36: 36px;
 
-	--foreground: #0f1115;
-	--foreground-subtle: #61666b;
-	--foreground-subtlest: #81858c;
-	--foreground-inverse: #ffffff;
-	--remote-foreground-muted: #61666b;
+	--r-1: 3px;
+	--r-2: 5px;
+	--r-3: 7px;
+	--r-4: 10px;
 
-	--brand: #0f1115;
-	--primary: #0f1115;
-	--primary-foreground: #ffffff;
-	--secondary: #ebedf2;
-	/* 交互强调只走黑白：按钮、选中态与进度不再引入彩色，与品牌标识的单色体系一致 */
-	--accent: #0f1115;
-	--accent-soft: #f5f6f7;
+	--caption-h: 34px;
+	--speed: 160ms;
+	--ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 
-	--success: #22c55e;
-	--success-surface: #e6faed;
-	--success-surface-foreground: #166b32;
-	--warning: #f59e0b;
-	--warning-surface: #fef5e7;
-	--warning-surface-foreground: #8a5200;
-	--destructive: #ec1313;
-	--destructive-surface: #fef2f2;
-	--destructive-surface-foreground: #b91c1c;
-	--diff-added: #01a241;
-	--diff-removed: #ba2723;
+	--paper: #f6f6f5;
+	--sheet: #fdfdfc;
+	--raise: #ffffff;
+	--sunken: #f0f0ee;
+	--ink: #0b0b0b;
+	--ink-2: #545454;
+	--ink-3: #8a8a8a;
+	--ink-4: #b6b6b4;
+	--rule: rgba(0, 0, 0, 0.085);
+	--rule-2: rgba(0, 0, 0, 0.16);
+	--rule-3: rgba(0, 0, 0, 0.3);
+	--wash: rgba(0, 0, 0, 0.034);
+	--wash-2: rgba(0, 0, 0, 0.066);
+	--fill: #0b0b0b;
+	--fill-ink: #fdfdfc;
+	--shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04);
+	--shadow-2: 0 1px 2px rgba(0, 0, 0, 0.05), 0 10px 28px -10px rgba(0, 0, 0, 0.14);
+	--hatch: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.16) 0 1px, transparent 1px 4px);
+	--hatch-soft: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.06) 0 3px, transparent 3px 7px);
+	--diff-add-bg: #e9f6ec;
+	--diff-del-bg: #fdeded;
+	--diff-add-ink: #0b0b0b;
+	--diff-del-ink: #0b0b0b;
+	--danger: #cf222e;
+	--danger-soft: #fdeded;
+	--danger-bright: #f85149;
+	--grad-a: #2fbf71;
+	--grad-b: #3b82f6;
 
-	--user-message-bubble: #f5f6f7;
-	--tag: #f5f6f7;
-	--tooltip: #1b1b1c;
-	--tooltip-foreground: #f9fafb;
-	--toast: #1b1b1c;
-	--progress-surface: #f5f6f7;
-	--progress-surface-foreground: #0f1115;
-	--idle-task: #7c5cff;
-	--idle-task-surface: #f3f0ff;
-
-	--git-modified: #dd8629;
-	--git-added: #01a241;
-	--git-deleted: #ba2723;
-	--git-renamed: #418ce6;
-	--git-untracked: #01a241;
-	--find-highlight: #fff2cc;
-	--find-highlight-active: #f7ad31;
-	--resize-handle: #81858c;
-
-	--interaction-confirmation-surface: #e6faed;
-	--interaction-confirmation-foreground: #166b32;
-	--markdown-inline-code: #f5f6f7;
-	--terminal-bg: #f9fafb;
-	--terminal-fg: #0f1115;
-
-	--focus-ring: #0f1115;
-	--bubble: #f5f6f7;
-	--bubble-strong: #ebedf2;
-	--code-block: #f9fafb;
-	--code-block-banner: #f9fafb;
-	--sidebar-nav-active: #ebedf2;
-	--warn-label: #dd8629;
-	--label-shimmer: rgba(15, 17, 21, 0.3);
-	--deep-diving: #61666b;
-	--deep-diving-shimmer: #0f1115;
+	/* 语法高亮：颜色降级为明度 + 字重 */
+	--syn-keyword: var(--ink);
+	--syn-string: var(--ink);
+	--syn-number: var(--ink);
+	--syn-title: var(--ink);
+	--syn-attr: var(--ink-2);
+	--syn-comment: var(--ink-3);
+	--syn-punct: var(--ink-2);
 }
 
 [data-theme="zai-dark"] {
 	color-scheme: dark;
-	--elevation-stroke-color: rgba(255, 255, 255, 0.16);
-	--elevation-stroke: 0 0 0 0.5px var(--elevation-stroke-color);
-	--elevation-panel:
-		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.18), 0 0 16px 0 rgba(0, 0, 0, 0.12);
-	--elevation-prominent:
-		var(--elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.22), 0 0 20px 0 rgba(0, 0, 0, 0.18);
-	--elevation-soft:
-		var(--elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.18), 0 0 24px 0 rgba(0, 0, 0, 0.12);
 
-	--background: #151517;
-	--background-alt: #1b1b1c;
-	--background-win-alt: #1b1b1c;
-	--sidebar: #1b1b1c;
-	--header: #151517;
-	--panel: #232325;
-	--card: #232325;
-	--card-selected: #2c2c2e;
-	--card-border: rgba(255, 255, 255, 0.2);
-	--input: #2c2c2e;
-	--input-focused: #2c2c2e;
-	--input-border: rgba(255, 255, 255, 0.12);
-	--input-border-hover: rgba(255, 255, 255, 0.16);
-	--input-border-focused: rgba(255, 255, 255, 0.2);
-	--menu: rgba(48, 49, 54, 0.92);
-	--menu-hover: rgba(255, 255, 255, 0.08);
-	--popover: rgba(48, 49, 54, 0.96);
-	--popover-header: #232325;
-	--popover-border: rgba(255, 255, 255, 0.12);
-	--surface: #2c2c2e;
-	--surface-hover: rgba(255, 255, 255, 0.08);
-	--surface-strong: #353638;
-	--selected: rgba(255, 255, 255, 0.1);
-	--hover: rgba(255, 255, 255, 0.08);
-	--border: rgba(255, 255, 255, 0.16);
-	--border-hover: rgba(255, 255, 255, 0.2);
+	--paper: #090909;
+	--sheet: #111111;
+	--raise: #191919;
+	--sunken: #0d0d0d;
+	--ink: #f2f2f0;
+	--ink-2: #a5a5a1;
+	--ink-3: #717170;
+	--ink-4: #494948;
+	--rule: rgba(255, 255, 255, 0.09);
+	--rule-2: rgba(255, 255, 255, 0.18);
+	--rule-3: rgba(255, 255, 255, 0.32);
+	--wash: rgba(255, 255, 255, 0.045);
+	--wash-2: rgba(255, 255, 255, 0.082);
+	--fill: #f2f2f0;
+	--fill-ink: #090909;
+	--shadow-1: 0 1px 2px rgba(0, 0, 0, 0.6);
+	--shadow-2: 0 1px 2px rgba(0, 0, 0, 0.6), 0 12px 32px -12px rgba(0, 0, 0, 0.8);
+	--hatch: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.2) 0 1px, transparent 1px 4px);
+	--hatch-soft: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.09) 0 3px, transparent 3px 7px);
+	--diff-add-bg: rgba(63, 185, 80, 0.14);
+	--diff-del-bg: rgba(248, 81, 73, 0.16);
+	--diff-add-ink: #8ee6a0;
+	--diff-del-ink: #f7a3a0;
+	--danger: #f85149;
+	--danger-soft: rgba(248, 81, 73, 0.16);
+	--danger-bright: #f85149;
 
-	--foreground: #f9fafb;
-	--foreground-subtle: #cfd3d6;
-	--foreground-subtlest: #81858c;
-	--foreground-inverse: #151517;
-	--remote-foreground-muted: #adb2b8;
-
-	--brand: #f9fafb;
-	--primary: #f9fafb;
-	--primary-foreground: #151517;
-	--secondary: #2c2c2e;
-	--accent: #f9fafb;
-	--accent-soft: #2c2c2e;
-
-	--success: #22c55e;
-	--success-surface: #233c2c;
-	--success-surface-foreground: #4ed17e;
-	--warning: #f59e0b;
-	--warning-surface: #27241f;
-	--warning-surface-foreground: #f7ad31;
-	--destructive: #f25a5a;
-	--destructive-surface: rgba(242, 90, 90, 0.12);
-	--destructive-surface-foreground: #f25a5a;
-	--diff-added: #41c977;
-	--diff-removed: #fa423e;
-
-	--user-message-bubble: #2c2c2e;
-	--tag: #2c2c2e;
-	--tooltip: #2c2c2e;
-	--tooltip-foreground: #f9fafb;
-	--toast: #2c2c2e;
-	--progress-surface: #2c2c2e;
-	--progress-surface-foreground: #f9fafb;
-	--idle-task: #9e77ed;
-	--idle-task-surface: #241c3a;
-
-	--git-modified: #f7ad31;
-	--git-added: #41c977;
-	--git-deleted: #fa423e;
-	--git-renamed: #7aaaff;
-	--git-untracked: #41c977;
-	--find-highlight: #3d321a;
-	--find-highlight-active: #f7ad31;
-	--resize-handle: #81858c;
-
-	--interaction-confirmation-surface: #233c2c;
-	--interaction-confirmation-foreground: #4ed17e;
-	--markdown-inline-code: #2c2c2e;
-	--terminal-bg: #151517;
-	--terminal-fg: #f9fafb;
-
-	--focus-ring: #f9fafb;
-	--bubble: #2c2c2e;
-	--bubble-strong: #353638;
-	--code-block: #1f1f21;
-	--code-block-banner: #232325;
-	--sidebar-nav-active: #2c2c2e;
-	--warn-label: #f7ad31;
-	--label-shimmer: rgba(255, 255, 255, 0.45);
-	--deep-diving: #adb2b8;
-	--deep-diving-shimmer: #f9fafb;
+	--syn-keyword: var(--ink);
+	--syn-string: var(--ink);
+	--syn-number: var(--ink);
+	--syn-title: var(--ink);
+	--syn-attr: var(--ink-2);
+	--syn-comment: var(--ink-3);
+	--syn-punct: var(--ink-2);
 }

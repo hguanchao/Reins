@@ -1,7 +1,13 @@
-import { useCallback, useLayoutEffect, useRef, useState, type PointerEvent, type ReactElement, type ReactNode } from "react";
+import {
+	useCallback,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type PointerEvent,
+	type ReactElement,
+	type ReactNode,
+} from "react";
 
-import { cn } from "../components/ui/cn.ts";
-import { hasNativeTitlebar } from "../platform.ts";
 import { CaptionBar } from "./caption-bar.tsx";
 import { computeColumns } from "./columns.ts";
 
@@ -78,6 +84,8 @@ export interface AppShellProps {
 	readonly rightbarWidth: number;
 	readonly rightbarOpen: boolean;
 	readonly rightbarFullscreen: boolean;
+	readonly workspace: string;
+	readonly title: string;
 	readonly sidebar: ReactNode;
 	readonly children: ReactNode;
 	readonly rightbar?: ReactNode;
@@ -86,9 +94,7 @@ export interface AppShellProps {
 	onSidebarWidth(width: number): void;
 	onRightbarWidth(width: number): void;
 	onToggleSidebar(): void;
-	onNewSession(): void;
 	onOpenSearch(): void;
-	/** 会话浏览历史;标题栏承载后退/前进(仅桌面壳有标题栏) */
 	readonly canGoBack: boolean;
 	readonly canGoForward: boolean;
 	onBack(): void;
@@ -98,8 +104,8 @@ export interface AppShellProps {
 /**
  * 三栏帧。
  *
- * 窗口底是侧栏底色，主列是唯一的上浮面：左上 16px 圆角直接落在侧栏底上。
- * 右栏是一条可以收放的轨道，面板本身贴着窗口右边；拖拽带是隐藏的 8px 命中区。
+ * 三栏齐平，不浮起：主列不再有圆角与投影，改用 1px 细线分区。拖拽带是隐藏的 8px 命中区；
+ * 面板全屏时主列折叠为 0，侧栏宽度仍受上下限约束。
  */
 export function AppShell({
 	sidebarWidth,
@@ -107,6 +113,8 @@ export function AppShell({
 	rightbarWidth,
 	rightbarOpen,
 	rightbarFullscreen,
+	workspace,
+	title,
 	sidebar,
 	children,
 	rightbar,
@@ -114,7 +122,6 @@ export function AppShell({
 	onSidebarWidth,
 	onRightbarWidth,
 	onToggleSidebar,
-	onNewSession,
 	onOpenSearch,
 	canGoBack,
 	canGoForward,
@@ -125,7 +132,6 @@ export function AppShell({
 	const [viewport, setViewport] = useState(() => (typeof window === "undefined" ? 0 : window.innerWidth));
 	const [dragging, setDragging] = useState(false);
 	const [animating, setAnimating] = useState(false);
-	const hasCaption = hasNativeTitlebar();
 
 	useLayoutEffect(() => {
 		const element = frame.current;
@@ -150,8 +156,8 @@ export function AppShell({
 		};
 	}, []);
 
-	// 过渡只在翻转后的短暂窗口里开启(拖拽与窗口缩放时不动画),但必须用 layout effect:
-	// 普通 effect 在绘制之后才跑,过渡属性到场时列宽早已跳变完,动画就时有时无
+	// 过渡只在翻转后的短暂窗口里开启（拖拽与窗口缩放时不动画），但必须用 layout effect：
+	// 普通 effect 在绘制之后才跑，过渡属性到场时列宽早已跳变完，动画就时有时无
 	useLayoutEffect(() => {
 		setAnimating(true);
 		const timer = window.setTimeout(() => setAnimating(false), 320);
@@ -167,45 +173,37 @@ export function AppShell({
 	const rightbarBase = useRef(0);
 
 	return (
-		<div
-			inert={inactive || undefined}
-			aria-hidden={inactive || undefined}
-			className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-sidebar"
-		>
-			{hasCaption ? (
-				<CaptionBar
-					sidebarCollapsed={sidebarCollapsed}
-					onToggleSidebar={onToggleSidebar}
-					onNewSession={onNewSession}
-					onOpenSearch={onOpenSearch}
-					canGoBack={canGoBack}
-					canGoForward={canGoForward}
-					onBack={onBack}
-					onForward={onForward}
-				/>
-			) : null}
+		<div inert={inactive || undefined} aria-hidden={inactive || undefined} className="app">
+			<CaptionBar
+				sidebarCollapsed={sidebarCollapsed}
+				workspace={workspace}
+				title={title}
+				onToggleSidebar={onToggleSidebar}
+				onOpenSearch={onOpenSearch}
+				canGoBack={canGoBack}
+				canGoForward={canGoForward}
+				onBack={onBack}
+				onForward={onForward}
+			/>
+
 			<div
 				ref={frame}
-				className="relative grid min-h-0 flex-1 overflow-hidden"
+				className="relative grid min-h-0 overflow-hidden"
 				style={{
-					paddingTop: "var(--caption-height)",
+					gridColumn: "1 / -1",
+					gridRow: "2",
 					gridTemplateColumns: template,
-					transition: animating && !dragging ? "grid-template-columns 300ms cubic-bezier(0.4, 0, 0.2, 1)" : "none",
+					transition:
+						animating && !dragging ? "grid-template-columns 300ms cubic-bezier(0.4, 0, 0.2, 1)" : "none",
 				}}
 				data-sidebar-collapsed={sidebarCollapsed || undefined}
 				data-rightbar-collapsed={cols.rightbar === 0 || undefined}
 				data-rightbar-fullscreen={fullscreen || undefined}
 				data-dragging={dragging || undefined}
 			>
-				<div className="min-w-0 overflow-hidden">
-					{sidebarCollapsed ? null : sidebar}
-				</div>
-				<div className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden rounded-tl-[16px] bg-background")}>
-					{children}
-				</div>
-				<div className="min-w-0 overflow-visible">
-					{cols.rightbar > 0 ? rightbar : null}
-				</div>
+				<div className="min-w-0 overflow-hidden">{sidebarCollapsed ? null : sidebar}</div>
+				<div className="main flex min-h-0 min-w-0 flex-col overflow-hidden">{children}</div>
+				<div className="min-w-0 overflow-hidden">{cols.rightbar > 0 ? rightbar : null}</div>
 
 				{sidebarCollapsed ? null : (
 					<DragHandle

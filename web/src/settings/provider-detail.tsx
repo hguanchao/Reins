@@ -1,12 +1,10 @@
-import { Check, Eye, EyeOff, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
 import { api as apiClient } from "../api.ts";
+import { Dialog, toast } from "../components/ui/index.ts";
 import { formatTokens } from "../lib/format.ts";
-import { Button, Dialog, toast } from "../components/ui/index.ts";
-import { cn } from "../components/ui/cn.ts";
 import type { ProviderInput, ProviderModel, ProviderView, ThinkingLevel } from "../protocol.ts";
-import { ChoiceGroup } from "./controls.tsx";
 import { ModelDialog } from "./model-dialog.tsx";
 
 const EFFORT_LABELS: Record<ThinkingLevel, string> = {
@@ -18,12 +16,19 @@ const EFFORT_LABELS: Record<ThinkingLevel, string> = {
 	max: "最大",
 };
 
-const FIELD =
-	"flex h-8 w-full items-center gap-2 rounded-md border-[0.5px] border-input-border bg-input px-2.5 transition-colors focus-within:border-input-border-focused";
-const INPUT =
-	"min-w-0 flex-1 bg-transparent text-[12px] leading-[18px] outline-none placeholder:text-foreground-subtlest";
+/** API 格式：三种协议与产品实现一一对应，选中项后跟等宽路径。 */
+const API_FORMATS: readonly { readonly key: string; readonly name: string; readonly path: string }[] = [
+	{ key: "anthropic-messages", name: "Anthropic Messages", path: "/v1/messages" },
+	{ key: "openai-completions", name: "Chat Completions", path: "/chat/completions" },
+	{ key: "openai-responses", name: "Responses", path: "/responses" },
+];
 
-/** 提供方详情：基础配置与模型列表，改动后需要保存才写回。 */
+/**
+ * 供应商详情。
+ *
+ * 全部字段可编辑：名称是标题位上的输入框（不是只读文本），改名字实时同步左栏；Base URL、
+ * API 格式、API Key、模型都能改。API 格式用与字段同宽的自绘菜单，不用原生 select。
+ */
 export function ProviderDetail({
 	provider,
 	current,
@@ -36,10 +41,8 @@ export function ProviderDetail({
 	onDeleted,
 }: {
 	readonly provider: ProviderView;
-	/** 当前正在使用的模型，用于标记「使用中」 */
 	readonly current: { readonly provider: string; readonly model: string } | undefined;
 	readonly effort: ThinkingLevel;
-	/** 当前模型支持的思考等级；为空时不展示该行 */
 	readonly levels: readonly ThinkingLevel[];
 	onToggleEnabled(enabled: boolean): void;
 	onSelectModel(provider: string, model: string): void;
@@ -49,13 +52,16 @@ export function ProviderDetail({
 }): ReactElement {
 	const [name, setName] = useState(provider.name);
 	const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? "");
-	const [api, setApi] = useState(provider.api ?? "");
+	const [api, setApi] = useState(provider.api ?? "anthropic-messages");
 	const [apiKey, setApiKey] = useState("");
 	const [models, setModels] = useState<readonly ProviderModel[]>(provider.models);
 	const [showKey, setShowKey] = useState(false);
+	const [apiOpen, setApiOpen] = useState(false);
 	const [dialog, setDialog] = useState<{ readonly index: number | undefined } | undefined>(undefined);
 	const [saving, setSaving] = useState(false);
+	const [status, setStatus] = useState("");
 	const [error, setError] = useState<string | undefined>(undefined);
+	const [confirmDelete, setConfirmDelete] = useState(false);
 
 	const dirty =
 		name.trim() !== provider.name ||
@@ -67,10 +73,11 @@ export function ProviderDetail({
 	const reset = (): void => {
 		setName(provider.name);
 		setBaseUrl(provider.baseUrl ?? "");
-		setApi(provider.api ?? "");
+		setApi(provider.api ?? "anthropic-messages");
 		setApiKey("");
 		setModels(provider.models);
 		setError(undefined);
+		setStatus("");
 	};
 
 	const submit = (): void => {
@@ -91,215 +98,242 @@ export function ProviderDetail({
 		void apiClient
 			.saveProvider(input)
 			.then(() => {
-				toast("提供方已保存");
 				setApiKey("");
+				setStatus("已保存");
+				window.setTimeout(() => setStatus(""), 2000);
 				onSaved(provider.id);
 			})
 			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
 			.finally(() => setSaving(false));
 	};
 
+	const remove = (): void => {
+		void apiClient
+			.deleteProvider(provider.id)
+			.then(() => {
+				toast("供应商已删除");
+				setConfirmDelete(false);
+				onDeleted();
+			})
+			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+	};
+
 	const usingHere = current?.provider === provider.id;
+	const format = API_FORMATS.find((item) => item.key === api) ?? API_FORMATS[0];
 
 	return (
-		<div className="flex min-h-full flex-col gap-3">
-			<div className="flex items-center gap-2">
-				<span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-surface text-foreground-subtle">
-					<Pencil className="size-2.5" />
-				</span>
-				<input
-					value={name}
-					onChange={(event) => setName(event.target.value)}
-					aria-label="提供方名称"
-					className="min-w-0 flex-1 truncate rounded-sm bg-transparent text-[14px] leading-5 font-semibold outline-none focus:bg-surface"
-				/>
-				{error === undefined ? null : (
-					<span className="shrink-0 text-[11px] leading-4 text-destructive">{error}</span>
-				)}
-				{dirty ? (
-					<>
-						<button
-							type="button"
-							onClick={reset}
-							className="shrink-0 text-[12px] leading-[18px] text-foreground-subtle hover:text-foreground"
-						>
-							撤销
-						</button>
-						<Button variant="primary" size="sm" disabled={saving} onClick={submit}>
-							{saving ? "保存中…" : "保存"}
-						</Button>
-					</>
-				) : null}
+		<>
+			<div className="pd-h">
+				<div className="tx">
+					<div className="n">
+						<input
+							className="name-input"
+							value={name}
+							onChange={(event) => setName(event.target.value)}
+							aria-label="供应商名称"
+							spellCheck={false}
+						/>
+						<span className="badge">{provider.enabled ? "已启用" : "已停用"}</span>
+					</div>
+				</div>
 				<button
 					type="button"
 					role="switch"
 					aria-checked={provider.enabled}
-					aria-label={`启用 ${provider.name}`}
+					aria-label={`${provider.enabled ? "停用" : "启用"} ${provider.name}`}
+					className="sw"
 					onClick={() => onToggleEnabled(!provider.enabled)}
-					className={cn(
-						"relative h-[19px] w-8 shrink-0 rounded-full border-[0.5px] transition-colors",
-						provider.enabled ? "border-primary bg-primary" : "border-border bg-surface-strong",
-					)}
 				>
-					<span
-						className={cn(
-							"absolute top-[1.5px] size-[13px] rounded-full bg-card shadow-sm transition-[left]",
-							provider.enabled ? "left-[16px]" : "left-[2px]",
-						)}
-					/>
+					<i />
 				</button>
-				<DeleteButton provider={provider} onDeleted={onDeleted} />
 			</div>
 
-			<label className="flex flex-col gap-1">
-				<span className="text-[12px] leading-[18px] text-foreground-subtle">Base URL</span>
-				<span className={FIELD}>
+			<div className="field">
+				<div className="fl">Base URL</div>
+				<div className="input-line">
 					<input
 						value={baseUrl}
 						onChange={(event) => setBaseUrl(event.target.value)}
 						placeholder="https://api.example.com/v1"
 						aria-label="Base URL"
-						className={cn(INPUT, "font-mono")}
+						spellCheck={false}
 					/>
-				</span>
-			</label>
+				</div>
+			</div>
 
-			<label className="flex flex-col gap-1">
-				<span className="text-[12px] leading-[18px] text-foreground-subtle">API 格式</span>
-				<span className={FIELD}>
-					<select
-						value={api}
-						onChange={(event) => setApi(event.target.value)}
-						aria-label="API 格式"
-						className={cn(INPUT, "cursor-pointer")}
+			<div className="field" style={{ position: "relative" }}>
+				<div className="fl">API 格式</div>
+				<button
+					type="button"
+					className="input-line"
+					style={{ width: "100%", cursor: "pointer" }}
+					aria-expanded={apiOpen}
+					aria-haspopup="listbox"
+					onClick={() => setApiOpen((value) => !value)}
+				>
+					<span className="t">{format?.name ?? api}</span>
+					<span className="p">{format?.path}</span>
+					<ChevronDown className="ic-12 chev" />
+				</button>
+				{apiOpen ? (
+					<div
+						className="pop animate-pop"
+						role="listbox"
+						style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, width: "100%", zIndex: 30 }}
 					>
-						{["openai-completions", "openai-responses", "anthropic-messages"].map((option) => (
-							<option key={option} value={option}>
-								{option}
-							</option>
+						{API_FORMATS.map((item) => (
+							<button
+								key={item.key}
+								type="button"
+								role="option"
+								aria-selected={item.key === api}
+								className="pop-i"
+								style={item.key === api ? { background: "var(--wash-2)" } : undefined}
+								onClick={() => {
+									setApi(item.key);
+									setApiOpen(false);
+								}}
+							>
+								<span className="min-w-0 flex-1 truncate">{item.name}</span>
+								<span
+									style={{ fontFamily: "var(--mono)", fontSize: "var(--fs-10)", color: "var(--ink-4)" }}
+								>
+									{item.path}
+								</span>
+								{item.key === api ? <Check className="ic-12 ck" /> : null}
+							</button>
 						))}
-					</select>
-				</span>
-			</label>
+						<div className="pop-sep" />
+						<div
+							style={{
+								padding: "7px 10px 3px",
+								fontSize: "var(--fs-10)",
+								lineHeight: 1.55,
+								color: "var(--ink-4)",
+							}}
+						>
+							格式决定请求体与路径；切换后请确认 Base URL 是否匹配。
+						</div>
+					</div>
+				) : null}
+			</div>
 
-			<label className="flex flex-col gap-1">
-				<span className="text-[12px] leading-[18px] text-foreground-subtle">API Key</span>
-				<span className={FIELD}>
+			<div className="field">
+				<div className="fl">API Key</div>
+				<div className="input-line">
 					<input
+						type={showKey ? "text" : "password"}
 						value={apiKey}
 						onChange={(event) => setApiKey(event.target.value)}
-						type={showKey ? "text" : "password"}
-						placeholder={provider.hasApiKey ? "已保存，留空保持不变" : "输入 API Key"}
+						placeholder={provider.hasApiKey ? "已保存，留空保持不变" : "留空则不发送凭据"}
 						aria-label="API Key"
-						className={cn(INPUT, "font-mono")}
+						spellCheck={false}
+						autoComplete="off"
 					/>
 					<button
 						type="button"
-						aria-label={showKey ? "隐藏密钥" : "显示密钥"}
+						className="eye"
 						onClick={() => setShowKey((value) => !value)}
-						className="shrink-0 text-foreground-subtlest hover:text-foreground"
+						title={showKey ? "隐藏密钥" : "显示密钥"}
+						aria-label={showKey ? "隐藏密钥" : "显示密钥"}
 					>
-						{showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+						{showKey ? <EyeOff className="ic-14" /> : <Eye className="ic-14" />}
 					</button>
-				</span>
-			</label>
-
-			<div className="mt-2 flex items-center justify-between">
-				<span className="text-[12px] leading-[18px] text-foreground-subtle">模型列表</span>
-				<Button
-					variant="ghost"
-					size="sm"
-					className="h-6 rounded-md bg-surface px-2 text-[12px] text-foreground-subtle hover:bg-surface-strong"
-					onClick={() => setDialog({ index: undefined })}
-				>
-					<Plus className="size-3" />
-					添加模型
-				</Button>
+				</div>
 			</div>
 
-			{models.length === 0 ? (
-				<div className="flex h-13 items-center justify-center rounded-lg border-[0.5px] border-dashed border-border text-[12px] leading-[18px] text-foreground-subtle">
-					当前没有配置模型，添加模型后可在聊天中使用。
+			<div className="field">
+				<div className="model-head">
+					<div className="fl">模型列表</div>
+					<button type="button" className="m-add" onClick={() => setDialog({ index: undefined })}>
+						<Plus className="ic-12" />
+						添加模型
+					</button>
 				</div>
-			) : (
-				<div className="flex flex-col overflow-hidden rounded-lg border-[0.5px] border-border">
-					{models.map((model, index) => {
-						const active = usingHere && current?.model === model.id;
-						return (
-							<div
-								key={model.id}
-								className={cn(
-									"flex items-center gap-2 border-b-[0.5px] border-border px-2.5 py-1.5 last:border-b-0",
-									active ? "bg-card-selected" : "hover:bg-surface-hover",
-								)}
-							>
-								<button
-									type="button"
-									onClick={() => onSelectModel(provider.id, model.id)}
-									className="flex min-w-0 flex-1 items-center gap-2 text-left"
-								>
-									<span className="min-w-0 flex-1">
-										<span className="block truncate text-[13px] leading-5">{model.name}</span>
-										<span className="block truncate font-mono text-[10.5px] leading-4 text-foreground-subtlest">
-											{model.id}
-										</span>
-									</span>
-									<span className="shrink-0 font-mono text-[10.5px] leading-4 text-foreground-subtlest">
-										{model.contextWindow === undefined ? "—" : `ctx ${formatTokens(model.contextWindow)}`}
-									</span>
+				<div className="model-list">
+					{models.length === 0 ? (
+						<div className="model-empty">当前没有配置模型，添加后可在聊天中使用</div>
+					) : (
+						models.map((model, index) => {
+							const active = usingHere && current?.model === model.id;
+							return (
+								<div key={model.id} className="model-row">
 									<span
-										className={cn(
-											"flex w-14 shrink-0 items-center justify-end gap-1 text-[11px] leading-4",
-											active ? "font-medium text-foreground" : "text-foreground-subtlest",
-										)}
-									>
-										{active ? (
-											<>
-												<Check className="size-3" strokeWidth={3} />
-												使用中
-											</>
-										) : (
-											"使用"
-										)}
+										role="radio"
+										aria-checked={active}
+										aria-label={`使用 ${model.name}`}
+										className="rd"
+										tabIndex={0}
+										onClick={() => onSelectModel(provider.id, model.id)}
+										onKeyDown={(event) => {
+											if (event.key === "Enter" || event.key === " ") onSelectModel(provider.id, model.id);
+										}}
+									/>
+									<span className="mn">{model.name}</span>
+									<span className="ms">
+										{model.contextWindow === undefined ? "—" : formatTokens(model.contextWindow)}
 									</span>
-								</button>
-								<button
-									type="button"
-									aria-label={`编辑模型 ${model.id}`}
-									title="编辑模型"
-									onClick={() => setDialog({ index })}
-									className="ml-1 shrink-0 border-l-[0.5px] border-border pl-2 text-foreground-subtlest hover:text-foreground"
-								>
-									<Pencil className="size-3" />
-								</button>
-							</div>
-						);
-					})}
+									{active ? <span className="badge">当前</span> : null}
+									<span className="mrow-acts">
+										<button
+											type="button"
+											className="mrow-ico"
+											aria-label={`编辑模型 ${model.id}`}
+											title="编辑模型"
+											onClick={() => setDialog({ index })}
+										>
+											<Pencil className="ic-12" />
+										</button>
+									</span>
+								</div>
+							);
+						})
+					)}
+				</div>
+			</div>
+
+			{levels.length === 0 ? null : (
+				<div className="field">
+					<div className="fl">思考强度</div>
+					<div className="seg">
+						{levels.map((level) => (
+							<button
+								key={level}
+								type="button"
+								aria-pressed={level === effort}
+								onClick={() => onUpdate({ effort: level })}
+							>
+								{EFFORT_LABELS[level]}
+							</button>
+						))}
+					</div>
 				</div>
 			)}
 
-			{levels.length === 0 ? null : (
-				<div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t-[0.5px] border-border pt-3">
-					<span className="flex flex-col">
-						<span className="text-[12px] leading-[18px]">思考等级</span>
-						<span className="text-[11px] leading-4 text-foreground-subtlest">
-							当前模型支持的等级，关闭表示不发送思考参数。
-						</span>
-					</span>
-					<ChoiceGroup
-						options={levels.map((level) => ({ key: level, label: EFFORT_LABELS[level] }))}
-						selected={effort}
-						onSelect={(next) => onUpdate({ effort: next })}
-					/>
-				</div>
-			)}
+			<div className="pd-f">
+				<button
+					type="button"
+					className="b b-ghost b-sm"
+					style={{ color: "var(--danger)" }}
+					onClick={() => setConfirmDelete(true)}
+				>
+					删除供应商
+				</button>
+				<span className="pd-status" style={error === undefined ? undefined : { color: "var(--danger)" }}>
+					{error ?? status}
+				</span>
+				<button type="button" className="b b-line b-sm" disabled={!dirty || saving} onClick={reset}>
+					取消
+				</button>
+				<button type="button" className="b b-solid b-sm" disabled={!dirty || saving} onClick={submit}>
+					{saving ? "保存中…" : "保存"}
+				</button>
+			</div>
 
 			<ModelDialog
 				open={dialog !== undefined}
 				model={dialog?.index === undefined ? undefined : models[dialog.index]}
-				existingIds={models
-					.filter((_, position) => position !== dialog?.index)
-					.map((model) => model.id)}
+				existingIds={models.filter((_, position) => position !== dialog?.index).map((model) => model.id)}
 				patch={{ api, baseUrl }}
 				onClose={() => setDialog(undefined)}
 				onSubmit={(next) => {
@@ -310,86 +344,28 @@ export function ProviderDetail({
 					setDialog(undefined);
 				}}
 			/>
-		</div>
-	);
-}
 
-/** 删除按钮独立成组件，确认弹层与列表项解耦。 */
-function DeleteButton({
-	provider,
-	onDeleted,
-}: {
-	readonly provider: ProviderView;
-	onDeleted(): void;
-}): ReactElement {
-	const [open, setOpen] = useState(false);
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState<string | undefined>(undefined);
-
-	const remove = (): void => {
-		if (busy) return;
-		setBusy(true);
-		void apiClient
-			.deleteProvider(provider.id)
-			.then(() => {
-				toast("提供方已删除");
-				setOpen(false);
-				onDeleted();
-			})
-			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
-			.finally(() => setBusy(false));
-	};
-
-	return (
-		<>
-			<button
-				type="button"
-				aria-label="更多"
-				onClick={() => setOpen(true)}
-				className="flex size-6 shrink-0 items-center justify-center rounded-md text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground"
-			>
-				<MoreHorizontal className="size-3.5" />
-			</button>
 			<Dialog
-				open={open}
-				onClose={() => setOpen(false)}
-				title="删除提供方"
+				open={confirmDelete}
+				onClose={() => setConfirmDelete(false)}
+				title="删除供应商"
 				footer={
 					<>
-						<Button variant="outline" size="sm" disabled={busy} onClick={() => setOpen(false)}>
+						<button type="button" className="b b-line" onClick={() => setConfirmDelete(false)}>
 							取消
-						</Button>
-						<Button variant="danger" size="sm" disabled={busy} onClick={remove}>
-							<Trash2 className="size-3.5" />
-							{busy ? "删除中…" : "删除"}
-						</Button>
+						</button>
+						<button type="button" className="b b-danger" onClick={remove}>
+							删除
+						</button>
 					</>
 				}
 			>
-				<div className="flex flex-col gap-2 text-[13px] leading-5 text-foreground-subtle">
-					<p className="m-0">删除后 providers.json 中的这项配置会移除，不能撤销。</p>
-					<p className="m-0 text-foreground">{provider.name}</p>
-					{error === undefined ? null : <p className="m-0 text-destructive">{error}</p>}
-				</div>
+				<p style={{ margin: 0 }}>删除后 providers.json 中的这项配置会移除，不能撤销。</p>
+				<p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, color: "var(--ink)" }}>
+					<Trash2 className="ic-12" />
+					{provider.name}
+				</p>
 			</Dialog>
 		</>
 	);
-}
-
-/** 供外部构造新提供方时复用的空模型。 */
-export function emptyModel(api: string, baseUrl: string): ProviderModel {
-	return {
-		id: "",
-		name: "",
-		api,
-		baseUrl,
-		reasoning: false,
-		thinkingLevelMap: {},
-		input: ["text"],
-		cost: undefined,
-		contextWindow: undefined,
-		maxTokens: undefined,
-		maxTokensField: "max_tokens",
-		headers: {},
-	};
 }

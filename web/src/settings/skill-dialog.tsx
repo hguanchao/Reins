@@ -1,12 +1,7 @@
 import { useEffect, useState, type KeyboardEvent, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Button, Dialog, toast } from "../components/ui/index.ts";
-
-const FIELD =
-	"h-9 w-full rounded-md border-[0.5px] border-input-border bg-input px-3 text-[13px] leading-5 outline-none transition-colors placeholder:text-foreground-subtlest focus:border-input-border-focused";
-const AREA =
-	"w-full resize-y rounded-md border-[0.5px] border-input-border bg-input px-3 py-2 text-[13px] leading-5 outline-none transition-colors placeholder:text-foreground-subtlest focus:border-input-border-focused";
+import { Dialog, toast } from "../components/ui/index.ts";
 
 /** 编辑技能：名称只读，描述与正文写回 SKILL.md。 */
 export function SkillDialog({
@@ -98,63 +93,51 @@ export function SkillDialog({
 			title="编辑技能"
 			footer={
 				<>
-					<Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
+					<button type="button" className="b b-line" disabled={saving} onClick={onClose}>
 						取消
-					</Button>
-					<Button
-						variant="primary"
-						size="sm"
+					</button>
+					<button
+						type="button"
+						className="b b-solid"
 						disabled={saving || loading || loadError !== undefined}
 						onClick={submit}
 					>
 						{saving ? "保存中…" : "保存"}
-					</Button>
+					</button>
 				</>
 			}
 		>
-			<div className="flex flex-col gap-3">
-				<label className="flex flex-col gap-1">
-					<span className="text-[12px] leading-[18px] text-foreground-subtle">名称</span>
-					<input
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-						onKeyDown={submitOnEnter}
-						aria-label="技能名称"
-						disabled
-						className={FIELD}
-					/>
-					<span className="text-[11px] leading-4 text-foreground-subtlest">编辑时名称不可修改。</span>
-				</label>
-				<label className="flex flex-col gap-1">
-					<span className="text-[12px] leading-[18px] text-foreground-subtle">描述</span>
-					<input
-						value={description}
-						onChange={(event) => setDescription(event.target.value)}
-						onKeyDown={submitOnEnter}
-						placeholder="一句话说明这个技能做什么"
-						aria-label="技能描述"
-						disabled={loading}
-						className={FIELD}
-					/>
-				</label>
-				<label className="flex flex-col gap-1">
-					<span className="text-[12px] leading-[18px] text-foreground-subtle">指令正文</span>
-					<textarea
-						value={content}
-						onChange={(event) => setContent(event.target.value)}
-						placeholder={loading ? "正在读取…" : "# 步骤\n\n1. 读取输入\n2. 产出结果"}
-						aria-label="技能指令正文"
-						disabled={loading}
-						className={`${AREA} min-h-[180px] font-mono text-[12px] leading-5`}
-					/>
-				</label>
-				{loadError === undefined ? null : (
-					<p className="m-0 text-[12px] leading-[18px] text-destructive">{loadError}</p>
-				)}
-				{error === undefined ? null : (
-					<p className="m-0 text-[12px] leading-[18px] text-destructive">{error}</p>
-				)}
-			</div>
+			<label>
+				<span className="form-label">名称</span>
+				<input value={name} aria-label="技能名称" disabled className="form-input" />
+				<span className="form-hint">编辑时名称不可修改。</span>
+			</label>
+			<label>
+				<span className="form-label">描述</span>
+				<input
+					value={description}
+					onChange={(event) => setDescription(event.target.value)}
+					onKeyDown={submitOnEnter}
+					placeholder="一句话说明这个技能做什么"
+					aria-label="技能描述"
+					disabled={loading}
+					className="form-input"
+				/>
+			</label>
+			<label>
+				<span className="form-label">指令正文</span>
+				<textarea
+					value={content}
+					onChange={(event) => setContent(event.target.value)}
+					placeholder={loading ? "正在读取…" : "# 步骤\n\n1. 读取输入\n2. 产出结果"}
+					aria-label="技能指令正文"
+					disabled={loading}
+					className="form-area"
+					style={{ minHeight: 200 }}
+				/>
+			</label>
+			{loadError === undefined ? null : <p className="form-error">{loadError}</p>}
+			{error === undefined ? null : <p className="form-error">{error}</p>}
 		</Dialog>
 	);
 }

@@ -213,6 +213,16 @@ export interface McpServerInput {
 	env?: Readonly<Record<string, string>>;
 }
 
+/** 已配置的 MCP 服务器；status 为运行期连接状态。 */
+export interface McpServerInfo {
+	name: string;
+	type: string;
+	disabled: boolean;
+	/** connecting / connected / unreachable / disabled / unknown */
+	status: string;
+	detail: string;
+}
+
 export interface SettingsSnapshot {
 	version: string;
 	configPath: string;
@@ -228,14 +238,7 @@ export interface SettingsSnapshot {
 	compactModel: string | undefined;
 	reviewModel: string | undefined;
 	models: readonly SettingsModel[];
-	mcpServers: readonly {
-		name: string;
-		type: string;
-		disabled: boolean;
-		/** connecting / connected / unreachable / disabled / unknown */
-		status: string;
-		detail: string;
-	}[];
+	mcpServers: readonly McpServerInfo[];
 	plugins: readonly { name: string; kind: string; disabled: boolean }[];
 	skills: readonly {
 		name: string;

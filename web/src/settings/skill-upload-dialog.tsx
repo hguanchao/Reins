@@ -2,7 +2,7 @@ import { Upload } from "lucide-react";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Button, Dialog, toast } from "../components/ui/index.ts";
+import { Dialog, toast } from "../components/ui/index.ts";
 import { formatKb } from "./settings-model.ts";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -72,40 +72,48 @@ export function SkillUploadDialog({
 			title="上传技能压缩包"
 			footer={
 				<>
-					<Button variant="outline" size="sm" disabled={saving} onClick={onClose}>
+					<button type="button" className="b b-line" disabled={saving} onClick={onClose}>
 						取消
-					</Button>
-					<Button variant="primary" size="sm" disabled={saving} onClick={submit}>
+					</button>
+					<button type="button" className="b b-solid" disabled={saving} onClick={submit}>
 						{saving ? "上传中…" : "上传"}
-					</Button>
+					</button>
 				</>
 			}
 		>
-			<div className="flex flex-col gap-3">
-				<label className="flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-[0.5px] border-dashed border-border bg-surface px-4 py-7 text-center transition-colors hover:bg-surface-hover">
-					<Upload className="size-5 text-foreground-subtlest" />
-					<span className="text-[13px] leading-5">{file?.name ?? "选择一个技能压缩包（.zip）"}</span>
-					<span className="text-[11px] leading-4 text-foreground-subtlest">
-						{file === undefined
-							? "压缩包内需包含一个 SKILL.md"
-							: `${formatKb(file.size)} · 点击重新选择`}
-					</span>
-					<input
-						ref={input}
-						type="file"
-						accept=".zip,application/zip,application/x-zip-compressed"
-						aria-label="选择技能压缩包"
-						className="sr-only"
-						onChange={(event) => pick(event.target.files?.[0])}
-					/>
-				</label>
-				<p className="m-0 text-[11px] leading-4 text-foreground-subtlest">
-					压缩包内需包含一个 SKILL.md，目录中的其他文件会一起安装；同名技能会被拒绝，不会覆盖现有内容。
-				</p>
-				{error === undefined ? null : (
-					<p className="m-0 text-[12px] leading-[18px] text-destructive">{error}</p>
-				)}
-			</div>
+			<label
+				style={{
+					display: "flex",
+					cursor: "pointer",
+					flexDirection: "column",
+					alignItems: "center",
+					gap: 5,
+					padding: "22px 16px",
+					border: "1px dashed var(--rule-2)",
+					borderRadius: "var(--r-3)",
+					textAlign: "center",
+				}}
+			>
+				<Upload className="ic-18" style={{ color: "var(--ink-3)" }} />
+				<span style={{ fontSize: "var(--fs-12)", fontWeight: 500 }}>
+					{file?.name ?? "选择一个技能压缩包（.zip）"}
+				</span>
+				<span style={{ fontSize: "var(--fs-10)", color: "var(--ink-4)" }}>
+					{file === undefined ? "压缩包内需包含一个 SKILL.md" : `${formatKb(file.size)} · 点击重新选择`}
+				</span>
+				<input
+					ref={input}
+					type="file"
+					accept=".zip,application/zip,application/x-zip-compressed"
+					aria-label="选择技能压缩包"
+					style={{ display: "none" }}
+					onChange={(event) => pick(event.target.files?.[0])}
+				/>
+			</label>
+			<p className="form-hint">
+				压缩包内需包含一个 SKILL.md，目录中的其他文件会一起安装；同名技能会被拒绝，不会覆盖现有内容。
+			</p>
+			{error === undefined ? null : <p className="form-error">{error}</p>}
 		</Dialog>
 	);
 }

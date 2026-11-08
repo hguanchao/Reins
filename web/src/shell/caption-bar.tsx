@@ -1,19 +1,40 @@
-import { ArrowLeft, ArrowRight, MessageSquarePlus, PanelLeft, Search } from "lucide-react";
-import type { ReactElement, ReactNode } from "react";
+import { ChevronLeft, ChevronRight, Folder, PanelLeft, Search } from "lucide-react";
+import type { ReactElement } from "react";
 
-import { cn } from "../components/ui/cn.ts";
+import { hasNativeTitlebar } from "../platform.ts";
+
+/**
+ * 窗控区。
+ *
+ * demo 里是两枚示意方块（最小化 / 最大化），浏览器预览时照原样画出来；桌面壳用系统
+ * 原生覆盖层承载窗控，这里只让出位置，不再画第二份。Windows 的窗控在右、macOS 的
+ * 红绿灯在左，让位方向由 index.html 落下的 data-titlebar-platform 决定。
+ */
+export function WindowControls(): ReactElement {
+	const native = hasNativeTitlebar();
+	return (
+		<div className={`win-slot${native ? " native" : ""}`} aria-hidden="true">
+			{native ? null : (
+				<>
+					<i />
+					<i />
+				</>
+			)}
+		</div>
+	);
+}
 
 /**
  * 窗口标题栏。
  *
- * 桌面端由 Electron 原生覆盖层承载最小化/最大化/关闭；这里只画拖拽区与左侧控制。
- * 侧栏收起时「新会话」也移到标题栏，避免主区左上角多出一条工具带；
- * 会话浏览历史的后退/前进同样安家在这里，会话帧头不再重复。
+ * 34px 高：左侧四个图标（栏开关、搜索、后退、前进），中间面包屑，右侧是窗控区。整条是
+ * 拖拽区，按钮各自 no-drag。桌面壳用原生覆盖层承载最小化/最大化/关闭，这里只让出位置。
  */
 export function CaptionBar({
 	sidebarCollapsed,
+	workspace,
+	title,
 	onToggleSidebar,
-	onNewSession,
 	onOpenSearch,
 	canGoBack,
 	canGoForward,
@@ -21,62 +42,62 @@ export function CaptionBar({
 	onForward,
 }: {
 	readonly sidebarCollapsed: boolean;
+	readonly workspace: string;
+	readonly title: string;
 	onToggleSidebar(): void;
-	onNewSession(): void;
-	/** 打开会话搜索：侧栏收起时先展开侧栏（展开逻辑由应用层处理） */
 	onOpenSearch(): void;
 	readonly canGoBack: boolean;
 	readonly canGoForward: boolean;
 	onBack(): void;
 	onForward(): void;
 }): ReactElement {
-	const button = "no-drag flex size-7 shrink-0 items-center justify-center rounded-sm text-foreground-subtle transition-colors hover:bg-surface-hover hover:text-foreground";
-	const navButton = (label: string, enabled: boolean, onClick: () => void, icon: ReactNode): ReactElement => (
-		<button
-			type="button"
-			aria-label={label}
-			title={label}
-			disabled={!enabled}
-			onClick={onClick}
-			className={cn(button, !enabled && "cursor-default opacity-40 hover:bg-transparent hover:text-foreground-subtle")}
-		>
-			{icon}
-		</button>
-	);
-
 	return (
-		<div className="drag-region absolute inset-x-0 top-0 z-30 flex h-(--caption-height) items-center gap-2 bg-sidebar pl-3">
+		<div className="caption drag-region">
 			<button
 				type="button"
-				aria-label={sidebarCollapsed ? "打开侧边栏" : "收起侧边栏"}
-				title={sidebarCollapsed ? "打开侧边栏 (Ctrl B)" : "收起侧边栏 (Ctrl B)"}
+				className="cbtn no-drag"
+				aria-label={sidebarCollapsed ? "展开侧栏" : "收起侧栏"}
+				title={sidebarCollapsed ? "展开侧栏 (Ctrl B)" : "收起侧栏 (Ctrl B)"}
 				onClick={onToggleSidebar}
-				className={button}
 			>
-				<PanelLeft className="size-4" />
+				<PanelLeft className="ic" />
 			</button>
-			{sidebarCollapsed ? (
-				<button
-					type="button"
-					aria-label="新建任务"
-					title="新建任务 (Ctrl N)"
-					onClick={onNewSession}
-					className={button}
-				>
-					<MessageSquarePlus className="size-4" />
-				</button>
-			) : null}
+			<button type="button" className="cbtn no-drag" aria-label="搜索任务" title="搜索任务" onClick={onOpenSearch}>
+				<Search className="ic" />
+			</button>
 			<button
 				type="button"
-				aria-label="搜索任务"
-				title="搜索任务"
-				onClick={onOpenSearch}
-				className={button}
+				className="cbtn no-drag"
+				aria-label="后退"
+				title="后退"
+				disabled={!canGoBack}
+				onClick={onBack}
 			>
-				<Search className="size-4" />
+				<ChevronLeft className="ic" />
 			</button>
-			{navButton("后退", canGoBack, onBack, <ArrowLeft className="size-4" />)}
-			{navButton("前进", canGoForward, onForward, <ArrowRight className="size-4" />)}
+			<button
+				type="button"
+				className="cbtn no-drag"
+				aria-label="前进"
+				title="前进"
+				disabled={!canGoForward}
+				onClick={onForward}
+			>
+				<ChevronRight className="ic" />
+			</button>
+
+			<div className="crumb">
+				{workspace.length === 0 ? null : (
+					<>
+						<Folder className="ic-12" />
+						<span>{workspace}</span>
+						<span className="sep">/</span>
+					</>
+				)}
+				<span className="now">{title}</span>
+			</div>
+
+			<WindowControls />
 		</div>
 	);
 }

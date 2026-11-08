@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Button, Dialog } from "../components/ui/index.ts";
+import { Dialog } from "../components/ui/index.ts";
 import type { PluginLogLevel, PluginLogLine } from "../protocol.ts";
 
-const LOG_COLORS: Record<PluginLogLevel, string> = {
-	debug: "text-foreground-subtlest",
-	info: "text-foreground-subtle",
-	warn: "text-warning",
-	error: "text-destructive",
+const LEVEL_COLOR: Record<PluginLogLevel, string> = {
+	debug: "var(--ink-4)",
+	info: "var(--ink-3)",
+	warn: "var(--ink)",
+	error: "var(--danger)",
 };
 
 function formatLogTime(at: string): string {
@@ -66,55 +66,61 @@ export function PluginLogsDialog({
 			open={name !== undefined}
 			onClose={onClose}
 			title={name === undefined ? "插件日志" : `插件日志 · ${name}`}
-			className="max-w-[720px]!"
+			wide
 			footer={
-				<Button variant="outline" size="sm" onClick={onClose}>
+				<button type="button" className="b b-line" onClick={onClose}>
 					关闭
-				</Button>
+				</button>
 			}
 		>
-			<div className="flex flex-col gap-3">
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<span className="text-[11px] leading-4 text-foreground-subtlest">
-						最近 {logs.length} 条 · 每 2 秒刷新 · 重启后清空
-					</span>
-					<Button
-						variant="outline"
-						size="sm"
-						className="h-7 rounded-md px-2.5 text-[12px]"
-						onClick={() => setVersion((value) => value + 1)}
-					>
-						刷新
-					</Button>
-				</div>
-				{loading ? (
-					<div className="rounded-xl border-[0.5px] border-border bg-card px-4 py-5 text-[12px] leading-[18px] text-foreground-subtlest">
-						正在读取日志…
-					</div>
-				) : error !== undefined ? (
-					<div className="rounded-xl border-[0.5px] border-border bg-card px-4 py-5 text-[12px] leading-[18px] text-destructive">
-						{error}
-					</div>
-				) : logs.length === 0 ? (
-					<div className="rounded-xl border-[0.5px] border-border bg-card px-4 py-5 text-[12px] leading-[18px] text-foreground-subtlest">
-						还没有日志。插件装载与运行期的输出会出现在这里。
-					</div>
-				) : (
-					<div className="flex max-h-[420px] flex-col gap-1 overflow-y-auto rounded-xl border-[0.5px] border-border bg-card p-3 font-mono text-[11px] leading-[18px]">
-						{logs.map((line, index) => (
-							<div key={`${line.at}-${index}`} className="flex gap-2">
-								<span className="shrink-0 text-foreground-subtlest">{formatLogTime(line.at)}</span>
-								<span className={`w-10 shrink-0 uppercase ${LOG_COLORS[line.level]}`}>
-									{line.level}
-								</span>
-								<span className="min-w-0 whitespace-pre-wrap break-all text-foreground-subtle">
-									{line.message}
-								</span>
-							</div>
-						))}
-					</div>
-				)}
+			<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+				<span className="form-hint">最近 {logs.length} 条 · 每 2 秒刷新 · 重启后清空</span>
+				<button type="button" className="b b-line b-sm" onClick={() => setVersion((value) => value + 1)}>
+					刷新
+				</button>
 			</div>
+			{loading ? (
+				<div className="tool-output">正在读取日志…</div>
+			) : error !== undefined ? (
+				<div className="tool-output" style={{ color: "var(--danger)" }}>
+					{error}
+				</div>
+			) : logs.length === 0 ? (
+				<div className="tool-output">还没有日志。插件装载与运行期的输出会出现在这里。</div>
+			) : (
+				<div
+					style={{
+						display: "flex",
+						maxHeight: 420,
+						flexDirection: "column",
+						gap: 2,
+						overflowY: "auto",
+						padding: 10,
+						border: "1px solid var(--rule)",
+						borderRadius: "var(--r-2)",
+						background: "var(--sunken)",
+						fontFamily: "var(--mono)",
+						fontSize: "var(--fs-11)",
+						lineHeight: 1.7,
+					}}
+				>
+					{logs.map((line, index) => (
+						<div key={`${line.at}-${index}`} style={{ display: "flex", gap: 8 }}>
+							<span style={{ flex: "none", color: "var(--ink-4)" }}>{formatLogTime(line.at)}</span>
+							<span
+								style={{ flex: "none", width: 40, textTransform: "uppercase", color: LEVEL_COLOR[line.level] }}
+							>
+								{line.level}
+							</span>
+							<span
+								style={{ minWidth: 0, whiteSpace: "pre-wrap", wordBreak: "break-all", color: "var(--ink-2)" }}
+							>
+								{line.message}
+							</span>
+						</div>
+					))}
+				</div>
+			)}
 		</Dialog>
 	);
 }

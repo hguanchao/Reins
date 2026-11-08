@@ -6,16 +6,18 @@ export interface ColumnWidths {
 	readonly rightbar: number;
 }
 
-export const SIDEBAR_DEFAULT = 280;
-export const SIDEBAR_MIN = 264;
-export const SIDEBAR_MAX = 420;
+/** demo 基准：侧栏 244px 可拖 180–320px，右面板 308px 可拖 300–420px。 */
+export const SIDEBAR_DEFAULT = 244;
+export const SIDEBAR_MIN = 180;
+export const SIDEBAR_MAX = 320;
 export const SIDEBAR_COLLAPSED = 0;
 export const SIDEBAR_AUTO_COLLAPSE = 1024;
 /** 展开比收起高一档余量:拖拽在阈值附近晃动时不会收了又展、展了又收 */
 export const SIDEBAR_AUTO_EXPAND = SIDEBAR_AUTO_COLLAPSE + 64;
 export const CENTER_MIN = 400;
 export const RIGHTBAR_MIN = 300;
-export const RIGHTBAR_DEFAULT_RATIO = 0.45;
+export const RIGHTBAR_DEFAULT = 308;
+export const RIGHTBAR_MAX = 420;
 export const RIGHTBAR_MAX_RATIO = 0.7;
 
 export function clampSidebar(width: number): number {
@@ -37,8 +39,16 @@ export function autoSidebarAction(
 	return autoCollapsed && innerWidth >= SIDEBAR_AUTO_EXPAND ? false : undefined;
 }
 
+/** 右面板默认宽度跟着 demo 的 308px，窄窗时才让位。 */
 export function defaultRightbarWidth(viewport: number): number {
-	return Math.round(viewport * RIGHTBAR_DEFAULT_RATIO);
+	return Math.round(Math.min(RIGHTBAR_DEFAULT, viewport * RIGHTBAR_MAX_RATIO));
+}
+
+/** 拖拽右栏时的收敛：下限 300、上限 420，且不超过窗口 70%。 */
+export function clampRightbar(width: number, viewport: number): number {
+	return Math.round(
+		Math.min(RIGHTBAR_MAX, Math.min(viewport * RIGHTBAR_MAX_RATIO, Math.max(RIGHTBAR_MIN, width))),
+	);
 }
 
 /**
@@ -52,7 +62,7 @@ export function computeColumns(viewport: number, sidebar: number, rightbar: numb
 	const resolvedRight =
 		rightbar <= 0 || available < RIGHTBAR_MIN
 			? 0
-			: Math.min(available, Math.round(Math.min(width * RIGHTBAR_MAX_RATIO, Math.max(RIGHTBAR_MIN, rightbar))));
+			: Math.min(available, clampRightbar(rightbar, width));
 	return {
 		sidebar: resolvedSidebar,
 		center: Math.max(0, width - resolvedSidebar - resolvedRight),

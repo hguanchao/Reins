@@ -1,10 +1,8 @@
-import { Check } from "lucide-react";
-import type { ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 
-import { cn } from "../components/ui/cn.ts";
 import { sandboxLabel } from "../lib/format.ts";
 import type { ApprovalMode, NotifyMode, SettingsSnapshot } from "../protocol.ts";
-import { Badge, ChoiceGroup, SettingRow, SettingsCard, SettingsHeader } from "./controls.tsx";
+import { Card, ChoiceCard, Row, Section, SettingsPane, Tag } from "./controls.tsx";
 
 const APPROVAL_LABELS: Record<ApprovalMode, string> = {
 	ask: "逐次询问",
@@ -13,19 +11,24 @@ const APPROVAL_LABELS: Record<ApprovalMode, string> = {
 };
 
 const APPROVAL_HINTS: Record<ApprovalMode, string> = {
-	ask: "每次改动文件或执行命令前询问",
-	auto: "由审查模型判断，风险较高时再询问",
-	yolo: "不询问，直接执行",
+	ask: "每次写盘或执行命令都停下确认。最稳，打断也最多。",
+	auto: "先由审查模型判断，风险高才问你。工作区内的常规改动直接放行。",
+	yolo: "不再询问。路径边界与不可逆操作的拦截仍然生效。",
 };
 
-const NOTIFY_OPTIONS: readonly { readonly key: NotifyMode; readonly label: string }[] = [
-	{ key: "auto", label: "失焦时" },
-	{ key: "bell", label: "响铃" },
-	{ key: "desktop", label: "桌面通知" },
-	{ key: "off", label: "关闭" },
+const NOTIFY_OPTIONS: readonly { readonly key: NotifyMode; readonly label: string; readonly hint: string }[] = [
+	{ key: "auto", label: "失焦时", hint: "只在窗口不在前台时提醒" },
+	{ key: "bell", label: "响铃", hint: "只在终端里生效" },
+	{ key: "desktop", label: "桌面通知", hint: "每次都提醒" },
+	{ key: "off", label: "关闭", hint: "不再提醒" },
 ];
 
-/** 常规：审批策略立即生效，其余运行环境与会话行为只读展示当前实现。 */
+/**
+ * 常规。
+ *
+ * 审批方式用三张并排选择卡：三个选项的差别在「打断程度」，必须并排比较；选中卡描边压深并
+ * 给出勾。其余运行环境项是只读事实，用徽标陈述而不是做成灰色不可用的控件。
+ */
 export function GeneralSection({
 	settings,
 	onUpdate,
@@ -33,96 +36,143 @@ export function GeneralSection({
 	readonly settings: SettingsSnapshot | undefined;
 	onUpdate(update: { approval?: ApprovalMode; notify?: NotifyMode }): void;
 }): ReactElement {
+	const [notifyOpen, setNotifyOpen] = useState(false);
+	const notifyRef = useRef<HTMLDivElement | null>(null);
+	const current = settings?.notify ?? "auto";
+	const currentLabel = NOTIFY_OPTIONS.find((option) => option.key === current)?.label ?? "失焦时";
+
+	useEffect(() => {
+		if (!notifyOpen) return;
+		const onDown = (event: MouseEvent): void => {
+			if (notifyRef.current !== null && !notifyRef.current.contains(event.target as Node)) setNotifyOpen(false);
+		};
+		document.addEventListener("mousedown", onDown);
+		return () => document.removeEventListener("mousedown", onDown);
+	}, [notifyOpen]);
+
 	return (
-		<div className="flex flex-col gap-7">
-			<SettingsHeader
-				title="常规"
-				description="审批策略、运行环境与侧栏任务列表的基础行为。"
-			/>
-
-			<section className="flex flex-col gap-2">
-				<h2 className="m-0 px-1 text-[13px] leading-5 font-medium">审批方式</h2>
-				<div className="grid gap-2 sm:grid-cols-3">
-					{(Object.keys(APPROVAL_LABELS) as ApprovalMode[]).map((mode) => {
-						const active = (settings?.approval ?? "ask") === mode;
-						return (
-							<button
-								key={mode}
-								type="button"
-								onClick={() => onUpdate({ approval: mode })}
-								className={cn(
-									"flex flex-col items-start gap-1 rounded-[14px] border-[0.5px] px-3.5 py-3 text-left transition-colors",
-									active
-										? "border-foreground bg-surface"
-										: "border-border bg-card hover:bg-surface-hover",
-								)}
-							>
-								<span className="flex w-full items-center gap-2">
-									<span className="min-w-0 flex-1 text-[13px] leading-5 font-medium">
-										{APPROVAL_LABELS[mode]}
-									</span>
-									{active ? <Check className="size-3.5 shrink-0" /> : null}
-								</span>
-								<span className="text-[11px] leading-4 text-foreground-subtlest">
-									{APPROVAL_HINTS[mode]}
-								</span>
-							</button>
-						);
-					})}
-				</div>
-				<p className="m-0 px-1 text-[11px] leading-4 text-foreground-subtlest">
-					审批策略立即生效，并写回本机配置。
-				</p>
-			</section>
-
-			<section className="flex flex-col gap-2">
-				<h2 className="m-0 px-1 text-[13px] leading-5 font-medium">通知</h2>
-				<SettingsCard>
-					<SettingRow
-						title="通知方式"
-						description="任务完成、失败与审批请求的提醒；响铃只在终端里生效。"
-					>
-						<ChoiceGroup
-							options={NOTIFY_OPTIONS}
-							selected={settings?.notify ?? "auto"}
-							onSelect={(notify) => onUpdate({ notify })}
+		<SettingsPane
+			eyebrow="SETTINGS / GENERAL"
+			title="常规"
+			description="审批策略、通知与运行环境。改动立即写回本机配置，不需要重启。"
+		>
+			<Section name="审批方式" hint="模型动文件、跑命令之前，要不要先问你">
+				<div className="set-choices">
+					{(Object.keys(APPROVAL_LABELS) as ApprovalMode[]).map((mode) => (
+						<ChoiceCard
+							key={mode}
+							title={APPROVAL_LABELS[mode]}
+							description={APPROVAL_HINTS[mode]}
+							selected={(settings?.approval ?? "ask") === mode}
+							onSelect={() => onUpdate({ approval: mode })}
 						/>
-					</SettingRow>
-				</SettingsCard>
-				<p className="m-0 px-1 text-[11px] leading-4 text-foreground-subtlest">
-					「失焦时」只在窗口不在前台时提醒；「桌面通知」每次都提醒；「关闭」不再提醒。
-				</p>
-			</section>
+					))}
+				</div>
+				<p className="set-note">审批策略立即生效并写回 config.toml；已经开始的回合不受影响。</p>
+			</Section>
 
-			<section className="flex flex-col gap-2">
-				<h2 className="m-0 px-1 text-[13px] leading-5 font-medium">运行环境</h2>
-				<SettingsCard>
-					<SettingRow title="沙箱模式" description="命令隔离使用的系统设施；改动需要重启 Reins。">
-						<Badge>{sandboxLabel(settings?.sandbox ?? "off")}</Badge>
-					</SettingRow>
-					<SettingRow title="路径边界" description="文件读写与命令工作目录都由 Reins 校验，插件不能绕过。">
-						<span className="text-[12px] leading-[18px] text-foreground-subtle">Reins 内置</span>
-					</SettingRow>
-					<SettingRow title="界面语言" description="当前版本只提供简体中文。">
-						<Badge>简体中文</Badge>
-					</SettingRow>
-				</SettingsCard>
-			</section>
+			<Section name="通知">
+				<Card>
+					<Row
+						title="通知时机"
+						description="任务完成、失败与等待审批时的提醒；响铃只在终端里生效。"
+					>
+						<div ref={notifyRef} style={{ position: "relative", flex: "none", width: 150 }}>
+							<button
+								type="button"
+								className="input-line"
+								style={{ width: "100%", background: "var(--raise)", cursor: "pointer" }}
+								aria-haspopup="listbox"
+								aria-expanded={notifyOpen}
+								aria-label="通知时机"
+								onClick={() => setNotifyOpen((value) => !value)}
+							>
+								<span className="t" style={{ fontFamily: "var(--mono)", fontSize: "var(--fs-11)" }}>
+									{currentLabel}
+								</span>
+								<svg
+									className="ic-12 chev"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									strokeWidth="2"
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									aria-hidden="true"
+								>
+									<path d="m6 9 6 6 6-6" />
+								</svg>
+							</button>
+							{notifyOpen ? (
+								<div
+									className="pop animate-pop"
+									role="listbox"
+									style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, width: "100%", zIndex: 30 }}
+								>
+									{NOTIFY_OPTIONS.map((option) => (
+										<button
+											key={option.key}
+											type="button"
+											role="option"
+											aria-selected={option.key === current}
+											className="pop-i two"
+											style={option.key === current ? { background: "var(--wash-2)" } : undefined}
+											onClick={() => {
+												onUpdate({ notify: option.key });
+												setNotifyOpen(false);
+											}}
+										>
+											<span className="sk-col">
+												<span className="n">{option.label}</span>
+												<span className="d">{option.hint}</span>
+											</span>
+											{option.key === current ? (
+												<svg
+													className="ic-12 ck"
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													strokeWidth="2"
+													strokeLinecap="round"
+													strokeLinejoin="round"
+													aria-hidden="true"
+												>
+													<path d="M20 6 9 17l-5-5" />
+												</svg>
+											) : null}
+										</button>
+									))}
+								</div>
+							) : null}
+						</div>
+					</Row>
+				</Card>
+				<p className="set-note">「失焦时」只在窗口不在前台时提醒；「桌面通知」每次都提醒。</p>
+			</Section>
 
-			<section className="flex flex-col gap-2">
-				<h2 className="m-0 px-1 text-[13px] leading-5 font-medium">任务列表</h2>
-				<SettingsCard>
-					<SettingRow title="分组方式" description="侧栏任务区按项目分组。">
-						<Badge>按项目</Badge>
-					</SettingRow>
-					<SettingRow title="排序" description="各分组内按最近更新时间排列。">
-						<Badge>按更新时间</Badge>
-					</SettingRow>
-				</SettingsCard>
-				<p className="m-0 px-1 text-[11px] leading-4 text-foreground-subtlest">
-					分组与排序当前固定为上述行为，自定义选项尚未接入。
-				</p>
-			</section>
-		</div>
+			<Section name="运行环境">
+				<Card>
+					<Row
+						title="沙箱模式"
+						description="命令隔离使用的系统设施；改动需要重启。"
+						value={<Tag>{sandboxLabel(settings?.sandbox ?? "off")}</Tag>}
+					/>
+					<Row
+						title="路径边界"
+						description="文件读写与命令工作目录都由内核校验，插件不能绕过。"
+						value={<Tag>Reins 内置</Tag>}
+					/>
+					<Row title="界面语言" description="当前版本只提供简体中文。" value={<Tag>简体中文</Tag>} />
+				</Card>
+			</Section>
+
+			<Section name="任务列表">
+				<Card>
+					<Row title="分组方式" description="侧栏任务区按项目归类。" value={<span className="v">按项目</span>} />
+					<Row title="排序" description="各组内按最近更新时间排列。" value={<span className="v">最近更新</span>} />
+				</Card>
+				<p className="set-note">分组与排序当前固定；自定义选项尚未接入。</p>
+			</Section>
+		</SettingsPane>
 	);
 }

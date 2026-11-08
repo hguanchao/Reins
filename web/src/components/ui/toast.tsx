@@ -2,8 +2,6 @@ import { CircleAlert, Info } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 
-import { cn } from "./cn.ts";
-
 /** 全局提示；模块级队列让任何组件都能在不接 context 的情况下报一句。 */
 export type ToastTone = "info" | "error";
 
@@ -32,6 +30,7 @@ export function toast(message: string, tone: ToastTone = "info"): void {
 	}, 4000);
 }
 
+/** 提示只报结果，不抢焦点；错误态用图标与浮层描边走墨，不整块染色。 */
 export function ToastHost(): ReactElement {
 	const [snapshot, setSnapshot] = useState<readonly ToastItem[]>(items);
 
@@ -44,19 +43,12 @@ export function ToastHost(): ReactElement {
 	}, []);
 
 	return createPortal(
-		<div className="pointer-events-none fixed right-4 top-16 z-[100] flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
+		<div className="toast-host" aria-live="polite">
 			{snapshot.map((item) => {
 				const Icon = item.tone === "error" ? CircleAlert : Info;
 				return (
-					<div
-						key={item.id}
-						role="status"
-						className={cn(
-							"pointer-events-auto flex items-start gap-2 rounded-2xl border bg-toast/80 px-4 py-3 text-ui-base shadow-lg backdrop-blur-xl animate-rise",
-							item.tone === "error" ? "border-destructive/30 text-destructive" : "border-border text-foreground",
-						)}
-					>
-						<Icon className="mt-0.5 size-4 shrink-0" />
+					<div key={item.id} role="status" className="toast" data-tone={item.tone}>
+						<Icon className="ic-14" />
 						<span className="min-w-0 break-words">{item.message}</span>
 					</div>
 				);

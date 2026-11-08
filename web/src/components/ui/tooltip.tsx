@@ -2,7 +2,7 @@ import { useState, type ReactElement, type ReactNode } from "react";
 
 import { cn } from "./cn.ts";
 
-/** 轻量提示；指针悬停或键盘聚焦时出现，不拦截鼠标。 */
+/** 轻量提示：悬停或键盘聚焦时出现，深底反白，指针不拦截。 */
 export function Tooltip({
 	label,
 	side = "bottom",
@@ -28,8 +28,8 @@ export function Tooltip({
 				<span
 					role="tooltip"
 					className={cn(
-						"pointer-events-none absolute left-1/2 z-[70] w-max max-w-xs -translate-x-1/2",
-						"rounded-lg border border-border bg-tooltip px-3 py-1.5 text-ui-sm text-tooltip-foreground shadow-md",
+						"pointer-events-none absolute left-1/2 z-[70] w-max max-w-[240px] -translate-x-1/2",
+						"rounded-[var(--r-2)] bg-[var(--fill)] px-2 py-1 text-[var(--fs-10)] leading-4 text-[var(--fill-ink)]",
 						side === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5",
 					)}
 				>

@@ -1,10 +1,8 @@
-import { FileDiff, GitBranch, Loader2, RefreshCw } from "lucide-react";
+import { GitBranch, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
 import { DiffView } from "../components/diff-view.tsx";
-import { IconButton } from "../components/ui/button.tsx";
-import { cn } from "../components/ui/cn.ts";
 import type { GitFileChange, GitStatus } from "../protocol.ts";
 
 interface Selection {
@@ -12,7 +10,12 @@ interface Selection {
 	readonly staged: boolean;
 }
 
-/** Git 面板：分支、变更清单与单文件 diff；只读。 */
+/**
+ * Git 面板。
+ *
+ * 三段结构：状态头（分支、上下游、变更计数）、主滚动区（已暂存 / 未暂存分组）、单文件 diff。
+ * 提交动作归内核，这里只做只读呈现——界面上不出现半截能力。
+ */
 export function GitPane({
 	status,
 	onRefresh,
@@ -57,59 +60,125 @@ export function GitPane({
 		};
 	}, [selected]);
 
+	const staged = status?.files.filter((file) => file.staged) ?? [];
+	const unstaged = status?.files.filter((file) => !file.staged) ?? [];
+
 	return (
-		<div className="flex h-full flex-col">
-			<div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/50 px-3">
-				<GitBranch className="size-4 shrink-0 text-foreground-subtle" />
-				<span className="min-w-0 flex-1 truncate font-mono text-ui-sm text-foreground-subtle">
-					{status?.branch ?? "未检测到 Git 仓库"}
-				</span>
-				{status !== null && (status.ahead > 0 || status.behind > 0) ? (
-					<span className="shrink-0 font-mono text-ui-xs text-foreground-subtlest">
-						{status.ahead > 0 ? `↑${status.ahead}` : ""}
-						{status.behind > 0 ? ` ↓${status.behind}` : ""}
+		<>
+			<div style={{ padding: "11px 12px 9px", borderBottom: "1px solid var(--rule)" }}>
+				<div className="flex items-center gap-[7px] text-[var(--fs-12)]">
+					<GitBranch className="ic-14" style={{ color: "var(--ink-3)" }} />
+					<span style={{ fontWeight: 500 }}>{status?.branch ?? "未检测到 Git 仓库"}</span>
+					{status?.upstream === undefined ? null : (
+						<span className="text-[var(--fs-10)]" style={{ color: "var(--ink-3)", fontFamily: "var(--mono)" }}>
+							→ {status.upstream}
+						</span>
+					)}
+					{status === null || (status.ahead === 0 && status.behind === 0) ? null : (
+						<span className="ml-auto text-[var(--fs-10)]" style={{ color: "var(--ink-3)", fontFamily: "var(--mono)" }}>
+							↑{status.ahead} ↓{status.behind}
+						</span>
+					)}
+					<button
+						type="button"
+						aria-label="刷新"
+						title="刷新"
+						onClick={onRefresh}
+						className="ml-auto"
+						style={{ color: "var(--ink-3)" }}
+					>
+						<RefreshCw className="ic-12" />
+					</button>
+				</div>
+				<div
+					className="mt-2 flex items-center text-[var(--fs-10)]"
+					style={{ color: "var(--ink-2)", fontFamily: "var(--mono)" }}
+				>
+					<span className="flex items-center gap-1">
+						<span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ink)" }} />
+						{status?.files.length ?? 0} 变更
 					</span>
-				) : null}
-				<IconButton label="刷新" size="icon-sm" onClick={onRefresh}>
-					<RefreshCw className="size-3.5" />
-				</IconButton>
+					<span style={{ width: 1, height: 9, background: "var(--rule-2)", margin: "0 9px" }} />
+					<span>{staged.length} 已暂存</span>
+					<span style={{ width: 1, height: 9, background: "var(--rule-2)", margin: "0 9px" }} />
+					<span>{unstaged.length} 未暂存</span>
+				</div>
 			</div>
 
 			{status === null ? (
-				<div className="px-4 py-3 text-ui-sm text-foreground-subtle">当前目录不是 Git 仓库。</div>
+				<div className="px-3 py-3 text-[var(--fs-11)]" style={{ color: "var(--ink-3)" }}>
+					当前目录不是 Git 仓库。
+				</div>
 			) : status.files.length === 0 ? (
-				<div className="px-4 py-3 text-ui-sm text-foreground-subtle">工作区干净，没有未提交的改动。</div>
+				<div className="px-3 py-3 text-[var(--fs-11)]" style={{ color: "var(--ink-3)" }}>
+					工作区干净，没有未提交的改动。
+				</div>
 			) : (
 				<>
-					<div className="max-h-[50%] shrink-0 overflow-y-auto border-b border-border/50 px-1 py-1">
-						{status.files.map((file) => (
-							<ChangeRow
-								key={`${file.staged ? "s" : "w"}-${file.path}`}
-								file={file}
-								selected={selected?.path === file.path && selected.staged === file.staged}
-								onSelect={() => setSelected({ path: file.path, staged: file.staged })}
-								onOpenFile={() => onOpenFile(file.path)}
-							/>
-						))}
-					</div>
+					{staged.length === 0 ? null : (
+						<>
+							<div className="panel-sec">
+								已暂存<span className="n">{staged.length}</span>
+							</div>
+							<div style={{ padding: "0 6px 2px" }}>
+								{staged.map((file) => (
+									<ChangeRow
+										key={`s-${file.path}`}
+										file={file}
+										selected={selected?.path === file.path && selected.staged}
+										onSelect={() => setSelected({ path: file.path, staged: true })}
+										onOpenFile={() => onOpenFile(file.path)}
+									/>
+								))}
+							</div>
+						</>
+					)}
+					{unstaged.length === 0 ? null : (
+						<>
+							<div className="panel-sec">
+								未暂存<span className="n">{unstaged.length}</span>
+							</div>
+							<div style={{ padding: "0 6px 2px" }}>
+								{unstaged.map((file) => (
+									<ChangeRow
+										key={`w-${file.path}`}
+										file={file}
+										selected={selected?.path === file.path && !selected.staged}
+										onSelect={() => setSelected({ path: file.path, staged: false })}
+										onOpenFile={() => onOpenFile(file.path)}
+									/>
+								))}
+							</div>
+						</>
+					)}
 
-					<div className="min-h-0 flex-1 overflow-auto">
+					<div className="panel-sec" style={{ borderTop: "1px solid var(--rule)" }}>
+						<span className="truncate">{selected === undefined ? "改动" : selected.path}</span>
+					</div>
+					<div style={{ padding: "0 8px 8px" }}>
 						{loading ? (
-							<div className="flex items-center gap-2 px-4 py-3 text-ui-sm text-foreground-subtle">
-								<Loader2 className="size-4 animate-spin" />
+							<div
+								className="flex items-center gap-2 px-2 py-2 text-[var(--fs-11)]"
+								style={{ color: "var(--ink-3)" }}
+							>
+								<LoaderCircle className="ic-12 spin" />
 								加载 diff
 							</div>
 						) : error !== undefined ? (
-							<div className="px-4 py-3 text-ui-sm text-destructive">{error}</div>
+							<div className="px-2 py-2 text-[var(--fs-11)]" style={{ color: "var(--danger)" }}>
+								{error}
+							</div>
 						) : diff === null || diff.length === 0 ? (
-							<div className="px-4 py-3 text-ui-sm text-foreground-subtle">这个文件没有可显示的 diff。</div>
+							<div className="px-2 py-2 text-[var(--fs-11)]" style={{ color: "var(--ink-3)" }}>
+								这个文件没有可显示的 diff。
+							</div>
 						) : (
-							<DiffView diff={diff} className="px-2 py-2" />
+							<DiffView diff={diff} maxRows={400} showHeader={false} />
 						)}
 					</div>
 				</>
 			)}
-		</div>
+		</>
 	);
 }
 
@@ -125,31 +194,18 @@ function ChangeRow({
 	onOpenFile(): void;
 }): ReactElement {
 	return (
-		<div
-			className={cn(
-				"group/row flex h-7 items-center gap-2 rounded-md px-2 text-ui-sm transition-colors",
-				selected ? "bg-selected" : "hover:bg-surface-hover",
-			)}
+		<button
+			type="button"
+			className="git-row"
+			aria-selected={selected}
+			style={selected ? { background: "var(--wash-2)" } : undefined}
+			onClick={onSelect}
+			onDoubleClick={onOpenFile}
 		>
-			<button type="button" onClick={onSelect} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-				<span className={cn("w-4 shrink-0 font-mono text-ui-xs", colorOf(file.kind))}>{letterOf(file)}</span>
-				<span className="min-w-0 flex-1 truncate text-foreground">{file.path}</span>
-				{file.staged ? (
-					<span className="shrink-0 rounded-full bg-surface px-1.5 py-0.5 text-ui-xs text-foreground-subtlest">
-						暂存
-					</span>
-				) : null}
-			</button>
-			<button
-				type="button"
-				onClick={onOpenFile}
-				aria-label="打开文件"
-				title="打开文件"
-				className="flex size-5 shrink-0 items-center justify-center rounded text-foreground-subtlest opacity-0 hover:bg-surface-hover hover:text-foreground group-hover/row:opacity-100"
-			>
-				<FileDiff className="size-3.5" />
-			</button>
-		</div>
+			<span className="st-mk">{letterOf(file)}</span>
+			<span className="fn">{file.path}</span>
+			<span className="ct">{file.staged ? "s" : ""}</span>
+		</button>
 	);
 }
 
@@ -161,12 +217,4 @@ function letterOf(file: GitFileChange): string {
 	if (file.kind === "modified") return "M";
 	if (file.kind === "conflicted") return "!";
 	return "?";
-}
-
-function colorOf(kind: GitFileChange["kind"]): string {
-	if (kind === "added" || kind === "untracked") return "text-git-added";
-	if (kind === "deleted" || kind === "conflicted") return "text-git-deleted";
-	if (kind === "renamed") return "text-git-renamed";
-	if (kind === "modified") return "text-git-modified";
-	return "text-foreground-subtlest";
 }

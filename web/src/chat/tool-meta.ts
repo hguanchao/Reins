@@ -1,89 +1,79 @@
 import {
-	Bot,
-	FilePenLine,
 	FileText,
 	FolderTree,
-	Globe,
-	ListTodo,
-	Map,
+	GitCompare,
+	Pencil,
 	Plug,
+	Puzzle,
 	Search,
-	Terminal,
+	SquareTerminal,
 	Wrench,
 	type LucideIcon,
 } from "lucide-react";
 
-/** 工具行的展示信息；集中一处，新增工具时只补这里。 */
-const LABELS: Readonly<Record<string, string>> = {
+import { toolAction, type ToolAction } from "../transcript/blocks.ts";
+import { diffStats } from "../transcript/diff.ts";
+
+/** 摘要动词：正常语气的动词开头，与图标语义一致。 */
+const VERBS: Readonly<Record<string, string>> = {
 	read: "读取",
-	write: "写入",
+	write: "新建",
 	edit: "编辑",
 	patch: "补丁",
-	bash: "命令",
-	pwsh: "PowerShell",
+	bash: "运行",
+	pwsh: "运行",
 	grep: "搜索",
 	find: "查找",
-	ls: "目录",
-	web_fetch: "网页",
-	todo: "任务",
-	present_plan: "计划",
-	subagent: "子代理",
+	ls: "列目录",
+	web_fetch: "请求",
+	todo: "整理待办",
+	present_plan: "提交计划",
+	subagent: "委派",
 };
 
-const ICONS: Readonly<Record<string, LucideIcon>> = {
+const ICONS: Readonly<Record<ToolAction, LucideIcon>> = {
 	read: FileText,
-	write: FilePenLine,
-	edit: FilePenLine,
-	patch: FilePenLine,
-	bash: Terminal,
-	pwsh: Terminal,
-	grep: Search,
-	find: Search,
-	ls: FolderTree,
-	web_fetch: Globe,
-	todo: ListTodo,
-	present_plan: Map,
-	subagent: Bot,
+	search: Search,
+	list: FolderTree,
+	write: Pencil,
+	run: SquareTerminal,
+	skill: Puzzle,
+	mcp: Plug,
+	other: Wrench,
 };
-
-export function toolLabel(name: string): string {
-	return LABELS[name] ?? name;
-}
 
 export function toolIcon(name: string): LucideIcon {
-	return ICONS[name] ?? (name.startsWith("mcp__") ? Plug : Wrench);
+	if (name === "present_plan") return GitCompare;
+	return ICONS[toolAction(name)];
+}
+
+export function toolVerb(name: string): string {
+	return VERBS[name] ?? "调用";
 }
 
 /** 一行里最有信息量的参数：命令、路径、模式或网址。 */
 export function toolPrimary(name: string, args: Record<string, unknown> | undefined): string | undefined {
 	if (args === undefined) return undefined;
-	const order = ["command", "path", "pattern", "url", "query"];
+	const order = ["command", "path", "file_path", "pattern", "url", "query"];
 	for (const key of order) {
 		const value = args[key];
 		if (typeof value === "string" && value.length > 0) return value;
 	}
-	if (name === "todo") {
-		const todos = args["todos"];
-		if (Array.isArray(todos)) return `${todos.length} 项`;
-	}
+	const todos = args["todos"];
+	if (name === "todo" && Array.isArray(todos)) return `${todos.length} 项`;
+	const skill = args["name"] ?? args["skill"];
+	if (toolAction(name) === "skill" && typeof skill === "string") return skill;
 	return undefined;
 }
 
-export interface DiffStats {
-	readonly added: number;
-	readonly removed: number;
+/** 工具调用的结果摘录：优先 content，其次逐条 detail 拼接。 */
+export function toolOutput(content: string | undefined, detail: string): string {
+	return content ?? detail;
 }
 
-export function diffStats(diff: string | undefined): DiffStats {
-	let added = 0;
-	let removed = 0;
-	if (diff !== undefined) {
-		for (const line of diff.split("\n")) {
-			if (line.startsWith("+") && !line.startsWith("+++")) added += 1;
-			else if (line.startsWith("-") && !line.startsWith("---")) removed += 1;
-		}
-	}
-	return { added, removed };
+/** 是否为写入类动作：这类要内联 diff，点击只收起/展开。 */
+export function isWriteAction(name: string): boolean {
+	return toolAction(name) === "write";
 }
 
 /** 从工具 details 里找出 unified diff；edit/patch 是两种不同形状。 */
@@ -111,6 +101,11 @@ export function detailText(value: unknown): string {
 	} catch {
 		return String(value);
 	}
+}
+
+/** 工具行的增删读数；没有 diff 时退回全零。 */
+export function toolDiffStats(details: unknown): { readonly added: number; readonly removed: number } {
+	return diffStats(diffOf(details));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
