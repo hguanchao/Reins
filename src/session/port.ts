@@ -46,6 +46,11 @@ export interface SessionMessageEntry extends SessionEntryBase {
 	 * 与界面还原折叠行指标，历史重放因此不用再从事件里猜。
 	 */
 	readonly durationMs?: number;
+	/**
+	 * 助手消息里每段思考的耗时（毫秒），顺序与 message.content 中的 thinking 块一一对应。
+	 * 只对 assistant 消息有意义：供界面还原「思考了 8 秒」折叠行，历史重放不用再猜。
+	 */
+	readonly thinkingMs?: readonly number[];
 }
 
 /**

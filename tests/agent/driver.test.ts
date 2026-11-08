@@ -18,10 +18,13 @@ interface ScriptedTurn {
 	readonly stopReason?: LlmResult["stopReason"];
 	readonly usage?: LlmUsage;
 	readonly errorMessage?: string;
+	/** 直接注入的流事件：在回放 content 前推送，用来驱动思考耗时的计时路径 */
+	readonly events?: readonly LlmEvent[];
 }
 
 function scriptedStream(turn: ScriptedTurn): LlmStream {
 	const stream = EventStream.incremental<LlmEvent, LlmResult>();
+	for (const event of turn.events ?? []) stream.push(event);
 	stream.push({ type: "text_delta", text: "chunk" });
 	for (const [index, block] of turn.content.entries()) {
 		if (block.type === "toolCall") {
@@ -194,6 +197,38 @@ describe("回合驱动", () => {
 		const recorded = hooks.events.find((event) => event.type === "usage_recorded");
 		assert.ok(recorded?.type === "usage_recorded" && recorded.kind === "turn");
 		assert.equal(recorded?.type === "usage_recorded" ? recorded.tokens : 0, STOP.total);
+	});
+
+	it("助手条目记录每段思考的耗时，历史重放才有「思考了 N 秒」", async () => {
+		const hooks = { events: [] as AgentEvent[], session: new MemorySession(), tools: makeTools() };
+		await depsOf(
+			[
+				{
+					content: [
+						{ type: "thinking", text: "第一段" },
+						{ type: "text", text: "先说结论" },
+						{ type: "thinking", text: "第二段" },
+						{ type: "text", text: "补充" },
+					],
+					events: [
+						{ type: "reasoning_delta", text: "第一段" },
+						{ type: "text_delta", text: "先说结论" },
+						{ type: "reasoning_delta", text: "第二段" },
+					],
+					usage: STOP,
+				},
+			],
+			hooks,
+		).run("hello", SIGNAL);
+
+		const assistant = hooks.session.entries.find(
+			(entry): entry is Extract<SessionEntry, { type: "message" }> =>
+				entry.type === "message" && entry.message.role === "assistant",
+		);
+		assert.ok(assistant);
+		// 两段思考各记一笔，顺序与 content 中的 thinking 块一一对应；耗时非负
+		assert.equal(assistant.thinkingMs?.length, 2);
+		assert.ok(assistant.thinkingMs.every((ms) => ms >= 0));
 	});
 
 	it("规则内容变化时作为新的系统分段写进会话", async () => {

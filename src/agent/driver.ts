@@ -143,14 +143,29 @@ export class TurnDriver {
 		// 请求耗时与首字延迟从这里开始算：流建立、增量、结果全在窗口内
 		const startedAt = Date.now();
 		let firstDeltaAt: number | undefined;
+		// 每段思考的耗时：第一粒 reasoning 增量起表，正文/工具调用一出现即封口。
+		// 会话条目带着它落库，历史重放才能还原「思考了 8 秒」的折叠行，不用再从事件里猜
+		let thinkingStartedAt: number | undefined;
+		const thinkingMs: number[] = [];
+		const sealThinking = (): void => {
+			if (thinkingStartedAt === undefined) return;
+			thinkingMs.push(Math.max(0, Date.now() - thinkingStartedAt));
+			thinkingStartedAt = undefined;
+		};
 		const stream = this.#deps.client.stream(this.#buildRequest(stop.signal));
 		try {
 			for await (const event of stream) {
-				if (event.type === "text_delta" || event.type === "reasoning_delta") {
+				if (event.type === "reasoning_delta") {
 					firstDeltaAt ??= Date.now();
-					await this.emit({ type: event.type, text: event.text });
+					thinkingStartedAt ??= Date.now();
+					await this.emit({ type: "reasoning_delta", text: event.text });
+				} else if (event.type === "text_delta") {
+					firstDeltaAt ??= Date.now();
+					sealThinking();
+					await this.emit({ type: "text_delta", text: event.text });
 				} else if (event.type === "tool_call_start") {
 					// 参数还在流里，工具没开始跑；界面据此把「响应」与「调用工具」分开
+					sealThinking();
 					await this.emit({ type: "writing_tool_call", name: event.name });
 				}
 			}
@@ -162,6 +177,8 @@ export class TurnDriver {
 		} finally {
 			signal.removeEventListener("abort", onOuterAbort);
 		}
+		// 思考一路跑到回合结束的情况：流关闭即封口
+		sealThinking();
 
 		const result = await stream.result();
 		const llmMs = Math.max(0, Date.now() - startedAt);
@@ -217,7 +234,11 @@ export class TurnDriver {
 		}
 
 		const assistant: LlmAssistantMessage = { role: "assistant", content: result.content };
-		await this.#deps.session.append({ type: "message", message: assistant });
+		await this.#deps.session.append({
+			type: "message",
+			message: assistant,
+			...(thinkingMs.length === 0 ? {} : { thinkingMs }),
+		});
 
 		const calls = assistantToolCalls(assistant);
 		if (calls.length === 0) {
