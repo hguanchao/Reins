@@ -7,6 +7,7 @@
 		"types": ["node"],
 
 		"strict": true,
+		"erasableSyntaxOnly": true,
 		"noEmit": true,
 		"allowImportingTsExtensions": true,
 		"noUnusedLocals": true,
@@ -16,8 +17,12 @@
 		"forceConsistentCasingInFileNames": true,
 
 		"paths": {
-			"#src/*": ["../src/*"]
+			"highlight.js": ["../src/types/highlight.js.d.ts"],
+			"domino": ["../src/types/domino.d.ts"],
+			"#src/*": ["../src/*"],
+			"#desktop/*": ["./*"]
 		}
 	},
-	"include": ["main.ts", "preload.ts"]
+	"include": ["*.ts"],
+	"exclude": ["server-main.ts"]
 }

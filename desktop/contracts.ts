@@ -1,0 +1,82 @@
+/**
+ * 桌面壳与页面之间的输入契约。
+ *
+ * IPC 参数来自页面，一律先当作 unknown 收窄再使用；校验规则只在这里实现一份，
+ * handler 不再各自手写 typeof 判断，避免同一条边界出现多套宽严不一的实现。
+ */
+
+export type ResolvedTheme = "zai-dark" | "zai-light";
+
+export interface PluginResult {
+	readonly ok: boolean;
+	readonly name?: string;
+	readonly error?: string;
+}
+
+export interface NotificationPayload {
+	readonly title: string;
+	readonly body: string;
+}
+
+export interface SessionTarget {
+	/** 未登记的工作区路径；undefined 表示按会话自身的 cwd 定位。 */
+	readonly workspacePath: string | undefined;
+	readonly cwd: string;
+	readonly id: string;
+}
+
+export interface PluginToggle {
+	readonly name: string;
+	readonly disabled: boolean;
+}
+
+const NOTIFICATION_TITLE_MAX = 80;
+const NOTIFICATION_BODY_MAX = 200;
+const TEXT_MAX = 256;
+const PLUGIN_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/** 收成去空白后的非空字符串，并统一截断长度；空串与纯空白视为无效。 */
+export function nonEmptyString(value: unknown, maxLength: number = TEXT_MAX): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length === 0 ? undefined : trimmed.slice(0, maxLength);
+}
+
+export function parseTheme(value: unknown): ResolvedTheme | undefined {
+	return value === "zai-dark" || value === "zai-light" ? value : undefined;
+}
+
+export function parseNotification(value: unknown): NotificationPayload | undefined {
+	if (typeof value !== "object" || value === null) return undefined;
+	const record = value as { readonly title?: unknown; readonly body?: unknown };
+	const title = nonEmptyString(record.title, NOTIFICATION_TITLE_MAX);
+	const body = nonEmptyString(record.body, NOTIFICATION_BODY_MAX);
+	return title === undefined || body === undefined ? undefined : { title, body };
+}
+
+export function parseSessionTarget(
+	path: unknown,
+	cwd: unknown,
+	id: unknown,
+): SessionTarget | undefined {
+	const workingDirectory = nonEmptyString(cwd);
+	const sessionId = nonEmptyString(id);
+	if (workingDirectory === undefined || sessionId === undefined) return undefined;
+	const workspacePath = typeof path === "string" && path.length > 0 ? path : undefined;
+	return { workspacePath, cwd: workingDirectory, id: sessionId };
+}
+
+export function parsePluginToggle(name: unknown, disabled: unknown): PluginToggle | undefined {
+	const parsed = nonEmptyString(name);
+	return parsed === undefined || typeof disabled !== "boolean" ? undefined : { name: parsed, disabled };
+}
+
+/** 代码型插件用单文件承载，名字必须能安全拼进路径，不接受分隔符与点号开头。 */
+export function isSafePluginFileName(name: string): boolean {
+	return PLUGIN_FILE_NAME.test(name);
+}
+
+/** 异常统一转成界面可显示的结果；不把堆栈泄到渲染层。 */
+export function pluginFailure(error: unknown): PluginResult {
+	return { ok: false, error: error instanceof Error ? error.message : String(error) };
+}

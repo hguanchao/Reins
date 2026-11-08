@@ -11,7 +11,8 @@
 	"imports": {
 		"#src/*": "./src/*",
 		"#tests/*": "./tests/*",
-		"#web/*": "./web/src/*"
+		"#web/*": "./web/src/*",
+		"#desktop/*": "./desktop/*"
 	},
 	"engines": {
 		"node": ">=22.18"

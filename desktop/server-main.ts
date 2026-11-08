@@ -24,12 +24,12 @@ const options: CliOptions = {
 const resumeSessionId = process.env["REINS_DESKTOP_RESUME_SESSION"] || undefined;
 const requestedWorkspace = process.env["REINS_DESKTOP_NEW_SESSION_WORKSPACE"] || undefined;
 if (resumeSessionId !== undefined && requestedWorkspace !== undefined) {
-	throw new Error("Desktop startup cannot resume and create a session at the same time");
+	throw new Error("桌面启动不能同时恢复会话与新建会话");
 }
 const newWorkspacePath =
 	requestedWorkspace === undefined ? undefined : registeredWorkspace(requestedWorkspace);
 if (requestedWorkspace !== undefined && newWorkspacePath === undefined) {
-	throw new Error("Desktop startup workspace is not registered");
+	throw new Error("桌面启动的工作区尚未登记");
 }
 
 process.exitCode = await runServeMode(options, {
