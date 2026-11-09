@@ -11,7 +11,7 @@ import {
 import { api, openEventStream } from "./api.ts";
 import { clockTime } from "./lib/format.ts";
 import { ApprovalCard } from "./chat/approval-card.tsx";
-import { Composer, type ComposerProps, type QueuedMessage, sessionReadout } from "./chat/composer.tsx";
+import { Composer, type ComposerProps, type QueuedMessage } from "./chat/composer.tsx";
 import { Hero } from "./chat/hero.tsx";
 import { MessageRail } from "./chat/message-rail.tsx";
 import { SelectionPopover } from "./chat/selection-popover.tsx";
@@ -696,7 +696,6 @@ export function App(): ReactElement {
 	const draft = lines.length === 0 && !running && activePanel === undefined;
 	const displaySessions = useMemo(() => withSessionTitles(sessions, sessionTitles), [sessions, sessionTitles]);
 	const currentTitle = displaySessions.find((session) => session.id === sessionId)?.title ?? "新任务";
-	const readout = sessionReadout(usage, activity);
 	// 上下文越过窗口九成时提示压缩：内核不擅自截断，压缩与否交给使用者
 	const contextOverflow =
 		contextTokens !== undefined && contextWindow !== undefined && contextWindow > 0 && contextTokens / contextWindow >= 0.9;
@@ -733,7 +732,6 @@ export function App(): ReactElement {
 			{draft ? null : (
 				<ConversationHeader
 					title={currentTitle}
-					meta={readout}
 					onArchive={() => {
 						void api.archiveSessions([sessionId]).then(refreshSessions).catch(() => {});
 					}}

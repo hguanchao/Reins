@@ -38,23 +38,6 @@
 	letter-spacing: -0.012em;
 }
 
-.chat-head .meta {
-	flex: none;
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	font-family: var(--mono);
-	font-size: var(--fs-10);
-	color: var(--ink-3);
-}
-
-.chat-head .meta i {
-	display: block;
-	width: 1px;
-	height: 10px;
-	background: var(--rule-2);
-}
-
 .chat-head .hbtn {
 	display: grid;
 	place-items: center;

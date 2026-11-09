@@ -14,7 +14,6 @@ import { ModelChip } from "./composer/model-chip.tsx";
 import { WorkspacePicker } from "./composer/workspace-picker.tsx";
 import { ContextMeter } from "./composer/context-meter.tsx";
 
-export { sessionReadout } from "./composer/model.ts";
 export type { QueuedMessage };
 
 export interface ComposerProps {

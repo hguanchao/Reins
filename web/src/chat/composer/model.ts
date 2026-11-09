@@ -1,10 +1,9 @@
-import { formatCost } from "../../lib/format.ts";
-import type { ActivitySummary, ApprovalMode, SkillInfo, ThinkingLevel, UsageSummary } from "../../protocol.ts";
+import type { ApprovalMode, SkillInfo, ThinkingLevel, UsageSummary } from "../../protocol.ts";
 
 /**
  * 输入卡的纯逻辑与共享常量。
  *
- * 补全候选、分组、读数与档名不依赖 React，单独放一层便于独立验证，
+ * 补全候选、分组、命中率与档名不依赖 React，单独放一层便于独立验证，
  * 也让各浮层组件只关心自己的渲染与交互。
  */
 
@@ -115,15 +114,4 @@ export function serverStatusLabel(status: string): string {
 		default:
 			return "未连接";
 	}
-}
-
-
-/** 会话头读数：速率与费用。 */
-export function sessionReadout(usage: UsageSummary, activity: ActivitySummary): readonly string[] {
-	const speed =
-		activity.decodeMs > 0
-			? `${Math.round(activity.decodeTokens / (activity.decodeMs / 1000))} tok/s`
-			: undefined;
-	const cost = formatCost(usage.cost);
-	return [speed, cost].filter((value): value is string => value !== undefined);
 }

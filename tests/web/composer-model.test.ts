@@ -9,10 +9,9 @@ import {
 	hitRate,
 	mentionItems,
 	serverStatusLabel,
-	sessionReadout,
 	type MentionState,
 } from "#web/chat/composer/model.ts";
-import type { ActivitySummary, SkillInfo, UsageSummary } from "#web/protocol.ts";
+import type { SkillInfo, UsageSummary } from "#web/protocol.ts";
 
 const skills: readonly SkillInfo[] = [
 	{ name: "frontend-design", description: "界面设计", path: "/a", scope: "user", editable: true },
@@ -33,20 +32,6 @@ function usage(overrides: Partial<UsageSummary> = {}): UsageSummary {
 		cacheWrite: 0,
 		total: 120,
 		cost: undefined,
-		...overrides,
-	};
-}
-
-function activity(overrides: Partial<ActivitySummary> = {}): ActivitySummary {
-	return {
-		turns: 1,
-		steps: 2,
-		llmMs: 0,
-		toolMs: 0,
-		ttftMs: 0,
-		ttftCount: 0,
-		decodeTokens: 0,
-		decodeMs: 0,
 		...overrides,
 	};
 }
@@ -108,15 +93,6 @@ describe("状态读数", () => {
 			hitRate(usage({ input: 0, cacheRead: 0, cacheWrite: 0, output: 999 })),
 			undefined,
 		);
-	});
-
-	it("会话头读数依次为速率与费用，缺项不补空串", () => {
-		assert.deepEqual(sessionReadout(usage({ cost: 0.42 }), activity({ decodeTokens: 76, decodeMs: 2000 })), [
-			"38 tok/s",
-			"$0.4200",
-		]);
-		assert.deepEqual(sessionReadout(usage(), activity()), []);
-		assert.deepEqual(sessionReadout(usage({ cost: 0.001 }), activity()), ["$0.001000"]);
 	});
 
 	it("连接器状态逐档映射，未知值落在未连接", () => {
