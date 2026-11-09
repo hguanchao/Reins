@@ -217,6 +217,20 @@ export function restoreSessionsAcross(
 }
 
 /**
+ * 会话归属的目录：归属标记优先，旧会话没有标记时退回 cwd。
+ *
+ * 项目从侧栏移除后，界面会把归属抹成 null 以便任务显示为「未归属」；但内核删除项目时
+ * 仍要认出这些文件属于哪个目录，否则会留下扫不到也删不掉的孤儿会话。
+ */
+export function sessionOwner(item: {
+	readonly workspacePath?: string | null;
+	readonly cwd?: string;
+}): string | null {
+	const owner = item.workspacePath ?? item.cwd;
+	return typeof owner === "string" && owner.length > 0 ? owner : null;
+}
+
+/**
  * 从会话的当前末尾分叉出一个新会话。
  *
  * 只复制对话路径，不碰工作区文件；原会话保持原样，两个会话之后各写各的。

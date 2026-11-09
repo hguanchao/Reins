@@ -15,6 +15,7 @@ import {
 	listSessionsAcross,
 	resumeCommand,
 	resumeSession,
+	sessionOwner,
 } from "#src/cli/session/target.ts";
 import { sessionsDir } from "#src/config/paths.ts";
 import { JsonlSessionStore } from "#src/session/jsonl-store.ts";
@@ -143,5 +144,22 @@ describe("会话删除", () => {
 				[inWorkRoot.id],
 			);
 		});
+	});
+});
+
+describe("会话归属目录", () => {
+	it("有归属标记时优先用标记，不误取 cwd", () => {
+		assert.equal(sessionOwner({ workspacePath: "/work/alpha", cwd: "/elsewhere" }), "/work/alpha");
+	});
+
+	it("项目从侧栏移除后归属被抹成 null，仍要能靠 cwd 认出目录", () => {
+		assert.equal(sessionOwner({ workspacePath: null, cwd: "/work/alpha" }), "/work/alpha");
+		assert.equal(sessionOwner({ cwd: "/work/alpha" }), "/work/alpha");
+	});
+
+	it("没有任何目录信息时明确返回 null", () => {
+		assert.equal(sessionOwner({}), null);
+		assert.equal(sessionOwner({ workspacePath: null, cwd: "" }), null);
+		assert.equal(sessionOwner({ workspacePath: "", cwd: undefined }), null);
 	});
 });

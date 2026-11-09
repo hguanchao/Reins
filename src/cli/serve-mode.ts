@@ -24,6 +24,7 @@ import {
 	listSessionsAcross,
 	resumeSession,
 	restoreSessionsAcross,
+	sessionOwner,
 } from "#src/cli/session/target.ts";
 import type { ModelSelection } from "#src/config/selection.ts";
 import type { ApprovalMode, Config } from "#src/config/file.ts";
@@ -336,18 +337,27 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	 *
 	 * 名单取两路：一路按会话自己记的项目归属（界面上列在项目底下的就是这一批），一路按项目
 	 * 的会话目录——早先的会话没有归属标记，项目摘出清单后就没有谁会再扫到它们了。
+	 * 归属判定不能只用可见项目：项目从侧栏移除后，会话的归属在界面上会被抹成 null，
+	 * 但文件还在该目录下；漏掉这批会留下删不掉、扫不着的孤儿，重新登记项目时又「复活」。
 	 * 当前会话正属于这个项目时先离开它：还捏着写句柄的会话会把手下刚删掉的文件重新写出来。
 	 * 回合进行中一律不动，返回 0，界面上项目原样留着。
 	 */
 	const removeWorkspaceTree = (path: string): number => {
 		if (running || compacting || sessionStore === undefined) return 0;
+		const belongsToTarget = (item: {
+			readonly workspacePath?: string | null;
+			readonly cwd?: string;
+		}): boolean => {
+			const owner = sessionOwner(item);
+			return owner !== null && samePath(owner, path);
+		};
 		const attributed = [...sessions(), ...archivedList()]
-			.filter((item) => item.workspacePath === path)
+			.filter(belongsToTarget)
 			.map((item) => item.id);
 		const stored = [...listSessions(path, sessionStore), ...listArchivedSessions(path, sessionStore)].map(
 			(item) => item.id,
 		);
-		if (workspaceFor(session.workspacePath, session.cwd, listWorkspaces()) === path) startNewSession(null);
+		if (belongsToTarget(session)) startNewSession(null);
 		const deleted = deleteSessionsAcross(workspaceRoots(), sessionStore, [...attributed, ...stored], [session.id]);
 		dropWorkspace(path);
 		return deleted;
