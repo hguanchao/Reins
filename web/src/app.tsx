@@ -453,7 +453,16 @@ export function App(): ReactElement {
 			}
 			void api
 				.deleteWorkspace(path)
-				.then(refreshSessions)
+				.then(() => api.workspaces())
+				.then((visible) => {
+					refreshSessions();
+					// 删除个数为 0 既可能是空项目，也可能是回合/压缩护栏拦下；以服务端清单为准反馈
+					if (visible.some((row) => row.path === path)) {
+						toast("移除工作区失败：可能正在运行或压缩会话，请稍后重试", "error");
+						return;
+					}
+					toast("已移除工作区", "info");
+				})
 				.catch((error: unknown) => {
 					toast(error instanceof Error ? error.message : String(error), "error");
 				});

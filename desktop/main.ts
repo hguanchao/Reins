@@ -2,6 +2,7 @@ import { app, dialog, Menu, nativeTheme } from "electron";
 
 import { registerPluginIpc } from "#desktop/plugins.ts";
 import { createDesktopPaths } from "#desktop/paths.ts";
+import { rememberWorkspace, resolveStartupWorkspace } from "#desktop/startup-workspace.ts";
 import { ServerController } from "#desktop/server-controller.ts";
 import { themeFromSystem } from "#desktop/theme.ts";
 import {
@@ -12,7 +13,7 @@ import {
 	loadingPage,
 	registerWindowIpc,
 } from "#desktop/window.ts";
-import { registerWorkspaceIpc, rememberWorkspace, resolveStartupWorkspace } from "#desktop/workspace.ts";
+import { registerWorkspaceIpc } from "#desktop/workspace.ts";
 
 /**
  * 桌面壳入口。

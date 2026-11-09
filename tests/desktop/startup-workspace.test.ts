@@ -1,0 +1,98 @@
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, it } from "node:test";
+
+import { createDesktopPaths, LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
+import {
+	lastWorkspace,
+	rememberWorkspace,
+	resolveStartupWorkspace,
+} from "#desktop/startup-workspace.ts";
+import {
+	dropWorkspace,
+	listWorkspaces,
+	registerWorkspace,
+	unregisterWorkspace,
+} from "#src/workspace/catalog.ts";
+
+const originalHome = process.env.REINS_HOME;
+const originalOverride = process.env.REINS_WORKSPACE;
+
+function fixture(): { readonly paths: DesktopPaths; readonly fallback: string } {
+	const paths = createDesktopPaths(
+		"build",
+		mkdtempSync(join(tmpdir(), "reins-userdata-")),
+	);
+	process.env.REINS_HOME = mkdtempSync(join(tmpdir(), "reins-home-"));
+	delete process.env.REINS_WORKSPACE;
+	return { paths, fallback: paths.userData("workspace") };
+}
+
+function projectDir(): string {
+	return mkdtempSync(join(tmpdir(), "reins-project-"));
+}
+
+/** Windows 路径大小写与真实路径解析都可能让字面比较失真。 */
+const key = (path: string): string => path.toLowerCase();
+
+afterEach(() => {
+	if (originalHome === undefined) delete process.env.REINS_HOME;
+	else process.env.REINS_HOME = originalHome;
+	if (originalOverride === undefined) delete process.env.REINS_WORKSPACE;
+	else process.env.REINS_WORKSPACE = originalOverride;
+});
+
+describe("启动工作区解析", () => {
+	it("首次启动落到自管空工作区并记住它", () => {
+		const { paths, fallback } = fixture();
+		const resolved = resolveStartupWorkspace(paths);
+		assert.equal(key(resolved), key(realpathSync(fallback)));
+		assert.deepEqual(listWorkspaces().map(key), [key(resolved)]);
+		assert.equal(key(lastWorkspace(paths) ?? ""), key(resolved));
+	});
+
+	it("上次目录仍在登记表时原样恢复", () => {
+		const { paths } = fixture();
+		const canonical = registerWorkspace(projectDir());
+		rememberWorkspace(paths, canonical);
+		assert.equal(key(resolveStartupWorkspace(paths)), key(canonical));
+		assert.deepEqual(listWorkspaces().map(key), [key(canonical)]);
+	});
+
+	it("上次目录被移除后不再复活，改落自管工作区并改写记忆", () => {
+		const { paths, fallback } = fixture();
+		const canonical = registerWorkspace(projectDir());
+		rememberWorkspace(paths, canonical);
+		assert.equal(dropWorkspace(canonical), true);
+
+		const resolved = resolveStartupWorkspace(paths);
+		assert.notEqual(key(resolved), key(canonical));
+		assert.equal(key(resolved), key(realpathSync(fallback)));
+		assert.deepEqual(listWorkspaces().map(key), [key(resolved)]);
+		assert.equal(key(lastWorkspace(paths) ?? ""), key(resolved));
+		assert.equal(key(JSON.parse(readFileSync(paths.userData(LAST_WORKSPACE_FILE), "utf8")).path), key(resolved));
+	});
+
+	it("隐藏但仍已知的工作区可以恢复，历史任务仍可查找", () => {
+		const { paths } = fixture();
+		const canonical = registerWorkspace(projectDir());
+		assert.equal(unregisterWorkspace(canonical), true);
+		rememberWorkspace(paths, canonical);
+		assert.equal(key(resolveStartupWorkspace(paths)), key(canonical));
+		assert.deepEqual(listWorkspaces(), []);
+	});
+
+	it("环境变量覆盖优先于上次记忆", () => {
+		const { paths } = fixture();
+		const canonical = registerWorkspace(projectDir());
+		rememberWorkspace(paths, canonical);
+		const override = projectDir();
+		process.env.REINS_WORKSPACE = override;
+		const resolved = resolveStartupWorkspace(paths);
+		assert.equal(key(resolved), key(realpathSync(override)));
+		assert.notEqual(key(resolved), key(canonical));
+		assert.equal(listWorkspaces().length, 2);
+	});
+});

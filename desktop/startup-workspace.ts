@@ -1,0 +1,72 @@
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+
+import {
+	canonicalWorkspacePath,
+	listKnownWorkspaces,
+	registerWorkspace,
+} from "#src/workspace/catalog.ts";
+import { LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
+
+/**
+ * 启动工作区的解析与记忆。
+ *
+ * 上次用过的目录只是一条恢复线索：项目被移除后登记表里就不再有它，这条线索不能反过来
+ * 把项目重新登记回来，否则「移除工作区」一重启就失效。
+ */
+
+export function rememberWorkspace(paths: DesktopPaths, path: string): void {
+	writeFileSync(paths.userData(LAST_WORKSPACE_FILE), JSON.stringify({ path }));
+}
+
+export function isDirectory(path: string): boolean {
+	try {
+		return statSync(path).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+export function lastWorkspace(paths: DesktopPaths): string | undefined {
+	try {
+		const parsed: unknown = JSON.parse(readFileSync(paths.userData(LAST_WORKSPACE_FILE), "utf8"));
+		const path = (parsed as { path?: unknown }).path;
+		return typeof path === "string" && isDirectory(path) ? path : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function sameWorkspacePath(left: string, right: string): boolean {
+	return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+/**
+ * 启动时不弹目录框：上次用过的目录优先；首次启动落在一个应用自管的空工作区，
+ * Agent 始终有真实 cwd，用户再从界面里打开真正的项目。打开工作区是界面动作，
+ * 不该挡住启动。
+ */
+export function resolveStartupWorkspace(paths: DesktopPaths): string {
+	const override = process.env.REINS_WORKSPACE;
+	if (override !== undefined && isDirectory(override)) {
+		const canonical = registerWorkspace(override);
+		rememberWorkspace(paths, canonical);
+		return canonical;
+	}
+	const previous = lastWorkspace(paths);
+	if (previous !== undefined) {
+		const canonical = canonicalWorkspacePath(previous);
+		const known = listKnownWorkspaces().some((path) => sameWorkspacePath(path, canonical));
+		if (known) {
+			rememberWorkspace(paths, canonical);
+			return canonical;
+		}
+		// 记忆指向一个已被移除的项目：不复活它，继续落到自管空工作区；启动成功后
+		// 控制器还会把这条过期记忆改写成新目录。
+	}
+
+	const fallback = paths.userData("workspace");
+	mkdirSync(fallback, { recursive: true });
+	const canonical = registerWorkspace(fallback);
+	rememberWorkspace(paths, canonical);
+	return canonical;
+}
