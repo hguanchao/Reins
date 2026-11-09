@@ -353,10 +353,10 @@
 }
 
 .blank-in {
-	/* 设计稿的内容列是 max-width:720px + 左右 28px 内边距，内容宽 664px；
-	   上下不加内边距，否则内容盒被撑高，居中后整体偏移 */
+	/* 内容列从 720 放宽到 800（左右仍各留 28px 内边距，实际内容 744px）：
+	   主区留白不再匀质地挤在两侧，输入卡与建议行有更舒展的行长 */
 	width: 100%;
-	max-width: 720px;
+	max-width: 800px;
 	padding: 0 28px;
 }
 
@@ -388,6 +388,7 @@
 .starts {
 	display: flex;
 	flex-direction: column;
+	gap: 4px;
 	margin-top: 24px;
 	border-top: 1px solid var(--rule);
 }
@@ -396,8 +397,9 @@
 	display: flex;
 	align-items: center;
 	gap: 10px;
-	padding: 11px 2px;
-	border-bottom: 1px solid var(--rule);
+	/* 每行不再各画一条下边框：用间距分组，悬停底色落成独立圆角块 */
+	padding: 11px 8px;
+	border-radius: var(--r-2);
 	font-size: var(--fs-12);
 	color: var(--ink-2);
 	text-align: left;

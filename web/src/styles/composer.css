@@ -223,11 +223,6 @@
 	margin: 0;
 }
 
-/* 空态的输入卡整卡浮起：投影加强一档，像一顶帽子扣在托板上 */
-.blank .comp-unit .composer {
-	box-shadow: var(--shadow-2);
-}
-
 /* 上下文溢出提示条：虚线描边，给出压缩动作，不擅自截断 */
 .ctx-over {
 	display: flex;
@@ -278,30 +273,42 @@
 	color: var(--ink-3);
 }
 
-/* 卡帽：沉底托板，白卡上移压住它的下缘，帽檐露出 4px */
+/* 卡帽与白卡共用一层外轮廓：原先两层边框叠出双线，是空态最挤的一处。
+   不设 overflow，二级浮层仍可越出卡片向右展开 */
 .comp-unit {
 	position: relative;
 }
 
+.comp-unit:has(.hatted) {
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-4);
+	background: var(--raise);
+	box-shadow: var(--shadow-1);
+	transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+}
+
+.comp-unit:has(.hatted):focus-within {
+	border-color: var(--rule-3);
+	box-shadow: var(--shadow-2);
+}
+
+/* 空态整卡浮起一档；必须写在外框规则之后，否则被基础投影盖掉 */
+.blank .comp-unit:has(.hatted) {
+	box-shadow: var(--shadow-2);
+}
+
 .comp-cap {
-	position: relative;
-	z-index: 0;
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	padding: 5px 5px 12px;
-	border: 1px solid var(--rule-2);
-	border-bottom: 0;
+	padding: 6px 5px;
+	border-bottom: 1px solid var(--rule);
 	border-radius: var(--r-4) var(--r-4) 0 0;
 	background: var(--sunken);
 }
 
 .comp-cap .chip {
 	height: 24px;
-}
-
-.comp-cap:focus-within {
-	border-color: var(--rule-3);
 }
 
 .comp-cap .n {
@@ -311,9 +318,13 @@
 }
 
 .composer.hatted {
-	position: relative;
-	z-index: 1;
-	margin-top: -8px;
+	border: 0;
+	border-radius: 0 0 var(--r-4) var(--r-4);
+	box-shadow: none;
+}
+
+.composer.hatted:focus-within {
+	box-shadow: none;
 }
 
 .ws-chip {

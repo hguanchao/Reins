@@ -11,9 +11,9 @@ export const SIDEBAR_DEFAULT = 244;
 export const SIDEBAR_MIN = 180;
 export const SIDEBAR_MAX = 320;
 export const SIDEBAR_COLLAPSED = 0;
-/** 设计稿在 1180px 以下把侧栏收到 210px，JS 列宽必须同步收敛。 */
+/** 设计稿在 1180px 以下把侧栏收到 210px，这里放宽到 240px：窄窗下文字不再频繁截断。 */
 export const NARROW_WINDOW = 1180;
-export const SIDEBAR_NARROW = 210;
+export const SIDEBAR_NARROW = 240;
 /** 设计稿在 900px 以下把侧栏与面板整条藏掉，JS 列宽走同一断点。 */
 export const COMPACT_WINDOW = 900;
 export const CENTER_MIN = 400;

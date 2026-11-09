@@ -10,6 +10,7 @@ import {
 	SIDEBAR_DEFAULT,
 	SIDEBAR_MAX,
 	SIDEBAR_MIN,
+	SIDEBAR_NARROW,
 	clampRightbar,
 	clampSidebar,
 	computeColumns,
@@ -19,6 +20,7 @@ import {
 describe("侧栏宽度收敛", () => {
 	it("demo 基准 244px，拖拽范围 180–320", () => {
 		assert.equal(SIDEBAR_DEFAULT, 244);
+		assert.equal(SIDEBAR_NARROW, 240);
 		assert.equal(SIDEBAR_MIN, 180);
 		assert.equal(SIDEBAR_MAX, 320);
 		assert.equal(clampSidebar(120), SIDEBAR_MIN);
@@ -62,20 +64,20 @@ describe("三栏求解", () => {
 
 	it("右栏空间不足时按可用宽度收敛，主列不被压缩", () => {
 		const widths = computeColumns(960, 244, 500);
-		assert.equal(widths.sidebar, 210);
-		assert.equal(widths.rightbar, 960 - 210 - CENTER_MIN);
+		assert.equal(widths.sidebar, SIDEBAR_NARROW);
+		assert.equal(widths.rightbar, 960 - SIDEBAR_NARROW - CENTER_MIN);
 	});
 
 	it("可用宽度低于右栏下限时整条让出", () => {
 		const widths = computeColumns(905, 244, 500);
 		assert.equal(widths.rightbar, 0);
-		assert.equal(widths.center, 905 - 210);
+		assert.equal(widths.center, 905 - SIDEBAR_NARROW);
 	});
 
 	it("窗口极窄时主列可以降为零", () => {
 		const widths = computeColumns(1000, 244, 0);
-		assert.equal(widths.sidebar, 210);
-		assert.equal(widths.center, 790);
+		assert.equal(widths.sidebar, SIDEBAR_NARROW);
+		assert.equal(widths.center, 1000 - SIDEBAR_NARROW);
 		assert.ok(widths.center < CENTER_MIN + 400);
 	});
 
@@ -84,9 +86,9 @@ describe("三栏求解", () => {
 		assert.equal(computeColumns(2400, 244, 2000).rightbar, RIGHTBAR_MAX);
 	});
 
-	it("窄窗把侧栏收到设计稿的 210px，宽窗恢复 244", () => {
-		assert.equal(computeColumns(1064, 244, 0).sidebar, 210);
-		assert.equal(computeColumns(1180, 280, 0).sidebar, 210);
+	it("窄窗把侧栏收到 240px，宽窗恢复 244", () => {
+		assert.equal(computeColumns(1064, 244, 0).sidebar, SIDEBAR_NARROW);
+		assert.equal(computeColumns(1180, 280, 0).sidebar, SIDEBAR_NARROW);
 		assert.equal(computeColumns(1440, 244, 0).sidebar, 244);
 	});
 
