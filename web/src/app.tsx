@@ -122,8 +122,8 @@ export function App(): ReactElement {
 	const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
 	const [sideTabs, setSideTabs] = useState<readonly SideTab[]>([]);
 	const [activeTabId, setActiveTabId] = useState<string | undefined>(undefined);
-	// 工作台页面板常开(设计稿 ws 变体);空态页固定无面板(no-panel),靠 draft 时收起表达
-	const [sideOpen, setSideOpen] = useState(true);
+	// 面板默认收起；打开任一页签或经命令面板切换时才展开；空态页始终不带面板
+	const [sideOpen, setSideOpen] = useState(false);
 	const [sideFullscreen, setSideFullscreen] = useState(false);
 	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
@@ -595,7 +595,7 @@ export function App(): ReactElement {
 		setSideOpen(true);
 	}, []);
 
-	// 空态没有面板(demo no-panel);从空态进入会话时面板随工作台一起回来
+	// 空态没有面板(demo no-panel)；面板展开只由打开页签或本切换驱动，进会话不再自动带回
 	const toggleSidePane = useCallback((): void => {
 		if (sideOpen) {
 			setSideOpen(false);
