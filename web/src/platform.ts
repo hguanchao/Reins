@@ -38,11 +38,3 @@ declare global {
 export function desktopBridge(): ReinsDesktopBridge | undefined {
 	return window.reinsDesktop;
 }
-
-/**
- * 桌面壳的标题栏由页面自绘窗控（macOS 例外：红绿灯由系统画在左侧）；浏览器没有这层，
- * 相关入口据此隐藏。与 index.html 里给标题栏让位的判断同源：有桥才是桌面壳。
- */
-export function inDesktopShell(): boolean {
-	return window.reinsDesktop !== undefined;
-}
