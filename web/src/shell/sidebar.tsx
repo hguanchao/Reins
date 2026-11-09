@@ -138,7 +138,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		<aside className="side">
 			<div className="side-top">
 				<div className="side-brand">
-					<div className="brandmark">R</div>
+					<span className="brandmark" aria-hidden="true" />
 					<span className="bn">Reins</span>
 					{props.version.length === 0 ? null : <span className="bv">v{props.version}</span>}
 				</div>

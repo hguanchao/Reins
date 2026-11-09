@@ -243,18 +243,15 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/* 与任务栏图标同源：透明底的马形 SVG 作遮罩，着色跟随主题墨色。
+	不用字母方块，也不必再单独维护一套深色图标 */
 .brandmark {
-	display: grid;
-	place-items: center;
+	display: block;
 	flex: none;
 	width: 22px;
 	height: 22px;
-	border-radius: var(--r-1);
-	background: var(--fill);
-	color: var(--fill-ink);
-	font-family: var(--mono);
-	font-size: var(--fs-11);
-	font-weight: 700;
-	letter-spacing: -0.04em;
+	background-color: var(--ink);
+	-webkit-mask: url("/favicon.svg") center / contain no-repeat;
+	mask: url("/favicon.svg") center / contain no-repeat;
 }
 

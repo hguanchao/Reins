@@ -26,7 +26,7 @@ export function Hero({
 			<div className="blank-in">
 				<div className="hero-head">
 					<div className="hero-brand">
-						<div className="brandmark">R</div>
+						<span className="brandmark" aria-hidden="true" />
 						<span className="hero-name">Reins</span>
 					</div>
 					<div className="eyebrow">CODING AGENT HARNESS</div>

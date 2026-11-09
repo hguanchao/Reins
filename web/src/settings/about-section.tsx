@@ -56,10 +56,9 @@ export function AboutSection({
 					<div style={{ display: "flex", alignItems: "center", gap: 14, padding: 16 }}>
 						<span
 							className="brandmark"
-							style={{ width: 38, height: 38, fontSize: "var(--fs-16)", borderRadius: "var(--r-2)" }}
-						>
-							R
-						</span>
+							style={{ width: 38, height: 38 }}
+							aria-hidden="true"
+						/>
 						<div style={{ flex: 1, minWidth: 0 }}>
 							<div style={{ display: "flex", alignItems: "center", gap: 7 }}>
 								<span style={{ fontSize: 18, fontWeight: 600, letterSpacing: "0.01em" }}>Reins</span>

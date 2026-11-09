@@ -375,12 +375,10 @@
 	gap: 10px;
 }
 
-/* 复用侧栏的品牌标识，放大到与名称同一量级；配色令牌自带明暗主题适配 */
+/* 与侧栏同一枚品牌标识，放大到与名称同一量级 */
 .hero-brand .brandmark {
 	width: 30px;
 	height: 30px;
-	border-radius: var(--r-2);
-	font-size: var(--fs-14);
 }
 
 .hero-name {
