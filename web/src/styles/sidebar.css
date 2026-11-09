@@ -488,22 +488,88 @@
 	color: var(--ink);
 }
 
-/* 批量选择条 */
+/* 批量选择条：固定在侧栏底部，不随任务列表滚动 */
 .batch-bar {
+	flex: none;
 	display: flex;
-	align-items: center;
-	gap: 4px;
-	margin: 0 2px 8px;
-	padding: 4px 6px;
-	border: 1px solid var(--rule-2);
-	border-radius: var(--r-2);
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px;
+	border-top: 1px solid var(--rule);
 	background: var(--raise);
-	font-family: var(--mono);
-	font-size: var(--fs-10);
+	font-size: var(--fs-11);
 	color: var(--ink-3);
 }
 
-.batch-bar .grow {
+.batch-bar-line {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.batch-bar-line .grow {
 	flex: 1;
+}
+
+.batch-bar-line .b {
+	flex: 1;
+}
+
+/* 批量模式：状态点让位给复选框，整行可点选 */
+.sess.batch {
+	cursor: pointer;
+}
+
+.sess.batch .batch-check {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 14px;
+	height: 14px;
+	border: 1px solid var(--rule-3);
+	border-radius: 3px;
+	color: var(--fill-ink);
+}
+
+.sess.batch.is-selected {
+	background: var(--wash-2);
+}
+
+.sess.batch.is-selected .batch-check {
+	border-color: var(--fill);
+	background: var(--fill);
+}
+
+/* 关联到工作区：弹窗里的候选列表 */
+.attach-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.attach-list button {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 34px;
+	padding: 0 10px;
+	border-radius: var(--r-2);
+	font-size: var(--fs-12);
+	color: var(--ink-2);
+	text-align: left;
+}
+
+.attach-list button:hover {
+	background: var(--wash);
+	color: var(--ink);
+}
+
+.attach-list .n {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
 }
 

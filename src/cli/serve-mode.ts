@@ -17,6 +17,7 @@ import {
 import { createSessionFor } from "#src/cli/session/factory.ts";
 import {
 	archiveSessionsAcross,
+	attachSessionToWorkspace,
 	deleteSessionsAcross,
 	listArchivedSessions,
 	listArchivedSessionsAcross,
@@ -337,6 +338,14 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		return archiveSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
 	};
 
+	/** 未归属任务关联到工作区：只认已登记可见的项目，当前会话不能被改写。 */
+	const attachSession = (id: string, workspacePath: string): boolean => {
+		if (running || compacting || sessionStore === undefined) return false;
+		const target = registeredWorkspace(workspacePath);
+		if (target === undefined) return false;
+		return attachSessionToWorkspace(workspaceRoots(), sessionStore, id, target, [session.id]);
+	};
+
 	const unstashSessions = (ids: readonly string[]): number =>
 		running || compacting || sessionStore === undefined
 			? 0
@@ -606,6 +615,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		archivedSessions: archivedList,
 		deleteSessions: removeSessions,
 		archiveSessions: stashSessions,
+		attachSession,
 		restoreSessions: unstashSessions,
 		skills: () => discoverSkills(defaultSkillRoots(workRoot, loaded.trusted)).map(skillInfo),
 		plugins: () =>

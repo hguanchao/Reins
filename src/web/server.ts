@@ -115,6 +115,8 @@ export interface WebServerDeps {
 	archiveSessions(ids: readonly string[]): number;
 	/** 批量恢复归档,返回实际恢复的个数 */
 	restoreSessions(ids: readonly string[]): number;
+	/** 把未归属会话关联到已登记工作区;路径非法或会话不可改时返回 false */
+	attachSession(id: string, workspacePath: string): boolean;
 	/** 发现的技能清单(技能库面板) */
 	skills(): readonly SettingsSkill[];
 	/** 已装载的插件清单(插件市场面板) */
@@ -447,6 +449,22 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				return;
 			}
 			sendJson(res, 200, { archived: deps.archiveSessions(ids as string[]) });
+			return;
+		}
+		if (req.method === "POST" && path === "/api/sessions/attach") {
+			const body = await readJsonBody(req);
+			const id = body?.["id"];
+			const target = body?.["workspacePath"];
+			if (
+				typeof id !== "string" ||
+				id.length === 0 ||
+				typeof target !== "string" ||
+				target.length === 0
+			) {
+				sendJson(res, 400, { error: "id and workspacePath must be non-empty strings" });
+				return;
+			}
+			sendJson(res, 200, { attached: deps.attachSession(id, target) });
 			return;
 		}
 		if (req.method === "POST" && path === "/api/sessions/restore") {

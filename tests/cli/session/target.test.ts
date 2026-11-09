@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 
 import {
 	archiveSessions,
+	attachSessionToWorkspace,
 	createSession,
 	deleteSessions,
 	deleteSessionsAcross,
@@ -181,6 +182,30 @@ describe("切换当前会话后的归档/删除", () => {
 				listSessionsAcross([workRoot], store).map((item) => item.id),
 				[newSession.id],
 			);
+		});
+	});
+});
+
+describe("关联未归属会话到工作区", () => {
+	it("只改写会话头的归属字段，条目不丢，且只认未绑定会话", async () => {
+		await withHome(async (workRoot) => {
+			const store = new JsonlSessionStore();
+			const session = createSession(workRoot, store, null);
+			await session.append({ type: "message", message: { role: "user", content: "内容" } });
+			await session.close();
+			const listing = listSessions(workRoot, store).find((item) => item.id === session.id);
+			assert.ok(listing);
+			assert.equal(listing.workspacePath, null);
+
+			assert.equal(attachSessionToWorkspace([workRoot], store, session.id, "/work/alpha", []), true);
+			const reread = store.read(listing.file);
+			assert.equal(reread.header?.workspacePath, "/work/alpha");
+			assert.equal(reread.entries.length, 1);
+
+			// 已有归属的会话不再被改写，当前会话在 skip 里也直接拒绝
+			assert.equal(attachSessionToWorkspace([workRoot], store, session.id, "/work/beta", []), false);
+			assert.equal(attachSessionToWorkspace([workRoot], store, session.id, "/work/beta", [session.id]), false);
+			assert.equal(store.read(listing.file).header?.workspacePath, "/work/alpha");
 		});
 	});
 });

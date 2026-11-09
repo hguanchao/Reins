@@ -23,6 +23,7 @@ interface FakeState {
 	deleted: string[];
 	droppedWorkspaces: string[];
 	restoredWorkspaces: string[];
+	attachCalls: string[];
 	entries: readonly unknown[];
 	listeners: Set<(event: unknown) => void>;
 	emit(event: unknown): void;
@@ -39,6 +40,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		deleted: [],
 		droppedWorkspaces: [],
 		restoredWorkspaces: [],
+		attachCalls: [],
 		entries: [{ type: "message" }],
 		listeners: new Set(),
 		emit(event) {
@@ -94,6 +96,10 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		restoreWorkspace: (path) => {
 			state.restoredWorkspaces.push(path);
 			return path !== "/gone";
+		},
+		attachSession: (id, path) => {
+			state.attachCalls.push(`${id}:${path}`);
+			return path !== "/reject";
 		},
 		deleteWorkspace: (path) => {
 			state.droppedWorkspaces.push(path);
@@ -494,6 +500,33 @@ describe("web 传输层", () => {
 			assert.equal(rejected.status, 400, JSON.stringify(payload));
 		}
 		assert.equal(state.restoredWorkspaces.length, 2);
+	});
+
+	it("关联未归属任务到工作区：转交内核并如实返回失败", async () => {
+		const { deps, state } = fakeDeps(undefined);
+		const server = await startServer(deps);
+		const base = `http://127.0.0.1:${server.port}`;
+		const headers = { "x-reins-token": TOKEN, "content-type": "application/json" };
+
+		const ok = await fetch(`${base}/api/sessions/attach`, {
+			method: "POST", headers, body: JSON.stringify({ id: "s1", workspacePath: "/work/alpha" }),
+		});
+		assert.equal(ok.status, 200);
+		assert.deepEqual(await ok.json(), { attached: true });
+		assert.deepEqual(state.attachCalls, ["s1:/work/alpha"]);
+
+		const rejected = await fetch(`${base}/api/sessions/attach`, {
+			method: "POST", headers, body: JSON.stringify({ id: "s1", workspacePath: "/reject" }),
+		});
+		assert.deepEqual(await rejected.json(), { attached: false });
+
+		for (const payload of [{}, { id: "s1" }, { workspacePath: "/work/alpha" }, { id: 7, workspacePath: "/w" }]) {
+			const bad = await fetch(`${base}/api/sessions/attach`, {
+				method: "POST", headers, body: JSON.stringify(payload),
+			});
+			assert.equal(bad.status, 400, JSON.stringify(payload));
+		}
+		assert.equal(state.attachCalls.length, 2);
 	});
 
 	it("模型清单与切换、审批模式切换", async () => {

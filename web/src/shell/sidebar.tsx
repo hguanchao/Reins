@@ -2,13 +2,16 @@ import {
 	Archive,
 	Blocks,
 	CalendarClock,
+	Check,
 	ChevronRight,
 	CircleAlert,
 	CircleSlash,
 	Ellipsis,
 	EyeOff,
 	Folder,
+	FolderPlus,
 	FolderOpen,
+	ListChecks,
 	LoaderCircle,
 	Pencil,
 	Pin,
@@ -47,6 +50,9 @@ export interface SidebarProps {
 	onArchive(id: string): void;
 	onDelete(id: string): void;
 	onTogglePin(id: string): void;
+	onAttachSession(id: string, workspacePath: string): void;
+	onBatchArchive(ids: readonly string[]): void;
+	onBatchDelete(ids: readonly string[]): void;
 	onOpenPanel(panel: GlobalPanelId): void;
 	onOpenExtensions(): void;
 	onOpenSettings(): void;
@@ -80,6 +86,19 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		running: props.running,
 	});
 	const buckets = bucketRows(groups.unassigned, { currentId: props.currentId, running: props.running });
+	const [batchMode, setBatchMode] = useState(false);
+	const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+	const [attachTarget, setAttachTarget] = useState<SessionRow | undefined>(undefined);
+	const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+	const allRows = [...groups.unassigned, ...groups.workspaces.flatMap((group) => group.rows)];
+	const toggleSelected = (id: string): void => {
+		setSelected((current) => {
+			const next = new Set(current);
+			if (next.has(id)) next.delete(id); else next.add(id);
+			return next;
+		});
+	};
+	const exitBatch = (): void => { setBatchMode(false); setSelected(new Set()); };
 
 	const [workspaceRename, setWorkspaceRename] = useState<WorkspaceSummary | undefined>(undefined);
 	const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceSummary | undefined>(undefined);
@@ -109,7 +128,9 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			current={row.id === props.currentId && props.activePanel === undefined}
 			running={props.running && row.id === props.currentId}
 			waiting={props.waiting && row.id === props.currentId}
-			onSwitch={() => props.onSwitch(row)}
+			batchMode={batchMode}
+			selected={selected.has(row.id)}
+			onSwitch={() => (batchMode ? toggleSelected(row.id) : props.onSwitch(row))}
 			onArchive={() => props.onArchive(row.id)}
 			onDelete={() => props.onDelete(row.id)}
 			onTogglePin={() => props.onTogglePin(row.id)}
@@ -119,6 +140,12 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					? undefined
 					: () => bridge.openWorkspaceFolder((row.workspacePath ?? row.cwd) || props.cwd)
 			}
+			onAttach={
+				row.workspacePath === null || row.workspacePath === undefined
+					? () => setAttachTarget(row)
+					: undefined
+			}
+			onBatch={() => { setBatchMode(true); setSelected(new Set([row.id])); }}
 		/>
 	);
 
@@ -268,6 +295,22 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				)}
 			</div>
 
+			{batchMode ? (
+				<div className="batch-bar">
+					<div className="batch-bar-line">
+						<span>已选 {selected.size} 项</span>
+						<span className="grow" />
+						<button type="button" className="b b-ghost b-sm" onClick={() => setSelected(new Set(allRows.map((item) => item.id)))}>全选</button>
+						<button type="button" className="b b-ghost b-sm" onClick={() => setSelected(new Set())}>清空</button>
+					</div>
+					<div className="batch-bar-line">
+						<button type="button" className="b b-line b-sm" disabled={selected.size === 0} onClick={() => { props.onBatchArchive([...selected]); exitBatch(); }}>归档</button>
+						<button type="button" className="b b-ghost b-sm" style={{ color: "var(--danger)" }} disabled={selected.size === 0} onClick={() => setBatchDeleteOpen(true)}>删除</button>
+						<button type="button" className="b b-ghost b-sm" onClick={exitBatch}>取消</button>
+					</div>
+				</div>
+			) : null}
+
 			<div className="side-foot">
 				<div className="user">
 					<span className="av">C</span>
@@ -386,6 +429,46 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					className="form-input"
 				/>
 			</Dialog>
+			<Dialog
+				open={attachTarget !== undefined}
+				onClose={() => setAttachTarget(undefined)}
+				title="关联到工作区"
+			>
+				{props.workspaces.length === 0 ? (
+					<p className="set-note" style={{ margin: 0 }}>暂无工作区，请先新建或打开一个工作区。</p>
+				) : (
+					<div className="attach-list">
+						{props.workspaces.map((workspace) => (
+							<button key={workspace.path} type="button" onClick={() => {
+								if (attachTarget !== undefined) props.onAttachSession(attachTarget.id, workspace.path);
+								setAttachTarget(undefined);
+							}}>
+								<FolderOpen className="ic ic-14" />
+								<span className="n">{workspace.name}</span>
+							</button>
+						))}
+					</div>
+				)}
+			</Dialog>
+
+			<Dialog
+				open={batchDeleteOpen}
+				onClose={() => setBatchDeleteOpen(false)}
+				title="批量删除任务"
+				footer={
+					<>
+						<button type="button" className="b b-line" onClick={() => setBatchDeleteOpen(false)}>取消</button>
+						<button type="button" className="b b-danger" onClick={() => {
+							props.onBatchDelete([...selected]);
+							setBatchDeleteOpen(false);
+							exitBatch();
+						}}>永久删除</button>
+					</>
+				}
+			>
+				<p style={{ margin: 0 }}>选中的 {selected.size} 个任务会被永久删除，不能恢复。</p>
+			</Dialog>
+
 		</aside>
 	);
 }
@@ -430,28 +513,43 @@ function StateMark({
  * 悬停出「置顶 + 更多」两枚小钮，时间戳原位淡出；菜单打开期间行保持选中、按钮不消失。
  * 已完成与空闲不带状态标识：一列灰对勾只是噪音。
  */
+/**
+ * 任务行。
+ *
+ * 悬停出「置顶 + 更多」两枚小钮，时间戳原位淡出；菜单打开期间行保持选中、按钮不消失。
+ * 批量模式下整行变成勾选项，状态点与悬停操作让位给复选框。
+ */
 function SessionRowView({
 	row,
 	current,
 	running,
 	waiting,
+	batchMode,
+	selected,
 	onSwitch,
 	onArchive,
 	onDelete,
 	onTogglePin,
 	onRename,
 	onOpenFolder,
+	onAttach,
+	onBatch,
 }: {
 	readonly row: SessionRow;
 	readonly current: boolean;
 	readonly running: boolean;
 	readonly waiting: boolean;
+	readonly batchMode: boolean;
+	readonly selected: boolean;
 	onSwitch(): void;
 	onArchive(): void;
 	onDelete(): void;
 	onTogglePin(): void;
 	onRename(): void;
 	readonly onOpenFolder?: () => void;
+	/** 只在未归属任务上出现：关联到工作区 */
+	readonly onAttach?: () => void;
+	onBatch(): void;
 }): ReactElement {
 	const entries: MenuEntry[] = [
 		{ type: "item", key: "rename", label: "重命名", hint: "F2", icon: Pencil, onSelect: onRename },
@@ -466,6 +564,18 @@ function SessionRowView({
 						onSelect: onOpenFolder,
 					},
 				]),
+		...(onAttach === undefined
+			? []
+			: [
+					{
+						type: "item" as const,
+						key: "attach",
+						label: "关联到工作区…",
+						icon: FolderPlus,
+						onSelect: onAttach,
+					},
+				]),
+		{ type: "item", key: "batch", label: "批量操作", icon: ListChecks, onSelect: onBatch },
 		{ type: "separator" },
 		{ type: "item", key: "archive", label: "归档", icon: Archive, onSelect: onArchive },
 		{
@@ -479,38 +589,57 @@ function SessionRowView({
 	];
 
 	return (
-		<div className="sess" aria-current={current || undefined}>
-			<StateMark running={running} waiting={waiting} aborted={false} />
-			<button type="button" onClick={onSwitch} onDoubleClick={onRename} title={row.title} className="tt">
+		<div
+			className={batchMode ? `sess batch${selected ? " is-selected" : ""}` : "sess"}
+			aria-current={current || undefined}
+		>
+			{batchMode ? (
+				<span className="batch-check" aria-hidden="true">
+					{selected ? <Check className="ic ic-12" /> : null}
+				</span>
+			) : (
+				<StateMark running={running} waiting={waiting} aborted={false} />
+			)}
+			<button
+				type="button"
+				onClick={onSwitch}
+				onDoubleClick={batchMode ? undefined : onRename}
+				title={row.title}
+				className="tt"
+			>
 				{row.title}
 			</button>
-			<span className="tm">{relativeTime(row.updatedAt)}</span>
-			<span className="hover-actions">
-				<button
-					type="button"
-					aria-label={row.pinned ? "取消置顶" : "置顶"}
-					title={row.pinned ? "取消置顶" : "置顶"}
-					onClick={onTogglePin}
-				>
-					<Pin className="ic ic-12" />
-				</button>
-				<Menu
-					align="end"
-					entries={entries}
-					trigger={({ toggle, open }) => (
+			{batchMode ? null : (
+				<>
+					<span className="tm">{relativeTime(row.updatedAt)}</span>
+					<span className="hover-actions">
 						<button
 							type="button"
-							aria-label="任务操作"
-							title="任务操作"
-							aria-haspopup="menu"
-							aria-expanded={open}
-							onClick={toggle}
+							aria-label={row.pinned ? "取消置顶" : "置顶"}
+							title={row.pinned ? "取消置顶" : "置顶"}
+							onClick={onTogglePin}
 						>
-							<Ellipsis className="ic ic-12" />
+							<Pin className="ic ic-12" />
 						</button>
-					)}
-				/>
-			</span>
+						<Menu
+							align="end"
+							entries={entries}
+							trigger={({ toggle, open }) => (
+								<button
+									type="button"
+									aria-label="任务操作"
+									title="任务操作"
+									aria-haspopup="menu"
+									aria-expanded={open}
+									onClick={toggle}
+								>
+									<Ellipsis className="ic ic-12" />
+								</button>
+							)}
+						/>
+					</span>
+				</>
+			)}
 		</div>
 	);
 }

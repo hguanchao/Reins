@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 
 import { sessionDirectories, sessionsDir } from "#src/config/paths.ts";
 import { Session } from "#src/session/session.ts";
@@ -228,6 +228,48 @@ export function sessionOwner(item: {
 }): string | null {
 	const owner = item.workspacePath ?? item.cwd;
 	return typeof owner === "string" && owner.length > 0 ? owner : null;
+}
+
+/**
+ * 把明确未绑定的会话关联到指定工作区：改写会话头里的归属字段。
+ *
+ * 只认活动目录里没有归属标记的会话（null 或旧格式的缺省）；当前正在使用的会话由调用方放进 skip，
+ * 它还持有写入句柄，整文件重写会截断在途追写。先写临时文件再替换，中途失败不会毁掉原文件。
+ */
+export function attachSessionToWorkspace(
+	workRoots: readonly string[],
+	store: SessionStore,
+	id: string,
+	workspacePath: string,
+	skip: readonly string[],
+): boolean {
+	if (skip.includes(id)) return false;
+	for (const workRoot of workRoots) {
+		for (const directory of sessionDirectories(workRoot)) {
+			for (const listing of store.list(directory)) {
+				if (listing.id !== id || (listing.workspacePath !== null && listing.workspacePath !== undefined)) continue;
+				try {
+					const lines = readFileSync(listing.file, "utf8").split("\n");
+					const header: unknown = JSON.parse(lines[0] ?? "");
+					if (
+						typeof header !== "object" ||
+						header === null ||
+						(header as { readonly type?: unknown }).type !== "session"
+					) {
+						return false;
+					}
+					lines[0] = JSON.stringify({ ...(header as Record<string, unknown>), workspacePath });
+					const temp = `${listing.file}.attach-tmp`;
+					writeFileSync(temp, lines.join("\n"), "utf8");
+					renameSync(temp, listing.file);
+					return true;
+				} catch {
+					return false;
+				}
+			}
+		}
+	}
+	return false;
 }
 
 /**

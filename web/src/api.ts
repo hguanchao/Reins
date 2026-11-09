@@ -106,6 +106,14 @@ export const api = {
 		})) as { deleted?: number };
 		return body.deleted ?? 0;
 	},
+	/** 未归属任务关联到已登记工作区;路径非法、会话不可改或运行中时返回 false */
+	async attachSession(id: string, workspacePath: string): Promise<boolean> {
+		const body = (await request("/api/sessions/attach", {
+			method: "POST",
+			body: JSON.stringify({ id, workspacePath }),
+		})) as { attached?: boolean };
+		return body.attached ?? false;
+	},
 	async archivedSessions(): Promise<readonly SessionSummary[]> {
 		return (await request("/api/sessions/archived")) as readonly SessionSummary[];
 	},

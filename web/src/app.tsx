@@ -922,6 +922,33 @@ export function App(): ReactElement {
 								.catch(() => {});
 						}}
 						onTogglePin={togglePin}
+						onAttachSession={(id, path) => {
+							void api
+								.attachSession(id, path)
+								.then((ok) => {
+									refreshSessions();
+									toast(ok ? "已关联到工作区" : "关联失败：任务正在使用或工作区不存在", ok ? "info" : "error");
+								})
+								.catch(() => toast("关联到工作区失败", "error"));
+						}}
+						onBatchArchive={(ids) => {
+							void api
+								.archiveSessions(ids)
+								.then((count) => {
+									refreshSessions();
+									toast(count > 0 ? `已归档 ${count} 个任务` : "当前任务运行中或正在压缩，完成后再归档", "info");
+								})
+								.catch(() => toast("批量归档失败", "error"));
+						}}
+						onBatchDelete={(ids) => {
+							void api
+								.deleteSessions(ids)
+								.then((count) => {
+									refreshSessions();
+									toast(count > 0 ? `已删除 ${count} 个任务` : "当前任务运行中或正在压缩，完成后再删除", "info");
+								})
+								.catch(() => toast("批量删除失败", "error"));
+						}}
 						onOpenPanel={(panel) => {
 							setActivePanel(panel);
 							setSettingsOpen(false);
