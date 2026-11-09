@@ -53,6 +53,11 @@
 	color: var(--ink);
 }
 
+/* 面板开关按下态：面板展开时图标加深，与悬停区分开 */
+.chat-head .hbtn[aria-pressed="true"] {
+	color: var(--ink);
+}
+
 .transcript-wrap {
 	position: relative;
 	display: flex;

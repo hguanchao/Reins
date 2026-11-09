@@ -732,6 +732,8 @@ export function App(): ReactElement {
 			{draft ? null : (
 				<ConversationHeader
 					title={currentTitle}
+					paneOpen={sideOpen}
+					onTogglePane={toggleSidePane}
 					onArchive={() => {
 						void api.archiveSessions([sessionId]).then(refreshSessions).catch(() => {});
 					}}
