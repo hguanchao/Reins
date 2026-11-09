@@ -9,7 +9,6 @@ import {
 	filterExtensions,
 	filterSettingsNav,
 	formatKb,
-	formatModelSize,
 	parseArgumentLines,
 	parseModelSize,
 	parseKeyValueLines,
@@ -193,22 +192,16 @@ describe("归档时间文案", () => {
 });
 
 describe("模型数量写法", () => {
-	it("整 m / 整 k 用短写法，其余照原样", () => {
-		assert.equal(formatModelSize(1_000_000), "1m");
-		assert.equal(formatModelSize(2_000_000), "2m");
-		assert.equal(formatModelSize(384_000), "384k");
-		assert.equal(formatModelSize(1234), "1234");
-		assert.equal(formatModelSize(undefined), "");
-	});
-
-	it("带 k/m 后缀能解析回数值", () => {
-		assert.equal(parseModelSize("128k"), 128_000);
-		assert.equal(parseModelSize("1m"), 1_000_000);
-		assert.equal(parseModelSize("1.5m"), 1_500_000);
+	it("纯数字按原值解析", () => {
+		assert.equal(parseModelSize("1000000"), 1_000_000);
+		assert.equal(parseModelSize("256000"), 256_000);
 		assert.equal(parseModelSize(" 8192 "), 8192);
 	});
 
-	it("空值与非法输入返回 undefined，交给调用方报错", () => {
+	it("带单位、小数与非法输入一律返回 undefined，交给调用方报错", () => {
+		assert.equal(parseModelSize("128k"), undefined);
+		assert.equal(parseModelSize("1m"), undefined);
+		assert.equal(parseModelSize("1.5m"), undefined);
 		assert.equal(parseModelSize(""), undefined);
 		assert.equal(parseModelSize("abc"), undefined);
 		assert.equal(parseModelSize("0"), undefined);

@@ -4,7 +4,17 @@ import { useState, type ReactElement } from "react";
 import { Dialog, Popover } from "../components/ui/index.ts";
 import { cn } from "../components/ui/cn.ts";
 import type { ProviderModel, ThinkingLevel } from "../protocol.ts";
-import { formatModelSize, parseModelSize } from "./settings-model.ts";
+import { parseModelSize } from "./settings-model.ts";
+
+/** 数量输入框只收纯数字，编辑时按原始数字回填。 */
+function sizeText(value: number | undefined): string {
+	return value === undefined ? "" : String(value);
+}
+
+/** 输入时直接滤掉非数字字符，避免把 1m、128k 这类短写法带进提交。 */
+function digitsOnly(value: string): string {
+	return value.replace(/\D/g, "");
+}
 
 /** 关闭之外的思考等级，顺序与内核的等级阶梯一致。 */
 const LEVELS: readonly ThinkingLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -51,8 +61,8 @@ export function ModelDialog({
 		setSeed(key);
 		if (open) {
 			setId(model?.id ?? "");
-			setContextWindow(formatModelSize(model?.contextWindow));
-			setMaxTokens(formatModelSize(model?.maxTokens));
+			setContextWindow(sizeText(model?.contextWindow));
+			setMaxTokens(sizeText(model?.maxTokens));
 			setLevels(enabledLevels(model));
 			setImageInput((model?.input ?? ["text"]).includes("image"));
 			setMaxTokensField(model?.maxTokensField ?? "max_tokens");
@@ -63,8 +73,8 @@ export function ModelDialog({
 
 	const reset = (): void => {
 		setId(model?.id ?? "");
-		setContextWindow(formatModelSize(model?.contextWindow));
-		setMaxTokens(formatModelSize(model?.maxTokens));
+		setContextWindow(sizeText(model?.contextWindow));
+		setMaxTokens(sizeText(model?.maxTokens));
 		setLevels(enabledLevels(model));
 		setImageInput((model?.input ?? ["text"]).includes("image"));
 		setMaxTokensField(model?.maxTokensField ?? "max_tokens");
@@ -83,12 +93,12 @@ export function ModelDialog({
 		}
 		const context = parseModelSize(contextWindow);
 		if (contextWindow.trim().length > 0 && context === undefined) {
-			setError("上下文窗口要填数字，可带 k 或 m");
+			setError("上下文窗口只能填正整数");
 			return;
 		}
 		const output = parseModelSize(maxTokens);
 		if (maxTokens.trim().length > 0 && output === undefined) {
-			setError("最大输出要填数字，可带 k 或 m");
+			setError("最大输出只能填正整数");
 			return;
 		}
 		onSubmit({
@@ -150,9 +160,10 @@ export function ModelDialog({
 				<span className="form-label">上下文窗口</span>
 				<input
 					value={contextWindow}
-					onChange={(event) => setContextWindow(event.target.value)}
-					placeholder="如 128k"
+					onChange={(event) => setContextWindow(digitsOnly(event.target.value))}
+					placeholder="如 128000"
 					aria-label="上下文窗口"
+					inputMode="numeric"
 					spellCheck={false}
 					autoComplete="off"
 					className="form-input"
@@ -162,9 +173,10 @@ export function ModelDialog({
 				<span className="form-label">最大输出 Token</span>
 				<input
 					value={maxTokens}
-					onChange={(event) => setMaxTokens(event.target.value)}
+					onChange={(event) => setMaxTokens(digitsOnly(event.target.value))}
 					placeholder="如 8192"
 					aria-label="最大输出"
+					inputMode="numeric"
 					spellCheck={false}
 					autoComplete="off"
 					className="form-input"
