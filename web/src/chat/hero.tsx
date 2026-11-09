@@ -11,8 +11,8 @@ const STARTS: readonly { readonly icon: typeof Search; readonly text: string }[]
 /**
  * 新建任务空态。
  *
- * 只留干活要用的东西：一行产品说明、卡帽与输入卡、三条可点的起点建议。
- * 设计稿的空态页固定不挂右面板，这里也不设面板开关。
+ * 顶部是居中的品牌头（标识、名称、定位、一行说明），下面只留卡帽、输入卡与三条
+ * 可点的起点建议。设计稿的空态页固定不挂右面板，这里也不设面板开关。
  */
 export function Hero({
 	composer,
@@ -24,10 +24,14 @@ export function Hero({
 	return (
 		<div className="blank">
 			<div className="blank-in">
-				<div className="eyebrow" style={{ marginBottom: 14 }}>
-					REINS · CODING AGENT
+				<div className="hero-head">
+					<div className="hero-brand">
+						<div className="brandmark">R</div>
+						<span className="hero-name">Reins</span>
+					</div>
+					<div className="eyebrow">CODING AGENT HARNESS</div>
+					<p className="lede">Reins 是一款运行在终端与桌面的编码智能体。描述任务、审阅执行、合入成果。</p>
 				</div>
-				<p className="lede">Reins 是一款运行在终端与桌面的编码智能体。描述任务、审阅执行、合入成果。</p>
 
 				{composer}
 

@@ -360,9 +360,41 @@
 	padding: 0 28px;
 }
 
-.blank .lede {
-	/* 标题去掉后，这行说明与输入卡之间靠 26px 下边距留呼吸 */
-	margin: 0 0 26px;
+/* 品牌头单独居中：下面的输入卡与建议行仍按内容列左对齐，两者共用同一个中心轴 */
+.hero-head {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-bottom: 26px;
+	text-align: center;
+}
+
+.hero-brand {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+/* 复用侧栏的品牌标识，放大到与名称同一量级；配色令牌自带明暗主题适配 */
+.hero-brand .brandmark {
+	width: 30px;
+	height: 30px;
+	border-radius: var(--r-2);
+	font-size: var(--fs-14);
+}
+
+.hero-name {
+	font-size: var(--fs-27);
+	font-weight: 600;
+	letter-spacing: -0.032em;
+}
+
+.hero-head .eyebrow {
+	margin-top: 10px;
+}
+
+.hero-head .lede {
+	margin: 10px 0 0;
 	font-size: var(--fs-13);
 	line-height: 1.7;
 	color: var(--ink-3);
