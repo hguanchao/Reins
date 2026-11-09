@@ -10,6 +10,7 @@ export function ModelDialog({
 	model,
 	existingIds,
 	patch,
+	advanced = false,
 	onSubmit,
 	onClose,
 }: {
@@ -18,6 +19,8 @@ export function ModelDialog({
 	readonly model: ProviderModel | undefined;
 	readonly existingIds: readonly string[];
 	readonly patch: { readonly api: string; readonly baseUrl: string };
+	/** 打开时直接展开高级字段 */
+	readonly advanced?: boolean;
 	onSubmit(next: ProviderModel): void;
 	onClose(): void;
 }): ReactElement {
@@ -30,7 +33,7 @@ export function ModelDialog({
 	const [error, setError] = useState<string | undefined>(undefined);
 	// 每次打开重置一次，避免沿用上一次的输入
 	const [seed, setSeed] = useState<string | undefined>(undefined);
-	const key = `${open ? "1" : "0"}:${model?.id ?? ""}`;
+	const key = `${open ? "1" : "0"}:${model?.id ?? ""}:${advanced ? "adv" : ""}`;
 	if (seed !== key) {
 		setSeed(key);
 		if (open) {
@@ -39,7 +42,7 @@ export function ModelDialog({
 			setMaxTokens(model?.maxTokens === undefined ? "" : String(model.maxTokens));
 			setReasoning(model?.reasoning ?? false);
 			setImageInput((model?.input ?? ["text"]).includes("image"));
-			setAdvOpen(false);
+			setAdvOpen(advanced);
 			setError(undefined);
 		}
 	}

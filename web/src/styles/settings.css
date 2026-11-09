@@ -314,39 +314,55 @@
 .pd {
 	display: flex;
 	flex-direction: column;
-	gap: 14px;
+	gap: 16px;
 	min-width: 0;
-	padding: 14px 16px 16px;
+	padding: 18px 20px 20px;
 }
 
+/* 供应商头：图标 + 可编辑名称 + 启停 + 溢出菜单 */
 .pd-h {
 	display: flex;
-	align-items: flex-start;
-	gap: 12px;
+	align-items: center;
+	gap: 9px;
 }
 
-.pd-h .tx {
+.pd-h > .ic {
+	flex: none;
+	color: var(--ink-2);
+}
+
+.pd-h .nm {
+	display: flex;
 	flex: 1;
+	align-items: center;
+	gap: 8px;
 	min-width: 0;
 }
 
-.pd-h .n {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	font-size: var(--fs-14);
-	font-weight: 600;
+.pd-more {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 26px;
+	height: 26px;
+	border-radius: var(--r-1);
+	color: var(--ink-3);
+}
+
+.pd-more:hover {
+	background: var(--wash);
+	color: var(--ink);
 }
 
 .name-input {
 	flex: 1;
 	min-width: 0;
-	height: 24px;
+	height: 28px;
 	margin-left: -4px;
 	padding: 0 4px;
 	border: 1px solid transparent;
 	border-radius: var(--r-1);
-	font-size: var(--fs-14);
+	font-size: var(--fs-16);
 	font-weight: 600;
 	letter-spacing: -0.012em;
 	color: var(--ink);
@@ -362,25 +378,53 @@
 	background: var(--paper);
 }
 
+/* 字段标签用常规字重：这里是配置表单，不是列表页的小标 */
 .field {
 	display: flex;
 	flex-direction: column;
-	gap: 5px;
+	gap: 6px;
 }
 
 .field .fl {
-	margin-bottom: 1px;
-	font-family: var(--mono);
-	font-size: var(--fs-9);
-	letter-spacing: 0.09em;
-	text-transform: uppercase;
-	color: var(--ink-4);
+	margin-bottom: 0;
+	font-family: var(--sans);
+	font-size: var(--fs-12);
+	font-weight: 400;
+	letter-spacing: 0;
+	text-transform: none;
+	color: var(--ink-3);
 }
 
 .field .hint {
 	font-size: var(--fs-10);
 	line-height: 1.55;
 	color: var(--ink-3);
+}
+
+/* 详情里的输入比列表页的紧凑控件更高更圆 */
+.pd .input-line {
+	height: 38px;
+	padding: 0 12px;
+	border-radius: var(--r-3);
+	font-size: var(--fs-12);
+}
+
+.pd .input-line .p {
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+}
+
+.pd .eye {
+	width: 24px;
+	height: 24px;
+	margin-right: -6px;
+}
+
+.pd .form-area {
+	min-height: 64px;
+	padding: 9px 12px;
+	border-radius: var(--r-3);
+	font-size: var(--fs-11);
 }
 
 .input-line {
@@ -471,7 +515,7 @@
 .model-list {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 8px;
 }
 
 .model-head {
@@ -479,32 +523,34 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
-	margin-bottom: 6px;
+	margin-bottom: 2px;
 }
 
+/* 添加模型：实底浅灰按钮，和参考图一致 */
 .m-add {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	height: 22px;
-	padding: 0 7px;
-	border: 1px dashed var(--rule-2);
-	border-radius: var(--r-1);
-	font-size: var(--fs-10);
-	color: var(--ink-3);
+	height: 28px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: var(--r-2);
+	background: var(--wash);
+	font-size: var(--fs-11);
+	color: var(--ink-2);
 }
 
 .m-add:hover {
-	border-color: var(--rule-3);
+	background: var(--wash-2);
 	color: var(--ink);
 }
 
 .model-row {
 	display: flex;
 	align-items: center;
-	gap: 7px;
-	height: 42px;
-	padding: 0 6px 0 12px;
+	gap: 8px;
+	min-height: 44px;
+	padding: 0 11px 0 12px;
 	border: 1px solid var(--rule-2);
 	border-radius: var(--r-3);
 	background: var(--raise);
@@ -515,28 +561,36 @@
 	border-color: var(--rule-3);
 }
 
+.model-row.is-current {
+	border-color: var(--ink-4);
+}
+
 .model-row .mn {
+	flex: 0 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	font-family: var(--mono);
 	font-size: var(--fs-12);
 	font-weight: 500;
 	color: var(--ink);
 }
 
-.model-row .ms {
+.model-row .badge {
+	flex: none;
 	font-family: var(--mono);
 	font-size: var(--fs-10);
-	color: var(--ink-4);
+	letter-spacing: 0;
+	color: var(--ink-2);
 }
 
 .mrow-acts {
 	display: flex;
-	align-items: center;
-	gap: 1px;
-	margin-left: auto;
 	flex: none;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
 }
 
 .mrow-ico {

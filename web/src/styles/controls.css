@@ -74,38 +74,6 @@
 	opacity: 1;
 }
 
-.rd {
-	position: relative;
-	display: grid;
-	place-items: center;
-	flex: none;
-	width: 15px;
-	height: 15px;
-	border: 1px solid var(--rule-3);
-	border-radius: 50%;
-	cursor: pointer;
-	transition: border-color var(--speed) var(--ease);
-}
-
-.rd::after {
-	content: "";
-	width: 7px;
-	height: 7px;
-	border-radius: 50%;
-	background: var(--ink);
-	transform: scale(0);
-	transition: transform var(--speed) var(--ease);
-}
-
-.rd[aria-checked="true"] {
-	border-width: 2px;
-	border-color: var(--ink);
-}
-
-.rd[aria-checked="true"]::after {
-	transform: scale(1);
-}
-
 .seg {
 	display: inline-flex;
 	gap: 2px;
@@ -252,6 +220,17 @@
 
 .pop-i .ic {
 	color: var(--ink-3);
+}
+
+/* 危险动作只在文字与图标上标色，悬停底色仍走灰阶 */
+.pop-i.pop-danger,
+.pop-i.pop-danger .ic {
+	color: var(--danger);
+}
+
+.pop-i.pop-danger:hover {
+	background: var(--danger-soft);
+	color: var(--danger);
 }
 
 .pop-i:disabled {

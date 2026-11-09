@@ -1,8 +1,8 @@
-import { Check, ChevronDown, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
+import { Box, Check, ChevronDown, Ellipsis, Eye, EyeOff, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
 import { api as apiClient } from "../api.ts";
-import { Dialog, toast } from "../components/ui/index.ts";
+import { Dialog, Menu, Switch, toast, type MenuEntry } from "../components/ui/index.ts";
 import { formatTokens } from "../lib/format.ts";
 import type { ProviderInput, ProviderModel, ProviderView, ThinkingLevel } from "../protocol.ts";
 import { ModelDialog } from "./model-dialog.tsx";
@@ -102,9 +102,11 @@ export function ProviderDetail({
 	const [models, setModels] = useState<readonly ProviderModel[]>(provider.models);
 	const [showKey, setShowKey] = useState(false);
 	const [apiOpen, setApiOpen] = useState(false);
-	const [dialog, setDialog] = useState<{ readonly index: number | undefined } | undefined>(undefined);
+	/** advanced 为真时直接展开模型弹层里的高级字段 */
+	const [dialog, setDialog] = useState<{ readonly index: number | undefined; readonly advanced: boolean } | undefined>(
+		undefined,
+	);
 	const [saving, setSaving] = useState(false);
-	const [status, setStatus] = useState("");
 	const [error, setError] = useState<string | undefined>(undefined);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -125,7 +127,6 @@ export function ProviderDetail({
 		setHeadersText(serializeHeaders(provider.headers));
 		setModels(provider.models);
 		setError(undefined);
-		setStatus("");
 	};
 
 	const submit = (): void => {
@@ -152,8 +153,7 @@ export function ProviderDetail({
 			.saveProvider(input)
 			.then(() => {
 				setApiKey("");
-				setStatus("已保存");
-				window.setTimeout(() => setStatus(""), 2000);
+				toast("已保存");
 				onSaved(provider.id);
 			})
 			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
@@ -173,24 +173,26 @@ export function ProviderDetail({
 
 	const usingHere = current?.provider === provider.id;
 	const format = API_FORMATS.find((item) => item.key === api) ?? API_FORMATS[0];
+	const menu: MenuEntry[] = [
+		{ type: "item", key: "delete", label: "删除供应商", icon: Trash2, danger: true, onSelect: () => setConfirmDelete(true) },
+	];
 
 	return (
 		<>
 			<div className="pd-h">
-				<div className="tx">
-					<div className="n">
-						<input
-							className="name-input"
-							value={name}
-							onChange={(event) => {
-								setName(event.target.value);
-								onNameChange(event.target.value);
-							}}
-							aria-label="供应商名称"
-							spellCheck={false}
-						/>
-						<span className="badge">{isNew ? "未保存" : provider.enabled ? "已启用" : "已停用"}</span>
-					</div>
+				<Box className="ic ic-18" />
+				<div className="nm">
+					<input
+						className="name-input"
+						value={name}
+						onChange={(event) => {
+							setName(event.target.value);
+							onNameChange(event.target.value);
+						}}
+						aria-label="供应商名称"
+						spellCheck={false}
+					/>
+					{isNew ? <span className="badge dash">未保存</span> : null}
 				</div>
 				{isNew ? null : (
 					<button
@@ -203,6 +205,25 @@ export function ProviderDetail({
 					>
 						<i />
 					</button>
+				)}
+				{isNew ? null : (
+					<Menu
+						align="end"
+						entries={menu}
+						trigger={({ toggle, open }) => (
+							<button
+								type="button"
+								className="pd-more"
+								title="更多"
+								aria-label="更多"
+								aria-haspopup="menu"
+								aria-expanded={open}
+								onClick={toggle}
+							>
+								<Ellipsis className="ic ic-14" />
+							</button>
+						)}
+					/>
 				)}
 			</div>
 
@@ -303,7 +324,11 @@ export function ProviderDetail({
 			<div className="field">
 				<div className="model-head">
 					<div className="fl">模型列表</div>
-					<button type="button" className="m-add" onClick={() => setDialog({ index: undefined })}>
+					<button
+						type="button"
+						className="m-add"
+						onClick={() => setDialog({ index: undefined, advanced: false })}
+					>
 						<Plus className="ic ic-12" />
 						添加模型
 					</button>
@@ -315,32 +340,30 @@ export function ProviderDetail({
 						models.map((model, index) => {
 							const active = usingHere && current?.model === model.id;
 							return (
-								<div key={model.id} className="model-row">
-									<span
-										role="radio"
-										aria-checked={active}
-										aria-label={`使用 ${model.name}`}
-										className="rd"
-										tabIndex={0}
-										onClick={() => onSelectModel(provider.id, model.id)}
-										onKeyDown={(event) => {
-											if (event.key === "Enter" || event.key === " ") onSelectModel(provider.id, model.id);
-										}}
-									/>
+								<div key={model.id} className={`model-row${active ? " is-current" : ""}`}>
 									<span className="mn">{model.name}</span>
-									<span className="ms">
-										{model.contextWindow === undefined ? "—" : formatTokens(model.contextWindow)}
-									</span>
-									{active ? <span className="badge">当前</span> : null}
+									{model.contextWindow === undefined ? null : (
+										<span className="badge">{formatTokens(model.contextWindow)}</span>
+									)}
+									{model.input.includes("image") ? <span className="badge">视觉</span> : null}
 									<span className="mrow-acts">
+										<button
+											type="button"
+											className="mrow-ico"
+											aria-label={`高级配置 ${model.id}`}
+											title="高级配置"
+											onClick={() => setDialog({ index, advanced: true })}
+										>
+											<Settings2 className="ic ic-14" />
+										</button>
 										<button
 											type="button"
 											className="mrow-ico"
 											aria-label={`编辑模型 ${model.id}`}
 											title="编辑模型"
-											onClick={() => setDialog({ index })}
+											onClick={() => setDialog({ index, advanced: false })}
 										>
-											<Pencil className="ic ic-12" />
+											<Pencil className="ic ic-14" />
 										</button>
 										<button
 											type="button"
@@ -351,8 +374,16 @@ export function ProviderDetail({
 												setModels((list) => list.filter((_, position) => position !== index))
 											}
 										>
-											<Trash2 className="ic ic-12" />
+											<Trash2 className="ic ic-14" />
 										</button>
+										<Switch
+											checked={active}
+											label={`使用 ${model.name}`}
+											onCheckedChange={() => {
+												// 开关就是「当前模型」：关掉当前项没有意义，只处理打开
+												if (!active) onSelectModel(provider.id, model.id);
+											}}
+										/>
 									</span>
 								</div>
 							);
@@ -393,43 +424,36 @@ export function ProviderDetail({
 				</div>
 			)}
 
-			<div className="pd-f">
-				{isNew ? null : (
+			{dirty || isNew || saving || error !== undefined ? (
+				<div className="pd-f">
+					<span className="pd-status" style={error === undefined ? undefined : { color: "var(--danger)" }}>
+						{error ?? ""}
+					</span>
 					<button
 						type="button"
-						className="b b-ghost b-sm"
-						style={{ color: "var(--danger)" }}
-						onClick={() => setConfirmDelete(true)}
+						className="b b-line b-sm"
+						disabled={isNew ? false : !dirty || saving}
+						onClick={isNew ? onDiscard : reset}
 					>
-						删除供应商
+						取消
 					</button>
-				)}
-				<span className="pd-status" style={error === undefined ? undefined : { color: "var(--danger)" }}>
-					{error ?? status}
-				</span>
-				<button
-					type="button"
-					className="b b-line b-sm"
-					disabled={isNew ? false : !dirty || saving}
-					onClick={isNew ? onDiscard : reset}
-				>
-					取消
-				</button>
-				<button
-					type="button"
-					className="b b-solid b-sm"
-					disabled={isNew ? saving : !dirty || saving}
-					onClick={submit}
-				>
-					{saving ? "保存中…" : "保存"}
-				</button>
-			</div>
+					<button
+						type="button"
+						className="b b-solid b-sm"
+						disabled={isNew ? saving : !dirty || saving}
+						onClick={submit}
+					>
+						{saving ? "保存中…" : "保存"}
+					</button>
+				</div>
+			) : null}
 
 			<ModelDialog
 				open={dialog !== undefined}
 				model={dialog?.index === undefined ? undefined : models[dialog.index]}
 				existingIds={models.filter((_, position) => position !== dialog?.index).map((model) => model.id)}
 				patch={{ api, baseUrl }}
+				advanced={dialog?.advanced ?? false}
 				onClose={() => setDialog(undefined)}
 				onSubmit={(next) => {
 					setModels((list) => {
@@ -457,7 +481,7 @@ export function ProviderDetail({
 			>
 				<p style={{ margin: 0 }}>删除后 providers.json 中的这项配置会移除，不能撤销。</p>
 				<p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, color: "var(--ink)" }}>
-					<Trash2 className="ic ic-12" />
+					<Trash2 className="ic ic-14" />
 					{provider.name}
 				</p>
 			</Dialog>
