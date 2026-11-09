@@ -258,7 +258,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 											setCollapsed((current) => ({ ...current, [workspace.path]: !(current[workspace.path] ?? false) }))
 										}
 										/* 按钮的 UA 默认 text-align:center 会把拉伸后的组名居中，demo 里名字靠左 */
-										style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flex: 1, textAlign: "left" }}
+										style={{ display: "flex", alignItems: "center", gap: 3, minWidth: 0, flex: 1, textAlign: "left" }}
 									>
 										<ChevronRight className={`ic ic-12${open ? " open" : ""}`} />
 										{open ? <FolderOpen className="ic ic-14" /> : <Folder className="ic ic-14" />}
@@ -283,8 +283,8 @@ export function Sidebar(props: SidebarProps): ReactElement {
 								</div>
 								{open ? (
 									rows.length === 0 ? (
-										/* 28 = 任务行标题列（8 内衬 + 12 状态位 + 8 间隙），空态文字与任务标题同列 */
-										<div className="side-sub" style={{ paddingLeft: 28, color: "var(--ink-4)", letterSpacing: 0 }}>
+										/* 19 = 任务行标题列（2 内衬 + 12 状态位 + 5 间隙），空态文字与任务标题同列 */
+										<div className="side-sub" style={{ paddingLeft: 19, color: "var(--ink-4)", letterSpacing: 0 }}>
 											暂无任务
 										</div>
 									) : (

@@ -240,11 +240,10 @@
 	transform: rotate(90deg);
 }
 
-/* 文件夹图标与任务行标题同列（8 内衬 + 12 状态位 + 8 间隙 = 28px）；
-	折叠箭头保持贴左缘与「工作区」标题对齐。箭头宽度随界面字号缩放，
-	差量用 calc 反推：28 − 4 内衬 − 6 间隙 − 箭头宽，任意字号下都落在标题列上 */
+/* 列宽基准是固定的 19px，箭头却随界面字号缩放；差量在默认字号下正好为 0，
+	所以箭头与目录图标之间只留 3px 间隙，换字号时也不会把目录图标挤离标题列 */
 .side-ws-head .ic.ic-14 {
-	margin-left: calc(18px - var(--ui-font-size, 14px) * 12 / 14);
+	margin-left: calc(12px - var(--ui-font-size, 14px) * 12 / 14);
 }
 
 .side-ws-head:hover .ic {
@@ -294,9 +293,11 @@
 	position: relative;
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	/* 2 内衬 + 12 状态位 + 5 间隙 = 19px：标题列与工作区行的目录图标盒左缘同列。
+		不再靠给目录图标补 margin 追齐，箭头与图标之间也就不会被拉出双倍空白 */
+	gap: 5px;
 	height: 30px;
-	padding: 0 8px;
+	padding: 0 8px 0 2px;
 	margin-top: 1px;
 	border-radius: var(--r-2);
 	cursor: pointer;
