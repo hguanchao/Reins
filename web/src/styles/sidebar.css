@@ -381,17 +381,6 @@
 	font-weight: 500;
 }
 
-.sess[aria-current="true"]::before {
-	content: "";
-	position: absolute;
-	left: 0;
-	top: 8px;
-	bottom: 8px;
-	width: 2px;
-	border-radius: 1px;
-	background: var(--ink);
-}
-
 /* 会话状态：形状 + 明度，不靠颜色 */
 .st-run,
 .st-wait,
