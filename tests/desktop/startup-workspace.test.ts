@@ -12,6 +12,7 @@ import {
 } from "#desktop/startup-workspace.ts";
 import {
 	dropWorkspace,
+	listKnownWorkspaces,
 	listWorkspaces,
 	registerWorkspace,
 	unregisterWorkspace,
@@ -75,13 +76,18 @@ describe("启动工作区解析", () => {
 		assert.equal(key(JSON.parse(readFileSync(paths.userData(LAST_WORKSPACE_FILE), "utf8")).path), key(resolved));
 	});
 
-	it("隐藏但仍已知的工作区可以恢复，历史任务仍可查找", () => {
-		const { paths } = fixture();
+	it("从侧栏移除的工作区不再作为启动目录，但历史查找路径仍保留", () => {
+		const { paths, fallback } = fixture();
 		const canonical = registerWorkspace(projectDir());
 		assert.equal(unregisterWorkspace(canonical), true);
 		rememberWorkspace(paths, canonical);
-		assert.equal(key(resolveStartupWorkspace(paths)), key(canonical));
-		assert.deepEqual(listWorkspaces(), []);
+
+		const resolved = resolveStartupWorkspace(paths);
+		assert.equal(key(resolved), key(realpathSync(fallback)));
+		assert.notEqual(key(resolved), key(canonical));
+		assert.deepEqual(listWorkspaces().map(key), [key(resolved)]);
+		assert.ok(listKnownWorkspaces().some((path) => key(path) === key(canonical)));
+		assert.equal(key(lastWorkspace(paths) ?? ""), key(resolved));
 	});
 
 	it("环境变量覆盖优先于上次记忆", () => {

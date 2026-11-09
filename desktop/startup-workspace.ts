@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 
 import {
 	canonicalWorkspacePath,
-	listKnownWorkspaces,
+	listWorkspaces,
 	registerWorkspace,
 } from "#src/workspace/catalog.ts";
 import { LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
@@ -10,8 +10,8 @@ import { LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
 /**
  * 启动工作区的解析与记忆。
  *
- * 上次用过的目录只是一条恢复线索：项目被移除后登记表里就不再有它，这条线索不能反过来
- * 把项目重新登记回来，否则「移除工作区」一重启就失效。
+ * 上次用过的目录只是一条恢复线索：项目被删除或隐藏后都不该由这条线索重新激活，
+ * 否则「移除 / 删除工作区」一重启就失效。
  */
 
 export function rememberWorkspace(paths: DesktopPaths, path: string): void {
@@ -55,12 +55,14 @@ export function resolveStartupWorkspace(paths: DesktopPaths): string {
 	const previous = lastWorkspace(paths);
 	if (previous !== undefined) {
 		const canonical = canonicalWorkspacePath(previous);
-		const known = listKnownWorkspaces().some((path) => sameWorkspacePath(path, canonical));
-		if (known) {
+		// 只认仍可见的项目：从侧栏移除的条目还留在清单里供历史任务查找，
+		// 但不该再被当成默认工作目录，否则「移除」之后应用仍旧在那个目录开工。
+		const visible = listWorkspaces().some((path) => sameWorkspacePath(path, canonical));
+		if (visible) {
 			rememberWorkspace(paths, canonical);
 			return canonical;
 		}
-		// 记忆指向一个已被移除的项目：不复活它，继续落到自管空工作区；启动成功后
+		// 记忆指向已删除或已移除的项目：不复活它，继续落到自管空工作区；启动成功后
 		// 控制器还会把这条过期记忆改写成新目录。
 	}
 
