@@ -31,6 +31,7 @@ export function Popover({
 	align = "end",
 	placement = "auto",
 	className,
+	zIndex,
 }: {
 	readonly trigger: (state: { readonly open: boolean; toggle(): void }) => ReactNode;
 	readonly children: ReactNode | ((close: () => void) => ReactNode);
@@ -38,6 +39,8 @@ export function Popover({
 	/** 输入卡的浮层一律向上翻：向下会盖住下方的起点建议与状态条。 */
 	readonly placement?: "above" | "auto";
 	readonly className?: string;
+	/** 弹层里的浮层要压过遮罩；不传时用默认层级。 */
+	readonly zIndex?: number;
 }): ReactElement {
 	const [open, setOpen] = useState(false);
 	const [position, setPosition] = useState<PanelPosition | undefined>(undefined);
@@ -90,7 +93,12 @@ export function Popover({
 			{open
 				? createPortal(
 						<>
-							<div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
+							<div
+								className="fixed inset-0 z-40"
+								style={zIndex === undefined ? undefined : { zIndex }}
+								aria-hidden="true"
+								onClick={() => setOpen(false)}
+							/>
 							<div
 								role="dialog"
 								style={{
@@ -100,6 +108,7 @@ export function Popover({
 									left: position?.left,
 									right: position?.right,
 									maxHeight: position?.maxHeight,
+									...(zIndex === undefined ? {} : { zIndex: zIndex + 1 }),
 								}}
 								className={cn("pop animate-pop z-50 overflow-y-auto", className)}
 							>

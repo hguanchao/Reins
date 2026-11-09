@@ -1014,3 +1014,81 @@
 	font-size: var(--fs-10);
 	color: var(--ink-4);
 }
+
+/* 模型弹层：字段整行排布，高级配置是三列下拉，与设计稿一致 */
+.mm-field {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.mm-field .form-label {
+	margin-bottom: 6px;
+}
+
+.mm-field .form-error {
+	margin: 5px 0 0;
+}
+
+.mm-adv-h {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	margin-top: 2px;
+	font-size: var(--fs-12);
+	color: var(--ink-2);
+}
+
+.mm-adv-h:hover {
+	color: var(--ink);
+}
+
+.mm-adv-h .chev {
+	transition: transform var(--speed) var(--ease);
+}
+
+.mm-adv-h[aria-expanded="false"] .chev {
+	transform: rotate(-90deg);
+}
+
+.mm-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.mm-select {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	width: 100%;
+	height: 30px;
+	padding: 0 8px 0 10px;
+	border: 1px solid var(--rule-2);
+	border-radius: var(--r-2);
+	background: var(--paper);
+	font-size: var(--fs-11);
+	color: var(--ink);
+	transition: border-color var(--speed) var(--ease);
+}
+
+.mm-select:hover {
+	border-color: var(--rule-3);
+}
+
+.mm-select[aria-expanded="true"] {
+	border-color: var(--ink-4);
+}
+
+.mm-select .val {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.mm-select .chev {
+	flex: none;
+	color: var(--ink-4);
+}

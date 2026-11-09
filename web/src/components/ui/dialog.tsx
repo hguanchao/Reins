@@ -30,9 +30,14 @@ export function Dialog({
 			if (event.key === "Escape") onClose();
 		};
 		document.addEventListener("keydown", onKey);
-		const first = panelRef.current?.querySelector<HTMLElement>(
-			"button:not(:disabled), [href], input, textarea, select, [tabindex]:not([tabindex='-1'])",
-		);
+		// 有输入项时先聚焦输入项：弹层多为填表，落在关闭按钮上既反直觉又会画出焦点框
+		const first =
+			panelRef.current?.querySelector<HTMLElement>(
+				"input:not(:disabled):not([type='hidden']), textarea:not(:disabled), select:not(:disabled)",
+			) ??
+			panelRef.current?.querySelector<HTMLElement>(
+				"button:not(:disabled), [href], [tabindex]:not([tabindex='-1'])",
+			);
 		first?.focus();
 		return () => document.removeEventListener("keydown", onKey);
 	}, [open, onClose]);

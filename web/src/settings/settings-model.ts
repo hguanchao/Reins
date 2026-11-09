@@ -148,3 +148,23 @@ export function parseArgumentLines(text: string): readonly string[] {
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0);
 }
+
+/** 模型弹层里的数量显示：整 m / 整 k 用短写法，其余照原样。 */
+export function formatModelSize(value: number | undefined): string {
+	if (value === undefined) return "";
+	if (value >= 1_000_000 && value % 1_000_000 === 0) return `${value / 1_000_000}m`;
+	if (value >= 1_000 && value % 1_000 === 0) return `${value / 1_000}k`;
+	return String(value);
+}
+
+/** 解析带 k/m 后缀的数量；解析不出来返回 undefined，由调用方报错。 */
+export function parseModelSize(value: string): number | undefined {
+	const text = value.trim().toLowerCase();
+	if (text.length === 0) return undefined;
+	const match = /^(\d+(?:\.\d+)?)\s*([km])?$/.exec(text);
+	if (match === null) return undefined;
+	const base = Number.parseFloat(match[1] ?? "");
+	if (!Number.isFinite(base) || base <= 0) return undefined;
+	const scale = match[2] === "k" ? 1_000 : match[2] === "m" ? 1_000_000 : 1;
+	return Math.round(base * scale);
+}
