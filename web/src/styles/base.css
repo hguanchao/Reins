@@ -63,6 +63,14 @@
 		outline-offset: 2px;
 	}
 
+	/* 输入框的焦点由插入光标与组件自己的边框表达。上面那条通用焦点框特异性更高，
+		会把 input 的复位盖掉，浮层里的裸搜索框一聚焦就被画成一圈黑框；这里统一收回来，
+		按钮与开关的键盘焦点环不受影响 */
+	input:focus-visible,
+	textarea:focus-visible {
+		outline: none;
+	}
+
 	*::-webkit-scrollbar {
 		width: 10px;
 		height: 10px;
