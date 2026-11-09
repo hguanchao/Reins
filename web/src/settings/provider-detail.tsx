@@ -67,24 +67,32 @@ const API_FORMATS: readonly { readonly key: string; readonly name: string; reado
  */
 export function ProviderDetail({
 	provider,
+	isNew,
 	current,
 	effort,
 	levels,
 	onToggleEnabled,
 	onSelectModel,
 	onUpdate,
+	onNameChange,
 	onSaved,
 	onDeleted,
+	onDiscard,
 }: {
 	readonly provider: ProviderView;
+	/** 尚未写盘的新供应商：不提供启停与删除，取消等于丢弃 */
+	readonly isNew: boolean;
 	readonly current: { readonly provider: string; readonly model: string } | undefined;
 	readonly effort: ThinkingLevel;
 	readonly levels: readonly ThinkingLevel[];
 	onToggleEnabled(enabled: boolean): void;
 	onSelectModel(provider: string, model: string): void;
 	onUpdate(update: { effort?: ThinkingLevel }): void;
+	/** 名字一改就同步左栏，不必等保存 */
+	onNameChange(name: string): void;
 	onSaved(id: string): void;
 	onDeleted(): void;
+	onDiscard(): void;
 }): ReactElement {
 	const [name, setName] = useState(provider.name);
 	const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? "");
@@ -110,6 +118,7 @@ export function ProviderDetail({
 
 	const reset = (): void => {
 		setName(provider.name);
+		onNameChange(provider.name);
 		setBaseUrl(provider.baseUrl ?? "");
 		setApi(provider.api ?? "anthropic-messages");
 		setApiKey("");
@@ -173,23 +182,28 @@ export function ProviderDetail({
 						<input
 							className="name-input"
 							value={name}
-							onChange={(event) => setName(event.target.value)}
+							onChange={(event) => {
+								setName(event.target.value);
+								onNameChange(event.target.value);
+							}}
 							aria-label="供应商名称"
 							spellCheck={false}
 						/>
-						<span className="badge">{provider.enabled ? "已启用" : "已停用"}</span>
+						<span className="badge">{isNew ? "未保存" : provider.enabled ? "已启用" : "已停用"}</span>
 					</div>
 				</div>
-				<button
-					type="button"
-					role="switch"
-					aria-checked={provider.enabled}
-					aria-label={`${provider.enabled ? "停用" : "启用"} ${provider.name}`}
-					className="sw"
-					onClick={() => onToggleEnabled(!provider.enabled)}
-				>
-					<i />
-				</button>
+				{isNew ? null : (
+					<button
+						type="button"
+						role="switch"
+						aria-checked={provider.enabled}
+						aria-label={`${provider.enabled ? "停用" : "启用"} ${provider.name}`}
+						className="sw"
+						onClick={() => onToggleEnabled(!provider.enabled)}
+					>
+						<i />
+					</button>
+				)}
 			</div>
 
 			<div className="field">
@@ -287,20 +301,6 @@ export function ProviderDetail({
 			</div>
 
 			<div className="field">
-				<div className="fl">请求头</div>
-				<textarea
-					className="form-area"
-					style={{ minHeight: 56 }}
-					value={headersText}
-					onChange={(event) => setHeadersText(event.target.value)}
-					placeholder={"X-Custom-Header: value\n支持 JSON 对象，或每行一条「名称: 值」"}
-					aria-label="请求头"
-					spellCheck={false}
-				/>
-				<div className="hint">随每次请求发送给这个供应商；留空表示没有额外请求头。</div>
-			</div>
-
-			<div className="field">
 				<div className="model-head">
 					<div className="fl">模型列表</div>
 					<button type="button" className="m-add" onClick={() => setDialog({ index: undefined })}>
@@ -361,6 +361,20 @@ export function ProviderDetail({
 				</div>
 			</div>
 
+			<div className="field">
+				<div className="fl">请求头</div>
+				<textarea
+					className="form-area"
+					style={{ minHeight: 56 }}
+					value={headersText}
+					onChange={(event) => setHeadersText(event.target.value)}
+					placeholder={"X-Custom-Header: value\n支持 JSON 对象，或每行一条「名称: 值」"}
+					aria-label="请求头"
+					spellCheck={false}
+				/>
+				<div className="hint">随每次请求发送给这个供应商；留空表示没有额外请求头。</div>
+			</div>
+
 			{levels.length === 0 ? null : (
 				<div className="field">
 					<div className="fl">思考强度</div>
@@ -380,21 +394,33 @@ export function ProviderDetail({
 			)}
 
 			<div className="pd-f">
-				<button
-					type="button"
-					className="b b-ghost b-sm"
-					style={{ color: "var(--danger)" }}
-					onClick={() => setConfirmDelete(true)}
-				>
-					删除供应商
-				</button>
+				{isNew ? null : (
+					<button
+						type="button"
+						className="b b-ghost b-sm"
+						style={{ color: "var(--danger)" }}
+						onClick={() => setConfirmDelete(true)}
+					>
+						删除供应商
+					</button>
+				)}
 				<span className="pd-status" style={error === undefined ? undefined : { color: "var(--danger)" }}>
 					{error ?? status}
 				</span>
-				<button type="button" className="b b-line b-sm" disabled={!dirty || saving} onClick={reset}>
+				<button
+					type="button"
+					className="b b-line b-sm"
+					disabled={isNew ? false : !dirty || saving}
+					onClick={isNew ? onDiscard : reset}
+				>
 					取消
 				</button>
-				<button type="button" className="b b-solid b-sm" disabled={!dirty || saving} onClick={submit}>
+				<button
+					type="button"
+					className="b b-solid b-sm"
+					disabled={isNew ? saving : !dirty || saving}
+					onClick={submit}
+				>
 					{saving ? "保存中…" : "保存"}
 				</button>
 			</div>

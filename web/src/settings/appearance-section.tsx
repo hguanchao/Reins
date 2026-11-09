@@ -113,6 +113,9 @@ export function AppearanceSection({
 					value={fontSize}
 					onChange={changeFontSize}
 				/>
+				<div className="preview-box">
+					这是一段预览文字。所有文件工具在访问前都先校验目标是否落在工作区根目录内。
+				</div>
 			</div>
 
 			<div className="mono-label" style={{ fontSize: 9, marginBottom: 10, marginTop: 22 }}>
@@ -125,9 +128,6 @@ export function AppearanceSection({
 					value={codeSize}
 					onChange={changeCodeSize}
 				/>
-				<div className="preview-box">
-					这是一段预览文字。所有文件工具在访问前都先校验目标是否落在工作区根目录内。
-				</div>
 			</div>
 
 			<div className="switch-rows">

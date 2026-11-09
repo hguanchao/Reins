@@ -83,6 +83,22 @@ export function personalizationBytes(text: string): number {
 	return new TextEncoder().encode(text).length;
 }
 
+/** 归档时间读起来要成句：「3 天前归档」；超过一周给日期，避免「11/2 前归档」这种断句。 */
+export function archivedAgo(iso: string, now: number = Date.now()): string {
+	const time = Date.parse(iso);
+	if (Number.isNaN(time)) return "归档时间未知";
+	const delta = now - time;
+	const minute = 60_000;
+	const hour = 60 * minute;
+	const day = 24 * hour;
+	if (delta < minute) return "刚刚归档";
+	if (delta < hour) return `${Math.floor(delta / minute)} 分钟前归档`;
+	if (delta < day) return `${Math.floor(delta / hour)} 小时前归档`;
+	if (delta < 7 * day) return `${Math.floor(delta / day)} 天前归档`;
+	const at = new Date(time);
+	return `${at.getMonth() + 1}月${at.getDate()}日归档`;
+}
+
 /** 计数器上的 KB；0 不显示小数，其余保留一位，和输入框右下角的读数一致。 */
 export function formatKb(bytes: number): string {
 	if (bytes === 0) return "0 KB";

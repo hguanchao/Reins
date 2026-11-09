@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 
 import { formatCost, formatDuration, formatTokens } from "../lib/format.ts";
 import type { ActivitySummary, UsageSummary } from "../protocol.ts";
-import { Card, Row, Section, SettingsPane } from "./controls.tsx";
+import { Section, SettingsPane } from "./controls.tsx";
 
 /**
  * 使用统计。
@@ -24,6 +24,12 @@ export function UsageSection({
 	const share = (value: number): number => Math.round((value / total) * 100);
 	const inputSide = usage.input + usage.cacheRead + usage.cacheWrite;
 	const hit = inputSide > 0 ? Math.round((usage.cacheRead / inputSide) * 100) : undefined;
+	// 零值段不画：宽度 0 仍然会被 flex 撑出一小块色块，看着像有数据
+	const segments = [
+		{ key: "a", value: usage.input },
+		{ key: "b", value: usage.cacheRead },
+		{ key: "c", value: usage.output },
+	].filter((segment) => segment.value > 0);
 
 	return (
 		<SettingsPane
@@ -63,9 +69,9 @@ export function UsageSection({
 
 			<Section name="构成" hint="按 token 计">
 				<div className="tkbar">
-					<i className="a" style={{ width: `${share(usage.input)}%` }} />
-					<i className="b" style={{ width: `${share(usage.cacheRead)}%` }} />
-					<i className="c" style={{ width: `${share(usage.output)}%` }} />
+					{segments.map((segment) => (
+						<i key={segment.key} className={segment.key} style={{ width: `${share(segment.value)}%` }} />
+					))}
 				</div>
 				<div className="legend">
 					<span>
@@ -118,13 +124,32 @@ export function UsageSection({
 			</Section>
 
 			<Section name="按模型" hint="含子智能体">
-				<Card>
-					<Row
-						title="主对话"
-						description="统计随当前任务累计；切换任务后重新计算。"
-						value={<span className="v mono">{formatTokens(usage.total)}</span>}
-					/>
-				</Card>
+				<div className="set-card">
+					<div className="set-row um um-head">
+						<span className="um-name">模型</span>
+						<span className="um-col" style={{ width: 56 }}>
+							请求
+						</span>
+						<span className="um-col" style={{ width: 80 }}>
+							Token
+						</span>
+						<span className="um-col" style={{ width: 64 }}>
+							费用
+						</span>
+					</div>
+					<div className="set-row um">
+						<span className="um-name">主对话</span>
+						<span className="um-col" style={{ width: 56 }}>
+							{usage.requests}
+						</span>
+						<span className="um-col" style={{ width: 80 }}>
+							{formatTokens(usage.total)}
+						</span>
+						<span className="um-col" style={{ width: 64 }}>
+							{cost ?? "—"}
+						</span>
+					</div>
+				</div>
 				<p className="set-note">子智能体的用量并入主对话；单模型拆分需要内核上报模型标识。</p>
 			</Section>
 		</SettingsPane>

@@ -100,9 +100,7 @@ export function GeneralSection({
 								aria-label="通知时机"
 								onClick={toggleNotify}
 							>
-								<span className="t" style={{ fontFamily: "var(--mono)", fontSize: "var(--fs-11)" }}>
-									{currentLabel}
-								</span>
+								<span className="t">{currentLabel}</span>
 								<svg
 									className="ic ic-12 chev"
 									viewBox="0 0 24 24"
@@ -181,7 +179,7 @@ export function GeneralSection({
 					)
 				: null}
 
-				<Section name="任务列表">
+			<Section name="任务列表">
 				<Card>
 					<Row title="分组方式" description="侧栏任务区按项目归类。" value={<span className="v">按项目</span>} />
 					<Row title="排序" description="各组内按最近更新时间排列。" value={<span className="v">最近更新</span>} />

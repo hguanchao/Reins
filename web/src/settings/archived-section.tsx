@@ -2,9 +2,10 @@ import { Archive } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
 import { Dialog } from "../components/ui/index.ts";
-import { relativeTime } from "../lib/format.ts";
+import { workspaceName } from "../lib/format.ts";
 import type { SessionSummary } from "../protocol.ts";
 import { Card, Empty, Row, Section, SettingsPane } from "./controls.tsx";
+import { archivedAgo } from "./settings-model.ts";
 
 /**
  * 已归档任务。
@@ -41,7 +42,7 @@ export function ArchivedSection({
 							<Row
 								key={session.id}
 								title={session.title ?? "未命名任务"}
-								description={`${session.workspacePath ?? "未绑定工作区"} · ${relativeTime(session.updatedAt)}归档`}
+								description={`${session.workspacePath === undefined || session.workspacePath === null ? "未绑定工作区" : workspaceName(session.workspacePath)} · ${archivedAgo(session.updatedAt)}`}
 							>
 								<button type="button" className="b b-line b-sm" onClick={() => onRestore(session.id)}>
 									恢复

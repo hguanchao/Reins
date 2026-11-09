@@ -2,8 +2,9 @@ import { Blocks, FileText, MoreVertical, Pencil, Puzzle, Trash2 } from "lucide-r
 import { useEffect, useState, type ReactElement } from "react";
 
 import { api } from "../api.ts";
-import { Dialog, Menu, type MenuEntry } from "../components/ui/index.ts";
-import type { McpServerInfo, SettingsSnapshot } from "../protocol.ts";
+import { Dialog, Menu, Switch, toast, type MenuEntry } from "../components/ui/index.ts";
+import type { McpServerInput, SettingsSnapshot } from "../protocol.ts";
+import { desktopBridge } from "../platform.ts";
 import { Card, Empty, Section, SettingsPane, Tag } from "./controls.tsx";
 import { McpServerDialog } from "./mcp-server-dialog.tsx";
 import { PluginLogsDialog } from "./plugin-logs-dialog.tsx";
@@ -39,12 +40,16 @@ export function ExtensionsSection({
 	const [query, setQuery] = useState("");
 	const [uploadOpen, setUploadOpen] = useState(false);
 	const [mcpOpen, setMcpOpen] = useState(false);
-	const [mcpEdit, setMcpEdit] = useState<McpServerInfo | undefined>(undefined);
+	/** 编辑要读回命令 / 地址 / 环境变量；只带名字打开会把原有配置写空 */
+	const [mcpEdit, setMcpEdit] = useState<McpServerInput | undefined>(undefined);
 	const [mcpDelete, setMcpDelete] = useState<ExtensionItem | undefined>(undefined);
 	const [skillEdit, setSkillEdit] = useState<ExtensionItem | undefined>(undefined);
 	const [skillDelete, setSkillDelete] = useState<ExtensionItem | undefined>(undefined);
 	const [logs, setLogs] = useState<string | undefined>(undefined);
 	const [busy, setBusy] = useState(false);
+	const [toggling, setToggling] = useState<string | undefined>(undefined);
+	// 启停插件要改本机配置并重启服务，只有桌面壳提供这条通道
+	const bridge = desktopBridge();
 
 	// MCP 状态会从 connecting 走到 connected/unreachable；页签打开时轮询，离开就停
 	useEffect(() => {
@@ -90,22 +95,39 @@ export function ExtensionsSection({
 			.finally(() => setBusy(false));
 	};
 
+	const togglePlugin = (name: string, enabled: boolean): void => {
+		if (bridge === undefined || toggling !== undefined) return;
+		setToggling(name);
+		void bridge
+			.togglePlugin(name, !enabled)
+			.then((result) => {
+				if (!result.ok) {
+					toast(result.error ?? `${name} 的启用状态没有写入`, "error");
+					return;
+				}
+				toast(`${enabled ? "已启用" : "已禁用"} ${name}，服务重启后生效`);
+				onRefresh();
+			})
+			.catch((cause: unknown) => {
+				toast(cause instanceof Error ? cause.message : String(cause), "error");
+			})
+			.finally(() => setToggling(undefined));
+	};
+
+	const openMcpEdit = (name: string): void => {
+		void api
+			.mcpServer(name)
+			.then((detail) => setMcpEdit(detail))
+			.catch((cause: unknown) => {
+				toast(cause instanceof Error ? cause.message : String(cause), "error");
+			});
+	};
+
 	return (
 		<SettingsPane
 			eyebrow="SETTINGS / EXTENSIONS"
 			title="扩展管理"
 			description="管理本机已装载的插件、技能与 MCP 连接。装载后从下一回合开始可用。"
-			action={
-				tab === "skill" ? (
-					<button type="button" className="b b-line b-sm" onClick={() => setUploadOpen(true)}>
-						上传技能
-					</button>
-				) : tab === "mcp" ? (
-					<button type="button" className="b b-line b-sm" onClick={() => setMcpOpen(true)}>
-						添加连接器
-					</button>
-				) : undefined
-			}
 		>
 			<div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 26, marginBottom: 4 }}>
 				<div className="xtabs" role="tablist">
@@ -145,18 +167,35 @@ export function ExtensionsSection({
 						style={{ fontFamily: "var(--sans)", fontSize: "var(--fs-11)" }}
 					/>
 				</div>
+				{tab === "skill" ? (
+					<button type="button" className="b b-line b-sm" onClick={() => setUploadOpen(true)}>
+						上传技能
+					</button>
+				) : tab === "mcp" ? (
+					<button type="button" className="b b-line b-sm" onClick={() => setMcpOpen(true)}>
+						添加连接器
+					</button>
+				) : null}
 			</div>
 
 			{settings === undefined ? (
 				<p className="set-note">正在读取本机扩展…</p>
-			) : items.length === 0 || (filtered.length === 0 && !searching) ? (
+			) : items.length === 0 ? (
 				<Empty
 					icon={Blocks}
 					title="还没有装载扩展"
 					description="Reins 的核心能力全部内置；插件、技能与 MCP 服务器装载后会出现在这里。"
 				/>
 			) : filtered.length === 0 ? (
-				<Empty icon={Blocks} title="没有匹配的扩展" description="换一个名称、描述或类型关键词试试。" />
+				searching ? (
+					<Empty icon={Blocks} title="没有匹配的扩展" description="换一个名称、描述或类型关键词试试。" />
+				) : (
+					<Empty
+						icon={Blocks}
+						title={`还没有装载${tab === "all" ? "扩展" : TAB_LABELS[tab]}`}
+						description={`这里只列出实际装载的${tab === "all" ? "扩展" : KIND_LABELS[tab]}；装载后会出现在这个分类下。`}
+					/>
+				)
 			) : (
 				groups.map((group) => (
 					<Section key={group.kind} name={group.label} hint={String(group.items.length)}>
@@ -175,20 +214,30 @@ export function ExtensionsSection({
 												<Tag tone={item.status === "connected" ? "line" : "dash"}>
 													{statusLabel(item.status)}
 												</Tag>
-											) : item.disabled ? (
-												<Tag tone="dash">已禁用</Tag>
-											) : (
-												<Tag tone="ghost">已启用</Tag>
-											)}
+											) : bridge === undefined ? (
+												item.disabled ? (
+													<Tag tone="dash">已禁用</Tag>
+												) : (
+													<Tag tone="ghost">已启用</Tag>
+												)
+											) : null}
 										</div>
 										<div className="d">{item.detail ?? item.description}</div>
 									</div>
 									<span className="m">{item.meta}</span>
+									{item.kind === "plugin" && bridge !== undefined ? (
+										<Switch
+											checked={!item.disabled}
+											label={`${item.disabled ? "启用" : "禁用"} ${item.name}`}
+											disabled={toggling !== undefined}
+											onCheckedChange={(enabled) => togglePlugin(item.name, enabled)}
+										/>
+									) : null}
 									<RowActions
 										kind={item.kind}
 										onEdit={
 											item.kind === "mcp"
-												? () => setMcpEdit(settings.mcpServers.find((server) => server.name === item.name))
+												? () => openMcpEdit(item.name)
 												: item.kind === "skill" && item.editable === true
 													? () => setSkillEdit(item)
 													: undefined
@@ -215,14 +264,7 @@ export function ExtensionsSection({
 			<McpServerDialog open={mcpOpen} onClose={() => setMcpOpen(false)} onCreated={onRefresh} />
 			<McpServerDialog
 				open={mcpEdit !== undefined}
-				server={
-					mcpEdit === undefined
-						? undefined
-						: {
-								name: mcpEdit.name,
-								type: mcpEdit.type === "stdio" ? "stdio" : mcpEdit.type === "sse" ? "sse" : "http",
-							}
-				}
+				server={mcpEdit}
 				onClose={() => setMcpEdit(undefined)}
 				onCreated={onRefresh}
 			/>

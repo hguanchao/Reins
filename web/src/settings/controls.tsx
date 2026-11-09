@@ -11,13 +11,11 @@ export function SettingsPane({
 	eyebrow,
 	title,
 	description,
-	action,
 	children,
 }: {
 	readonly eyebrow: string;
 	readonly title: string;
 	readonly description: string;
-	readonly action?: ReactNode;
 	readonly children: ReactNode;
 }): ReactElement {
 	return (
@@ -29,7 +27,6 @@ export function SettingsPane({
 						<h1>{title}</h1>
 						<p>{description}</p>
 					</div>
-					{action === undefined ? null : <div className="flex shrink-0 items-center gap-2">{action}</div>}
 				</div>
 			</div>
 			{children}

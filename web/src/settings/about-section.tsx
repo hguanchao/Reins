@@ -1,8 +1,34 @@
 import type { ReactElement } from "react";
 
+import { toast } from "../components/ui/index.ts";
 import { sandboxLabel } from "../lib/format.ts";
 import type { SettingsSnapshot } from "../protocol.ts";
 import { Card, Row, Section, SettingsPane, Tag } from "./controls.tsx";
+
+/** 诊断包只收界面能拿到的运行信息：不探测网络、不读日志文件，导出的内容与页面一致。 */
+function diagnostics(settings: SettingsSnapshot | undefined): string {
+	const at = new Date();
+	return JSON.stringify(
+		{
+			exportedAt: at.toISOString(),
+			version: settings?.version,
+			configPath: settings?.configPath,
+			providersPath: settings?.providersPath,
+			sandbox: settings?.sandbox,
+			provider: settings?.provider,
+			model: settings?.model,
+			counts: {
+				models: settings?.models.length ?? 0,
+				skills: settings?.skills.length ?? 0,
+				mcpServers: settings?.mcpServers.length ?? 0,
+				plugins: settings?.plugins.length ?? 0,
+			},
+			runtime: navigator.userAgent,
+		},
+		null,
+		2,
+	);
+}
 
 /** 关于：版本、配置位置与运行方式。设计稿在此页只留「检查更新」「导出诊断包」两个动作。 */
 export function AboutSection({
@@ -10,6 +36,19 @@ export function AboutSection({
 }: {
 	readonly settings: SettingsSnapshot | undefined;
 }): ReactElement {
+	const exportDiagnostics = (): void => {
+		const url = URL.createObjectURL(new Blob([diagnostics(settings)], { type: "application/json" }));
+		const link = document.createElement("a");
+		const at = new Date();
+		link.href = url;
+		link.download = `reins-diagnostics-${at.getFullYear()}${String(at.getMonth() + 1).padStart(2, "0")}${String(
+			at.getDate(),
+		).padStart(2, "0")}.json`;
+		link.click();
+		URL.revokeObjectURL(url);
+		toast("诊断信息已导出");
+	};
+
 	return (
 		<SettingsPane eyebrow="SETTINGS / ABOUT" title="关于 Reins" description="版本、本机配置位置与运行方式。">
 			<Section name="版本">
@@ -85,12 +124,24 @@ export function AboutSection({
 						title="当前版本"
 						description="预览版不自动更新；新版本需要手动下载覆盖。"
 						value={<span className="v mono">v{settings?.version ?? "—"}</span>}
-						action={<button type="button" className="b b-line b-sm">检查更新</button>}
+						action={
+							<button
+								type="button"
+								className="b b-line b-sm"
+								onClick={() => toast("预览版不自动更新；新版本需要手动下载覆盖")}
+							>
+								检查更新
+							</button>
+						}
 					/>
 					<Row
 						title="诊断信息"
-						description="导出运行环境、扩展清单与最近日志，便于排查问题。"
-						action={<button type="button" className="b b-line b-sm">导出诊断包</button>}
+						description="导出运行环境、扩展清单与本机配置位置，便于排查问题。"
+						action={
+							<button type="button" className="b b-line b-sm" onClick={exportDiagnostics}>
+								导出诊断包
+							</button>
+						}
 					/>
 				</Card>
 			</Section>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 
 import type {
 	ActivitySummary,
@@ -94,6 +94,12 @@ export function SettingsPage(props: SettingsPageProps): ReactElement {
 	const [query, setQuery] = useState("");
 	const groups = useMemo(() => filterSettingsNav(NAV, query), [query]);
 	const onClose = props.onClose;
+	const contentRef = useRef<HTMLDivElement | null>(null);
+
+	// 各分区内容高度差别很大：切页不带滚动位置，否则会停在上一页的中间
+	useEffect(() => {
+		contentRef.current?.scrollTo({ top: 0 });
+	}, [section]);
 
 	useEffect(() => {
 		const onKey = (event: globalThis.KeyboardEvent): void => {
@@ -186,7 +192,7 @@ export function SettingsPage(props: SettingsPageProps): ReactElement {
 				</div>
 			</aside>
 
-			<div className="main scroll">
+			<div className="main scroll" ref={contentRef}>
 				<div className="set-main">
 					{section === "general" ? (
 						<GeneralSection settings={props.settings} onUpdate={props.onUpdate} />

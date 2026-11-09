@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import type { SettingsSnapshot } from "#web/protocol.ts";
 import {
+	archivedAgo,
 	countExtensions,
 	extensionItems,
 	filterExtensions,
@@ -167,5 +168,24 @@ describe("设置导航过滤", () => {
 			{ label: "Agent 能力", items: [{ label: "扩展管理" }] },
 		]);
 		assert.deepEqual(filterSettingsNav(groups, "模型"), []);
+	});
+});
+
+describe("归档时间文案", () => {
+	const now = Date.parse("2026-11-09T10:00:00+08:00");
+
+	it("按跨度给「刚刚 / 分钟 / 小时 / 天前归档」", () => {
+		assert.equal(archivedAgo("2026-11-09T09:59:40+08:00", now), "刚刚归档");
+		assert.equal(archivedAgo("2026-11-09T09:40:00+08:00", now), "20 分钟前归档");
+		assert.equal(archivedAgo("2026-11-09T06:00:00+08:00", now), "4 小时前归档");
+		assert.equal(archivedAgo("2026-11-06T10:00:00+08:00", now), "3 天前归档");
+	});
+
+	it("超过一周给日期，不拼出「11/2 前归档」", () => {
+		assert.equal(archivedAgo("2026-11-02T10:00:00+08:00", now), "11月2日归档");
+	});
+
+	it("时间戳不可解析时给出兜底文案", () => {
+		assert.equal(archivedAgo("not-a-date", now), "归档时间未知");
 	});
 });
