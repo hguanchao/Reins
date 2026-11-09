@@ -496,14 +496,13 @@ function SessionRowView({
 					},
 				]),
 		{ type: "separator" },
-		{ type: "item", key: "archive", label: "归档", icon: Archive, disabled: current, onSelect: onArchive },
+		{ type: "item", key: "archive", label: "归档", icon: Archive, onSelect: onArchive },
 		{
 			type: "item",
 			key: "delete",
 			label: "删除此任务",
 			icon: Trash2,
 			danger: true,
-			disabled: current,
 			onSelect: onDelete,
 		},
 	];

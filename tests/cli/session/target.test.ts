@@ -163,3 +163,24 @@ describe("会话归属目录", () => {
 		assert.equal(sessionOwner({ workspacePath: "", cwd: undefined }), null);
 	});
 });
+
+describe("切换当前会话后的归档/删除", () => {
+	it("skip 换成新会话后，旧会话文件不再被保护", async () => {
+		await withHome(async (workRoot) => {
+			const store = new JsonlSessionStore();
+			const oldSession = createSession(workRoot, store);
+			const newSession = createSession(workRoot, store);
+			for (const session of [oldSession, newSession]) {
+				await session.append({ type: "message", message: { role: "user", content: "内容" } });
+				await session.close();
+			}
+
+			// 服务端先切到空会话再删旧会话时，skip 里已是新会话 id
+			assert.equal(deleteSessionsAcross([workRoot], store, [oldSession.id], [newSession.id]), 1);
+			assert.deepEqual(
+				listSessionsAcross([workRoot], store).map((item) => item.id),
+				[newSession.id],
+			);
+		});
+	});
+});

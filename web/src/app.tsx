@@ -791,7 +791,13 @@ export function App(): ReactElement {
 					paneOpen={sideOpen}
 					onTogglePane={toggleSidePane}
 					onArchive={() => {
-						void api.archiveSessions([sessionId]).then(refreshSessions).catch(() => {});
+						void api
+							.archiveSessions([sessionId])
+							.then((count) => {
+								refreshSessions();
+								if (count === 0) toast("当前任务运行中或正在压缩，完成后再归档", "info");
+							})
+							.catch(() => {});
 					}}
 					onReveal={() => desktopBridge()?.openWorkspaceFolder(currentWorkspacePath ?? cwd)}
 				/>
@@ -907,10 +913,22 @@ export function App(): ReactElement {
 						onNewSession={newTask}
 						onSwitch={switchSession}
 						onArchive={(id) => {
-							void api.archiveSessions([id]).then(refreshSessions).catch(() => {});
+							void api
+								.archiveSessions([id])
+								.then((count) => {
+									refreshSessions();
+									if (count === 0) toast("当前任务运行中或正在压缩，完成后再归档", "info");
+								})
+								.catch(() => {});
 						}}
 						onDelete={(id) => {
-							void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
+							void api
+								.deleteSessions([id])
+								.then((count) => {
+									refreshSessions();
+									if (count === 0) toast("当前任务运行中或正在压缩，完成后再删除", "info");
+								})
+								.catch(() => {});
 						}}
 						onTogglePin={togglePin}
 						onOpenPanel={(panel) => {
@@ -954,7 +972,13 @@ export function App(): ReactElement {
 						void api.restoreSessions([id]).then(refreshSessions).catch(() => {});
 					}}
 					onDeleteArchived={(id) => {
-						void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
+						void api
+							.deleteSessions([id])
+							.then((count) => {
+								refreshSessions();
+								if (count === 0) toast("当前任务运行中或正在压缩，完成后再删除", "info");
+							})
+							.catch(() => {});
 					}}
 					onRestoreWorkspace={restoreWorkspace}
 					onDeleteWorkspace={removeWorkspace}

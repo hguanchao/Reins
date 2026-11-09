@@ -308,7 +308,6 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		return true;
 	};
 
-	/** 归档/删除的公共护栏:当前会话永远跳过,回合进行中一律不动。 */
 	const archivedList = () => {
 		if (sessionStore === undefined) return [];
 		const visiblePaths = listWorkspaces();
@@ -317,15 +316,26 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		);
 	};
 
-	const removeSessions = (ids: readonly string[]): number =>
-		running || compacting || sessionStore === undefined
-			? 0
-			: deleteSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
+	/**
+	 * 归档/删除的公共护栏:回合进行中一律不动；命中当前会话时先切到空会话，
+	 * 界面随 session_switched 回到新建会话页，写句柄也不再落在即将被挪走或删掉的文件上。
+	 * 切走后 session.id 已是新会话，下面两处的 skip 自然只保护新会话。
+	 */
+	const leaveCurrentIfIncluded = (ids: readonly string[]): void => {
+		if (ids.includes(session.id)) startNewSession(null);
+	};
 
-	const stashSessions = (ids: readonly string[]): number =>
-		running || compacting || sessionStore === undefined
-			? 0
-			: archiveSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
+	const removeSessions = (ids: readonly string[]): number => {
+		if (running || compacting || sessionStore === undefined) return 0;
+		leaveCurrentIfIncluded(ids);
+		return deleteSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
+	};
+
+	const stashSessions = (ids: readonly string[]): number => {
+		if (running || compacting || sessionStore === undefined) return 0;
+		leaveCurrentIfIncluded(ids);
+		return archiveSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
+	};
 
 	const unstashSessions = (ids: readonly string[]): number =>
 		running || compacting || sessionStore === undefined
