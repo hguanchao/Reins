@@ -267,7 +267,8 @@ export function Sidebar(props: SidebarProps): ReactElement {
 								</div>
 								{open ? (
 									rows.length === 0 ? (
-										<div className="side-sub" style={{ paddingLeft: 22, color: "var(--ink-4)", letterSpacing: 0 }}>
+										/* 28 = 任务行标题列（8 内衬 + 12 状态位 + 8 间隙），空态文字与任务标题同列 */
+										<div className="side-sub" style={{ paddingLeft: 28, color: "var(--ink-4)", letterSpacing: 0 }}>
 											暂无任务
 										</div>
 									) : (

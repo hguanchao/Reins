@@ -240,6 +240,13 @@
 	transform: rotate(90deg);
 }
 
+/* 文件夹图标与任务行标题同列（8 内衬 + 12 状态位 + 8 间隙 = 28px）；
+	折叠箭头保持贴左缘与「工作区」标题对齐。箭头宽度随界面字号缩放，
+	差量用 calc 反推：28 − 4 内衬 − 6 间隙 − 箭头宽，任意字号下都落在标题列上 */
+.side-ws-head .ic.ic-14 {
+	margin-left: calc(18px - var(--ui-font-size, 14px) * 12 / 14);
+}
+
 .side-ws-head:hover .ic {
 	color: var(--ink-2);
 }
