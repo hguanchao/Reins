@@ -584,16 +584,17 @@
 	background: var(--raise);
 	font-size: var(--fs-12);
 	color: var(--ink);
-	transition: border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+	transition: border-color var(--speed) var(--ease);
 }
 
 .form-input:hover {
 	border-color: var(--rule-3);
 }
 
+/* 焦点统一走内联输入框那一档灰边：弹窗不再单独加黑边与光圈 */
 .form-input:focus {
-	border-color: var(--ink);
-	box-shadow: 0 0 0 3px var(--wash-2);
+	border-color: var(--rule-3);
+	outline: none;
 }
 
 .form-area {
@@ -614,8 +615,7 @@
 }
 
 .form-area:focus {
-	border-color: var(--ink);
-	box-shadow: 0 0 0 3px var(--wash-2);
+	border-color: var(--rule-3);
 	outline: none;
 }
 
