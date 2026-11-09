@@ -970,8 +970,10 @@
 	display: block;
 }
 
+/* 一级行撑满浮层：展开箭头才有共同的右边界，不再随各行文字长短漂移。
+   二级面板是定宽，行仍用基类的 100%，不受这条影响 */
 .add-menu > .add-row > .pop-i {
-	width: auto;
+	width: 100%;
 }
 
 .add-menu .pop-i {
