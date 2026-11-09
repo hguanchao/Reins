@@ -360,26 +360,9 @@
 	padding: 0 28px;
 }
 
-.blank h1 {
-	margin: 0;
-	font-size: var(--fs-36);
-	line-height: 1.1;
-	font-weight: 600;
-	letter-spacing: -0.032em;
-}
-
-.blank .caret {
-	display: inline-block;
-	width: calc(var(--ui-font-size, 14px) * 6 / 14);
-	height: calc(var(--ui-font-size, 14px) * 6 / 14);
-	margin-left: 10px;
-	background: var(--ink);
-	vertical-align: 0.5em;
-}
-
 .blank .lede {
-	/* 设计稿的标题块带 26px 下边距（与段落自身 16px 折叠后净 26px），这里直接给足 */
-	margin: 12px 0 26px;
+	/* 标题去掉后，这行说明与输入卡之间靠 26px 下边距留呼吸 */
+	margin: 0 0 26px;
 	font-size: var(--fs-13);
 	line-height: 1.7;
 	color: var(--ink-3);
@@ -388,9 +371,9 @@
 .starts {
 	display: flex;
 	flex-direction: column;
+	/* 分组标题去掉后不再需要顶部分隔线，三条建议直接跟在输入卡下面 */
 	gap: 4px;
-	margin-top: 24px;
-	border-top: 1px solid var(--rule);
+	margin-top: 16px;
 }
 
 .starts button {
@@ -421,20 +404,6 @@
 
 .starts .ic:last-child {
 	color: var(--ink-4);
-}
-
-.keys {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	margin-top: 16px;
-	font-family: var(--mono);
-	font-size: var(--fs-10);
-	color: var(--ink-3);
-}
-
-.keys .dot {
-	opacity: 0.5;
 }
 
 /* ============================ 16. 提示条与对话框 ============================ */
