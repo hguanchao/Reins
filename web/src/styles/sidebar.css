@@ -320,11 +320,16 @@
 	font-family: var(--mono);
 	font-size: var(--fs-9);
 	color: var(--ink-4);
-	transition: opacity var(--speed) var(--ease);
+	/* 与悬停钮同处行尾：离场时先让钮淡出完再淡入，不与半透明的钮叠在一起 */
+	transition: opacity var(--speed) var(--ease) var(--speed);
 }
 
-.sess:hover .tm {
+.sess:hover .tm,
+.sess:focus-within .tm,
+.sess:has(button[aria-expanded="true"]) .tm {
 	opacity: 0;
+	/* 进场时时间戳立刻开始淡出，随后悬停钮才淡入（见 .hover-actions 的延迟） */
+	transition-delay: 0s;
 }
 
 .sess .hover-actions {
@@ -345,15 +350,12 @@
 	opacity: 1;
 	transform: translate(0, -50%);
 	pointer-events: auto;
+	/* 等时间戳淡出完再进场，避免两者在同一位置交叠一帧 */
+	transition-delay: var(--speed);
 }
 
 .sess:has(button[aria-expanded="true"]) {
 	background: var(--wash);
-}
-
-.sess:has(button[aria-expanded="true"]) .tm,
-.sess:has(button[aria-expanded="true"]) .badge {
-	opacity: 0;
 }
 
 .sess .hover-actions button {
