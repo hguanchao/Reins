@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 
-import { Dialog, Menu, type MenuEntry } from "../components/ui/index.ts";
+import { Dialog, Menu, toast, type MenuEntry } from "../components/ui/index.ts";
 import { relativeTime } from "../lib/format.ts";
 import { desktopBridge } from "../platform.ts";
 import type { SessionSummary, WorkspaceSummary } from "../protocol.ts";
@@ -99,10 +99,14 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		if (target === undefined || name.length === 0) return;
 		void (async () => {
 			const ok = (await bridge?.renameWorkspace(target.path, name)) ?? false;
-			if (!ok) return;
+			// 内核会在空名、超长或落盘失败时返回 false；此处必须给反馈，否则「保存」看起来毫无反应
+			if (!ok) {
+				toast("工作区名称保存失败：名称需为 1–60 个字符，且配置文件可写", "error");
+				return;
+			}
 			props.onRenameWorkspace?.(target.path, name);
 			setWorkspaceRename(undefined);
-		})().catch(() => {});
+		})().catch(() => toast("工作区名称保存失败，请稍后重试", "error"));
 	};
 
 	const renderRow = (row: SessionRow): ReactElement => (
