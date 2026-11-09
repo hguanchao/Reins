@@ -3,17 +3,9 @@ import type { ResolvedTheme } from "#desktop/contracts.ts";
 /**
  * 界面令牌在桌面壳的镜像。
  *
- * 窗口底色、原生标题栏覆盖层与首屏 loading 页必须和页面首帧同色，否则切换主题时会
- * 闪一帧旧底色。这些值集中放一处，窗口构造、主题变更、loading 页三路共用同一份定义。
+ * 窗口底色与首屏 loading 页必须和页面首帧同色，否则切换主题时会闪一帧旧底色。
+ * 窗控改由页面自绘后，系统覆盖层的配色不再需要在这里维护。
  */
-
-export const CAPTION_HEIGHT = 34;
-
-export interface TitleBarOverlayOptions {
-	readonly color: string;
-	readonly symbolColor: string;
-	readonly height: number;
-}
 
 export interface WindowPalette {
 	readonly background: string;
@@ -44,12 +36,4 @@ export function themeFromSystem(dark: boolean): ResolvedTheme {
 
 export function windowBackgroundColor(theme: ResolvedTheme): string {
 	return WINDOW_PALETTE[theme].background;
-}
-
-export function titleBarOverlay(theme: ResolvedTheme): TitleBarOverlayOptions {
-	return {
-		color: WINDOW_PALETTE[theme].background,
-		symbolColor: WINDOW_PALETTE[theme].accent,
-		height: CAPTION_HEIGHT,
-	};
 }

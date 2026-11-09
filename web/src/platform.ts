@@ -21,6 +21,12 @@ export interface ReinsDesktopBridge {
 	/** 弹一条系统通知；桌面壳不支持时返回 false */
 	notify(payload: { readonly title: string; readonly body: string }): Promise<boolean>;
 	setTheme(theme: "zai-dark" | "zai-light"): void;
+	/** 自绘窗控递交动作名，由主进程落到窗口方法 */
+	controlWindow(action: "minimize" | "toggle-maximize" | "close"): void;
+	/** 当前是否最大化：窗控按钮据此在「最大化 / 还原」之间切换 */
+	isWindowMaximized(): Promise<boolean>;
+	/** 订阅最大化状态变化；返回取消订阅函数 */
+	onWindowStateChanged(listener: (maximized: boolean) => void): () => void;
 }
 
 declare global {
@@ -34,9 +40,9 @@ export function desktopBridge(): ReinsDesktopBridge | undefined {
 }
 
 /**
- * 桌面壳用原生标题栏覆盖窗口顶部，标题栏内承载窗控与全局控制；浏览器没有这层。
- * 与 index.html 里给标题栏让位的判断同源：有桥才有原生标题栏。
+ * 桌面壳的标题栏由页面自绘窗控（macOS 例外：红绿灯由系统画在左侧）；浏览器没有这层，
+ * 相关入口据此隐藏。与 index.html 里给标题栏让位的判断同源：有桥才是桌面壳。
  */
-export function hasNativeTitlebar(): boolean {
+export function inDesktopShell(): boolean {
 	return window.reinsDesktop !== undefined;
 }

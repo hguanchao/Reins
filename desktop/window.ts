@@ -8,15 +8,17 @@ import {
 } from "electron";
 
 import { parseNotification, parseTheme } from "#desktop/contracts.ts";
+import { applyWindowAction, parseWindowAction } from "#desktop/window-controls.ts";
 import type { DesktopPaths } from "#desktop/paths.ts";
-import { titleBarOverlay, windowBackgroundColor, WINDOW_PALETTE } from "#desktop/theme.ts";
+import { windowBackgroundColor, WINDOW_PALETTE } from "#desktop/theme.ts";
 import type { ResolvedTheme } from "#desktop/contracts.ts";
 
 /**
  * 窗口与窗口级 IPC。
  *
- * 无边框窗由系统原生覆盖层承载窗控，页面只负责 34px 拖拽条；外链一律交给系统浏览器，
- * 同源路由放行。主题与通知这两个 handler 只做窗口层面的事，参数收窄统一走 contracts。
+ * 无边框窗的窗控由页面自绘（macOS 保留原生红绿灯），这里只提供窗口动作、最大化状态与
+ * 34px 拖拽条所需的能力；外链一律交给系统浏览器，同源路由放行。主题与通知这两个 handler
+ * 只做窗口层面的事，参数收窄统一走 contracts。
  */
 
 /** 隐藏菜单只为保住重载与开发者工具的快捷键，菜单本身永远不显示。 */
@@ -66,12 +68,17 @@ export function createMainWindow(paths: DesktopPaths, theme: ResolvedTheme): Bro
 		backgroundColor: windowBackgroundColor(theme),
 		show: false,
 		titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
-		...(process.platform === "win32" ? { titleBarOverlay: titleBarOverlay(theme) } : {}),
 		webPreferences: {
 			sandbox: true,
 			preload: paths.preload,
 		},
 	});
+	// 自绘窗控要能区分「最大化 / 还原」；状态变化由主进程推送，界面不轮询
+	const publishMaximized = (): void => {
+		if (!window.isDestroyed()) window.webContents.send("window:state-changed", window.isMaximized());
+	};
+	window.on("maximize", publishMaximized);
+	window.on("unmaximize", publishMaximized);
 	// 构造参数里的 icon 在部分 Windows 版本上会被任务栏忽略，创建后再显式设一次
 	if (process.platform !== "darwin" && !icon.isEmpty()) window.setIcon(icon);
 	return window;
@@ -100,7 +107,19 @@ export function registerWindowIpc(paths: DesktopPaths): void {
 		// 主题值由页面枚举产生；无效值不改动窗口外观，避免整页重载期间的悬空调用打断启动
 		if (target === null || theme === undefined) return;
 		target.setBackgroundColor(windowBackgroundColor(theme));
-		if (process.platform === "win32") target.setTitleBarOverlay(titleBarOverlay(theme));
+	});
+
+	ipcMain.handle("window:state", (event): boolean => {
+		const target = BrowserWindow.fromWebContents(event.sender);
+		return target !== null && !target.isDestroyed() && target.isMaximized();
+	});
+
+	// 界面只递交动作名：未知动作不发往窗口，窗口已销毁时也不再操作
+	ipcMain.handle("window:control", (event, value: unknown): void => {
+		const action = parseWindowAction(value);
+		const target = BrowserWindow.fromWebContents(event.sender);
+		if (action === undefined || target === null || target.isDestroyed()) return;
+		applyWindowAction(target, action);
 	});
 
 	ipcMain.handle("notification:show", (event, value: unknown): boolean => {

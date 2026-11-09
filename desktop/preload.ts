@@ -1,12 +1,13 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
 import type { PluginResult, ResolvedTheme } from "#desktop/contracts.ts";
+import type { WindowControlAction } from "#desktop/window-controls.ts";
 
 /**
  * 渲染层的窗口能力桥。
  *
  * 页面跑在 http://127.0.0.1 上，不能直接碰 Electron；这里只暴露工作区管理、插件管理、
- * 通知与主题同步。窗口按钮交给原生标题栏覆盖层，其余能力仍留在主进程。
+ * 通知、主题同步与窗控动作。窗口按钮由页面绘制，主进程收到动作后才操作窗口。
  */
 contextBridge.exposeInMainWorld("reinsDesktop", {
 	chooseWorkspace: (): Promise<boolean> =>
@@ -30,5 +31,14 @@ contextBridge.exposeInMainWorld("reinsDesktop", {
 		ipcRenderer.invoke("notification:show", payload) as Promise<boolean>,
 	setTheme: (theme: ResolvedTheme): void => {
 		void ipcRenderer.invoke("window:set-theme", theme);
+	},
+	controlWindow: (action: WindowControlAction): void => {
+		void ipcRenderer.invoke("window:control", action);
+	},
+	isWindowMaximized: (): Promise<boolean> => ipcRenderer.invoke("window:state") as Promise<boolean>,
+	onWindowStateChanged: (listener: (maximized: boolean) => void): (() => void) => {
+		const handler = (_event: IpcRendererEvent, value: unknown): void => listener(value === true);
+		ipcRenderer.on("window:state-changed", handler);
+		return () => ipcRenderer.removeListener("window:state-changed", handler);
 	},
 });

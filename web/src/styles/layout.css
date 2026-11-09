@@ -82,17 +82,6 @@
 	app-region: drag;
 }
 
-/* 桌面壳的原生窗控覆盖层(WCO)用主题底色画满自己的 0..34 区域,
-   会把标题栏下边框在这一段盖掉。桌面端把这条缝改画在第二行顶部
-   ——覆盖层够不到的位置,整条缝横贯三栏且永远可见。 */
-html[data-titlebar-platform] .app-frame {
-	border-top: 1px solid var(--rule);
-}
-
-html[data-titlebar-platform] .caption {
-	border-bottom: none;
-}
-
 .caption .cbtn {
 	-webkit-app-region: no-drag;
 	app-region: no-drag;
@@ -140,7 +129,7 @@ html[data-titlebar-platform] .caption {
 	text-overflow: ellipsis;
 }
 
-/* demo 的两枚示意窗控方块；桌面壳由原生覆盖层接管，只保留让位宽度 */
+/* 浏览器预览按设计稿画两枚示意方块；桌面壳换成三枚自绘窗控，macOS 只留空位 */
 .caption .win-slot {
 	-webkit-app-region: no-drag;
 	app-region: no-drag;
@@ -168,13 +157,45 @@ html[data-titlebar-platform] .caption {
 	border-width: 1px 1px 2px;
 }
 
-/* Windows 原生窗控占右侧 138px；macOS 红绿灯占左侧，四个图标整体右移 */
-[data-titlebar-platform="win"] .caption .win-slot {
+/* 三枚 46px 窗控贴窗口右缘；标题栏不再给右侧留内衬 */
+[data-titlebar-platform="win"] .caption {
+	padding-right: 0;
+}
+
+[data-titlebar-platform="win"] .caption .win-slot.custom {
+	gap: 0;
 	width: 138px;
 }
 
+.caption .wbtn {
+	-webkit-app-region: no-drag;
+	app-region: no-drag;
+	display: grid;
+	place-items: center;
+	width: 46px;
+	height: 100%;
+	color: var(--ink-3);
+	transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+
+.caption .wbtn:hover {
+	background: var(--wash-2);
+	color: var(--ink);
+}
+
+/* 关闭是不可逆动作，悬停用危险色而非普通灰底，任何视觉风格下一眼可辨 */
+.caption .wbtn.wclose:hover {
+	background: var(--danger);
+	color: #fff;
+}
+
+/* macOS 红绿灯占左侧；Linux 归入 win 变体，窗控同样在右 */
 [data-titlebar-platform="mac"] .caption {
 	padding-left: 78px;
+}
+
+[data-titlebar-platform="mac"] .caption .win-slot {
+	width: 0;
 }
 
 /* ============================ 3. 图标与小字 ============================ */

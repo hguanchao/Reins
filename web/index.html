@@ -27,9 +27,9 @@
 				document
 					.querySelector('meta[name="theme-color"]')
 					?.setAttribute("content", dark ? "#090909" : "#f6f6f5");
-				// 桌面壳用原生窗控覆盖：Windows 在右、macOS 在左，页面据此让位
+				// 桌面壳自绘窗控在右、macOS 原生红绿灯在左，页面据此让位
 				if (window.reinsDesktop !== undefined) {
-					const platform = /Windows/i.test(navigator.userAgent) ? "win" : "mac";
+					const platform = /Mac/i.test(navigator.userAgent) ? "mac" : "win";
 					document.documentElement.dataset.titlebarPlatform = platform;
 					document.documentElement.style.setProperty("--caption-h", "34px");
 				}
