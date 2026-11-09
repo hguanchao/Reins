@@ -76,6 +76,7 @@
 	color: var(--ink-3);
 }
 
+/* 设置页导航复用的内联搜索框；侧栏的搜索框已移除，样式仍归它用 */
 .side-search {
 	position: relative;
 	margin-top: 8px;

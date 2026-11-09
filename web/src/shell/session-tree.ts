@@ -16,7 +16,8 @@ export type TimeBucket = "active" | "today" | "yesterday" | "earlier";
 export interface SessionListInput {
 	readonly sessions: readonly SessionSummary[];
 	readonly pinned: ReadonlySet<string>;
-	readonly query: string;
+	/** 搜索入口暂由标题栏占位；不传表示不筛选，保留能力供以后接入 */
+	readonly query?: string;
 	/** 当前正在看的会话；不在清单里时由列表补一行 */
 	readonly currentId: string;
 	/** 当前会话还没有任何内容：它没落在磁盘上，清单里补行反而会让空会话提前露面 */
@@ -60,7 +61,7 @@ function currentSessionRow(input: SessionListInput): SessionRow | undefined {
 		cwd: input.currentCwd ?? "",
 		workspacePath: input.currentWorkspacePath,
 	};
-	return matches(row, input.query.trim()) ? row : undefined;
+	return matches(row, (input.query ?? "").trim()) ? row : undefined;
 }
 
 /** 置顶行排在前面，其余保持服务端给的更新时间顺序。 */
@@ -68,7 +69,7 @@ export function buildSessionRows(input: SessionListInput): readonly SessionRow[]
 	const rows = input.sessions.map((session) => toRow(session, input.pinned));
 	const current = currentSessionRow(input);
 	const visible = current === undefined ? rows : [current, ...rows];
-	return visible.filter((row) => matches(row, input.query.trim())).sort((left, right) => {
+	return visible.filter((row) => matches(row, (input.query ?? "").trim())).sort((left, right) => {
 		if (left.pinned === right.pinned) return 0;
 		return left.pinned ? -1 : 1;
 	});

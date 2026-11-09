@@ -130,7 +130,6 @@ export function App(): ReactElement {
 	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
-	const [searchOpen, setSearchOpen] = useState(false);
 	const [commandOpen, setCommandOpen] = useState(false);
 	const [activePanel, setActivePanel] = useState<GlobalPanelId | undefined>(undefined);
 	const [pinned, setPinned] = useState<ReadonlySet<string>>(readPinnedSessions);
@@ -367,11 +366,6 @@ export function App(): ReactElement {
 
 	const toggleSidebar = useCallback((): void => {
 		setSidebarCollapsed((value) => !value);
-	}, []);
-
-	const openSearch = useCallback((): void => {
-		setSidebarCollapsed(false);
-		setSearchOpen(true);
 	}, []);
 
 	const onScroll = useCallback((): void => {
@@ -890,7 +884,6 @@ export function App(): ReactElement {
 				onSidebarWidth={(width) => setSidebarWidth(clampSidebar(width))}
 				onRightbarWidth={(width) => setSideWidth(clampRightbar(width, window.innerWidth))}
 				onToggleSidebar={toggleSidebar}
-				onOpenSearch={openSearch}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
 				onBack={goBack}
@@ -908,8 +901,6 @@ export function App(): ReactElement {
 						workspaces={workspaces}
 						version={settings?.version ?? ""}
 						activePanel={activePanel}
-						searchOpen={searchOpen}
-						onSearchOpenChange={setSearchOpen}
 						onNewSession={newTask}
 						onSwitch={switchSession}
 						onArchive={(id) => {

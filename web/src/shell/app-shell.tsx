@@ -94,7 +94,6 @@ export interface AppShellProps {
 	onSidebarWidth(width: number): void;
 	onRightbarWidth(width: number): void;
 	onToggleSidebar(): void;
-	onOpenSearch(): void;
 	readonly canGoBack: boolean;
 	readonly canGoForward: boolean;
 	onBack(): void;
@@ -122,7 +121,6 @@ export function AppShell({
 	onSidebarWidth,
 	onRightbarWidth,
 	onToggleSidebar,
-	onOpenSearch,
 	canGoBack,
 	canGoForward,
 	onBack,
@@ -170,7 +168,6 @@ export function AppShell({
 				workspace={workspace}
 				title={title}
 				onToggleSidebar={onToggleSidebar}
-				onOpenSearch={onOpenSearch}
 				canGoBack={canGoBack}
 				canGoForward={canGoForward}
 				onBack={onBack}

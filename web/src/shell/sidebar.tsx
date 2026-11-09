@@ -13,11 +13,10 @@ import {
 	Pencil,
 	Pin,
 	Plus,
-	Search,
 	Settings,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 
 import { Dialog, Menu, toast, type MenuEntry } from "../components/ui/index.ts";
 import { relativeTime } from "../lib/format.ts";
@@ -43,8 +42,6 @@ export interface SidebarProps {
 	readonly workspaces: readonly WorkspaceSummary[];
 	readonly version: string;
 	readonly activePanel: GlobalPanelId | undefined;
-	readonly searchOpen: boolean;
-	onSearchOpenChange(open: boolean): void;
 	onNewSession(workspacePath?: string | null): void;
 	onSwitch(session: SessionSummary): void;
 	onArchive(id: string): void;
@@ -69,16 +66,13 @@ export interface SidebarProps {
  * 侧栏不显示计数：计数会给每一行都多加一个要读的数字，而折叠已经表达了「这里有多少东西」。
  */
 export function Sidebar(props: SidebarProps): ReactElement {
-	const [query, setQuery] = useState("");
 	const [collapsed, setCollapsed] = useState<Readonly<Record<string, boolean>>>({});
-	const searchInput = useRef<HTMLInputElement | null>(null);
 	const bridge = desktopBridge();
 
 	const groups = buildSessionGroups({
 		sessions: props.sessions,
 		workspaces: props.workspaces,
 		pinned: props.pinned,
-		query,
 		currentId: props.currentId,
 		currentIsDraft: props.currentIsDraft,
 		currentCwd: props.cwd,
@@ -86,12 +80,6 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		running: props.running,
 	});
 	const buckets = bucketRows(groups.unassigned, { currentId: props.currentId, running: props.running });
-	const searching = query.trim().length > 0;
-
-	useEffect(() => {
-		if (!props.searchOpen) return;
-		searchInput.current?.focus({ preventScroll: true });
-	}, [props.searchOpen]);
 
 	const [workspaceRename, setWorkspaceRename] = useState<WorkspaceSummary | undefined>(undefined);
 	const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceSummary | undefined>(undefined);
@@ -149,23 +137,6 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					<span className="k">Ctrl N</span>
 				</button>
 
-				<div className="side-search">
-					<Search className="ic ic-14" />
-					<input
-						ref={searchInput}
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key !== "Escape") return;
-							event.preventDefault();
-							setQuery("");
-							props.onSearchOpenChange(false);
-						}}
-						placeholder="搜索任务"
-						aria-label="搜索任务"
-					/>
-				</div>
-
 				<div className="side-nav">
 					<button
 						type="button"
@@ -186,7 +157,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 				<div className="side-zone">任务</div>
 				{buckets.length === 0 ? (
 					<div className="side-sub" style={{ color: "var(--ink-4)", letterSpacing: 0 }}>
-						{searching ? "没有匹配的任务" : "暂无任务"}
+						暂无任务
 					</div>
 				) : (
 					buckets.map((group) => (
@@ -205,7 +176,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					</div>
 				) : (
 					groups.workspaces.map(({ workspace, rows }) => {
-						const open = searching || !(collapsed[workspace.path] ?? false);
+						const open = !(collapsed[workspace.path] ?? false);
 						const entries: MenuEntry[] = [
 							{ type: "item", key: "new", label: "新建任务", icon: Plus, onSelect: () => props.onNewSession(workspace.path) },
 							...(bridge === undefined

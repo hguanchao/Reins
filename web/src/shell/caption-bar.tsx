@@ -85,7 +85,6 @@ export function CaptionBar({
 	workspace,
 	title,
 	onToggleSidebar,
-	onOpenSearch,
 	canGoBack,
 	canGoForward,
 	onBack,
@@ -95,7 +94,6 @@ export function CaptionBar({
 	readonly workspace: string;
 	readonly title: string;
 	onToggleSidebar(): void;
-	onOpenSearch(): void;
 	readonly canGoBack: boolean;
 	readonly canGoForward: boolean;
 	onBack(): void;
@@ -112,7 +110,7 @@ export function CaptionBar({
 			>
 				<PanelLeft className="ic" />
 			</button>
-			<button type="button" className="cbtn no-drag" aria-label="搜索任务" title="搜索任务" onClick={onOpenSearch}>
+			<button type="button" className="cbtn no-drag" aria-label="搜索任务（即将支持）" title="搜索任务（即将支持）" disabled>
 				<Search className="ic" />
 			</button>
 			<button
