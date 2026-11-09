@@ -297,18 +297,18 @@
 	box-shadow: var(--shadow-2);
 }
 
+/* 卡帽是白卡内部的一行工具条，不再通铺灰底：里面往往只有一两枚芯片，
+	铺满整行会留下一大片空灰和一条硬分隔线，像表格表头。底色只给芯片自己 */
 .comp-cap {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	padding: 6px 5px;
-	border-bottom: 1px solid var(--rule);
-	border-radius: var(--r-4) var(--r-4) 0 0;
-	background: var(--sunken);
+	padding: 8px 6px 2px;
 }
 
 .comp-cap .chip {
 	height: 24px;
+	background: var(--sunken);
 }
 
 .comp-cap .n {
