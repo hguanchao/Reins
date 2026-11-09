@@ -86,6 +86,18 @@ export const api = {
 	async workspaces(): Promise<readonly WorkspaceSummary[]> {
 		return (await request("/api/workspaces")) as readonly WorkspaceSummary[];
 	},
+	/** 已从侧栏移除的工作区：设置页据此提供恢复入口 */
+	async hiddenWorkspaces(): Promise<readonly WorkspaceSummary[]> {
+		return (await request("/api/workspaces/hidden")) as readonly WorkspaceSummary[];
+	},
+	/** 恢复工作区；目录已不存在或恢复失败时返回 false */
+	async restoreWorkspace(path: string): Promise<boolean> {
+		const body = (await request("/api/workspaces/restore", {
+			method: "POST",
+			body: JSON.stringify({ path }),
+		})) as { restored?: boolean };
+		return body.restored ?? false;
+	},
 	/** 删除项目：内核会连同其名下活动与归档任务一起永久删除，返回实际删除的任务数 */
 	async deleteWorkspace(path: string): Promise<number> {
 		const body = (await request("/api/workspaces/delete", {

@@ -91,6 +91,10 @@ export interface WebServerDeps {
 	}[];
 	/** 已登记空间及显示名 */
 	workspaces?(): readonly { readonly path: string; readonly name: string }[];
+	/** 已从侧栏移除、仍保留查找路径的项目 */
+	hiddenWorkspaces?(): readonly { readonly path: string; readonly name: string }[];
+	/** 恢复被移除的项目；目录已不存在时返回 false */
+	restoreWorkspace?(path: string): boolean;
 	/** 删除项目：连同其名下活动与归档会话一起永久删除，返回实际删除的会话数；回合进行中不动任何东西，返回 0 */
 	deleteWorkspace(path: string): number;
 	/** 切换到既有会话;回合进行中返回 false */
@@ -405,6 +409,20 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 			}
 			if (req.method === "GET" && path === "/api/workspaces") {
 				sendJson(res, 200, deps.workspaces?.() ?? []);
+				return;
+			}
+			if (req.method === "GET" && path === "/api/workspaces/hidden") {
+				sendJson(res, 200, deps.hiddenWorkspaces?.() ?? []);
+				return;
+			}
+			if (req.method === "POST" && path === "/api/workspaces/restore") {
+				const body = await readJsonBody(req);
+				const target = body?.["path"];
+				if (typeof target !== "string" || target.length === 0) {
+					sendJson(res, 400, { error: "path must be a non-empty string" });
+					return;
+				}
+				sendJson(res, 200, { restored: deps.restoreWorkspace?.(target) ?? false });
 				return;
 			}
 			if (req.method === "GET" && path === "/api/sessions/archived") {

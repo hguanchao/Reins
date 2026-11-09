@@ -22,6 +22,7 @@ interface FakeState {
 	resolved: Array<{ id: number; answer: string }>;
 	deleted: string[];
 	droppedWorkspaces: string[];
+	restoredWorkspaces: string[];
 	entries: readonly unknown[];
 	listeners: Set<(event: unknown) => void>;
 	emit(event: unknown): void;
@@ -37,6 +38,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		resolved: [],
 		deleted: [],
 		droppedWorkspaces: [],
+		restoredWorkspaces: [],
 		entries: [{ type: "message" }],
 		listeners: new Set(),
 		emit(event) {
@@ -88,6 +90,11 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		},
 		archiveSessions: (ids) => ids.length,
 		restoreSessions: (ids) => ids.length,
+		hiddenWorkspaces: () => [{ path: "/work/hidden", name: "Hidden" }],
+		restoreWorkspace: (path) => {
+			state.restoredWorkspaces.push(path);
+			return path !== "/gone";
+		},
 		deleteWorkspace: (path) => {
 			state.droppedWorkspaces.push(path);
 			return 2;
@@ -455,6 +462,38 @@ describe("web 传输层", () => {
 			assert.equal(rejected.status, 400, JSON.stringify(payload));
 		}
 		assert.deepEqual(state.droppedWorkspaces, ["/work/alpha"]);
+	});
+
+	it("隐藏工作区清单与恢复：路径校验在入口，失败结果原样返回", async () => {
+		const { deps, state } = fakeDeps(undefined);
+		const server = await startServer(deps);
+		const base = `http://127.0.0.1:${server.port}`;
+		const headers = { "x-reins-token": TOKEN, "content-type": "application/json" };
+
+		const listed = await fetch(`${base}/api/workspaces/hidden`, { headers });
+		assert.equal(listed.status, 200);
+		assert.deepEqual(await listed.json(), [{ path: "/work/hidden", name: "Hidden" }]);
+
+		const restored = await fetch(`${base}/api/workspaces/restore`, {
+			method: "POST", headers, body: JSON.stringify({ path: "/work/hidden" }),
+		});
+		assert.equal(restored.status, 200);
+		assert.deepEqual(await restored.json(), { restored: true });
+		assert.deepEqual(state.restoredWorkspaces, ["/work/hidden"]);
+
+		// 目录已不存在的失败也要如实传回，界面才能提示而不是假装恢复成功
+		const gone = await fetch(`${base}/api/workspaces/restore`, {
+			method: "POST", headers, body: JSON.stringify({ path: "/gone" }),
+		});
+		assert.deepEqual(await gone.json(), { restored: false });
+
+		for (const payload of [{}, { path: "" }, { path: 7 }]) {
+			const rejected = await fetch(`${base}/api/workspaces/restore`, {
+				method: "POST", headers, body: JSON.stringify(payload),
+			});
+			assert.equal(rejected.status, 400, JSON.stringify(payload));
+		}
+		assert.equal(state.restoredWorkspaces.length, 2);
 	});
 
 	it("模型清单与切换、审批模式切换", async () => {

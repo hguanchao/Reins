@@ -88,6 +88,7 @@ export function App(): ReactElement {
 	const [sessions, setSessions] = useState<readonly SessionSummary[]>([]);
 	const [workspaces, setWorkspaces] = useState<readonly WorkspaceSummary[]>([]);
 	const [archived, setArchived] = useState<readonly SessionSummary[]>([]);
+	const [hiddenWorkspaces, setHiddenWorkspaces] = useState<readonly WorkspaceSummary[]>([]);
 	const [sessionTitles, setSessionTitles] = useState(readSessionTitles);
 	const [settings, setSettings] = useState<SettingsSnapshot | undefined>(undefined);
 	const [model, setModel] = useState<ModelInfo>({ provider: "", model: "", name: "" });
@@ -155,6 +156,7 @@ export function App(): ReactElement {
 		void api.sessions().then(setSessions).catch(() => {});
 		void api.archivedSessions().then(setArchived).catch(() => {});
 		void api.workspaces().then(setWorkspaces).catch(() => {});
+		void api.hiddenWorkspaces().then(setHiddenWorkspaces).catch(() => {});
 	}, []);
 
 	const refreshSettings = useCallback((): void => {
@@ -440,6 +442,26 @@ export function App(): ReactElement {
 		);
 	}, []);
 
+	/** 恢复从侧栏移除的工作区：只翻可见性、不切服务进程；目录已不在时如实反馈。 */
+	const restoreWorkspace = useCallback(
+		(path: string): void => {
+			void api
+				.restoreWorkspace(path)
+				.then((ok) => {
+					if (!ok) {
+						toast("恢复失败：该目录可能已被移动或删除", "error");
+						return;
+					}
+					refreshSessions();
+					toast("已恢复工作区", "info");
+				})
+				.catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+		},
+		[refreshSessions],
+	);
+
 	/** 从侧栏移除：只隐藏登记条目，任务文件由内核的隐藏路径继续扫描，不动任何会话。 */
 	const hideWorkspace = useCallback(
 		(path: string): void => {
@@ -477,11 +499,12 @@ export function App(): ReactElement {
 			}
 			void api
 				.deleteWorkspace(path)
-				.then(() => api.workspaces())
-				.then((visible) => {
+				.then(() => Promise.all([api.workspaces(), api.hiddenWorkspaces()]))
+				.then(([visible, hidden]) => {
 					refreshSessions();
-					// 删除个数为 0 既可能是空项目，也可能是回合/压缩护栏拦下；以服务端清单为准反馈
-					if (visible.some((row) => row.path === path)) {
+					// 删除个数为 0 既可能是空项目，也可能是回合/压缩护栏拦下；两处清单都不含
+					// 该路径才算删掉，否则设置页里删除「已移除」的项目会误报成功
+					if (visible.some((row) => row.path === path) || hidden.some((row) => row.path === path)) {
 						toast("删除项目失败：可能正在运行或压缩会话，请稍后重试", "error");
 						return;
 					}
@@ -917,6 +940,7 @@ export function App(): ReactElement {
 				<SettingsPage
 					settings={settings}
 					archived={archived}
+					hiddenWorkspaces={hiddenWorkspaces}
 					usage={usage}
 					activity={activity}
 					themeMode={theme.mode}
@@ -932,6 +956,8 @@ export function App(): ReactElement {
 					onDeleteArchived={(id) => {
 						void api.deleteSessions([id]).then(refreshSessions).catch(() => {});
 					}}
+					onRestoreWorkspace={restoreWorkspace}
+					onDeleteWorkspace={removeWorkspace}
 				/>
 			) : null}
 			<CommandPalette

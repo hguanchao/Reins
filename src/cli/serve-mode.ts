@@ -253,6 +253,28 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		}));
 	};
 
+	/** 从侧栏移除的项目：显示名与可见清单同源，设置页据此给出可枚举的恢复入口。 */
+	const hiddenWorkspaces = () => {
+		const namesFile = process.env["REINS_WORKSPACE_NAMES_FILE"];
+		const visible = new Set(listWorkspaces());
+		return listKnownWorkspaces()
+			.filter((path) => !visible.has(path))
+			.map((path) => ({
+				path,
+				name: ((namesFile === undefined ? undefined : workspaceNameOf(namesFile, path)) ?? basename(path)) || path,
+			}));
+	};
+
+	/** 恢复只翻可见性，不切服务进程；目录已被手工删掉时明确失败，界面据此提示。 */
+	const restoreWorkspace = (path: string): boolean => {
+		try {
+			registerWorkspace(path);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+
 	/** 切会话/新建会话都只在空闲时允许:正在跑的回合属于旧会话,切断它等于毁掉结果。 */
 	const switchToSession = (id: string): boolean => {
 		if (running || compacting || sessionStore === undefined) return false;
@@ -556,6 +578,8 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		}),
 		sessions,
 		workspaces: visibleWorkspaces,
+		hiddenWorkspaces,
+		restoreWorkspace,
 		deleteWorkspace: removeWorkspaceTree,
 		switchSession: switchToSession,
 		newSession: startNewSession,

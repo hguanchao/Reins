@@ -8,6 +8,7 @@ import type {
 	SettingsSnapshot,
 	ThinkingLevel,
 	UsageSummary,
+	WorkspaceSummary,
 } from "../protocol.ts";
 import type { ThemeMode } from "../state/theme.ts";
 import { WindowControls } from "../shell/caption-bar.tsx";
@@ -58,7 +59,7 @@ const NAV: readonly { readonly label: string; readonly items: readonly NavItem[]
 		label: "数据",
 		items: [
 			{ id: "usage", label: "使用统计", icon: "activity" },
-			{ id: "archived", label: "已归档任务", icon: "archive" },
+			{ id: "archived", label: "归档与回收", icon: "archive" },
 		],
 	},
 	{
@@ -70,6 +71,7 @@ const NAV: readonly { readonly label: string; readonly items: readonly NavItem[]
 export interface SettingsPageProps {
 	readonly settings: SettingsSnapshot | undefined;
 	readonly archived: readonly SessionSummary[];
+	readonly hiddenWorkspaces: readonly WorkspaceSummary[];
 	readonly usage: UsageSummary;
 	readonly activity: ActivitySummary;
 	readonly themeMode: ThemeMode;
@@ -80,6 +82,8 @@ export interface SettingsPageProps {
 	onModel(provider: string, model: string): void;
 	onRestore(id: string): void;
 	onDeleteArchived(id: string): void;
+	onRestoreWorkspace(path: string): void;
+	onDeleteWorkspace(path: string): void;
 	onRefresh(): void;
 }
 
@@ -213,9 +217,12 @@ export function SettingsPage(props: SettingsPageProps): ReactElement {
 						<UsageSection usage={props.usage} activity={props.activity} />
 					) : section === "archived" ? (
 						<ArchivedSection
+							hidden={props.hiddenWorkspaces}
 							archived={props.archived}
 							onRestore={props.onRestore}
 							onDelete={props.onDeleteArchived}
+							onRestoreWorkspace={props.onRestoreWorkspace}
+							onDeleteWorkspace={props.onDeleteWorkspace}
 						/>
 					) : (
 						<AboutSection settings={props.settings} />
