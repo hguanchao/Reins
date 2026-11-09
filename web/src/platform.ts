@@ -10,6 +10,8 @@ export interface ReinsDesktopBridge {
 	/** 用系统资源管理器打开指定目录 */
 	openWorkspaceFolder(path?: string): void;
 	renameWorkspace(path: string, name: string): Promise<boolean>;
+	/** 从侧栏移除项目：只隐藏登记条目，名下活动与归档任务都保留 */
+	hideWorkspace(path: string): Promise<boolean>;
 	openSession(workspacePath: string | null, cwd: string, id: string): Promise<boolean>;
 	newTaskInWorkspace(path: string): Promise<boolean>;
 	/** 选择本地插件目录并安装；成功后服务进程会重启 */

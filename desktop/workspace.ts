@@ -63,6 +63,13 @@ export function registerWorkspaceIpc(context: WorkspaceIpcContext): void {
 		return opened;
 	});
 
+	// 「从侧栏移除」只翻可见性：会话文件一个不动，隐藏路径仍供历史任务扫描，
+	// 与「删除项目」连任务一起永久移除是两回事，界面必须分开给动作
+	ipcMain.handle("workspace:hide", (_event, path: unknown) => {
+		const requested = nonEmptyString(path);
+		return requested === undefined ? false : unregisterWorkspace(requested);
+	});
+
 	ipcMain.handle("workspace:open-session", async (_event, path: unknown, cwd: unknown, id: unknown) => {
 		const session = parseSessionTarget(path, cwd, id);
 		if (session === undefined) return false;

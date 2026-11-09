@@ -85,6 +85,17 @@ describe("项目登记清单", () => {
 		});
 	});
 
+	it("重复隐藏或未登记路径都报告未改动，界面据此不会误报成功", async () => {
+		await withHomes(async (_home, project) => {
+			const alpha = project("alpha");
+			registerWorkspace(alpha);
+			assert.equal(unregisterWorkspace(alpha), true);
+			assert.equal(unregisterWorkspace(alpha), false);
+			assert.equal(unregisterWorkspace(project("beta")), false);
+			assert.deepEqual(listWorkspaces(), []);
+		});
+	});
+
 	it("没登记过的路径删除时报告未改动", async () => {
 		await withHomes(async (_home, project) => {
 			registerWorkspace(project("alpha"));

@@ -6,6 +6,7 @@ import {
 	CircleAlert,
 	CircleSlash,
 	Ellipsis,
+	EyeOff,
 	Folder,
 	FolderOpen,
 	LoaderCircle,
@@ -53,6 +54,9 @@ export interface SidebarProps {
 	onOpenExtensions(): void;
 	onOpenSettings(): void;
 	onRenameWorkspace?(path: string, name: string): void;
+	/** 从侧栏移除：隐藏登记条目，任务全部保留 */
+	onHideWorkspace?(path: string): void;
+	/** 删除项目：连同名下任务永久移除，调用方需自行确认 */
 	onRemoveWorkspace?(path: string): void;
 	onRenameSession(id: string, title: string): void;
 }
@@ -90,6 +94,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 	}, [props.searchOpen]);
 
 	const [workspaceRename, setWorkspaceRename] = useState<WorkspaceSummary | undefined>(undefined);
+	const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceSummary | undefined>(undefined);
 	const [renameValue, setRenameValue] = useState("");
 	const [taskRename, setTaskRename] = useState<{ readonly id: string; readonly value: string } | undefined>(undefined);
 
@@ -226,11 +231,18 @@ export function Sidebar(props: SidebarProps): ReactElement {
 										{ type: "separator" as const },
 										{
 											type: "item" as const,
-											key: "remove",
-											label: "移除工作区",
+											key: "hide",
+											label: "从侧栏移除",
+											icon: EyeOff,
+											onSelect: () => props.onHideWorkspace?.(workspace.path),
+										},
+										{
+											type: "item" as const,
+											key: "delete",
+											label: "删除项目…",
 											icon: Trash2,
 											danger: true,
-											onSelect: () => props.onRemoveWorkspace?.(workspace.path),
+											onSelect: () => setWorkspaceDelete(workspace),
 										},
 									]),
 						];
@@ -326,6 +338,37 @@ export function Sidebar(props: SidebarProps): ReactElement {
 					autoFocus
 					className="form-input"
 				/>
+			</Dialog>
+
+			<Dialog
+				open={workspaceDelete !== undefined}
+				onClose={() => setWorkspaceDelete(undefined)}
+				title="永久删除项目"
+				footer={
+					<>
+						<button type="button" className="b b-line" onClick={() => setWorkspaceDelete(undefined)}>
+							取消
+						</button>
+						<button
+							type="button"
+							className="b b-danger"
+							onClick={() => {
+								if (workspaceDelete === undefined) return;
+								props.onRemoveWorkspace?.(workspaceDelete.path);
+								setWorkspaceDelete(undefined);
+							}}
+						>
+							永久删除
+						</button>
+					</>
+				}
+			>
+				<p style={{ margin: 0 }}>
+					「{workspaceDelete?.name ?? "未命名项目"}」名下的活动任务与已归档任务会一并永久删除，不能恢复。
+				</p>
+				<p style={{ margin: 0, color: "var(--ink-3)" }}>
+					只想从侧栏收起来、保留任务，请改用「从侧栏移除」。
+				</p>
 			</Dialog>
 
 			<Dialog

@@ -439,11 +439,34 @@ export function App(): ReactElement {
 		);
 	}, []);
 
+	/** 从侧栏移除：只隐藏登记条目，任务文件由内核的隐藏路径继续扫描，不动任何会话。 */
+	const hideWorkspace = useCallback(
+		(path: string): void => {
+			const bridge = desktopBridge();
+			if (bridge === undefined) return;
+			void bridge
+				.hideWorkspace(path)
+				.then((ok) => {
+					// 隐藏不改会话文件，只刷新清单即可；失败时不能先本地剔除
+					if (!ok) {
+						toast("从侧栏移除失败：项目可能已被移除", "error");
+						return;
+					}
+					refreshSessions();
+					toast("已从侧栏移除，名下任务全部保留", "info");
+				})
+				.catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
+		},
+		[refreshSessions],
+	);
+
 	/**
 	 * 删除项目：连同它名下的任务一起永久删除，动作在内核里完成。
 	 *
 	 * 删完一律按服务端结果刷新而不是本地剔除——回合正跑着的时候内核会拒绝，此时项目必须
-	 * 还留在列表里，本地先删就等于骗使用者说删掉了。
+	 * 还留在列表里，本地先删就等于骗使用者说删掉了。界面侧已用弹窗二次确认。
 	 */
 	const removeWorkspace = useCallback(
 		(path: string): void => {
@@ -458,10 +481,10 @@ export function App(): ReactElement {
 					refreshSessions();
 					// 删除个数为 0 既可能是空项目，也可能是回合/压缩护栏拦下；以服务端清单为准反馈
 					if (visible.some((row) => row.path === path)) {
-						toast("移除工作区失败：可能正在运行或压缩会话，请稍后重试", "error");
+						toast("删除项目失败：可能正在运行或压缩会话，请稍后重试", "error");
 						return;
 					}
-					toast("已移除工作区", "info");
+					toast("已删除项目及名下任务", "info");
 				})
 				.catch((error: unknown) => {
 					toast(error instanceof Error ? error.message : String(error), "error");
@@ -874,6 +897,7 @@ export function App(): ReactElement {
 						onOpenExtensions={() => openSettings("extensions")}
 						onOpenSettings={() => openSettings("general")}
 						onRenameWorkspace={renameWorkspace}
+						onHideWorkspace={hideWorkspace}
 						onRemoveWorkspace={removeWorkspace}
 						onRenameSession={renameSession}
 					/>
