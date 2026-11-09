@@ -37,6 +37,7 @@ function model(input: readonly ModelEntry["input"][number][] = ["text"]): ModelE
 		name: "m",
 		api: "openai-completions",
 		baseUrl: "https://api.example/v1",
+		disabled: false,
 		reasoning: false,
 		thinkingLevelMap: {},
 		input,

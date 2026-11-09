@@ -1,11 +1,12 @@
-import { Box, Check, ChevronDown, Ellipsis, Eye, EyeOff, Pencil, Plus, Settings2, Trash2 } from "lucide-react";
+import { Box, Check, ChevronDown, Ellipsis, Eye, EyeOff, FlaskConical, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
 import { api as apiClient } from "../api.ts";
 import { Dialog, Menu, Switch, toast, type MenuEntry } from "../components/ui/index.ts";
 import { formatTokens } from "../lib/format.ts";
-import type { ProviderInput, ProviderModel, ProviderView, ThinkingLevel } from "../protocol.ts";
+import type { ProviderInput, ProviderModel, ProviderTestResult, ProviderView, ThinkingLevel } from "../protocol.ts";
 import { ModelDialog } from "./model-dialog.tsx";
+import { ModelTestDialog, type ModelTestState } from "./model-test-dialog.tsx";
 
 const EFFORT_LABELS: Record<ThinkingLevel, string> = {
 	off: "关闭",
@@ -102,13 +103,14 @@ export function ProviderDetail({
 	const [models, setModels] = useState<readonly ProviderModel[]>(provider.models);
 	const [showKey, setShowKey] = useState(false);
 	const [apiOpen, setApiOpen] = useState(false);
-	/** advanced 为真时直接展开模型弹层里的高级字段 */
-	const [dialog, setDialog] = useState<{ readonly index: number | undefined; readonly advanced: boolean } | undefined>(
-		undefined,
-	);
+	const [dialog, setDialog] = useState<{ readonly index: number | undefined } | undefined>(undefined);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | undefined>(undefined);
 	const [confirmDelete, setConfirmDelete] = useState(false);
+	/** 测试面板：记录被测模型，切换模型时重新开始 */
+	const [test, setTest] = useState<{ readonly index: number; readonly state: ModelTestState } | undefined>(
+		undefined,
+	);
 
 	const dirty =
 		name.trim() !== provider.name ||
@@ -169,6 +171,46 @@ export function ProviderDetail({
 				onDeleted();
 			})
 			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+	};
+
+	/** 停用只影响能不能被新选中；正在用的那一个保留在当前会话里，直到换掉它 */
+	const setModelEnabled = (index: number, enabled: boolean): void => {
+		setModels((list) => list.map((item, position) => (position === index ? { ...item, disabled: !enabled } : item)));
+	};
+
+	const runTest = (index: number): void => {
+		const model = models[index];
+		if (model === undefined) return;
+		const headers = parseHeaders(headersText);
+		if (headers === undefined) {
+			setError("请求头格式不对：用 JSON 对象，或每行一条「名称: 值」");
+			return;
+		}
+		const input: ProviderInput = {
+			id: provider.id,
+			name: name.trim().length === 0 ? provider.name : name.trim(),
+			baseUrl: baseUrl.trim(),
+			api,
+			headers,
+			promptCacheKey: provider.promptCacheKey,
+			enabled: provider.enabled,
+			models,
+			...(apiKey.trim().length === 0 ? {} : { apiKey: apiKey.trim() }),
+		};
+		setError(undefined);
+		setTest({ index, state: { status: "running" } });
+		void apiClient
+			.testProvider(input, model.id)
+			.then((result: ProviderTestResult) => setTest({ index, state: { status: "done", result } }))
+			.catch((cause: unknown) =>
+				setTest({
+					index,
+					state: {
+						status: "done",
+						result: { ok: false, error: cause instanceof Error ? cause.message : String(cause) },
+					},
+				}),
+			);
 	};
 
 	const usingHere = current?.provider === provider.id;
@@ -327,7 +369,7 @@ export function ProviderDetail({
 					<button
 						type="button"
 						className="m-add"
-						onClick={() => setDialog({ index: undefined, advanced: false })}
+						onClick={() => setDialog({ index: undefined })}
 					>
 						<Plus className="ic ic-12" />
 						添加模型
@@ -340,28 +382,40 @@ export function ProviderDetail({
 						models.map((model, index) => {
 							const active = usingHere && current?.model === model.id;
 							return (
-								<div key={model.id} className={`model-row${active ? " is-current" : ""}`}>
-									<span className="mn">{model.name}</span>
-									{model.contextWindow === undefined ? null : (
-										<span className="badge">{formatTokens(model.contextWindow)}</span>
-									)}
-									{model.input.includes("image") ? <span className="badge">视觉</span> : null}
+								<div
+									key={model.id}
+									className={`model-row${active ? " is-current" : ""}${model.disabled ? " is-off" : ""}`}
+								>
+									<button
+										type="button"
+										className="m-pick"
+										title={active ? "当前使用中" : "设为当前模型"}
+										onClick={() => onSelectModel(provider.id, model.id)}
+									>
+										<span className="mn">{model.name}</span>
+										{model.disabled ? <span className="badge dash">已停用</span> : null}
+										{active ? <span className="badge">当前</span> : null}
+										{model.contextWindow === undefined ? null : (
+											<span className="badge">{formatTokens(model.contextWindow)}</span>
+										)}
+										{model.input.includes("image") ? <span className="badge">视觉</span> : null}
+									</button>
 									<span className="mrow-acts">
 										<button
 											type="button"
 											className="mrow-ico"
-											aria-label={`高级配置 ${model.id}`}
-											title="高级配置"
-											onClick={() => setDialog({ index, advanced: true })}
+											aria-label={`测试模型 ${model.id}`}
+											title="测试模型"
+											onClick={() => runTest(index)}
 										>
-											<Settings2 className="ic ic-14" />
+											<FlaskConical className="ic ic-14" />
 										</button>
 										<button
 											type="button"
 											className="mrow-ico"
 											aria-label={`编辑模型 ${model.id}`}
 											title="编辑模型"
-											onClick={() => setDialog({ index, advanced: false })}
+											onClick={() => setDialog({ index })}
 										>
 											<Pencil className="ic ic-14" />
 										</button>
@@ -377,12 +431,9 @@ export function ProviderDetail({
 											<Trash2 className="ic ic-14" />
 										</button>
 										<Switch
-											checked={active}
-											label={`使用 ${model.name}`}
-											onCheckedChange={() => {
-												// 开关就是「当前模型」：关掉当前项没有意义，只处理打开
-												if (!active) onSelectModel(provider.id, model.id);
-											}}
+											checked={!model.disabled}
+											label={`${model.disabled ? "启用" : "停用"} ${model.name}`}
+											onCheckedChange={(enabled) => setModelEnabled(index, enabled)}
 										/>
 									</span>
 								</div>
@@ -453,7 +504,6 @@ export function ProviderDetail({
 				model={dialog?.index === undefined ? undefined : models[dialog.index]}
 				existingIds={models.filter((_, position) => position !== dialog?.index).map((model) => model.id)}
 				patch={{ api, baseUrl }}
-				advanced={dialog?.advanced ?? false}
 				onClose={() => setDialog(undefined)}
 				onSubmit={(next) => {
 					setModels((list) => {
@@ -463,6 +513,15 @@ export function ProviderDetail({
 					setDialog(undefined);
 				}}
 			/>
+
+			{test === undefined ? null : (
+				<ModelTestDialog
+					name={models[test.index]?.name ?? provider.name}
+					state={test.state}
+					onClose={() => setTest(undefined)}
+					onRetry={() => runTest(test.index)}
+				/>
+			)}
 
 			<Dialog
 				open={confirmDelete}

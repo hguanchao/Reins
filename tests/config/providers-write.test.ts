@@ -29,6 +29,7 @@ describe("providers.json 写回", () => {
 							name: "Model One",
 							api: "openai-completions",
 							baseUrl: "https://api.example.com/v1",
+							disabled: false,
 							reasoning: true,
 							thinkingLevelMap: { high: "high" },
 							input: ["text"],
@@ -58,5 +59,61 @@ describe("providers.json 写回", () => {
 			cacheRead: 0.1,
 			cacheWrite: 0.2,
 		});
+	});
+
+	it("只有停用的模型写出 disabled，未停用的留空", () => {
+		const config: ProvidersConfig = {
+			providers: [
+				{
+					id: "mock",
+					name: "Mock",
+					baseUrl: "https://api.example.com/v1",
+					api: "openai-completions",
+					apiKey: "secret",
+					headers: {},
+					promptCacheKey: false,
+					enabled: true,
+					models: [
+						{
+							id: "on",
+							name: "On",
+							api: "openai-completions",
+							baseUrl: "https://api.example.com/v1",
+							disabled: false,
+							reasoning: false,
+							thinkingLevelMap: {},
+							input: ["text"],
+							cost: undefined,
+							contextWindow: undefined,
+							maxTokens: undefined,
+							maxTokensField: "max_tokens",
+							headers: {},
+						},
+						{
+							id: "off",
+							name: "Off",
+							api: "openai-completions",
+							baseUrl: "https://api.example.com/v1",
+							disabled: true,
+							reasoning: false,
+							thinkingLevelMap: {},
+							input: ["text"],
+							cost: undefined,
+							contextWindow: undefined,
+							maxTokens: undefined,
+							maxTokensField: "max_tokens",
+							headers: {},
+						},
+					],
+				},
+			],
+		};
+		const file = join(directory, "disabled.json");
+
+		writeProviders(config, file);
+
+		const text = readFileSync(file, "utf8");
+		assert.equal(text.match(/"disabled": false/g), null);
+		assert.equal(text.match(/"disabled": true/g)?.length, 1);
 	});
 });

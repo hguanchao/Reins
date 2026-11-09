@@ -24,6 +24,8 @@ export interface SettingsModel {
 	readonly providerName: string;
 	readonly model: string;
 	readonly name: string;
+	/** 停用的模型不出现在模型选择器里，当前正在用的那一个除外 */
+	readonly disabled: boolean;
 	readonly reasoning: boolean;
 	readonly thinkingLevels: readonly ThinkingLevel[];
 	readonly contextWindow: number | undefined;
@@ -121,6 +123,7 @@ function describeModel(provider: ProviderEntry, model: ModelEntry): SettingsMode
 		providerName: provider.name,
 		model: model.id,
 		name: model.name,
+		disabled: model.disabled,
 		reasoning: model.reasoning,
 		thinkingLevels: supportedEfforts(model.reasoning, model.thinkingLevelMap),
 		contextWindow: model.contextWindow,

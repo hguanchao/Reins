@@ -36,6 +36,7 @@ function model(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		name: "GPT-5.2",
 		api: "openai-responses",
 		baseUrl: "https://api.openai.com/v1",
+		disabled: false,
 		reasoning: true,
 		thinkingLevelMap: {},
 		input: ["text"],

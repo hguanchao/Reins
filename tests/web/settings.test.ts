@@ -12,6 +12,7 @@ const model: ModelEntry = {
 	name: "Model",
 	api: "openai-completions",
 	baseUrl: "https://example.com/v1",
+	disabled: false,
 	reasoning: true,
 	thinkingLevelMap: { max: null },
 	input: ["text"],

@@ -10,6 +10,7 @@ function model(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		name: "Model One",
 		api: "openai-completions",
 		baseUrl: "https://api.example.com/v1",
+		disabled: false,
 		reasoning: false,
 		thinkingLevelMap: {},
 		input: ["text"],
@@ -130,5 +131,24 @@ describe("提供方写回校验", () => {
 		const result = mergeProvider(config(), { id: "p1", enabled: "no" }, "/tmp/providers.json");
 		assert.equal(result.ok, false);
 		assert.match(result.error ?? "", /启用状态/);
+	});
+
+	it("模型停用标记能写回，未停用的不落盘", () => {
+		const disabled = mergeProvider(
+			config(),
+			{ id: "p1", models: [{ ...model(), disabled: true }] },
+			"/tmp/providers.json",
+		);
+		assert.equal(disabled.ok, true);
+		assert.equal(disabled.config?.providers[0]?.models[0]?.disabled, true);
+
+		// disabled: false 只是界面噪声，写回后按缺省处理
+		const enabled = mergeProvider(
+			config(),
+			{ id: "p1", models: [{ ...model(), disabled: false }] },
+			"/tmp/providers.json",
+		);
+		assert.equal(enabled.ok, true);
+		assert.equal(enabled.config?.providers[0]?.models[0]?.disabled, false);
 	});
 });

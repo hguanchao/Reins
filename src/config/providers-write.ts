@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs
 import { dirname } from "node:path";
 
 import { providersFilePath } from "#src/config/paths.ts";
-import type { ProvidersConfig } from "#src/config/providers-file.ts";
+import type { ModelEntry, ProvidersConfig } from "#src/config/providers-file.ts";
 
 /**
  * providers.json 的原子写回。
@@ -14,7 +14,8 @@ export function writeProviders(config: ProvidersConfig, file: string = providers
 	const providers: Record<string, unknown> = {};
 	for (const provider of config.providers) {
 		const { id, ...rest } = provider;
-		providers[id] = rest;
+		// 未停用的模型不写 disabled：配置文件只记录差异，默认值交给解析层
+		providers[id] = { ...rest, models: provider.models.map(modelRecord) };
 	}
 	const source = `${JSON.stringify({ providers }, null, 2)}\n`;
 
@@ -32,4 +33,10 @@ export function writeProviders(config: ProvidersConfig, file: string = providers
 		rmSync(temporary, { force: true });
 		throw error;
 	}
+}
+
+/** 模型条目落盘形态：只剩停用标记需要显式写出。 */
+function modelRecord(model: ModelEntry): Record<string, unknown> {
+	const { disabled, ...rest } = model;
+	return disabled ? { ...rest, disabled: true } : rest;
 }

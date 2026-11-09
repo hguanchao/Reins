@@ -162,6 +162,14 @@ export interface WebServerDeps {
 	}>;
 	/** 本机提供方清单;API Key 只返回是否已保存 */
 	providers(): readonly ProviderView[];
+	/** 用设置表单里的当前值试发一次最小请求;不写盘、不占用会话 */
+	testProvider(body: Record<string, unknown>): Promise<{
+		readonly ok: boolean;
+		readonly ms?: number;
+		readonly model?: string;
+		readonly text?: string;
+		readonly error?: string;
+	}>;
 	/** 新增或更新提供方;写盘后重载当前模型选择 */
 	saveProvider(body: Record<string, unknown>): Promise<{ readonly ok: boolean; readonly error?: string }>;
 	/** 删除提供方;当前正在使用的那一个由装配层拒绝 */
@@ -531,6 +539,12 @@ export function createWebServer(deps: WebServerDeps, options: WebServerOptions):
 				return;
 			}
 			sendJson(res, 200, { ok: true });
+			return;
+		}
+		if (req.method === "POST" && path === "/api/providers/test") {
+			// 上游失败不是请求本身失败：始终 200，由界面读 ok 与 error 区分结果
+			const body = await readJsonBody(req);
+			sendJson(res, 200, await deps.testProvider(body ?? {}));
 			return;
 		}
 		if (req.method === "GET" && path === "/api/settings") {

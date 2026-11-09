@@ -144,6 +144,7 @@ function depsOf(turns: readonly ScriptedTurn[], hooks: { events: AgentEvent[]; s
 			name: "m1",
 			api: "a",
 			baseUrl: "b",
+			disabled: false,
 			reasoning: false,
 			thinkingLevelMap: {},
 			input: ["text"],

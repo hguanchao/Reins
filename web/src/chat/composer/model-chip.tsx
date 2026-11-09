@@ -28,12 +28,14 @@ export function ModelChip({
 	const providers = useMemo(() => {
 		const map = new Map<string, { readonly id: string; readonly name: string; readonly models: SettingsModel[] }>();
 		for (const item of models) {
+			// 停用的模型不出现在选择器里；当前正在用的那一个保留，否则这一栏会看不出自己在哪
+			if (item.disabled && item.model !== model.model) continue;
 			const entry = map.get(item.provider) ?? { id: item.provider, name: item.providerName, models: [] };
 			entry.models.push(item);
 			map.set(item.provider, entry);
 		}
 		return [...map.values()];
-	}, [models]);
+	}, [models, model.model]);
 
 	const inProvider = providers.find((entry) => entry.models.some((item) => item.model === model.model));
 	const effortIndex = Math.max(0, levels.indexOf(effort));

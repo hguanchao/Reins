@@ -565,6 +565,20 @@
 	border-color: var(--ink-4);
 }
 
+/* 名称区兼作「设为当前」的入口：点击整段切换，不额外占一个单选控件 */
+.model-row .m-pick {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	text-align: left;
+}
+
+.model-row.is-off .mn {
+	color: var(--ink-4);
+}
+
 .model-row .mn {
 	flex: 0 1 auto;
 	min-width: 0;
@@ -960,3 +974,43 @@
 	color: var(--ink-4);
 }
 
+
+/* 测试模型：模型名 + 一个结果条，失败用危险色，成功保持灰阶 */
+.mt-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.mt-row .k {
+	font-size: var(--fs-12);
+	color: var(--ink-3);
+}
+
+.mt-row .v {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--fs-12);
+	color: var(--ink);
+}
+
+.mt-result {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	margin-top: 4px;
+	font-size: var(--fs-12);
+	color: var(--ink);
+}
+
+.mt-result[data-ok="false"] {
+	color: var(--danger);
+}
+
+.mt-result .ms {
+	margin-left: auto;
+	font-family: var(--mono);
+	font-size: var(--fs-10);
+	color: var(--ink-4);
+}

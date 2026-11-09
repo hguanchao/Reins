@@ -29,6 +29,7 @@ function model(input: readonly ModelEntry["input"][number][] = ["text"]): ModelE
 		name: "m",
 		api: "anthropic-messages",
 		baseUrl: "https://api.example",
+		disabled: false,
 		reasoning: false,
 		thinkingLevelMap: {},
 		input,

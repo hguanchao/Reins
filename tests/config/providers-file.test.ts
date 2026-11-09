@@ -68,6 +68,14 @@ describe("模型条目的解析", () => {
 			/must be a boolean/,
 		);
 	});
+
+	it("模型停用标记缺省为启用", () => {
+		assert.equal(firstModel('{ "id": "m" }')?.disabled, false);
+	});
+
+	it("模型显式停用时读成 true", () => {
+		assert.equal(firstModel('{ "id": "m", "disabled": true }')?.disabled, true);
+	});
 });
 
 describe("模型列表", () => {

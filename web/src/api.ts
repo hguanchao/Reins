@@ -19,6 +19,7 @@ import type {
 	PluginInfo,
 	PluginLogLine,
 	ProviderInput,
+	ProviderTestResult,
 	ProviderView,
 	SessionEntry,
 	SessionSummary,
@@ -215,6 +216,13 @@ export const api = {
 	},
 	async deleteProvider(id: string): Promise<void> {
 		await request("/api/providers/delete", { method: "POST", body: JSON.stringify({ id }) });
+	},
+	/** 用表单里的当前值试发一次最小请求；结果是结构化对象，不靠 HTTP 状态表达成败 */
+	async testProvider(provider: ProviderInput, model: string): Promise<ProviderTestResult> {
+		return (await request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({ provider, model }),
+		})) as ProviderTestResult;
 	},
 	async setProviderEnabled(id: string, enabled: boolean): Promise<void> {
 		await request("/api/providers", { method: "POST", body: JSON.stringify({ provider: { id, enabled } }) });

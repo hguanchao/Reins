@@ -135,6 +135,8 @@ export interface SettingsModel {
 	providerName: string;
 	model: string;
 	name: string;
+	/** 停用的模型不出现在选择器里，当前正在用的那一个除外 */
+	disabled: boolean;
 	reasoning: boolean;
 	thinkingLevels: readonly ThinkingLevel[];
 	contextWindow: number | undefined;
@@ -150,6 +152,8 @@ export interface ProviderModel {
 	name: string;
 	api: string;
 	baseUrl: string;
+	/** 停用只影响能不能被选中，配置与单价都保留 */
+	disabled: boolean;
 	reasoning: boolean;
 	thinkingLevelMap: Partial<Record<ThinkingLevel, string | null>>;
 	input: readonly ModelModality[];
@@ -158,6 +162,15 @@ export interface ProviderModel {
 	maxTokens?: number;
 	maxTokensField: "max_tokens" | "max_completion_tokens";
 	headers: Record<string, string>;
+}
+
+/** 一次模型连通性测试的结果；失败时 error 说明原因，ms 可能仍然带有已耗时。 */
+export interface ProviderTestResult {
+	ok: boolean;
+	ms?: number;
+	model?: string;
+	text?: string;
+	error?: string;
 }
 
 export interface ProviderView {

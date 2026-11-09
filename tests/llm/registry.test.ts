@@ -14,7 +14,7 @@ function provider(): ProviderEntry {
 }
 
 function model(api: string): ModelEntry {
-	return { id: "m", name: "m", api, baseUrl: "https://x", reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: undefined, maxTokensField: "max_tokens", headers: {} };
+	return { id: "m", name: "m", api, baseUrl: "https://x", disabled: false, reasoning: false, thinkingLevelMap: {}, input: ["text"], cost: undefined, contextWindow: undefined, maxTokens: undefined, maxTokensField: "max_tokens", headers: {} };
 }
 
 function idleClient(api: string): LlmClient {

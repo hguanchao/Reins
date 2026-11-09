@@ -145,6 +145,7 @@ function fakeDeps(staticRoot: string | undefined): { deps: WebServerDeps; state:
 		updateSkill: (body) => ({ ok: typeof body["path"] === "string" }),
 		deleteSkill: (body) => ({ ok: typeof body["path"] === "string" }),
 		providers: () => [],
+		testProvider: async (body) => ({ ok: typeof body["model"] === "string", ms: 12, model: "m1" }),
 		saveProvider: async (body) => ({ ok: typeof body["provider"] === "object" }),
 		deleteProvider: async (body) => ({ ok: typeof body["id"] === "string" }),
 		addMcpServer: async (body) => ({ ok: typeof body["name"] === "string" }),
@@ -716,6 +717,15 @@ describe("web 传输层", () => {
 			body: JSON.stringify({ id: "p1" }),
 		});
 		assert.equal(deletedProvider.status, 200);
+
+		// 上游失败也走 200：界面读 ok 与 error，而不是把 400 当成请求错误
+		const tested = await fetch(`${base}/api/providers/test`, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ provider: { id: "p1" }, model: "m1" }),
+		});
+		assert.equal(tested.status, 200);
+		assert.deepEqual(await tested.json(), { ok: true, ms: 12, model: "m1" });
 
 		const plan = await fetch(`${base}/api/plan-mode`, {
 			method: "POST",

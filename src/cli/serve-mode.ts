@@ -11,6 +11,7 @@ import {
 	assemblePipeline,
 	createCompactor,
 	createDriverFor,
+	createLlmClient,
 	createReviewer,
 } from "#src/cli/pipeline.ts";
 import { createSessionFor } from "#src/cli/session/factory.ts";
@@ -98,6 +99,9 @@ import { describeSettings, type SettingsUpdate } from "#src/web/settings.ts";
 const APPROVAL_ANSWERS: readonly ApprovalAnswer[] = ["once", "always", "deny"];
 /** 审批方式的合法取值;与 config.toml 的语义一致,切换不落盘。 */
 const APPROVAL_MODES: readonly ApprovalMode[] = ["ask", "auto", "yolo"];
+
+/** 测试模型的上限：连不上或端点不回话时不让设置页一直转圈。 */
+const MODEL_TEST_TIMEOUT_MS = 20_000;
 
 interface ServeStartup {
 	readonly desktopManaged?: boolean;
@@ -574,6 +578,71 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			}
 		},
 		providers: () => providerViews(providersConfig),
+		testProvider: async (body) => {
+			const input = body["provider"];
+			const modelId = body["model"];
+			if (typeof input !== "object" || input === null || Array.isArray(input)) {
+				return { ok: false, error: "提供方数据无效" };
+			}
+			if (typeof modelId !== "string" || modelId.length === 0) {
+				return { ok: false, error: "请选择要测试的模型" };
+			}
+			const draft = input as Record<string, unknown>;
+			const id = draft["id"];
+			if (typeof id !== "string") return { ok: false, error: "请填写提供方 ID" };
+
+			// 用表单里的当前值试；密钥留空时沿用已保存的那一份，未保存的改动也能先验证
+			const merged = mergeProvider(providersConfig, draft, providersFile);
+			if (!merged.ok || merged.config === undefined) {
+				return { ok: false, error: merged.error ?? "提供方配置无效" };
+			}
+			const provider = merged.config.providers.find((item) => item.id === id);
+			const model = provider?.models.find((item) => item.id === modelId);
+			if (provider === undefined || model === undefined) {
+				return { ok: false, error: "找不到这个模型" };
+			}
+			if (model.disabled) {
+				return { ok: false, error: "该模型已停用，请先启用再测试" };
+			}
+
+			const controller = new AbortController();
+			const timer = setTimeout(() => controller.abort(), MODEL_TEST_TIMEOUT_MS);
+			const started = Date.now();
+			try {
+				const result = await createLlmClient(config, provider, model)
+					.stream({
+						model: model.id,
+						system: "You are a connectivity probe. Reply with a single word: OK.",
+						messages: [{ role: "user", content: "ping" }],
+						tools: [],
+						maxTokens: 24,
+						effort: undefined,
+						signal: controller.signal,
+					})
+					.result();
+				const ms = Date.now() - started;
+				if (result.stopReason === "error" || result.stopReason === "aborted") {
+					return {
+						ok: false,
+						ms,
+						error:
+							result.stopReason === "aborted"
+								? `请求超时（${MODEL_TEST_TIMEOUT_MS / 1000} 秒内没有响应）`
+								: (result.errorMessage ?? "请求失败"),
+					};
+				}
+				const text = result.content
+					.filter((block) => block.type === "text")
+					.map((block) => block.text)
+					.join("")
+					.trim();
+				return { ok: true, ms, model: result.model, text };
+			} catch (error) {
+				return { ok: false, error: describeError(error) };
+			} finally {
+				clearTimeout(timer);
+			}
+		},
 		saveProvider: async (body) => {
 			const input = body["provider"];
 			if (typeof input !== "object" || input === null || Array.isArray(input)) {

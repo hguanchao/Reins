@@ -73,6 +73,12 @@ export interface ModelEntry {
 	/** 线上协议名，取值由内置适配器决定 */
 	readonly api: string;
 	readonly baseUrl: string;
+	/**
+	 * 是否参与模型选择。
+	 *
+	 * 停用只影响能不能被新选中：配置、单价与上下文声明都保留，重新启用不必重填。
+	 */
+	readonly disabled: boolean;
 	/** 是否支持思考等级控制 */
 	readonly reasoning: boolean;
 	readonly thinkingLevelMap: ThinkingLevelMap;
@@ -138,6 +144,7 @@ const MODEL_KEYS: readonly string[] = [
 	"name",
 	"api",
 	"baseUrl",
+	"disabled",
 	"reasoning",
 	"thinkingLevelMap",
 	"input",
@@ -244,6 +251,7 @@ function readModelList(
 			name: readString(source, [...path, "name"]) ?? id,
 			api,
 			baseUrl,
+			disabled: readBoolean(source, [...path, "disabled"]) ?? false,
 			reasoning: readBoolean(source, [...path, "reasoning"]) ?? false,
 			thinkingLevelMap: readThinkingLevelMap(source, [...path, "thinkingLevelMap"]),
 			input: readModalities(source, [...path, "input"]),
