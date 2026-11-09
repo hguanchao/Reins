@@ -85,8 +85,10 @@
 	position: relative;
 }
 
-/* 提问：右对齐浅底气泡，最大 76% 宽 */
+/* 提问：右对齐浅底气泡，宽度随文字收缩、最多 76%。
+	块级元素默认 width:auto 会撑满，只写 max-width 会让两个字也占 76% 宽 */
 .ask {
+	width: fit-content;
 	max-width: 76%;
 	margin: 20px 0 6px auto;
 	padding: 11px 14px;

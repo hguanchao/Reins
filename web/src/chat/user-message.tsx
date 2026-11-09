@@ -22,7 +22,7 @@ function withPaths(text: string): readonly (string | ReactElement)[] {
 }
 
 /**
- * 用户提问：右侧浅底气泡，最大 76% 宽，10px 圆角。
+ * 用户提问：右侧浅底气泡，宽度随文字收缩、最多 76%，10px 圆角。
  *
  * 用户在右、模型在左，与主流 agent 会话同构；不用等宽大写署名与通栏细线。
  */
