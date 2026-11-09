@@ -13,6 +13,12 @@ export interface PluginResult {
 	readonly error?: string;
 }
 
+/** 新建工作空间的结果：失败原因要给到弹窗，不能只回一个布尔值让界面猜。 */
+export interface WorkspaceCreationResult {
+	readonly ok: boolean;
+	readonly error?: string;
+}
+
 export interface NotificationPayload {
 	readonly title: string;
 	readonly body: string;
@@ -34,12 +40,29 @@ const NOTIFICATION_TITLE_MAX = 80;
 const NOTIFICATION_BODY_MAX = 200;
 const TEXT_MAX = 256;
 const PLUGIN_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+/** 与显示名上限一致；超长直接拒绝，不截断，免得建出一个和输入不同的目录。 */
+const WORKSPACE_NAME_MAX = 60;
+/** 名称要当目录名用：路径分隔符、控制字符与 Windows 保留的非法字符一律挡住。 */
+const WORKSPACE_NAME_FORBIDDEN = /[\\/:*?"<>|\u0000-\u001f]/;
 
 /** 收成去空白后的非空字符串，并统一截断长度；空串与纯空白视为无效。 */
 export function nonEmptyString(value: unknown, maxLength: number = TEXT_MAX): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	return trimmed.length === 0 ? undefined : trimmed.slice(0, maxLength);
+}
+
+/**
+ * 新建工作空间的名称：中文可用，但会落到文件系统上当目录名，所以越界字符必须在
+ * IPC 入口就收窄；首尾空格先规范化，结尾的点在 Windows 上会被系统悄悄抹掉，单独拒绝。
+ */
+export function parseWorkspaceName(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const name = value.trim();
+	if (name.length === 0 || name.length > WORKSPACE_NAME_MAX) return undefined;
+	if (WORKSPACE_NAME_FORBIDDEN.test(name)) return undefined;
+	if (name === "." || name === ".." || name.endsWith(".")) return undefined;
+	return name;
 }
 
 export function parseTheme(value: unknown): ResolvedTheme | undefined {

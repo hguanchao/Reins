@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
-import type { PluginResult, ResolvedTheme } from "#desktop/contracts.ts";
+import type { PluginResult, ResolvedTheme, WorkspaceCreationResult } from "#desktop/contracts.ts";
 import type { WindowControlAction } from "#desktop/window-controls.ts";
 
 /**
@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld("reinsDesktop", {
 		ipcRenderer.invoke("workspace:rename", path, name) as Promise<boolean>,
 	hideWorkspace: (path: string): Promise<boolean> =>
 		ipcRenderer.invoke("workspace:hide", path) as Promise<boolean>,
+	createWorkspace: (name: string): Promise<WorkspaceCreationResult> =>
+		ipcRenderer.invoke("workspace:create", name) as Promise<WorkspaceCreationResult>,
 	openSession: (workspacePath: string | null, cwd: string, id: string): Promise<boolean> =>
 		ipcRenderer.invoke("workspace:open-session", workspacePath, cwd, id) as Promise<boolean>,
 	newTaskInWorkspace: (path: string): Promise<boolean> =>

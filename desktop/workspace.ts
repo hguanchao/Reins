@@ -1,3 +1,6 @@
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+
 import { dialog, ipcMain, shell, type BrowserWindow } from "electron";
 
 import {
@@ -7,7 +10,8 @@ import {
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
 import { writeWorkspaceName } from "#src/workspace/name.ts";
-import { nonEmptyString, parseSessionTarget } from "#desktop/contracts.ts";
+import { nonEmptyString, parseSessionTarget, parseWorkspaceName } from "#desktop/contracts.ts";
+import type { WorkspaceCreationResult } from "#desktop/contracts.ts";
 import { WORKSPACE_NAMES_FILE, type DesktopPaths } from "#desktop/paths.ts";
 import { isDirectory, lastWorkspace } from "#desktop/startup-workspace.ts";
 import type { ServerStartup } from "#desktop/server-launch.ts";
@@ -68,6 +72,36 @@ export function registerWorkspaceIpc(context: WorkspaceIpcContext): void {
 	ipcMain.handle("workspace:hide", (_event, path: unknown) => {
 		const requested = nonEmptyString(path);
 		return requested === undefined ? false : unregisterWorkspace(requested);
+	});
+
+	// 新建工作空间：在应用自管目录下建同名文件夹并切过去。名称会当目录名用，
+	// 收窄只发生在主进程，渲染层传什么都越不过这层边界；同名即冲突，不复用旧目录。
+	ipcMain.handle("workspace:create", async (_event, name: unknown): Promise<WorkspaceCreationResult> => {
+		const requested = parseWorkspaceName(name);
+		if (requested === undefined) {
+			return { ok: false, error: "名称不能为空、超过 60 字，或含有路径分隔符与非法字符" };
+		}
+		const root = paths.userData("workspaces");
+		const target = join(root, requested);
+		if (existsSync(target)) return { ok: false, error: "已存在同名工作空间，换一个名称" };
+		try {
+			mkdirSync(root, { recursive: true });
+			mkdirSync(target);
+			const canonical = registerWorkspace(target);
+			const opened = await switchTo(canonical, {}, "新建工作空间失败");
+			if (opened) return { ok: true };
+			// 切换失败时收回登记条目，并删掉刚建的空目录；否则同名会一直被判为冲突。
+			// 不带 recursive：目录一旦有内容就删不掉，交还给使用者处理而不是误删。
+			unregisterWorkspace(canonical);
+			try {
+				rmSync(target);
+			} catch {
+				// 非空目录保留
+			}
+			return { ok: false, error: "工作空间已建好，但切换失败，请重试" };
+		} catch {
+			return { ok: false, error: "无法创建同名文件夹" };
+		}
 	});
 
 	ipcMain.handle("workspace:open-session", async (_event, path: unknown, cwd: unknown, id: unknown) => {

@@ -8,6 +8,7 @@ import {
 	parsePluginToggle,
 	parseSessionTarget,
 	parseTheme,
+	parseWorkspaceName,
 	pluginFailure,
 } from "#desktop/contracts.ts";
 
@@ -65,6 +66,19 @@ describe("IPC 输入契约", () => {
 		assert.equal(isSafePluginFileName("../escape"), false);
 		assert.equal(isSafePluginFileName(".hidden"), false);
 		assert.equal(isSafePluginFileName("a/b"), false);
+	});
+
+	it("新建工作空间名称可含中文，但不得越出目录名的边界", () => {
+		assert.equal(parseWorkspaceName("  我的项目  "), "我的项目");
+		assert.equal(parseWorkspaceName("项目 "), "项目");
+		assert.equal(parseWorkspaceName("demo v2"), "demo v2");
+		for (const bad of [
+			"", "   ", 42, undefined, ".", "..", "项目.",
+			"a/b", "a\\b", "a:b", "a*b", "a?b", 'a"b', "a<b", "a>b", "a|b", "a\u0001b",
+			"x".repeat(61),
+		]) {
+			assert.equal(parseWorkspaceName(bad), undefined, String(bad));
+		}
 	});
 
 	it("异常转成界面可显示的结果，不泄露堆栈", () => {

@@ -4,6 +4,12 @@ export interface PluginActionResult {
 	readonly error?: string;
 }
 
+/** 新建工作空间的结果；失败原因直接显示在弹窗里。 */
+export interface WorkspaceCreationResult {
+	readonly ok: boolean;
+	readonly error?: string;
+}
+
 /** 桌面壳注入的能力；浏览器里不存在，相关入口据此隐藏。 */
 export interface ReinsDesktopBridge {
 	chooseWorkspace(): Promise<boolean>;
@@ -12,6 +18,8 @@ export interface ReinsDesktopBridge {
 	renameWorkspace(path: string, name: string): Promise<boolean>;
 	/** 从侧栏移除项目：只隐藏登记条目，名下活动与归档任务都保留 */
 	hideWorkspace(path: string): Promise<boolean>;
+	/** 新建工作空间：本地创建同名文件夹并切换，非法或重名由主进程拒绝 */
+	createWorkspace(name: string): Promise<WorkspaceCreationResult>;
 	openSession(workspacePath: string | null, cwd: string, id: string): Promise<boolean>;
 	newTaskInWorkspace(path: string): Promise<boolean>;
 	/** 选择本地插件目录并安装；成功后服务进程会重启 */

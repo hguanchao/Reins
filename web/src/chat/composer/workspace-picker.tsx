@@ -1,16 +1,18 @@
-import { FolderOpen, Plus } from "lucide-react";
+import { FolderOpen, Plus, Search } from "lucide-react";
 import { useEffect, useState, type ReactElement } from "react";
 import { api } from "../../api.ts";
 import { cn } from "../../components/ui/cn.ts";
 import { desktopBridge } from "../../platform.ts";
 
-/** 工作区浮层：搜索 + 最近工作空间 + 打开本地文件夹。 */
+/** 工作区浮层：搜索 + 最近工作空间 + 新建 / 打开本地文件夹。 */
 export function WorkspacePicker({
 	name,
 	onPick,
+	onNewWorkspace,
 }: {
 	readonly name: string;
 	onPick(path: string | null): void;
+	onNewWorkspace(): void;
 }): ReactElement {
 	const [query, setQuery] = useState("");
 	const [items, setItems] = useState<readonly { readonly path: string; readonly name: string }[]>([]);
@@ -28,10 +30,7 @@ export function WorkspacePicker({
 	return (
 		<>
 			<div className="wsp-search">
-				<svg className="ic ic-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-					<path d="m21 21-4.34-4.34" />
-					<circle cx="11" cy="11" r="8" />
-				</svg>
+				<Search className="ic ic-12" aria-hidden="true" />
 				<input
 					value={query}
 					onChange={(event) => setQuery(event.target.value)}
@@ -58,8 +57,13 @@ export function WorkspacePicker({
 					))
 				)}
 			</div>
-				<div className="pop-sep" />
-				{bridge === undefined ? null : (
+			<div className="pop-sep" />
+			{bridge === undefined ? null : (
+				<>
+					<button type="button" className="pop-i" onClick={onNewWorkspace}>
+						<Plus className="ic ic-14" />
+						新建工作空间
+					</button>
 					<button
 						type="button"
 						className="pop-i"
@@ -69,10 +73,11 @@ export function WorkspacePicker({
 							});
 						}}
 					>
-						<Plus className="ic ic-14" />
+						<FolderOpen className="ic ic-14" />
 						打开本地文件夹…
 					</button>
-				)}
+				</>
+			)}
 			</>
 	);
 }

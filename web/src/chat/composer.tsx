@@ -1,9 +1,9 @@
 import { ArrowUp, Check, ChevronDown, Folder, FolderOpen, GripVertical, Square, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactElement } from "react";
 import { api } from "../api.ts";
-import { cn } from "../components/ui/cn.ts";
-import { Popover } from "../components/ui/popover.tsx";
+import { cn, Dialog, Popover, toast } from "../components/ui/index.ts";
 import { formatTokens } from "../lib/format.ts";
+import { desktopBridge } from "../platform.ts";
 import type { ActivitySummary, ApprovalMode, McpServerInfo, ModelInfo, SettingsModel, SkillInfo, ThinkingLevel, UsageSummary } from "../protocol.ts";
 import { MIN_LINES, hitRate, mentionItems, groupMentions } from "./composer/model.ts";
 import type { MentionState, QueuedMessage } from "./composer/model.ts";
@@ -64,6 +64,10 @@ export function Composer(props: ComposerProps): ReactElement {
 	const [mention, setMention] = useState<MentionState | undefined>(undefined);
 	const [editing, setEditing] = useState<{ readonly id: string; readonly text: string } | undefined>(undefined);
 	const [dragIndex, setDragIndex] = useState<number | undefined>(undefined);
+	const [createOpen, setCreateOpen] = useState(false);
+	const [createName, setCreateName] = useState("");
+	const [creating, setCreating] = useState(false);
+	const [createError, setCreateError] = useState<string | undefined>(undefined);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const historyRef = useRef<string[]>([]);
 	const historyIndexRef = useRef(-1);
@@ -283,6 +287,37 @@ export function Composer(props: ComposerProps): ReactElement {
 
 	const mentionList = mentionItems(mention, props.skills);
 
+	const openCreateWorkspace = (): void => {
+		setCreateName("");
+		setCreateError(undefined);
+		setCreateOpen(true);
+	};
+
+	/** 名称的合法性由主进程统一收窄；这里只负责把失败原因显示在弹窗里。 */
+	const submitCreateWorkspace = (): void => {
+		const name = createName.trim();
+		if (name.length === 0 || creating) return;
+		const bridge = desktopBridge();
+		if (bridge === undefined) return;
+		setCreating(true);
+		setCreateError(undefined);
+		void bridge
+			.createWorkspace(name)
+			.then((result) => {
+				setCreating(false);
+				if (!result.ok) {
+					setCreateError(result.error ?? "新建工作空间失败");
+					return;
+				}
+				setCreateOpen(false);
+				toast(`已新建工作空间「${name}」`, "info");
+			})
+			.catch(() => {
+				setCreating(false);
+				setCreateError("新建工作空间失败，请稍后重试");
+			});
+	};
+
 	return (
 		<div className="comp-unit">
 			{props.blank === true ? (
@@ -318,6 +353,10 @@ export function Composer(props: ComposerProps): ReactElement {
 										onPick={(path) => {
 											close();
 											props.onNewTask(path);
+										}}
+										onNewWorkspace={() => {
+											close();
+											openCreateWorkspace();
 										}}
 									/>
 								</div>
@@ -551,6 +590,44 @@ export function Composer(props: ComposerProps): ReactElement {
 					</div>
 				</div>
 			) : null}
+
+			<Dialog
+				open={createOpen}
+				onClose={() => setCreateOpen(false)}
+				title="新建工作空间"
+				footer={
+					<>
+						<button type="button" className="b b-line" onClick={() => setCreateOpen(false)}>
+							取消
+						</button>
+						<button
+							type="button"
+							className="b b-solid"
+							disabled={createName.trim().length === 0 || creating}
+							onClick={submitCreateWorkspace}
+						>
+							确认
+						</button>
+					</>
+				}
+			>
+				<p className="set-note" style={{ margin: "0 0 14px" }}>
+					为工作空间命名，本地将自动创建同名文件夹，命名后不可随意更改
+				</p>
+				<input
+					value={createName}
+					onChange={(event) => setCreateName(event.target.value)}
+					onKeyDown={(event) => {
+						if (event.key === "Enter") submitCreateWorkspace();
+					}}
+					placeholder="输入工作空间名称"
+					aria-label="输入工作空间名称"
+					className="form-input"
+				/>
+				{createError === undefined ? null : (
+					<p className="set-note" style={{ margin: "8px 0 0", color: "var(--danger)" }}>{createError}</p>
+				)}
+			</Dialog>
 		</div>
 	);
 }
