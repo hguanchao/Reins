@@ -171,6 +171,11 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 				throw new Error("New task workspace is not the active registered workspace");
 			}
 			workspacePath = registered;
+		} else if (startup.desktopManaged === true) {
+			// 旧会话没有归属标记时按 cwd 推断项目，启动时新建的会话也照此办理；
+			// 否则桌面壳明明停在某个工作区里，卡帽却显示成「未绑定」而没有解绑入口。
+			// 只有主动取消绑定（newSession(null)）才写 null，两种状态由此区分。
+			workspacePath = registeredWorkspace(workRoot) ?? null;
 		}
 		session = createSessionFor(workRoot, sessionStore, workspacePath);
 	}

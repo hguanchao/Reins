@@ -1,4 +1,4 @@
-import { ArrowUp, Check, ChevronDown, FolderOpen, GripVertical, Square, X, Zap } from "lucide-react";
+import { ArrowUp, Check, ChevronDown, Folder, FolderOpen, GripVertical, Square, X, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactElement } from "react";
 import { api } from "../api.ts";
 import { cn } from "../components/ui/cn.ts";
@@ -300,7 +300,11 @@ export function Composer(props: ComposerProps): ReactElement {
 									aria-expanded={open}
 									title="切换工作区"
 								>
-									<FolderOpen className="ic ic-14" />
+									{props.workspacePath.length === 0 ? (
+										<Folder className="ic ic-14" />
+									) : (
+										<FolderOpen className="ic ic-14" />
+									)}
 									<span className="n">
 										{props.workspaceName.length === 0 ? "选择工作区" : props.workspaceName}
 									</span>
@@ -332,7 +336,7 @@ export function Composer(props: ComposerProps): ReactElement {
 						)}
 						<ChevronDown className="ic ic-12 ck" />
 					</span>
-					{props.branch === undefined ? null : (
+					{props.branch === undefined || props.workspacePath.length === 0 ? null : (
 						<Popover
 							align="start"
 							placement="above"

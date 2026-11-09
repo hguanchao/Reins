@@ -101,6 +101,19 @@ export function groupMentions(
 }
 
 
+/**
+ * 卡帽上工作区芯片的显示名：只有会话确实归属某个已登记工作区时才显示项目名，
+ * 解绑态交给界面显示「选择工作区」。清单尚未加载完时退回目录名，避免闪一下空壳。
+ */
+export function workspaceChipName(
+	workspaces: readonly { readonly path: string; readonly name: string }[],
+	workspacePath: string | null | undefined,
+	fallbackName: string,
+): string {
+	if (workspacePath === null || workspacePath === undefined || workspacePath.length === 0) return "";
+	return workspaces.find((item) => item.path === workspacePath)?.name ?? fallbackName;
+}
+
 export function serverStatusLabel(status: string): string {
 	switch (status) {
 		case "connected":

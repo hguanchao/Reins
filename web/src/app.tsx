@@ -13,6 +13,7 @@ import { clockTime } from "./lib/format.ts";
 import { ApprovalCard } from "./chat/approval-card.tsx";
 import { Composer, type ComposerProps, type QueuedMessage } from "./chat/composer.tsx";
 import { Hero } from "./chat/hero.tsx";
+import { workspaceChipName } from "./chat/composer/model.ts";
 import { MessageRail } from "./chat/message-rail.tsx";
 import { SelectionPopover } from "./chat/selection-popover.tsx";
 import { TranscriptView } from "./chat/transcript.tsx";
@@ -682,7 +683,7 @@ export function App(): ReactElement {
 		models: settings?.models ?? [],
 		skills,
 		mcpServers: settings?.mcpServers ?? [],
-		workspaceName: workspaceName(cwd),
+		workspaceName: workspaceChipName(workspaces, currentWorkspacePath, workspaceName(cwd)),
 		workspacePath: currentWorkspacePath ?? "",
 		branch: git?.branch,
 		contextTokens,

@@ -9,6 +9,7 @@ import {
 	hitRate,
 	mentionItems,
 	serverStatusLabel,
+	workspaceChipName,
 	type MentionState,
 } from "#web/chat/composer/model.ts";
 import type { SkillInfo, UsageSummary } from "#web/protocol.ts";
@@ -109,5 +110,26 @@ describe("共享常量", () => {
 		assert.equal(MIN_LINES, 2);
 		assert.equal(APPROVAL_LABELS.ask, "逐次询问");
 		assert.equal(EFFORT_LABELS.max, "最大");
+	});
+});
+
+describe("工作区芯片显示名", () => {
+	const rows = [
+		{ path: "/work/reins", name: "Reins1" },
+		{ path: "/work/other", name: "Other" },
+	] as const;
+
+	it("已绑定的会话优先用登记表中的显示名，而不是目录名", () => {
+		assert.equal(workspaceChipName(rows, "/work/reins", "reins"), "Reins1");
+	});
+
+	it("未绑定时留空，由界面显示「选择工作区」", () => {
+		assert.equal(workspaceChipName(rows, null, "reins"), "");
+		assert.equal(workspaceChipName(rows, undefined, "reins"), "");
+		assert.equal(workspaceChipName(rows, "", "reins"), "");
+	});
+
+	it("清单还没加载完时退回目录名，不闪空壳", () => {
+		assert.equal(workspaceChipName([], "/work/reins", "reins"), "reins");
 	});
 });
