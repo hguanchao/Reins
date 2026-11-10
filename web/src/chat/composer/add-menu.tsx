@@ -247,9 +247,7 @@ export function AddMenu({
 												<Tooltip label={skill.name} side="top" className="tip-col">
 													<span className="n">{skill.name}</span>
 												</Tooltip>
-												<Tooltip label={skill.description} side="top" className="tip-col">
-													<span className="d">{skill.description}</span>
-												</Tooltip>
+												<span className="d">{skill.description}</span>
 											</span>
 										</button>
 									))

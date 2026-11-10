@@ -1012,7 +1012,6 @@
 
 /* 宽度交给内容决定：路径长短差别很大，定宽会把长路径顶出边框 */
 .sub-panel {
-	position: relative;
 	width: max-content;
 	min-width: 210px;
 	max-width: min(320px, 46vw);
@@ -1032,7 +1031,6 @@
 
 /* 再长也不越出面板，末尾省略；完整路径由悬停提示给出 */
 .sub-panel .pop-i .tip-grow {
-	position: static;
 	display: flex;
 	flex: 1;
 	min-width: 0;
@@ -1045,21 +1043,19 @@
 	white-space: nowrap;
 }
 
-/* 两列内容各自截断，悬停才给全文；连接器行整体不接收指针，这里单独放行 */
+/* 名称与描述各自截断，但只有名称悬停给全文；连接器行整体不接收指针，这里单独放行 */
 .sk-col .tip-col {
-	position: static;
 	display: flex;
 	min-width: 0;
 	pointer-events: auto;
 }
 
-/* 行内两列挨得太近，浮层压在相邻触发源上会来回抢指针造成闪烁；统一挂到面板上沿之外。
-   触发源不建立定位上下文，浮层才会以面板为基准；居中位移用的是独立 translate 属性，要单独归零，
-   反白配色在 Tailwind 层里会被行文字色盖掉，这里也补一份 */
+/* 提示条朝上贴着名称行：一行只留一个触发源，浮层才不会压住相邻触发源来回抢指针。
+   间距收到 2px，浮层不会探进上一行名称的触发区；居中位移用的是独立 translate 属性，要单独归零；
+   反白配色在 Tailwind 层里会被行文字色盖掉，这里补一份 */
 .sub-panel [role="tooltip"] {
-	bottom: calc(100% + 8px);
 	left: 0;
-	margin: 0;
+	margin-bottom: 2px;
 	translate: none;
 	pointer-events: none;
 	background: var(--fill);
