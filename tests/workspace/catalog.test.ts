@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -10,6 +10,7 @@ import {
 	listWorkspaces,
 	registerWorkspace,
 	registeredWorkspace,
+	rebuildCatalogFromSessions,
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
 
@@ -102,6 +103,74 @@ describe("项目登记清单", () => {
 			assert.equal(dropWorkspace(project("beta")), false);
 			assert.equal(dropWorkspace(join(_home, "gone", "nowhere")), false);
 			assert.deepEqual(listKnownWorkspaces().length, 1);
+		});
+	});
+});
+
+/**
+ * 清单丢得起：会话目录名带哈希，反推不出路径，但会话文件头里还留着 cwd，
+ * 启动时据此就能把根找回来。
+ */
+describe("清单按会话重建", () => {
+	const writeSession = (home: string, name: string, cwd: string, archived = false): void => {
+		const directory = join(home, "sessions", name, archived ? "archived" : "");
+		mkdirSync(directory, { recursive: true });
+		writeFileSync(join(directory, "2026-11-02T12-03-50-403Z_870dd77a.jsonl"), `${JSON.stringify({ type: "session", version: 1, id: name, cwd })}\n`);
+	};
+
+	it("清单为空时按活动会话补回可见条目", async () => {
+		await withHomes(async (home, project) => {
+			const alpha = project("alpha");
+			writeSession(home, "alpha-dir", alpha);
+			assert.equal(rebuildCatalogFromSessions(), 1);
+			assert.deepEqual(listWorkspaces(), [resolve(alpha)]);
+		});
+	});
+
+	it("只有归档会话的目录补成隐藏，路径仍可查", async () => {
+		await withHomes(async (home, project) => {
+			const alpha = project("alpha");
+			writeSession(home, "alpha-dir", alpha, true);
+			assert.equal(rebuildCatalogFromSessions(), 1);
+			assert.deepEqual(listWorkspaces(), []);
+			assert.deepEqual(listKnownWorkspaces(), [resolve(alpha)]);
+		});
+	});
+
+	it("已有条目不动，被移除的项目不会重新冒出来", async () => {
+		await withHomes(async (home, project) => {
+			const alpha = project("alpha");
+			registerWorkspace(alpha);
+			unregisterWorkspace(alpha);
+			writeSession(home, "alpha-dir", alpha);
+			assert.equal(rebuildCatalogFromSessions(), 0);
+			assert.deepEqual(listWorkspaces(), []);
+			assert.deepEqual(listKnownWorkspaces(), [resolve(alpha)]);
+		});
+	});
+
+	it("换种路径写法也只算同一条", async () => {
+		await withHomes(async (home, project) => {
+			const alpha = project("alpha");
+			registerWorkspace(alpha);
+			writeSession(home, "alpha-dir", `${alpha.toLowerCase()}${process.platform === "win32" ? "" : ""}`);
+			const before = listKnownWorkspaces().length;
+			rebuildCatalogFromSessions();
+			assert.equal(listKnownWorkspaces().length, before);
+		});
+	});
+
+	it("目录已被删掉的会话跳过，清单损坏时按空清单自愈", async () => {
+		await withHomes(async (home, project) => {
+			const alpha = project("alpha");
+			writeSession(home, "gone-dir", join(home, "已经不存在"));
+			writeFileSync(join(home, "workspaces.json"), "{ 坏掉的 json");
+			assert.equal(rebuildCatalogFromSessions(), 0);
+			assert.deepEqual(listKnownWorkspaces(), []);
+
+			writeSession(home, "alpha-dir", alpha);
+			assert.equal(rebuildCatalogFromSessions(), 1);
+			assert.deepEqual(listWorkspaces(), [resolve(alpha)]);
 		});
 	});
 });

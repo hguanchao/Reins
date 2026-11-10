@@ -79,6 +79,7 @@ import {
 	listWorkspaces,
 	registerWorkspace,
 	registeredWorkspace,
+	rebuildCatalogFromSessions,
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
 import { gitDiff, gitStatus } from "#src/workspace/git.ts";
@@ -128,6 +129,8 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	const providersFile = options.providersPath ?? providersFilePath();
 
 	const workRoot = process.cwd();
+	// 清单只是会话目录的索引，丢了就再也扫不到历史：先把遗漏的根按会话文件补回来
+	rebuildCatalogFromSessions();
 	if (!startup.desktopManaged) registerWorkspace(workRoot);
 	const workspace = new WorkspaceBoundary(workRoot);
 	const instructions = (): readonly PromptInstruction[] =>

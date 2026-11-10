@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { configDir } from "#src/config/paths.ts";
@@ -117,6 +117,11 @@ function samePath(left: string, right: string): boolean {
 		: leftPath === rightPath;
 }
 
+function foldPath(path: string): string {
+	const resolved = resolve(path);
+	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
 function isNotFound(error: unknown): boolean {
 	return (
 		typeof error === "object" &&
@@ -124,4 +129,114 @@ function isNotFound(error: unknown): boolean {
 		"code" in error &&
 		error.code === "ENOENT"
 	);
+}
+
+/**
+ * 清单是可重建的缓存，不是唯一真相。
+ *
+ * 会话目录名带哈希，反推不出路径，因此扫描必须先知道根——登记丢了（文件被删、写坏）
+ * 历史任务就再也扫不到。整份清单丢了只能靠会话文件头里的 cwd 找回来。
+ *
+ * 只补清单里没有的路径：已经有条目的（哪怕是被「从侧栏移除」置成隐藏的）一律不动，
+ * 免得把使用者藏起来的项目又翻出来。返回补上的条数。
+ */
+export function rebuildCatalogFromSessions(): number {
+	let entries: readonly CatalogEntry[];
+	let broken = false;
+	try {
+		entries = readCatalog();
+	} catch {
+		// 清单损坏时按空清单重建，相当于自愈；留着坏文件只会一直报错
+		entries = [];
+		broken = true;
+	}
+	const base = join(configDir(), "sessions");
+	let names: readonly string[];
+	try {
+		names = readdirSync(base, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => entry.name);
+	} catch {
+		return 0;
+	}
+	const known = new Set(entries.map((entry) => foldPath(entry.path)));
+	const next: CatalogEntry[] = [...entries];
+	for (const name of names) {
+		const found = readSessionDirectory(join(base, name));
+		if (found === undefined) continue;
+		const key = foldPath(found.path);
+		if (known.has(key)) continue;
+		known.add(key);
+		next.push({ path: found.path, visible: found.active });
+	}
+	const added = next.length - entries.length;
+	// 坏文件即使一条都补不出来也要覆写，否则后续读取还会在同一个地方炸
+	if (added > 0 || broken) writeCatalog(next);
+	return added;
+}
+
+/**
+ * 从一个会话目录里读出它属于哪个工作根。
+ *
+ * 目录里一个会话都没有就无从判断，直接跳过。只有归档会话的目录补进来时先隐藏：
+ * 它们不该占着侧栏，但路径仍要留着，否则归档任务再也恢复不了。
+ */
+function readSessionDirectory(directory: string): { readonly path: string; readonly active: boolean } | undefined {
+	let names: readonly string[];
+	try {
+		names = readdirSync(directory);
+	} catch {
+		return undefined;
+	}
+	const active = names.some((name) => name.endsWith(".jsonl"));
+	if (!active) {
+		let archived: readonly string[];
+		try {
+			archived = readdirSync(join(directory, "archived"));
+		} catch {
+			return undefined;
+		}
+		if (!archived.some((name) => name.endsWith(".jsonl"))) return undefined;
+	}
+	const name = names.find((item) => item.endsWith(".jsonl"));
+	const sample = name === undefined ? firstJsonl(join(directory, "archived")) : join(directory, name);
+	if (sample === undefined) return undefined;
+	const cwd = sessionHeaderCwd(sample);
+	if (cwd === undefined) return undefined;
+	try {
+		// 会话记的是旧路径写法，登记统一用真实路径，否则同一目录会因写法不同存两条
+		return { path: canonicalWorkspacePath(cwd), active };
+	} catch {
+		// 目录已经不存在，留着条目也没有意义
+		return undefined;
+	}
+}
+
+function firstJsonl(directory: string): string | undefined {
+	try {
+		return readdirSync(directory)
+			.filter((name) => name.endsWith(".jsonl"))
+			.map((name) => join(directory, name))[0];
+	} catch {
+		return undefined;
+	}
+}
+
+/** 会话文件首行是元信息，只读它的开头就够，不整份载入。 */
+function sessionHeaderCwd(file: string): string | undefined {
+	let handle: number | undefined;
+	try {
+		handle = openSync(file, "r");
+		const buffer = Buffer.alloc(1024);
+		const read = readSync(handle, buffer, 0, buffer.length, 0);
+		const line = buffer.subarray(0, read).toString("utf8").split("\n")[0] ?? "";
+		const parsed: unknown = JSON.parse(line);
+		if (typeof parsed !== "object" || parsed === null) return undefined;
+		const cwd = (parsed as { cwd?: unknown }).cwd;
+		return typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
+	} catch {
+		return undefined;
+	} finally {
+		if (handle !== undefined) closeSync(handle);
+	}
 }
