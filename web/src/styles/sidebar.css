@@ -492,27 +492,33 @@
 .batch-bar {
 	flex: none;
 	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	padding: 8px 10px;
+	align-items: center;
+	gap: 4px;
+	padding: 6px 8px;
 	border-top: 1px solid var(--rule);
 	background: var(--raise);
 	font-size: var(--fs-11);
 	color: var(--ink-3);
+	/* 一行放得下才不换行；窄侧栏里由计数先收缩，动作按钮保持完整 */
+	white-space: nowrap;
 }
 
-.batch-bar-line {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-
-.batch-bar-line .grow {
+.batch-bar .grow {
 	flex: 1;
+	min-width: 4px;
 }
 
-.batch-bar-line .b {
-	flex: 1;
+.batch-count {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	font-variant-numeric: tabular-nums;
+}
+
+.batch-bar .b {
+	flex: none;
+	padding: 0 7px;
 }
 
 /* 批量模式：状态点让位给复选框，整行可点选 */

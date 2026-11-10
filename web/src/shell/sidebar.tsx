@@ -19,7 +19,7 @@ import {
 	Settings,
 	Trash2,
 } from "lucide-react";
-import { useState, type ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 
 import { Dialog, Menu, toast, type MenuEntry } from "../components/ui/index.ts";
 import { relativeTime } from "../lib/format.ts";
@@ -99,6 +99,18 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		});
 	};
 	const exitBatch = (): void => { setBatchMode(false); setSelected(new Set()); };
+
+	// Escape 退出批量；删除确认框打开时让对话框先吃这一下，否则一次按键既关弹窗又丢选中
+	useEffect(() => {
+		if (!batchMode || batchDeleteOpen) return;
+		const onKey = (event: globalThis.KeyboardEvent): void => {
+			if (event.key !== "Escape") return;
+			setBatchMode(false);
+			setSelected(new Set());
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [batchMode, batchDeleteOpen]);
 
 	const [workspaceRename, setWorkspaceRename] = useState<WorkspaceSummary | undefined>(undefined);
 	const [workspaceDelete, setWorkspaceDelete] = useState<WorkspaceSummary | undefined>(undefined);
@@ -297,17 +309,21 @@ export function Sidebar(props: SidebarProps): ReactElement {
 
 			{batchMode ? (
 				<div className="batch-bar">
-					<div className="batch-bar-line">
-						<span>已选 {selected.size} 项</span>
-						<span className="grow" />
-						<button type="button" className="b b-ghost b-sm" onClick={() => setSelected(new Set(allRows.map((item) => item.id)))}>全选</button>
-						<button type="button" className="b b-ghost b-sm" onClick={() => setSelected(new Set())}>清空</button>
-					</div>
-					<div className="batch-bar-line">
-						<button type="button" className="b b-line b-sm" disabled={selected.size === 0} onClick={() => { props.onBatchArchive([...selected]); exitBatch(); }}>归档</button>
-						<button type="button" className="b b-ghost b-sm" style={{ color: "var(--danger)" }} disabled={selected.size === 0} onClick={() => setBatchDeleteOpen(true)}>删除</button>
-						<button type="button" className="b b-ghost b-sm" onClick={exitBatch}>取消</button>
-					</div>
+					<span className="batch-count" title="Esc 取消批量操作">已选 {selected.size} 项</span>
+					<span className="grow" />
+					<button
+						type="button"
+						className="b b-ghost b-sm"
+						onClick={() =>
+							setSelected(allRows.length > 0 && allRows.every((item) => selected.has(item.id))
+								? new Set()
+								: new Set(allRows.map((item) => item.id)))
+						}
+					>
+						{allRows.length > 0 && allRows.every((item) => selected.has(item.id)) ? "取消全选" : "全选"}
+					</button>
+					<button type="button" className="b b-line b-sm" disabled={selected.size === 0} onClick={() => { props.onBatchArchive([...selected]); exitBatch(); }}>归档</button>
+					<button type="button" className="b b-ghost b-sm" style={{ color: "var(--danger)" }} disabled={selected.size === 0} onClick={() => setBatchDeleteOpen(true)}>删除</button>
 				</div>
 			) : null}
 
