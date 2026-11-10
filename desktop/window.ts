@@ -59,9 +59,9 @@ export function loadingPage(): string {
 export function createMainWindow(paths: DesktopPaths, theme: ResolvedTheme): BrowserWindow {
 	const icon = nativeImage.createFromPath(paths.icon);
 	const window = new BrowserWindow({
-		width: 1180,
+		width: 1280,
 		height: 820,
-		minWidth: 880,
+		minWidth: 520,
 		minHeight: 600,
 		title: "Reins",
 		...(icon.isEmpty() ? {} : { icon }),
