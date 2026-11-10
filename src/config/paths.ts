@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 /** 配置目录名，放在用户主目录下。 */
 const CONFIG_DIR_NAME = ".reins";
@@ -21,6 +21,16 @@ export function configFilePath(): string {
 
 export function providersFilePath(): string {
 	return join(configDir(), PROVIDERS_FILE_NAME);
+}
+
+/** 工作区注册表目录；项目路径与会话文件由 sessions 目录管理。 */
+export function workspacesDir(): string {
+	return join(configDir(), "workspaces");
+}
+
+/** 全局会话与 Reins 自建项目共用的根目录。 */
+export function sessionsRootDir(): string {
+	return join(configDir(), "sessions");
 }
 
 /**
@@ -118,31 +128,27 @@ const INSTRUCTION_FILE_NAMES = ["AGENTS.override.md", "AGENTS.md", "CLAUDE.md"] 
 /**
  * 会话文件所在目录。
  *
- * 按工作根分目录，同一个目录下的会话聚在一起，换目录工作时各自看到自己的历史。
- *
- * 目录名由「可读前缀 + 路径哈希」组成。只用前缀是有损的：`E:\work\my-project` 与
- * `E:\work\my\project` 都会变成 `E--work-my-project`，两个项目的会话混在一起，
- * `--resume` 可能打开另一个项目的会话。加上哈希之后不同路径必然不同目录。
+ * Reins 自建项目与未绑定任务使用 sessions/standalone-... 作为项目目录，JSONL 直接保存在目录下；
+ * 外部项目按工作根编码到用户级 sessions 下，避免向用户项目写入会话数据。
  */
 export function sessionsDir(workRoot: string): string {
-	return join(configDir(), "sessions", encodeWorkRoot(workRoot));
+	if (isStandaloneSessionPath(workRoot)) return resolve(workRoot);
+	return join(sessionsRootDir(), encodeWorkRoot(workRoot));
+}
+
+/** 新版 Reins 自建目录是 sessions 下直接命名的 standalone 子目录。 */
+export function isStandaloneSessionPath(workRoot: string): boolean {
+	const path = resolve(workRoot);
+	const difference = relative(resolve(sessionsRootDir()), path);
+	return difference.startsWith("standalone-") && !difference.includes("/") && !difference.includes("\\");
 }
 
 /** 路径哈希的长度：16 个十六进制字符，碰撞概率可以忽略。 */
 const WORK_ROOT_HASH_LENGTH = 16;
 
-/**
- * 会话目录的候选清单，按优先级排列。
- *
- * 第一项是当前编码，其余是历史编码：目录名规则改过一次，旧会话还留在旧目录里。
- * 读取时两处都要看，否则升级之后使用者会以为自己的历史全丢了。
- */
+/** 每个工作区只有一个会话目录，路径编码采用当前规则。 */
 export function sessionDirectories(workRoot: string): readonly string[] {
-	const base = join(configDir(), "sessions");
-	const directories = [join(base, encodeWorkRoot(workRoot))];
-	const legacy = legacyWorkRoot(workRoot);
-	if (legacy !== undefined) directories.push(join(base, legacy));
-	return directories;
+	return [sessionsDir(workRoot)];
 }
 
 /**
@@ -159,13 +165,6 @@ function encodeWorkRoot(workRoot: string): string {
 	// 目录名不宜过长：只保留末尾 40 个字符，项目名通常在那里
 	const prefix = readable.length > 40 ? readable.slice(-40) : readable;
 	return `${prefix}-${hash}`;
-}
-
-/** 旧版编码（只有可读前缀、没有哈希）；当前编码与它相同时返回 undefined，避免重复。 */
-function legacyWorkRoot(workRoot: string): string | undefined {
-	const normalized = workRoot.replaceAll(/[/\\:]/g, "-");
-	const legacy = normalized.startsWith("-") ? normalized.slice(1) : normalized;
-	return legacy === encodeWorkRoot(workRoot) ? undefined : legacy;
 }
 
 /**

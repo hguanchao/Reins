@@ -17,13 +17,14 @@ const DIR = join(tmpdir(), `reins-session-${Date.now()}`);
 function memoryStore(): SessionStore & { files: Map<string, string> } {
 	const files = new Map<string, string>();
 	const fake = {
-		create(options: { id: string; cwd: string; file: string; forkedFrom?: { session: string; entry: string } }): SessionWriter {
+		create(options: { id: string; cwd: string; file: string; workspacePath?: string | null; forkedFrom?: { session: string; entry: string } }): SessionWriter {
 			const header: SessionHeaderEntry = {
 				type: "session",
 				version: SESSION_VERSION,
 				id: options.id,
 				timestamp: T,
 				cwd: options.cwd,
+				workspacePath: options.workspacePath ?? null,
 				forkedFrom: options.forkedFrom,
 			};
 			let text = `${JSON.stringify(header)}\n`;

@@ -81,9 +81,10 @@ import {
 	registeredWorkspace,
 	rebuildCatalogFromSessions,
 	unregisterWorkspace,
+	workspaceDisplayName,
+	workspaceTypeOf,
 } from "#src/workspace/catalog.ts";
 import { gitDiff, gitStatus } from "#src/workspace/git.ts";
-import { workspaceNameOf } from "#src/workspace/name.ts";
 import { listStandaloneDirs, releaseStandaloneDir } from "#src/workspace/standalone.ts";
 import type { SessionListing } from "#src/session/store.ts";
 import type { McpControl, McpStatusSource } from "#src/mcp/service.ts";
@@ -180,9 +181,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			}
 			workspacePath = registered;
 		} else if (startup.desktopManaged === true) {
-			// 旧会话没有归属标记时按 cwd 推断项目，启动时新建的会话也照此办理；
-			// 否则桌面壳明明停在某个工作区里，卡帽却显示成「未绑定」而没有解绑入口。
-			// 只有主动取消绑定（newSession(null)）才写 null，两种状态由此区分。
+			// 桌面启动时按当前已登记工作区归属；主动取消绑定的会话仍明确写 null。
 			workspacePath = registeredWorkspace(workRoot) ?? null;
 		}
 		session = createSessionFor(workRoot, sessionStore, workspacePath);
@@ -234,53 +233,40 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		uniquePaths([...listKnownWorkspaces(), workRoot, ...unboundRoots()]);
 	const workspaceFor = (
 		workspacePath: string | null | undefined,
-		cwd: string,
 		visiblePaths: readonly string[],
 	): string | null => {
-		if (workspacePath === null) return null;
-		let candidate = workspacePath;
-		if (candidate === undefined) {
-			if (cwd.length === 0) return null;
-			try {
-				candidate = canonicalWorkspacePath(cwd);
-			} catch {
-				return null;
-			}
-		}
-		return visiblePaths.find((path) => samePath(path, candidate)) ?? null;
+		if (typeof workspacePath !== "string") return null;
+		return visiblePaths.find((path) => samePath(path, workspacePath)) ?? null;
 	};
 	const sessionSummary = (item: SessionListing, visiblePaths: readonly string[]) => ({
 		id: item.id,
 		title: item.title,
 		updatedAt: item.updatedAt,
 		cwd: item.cwd,
-		workspacePath: workspaceFor(item.workspacePath, item.cwd, visiblePaths),
+		workspacePath: workspaceFor(item.workspacePath, visiblePaths),
 	});
 
-	/** 所有已登记空间的会话；旧会话仅在 cwd 精确匹配登记路径时归入项目。 */
+	/** 所有已登记空间的会话按 workspacePath 归属。 */
 	const sessions = () => {
 		if (sessionStore === undefined) return [];
 		const visiblePaths = listWorkspaces();
 		return listSessionsAcross(workspaceRoots(), sessionStore).map((item) => sessionSummary(item, visiblePaths));
 	};
 
-	const visibleWorkspaces = () => {
-		const namesFile = process.env["REINS_WORKSPACE_NAMES_FILE"];
-		return listWorkspaces().map((path) => ({
+	const visibleWorkspaces = () =>
+		listWorkspaces().map((path) => ({
 			path,
-			name: ((namesFile === undefined ? undefined : workspaceNameOf(namesFile, path)) ?? basename(path)) || path,
+			name: (workspaceDisplayName(path) ?? basename(path)) || path,
 		}));
-	};
 
 	/** 从侧栏移除的项目：显示名与可见清单同源，设置页据此给出可枚举的恢复入口。 */
 	const hiddenWorkspaces = () => {
-		const namesFile = process.env["REINS_WORKSPACE_NAMES_FILE"];
 		const visible = new Set(listWorkspaces());
 		return listKnownWorkspaces()
 			.filter((path) => !visible.has(path))
 			.map((path) => ({
 				path,
-				name: ((namesFile === undefined ? undefined : workspaceNameOf(namesFile, path)) ?? basename(path)) || path,
+				name: (workspaceDisplayName(path) ?? basename(path)) || path,
 			}));
 	};
 
@@ -357,6 +343,8 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		// 否则那些任务切回去时 cwd 已经不存在了
 		const remaining = [...sessions(), ...archivedList()].map((item) => item.cwd);
 		for (const dir of scratchDirs) {
+			// 自建工作区目录也以 standalone- 命名，但删除任务不能回收项目目录。
+			if (workspaceTypeOf(dir) === "created") continue;
 			// 当前工作根自己不能删：让位出来的新会话正落在里面
 			if (samePath(dir, workRoot)) continue;
 			if (remaining.some((cwd) => samePath(cwd, dir))) continue;
@@ -636,7 +624,7 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 		session: () => ({
 			id: session.id,
 			cwd: session.cwd,
-			workspacePath: workspaceFor(session.workspacePath, session.cwd, listWorkspaces()),
+			workspacePath: workspaceFor(session.workspacePath, listWorkspaces()),
 			entries: session.entries(),
 		}),
 		sessions,

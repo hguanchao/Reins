@@ -85,18 +85,13 @@ describe("JSONL 会话文件", () => {
 		assert.equal((again.entries[1] as { message: { content: string } }).message.content, "later");
 	});
 
-	it("丢失头部的文件能读也能接续", () => {
+	it("缺少会话头的文件拒绝读取和接续", () => {
 		const dir = workdir("no-header");
 		const file = join(dir, "broken.jsonl");
 		writeFileSync(file, `${JSON.stringify({ type: "message", id: "a", parentId: null, timestamp: T, message: { role: "user", content: "x" } })}\n`, "utf8");
 		const store = new JsonlSessionStore();
-		// read(): 无头但有条目、没有坏行，读得动
-		assert.equal(store.read(file).entries.length, 1);
-
-		const writer = store.append(file);
-		writer.write(entry("b", "y"));
-		writer.end();
-		assert.equal(store.read(file).entries.length, 2);
+		assert.throws(() => store.read(file), /no valid header/);
+		assert.throws(() => store.append(file), /no valid header/);
 	});
 
 	it("目标文件已存在时 create 的写入报错而不覆盖", () => {
@@ -189,6 +184,7 @@ describe("会话文本解析", () => {
 			id: "id1",
 			timestamp: T,
 			cwd: "C:\\w",
+			workspacePath: null,
 		};
 		const text = `${JSON.stringify(header)}\n${JSON.stringify(entry("a", "one"))}\n\n`;
 		const parsed = parseSessionText(text);
@@ -245,7 +241,7 @@ describe("会话条目的字段校验", () => {
 
 	it("会话头缺 id 或版本号按坏行拒收", () => {
 		const parsed = parseSessionText(
-			`${JSON.stringify({ type: "session", cwd: "/w" })}\n${JSON.stringify({ type: "session", id: "s", version: 1, cwd: "/w" })}\n`,
+			`${JSON.stringify({ type: "session", cwd: "/w" })}\n${JSON.stringify({ type: "session", id: "s", version: 1, cwd: "/w", workspacePath: null })}\n`,
 		);
 		assert.equal(parsed.header?.id, "s");
 		assert.equal(parsed.skippedLines, 1);

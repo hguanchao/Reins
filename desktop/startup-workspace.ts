@@ -1,13 +1,6 @@
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 
-import {
-	canonicalWorkspacePath,
-	dropWorkspace,
-	listKnownWorkspaces,
-	listWorkspaces,
-	registerWorkspace,
-} from "#src/workspace/catalog.ts";
-import { isStandalonePath } from "#src/workspace/standalone.ts";
+import { canonicalWorkspacePath, listWorkspaces, registerWorkspace } from "#src/workspace/catalog.ts";
 import { FALLBACK_WORKSPACE_DIR, LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
 
 /**
@@ -48,19 +41,10 @@ function sameWorkspacePath(left: string, right: string): boolean {
  * Agent 始终有真实 cwd，用户再从界面里打开真正的项目。打开工作区是界面动作，
  * 不该挡住启动。
  *
- * 落地目录只是 cwd，不是用户项目：不登记进清单，否则侧栏会凭空多出一个
- * 默认「workspace」项目，重启还会被记忆恢复成当前项目。
+ * 落地目录只作 cwd，不登记进清单；只有用户明确选择或创建的工作区才进入注册表。
  */
 export function resolveStartupWorkspace(paths: DesktopPaths): string {
 	const fallback = paths.userData(FALLBACK_WORKSPACE_DIR);
-	// 旧版本曾把落地目录误登记成可见项目；启动时统一清掉这条错误登记，
-	// 内核的会话扫描也经环境变量认得它，不会再补回来。
-	dropWorkspace(fallback);
-	// 独立任务空地同样是自管目录，不是项目：旧版本登记过的分组一并撤下，
-	// 它们的任务会按未归属任务回到「任务」区。
-	for (const path of listKnownWorkspaces()) {
-		if (isStandalonePath(path)) dropWorkspace(path);
-	}
 	const override = process.env.REINS_WORKSPACE;
 	if (override !== undefined && isDirectory(override)) {
 		const canonical = registerWorkspace(override);
@@ -70,15 +54,11 @@ export function resolveStartupWorkspace(paths: DesktopPaths): string {
 	const previous = lastWorkspace(paths);
 	if (previous !== undefined) {
 		const canonical = canonicalWorkspacePath(previous);
-		// 只认仍可见的项目：从侧栏移除的条目还留在清单里供历史任务查找，
-		// 但不该再被当成默认工作目录，否则「移除」之后应用仍旧在那个目录开工。
 		const visible = listWorkspaces().some((path) => sameWorkspacePath(path, canonical));
 		if (visible) {
 			rememberWorkspace(paths, canonical);
 			return canonical;
 		}
-		// 记忆指向已删除或已移除的项目：不复活它，继续落到自管空工作区；启动成功后
-		// 控制器还会把这条过期记忆改写成新目录。
 	}
 
 	mkdirSync(fallback, { recursive: true });

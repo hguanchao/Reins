@@ -1,36 +1,35 @@
 import { mkdirSync, readdirSync, rmdirSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
-import { configDir } from "#src/config/paths.ts";
+import { isStandaloneSessionPath, sessionsRootDir } from "#src/config/paths.ts";
 
 /**
  * 独立任务的工作目录。
  *
  * 没有项目的任务不该跟启动目录纠缠：它需要一块只属于自己的空地，删掉任务时整块丢掉也不心疼。
- * 目录放在配置目录的 workspaces 下，跟着 REINS_HOME 一起搬，不写进用户项目里。
+ * 目录直接放在 sessions 下，名称以 standalone- 开头，会话 JSONL 也写在该目录中。
  */
 
 const DIR_PREFIX = "standalone-";
 
 const MAX_ATTEMPTS = 20;
 
-/** 独立任务目录的根。 */
+/** 独立任务与 Reins 自建项目目录的根。 */
 export function standaloneRoot(): string {
-	return join(configDir(), "workspaces");
+	return sessionsRootDir();
 }
 
-/** 现存的自管空地：会话扫描把它们当作未归属任务的落脚点，不当作项目。 */
+/** 新版自管目录：只扫描 sessions 根目录下以 standalone- 开头的直接子目录。 */
 export function listStandaloneDirs(): readonly string[] {
-	const root = standaloneRoot();
 	let names: string[];
 	try {
-		names = readdirSync(root, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
+		names = readdirSync(standaloneRoot(), { withFileTypes: true })
+			.filter((entry) => entry.isDirectory() && entry.name.startsWith(DIR_PREFIX))
 			.map((entry) => entry.name);
 	} catch {
 		return [];
 	}
-	return names.map((name) => join(root, name));
+	return names.map((name) => join(standaloneRoot(), name));
 }
 
 function pad(value: number, width = 2): string {
@@ -66,12 +65,12 @@ export function createStandaloneDir(now: Date = new Date()): { readonly path: st
 	throw new Error("无法创建独立任务目录");
 }
 
-/** 路径是否落在独立任务根内（根自身也算）。 */
+/** 路径是否指向新版 standalone 子目录。 */
 export function isStandalonePath(path: string): boolean {
-	const fold = (item: string): string => (process.platform === "win32" ? item.toLowerCase() : item);
-	const diff = relative(fold(resolve(standaloneRoot())), fold(resolve(path)));
-	if (diff.length === 0) return true;
-	return !diff.startsWith("..") && !isAbsolute(diff);
+	const normalized = resolve(path);
+	if (normalized === resolve(standaloneRoot())) return true;
+	if (!isStandaloneSessionPath(normalized)) return false;
+	return relative(resolve(standaloneRoot()), normalized).startsWith(DIR_PREFIX);
 }
 
 /** 回收一个独立任务目录：只在它确实空着时删除，有内容就原样留着。 */

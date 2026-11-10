@@ -589,7 +589,6 @@ export async function runTuiMode(options: CliOptions): Promise<number> {
 			: {
 					list: () => {
 						const active = activeSession.id;
-						// 旧版目录里的会话一并列出：目录名规则改过一次，升级后历史不该看起来消失了
 						const listings = listSessions(workRoot, store);
 						const byId = new Map(listings.map((listing) => [listing.id, listing]));
 						return listings.map((listing) => {

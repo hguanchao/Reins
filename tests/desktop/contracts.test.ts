@@ -40,9 +40,9 @@ describe("IPC 输入契约", () => {
 		assert.equal(parseNotification({ title: "x".repeat(200), body: "b" })?.title.length, 80);
 	});
 
-	it("会话目标允许工作区路径缺省，但 cwd 与 id 必填", () => {
+	it("未绑定会话按 cwd 定位，cwd 与 id 必填", () => {
 		assert.deepEqual(parseSessionTarget(null, "/repo", "s-1"), {
-			workspacePath: undefined,
+			workspacePath: null,
 			cwd: "/repo",
 			id: "s-1",
 		});

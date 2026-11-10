@@ -27,7 +27,7 @@ export interface SessionWriter {
 export interface SessionCreateOptions {
 	readonly id: string;
 	readonly cwd: string;
-	/** 项目归属；缺省表示旧格式，null 表示明确未绑定项目 */
+	/** 项目归属；null 表示明确未绑定项目 */
 	readonly workspacePath?: string | null;
 	/** 落盘位置；null 表示只在内存里，此时写入器什么也不做 */
 	readonly file: string | null;
@@ -51,7 +51,7 @@ export interface SessionListing {
 	/** 第一条使用者说的话，够认出是哪个会话就行 */
 	readonly title: string | undefined;
 	readonly cwd: string;
-	/** 缺省表示旧会话，null 表示明确未绑定项目 */
+	/** 项目归属；null 表示明确未绑定项目，undefined 表示没有可用会话头 */
 	readonly workspacePath: string | null | undefined;
 	readonly forkedFrom: ForkOrigin | undefined;
 }

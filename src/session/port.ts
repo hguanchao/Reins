@@ -32,8 +32,8 @@ export interface SessionHeaderEntry {
 	readonly id: string;
 	readonly timestamp: string;
 	readonly cwd: string;
-	/** 项目归属与运行目录分开；缺省表示旧会话，null 表示明确未绑定项目 */
-	readonly workspacePath?: string | null;
+	/** 项目归属与运行目录分开；null 表示明确未绑定项目 */
+	readonly workspacePath: string | null;
 	/** 这个会话是从别处分叉出来时记下来，形成一条可追的父会话链 */
 	readonly forkedFrom?: ForkOrigin;
 }

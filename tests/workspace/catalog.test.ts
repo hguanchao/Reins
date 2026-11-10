@@ -13,11 +13,11 @@ import {
 	rebuildCatalogFromSessions,
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
+import { sessionsDir } from "#src/config/paths.ts";
 import { createStandaloneDir } from "#src/workspace/standalone.ts";
 
 /**
- * 清单落在 REINS_HOME 下；每个用例用自己的临时主目录，登记的目录也建在它里面，
- * 免得用例之间通过共享的 workspaces.json 互相影响。
+ * 清单与会话都落在 REINS_HOME 下；每个用例使用独立临时目录，避免共享状态。
  */
 async function withHomes(run: (home: string, project: (name: string) => string) => Promise<void>): Promise<void> {
 	const home = join(tmpdir(), `reins-catalog-${Math.random().toString(16).slice(2)}`);
@@ -109,14 +109,23 @@ describe("项目登记清单", () => {
 });
 
 /**
- * 清单丢得起：会话目录名带哈希，反推不出路径，但会话文件头里还留着 cwd，
+ * 清单丢得起：会话目录名带哈希，反推不出路径，但会话文件头里还留着 workspacePath，
  * 启动时据此就能把根找回来。
  */
 describe("清单按会话重建", () => {
-	const writeSession = (home: string, name: string, cwd: string, archived = false): void => {
-		const directory = join(home, "sessions", name, archived ? "archived" : "");
+	const writeSession = (
+		_home: string,
+		name: string,
+		cwd: string,
+		archived = false,
+		workspacePath: string | null = cwd,
+	): void => {
+		const directory = join(sessionsDir(cwd), archived ? "archived" : "");
 		mkdirSync(directory, { recursive: true });
-		writeFileSync(join(directory, "2026-11-02T12-03-50-403Z_870dd77a.jsonl"), `${JSON.stringify({ type: "session", version: 1, id: name, cwd })}\n`);
+		writeFileSync(
+			join(directory, "2026-11-02T12-03-50-403Z_870dd77a.jsonl"),
+			`${JSON.stringify({ type: "session", version: 1, id: name, cwd, workspacePath })}\n`,
+		);
 	};
 
 	it("清单为空时按活动会话补回可见条目", async () => {
@@ -143,7 +152,7 @@ describe("清单按会话重建", () => {
 	it("独立任务空地不算项目，有活动会话也不补进清单", async () => {
 		await withHomes(async (home, project) => {
 			const scratch = createStandaloneDir().path;
-			writeSession(home, "scratch-dir", scratch);
+			writeSession(home, "scratch-dir", scratch, false, null);
 			const alpha = project("alpha");
 			writeSession(home, "alpha-dir", alpha);
 			assert.equal(rebuildCatalogFromSessions(), 1);
@@ -189,7 +198,8 @@ describe("清单按会话重建", () => {
 		await withHomes(async (home, project) => {
 			const alpha = project("alpha");
 			writeSession(home, "gone-dir", join(home, "已经不存在"));
-			writeFileSync(join(home, "workspaces.json"), "{ 坏掉的 json");
+			mkdirSync(join(home, "workspaces"), { recursive: true });
+			writeFileSync(join(home, "workspaces", "registry.json"), "{ 坏掉的 json");
 			assert.equal(rebuildCatalogFromSessions(), 0);
 			assert.deepEqual(listKnownWorkspaces(), []);
 

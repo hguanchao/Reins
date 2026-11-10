@@ -31,16 +31,9 @@ describe("会话目录编码", () => {
 		assert.ok(name.length <= 60, `目录名过长：${name.length}`);
 	});
 
-	it("候选目录包含旧编码，升级后历史仍找得到", () => {
+	it("每个工作区只使用当前哈希目录", () => {
 		const directories = sessionDirectories("E:\\work\\my-project");
-		assert.equal(directories.length, 2);
+		assert.equal(directories.length, 1);
 		assert.match(directories[0] ?? "", /my-project-[0-9a-f]{16}$/);
-		assert.match(directories[1] ?? "", /E--work-my-project$/);
-	});
-
-	it("没有旧编码差异时只给一个候选", () => {
-		// 旧编码与当前编码相同时不该重复列两遍
-		const directories = sessionDirectories("E:\\work\\my-project");
-		assert.equal(new Set(directories).size, directories.length);
 	});
 });

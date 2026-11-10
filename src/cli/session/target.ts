@@ -33,8 +33,7 @@ export function createSession(
 /**
  * 按标识接续一个既有会话。
  *
- * 标识写在会话文件头部，文件名只是创建时的快照，不能从标识反推出路径，所以先查清单。
- * 目录名规则改过一次，旧会话留在旧目录里：候选目录按优先级逐个查，升级之后历史仍然找得到。
+ * 标识写在会话文件头部，文件名只是创建时的快照，不能从标识反推出路径，所以先查当前会话目录。
  */
 export function resumeSession(workRoot: string, id: string, store: SessionStore): Session {
 	const directories = sessionDirectories(workRoot);
@@ -45,7 +44,7 @@ export function resumeSession(workRoot: string, id: string, store: SessionStore)
 	throw new Error(`Session ${id} not found in ${directories.join(" or ")}`);
 }
 
-/** 列出这个工作区的全部会话；新旧目录的会话合并成一份清单。 */
+/** 列出这个工作区当前会话目录中的会话。 */
 export function listSessions(workRoot: string, store: SessionStore): readonly SessionListing[] {
 	const seen = new Set<string>();
 	const listings: SessionListing[] = [];
@@ -86,7 +85,7 @@ function archivedDirectory(directory: string): string {
 	return join(directory, "archived");
 }
 
-/** 列出已归档的会话;新旧目录的归档合并成一份清单,排序规则同活动清单。 */
+/** 列出当前会话目录中的归档会话，排序规则同活动清单。 */
 export function listArchivedSessions(workRoot: string, store: SessionStore): readonly SessionListing[] {
 	const seen = new Set<string>();
 	const listings: SessionListing[] = [];
@@ -217,7 +216,7 @@ export function restoreSessionsAcross(
 }
 
 /**
- * 会话归属的目录：归属标记优先，旧会话没有标记时退回 cwd。
+ * 会话的物理存储目录：归属标记优先，未绑定会话仍需按 cwd 找到实际文件。
  *
  * 项目从侧栏移除后，界面会把归属抹成 null 以便任务显示为「未归属」；但内核删除项目时
  * 仍要认出这些文件属于哪个目录，否则会留下扫不到也删不掉的孤儿会话。
@@ -233,7 +232,7 @@ export function sessionOwner(item: {
 /**
  * 把明确未绑定的会话关联到指定工作区：改写会话头里的归属字段。
  *
- * 只认活动目录里没有归属标记的会话（null 或旧格式的缺省）；当前正在使用的会话由调用方放进 skip，
+ * 只认活动目录里明确未绑定的会话（workspacePath 为 null）；当前正在使用的会话由调用方放进 skip，
  * 它还持有写入句柄，整文件重写会截断在途追写。先写临时文件再替换，中途失败不会毁掉原文件。
  */
 export function attachSessionToWorkspace(
@@ -247,7 +246,7 @@ export function attachSessionToWorkspace(
 	for (const workRoot of workRoots) {
 		for (const directory of sessionDirectories(workRoot)) {
 			for (const listing of store.list(directory)) {
-				if (listing.id !== id || (listing.workspacePath !== null && listing.workspacePath !== undefined)) continue;
+				if (listing.id !== id || listing.workspacePath !== null) continue;
 				try {
 					const lines = readFileSync(listing.file, "utf8").split("\n");
 					const header: unknown = JSON.parse(lines[0] ?? "");

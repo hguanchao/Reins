@@ -66,9 +66,7 @@ export function WorkspacePicker({
 				type="button"
 				className="pop-i"
 				onClick={() => {
-					void bridge.chooseWorkspace().then((chosen) => {
-						if (chosen) onPick(null);
-					});
+					void bridge.chooseWorkspace();
 				}}
 			>
 				<FolderOpen className="ic ic-14" />

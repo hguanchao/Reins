@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
@@ -17,7 +17,6 @@ import {
 	registerWorkspace,
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
-import { createStandaloneDir } from "#src/workspace/standalone.ts";
 
 const originalHome = process.env.REINS_HOME;
 const originalOverride = process.env.REINS_WORKSPACE;
@@ -88,29 +87,6 @@ describe("启动工作区解析", () => {
 		assert.notEqual(key(resolved), key(canonical));
 		assert.deepEqual(listWorkspaces(), []);
 		assert.ok(listKnownWorkspaces().some((path) => key(path) === key(canonical)));
-	});
-
-	it("旧版误登记的落地目录在启动时清掉", () => {
-		const { paths, fallback } = fixture();
-		mkdirSync(fallback, { recursive: true });
-		const canonical = registerWorkspace(fallback);
-		rememberWorkspace(paths, canonical);
-
-		const resolved = resolveStartupWorkspace(paths);
-		assert.equal(key(resolved), key(canonical));
-		assert.deepEqual(listWorkspaces(), []);
-		assert.deepEqual(listKnownWorkspaces(), []);
-	});
-
-	it("旧版登记过的独立任务空地连带分组一起撤下", () => {
-		const { paths, fallback } = fixture();
-		const scratch = createStandaloneDir().path;
-		registerWorkspace(scratch);
-
-		const resolved = resolveStartupWorkspace(paths);
-		assert.equal(key(resolved), key(realpathSync(fallback)));
-		assert.deepEqual(listWorkspaces(), []);
-		assert.deepEqual(listKnownWorkspaces(), []);
 	});
 
 	it("环境变量覆盖优先于上次记忆", () => {

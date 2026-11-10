@@ -395,21 +395,10 @@ export function App(): ReactElement {
 			setActivePanel(undefined);
 			setSideFullscreen(false);
 			if (workspacePath === null) {
-				// 已经停在未绑定状态：就地换一个新会话，不重启服务进程也不另开目录
-				if (currentWorkspacePath === null) {
-					void api.newSession(null).catch((error: unknown) => {
-						toast(error instanceof Error ? error.message : String(error), "error");
-					});
-					return;
-				}
-				void desktopBridge()
-					.newStandaloneTask()
-					.then((created) => {
-						if (!created) toast("无法新建任务", "error");
-					})
-					.catch((error: unknown) => {
-						toast(error instanceof Error ? error.message : String(error), "error");
-					});
+				// 只开内存中的未归属草稿；会话文件由首条消息触发落盘
+				void api.newSession(null).catch((error: unknown) => {
+					toast(error instanceof Error ? error.message : String(error), "error");
+				});
 				return;
 			}
 			if (workspacePath === cwd) {
@@ -427,7 +416,7 @@ export function App(): ReactElement {
 					toast(error instanceof Error ? error.message : String(error), "error");
 				});
 		},
-		[cwd, running, currentWorkspacePath],
+		[cwd, running],
 	);
 
 	const togglePin = useCallback((id: string): void => {

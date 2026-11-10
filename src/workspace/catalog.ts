@@ -1,14 +1,32 @@
-import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	readSync,
+	realpathSync,
+	renameSync,
+	statSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 
-import { configDir } from "#src/config/paths.ts";
-import { isStandalonePath } from "#src/workspace/standalone.ts";
+import { isStandaloneSessionPath, sessionsDir, sessionsRootDir, workspacesDir } from "#src/config/paths.ts";
+import { WORKSPACE_NAME_LIMIT } from "#src/workspace/name.ts";
+import { isStandalonePath, listStandaloneDirs } from "#src/workspace/standalone.ts";
 
-const CATALOG_FILE = "workspaces.json";
+const REGISTRY_FILE_NAME = "registry.json";
+
+export type WorkspaceType = "created" | "registered";
 
 interface CatalogEntry {
 	readonly path: string;
+	readonly workspaceType: WorkspaceType;
+	readonly displayName?: string;
 	readonly visible: boolean;
+	readonly order: number;
 }
 
 /** 已登记项目；首次启动时清单为空，损坏时明确报错。 */
@@ -21,48 +39,80 @@ export function listKnownWorkspaces(): readonly string[] {
 	return readCatalog().map((entry) => entry.path);
 }
 
+/** 工作区的自定义显示名；未改名时交给界面回落到目录名。 */
+export function workspaceDisplayName(path: string): string | undefined {
+	return readCatalog().find((entry) => samePath(entry.path, path))?.displayName;
+}
+
+/** 返回登记的工作区类别，用来区分自建项目与未绑定任务目录。 */
+export function workspaceTypeOf(path: string): WorkspaceType | undefined {
+	return readCatalog().find((entry) => samePath(entry.path, path))?.workspaceType;
+}
+
 /** 登记一个现存目录；真实路径相同的条目只保留一份。 */
-export function registerWorkspace(path: string): string {
+export function registerWorkspace(path: string, type?: WorkspaceType, displayName?: string): string {
 	const canonical = canonicalWorkspacePath(path);
 	const entries = readCatalog();
-	const existing = entries.findIndex((entry) => samePath(entry.path, canonical));
-	if (existing >= 0) {
-		if (entries[existing]?.visible) return canonical;
-		const restored = entries.map((entry, index) =>
-			index === existing ? { ...entry, visible: true } : entry,
-		);
-		writeCatalog(restored);
+	const existing = entries.find((entry) => samePath(entry.path, canonical));
+	if (existing !== undefined) {
+		const workspaceType = type ?? existing.workspaceType;
+		const updated = {
+			...existing,
+			workspaceType,
+			...(displayName === undefined ? {} : { displayName }),
+			visible: true,
+		};
+		if (
+			existing.visible &&
+			existing.workspaceType === updated.workspaceType &&
+			existing.displayName === updated.displayName
+		) {
+			return canonical;
+		}
+		writeEntry(updated);
 		return canonical;
 	}
-	writeCatalog([...entries, { path: canonical, visible: true }]);
+	writeEntry({
+		path: canonical,
+		workspaceType: type ?? inferWorkspaceType(canonical),
+		...(displayName === undefined ? {} : { displayName }),
+		visible: true,
+		order: nextOrder(entries),
+	});
 	return canonical;
 }
 
 /** 从侧栏移除空间但保留会话查找路径；其任务随后作为未归属任务显示。 */
 export function unregisterWorkspace(path: string): boolean {
-	const entries = readCatalog();
-	let changed = false;
-	const next = entries.map((entry) => {
-		if (!entry.visible || !samePath(entry.path, path)) return entry;
-		changed = true;
-		return { ...entry, visible: false };
-	});
-	if (changed) writeCatalog(next);
-	return changed;
+	const existing = readCatalog().find((entry) => entry.visible && samePath(entry.path, path));
+	if (existing === undefined) return false;
+	writeEntry({ ...existing, visible: false });
+	return true;
 }
 
-/**
- * 删除一个项目：清单里的条目连同隐藏记录一起去掉。
- *
- * 保留隐藏记录是为了让「从侧栏移除」之后的历史任务还能查到；项目是连着任务一起删掉的，
- * 再留着这条路径只会让会话扫描指向一个已经没有记录的目录。
- */
+/** 删除一个项目：登记记录连同隐藏记录一起去掉。 */
 export function dropWorkspace(path: string): boolean {
 	const entries = readCatalog();
-	const next = entries.filter((entry) => !samePath(entry.path, path));
-	const changed = next.length !== entries.length;
-	if (changed) writeCatalog(next);
-	return changed;
+	const existing = entries.find((entry) => samePath(entry.path, path));
+	if (existing === undefined) return false;
+	writeRegistry(entries.filter((entry) => !samePath(entry.path, existing.path)));
+	return true;
+}
+
+/** 更新工作区显示名；名称无效、项目不可见或写入失败时返回 false。 */
+export function renameWorkspace(path: string, name: string): boolean {
+	const trimmed = name.trim();
+	if (trimmed.length === 0 || trimmed.length > WORKSPACE_NAME_LIMIT) return false;
+	try {
+		const canonical = canonicalWorkspacePath(path);
+		const existing = readCatalog().find((entry) => entry.visible && samePath(entry.path, canonical));
+		if (existing === undefined) return false;
+		if (existing.displayName === trimmed) return true;
+		writeEntry({ ...existing, displayName: trimmed });
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /** 仅返回已登记且可见空间的规范路径。 */
@@ -79,43 +129,95 @@ export function canonicalWorkspacePath(path: string): string {
 }
 
 function readCatalog(): readonly CatalogEntry[] {
-	let parsed: unknown;
+	return readRegistry();
+}
+
+function readRegistry(): readonly CatalogEntry[] {
+	let contents: string;
 	try {
-		parsed = JSON.parse(readFileSync(catalogPath(), "utf8"));
+		contents = readFileSync(registryFile(), "utf8");
 	} catch (error) {
 		if (isNotFound(error)) return [];
 		throw error;
 	}
-	if (
-		!Array.isArray(parsed) ||
-		parsed.some(
-			(entry) =>
-				typeof entry !== "object" ||
-				entry === null ||
-				typeof (entry as { path?: unknown }).path !== "string" ||
-				typeof (entry as { visible?: unknown }).visible !== "boolean",
-		)
-	) {
-		throw new Error("Workspace catalog contains an invalid entry");
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(contents);
+	} catch {
+		throw new Error("Workspace registry contains invalid JSON");
 	}
-	return parsed as CatalogEntry[];
+	if (
+		typeof parsed !== "object" ||
+		parsed === null ||
+		(parsed as { version?: unknown }).version !== 1 ||
+		!Array.isArray((parsed as { workspaces?: unknown }).workspaces)
+	) {
+		throw new Error("Workspace registry contains an invalid snapshot");
+	}
+	const entries = new Map<string, CatalogEntry>();
+	for (const value of (parsed as { workspaces: unknown[] }).workspaces) {
+		const entry = parseCatalogEntry(value);
+		entries.set(foldPath(entry.path), entry);
+	}
+	return sortEntries([...entries.values()]);
 }
 
-function catalogPath(): string {
-	return join(configDir(), CATALOG_FILE);
+function parseCatalogEntry(value: unknown): CatalogEntry {
+	if (typeof value !== "object" || value === null) {
+		throw new Error("Workspace registry contains an invalid entry");
+	}
+	const record = value as Record<string, unknown>;
+	if (
+		typeof record["path"] !== "string" ||
+		(record["workspaceType"] !== "created" && record["workspaceType"] !== "registered") ||
+		typeof record["visible"] !== "boolean" ||
+		!Number.isSafeInteger(record["order"]) ||
+		(record["order"] as number) < 0 ||
+		("displayName" in record && typeof record["displayName"] !== "string")
+	) {
+		throw new Error("Workspace registry contains an invalid entry");
+	}
+	return {
+		path: record["path"],
+		workspaceType: record["workspaceType"],
+		...(typeof record["displayName"] === "string" ? { displayName: record["displayName"] } : {}),
+		visible: record["visible"],
+		order: record["order"] as number,
+	};
 }
 
-function writeCatalog(workspaces: readonly CatalogEntry[]): void {
-	mkdirSync(configDir(), { recursive: true });
-	writeFileSync(catalogPath(), JSON.stringify(workspaces), "utf8");
+function writeEntry(entry: CatalogEntry): void {
+	const entries = new Map(readRegistry().map((item) => [foldPath(item.path), item]));
+	entries.set(foldPath(entry.path), entry);
+	writeRegistry([...entries.values()]);
+}
+
+function writeRegistry(entries: readonly CatalogEntry[]): void {
+	mkdirSync(workspacesDir(), { recursive: true });
+	const file = registryFile();
+	const temporary = `${file}.${process.pid}.tmp`;
+	writeFileSync(temporary, `${JSON.stringify({ version: 1, workspaces: sortEntries(entries) }, null, 2)}\n`, "utf8");
+	renameSync(temporary, file);
+}
+
+function sortEntries(entries: readonly CatalogEntry[]): readonly CatalogEntry[] {
+	return [...entries].sort((left, right) => left.order - right.order || left.path.localeCompare(right.path));
+}
+
+function registryFile(): string {
+	return join(workspacesDir(), REGISTRY_FILE_NAME);
+}
+
+function nextOrder(entries: readonly CatalogEntry[]): number {
+	return entries.reduce((maximum, entry) => Math.max(maximum, entry.order), -1) + 1;
+}
+
+function inferWorkspaceType(path: string): WorkspaceType {
+	return isStandaloneSessionPath(path) ? "created" : "registered";
 }
 
 function samePath(left: string, right: string): boolean {
-	const leftPath = resolve(left);
-	const rightPath = resolve(right);
-	return process.platform === "win32"
-		? leftPath.toLowerCase() === rightPath.toLowerCase()
-		: leftPath === rightPath;
+	return foldPath(left) === foldPath(right);
 }
 
 function foldPath(path: string): string {
@@ -124,48 +226,23 @@ function foldPath(path: string): string {
 }
 
 function isNotFound(error: unknown): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		error.code === "ENOENT"
-	);
+	return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 }
 
-/**
- * 清单是可重建的缓存，不是唯一真相。
- *
- * 会话目录名带哈希，反推不出路径，因此扫描必须先知道根——登记丢了（文件被删、写坏）
- * 历史任务就再也扫不到。整份清单丢了只能靠会话文件头里的 cwd 找回来。
- *
- * 只补清单里没有的路径：已经有条目的（哪怕是被「从侧栏移除」置成隐藏的）一律不动，
- * 免得把使用者藏起来的项目又翻出来。返回补上的条数。
- *
- * fallbackWorkspace 是桌面启动的落地目录：它只作 cwd，不是用户项目，
- * 哪怕里面有活动会话也不补进清单，否则侧栏会凭空多出默认项目。
- */
+/** 注册表损坏或缺失时，从新版会话目录重建可恢复的路径。 */
 export function rebuildCatalogFromSessions(fallbackWorkspace?: string): number {
 	let entries: readonly CatalogEntry[];
-	let broken = false;
 	try {
 		entries = readCatalog();
 	} catch {
-		// 清单损坏时按空清单重建，相当于自愈；留着坏文件只会一直报错
 		entries = [];
-		broken = true;
+		removeFileIfPresent(registryFile());
 	}
-	const base = join(configDir(), "sessions");
-	let names: readonly string[];
-	try {
-		names = readdirSync(base, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name);
-	} catch {
-		return 0;
-	}
+
 	const known = new Set(entries.map((entry) => foldPath(entry.path)));
-	// 落地目录与扫描结果都统一成真实路径再比，路径写法不同也认得出来；
-	// 目录已不存在时会话不可能落在里面，无需排除
+	let order = nextOrder(entries);
+	let added = 0;
+
 	let excluded: string | undefined;
 	if (fallbackWorkspace !== undefined) {
 		try {
@@ -174,30 +251,51 @@ export function rebuildCatalogFromSessions(fallbackWorkspace?: string): number {
 			excluded = undefined;
 		}
 	}
-	const next: CatalogEntry[] = [...entries];
-	for (const name of names) {
-		const found = readSessionDirectory(join(base, name));
+	for (const found of createdProjectSessions()) {
+		const key = foldPath(found.path);
+		if (known.has(key)) continue;
+		known.add(key);
+		writeEntry({ path: found.path, workspaceType: "created", visible: found.active, order });
+		order += 1;
+		added += 1;
+	}
+	for (const directory of sessionDirectoriesUnderRoot()) {
+		const found = readSessionDirectory(directory);
 		if (found === undefined) continue;
-		// 独立任务空地不是项目：有会话也不补，任务按未归属任务展示
 		if (isStandalonePath(found.path)) continue;
 		if (excluded !== undefined && samePath(found.path, excluded)) continue;
 		const key = foldPath(found.path);
 		if (known.has(key)) continue;
 		known.add(key);
-		next.push({ path: found.path, visible: found.active });
+		writeEntry({ path: found.path, workspaceType: "registered", visible: found.active, order });
+		order += 1;
+		added += 1;
 	}
-	const added = next.length - entries.length;
-	// 坏文件即使一条都补不出来也要覆写，否则后续读取还会在同一个地方炸
-	if (added > 0 || broken) writeCatalog(next);
 	return added;
 }
 
-/**
- * 从一个会话目录里读出它属于哪个工作根。
- *
- * 目录里一个会话都没有就无从判断，直接跳过。只有归档会话的目录补进来时先隐藏：
- * 它们不该占着侧栏，但路径仍要留着，否则归档任务再也恢复不了。
- */
+function createdProjectSessions(): readonly { readonly path: string; readonly active: boolean }[] {
+	const records: { readonly path: string; readonly active: boolean }[] = [];
+	for (const project of listStandaloneDirs()) {
+		const found = readSessionDirectory(sessionsDir(project));
+		if (found !== undefined && samePath(found.path, project)) records.push(found);
+	}
+	return records;
+}
+
+function sessionDirectoriesUnderRoot(): readonly string[] {
+	let names: readonly string[];
+	try {
+		names = readdirSync(sessionsRootDir(), { withFileTypes: true })
+			.filter((entry) => entry.isDirectory() && !entry.name.startsWith("standalone-") && /[0-9a-f]{16}$/i.test(entry.name))
+			.map((entry) => entry.name);
+	} catch {
+		return [];
+	}
+	return names.map((name) => join(sessionsRootDir(), name));
+}
+
+/** 只从新版会话头的 workspacePath 恢复工作区归属。 */
 function readSessionDirectory(directory: string): { readonly path: string; readonly active: boolean } | undefined {
 	let names: readonly string[];
 	try {
@@ -218,13 +316,11 @@ function readSessionDirectory(directory: string): { readonly path: string; reado
 	const name = names.find((item) => item.endsWith(".jsonl"));
 	const sample = name === undefined ? firstJsonl(join(directory, "archived")) : join(directory, name);
 	if (sample === undefined) return undefined;
-	const cwd = sessionHeaderCwd(sample);
-	if (cwd === undefined) return undefined;
+	const path = sessionHeaderWorkspacePath(sample);
+	if (path === undefined) return undefined;
 	try {
-		// 会话记的是旧路径写法，登记统一用真实路径，否则同一目录会因写法不同存两条
-		return { path: canonicalWorkspacePath(cwd), active };
+		return { path: canonicalWorkspacePath(path), active };
 	} catch {
-		// 目录已经不存在，留着条目也没有意义
 		return undefined;
 	}
 }
@@ -240,20 +336,30 @@ function firstJsonl(directory: string): string | undefined {
 }
 
 /** 会话文件首行是元信息，只读它的开头就够，不整份载入。 */
-function sessionHeaderCwd(file: string): string | undefined {
+function sessionHeaderWorkspacePath(file: string): string | undefined {
 	let handle: number | undefined;
 	try {
 		handle = openSync(file, "r");
-		const buffer = Buffer.alloc(1024);
+		const buffer = Buffer.alloc(4096);
 		const read = readSync(handle, buffer, 0, buffer.length, 0);
 		const line = buffer.subarray(0, read).toString("utf8").split("\n")[0] ?? "";
 		const parsed: unknown = JSON.parse(line);
 		if (typeof parsed !== "object" || parsed === null) return undefined;
-		const cwd = (parsed as { cwd?: unknown }).cwd;
-		return typeof cwd === "string" && cwd.length > 0 ? cwd : undefined;
+		const record = parsed as { workspacePath?: unknown };
+		return typeof record.workspacePath === "string" && record.workspacePath.length > 0
+			? record.workspacePath
+			: undefined;
 	} catch {
 		return undefined;
 	} finally {
 		if (handle !== undefined) closeSync(handle);
+	}
+}
+
+function removeFileIfPresent(file: string): void {
+	try {
+		unlinkSync(file);
+	} catch (error) {
+		if (!isNotFound(error)) throw error;
 	}
 }

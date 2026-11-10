@@ -81,6 +81,7 @@ export class JsonlSessionStore implements SessionStore {
 			// 行坏了说明文件被改动过或写到一半断了：宁可明确拒绝，也不要读出一段缺失的历史
 			throw new Error(`Session file has ${parsed.skippedLines} unparsable lines and cannot be read: ${file}`);
 		}
+		if (parsed.header === undefined) throw new Error(`Session file has no valid header and cannot be read: ${file}`);
 		return { header: parsed.header, entries: parsed.entries };
 	}
 
@@ -112,16 +113,17 @@ export class JsonlSessionStore implements SessionStore {
 				continue;
 			}
 			const header = parsed.header;
+			if (header === undefined) continue;
 			const title = currentTitle(parsed.entries);
 			listings.push({
-				id: header?.id ?? name.slice(0, -FILE_SUFFIX.length),
+				id: header.id,
 				file,
 				updatedAt: modifiedAt(file),
 				entryCount: parsed.entries.length,
 				title,
-				cwd: header?.cwd ?? "",
-				workspacePath: header?.workspacePath,
-				forkedFrom: header?.forkedFrom,
+				cwd: header.cwd,
+				workspacePath: header.workspacePath,
+				forkedFrom: header.forkedFrom,
 			});
 		}
 
@@ -150,11 +152,11 @@ class JsonlWriter implements SessionWriter {
 		this.#header = {
 			type: "session",
 			version: SESSION_VERSION,
-				id: options.id,
-				timestamp: new Date().toISOString(),
-				cwd: options.cwd,
-				...(options.workspacePath === undefined ? {} : { workspacePath: options.workspacePath }),
-				...(options.forkedFrom === undefined ? {} : { forkedFrom: options.forkedFrom }),
+			id: options.id,
+			timestamp: new Date().toISOString(),
+			cwd: options.cwd,
+			workspacePath: options.workspacePath ?? null,
+			...(options.forkedFrom === undefined ? {} : { forkedFrom: options.forkedFrom }),
 		};
 	}
 
@@ -244,21 +246,22 @@ export function parseSessionText(text: string): ParsedSessionFile {
 			continue;
 		}
 		const record = parsed as Record<string, unknown>;
-			if (record["type"] === "session") {
-				// 会话头至少要有 id、版本和运行目录；项目归属允许缺失以兼容旧会话
-				const workspacePath = record["workspacePath"];
-				if (
-					typeof record["id"] !== "string" ||
-					typeof record["version"] !== "number" ||
-					typeof record["cwd"] !== "string" ||
-					("workspacePath" in record && workspacePath !== null && typeof workspacePath !== "string")
-				) {
-					skippedLines += 1;
-					continue;
-				}
-				header = parsed as SessionHeaderEntry;
+		if (record["type"] === "session") {
+			// 会话头必须记录项目归属；null 表示明确未绑定。
+			const workspacePath = record["workspacePath"];
+			if (
+				typeof record["id"] !== "string" ||
+				typeof record["version"] !== "number" ||
+				typeof record["cwd"] !== "string" ||
+				!("workspacePath" in record) ||
+				(workspacePath !== null && typeof workspacePath !== "string")
+			) {
+				skippedLines += 1;
 				continue;
 			}
+			header = parsed as SessionHeaderEntry;
+			continue;
+		}
 		if (!isEntryType(record["type"]) || !entryLooksIntact(record)) {
 			// 认得条目才敢往下走：不认识的类型多半是更高版本写的，猜着读只会读出一段错的历史;
 			// 认得但关键字段残缺的同样拒收,否则坏形状会在回放消费点炸成运行时错误

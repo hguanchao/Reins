@@ -25,8 +25,8 @@ export interface NotificationPayload {
 }
 
 export interface SessionTarget {
-	/** 未登记的工作区路径；undefined 表示按会话自身的 cwd 定位。 */
-	readonly workspacePath: string | undefined;
+	/** 未登记的工作区路径；null 表示按会话自身的 cwd 定位。 */
+	readonly workspacePath: string | null;
 	readonly cwd: string;
 	readonly id: string;
 }
@@ -85,7 +85,7 @@ export function parseSessionTarget(
 	const workingDirectory = nonEmptyString(cwd);
 	const sessionId = nonEmptyString(id);
 	if (workingDirectory === undefined || sessionId === undefined) return undefined;
-	const workspacePath = typeof path === "string" && path.length > 0 ? path : undefined;
+	const workspacePath = typeof path === "string" && path.length > 0 ? path : null;
 	return { workspacePath, cwd: workingDirectory, id: sessionId };
 }
 
