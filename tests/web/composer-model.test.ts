@@ -5,6 +5,7 @@ import {
 	APPROVAL_LABELS,
 	EFFORT_LABELS,
 	MIN_LINES,
+	fileMentionPath,
 	groupMentions,
 	hitRate,
 	mentionItems,
@@ -131,5 +132,31 @@ describe("工作区芯片显示名", () => {
 
 	it("清单还没加载完时退回目录名，不闪空壳", () => {
 		assert.equal(workspaceChipName([], "/work/reins", "reins"), "reins");
+	});
+});
+
+describe("文件选择器路径转 @ 引用", () => {
+	it("工作区内的文件转成相对路径", () => {
+		assert.equal(fileMentionPath("/work/reins/src/a.ts", "/work/reins"), "src/a.ts");
+	});
+
+	it("Windows 反斜杠与大小写差异都归一化", () => {
+		assert.equal(fileMentionPath("C:\\Work\\Reins\\src\\a.ts", "C:/work/reins"), "src/a.ts");
+	});
+
+	it("工作区外的文件保留绝对路径", () => {
+		assert.equal(fileMentionPath("C:/Users/Chao/Desktop/a.ts", "C:/work/reins"), "C:/Users/Chao/Desktop/a.ts");
+	});
+
+	it("没有项目根时直接用绝对路径", () => {
+		assert.equal(fileMentionPath("C:/Users/Chao/Desktop/a.ts", ""), "C:/Users/Chao/Desktop/a.ts");
+	});
+
+	it("同前缀但不是同一目录不会被误判成工作区内", () => {
+		assert.equal(fileMentionPath("/work/reins-extra/a.ts", "/work/reins"), "/work/reins-extra/a.ts");
+	});
+
+	it("项目根末尾的斜杠不影响判定", () => {
+		assert.equal(fileMentionPath("/work/reins/a.ts", "/work/reins/"), "a.ts");
 	});
 });

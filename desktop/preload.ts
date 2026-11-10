@@ -6,12 +6,14 @@ import type { WindowControlAction } from "#desktop/window-controls.ts";
 /**
  * 渲染层的窗口能力桥。
  *
- * 页面跑在 http://127.0.0.1 上，不能直接碰 Electron；这里只暴露工作区管理、插件管理、
- * 通知、主题同步与窗控动作。窗口按钮由页面绘制，主进程收到动作后才操作窗口。
+ * 页面跑在 http://127.0.0.1 上，不能直接碰 Electron；这里只暴露工作区管理、文件选择、
+ * 插件管理、通知、主题同步与窗控动作。窗口按钮由页面绘制，主进程收到动作后才操作窗口。
  */
 contextBridge.exposeInMainWorld("reinsDesktop", {
 	chooseWorkspace: (): Promise<boolean> =>
 		ipcRenderer.invoke("workspace:choose") as Promise<boolean>,
+	pickFile: (defaultPath?: string): Promise<string | undefined> =>
+		ipcRenderer.invoke("files:pick", defaultPath) as Promise<string | undefined>,
 	openWorkspaceFolder: (path?: string): void => {
 		void ipcRenderer.invoke("workspace:reveal", path);
 	},

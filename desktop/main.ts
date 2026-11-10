@@ -1,5 +1,6 @@
 import { app, dialog, Menu, nativeTheme } from "electron";
 
+import { registerFileIpc } from "#desktop/files.ts";
 import { registerPluginIpc } from "#desktop/plugins.ts";
 import { createDesktopPaths } from "#desktop/paths.ts";
 import { rememberWorkspace, resolveStartupWorkspace } from "#desktop/startup-workspace.ts";
@@ -45,6 +46,7 @@ async function run(): Promise<void> {
 	window.on("closed", () => controller.shutdown());
 	installNavigationGuards(window, () => controller.origin);
 	registerWindowIpc(paths);
+	registerFileIpc({ window });
 	registerWorkspaceIpc({
 		window,
 		paths,

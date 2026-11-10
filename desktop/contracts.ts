@@ -39,6 +39,8 @@ export interface PluginToggle {
 const NOTIFICATION_TITLE_MAX = 80;
 const NOTIFICATION_BODY_MAX = 200;
 const TEXT_MAX = 256;
+/** 文件系统路径比显示名长得多，单独给一档上限 */
+const FILE_PICK_PATH_MAX = 4096;
 const PLUGIN_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** 与显示名上限一致；超长直接拒绝，不截断，免得建出一个和输入不同的目录。 */
 const WORKSPACE_NAME_MAX = 60;
@@ -102,4 +104,20 @@ export function isSafePluginFileName(name: string): boolean {
 /** 异常统一转成界面可显示的结果；不把堆栈泄到渲染层。 */
 export function pluginFailure(error: unknown): PluginResult {
 	return { ok: false, error: error instanceof Error ? error.message : String(error) };
+}
+
+/**
+ * 文件选择对话框的起始目录：页面传来的项目根必须真实存在，否则退回桌面。
+ * 路径不能像显示名那样截断，截短后会指向另一个目录，宁可直接退回桌面。
+ * 目录判定由调用方注入，契约层不碰文件系统，便于独立验证这几种分支。
+ */
+export function resolveFilePickStart(
+	requested: unknown,
+	desktop: string,
+	isDirectory: (value: string) => boolean,
+): string {
+	if (typeof requested !== "string") return desktop;
+	const root = requested.trim();
+	if (root.length === 0 || root.length > FILE_PICK_PATH_MAX) return desktop;
+	return isDirectory(root) ? root : desktop;
 }

@@ -114,6 +114,20 @@ export function workspaceChipName(
 	return workspaces.find((item) => item.path === workspacePath)?.name ?? fallbackName;
 }
 
+/**
+ * 系统文件选择器给的是绝对路径：工作区内的文件转成相对路径引用，工作区外的保留绝对路径。
+ * Windows 大小写不敏感，比较时统一转小写；输出保留原大小写，分隔符统一成 /。
+ */
+export function fileMentionPath(picked: string, workspacePath: string): string {
+	const normalize = (value: string): string => value.replace(/\\/g, "/").replace(/\/+$/, "");
+	const absolute = normalize(picked);
+	const root = normalize(workspacePath);
+	if (root.length === 0) return absolute;
+	return absolute.toLowerCase().startsWith(`${root.toLowerCase()}/`)
+		? absolute.slice(root.length + 1)
+		: absolute;
+}
+
 export function serverStatusLabel(status: string): string {
 	switch (status) {
 		case "connected":

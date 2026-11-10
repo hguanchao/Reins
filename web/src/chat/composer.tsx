@@ -191,8 +191,10 @@ export function Composer(props: ComposerProps): ReactElement {
 
 	const insertToken = (token: string): void => {
 		const element = textareaRef.current;
-		const caret = element?.selectionStart ?? text.length;
-		const next = `${text.slice(0, caret)}${token}${text.slice(caret)}`;
+		// 系统文件选择器是异步的，期间用户可能继续输入；以输入框实时值为准，避免把新输入覆盖掉
+		const current = element?.value ?? text;
+		const caret = element?.selectionStart ?? current.length;
+		const next = `${current.slice(0, caret)}${token}${current.slice(caret)}`;
 		setText(next);
 		requestAnimationFrame(() => {
 			element?.focus();

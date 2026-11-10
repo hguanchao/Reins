@@ -13,6 +13,8 @@ export interface WorkspaceCreationResult {
 /** 桌面壳注入的能力；浏览器里不存在，相关入口据此隐藏。 */
 export interface ReinsDesktopBridge {
 	chooseWorkspace(): Promise<boolean>;
+	/** 唤起系统文件选择器；返回选中文件的绝对路径，取消时返回 undefined */
+	pickFile(defaultPath?: string): Promise<string | undefined>;
 	/** 用系统资源管理器打开指定目录 */
 	openWorkspaceFolder(path?: string): void;
 	renameWorkspace(path: string, name: string): Promise<boolean>;

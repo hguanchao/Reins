@@ -1,10 +1,10 @@
 import { AtSign, ChevronRight, Download, FolderOpen, Package, Paperclip, Plus, Puzzle, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { api } from "../../api.ts";
-import { cn, Tooltip } from "../../components/ui/index.ts";
+import { cn, Tooltip, toast } from "../../components/ui/index.ts";
 import { desktopBridge } from "../../platform.ts";
 import type { McpServerInfo, SkillInfo } from "../../protocol.ts";
-import { serverStatusLabel } from "./model.ts";
+import { fileMentionPath, serverStatusLabel } from "./model.ts";
 
 /** 技能字母头像的类目色:按序循环取用,与用量图表同一套色板。 */
 const LETTER_COLORS = ["var(--cat-1)", "var(--cat-2)", "var(--cat-3)", "var(--cat-4)", "var(--cat-5)"] as const;
@@ -118,40 +118,29 @@ export function AddMenu({
 					role="menu"
 					style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 45 }}
 				>
-					<div className="add-row" onMouseEnter={(event) => enter("file", event.currentTarget)} onMouseLeave={() => leave("file")}>
-						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("file")}>
+					{/* 桌面壳直接唤起系统文件选择器；浏览器里没有系统对话框，退回输入 @ 走应用内补全 */}
+					<div className="add-row">
+						<button
+							type="button"
+							className="pop-i"
+							onClick={() => {
+								close();
+								if (bridge === undefined) {
+									onInsert("@");
+									return;
+								}
+								void bridge
+									.pickFile(workspacePath)
+									.then((picked) => {
+										if (picked === undefined) return;
+										onInsert(`@${fileMentionPath(picked, workspacePath)} `);
+									})
+									.catch((cause: unknown) => toast(cause instanceof Error ? cause.message : String(cause), "error"));
+							}}
+						>
 							<Paperclip className="ic ic-14" />
 							<span>添加文件</span>
-							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className={cn("sub-fly", submenu === "file" && "is-on", flipped === "file" && "is-left")}>
-							<div className="sub-panel">
-								<button
-									type="button"
-									className="pop-i"
-									onClick={() => {
-										onInsert("@");
-										close();
-									}}
-								>
-									<AtSign className="ic ic-14" />
-									引用文件
-								</button>
-								{bridge === undefined ? null : (
-									<button
-										type="button"
-										className="pop-i"
-										onClick={() => {
-											bridge.openWorkspaceFolder(workspacePath);
-											close();
-										}}
-									>
-										<FolderOpen className="ic ic-14" />
-										在资源管理器中打开
-									</button>
-								)}
-							</div>
-						</div>
 					</div>
 
 					<div className="add-row" onMouseEnter={(event) => enter("workspace", event.currentTarget)} onMouseLeave={() => leave("workspace")}>

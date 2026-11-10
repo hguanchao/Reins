@@ -10,6 +10,7 @@ import {
 	parseTheme,
 	parseWorkspaceName,
 	pluginFailure,
+	resolveFilePickStart,
 } from "#desktop/contracts.ts";
 
 describe("IPC 输入契约", () => {
@@ -84,5 +85,28 @@ describe("IPC 输入契约", () => {
 	it("异常转成界面可显示的结果，不泄露堆栈", () => {
 		assert.deepEqual(pluginFailure(new Error("写盘失败")), { ok: false, error: "写盘失败" });
 		assert.deepEqual(pluginFailure("字符串错误"), { ok: false, error: "字符串错误" });
+	});
+});
+
+describe("文件选择起始目录", () => {
+	const desktop = "C:/Users/Chao/Desktop";
+	const existing = (root: string): boolean => root === "E:/work/reins";
+
+	it("有项目且目录仍在时从项目根开始", () => {
+		assert.equal(resolveFilePickStart("E:/work/reins", desktop, existing), "E:/work/reins");
+	});
+
+	it("没有项目时从桌面开始", () => {
+		assert.equal(resolveFilePickStart("", desktop, existing), desktop);
+		assert.equal(resolveFilePickStart(undefined, desktop, existing), desktop);
+	});
+
+	it("项目根已失效或非字符串时退回桌面", () => {
+		assert.equal(resolveFilePickStart("E:/gone", desktop, existing), desktop);
+		assert.equal(resolveFilePickStart(42, desktop, existing), desktop);
+	});
+
+	it("超长路径直接拒绝，避免把畸形值交给对话框", () => {
+		assert.equal(resolveFilePickStart("E:/" + "x".repeat(5000), desktop, () => true), desktop);
 	});
 });
