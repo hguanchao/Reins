@@ -18,7 +18,6 @@ import {
 	createReviewer,
 } from "#src/cli/pipeline.ts";
 import { runPrintMode } from "#src/cli/print-mode.ts";
-import { runServeMode } from "#src/cli/serve-mode.ts";
 import { createSessionFor } from "#src/cli/session/factory.ts";
 import { runPluginCommand } from "#src/cli/plugin-command.ts";
 import { runTuiMode } from "#src/cli/tui-mode.ts";
@@ -56,8 +55,8 @@ export async function main(argv: readonly string[]): Promise<number> {
 			initializeConfig(options);
 			return runPrint(options);
 		case "serve":
-			initializeConfig(options);
-			return runServeMode(options);
+			// 命令类型仍留给桌面壳装配；命令行解析已切断入口，走到这里说明装配串了线
+			throw new Error("网页服务只能由桌面壳启动");
 		case "tui":
 			return runTuiMode(options);
 	}

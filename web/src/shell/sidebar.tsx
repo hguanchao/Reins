@@ -122,7 +122,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 		const name = renameValue.trim();
 		if (target === undefined || name.length === 0) return;
 		void (async () => {
-			const ok = (await bridge?.renameWorkspace(target.path, name)) ?? false;
+			const ok = await bridge.renameWorkspace(target.path, name);
 			// 内核会在空名、超长或落盘失败时返回 false；此处必须给反馈，否则「保存」看起来毫无反应
 			if (!ok) {
 				toast("工作区名称保存失败：名称需为 1–60 个字符，且配置文件可写", "error");
@@ -150,7 +150,7 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			/* 只认这个任务自己的工作目录：以前先取 workspacePath 再退回 cwd、最后退回当前会话的 cwd，
 			   未绑定任务会把「当前会话所在目录」当成目标，点哪一行都可能跳到别处。cwd 未知就不给入口 */
 			onOpenFolder={
-				bridge === undefined || row.cwd.length === 0
+				row.cwd.length === 0
 					? undefined
 					: () => bridge.openWorkspaceFolder(row.cwd)
 			}
@@ -220,43 +220,39 @@ export function Sidebar(props: SidebarProps): ReactElement {
 						const open = !(collapsed[workspace.path] ?? false);
 						const entries: MenuEntry[] = [
 							{ type: "item", key: "new", label: "新建任务", icon: Plus, onSelect: () => props.onNewSession(workspace.path) },
-							...(bridge === undefined
-								? []
-								: [
-										{
-											type: "item" as const,
-											key: "reveal",
-											label: "在资源管理器中显示",
-											icon: FolderOpen,
-											onSelect: () => bridge.openWorkspaceFolder(workspace.path),
-										},
-										{
-											type: "item" as const,
-											key: "rename",
-											label: "重命名",
-											icon: Pencil,
-											onSelect: () => {
-												setRenameValue(workspace.name);
-												setWorkspaceRename(workspace);
-											},
-										},
-										{ type: "separator" as const },
-										{
-											type: "item" as const,
-											key: "hide",
-											label: "从侧栏移除",
-											icon: EyeOff,
-											onSelect: () => props.onHideWorkspace?.(workspace.path),
-										},
-										{
-											type: "item" as const,
-											key: "delete",
-											label: "删除项目…",
-											icon: Trash2,
-											danger: true,
-											onSelect: () => setWorkspaceDelete(workspace),
-										},
-									]),
+							{
+								type: "item" as const,
+								key: "reveal",
+								label: "在资源管理器中显示",
+								icon: FolderOpen,
+								onSelect: () => bridge.openWorkspaceFolder(workspace.path),
+							},
+							{
+								type: "item" as const,
+								key: "rename",
+								label: "重命名",
+								icon: Pencil,
+								onSelect: () => {
+									setRenameValue(workspace.name);
+									setWorkspaceRename(workspace);
+								},
+							},
+							{ type: "separator" as const },
+							{
+								type: "item" as const,
+								key: "hide",
+								label: "从侧栏移除",
+								icon: EyeOff,
+								onSelect: () => props.onHideWorkspace?.(workspace.path),
+							},
+							{
+								type: "item" as const,
+								key: "delete",
+								label: "删除项目…",
+								icon: Trash2,
+								danger: true,
+								onSelect: () => setWorkspaceDelete(workspace),
+							},
 						];
 
 						return (

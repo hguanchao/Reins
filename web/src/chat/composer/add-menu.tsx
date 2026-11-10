@@ -118,17 +118,12 @@ export function AddMenu({
 					role="menu"
 					style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 45 }}
 				>
-					{/* 桌面壳直接唤起系统文件选择器；浏览器里没有系统对话框，退回输入 @ 走应用内补全 */}
 					<div className="add-row">
 						<button
 							type="button"
 							className="pop-i"
 							onClick={() => {
 								close();
-								if (bridge === undefined) {
-									onInsert("@");
-									return;
-								}
 								void bridge
 									.pickFile(workspacePath)
 									.then((picked) => {

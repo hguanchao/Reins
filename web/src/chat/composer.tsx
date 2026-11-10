@@ -324,7 +324,6 @@ export function Composer(props: ComposerProps): ReactElement {
 		const name = createName.trim();
 		if (name.length === 0 || creating) return;
 		const bridge = desktopBridge();
-		if (bridge === undefined) return;
 		setCreating(true);
 		setCreateError(undefined);
 		void bridge

@@ -216,10 +216,6 @@ export function App(): ReactElement {
 				return;
 			}
 			const bridge = desktopBridge();
-			if (bridge === undefined) {
-				toast("此任务属于其他项目，请在桌面端打开", "error");
-				return;
-			}
 			void bridge
 				.openSession(target.workspacePath ?? null, target.cwd, target.id)
 				.then((opened) => {
@@ -389,9 +385,8 @@ export function App(): ReactElement {
 
 	const newTask = useCallback(
 		(workspacePath: string | null = null): void => {
-			const desktop = desktopBridge();
 			// 独立任务要换到一块新目录，等于换服务进程，跟跨项目一样不能在回合里切
-			const switchesDirectory = workspacePath === null ? desktop !== undefined : workspacePath !== cwd;
+			const switchesDirectory = workspacePath === null || workspacePath !== cwd;
 			if (running && switchesDirectory) {
 				toast("当前任务运行中，完成后才能切换目录", "info");
 				return;
@@ -400,13 +395,7 @@ export function App(): ReactElement {
 			setActivePanel(undefined);
 			setSideFullscreen(false);
 			if (workspacePath === null) {
-				if (desktop === undefined) {
-					void api.newSession(null).catch((error: unknown) => {
-						toast(error instanceof Error ? error.message : String(error), "error");
-					});
-					return;
-				}
-				void desktop
+				void desktopBridge()
 					.newStandaloneTask()
 					.then((created) => {
 						if (!created) toast("无法新建独立任务", "error");
@@ -422,11 +411,7 @@ export function App(): ReactElement {
 				});
 				return;
 			}
-			if (desktop === undefined) {
-				toast("只能在当前项目创建任务", "error");
-				return;
-			}
-			void desktop
+			void desktopBridge()
 				.newTaskInWorkspace(workspacePath)
 				.then((created) => {
 					if (!created) toast("无法在此项目中新建任务", "error");
@@ -482,7 +467,6 @@ export function App(): ReactElement {
 	const hideWorkspace = useCallback(
 		(path: string): void => {
 			const bridge = desktopBridge();
-			if (bridge === undefined) return;
 			void bridge
 				.hideWorkspace(path)
 				.then((ok) => {
@@ -816,7 +800,7 @@ export function App(): ReactElement {
 							})
 							.catch(() => {});
 					}}
-					onReveal={() => desktopBridge()?.openWorkspaceFolder(currentWorkspacePath ?? cwd)}
+					onReveal={() => desktopBridge().openWorkspaceFolder(currentWorkspacePath ?? cwd)}
 				/>
 			)}
 

@@ -58,26 +58,22 @@ export function WorkspacePicker({
 				)}
 			</div>
 			<div className="pop-sep" />
-			{bridge === undefined ? null : (
-				<>
-					<button type="button" className="pop-i" onClick={onNewWorkspace}>
-						<Plus className="ic ic-14" />
-						新建工作空间
-					</button>
-					<button
-						type="button"
-						className="pop-i"
-						onClick={() => {
-							void bridge.chooseWorkspace().then((chosen) => {
-								if (chosen) onPick(null);
-							});
-						}}
-					>
-						<FolderOpen className="ic ic-14" />
-						打开本地文件夹…
-					</button>
-				</>
-			)}
-			</>
+			<button type="button" className="pop-i" onClick={onNewWorkspace}>
+				<Plus className="ic ic-14" />
+				新建工作空间
+			</button>
+			<button
+				type="button"
+				className="pop-i"
+				onClick={() => {
+					void bridge.chooseWorkspace().then((chosen) => {
+						if (chosen) onPick(null);
+					});
+				}}
+			>
+				<FolderOpen className="ic ic-14" />
+				打开本地文件夹…
+			</button>
+		</>
 	);
 }

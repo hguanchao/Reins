@@ -24,8 +24,6 @@
 		"build:ui": "vite build",
 		"build:desktop": "node desktop/build.mjs",
 		"build:exe": "npm run build:ui && npm run build:desktop && node desktop/package.mjs",
-		"serve": "node src/cli/index.ts serve",
-		"dev:web": "vite",
 		"dev:desktop": "npm run build:ui && npm run build:desktop && electron ."
 	},
 	"devDependencies": {

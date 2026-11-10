@@ -6,16 +6,14 @@ import { desktopBridge } from "../platform.ts";
 /**
  * 窗控区。
  *
- * 桌面壳（Windows / Linux）由页面自绘三枚钮，动作递给主进程；macOS 保留系统红绿灯，
- * 这里只留空位；浏览器预览照设计稿画两枚示意方块。让位方向由 index.html 落下的
- * data-titlebar-platform 决定。
+ * Windows / Linux 由页面自绘三枚钮，动作递给主进程；macOS 保留系统红绿灯，
+ * 这里只留空位。让位方向由 index.html 落下的 data-titlebar-platform 决定。
  */
 export function WindowControls(): ReactElement {
 	const bridge = desktopBridge();
 	const [maximized, setMaximized] = useState(false);
 
 	useEffect(() => {
-		if (bridge === undefined) return;
 		// 首屏问一次、后续靠主进程推送；卸载后不再把异步结果写回已销毁的组件
 		let alive = true;
 		void bridge.isWindowMaximized().then((value) => {
@@ -28,14 +26,6 @@ export function WindowControls(): ReactElement {
 		};
 	}, [bridge]);
 
-	if (bridge === undefined) {
-		return (
-			<div className="win-slot" aria-hidden="true">
-				<i />
-				<i />
-			</div>
-		);
-	}
 	// macOS 的交通灯在左侧由系统绘制，右侧不补第二份窗控
 	if (document.documentElement.dataset.titlebarPlatform === "mac") {
 		return <div className="win-slot" aria-hidden="true" />;

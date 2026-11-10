@@ -6,7 +6,7 @@ export class UsageError extends Error {
 	}
 }
 
-/** CLI 的运行方式：启动界面、一次提问、本地网页服务、帮助、版本，或管理插件。 */
+/** CLI 的运行方式；serve 只留给桌面壳内部装配，命令行不能再进入。 */
 type CliCommand = "tui" | "print" | "serve" | "help" | "version" | "plugin";
 
 export interface CliOptions {
@@ -60,15 +60,9 @@ export function parseArgs(argv: readonly string[]): CliOptions {
 				json,
 			});
 		}
-		// serve 子命令同样先截断：它不收位置参数,只认自己的端口选项
+		// 网页服务只由桌面壳启动；命令行里再敲 serve 要明确拒绝，免得当成一句提问发给模型
 		if (argument === "serve" && positionals.length === 0 && !explicitPrint) {
-			return parseServeCommand(argv.slice(index + 1), {
-				configPath,
-				providersPath,
-				trust,
-				resume,
-				json,
-			});
+			throw new UsageError("serve 已移除，请使用 Reins 桌面应用");
 		}
 
 		if (argument === "--print" || argument === "-p") {
@@ -162,42 +156,6 @@ function optionsOf(command: CliCommand): CliOptions {
 	};
 }
 
-/** `reins serve` 子命令:起本地网页服务,只认 --port。 */
-function parseServeCommand(
-	rest: readonly string[],
-	shared: Pick<CliOptions, "configPath" | "providersPath" | "trust" | "resume" | "json">,
-): CliOptions {
-	// 信任决策与一次性提问互斥的规则不变:写在 serve 前面的 --resume 一样报错,不静默丢弃
-	if (shared.resume !== undefined) {
-		throw new UsageError("--resume only works with the full-screen interface");
-	}
-	let port: number | undefined;
-	for (let index = 0; index < rest.length; index += 1) {
-		const argument = rest[index];
-		const value =
-			argument === "--port"
-				? rest[index + 1]
-				: argument.startsWith("--port=")
-					? argument.slice("--port=".length)
-					: undefined;
-		if (value === undefined) throw new UsageError(`unknown option ${argument} (serve takes only --port)`);
-		const parsed = Number(value);
-		if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
-			throw new UsageError("--port requires a port number between 1 and 65535");
-		}
-		port = parsed;
-		if (argument === "--port") index += 1;
-	}
-	return {
-		command: "serve",
-		prompt: "",
-		...shared,
-		port,
-		pluginAction: undefined,
-		pluginSource: undefined,
-	};
-}
-
 /** `reins plugin add|list` 子命令；来源是剩余的位置参数。 */
 function parsePluginCommand(
 	rest: readonly string[],
@@ -238,7 +196,6 @@ Usage:
   reins <prompt>              Run one prompt, write the answer to stdout
   reins -p <prompt>           Same, explicitly non-interactive
   reins -p --json <prompt>    Write a JSONL event stream to stdout instead
-  reins serve                 Start the browser interface on 127.0.0.1
   reins plugin add <source>   Install a plugin (npm package, git URL, or local directory)
   reins plugin list           Show installed plugins and what each one provides
   reins --help                Show this help
@@ -246,7 +203,6 @@ Usage:
 
 Options:
   --json                      Emit one JSON event per line; requires -p
-  --port <n>                  Port for serve (default 8787)
   --trust                     Read the config shipped in this workspace and record the decision
   --no-trust                  Do not read the workspace config, and record the decision
   --config <path>             Use the given config.toml instead of the one in the config directory

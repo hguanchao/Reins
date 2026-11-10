@@ -59,42 +59,16 @@ describe("parseArgs 的配置选项", () => {
 	});
 });
 
-describe("parseArgs serve 子命令", () => {
-	it("默认不指定端口,由装配层兜底", () => {
-		const options = parseArgs(["serve"]);
-		assert.equal(options.command, "serve");
-		assert.equal(options.port, undefined);
+describe("serve 子命令已移除", () => {
+	it("命令行不再提供网页服务入口，明确报错", () => {
+		assert.throws(() => parseArgs(["serve"]), /serve 已移除/);
+		assert.throws(() => parseArgs(["serve", "--port", "9000"]), /serve 已移除/);
 	});
 
-	it("--port 两种写法都收", () => {
-		assert.equal(parseArgs(["serve", "--port", "9000"]).port, 9000);
-		assert.equal(parseArgs(["serve", "--port=9001"]).port, 9001);
-	});
-
-	it("共享选项写在 serve 之前仍然生效", () => {
-		const options = parseArgs(["--config", "a.toml", "serve"]);
-		assert.equal(options.command, "serve");
-		assert.equal(options.configPath, "a.toml");
-	});
-
-	it("端口非法直接报错", () => {
-		assert.throws(() => parseArgs(["serve", "--port", "abc"]), /--port requires a port number/);
-		assert.throws(() => parseArgs(["serve", "--port", "0"]), /--port requires a port number/);
-		assert.throws(() => parseArgs(["serve", "--port", "70000"]), /--port requires a port number/);
-	});
-
-	it("serve 不收位置参数与别的选项", () => {
-		assert.throws(() => parseArgs(["serve", "hello"]), /unknown option hello/);
-		assert.throws(() => parseArgs(["serve", "--json"]), /unknown option --json/);
-	});
-
-	it("信任决策对 serve 生效,resume 一律报错", () => {
-		assert.equal(parseArgs(["--no-trust", "serve"]).trust, false);
-		assert.equal(parseArgs(["--trust", "serve"]).trust, true);
-		assert.throws(
-			() => parseArgs(["--resume", "abc", "serve"]),
-			/--resume only works with the full-screen interface/,
-		);
+	it("serve 出现在普通句子里仍按一次性提问处理", () => {
+		const options = parseArgs(["解释", "serve"]);
+		assert.equal(options.command, "print");
+		assert.equal(options.prompt, "解释 serve");
 	});
 });
 

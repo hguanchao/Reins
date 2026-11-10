@@ -96,7 +96,7 @@ export function ExtensionsSection({
 	};
 
 	const togglePlugin = (name: string, enabled: boolean): void => {
-		if (bridge === undefined || toggling !== undefined) return;
+		if (toggling !== undefined) return;
 		setToggling(name);
 		void bridge
 			.togglePlugin(name, !enabled)
@@ -214,18 +214,12 @@ export function ExtensionsSection({
 												<Tag tone={item.status === "connected" ? "line" : "dash"}>
 													{statusLabel(item.status)}
 												</Tag>
-											) : bridge === undefined ? (
-												item.disabled ? (
-													<Tag tone="dash">已禁用</Tag>
-												) : (
-													<Tag tone="ghost">已启用</Tag>
-												)
 											) : null}
 										</div>
 										<div className="d">{item.detail ?? item.description}</div>
 									</div>
 									<span className="m">{item.meta}</span>
-									{item.kind === "plugin" && bridge !== undefined ? (
+									{item.kind === "plugin" ? (
 										<Switch
 											checked={!item.disabled}
 											label={`${item.disabled ? "启用" : "禁用"} ${item.name}`}

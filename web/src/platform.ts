@@ -10,7 +10,7 @@ export interface WorkspaceCreationResult {
 	readonly error?: string;
 }
 
-/** 桌面壳注入的能力；浏览器里不存在，相关入口据此隐藏。 */
+/** 桌面壳注入的能力；页面只在桌面窗口里加载，preload 会在脚本执行前注入。 */
 export interface ReinsDesktopBridge {
 	chooseWorkspace(): Promise<boolean>;
 	/** 唤起系统文件选择器；返回选中文件的绝对路径，取消时返回 undefined */
@@ -45,10 +45,10 @@ export interface ReinsDesktopBridge {
 
 declare global {
 	interface Window {
-		reinsDesktop?: ReinsDesktopBridge;
+		reinsDesktop: ReinsDesktopBridge;
 	}
 }
 
-export function desktopBridge(): ReinsDesktopBridge | undefined {
+export function desktopBridge(): ReinsDesktopBridge {
 	return window.reinsDesktop;
 }
