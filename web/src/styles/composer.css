@@ -964,8 +964,10 @@
 /* 加号浮层 */
 .pop.add-menu {
 	width: max-content;
-	min-width: 0;
+	min-width: 190px;
 	max-width: 320px;
+	/* 面板自带内衬，行不再贴着边框；行距也一并放松，密排看起来太挤 */
+	padding: 6px;
 	overflow: visible;
 }
 
@@ -976,10 +978,10 @@
 .sub-fly {
 	position: absolute;
 	left: 100%;
-	top: -4px;
+	top: -6px;
 	z-index: 5;
 	display: none;
-	padding-left: 6px;
+	padding-left: 8px;
 }
 
 /* 只认一个当前行：hover 与 focus 各自成立会让两个面板同时弹出（见 add-menu 的状态注释） */
@@ -991,15 +993,21 @@
    二级面板是定宽，行仍用基类的 100%，不受这条影响 */
 .add-menu > .add-row > .pop-i {
 	width: 100%;
+	height: 34px;
+	padding: 0 10px;
+	border-radius: var(--r-2);
 }
 
 .add-menu .pop-i {
 	white-space: nowrap;
 }
 
+/* 宽度交给内容决定：路径长短差别很大，定宽会把长路径顶出边框 */
 .sub-panel {
-	width: 200px;
-	padding: 3px 0;
+	width: max-content;
+	min-width: 210px;
+	max-width: min(380px, 56vw);
+	padding: 6px;
 	border: 1px solid var(--rule-3);
 	border-radius: var(--r-3);
 	background: var(--raise);
@@ -1007,11 +1015,25 @@
 	animation: reins-pop var(--speed) var(--ease) both;
 }
 
+.sub-panel .pop-i {
+	height: 34px;
+	padding: 0 10px;
+	border-radius: var(--r-2);
+}
+
+/* 再长也不越出面板，末尾省略；完整路径仍写进 title */
+.sub-panel .pop-i .path {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .sub-search {
 	display: flex;
 	align-items: center;
 	gap: 7px;
-	padding: 7px 10px;
+	padding: 8px 11px;
 	border-bottom: 1px solid var(--rule);
 }
 

@@ -181,7 +181,7 @@ export function AddMenu({
 												close();
 											}}
 										>
-											<span className="path">{path}</span>
+											<span className="path" title={path}>{path}</span>
 										</button>
 									))
 								)}
