@@ -7,7 +7,7 @@ import { configDir } from "#src/config/paths.ts";
  * 独立任务的工作目录。
  *
  * 没有项目的任务不该跟启动目录纠缠：它需要一块只属于自己的空地，删掉任务时整块丢掉也不心疼。
- * 目录放在配置目录的 work 下，跟着 REINS_HOME 一起搬，不写进用户项目里。
+ * 目录放在配置目录的 workspaces 下，跟着 REINS_HOME 一起搬，不写进用户项目里。
  */
 
 const DIR_PREFIX = "standalone-";
@@ -16,7 +16,7 @@ const MAX_ATTEMPTS = 20;
 
 /** 独立任务目录的根。 */
 export function standaloneRoot(): string {
-	return join(configDir(), "work");
+	return join(configDir(), "workspaces");
 }
 
 function pad(value: number, width = 2): string {

@@ -15,7 +15,7 @@ const home = mkdtempSync(join(tmpdir(), "reins-standalone-"));
 process.env["REINS_HOME"] = home;
 
 beforeEach(() => {
-	rmSync(join(home, "work"), { recursive: true, force: true });
+	rmSync(join(home, "workspaces"), { recursive: true, force: true });
 });
 
 after(() => {
@@ -23,10 +23,10 @@ after(() => {
 });
 
 describe("独立任务目录", () => {
-	it("按时刻命名并落在配置目录的 work 下", () => {
+	it("按时刻命名并落在配置目录的 workspaces 下", () => {
 		const created = createStandaloneDir(new Date(2026, 10, 9, 8, 7, 6));
-		assert.equal(standaloneRoot(), join(home, "work"));
-		assert.equal(created.path, join(home, "work", "standalone-20261109-080706"));
+		assert.equal(standaloneRoot(), join(home, "workspaces"));
+		assert.equal(created.path, join(home, "workspaces", "standalone-20261109-080706"));
 		assert.equal(created.label, "11-09 08:07");
 		assert.deepEqual(readdirSync(created.path), []);
 	});
