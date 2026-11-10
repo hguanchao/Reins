@@ -323,12 +323,12 @@
 	text-align: left;
 }
 
-/* 行尾槽：宽度固定 46（两枚 20px 悬停钮 + 1px 间隙），时间戳与钮都绝对定位在槽内叠放，
+/* 行尾槽：宽度正好容下两枚 20px 悬停钮加 1px 间隙，时间戳与钮都绝对定位在槽内叠放，
    标题只占自己的弹性列——两者各占一块，文字再长也钻不到按钮底下 */
 .sess .tail {
 	position: relative;
 	flex: none;
-	width: 46px;
+	width: 41px;
 	height: 100%;
 }
 
@@ -353,8 +353,9 @@
 }
 
 .sess .hover-actions {
+	/* 靠槽的左缘排，按钮就贴着标题一侧，不留在槽里漂到行尾 */
 	position: absolute;
-	right: 0;
+	left: 0;
 	top: 50%;
 	display: flex;
 	gap: 1px;
