@@ -1,6 +1,7 @@
 import { AtSign, ChevronRight, Download, FolderOpen, Package, Paperclip, Plus, Puzzle, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { api } from "../../api.ts";
+import { cn } from "../../components/ui/index.ts";
 import { desktopBridge } from "../../platform.ts";
 import type { McpServerInfo, SkillInfo } from "../../protocol.ts";
 import { serverStatusLabel } from "./model.ts";
@@ -23,6 +24,13 @@ export function AddMenu({
 	onSettings(): void;
 }): ReactElement {
 	const [open, setOpen] = useState(false);
+	/**
+	 * 当前展开的二级面板。
+	 *
+	 * 光靠 CSS 的 :hover 与 :focus-within 会让两行同时成立：点过某行按钮后焦点留在那里，
+	 * 再去悬停另一行，两个面板就会一起弹出来叠成一列。改成只认一个当前行。
+	 */
+	const [submenu, setSubmenu] = useState<string | undefined>(undefined);
 	const [fileQuery, setFileQuery] = useState("");
 	const [fileHits, setFileHits] = useState<readonly string[]>([]);
 	const [skillQuery, setSkillQuery] = useState("");
@@ -68,7 +76,13 @@ export function AddMenu({
 		return () => window.clearTimeout(timer);
 	}, [open, fileQuery]);
 
-	const close = (): void => setOpen(false);
+	const close = (): void => {
+		setOpen(false);
+		setSubmenu(undefined);
+	};
+
+	/** 指针离开这一行就收起它的面板；已经换成别的行时不动，避免快速扫过时互相清掉。 */
+	const leave = (key: string): void => setSubmenu((current) => (current === key ? undefined : current));
 
 	const matchedSkills = skills.filter((skill) => skill.name.toLowerCase().includes(skillQuery.trim().toLowerCase()));
 
@@ -91,13 +105,13 @@ export function AddMenu({
 					role="menu"
 					style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 45 }}
 				>
-					<div className="add-row">
-						<button type="button" className="pop-i sub-trig">
+					<div className="add-row" onMouseEnter={() => setSubmenu("file")} onMouseLeave={() => leave("file")}>
+						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("file")}>
 							<Paperclip className="ic ic-14" />
 							<span>添加文件</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className="sub-fly">
+						<div className={cn("sub-fly", submenu === "file" && "is-on")}>
 							<div className="sub-panel">
 								<button
 									type="button"
@@ -127,13 +141,13 @@ export function AddMenu({
 						</div>
 					</div>
 
-					<div className="add-row">
-						<button type="button" className="pop-i sub-trig">
+					<div className="add-row" onMouseEnter={() => setSubmenu("workspace")} onMouseLeave={() => leave("workspace")}>
+						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("workspace")}>
 							<AtSign className="ic ic-14" />
 							<span>引用工作区文件</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className="sub-fly">
+						<div className={cn("sub-fly", submenu === "workspace" && "is-on")}>
 							<div className="sub-panel">
 								<div className="sub-search">
 									<AtSign className="ic ic-12" />
@@ -175,13 +189,13 @@ export function AddMenu({
 						</div>
 					</div>
 
-					<div className="add-row">
-						<button type="button" className="pop-i sub-trig">
+					<div className="add-row" onMouseEnter={() => setSubmenu("skills")} onMouseLeave={() => leave("skills")}>
+						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("skills")}>
 							<Puzzle className="ic ic-14" />
 							<span>技能</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className="sub-fly">
+						<div className={cn("sub-fly", submenu === "skills" && "is-on")}>
 							<div className="sub-panel">
 								<div className="sub-search">
 									<Puzzle className="ic ic-12" />
@@ -249,14 +263,14 @@ export function AddMenu({
 						</div>
 					</div>
 
-					<div className="add-row">
-						<button type="button" className="pop-i sub-trig">
+					<div className="add-row" onMouseEnter={() => setSubmenu("mcp")} onMouseLeave={() => leave("mcp")}>
+						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("mcp")}>
 							<Package className="ic ic-14" />
 							<span>连接器</span>
 							<span className="badge">MCP</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className="sub-fly">
+						<div className={cn("sub-fly", submenu === "mcp" && "is-on")}>
 							<div className="sub-panel">
 								{mcpServers.length === 0 ? (
 									<div className="pop-i two" style={{ pointerEvents: "none" }}>

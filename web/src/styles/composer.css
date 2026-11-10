@@ -982,8 +982,8 @@
 	padding-left: 6px;
 }
 
-.add-row:hover .sub-fly,
-.add-row:focus-within .sub-fly {
+/* 只认一个当前行：hover 与 focus 各自成立会让两个面板同时弹出（见 add-menu 的状态注释） */
+.sub-fly.is-on {
 	display: block;
 }
 
