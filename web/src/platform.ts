@@ -22,6 +22,8 @@ export interface ReinsDesktopBridge {
 	createWorkspace(name: string): Promise<WorkspaceCreationResult>;
 	openSession(workspacePath: string | null, cwd: string, id: string): Promise<boolean>;
 	newTaskInWorkspace(path: string): Promise<boolean>;
+	/** 新建独立任务：自动建一块一次性目录并切过去，任务算未绑定 */
+	newStandaloneTask(): Promise<boolean>;
 	/** 选择本地插件目录并安装；成功后服务进程会重启 */
 	installPlugin(): Promise<PluginActionResult>;
 	/** 启停插件；成功后服务进程会重启 */

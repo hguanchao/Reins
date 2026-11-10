@@ -10,6 +10,7 @@ import {
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
 import { writeWorkspaceName } from "#src/workspace/name.ts";
+import { createStandaloneDir, releaseStandaloneDir } from "#src/workspace/standalone.ts";
 import { nonEmptyString, parseSessionTarget, parseWorkspaceName } from "#desktop/contracts.ts";
 import type { WorkspaceCreationResult } from "#desktop/contracts.ts";
 import { WORKSPACE_NAMES_FILE, type DesktopPaths } from "#desktop/paths.ts";
@@ -131,6 +132,33 @@ export function registerWorkspaceIpc(context: WorkspaceIpcContext): void {
 		const target = registeredWorkspace(requested);
 		if (target === undefined) return false;
 		return switchTo(target, { createWorkspaceTask: true }, "新建项目任务失败");
+	});
+
+	// 「新建独立任务」：给没有项目的任务一块自己的空地。与「新建工作空间」的差别只在命名与
+	// 归属——目录名由时刻决定，不占用使用者想好的名字，任务仍算未绑定
+	ipcMain.handle("workspace:new-standalone", async () => {
+		let created: { readonly path: string; readonly label: string };
+		try {
+			created = createStandaloneDir();
+		} catch {
+			return false;
+		}
+		let canonical: string;
+		try {
+			canonical = registerWorkspace(created.path);
+		} catch {
+			releaseStandaloneDir(created.path);
+			return false;
+		}
+		const opened = await switchTo(canonical, { createWorkspaceTask: true }, "新建独立任务失败");
+		if (opened) {
+			// 名字只是给人看的，写失败不影响任务本身
+			writeWorkspaceName(workspaceNamesFile(paths), canonical, `独立任务 ${created.label}`);
+			return true;
+		}
+		unregisterWorkspace(canonical);
+		releaseStandaloneDir(created.path);
+		return false;
 	});
 
 	// 「删除项目」不在这里：任务归属与当前会话的让位只有内核判得准，界面直接走 /api/workspaces/delete

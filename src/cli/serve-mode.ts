@@ -79,9 +79,11 @@ import {
 	listWorkspaces,
 	registerWorkspace,
 	registeredWorkspace,
+	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
 import { gitDiff, gitStatus } from "#src/workspace/git.ts";
 import { workspaceNameOf } from "#src/workspace/name.ts";
+import { releaseStandaloneDir } from "#src/workspace/standalone.ts";
 import type { SessionListing } from "#src/session/store.ts";
 import type { McpControl, McpStatusSource } from "#src/mcp/service.ts";
 import { fileTree, readWorkspaceFile, searchWorkspaceFiles } from "#src/web/files.ts";
@@ -323,13 +325,26 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	 * 切走后 session.id 已是新会话，下面两处的 skip 自然只保护新会话。
 	 */
 	const leaveCurrentIfIncluded = (ids: readonly string[]): void => {
-		if (ids.includes(session.id)) startNewSession(null);
+		// 让位出来的新会话留在当前根：否则在独立任务目录里删掉自己，新会话会掉成无归属，
+		// 明明同一块地却分到了别处
+		if (ids.includes(session.id)) startNewSession(registeredWorkspace(workRoot) ?? null);
 	};
 
 	const removeSessions = (ids: readonly string[]): number => {
 		if (running || compacting || sessionStore === undefined) return 0;
+		// 独立任务的目录跟着任务走：先记下它们的目录，删完再回收空目录
+		const scratchDirs = [...sessions(), ...archivedList()]
+			.filter((item) => ids.includes(item.id))
+			.map((item) => item.cwd);
 		leaveCurrentIfIncluded(ids);
-		return deleteSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
+		const deleted = deleteSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
+		for (const dir of scratchDirs) {
+			// 当前工作根自己不能删：让位出来的新会话正落在里面
+			if (samePath(dir, workRoot)) continue;
+			// 目录没回收成就说明里面还有东西，条目也留着；回收成功则连同侧栏条目一起撤下
+			if (releaseStandaloneDir(dir)) unregisterWorkspace(dir);
+		}
+		return deleted;
 	};
 
 	const stashSessions = (ids: readonly string[]): number => {

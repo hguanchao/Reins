@@ -386,25 +386,44 @@ export function App(): ReactElement {
 
 	const newTask = useCallback(
 		(workspacePath: string | null = null): void => {
-			if (running && workspacePath !== null && workspacePath !== cwd) {
-				toast("当前任务运行中，完成后才能新建其他项目的任务", "info");
+			const desktop = desktopBridge();
+			// 独立任务要换到一块新目录，等于换服务进程，跟跨项目一样不能在回合里切
+			const switchesDirectory = workspacePath === null ? desktop !== undefined : workspacePath !== cwd;
+			if (running && switchesDirectory) {
+				toast("当前任务运行中，完成后才能切换目录", "info");
 				return;
 			}
 			setSettingsOpen(false);
 			setActivePanel(undefined);
 			setSideFullscreen(false);
-			if (workspacePath === null || workspacePath === cwd) {
+			if (workspacePath === null) {
+				if (desktop === undefined) {
+					void api.newSession(null).catch((error: unknown) => {
+						toast(error instanceof Error ? error.message : String(error), "error");
+					});
+					return;
+				}
+				void desktop
+					.newStandaloneTask()
+					.then((created) => {
+						if (!created) toast("无法新建独立任务", "error");
+					})
+					.catch((error: unknown) => {
+						toast(error instanceof Error ? error.message : String(error), "error");
+					});
+				return;
+			}
+			if (workspacePath === cwd) {
 				void api.newSession(workspacePath).catch((error: unknown) => {
 					toast(error instanceof Error ? error.message : String(error), "error");
 				});
 				return;
 			}
-			const bridge = desktopBridge();
-			if (bridge === undefined) {
+			if (desktop === undefined) {
 				toast("只能在当前项目创建任务", "error");
 				return;
 			}
-			void bridge
+			void desktop
 				.newTaskInWorkspace(workspacePath)
 				.then((created) => {
 					if (!created) toast("无法在此项目中新建任务", "error");

@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("reinsDesktop", {
 		ipcRenderer.invoke("workspace:open-session", workspacePath, cwd, id) as Promise<boolean>,
 	newTaskInWorkspace: (path: string): Promise<boolean> =>
 		ipcRenderer.invoke("workspace:new-task", path) as Promise<boolean>,
+	newStandaloneTask: (): Promise<boolean> =>
+		ipcRenderer.invoke("workspace:new-standalone") as Promise<boolean>,
 	installPlugin: (): Promise<PluginResult> =>
 		ipcRenderer.invoke("plugins:install") as Promise<PluginResult>,
 	togglePlugin: (name: string, disabled: boolean): Promise<PluginResult> =>
