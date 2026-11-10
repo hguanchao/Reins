@@ -2,10 +2,11 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 
 import {
 	canonicalWorkspacePath,
+	dropWorkspace,
 	listWorkspaces,
 	registerWorkspace,
 } from "#src/workspace/catalog.ts";
-import { LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
+import { FALLBACK_WORKSPACE_DIR, LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
 
 /**
  * 启动工作区的解析与记忆。
@@ -41,11 +42,18 @@ function sameWorkspacePath(left: string, right: string): boolean {
 }
 
 /**
- * 启动时不弹目录框：上次用过的目录优先；首次启动落在一个应用自管的空工作区，
+ * 启动时不弹目录框：上次用过的目录优先；没有时落在一个应用自管的空目录，
  * Agent 始终有真实 cwd，用户再从界面里打开真正的项目。打开工作区是界面动作，
  * 不该挡住启动。
+ *
+ * 落地目录只是 cwd，不是用户项目：不登记进清单，否则侧栏会凭空多出一个
+ * 默认「workspace」项目，重启还会被记忆恢复成当前项目。
  */
 export function resolveStartupWorkspace(paths: DesktopPaths): string {
+	const fallback = paths.userData(FALLBACK_WORKSPACE_DIR);
+	// 旧版本曾把落地目录误登记成可见项目；启动时统一清掉这条错误登记，
+	// 内核的会话扫描也经环境变量认得它，不会再补回来。
+	dropWorkspace(fallback);
 	const override = process.env.REINS_WORKSPACE;
 	if (override !== undefined && isDirectory(override)) {
 		const canonical = registerWorkspace(override);
@@ -66,9 +74,6 @@ export function resolveStartupWorkspace(paths: DesktopPaths): string {
 		// 控制器还会把这条过期记忆改写成新目录。
 	}
 
-	const fallback = paths.userData("workspace");
 	mkdirSync(fallback, { recursive: true });
-	const canonical = registerWorkspace(fallback);
-	rememberWorkspace(paths, canonical);
-	return canonical;
+	return canonicalWorkspacePath(fallback);
 }

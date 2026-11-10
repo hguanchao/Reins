@@ -139,8 +139,11 @@ function isNotFound(error: unknown): boolean {
  *
  * 只补清单里没有的路径：已经有条目的（哪怕是被「从侧栏移除」置成隐藏的）一律不动，
  * 免得把使用者藏起来的项目又翻出来。返回补上的条数。
+ *
+ * fallbackWorkspace 是桌面启动的落地目录：它只作 cwd，不是用户项目，
+ * 哪怕里面有活动会话也不补进清单，否则侧栏会凭空多出默认项目。
  */
-export function rebuildCatalogFromSessions(): number {
+export function rebuildCatalogFromSessions(fallbackWorkspace?: string): number {
 	let entries: readonly CatalogEntry[];
 	let broken = false;
 	try {
@@ -160,10 +163,21 @@ export function rebuildCatalogFromSessions(): number {
 		return 0;
 	}
 	const known = new Set(entries.map((entry) => foldPath(entry.path)));
+	// 落地目录与扫描结果都统一成真实路径再比，路径写法不同也认得出来；
+	// 目录已不存在时会话不可能落在里面，无需排除
+	let excluded: string | undefined;
+	if (fallbackWorkspace !== undefined) {
+		try {
+			excluded = canonicalWorkspacePath(fallbackWorkspace);
+		} catch {
+			excluded = undefined;
+		}
+	}
 	const next: CatalogEntry[] = [...entries];
 	for (const name of names) {
 		const found = readSessionDirectory(join(base, name));
 		if (found === undefined) continue;
+		if (excluded !== undefined && samePath(found.path, excluded)) continue;
 		const key = foldPath(found.path);
 		if (known.has(key)) continue;
 		known.add(key);

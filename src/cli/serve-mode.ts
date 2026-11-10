@@ -129,8 +129,9 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	const providersFile = options.providersPath ?? providersFilePath();
 
 	const workRoot = process.cwd();
-	// 清单只是会话目录的索引，丢了就再也扫不到历史：先把遗漏的根按会话文件补回来
-	rebuildCatalogFromSessions();
+	// 清单只是会话目录的索引，丢了就再也扫不到历史：先把遗漏的根按会话文件补回来；
+	// 桌面落地目录只作 cwd，不算项目，交给清单函数跳过
+	rebuildCatalogFromSessions(process.env["REINS_FALLBACK_WORKSPACE"]);
 	if (!startup.desktopManaged) registerWorkspace(workRoot);
 	const workspace = new WorkspaceBoundary(workRoot);
 	const instructions = (): readonly PromptInstruction[] =>

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 
 import { parseReadyLine } from "#src/web/ready-line.ts";
-import { WORKSPACE_NAMES_FILE, type DesktopPaths } from "#desktop/paths.ts";
+import { FALLBACK_WORKSPACE_DIR, WORKSPACE_NAMES_FILE, type DesktopPaths } from "#desktop/paths.ts";
 
 /**
  * 拉起打包好的服务进程。
@@ -45,6 +45,8 @@ export function startServer(
 				ELECTRON_RUN_AS_NODE: "1",
 				REINS_UI_DIST: paths.uiDist,
 				REINS_WORKSPACE_NAMES_FILE: paths.userData(WORKSPACE_NAMES_FILE),
+				// 落地目录不是项目：内核按会话重建清单时跳过它，免得默认项目复活
+				REINS_FALLBACK_WORKSPACE: paths.userData(FALLBACK_WORKSPACE_DIR),
 				REINS_DESKTOP_RESUME_SESSION: startup.resumeSessionId ?? "",
 				REINS_DESKTOP_NEW_SESSION_WORKSPACE: startup.createWorkspaceTask === true ? workspace : "",
 			},

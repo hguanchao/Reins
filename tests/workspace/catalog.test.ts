@@ -127,6 +127,18 @@ describe("清单按会话重建", () => {
 		});
 	});
 
+	it("桌面落地目录不算项目，有活动会话也不补进清单", async () => {
+		await withHomes(async (home, project) => {
+			const scratch = project("scratch");
+			const alpha = project("alpha");
+			writeSession(home, "scratch-dir", scratch);
+			writeSession(home, "alpha-dir", alpha);
+			assert.equal(rebuildCatalogFromSessions(scratch), 1);
+			assert.deepEqual(listWorkspaces(), [resolve(alpha)]);
+			assert.deepEqual(listKnownWorkspaces(), [resolve(alpha)]);
+		});
+	});
+
 	it("只有归档会话的目录补成隐藏，路径仍可查", async () => {
 		await withHomes(async (home, project) => {
 			const alpha = project("alpha");

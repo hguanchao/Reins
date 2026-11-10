@@ -19,6 +19,8 @@ export interface DesktopPaths {
 
 export const LAST_WORKSPACE_FILE = "last-workspace.json";
 export const WORKSPACE_NAMES_FILE = "workspace-names.json";
+/** 启动落地的自管空目录：只作服务进程的 cwd，永远不算用户项目。 */
+export const FALLBACK_WORKSPACE_DIR = "workspace";
 
 export function createDesktopPaths(buildDir: string, userDataDir: string): DesktopPaths {
 	return {

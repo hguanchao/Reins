@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
-import { createDesktopPaths, LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
+import { createDesktopPaths, type DesktopPaths } from "#desktop/paths.ts";
 import {
 	lastWorkspace,
 	rememberWorkspace,
@@ -46,12 +46,13 @@ afterEach(() => {
 });
 
 describe("启动工作区解析", () => {
-	it("首次启动落到自管空工作区并记住它", () => {
+	it("首次启动落到自管空目录，但不登记成项目", () => {
 		const { paths, fallback } = fixture();
 		const resolved = resolveStartupWorkspace(paths);
 		assert.equal(key(resolved), key(realpathSync(fallback)));
-		assert.deepEqual(listWorkspaces().map(key), [key(resolved)]);
-		assert.equal(key(lastWorkspace(paths) ?? ""), key(resolved));
+		assert.deepEqual(listWorkspaces(), []);
+		assert.deepEqual(listKnownWorkspaces(), []);
+		assert.equal(lastWorkspace(paths), undefined);
 	});
 
 	it("上次目录仍在登记表时原样恢复", () => {
@@ -62,7 +63,7 @@ describe("启动工作区解析", () => {
 		assert.deepEqual(listWorkspaces().map(key), [key(canonical)]);
 	});
 
-	it("上次目录被移除后不再复活，改落自管工作区并改写记忆", () => {
+	it("上次目录被移除后不再复活，改落自管空目录", () => {
 		const { paths, fallback } = fixture();
 		const canonical = registerWorkspace(projectDir());
 		rememberWorkspace(paths, canonical);
@@ -71,9 +72,8 @@ describe("启动工作区解析", () => {
 		const resolved = resolveStartupWorkspace(paths);
 		assert.notEqual(key(resolved), key(canonical));
 		assert.equal(key(resolved), key(realpathSync(fallback)));
-		assert.deepEqual(listWorkspaces().map(key), [key(resolved)]);
-		assert.equal(key(lastWorkspace(paths) ?? ""), key(resolved));
-		assert.equal(key(JSON.parse(readFileSync(paths.userData(LAST_WORKSPACE_FILE), "utf8")).path), key(resolved));
+		assert.deepEqual(listWorkspaces(), []);
+		assert.deepEqual(listKnownWorkspaces(), []);
 	});
 
 	it("从侧栏移除的工作区不再作为启动目录，但历史查找路径仍保留", () => {
@@ -85,9 +85,20 @@ describe("启动工作区解析", () => {
 		const resolved = resolveStartupWorkspace(paths);
 		assert.equal(key(resolved), key(realpathSync(fallback)));
 		assert.notEqual(key(resolved), key(canonical));
-		assert.deepEqual(listWorkspaces().map(key), [key(resolved)]);
+		assert.deepEqual(listWorkspaces(), []);
 		assert.ok(listKnownWorkspaces().some((path) => key(path) === key(canonical)));
-		assert.equal(key(lastWorkspace(paths) ?? ""), key(resolved));
+	});
+
+	it("旧版误登记的落地目录在启动时清掉", () => {
+		const { paths, fallback } = fixture();
+		mkdirSync(fallback, { recursive: true });
+		const canonical = registerWorkspace(fallback);
+		rememberWorkspace(paths, canonical);
+
+		const resolved = resolveStartupWorkspace(paths);
+		assert.equal(key(resolved), key(canonical));
+		assert.deepEqual(listWorkspaces(), []);
+		assert.deepEqual(listKnownWorkspaces(), []);
 	});
 
 	it("环境变量覆盖优先于上次记忆", () => {
