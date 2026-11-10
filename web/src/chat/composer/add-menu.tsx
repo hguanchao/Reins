@@ -1,7 +1,7 @@
 import { AtSign, ChevronRight, Download, FolderOpen, Package, Paperclip, Plus, Puzzle, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { api } from "../../api.ts";
-import { cn } from "../../components/ui/index.ts";
+import { cn, Tooltip } from "../../components/ui/index.ts";
 import { desktopBridge } from "../../platform.ts";
 import type { McpServerInfo, SkillInfo } from "../../protocol.ts";
 import { serverStatusLabel } from "./model.ts";
@@ -31,6 +31,8 @@ export function AddMenu({
 	 * 再去悬停另一行，两个面板就会一起弹出来叠成一列。改成只认一个当前行。
 	 */
 	const [submenu, setSubmenu] = useState<string | undefined>(undefined);
+	/** 右侧放不下面板时改向左开，窄窗口里不会被挤到窗口外。 */
+	const [flipped, setFlipped] = useState<string | undefined>(undefined);
 	const [fileQuery, setFileQuery] = useState("");
 	const [fileHits, setFileHits] = useState<readonly string[]>([]);
 	const [skillQuery, setSkillQuery] = useState("");
@@ -84,6 +86,15 @@ export function AddMenu({
 	/** 指针离开这一行就收起它的面板；已经换成别的行时不动，避免快速扫过时互相清掉。 */
 	const leave = (key: string): void => setSubmenu((current) => (current === key ? undefined : current));
 
+	/** 进到一行就展开它的面板，并按剩余宽度决定开向哪边。 */
+	const enter = (key: string, row: HTMLElement): void => {
+		setSubmenu(key);
+		const room = window.innerWidth - row.getBoundingClientRect().right;
+		// 阈值跟面板的实际宽度上限一致（样式里的 min(320px, 46vw)），再加 8 的间距
+		const needed = Math.min(320, window.innerWidth * 0.46) + 8;
+		setFlipped(room < needed ? key : undefined);
+	};
+
 	const matchedSkills = skills.filter((skill) => skill.name.toLowerCase().includes(skillQuery.trim().toLowerCase()));
 
 	return (
@@ -105,13 +116,13 @@ export function AddMenu({
 					role="menu"
 					style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 45 }}
 				>
-					<div className="add-row" onMouseEnter={() => setSubmenu("file")} onMouseLeave={() => leave("file")}>
+					<div className="add-row" onMouseEnter={(event) => enter("file", event.currentTarget)} onMouseLeave={() => leave("file")}>
 						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("file")}>
 							<Paperclip className="ic ic-14" />
 							<span>添加文件</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className={cn("sub-fly", submenu === "file" && "is-on")}>
+						<div className={cn("sub-fly", submenu === "file" && "is-on", flipped === "file" && "is-left")}>
 							<div className="sub-panel">
 								<button
 									type="button"
@@ -141,13 +152,13 @@ export function AddMenu({
 						</div>
 					</div>
 
-					<div className="add-row" onMouseEnter={() => setSubmenu("workspace")} onMouseLeave={() => leave("workspace")}>
+					<div className="add-row" onMouseEnter={(event) => enter("workspace", event.currentTarget)} onMouseLeave={() => leave("workspace")}>
 						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("workspace")}>
 							<AtSign className="ic ic-14" />
 							<span>引用工作区文件</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className={cn("sub-fly", submenu === "workspace" && "is-on")}>
+						<div className={cn("sub-fly", submenu === "workspace" && "is-on", flipped === "workspace" && "is-left")}>
 							<div className="sub-panel">
 								<div className="sub-search">
 									<AtSign className="ic ic-12" />
@@ -181,7 +192,9 @@ export function AddMenu({
 												close();
 											}}
 										>
-											<span className="path" title={path}>{path}</span>
+											<Tooltip label={path} className="tip-grow">
+												<span className="path">{path}</span>
+											</Tooltip>
 										</button>
 									))
 								)}
@@ -189,13 +202,13 @@ export function AddMenu({
 						</div>
 					</div>
 
-					<div className="add-row" onMouseEnter={() => setSubmenu("skills")} onMouseLeave={() => leave("skills")}>
+					<div className="add-row" onMouseEnter={(event) => enter("skills", event.currentTarget)} onMouseLeave={() => leave("skills")}>
 						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("skills")}>
 							<Puzzle className="ic ic-14" />
 							<span>技能</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className={cn("sub-fly", submenu === "skills" && "is-on")}>
+						<div className={cn("sub-fly", submenu === "skills" && "is-on", flipped === "skills" && "is-left")}>
 							<div className="sub-panel">
 								<div className="sub-search">
 									<Puzzle className="ic ic-12" />
@@ -231,8 +244,12 @@ export function AddMenu({
 												{skill.name.slice(0, 1).toUpperCase()}
 											</span>
 											<span className="sk-col">
-												<span className="n">{skill.name}</span>
-												<span className="d">{skill.description}</span>
+												<Tooltip label={skill.name} className="tip-col">
+													<span className="n">{skill.name}</span>
+												</Tooltip>
+												<Tooltip label={skill.description} className="tip-col">
+													<span className="d">{skill.description}</span>
+												</Tooltip>
 											</span>
 										</button>
 									))
@@ -263,14 +280,14 @@ export function AddMenu({
 						</div>
 					</div>
 
-					<div className="add-row" onMouseEnter={() => setSubmenu("mcp")} onMouseLeave={() => leave("mcp")}>
+					<div className="add-row" onMouseEnter={(event) => enter("mcp", event.currentTarget)} onMouseLeave={() => leave("mcp")}>
 						<button type="button" className="pop-i sub-trig" onFocus={() => setSubmenu("mcp")}>
 							<Package className="ic ic-14" />
 							<span>连接器</span>
 							<span className="badge">MCP</span>
 							<ChevronRight className="ic ic-12 ck" />
 						</button>
-						<div className={cn("sub-fly", submenu === "mcp" && "is-on")}>
+						<div className={cn("sub-fly", submenu === "mcp" && "is-on", flipped === "mcp" && "is-left")}>
 							<div className="sub-panel">
 								{mcpServers.length === 0 ? (
 									<div className="pop-i two" style={{ pointerEvents: "none" }}>
@@ -283,7 +300,9 @@ export function AddMenu({
 									mcpServers.slice(0, 6).map((server) => (
 										<div key={server.name} className="pop-i two" style={{ pointerEvents: "none" }}>
 											<span className="sk-col">
-												<span className="n">{server.name}</span>
+												<Tooltip label={server.name} className="tip-col">
+													<span className="n">{server.name}</span>
+												</Tooltip>
 												<span className="d">{serverStatusLabel(server.status)}</span>
 											</span>
 										</div>

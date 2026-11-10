@@ -984,6 +984,14 @@
 	padding-left: 8px;
 }
 
+/* 右侧放不下面板时改开在左侧，窄窗口里不会被挤出窗口 */
+.sub-fly.is-left {
+	left: auto;
+	right: 100%;
+	padding-left: 0;
+	padding-right: 8px;
+}
+
 /* 只认一个当前行：hover 与 focus 各自成立会让两个面板同时弹出（见 add-menu 的状态注释） */
 .sub-fly.is-on {
 	display: block;
@@ -1006,7 +1014,7 @@
 .sub-panel {
 	width: max-content;
 	min-width: 210px;
-	max-width: min(380px, 56vw);
+	max-width: min(320px, 46vw);
 	padding: 6px;
 	border: 1px solid var(--rule-3);
 	border-radius: var(--r-3);
@@ -1021,12 +1029,33 @@
 	border-radius: var(--r-2);
 }
 
-/* 再长也不越出面板，末尾省略；完整路径仍写进 title */
-.sub-panel .pop-i .path {
+/* 再长也不越出面板，末尾省略；完整路径由悬停提示给出 */
+.sub-panel .pop-i .tip-grow {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+}
+
+.sub-panel .pop-i .tip-grow .path {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* 两列内容各自截断，悬停才给全文；连接器行整体不接收指针，这里单独放行 */
+.sk-col .tip-col {
+	display: flex;
+	min-width: 0;
+	pointer-events: auto;
+}
+
+/* 提示条自身的反白配色在 Tailwind 层里，会被行文字色盖掉；面板内补一份并靠左，减少横向溢出 */
+.sub-panel [role="tooltip"] {
+	left: 0;
+	transform: none;
+	background: var(--fill);
+	color: var(--fill-ink);
 }
 
 .sub-search {
