@@ -147,10 +147,12 @@ export function Sidebar(props: SidebarProps): ReactElement {
 			onDelete={() => props.onDelete(row.id)}
 			onTogglePin={() => props.onTogglePin(row.id)}
 			onRename={() => setTaskRename({ id: row.id, value: row.title })}
+			/* 只认这个任务自己的工作目录：以前先取 workspacePath 再退回 cwd、最后退回当前会话的 cwd，
+			   未绑定任务会把「当前会话所在目录」当成目标，点哪一行都可能跳到别处。cwd 未知就不给入口 */
 			onOpenFolder={
-				bridge === undefined
+				bridge === undefined || row.cwd.length === 0
 					? undefined
-					: () => bridge.openWorkspaceFolder((row.workspacePath ?? row.cwd) || props.cwd)
+					: () => bridge.openWorkspaceFolder(row.cwd)
 			}
 			onAttach={
 				row.workspacePath === null || row.workspacePath === undefined
