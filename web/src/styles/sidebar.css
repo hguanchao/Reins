@@ -323,12 +323,24 @@
 	text-align: left;
 }
 
-.sess .tm {
+/* 行尾槽：宽度固定 46（两枚 20px 悬停钮 + 1px 间隙），时间戳与钮都绝对定位在槽内叠放，
+   标题只占自己的弹性列——两者各占一块，文字再长也钻不到按钮底下 */
+.sess .tail {
+	position: relative;
 	flex: none;
+	width: 46px;
+	height: 100%;
+}
+
+.sess .tm {
+	position: absolute;
+	right: 0;
+	top: 50%;
+	transform: translateY(-50%);
 	font-family: var(--mono);
 	font-size: var(--fs-9);
 	color: var(--ink-4);
-	/* 与悬停钮同处行尾：离场时先让钮淡出完再淡入，不与半透明的钮叠在一起 */
+	white-space: nowrap;
 	transition: opacity var(--speed) var(--ease) var(--speed);
 }
 
@@ -342,7 +354,7 @@
 
 .sess .hover-actions {
 	position: absolute;
-	right: 6px;
+	right: 0;
 	top: 50%;
 	display: flex;
 	gap: 1px;

@@ -642,7 +642,8 @@ function SessionRowView({
 				{row.title}
 			</button>
 			{batchMode ? null : (
-				<>
+				/* 行尾固定槽位：时间戳与悬停钮都住在里面，标题只在自己的格子里省略，不会被盖住 */
+				<span className="tail">
 					<span className="tm">{relativeTime(row.updatedAt)}</span>
 					<span className="hover-actions">
 						<button
@@ -670,7 +671,7 @@ function SessionRowView({
 							)}
 						/>
 					</span>
-				</>
+				</span>
 			)}
 		</div>
 	);
