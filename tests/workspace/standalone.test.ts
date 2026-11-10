@@ -7,6 +7,7 @@ import { after, beforeEach, describe, it } from "node:test";
 import {
 	createStandaloneDir,
 	isStandalonePath,
+	listStandaloneDirs,
 	releaseStandaloneDir,
 	standaloneRoot,
 } from "#src/workspace/standalone.ts";
@@ -63,5 +64,12 @@ describe("独立任务目录", () => {
 	it("根外路径与不存在的路径回收返回 false", () => {
 		assert.equal(releaseStandaloneDir(""), false);
 		assert.equal(releaseStandaloneDir(join(home, "没有这个目录")), false);
+	});
+
+	it("列出全部空地，根不存在时为空", () => {
+		assert.deepEqual(listStandaloneDirs(), []);
+		const first = createStandaloneDir();
+		const second = createStandaloneDir();
+		assert.deepEqual([...listStandaloneDirs()].sort(), [first.path, second.path].sort());
 	});
 });

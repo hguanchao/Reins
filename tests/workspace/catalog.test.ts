@@ -13,6 +13,7 @@ import {
 	rebuildCatalogFromSessions,
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
+import { createStandaloneDir } from "#src/workspace/standalone.ts";
 
 /**
  * 清单落在 REINS_HOME 下；每个用例用自己的临时主目录，登记的目录也建在它里面，
@@ -134,6 +135,18 @@ describe("清单按会话重建", () => {
 			writeSession(home, "scratch-dir", scratch);
 			writeSession(home, "alpha-dir", alpha);
 			assert.equal(rebuildCatalogFromSessions(scratch), 1);
+			assert.deepEqual(listWorkspaces(), [resolve(alpha)]);
+			assert.deepEqual(listKnownWorkspaces(), [resolve(alpha)]);
+		});
+	});
+
+	it("独立任务空地不算项目，有活动会话也不补进清单", async () => {
+		await withHomes(async (home, project) => {
+			const scratch = createStandaloneDir().path;
+			writeSession(home, "scratch-dir", scratch);
+			const alpha = project("alpha");
+			writeSession(home, "alpha-dir", alpha);
+			assert.equal(rebuildCatalogFromSessions(), 1);
 			assert.deepEqual(listWorkspaces(), [resolve(alpha)]);
 			assert.deepEqual(listKnownWorkspaces(), [resolve(alpha)]);
 		});

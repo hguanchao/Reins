@@ -3,9 +3,11 @@ import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import {
 	canonicalWorkspacePath,
 	dropWorkspace,
+	listKnownWorkspaces,
 	listWorkspaces,
 	registerWorkspace,
 } from "#src/workspace/catalog.ts";
+import { isStandalonePath } from "#src/workspace/standalone.ts";
 import { FALLBACK_WORKSPACE_DIR, LAST_WORKSPACE_FILE, type DesktopPaths } from "#desktop/paths.ts";
 
 /**
@@ -54,6 +56,11 @@ export function resolveStartupWorkspace(paths: DesktopPaths): string {
 	// 旧版本曾把落地目录误登记成可见项目；启动时统一清掉这条错误登记，
 	// 内核的会话扫描也经环境变量认得它，不会再补回来。
 	dropWorkspace(fallback);
+	// 独立任务空地同样是自管目录，不是项目：旧版本登记过的分组一并撤下，
+	// 它们的任务会按未归属任务回到「任务」区。
+	for (const path of listKnownWorkspaces()) {
+		if (isStandalonePath(path)) dropWorkspace(path);
+	}
 	const override = process.env.REINS_WORKSPACE;
 	if (override !== undefined && isDirectory(override)) {
 		const canonical = registerWorkspace(override);

@@ -1,6 +1,4 @@
-import { registerWorkspace, registeredWorkspace, unregisterWorkspace } from "#src/workspace/catalog.ts";
-import { writeWorkspaceName } from "#src/workspace/name.ts";
-import { createStandaloneDir, isStandalonePath, releaseStandaloneDir } from "#src/workspace/standalone.ts";
+import { createStandaloneDir, releaseStandaloneDir } from "#src/workspace/standalone.ts";
 import type { ServerStartup } from "#desktop/server-launch.ts";
 
 /** 独立任务用到的切换能力；注入便于脱离 Electron 独立验证编排。 */
@@ -11,47 +9,31 @@ export type StandaloneSwitch = (
 ) => Promise<boolean>;
 
 export interface StandaloneTaskContext {
-	readonly currentWorkspace: () => string | undefined;
+	/** 新任务落脚的自管空地：新建一块目录，不登记进项目清单。 */
+	readonly unboundDir: () => string;
 	readonly switchTo: StandaloneSwitch;
-	readonly namesFile: string;
 }
 
 /**
- * 「新建独立任务」编排，返回防重入的执行器。
+ * 「新建任务」编排，返回防重入的执行器。
  *
- * 两个坑都会让侧栏攒出一排空项目：切换服务进程要秒级，连点会各开一块目录，
- * 故在建期间复用同一个 Promise；已经停在独立任务里时新任务应落在同一块地，
- * 另开目录只产出孤儿空条目。
+ * 新任务只落一块自管空地，不登记成工作区：侧栏不该为它长出项目分组，
+ * 会话本身按未归属任务出现在「任务」区。切换服务进程要秒级，连点会各开一块目录，
+ * 所以在建期间复用同一个 Promise。
  */
 export function createStandaloneTaskRunner(context: StandaloneTaskContext): () => Promise<boolean> {
 	let pending: Promise<boolean> | undefined;
 	const run = async (): Promise<boolean> => {
-		const current = context.currentWorkspace();
-		if (current !== undefined && isStandalonePath(current) && registeredWorkspace(current) !== undefined) {
-			return context.switchTo(current, { createWorkspaceTask: true }, "新建独立任务失败");
-		}
-		let created: { readonly path: string; readonly label: string };
+		let root: string;
 		try {
-			created = createStandaloneDir();
+			root = context.unboundDir();
 		} catch {
 			return false;
 		}
-		let canonical: string;
-		try {
-			canonical = registerWorkspace(created.path);
-		} catch {
-			releaseStandaloneDir(created.path);
-			return false;
-		}
-		const opened = await context.switchTo(canonical, { createWorkspaceTask: true }, "新建独立任务失败");
-		if (opened) {
-			// 名字只是给人看的，写失败不影响任务本身
-			writeWorkspaceName(context.namesFile, canonical, `独立任务 ${created.label}`);
-			return true;
-		}
-		unregisterWorkspace(canonical);
-		releaseStandaloneDir(created.path);
-		return false;
+		const opened = await context.switchTo(root, {}, "新建任务失败");
+		// 切换失败时收回刚建的空地，别在配置目录里攒空目录
+		if (!opened) releaseStandaloneDir(root);
+		return opened;
 	};
 	return () => {
 		if (pending !== undefined) return pending;
@@ -60,4 +42,9 @@ export function createStandaloneTaskRunner(context: StandaloneTaskContext): () =
 		});
 		return pending;
 	};
+}
+
+/** 默认的空地来源：配置目录 workspaces 下按时刻建目录。 */
+export function defaultUnboundDir(): string {
+	return createStandaloneDir().path;
 }

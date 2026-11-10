@@ -2,6 +2,7 @@ import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, re
 import { join, resolve } from "node:path";
 
 import { configDir } from "#src/config/paths.ts";
+import { isStandalonePath } from "#src/workspace/standalone.ts";
 
 const CATALOG_FILE = "workspaces.json";
 
@@ -177,6 +178,8 @@ export function rebuildCatalogFromSessions(fallbackWorkspace?: string): number {
 	for (const name of names) {
 		const found = readSessionDirectory(join(base, name));
 		if (found === undefined) continue;
+		// 独立任务空地不是项目：有会话也不补，任务按未归属任务展示
+		if (isStandalonePath(found.path)) continue;
 		if (excluded !== undefined && samePath(found.path, excluded)) continue;
 		const key = foldPath(found.path);
 		if (known.has(key)) continue;

@@ -395,10 +395,17 @@ export function App(): ReactElement {
 			setActivePanel(undefined);
 			setSideFullscreen(false);
 			if (workspacePath === null) {
+				// 已经停在未绑定状态：就地换一个新会话，不重启服务进程也不另开目录
+				if (currentWorkspacePath === null) {
+					void api.newSession(null).catch((error: unknown) => {
+						toast(error instanceof Error ? error.message : String(error), "error");
+					});
+					return;
+				}
 				void desktopBridge()
 					.newStandaloneTask()
 					.then((created) => {
-						if (!created) toast("无法新建独立任务", "error");
+						if (!created) toast("无法新建任务", "error");
 					})
 					.catch((error: unknown) => {
 						toast(error instanceof Error ? error.message : String(error), "error");
@@ -420,7 +427,7 @@ export function App(): ReactElement {
 					toast(error instanceof Error ? error.message : String(error), "error");
 				});
 		},
-		[cwd, running],
+		[cwd, running, currentWorkspacePath],
 	);
 
 	const togglePin = useCallback((id: string): void => {

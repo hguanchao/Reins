@@ -19,6 +19,20 @@ export function standaloneRoot(): string {
 	return join(configDir(), "workspaces");
 }
 
+/** 现存的自管空地：会话扫描把它们当作未归属任务的落脚点，不当作项目。 */
+export function listStandaloneDirs(): readonly string[] {
+	const root = standaloneRoot();
+	let names: string[];
+	try {
+		names = readdirSync(root, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => entry.name);
+	} catch {
+		return [];
+	}
+	return names.map((name) => join(root, name));
+}
+
 function pad(value: number, width = 2): string {
 	return String(value).padStart(width, "0");
 }

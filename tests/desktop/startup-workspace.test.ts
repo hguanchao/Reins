@@ -17,6 +17,7 @@ import {
 	registerWorkspace,
 	unregisterWorkspace,
 } from "#src/workspace/catalog.ts";
+import { createStandaloneDir } from "#src/workspace/standalone.ts";
 
 const originalHome = process.env.REINS_HOME;
 const originalOverride = process.env.REINS_WORKSPACE;
@@ -97,6 +98,17 @@ describe("启动工作区解析", () => {
 
 		const resolved = resolveStartupWorkspace(paths);
 		assert.equal(key(resolved), key(canonical));
+		assert.deepEqual(listWorkspaces(), []);
+		assert.deepEqual(listKnownWorkspaces(), []);
+	});
+
+	it("旧版登记过的独立任务空地连带分组一起撤下", () => {
+		const { paths, fallback } = fixture();
+		const scratch = createStandaloneDir().path;
+		registerWorkspace(scratch);
+
+		const resolved = resolveStartupWorkspace(paths);
+		assert.equal(key(resolved), key(realpathSync(fallback)));
 		assert.deepEqual(listWorkspaces(), []);
 		assert.deepEqual(listKnownWorkspaces(), []);
 	});

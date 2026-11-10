@@ -13,7 +13,7 @@ import { writeWorkspaceName } from "#src/workspace/name.ts";
 import { nonEmptyString, parseSessionTarget, parseWorkspaceName } from "#desktop/contracts.ts";
 import type { WorkspaceCreationResult } from "#desktop/contracts.ts";
 import { WORKSPACE_NAMES_FILE, type DesktopPaths } from "#desktop/paths.ts";
-import { createStandaloneTaskRunner } from "#desktop/standalone-task.ts";
+import { createStandaloneTaskRunner, defaultUnboundDir } from "#desktop/standalone-task.ts";
 import { isDirectory, lastWorkspace } from "#desktop/startup-workspace.ts";
 import type { ServerStartup } from "#desktop/server-launch.ts";
 
@@ -134,14 +134,13 @@ export function registerWorkspaceIpc(context: WorkspaceIpcContext): void {
 		return switchTo(target, { createWorkspaceTask: true }, "新建项目任务失败");
 	});
 
-	// 「新建独立任务」：给没有项目的任务一块自己的空地。与「新建工作空间」的差别只在命名与
-	// 归属——目录名由时刻决定，不占用使用者想好的名字，任务仍算未绑定
+	// 「新建任务」：给没有项目的任务一块自管空地。空地不登记成项目——侧栏不为它长出
+	// 工作区分组，会话按未归属任务出现在「任务」区，点开仍需先选工作区
 	ipcMain.handle(
 		"workspace:new-standalone",
 		createStandaloneTaskRunner({
-			currentWorkspace: context.currentWorkspace,
+			unboundDir: defaultUnboundDir,
 			switchTo,
-			namesFile: workspaceNamesFile(paths),
 		}),
 	);
 

@@ -84,7 +84,7 @@ import {
 } from "#src/workspace/catalog.ts";
 import { gitDiff, gitStatus } from "#src/workspace/git.ts";
 import { workspaceNameOf } from "#src/workspace/name.ts";
-import { releaseStandaloneDir } from "#src/workspace/standalone.ts";
+import { listStandaloneDirs, releaseStandaloneDir } from "#src/workspace/standalone.ts";
 import type { SessionListing } from "#src/session/store.ts";
 import type { McpControl, McpStatusSource } from "#src/mcp/service.ts";
 import { fileTree, readWorkspaceFile, searchWorkspaceFiles } from "#src/web/files.ts";
@@ -220,7 +220,18 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 	let currentAbort: AbortController | undefined;
 	let currentRun: Promise<void> | undefined;
 
-	const workspaceRoots = (): readonly string[] => uniquePaths([...listKnownWorkspaces(), workRoot]);
+	/**
+	 * 扫描哪些根：已登记项目 + 当前根 + 自管空地。
+	 *
+	 * 空地不登记成项目，但必须始终参与扫描——未绑定任务不能因为切到别的项目就消失。
+	 * 桌面落地目录（环境变量给）同理，它是启动时的落脚点。
+	 */
+	const unboundRoots = (): readonly string[] => {
+		const landing = process.env["REINS_FALLBACK_WORKSPACE"];
+		return [...listStandaloneDirs(), ...(landing === undefined ? [] : [landing])];
+	};
+	const workspaceRoots = (): readonly string[] =>
+		uniquePaths([...listKnownWorkspaces(), workRoot, ...unboundRoots()]);
 	const workspaceFor = (
 		workspacePath: string | null | undefined,
 		cwd: string,
@@ -342,9 +353,13 @@ export async function runServeMode(options: CliOptions, startup: ServeStartup = 
 			.map((item) => item.cwd);
 		leaveCurrentIfIncluded(ids);
 		const deleted = deleteSessionsAcross(workspaceRoots(), sessionStore, ids, [session.id]);
+		// 同目录可能还有别的任务：空地按目录共享，还被引用就不能回收，
+		// 否则那些任务切回去时 cwd 已经不存在了
+		const remaining = [...sessions(), ...archivedList()].map((item) => item.cwd);
 		for (const dir of scratchDirs) {
 			// 当前工作根自己不能删：让位出来的新会话正落在里面
 			if (samePath(dir, workRoot)) continue;
+			if (remaining.some((cwd) => samePath(cwd, dir))) continue;
 			// 目录没回收成就说明里面还有东西，条目也留着；回收成功则连同侧栏条目一起撤下
 			if (releaseStandaloneDir(dir)) unregisterWorkspace(dir);
 		}
