@@ -124,8 +124,8 @@ export function AddMenu({
 							className="pop-i"
 							onClick={() => {
 								close();
-								void bridge
-									.pickFile(workspacePath)
+							void bridge
+								.pickFile()
 									.then((picked) => {
 										if (picked === undefined) return;
 										onInsert(`@${fileMentionPath(picked, workspacePath)} `);

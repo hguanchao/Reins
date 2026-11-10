@@ -12,8 +12,8 @@ import type { WindowControlAction } from "#desktop/window-controls.ts";
 contextBridge.exposeInMainWorld("reinsDesktop", {
 	chooseWorkspace: (): Promise<boolean> =>
 		ipcRenderer.invoke("workspace:choose") as Promise<boolean>,
-	pickFile: (defaultPath?: string): Promise<string | undefined> =>
-		ipcRenderer.invoke("files:pick", defaultPath) as Promise<string | undefined>,
+	pickFile: (): Promise<string | undefined> =>
+		ipcRenderer.invoke("files:pick") as Promise<string | undefined>,
 	openWorkspaceFolder: (path?: string): void => {
 		void ipcRenderer.invoke("workspace:reveal", path);
 	},
