@@ -19,7 +19,7 @@ import {
 	Settings,
 	Trash2,
 } from "lucide-react";
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useState, type KeyboardEvent, type ReactElement } from "react";
 
 import { Dialog, Menu, toast, type MenuEntry } from "../components/ui/index.ts";
 import { relativeTime } from "../lib/format.ts";
@@ -608,6 +608,20 @@ function SessionRowView({
 		<div
 			className={batchMode ? `sess batch${selected ? " is-selected" : ""}` : "sess"}
 			aria-current={current || undefined}
+			/* 批量模式整行就是勾选项：只有标题按钮可点时，复选框与行右侧的空白都点不动 */
+			{...(batchMode
+				? {
+						role: "checkbox",
+						"aria-checked": selected,
+						tabIndex: 0,
+						onClick: onSwitch,
+						onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+							if (event.key !== " " && event.key !== "Enter") return;
+							event.preventDefault();
+							onSwitch();
+						},
+					}
+				: {})}
 		>
 			{batchMode ? (
 				<span className="batch-check" aria-hidden="true">
@@ -618,8 +632,10 @@ function SessionRowView({
 			)}
 			<button
 				type="button"
-				onClick={onSwitch}
+				onClick={batchMode ? undefined : onSwitch}
 				onDoubleClick={batchMode ? undefined : onRename}
+				/* 批量模式下点击已由整行接管，按钮退化为纯文字，避免冒泡被切换两次 */
+				tabIndex={batchMode ? -1 : undefined}
 				title={row.title}
 				className="tt"
 			>
