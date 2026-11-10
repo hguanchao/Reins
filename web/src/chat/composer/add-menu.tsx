@@ -16,12 +16,14 @@ export function AddMenu({
 	workspacePath,
 	onInsert,
 	onSettings,
+	onAddSkill,
 }: {
 	readonly skills: readonly SkillInfo[];
 	readonly mcpServers: readonly McpServerInfo[];
 	readonly workspacePath: string;
 	onInsert(token: string): void;
 	onSettings(): void;
+	onAddSkill(): void;
 }): ReactElement {
 	const [open, setOpen] = useState(false);
 	/**
@@ -256,7 +258,7 @@ export function AddMenu({
 									type="button"
 									className="pop-i pv-manage"
 									onClick={() => {
-										onSettings();
+										onAddSkill();
 										close();
 									}}
 								>

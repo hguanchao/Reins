@@ -45,6 +45,7 @@ export interface ComposerProps {
 	onEffort(effort: ThinkingLevel): void;
 	onNewTask(workspacePath?: string | null): void;
 	onOpenSettings(section?: "general" | "models" | "extensions"): void;
+	onAddSkill(): void;
 	onCompact(): void;
 	onQueueRemove(id: string): void;
 	onQueueEdit(id: string, text: string): void;
@@ -566,6 +567,7 @@ export function Composer(props: ComposerProps): ReactElement {
 						workspacePath={props.workspacePath}
 						onInsert={insertToken}
 						onSettings={() => props.onOpenSettings("extensions")}
+						onAddSkill={props.onAddSkill}
 					/>
 					<ModeChip
 						planMode={props.planMode}

@@ -51,6 +51,7 @@ import { useAppShortcuts } from "./state/use-app-shortcuts.ts";
 import { useSelectionQuote } from "./state/use-selection-quote.ts";
 import { putSessionTitle, readSessionTitles, withSessionTitles } from "./state/session-titles.ts";
 import { SettingsPage, type SettingsSection } from "./settings/settings-page.tsx";
+import { SkillUploadDialog } from "./settings/skill-upload-dialog.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 import {
 	clampRightbar,
@@ -130,6 +131,8 @@ export function App(): ReactElement {
 	const [sideWidth, setSideWidth] = useState(() => defaultRightbarWidth(window.innerWidth));
 	const [settingsOpen, setSettingsOpen] = useState(false);
 	const [settingsSection, setSettingsSection] = useState<SettingsSection>("general");
+	// 加号菜单里的「从本地添加技能」直接开上传对话框，不经过扩展管理页
+	const [addSkillOpen, setAddSkillOpen] = useState(false);
 	const [commandOpen, setCommandOpen] = useState(false);
 	const [activePanel, setActivePanel] = useState<GlobalPanelId | undefined>(undefined);
 	const [pinned, setPinned] = useState<ReadonlySet<string>>(readPinnedSessions);
@@ -736,6 +739,7 @@ export function App(): ReactElement {
 		onEffort: changeEffort,
 		onNewTask: newTask,
 		onOpenSettings: (section = "general") => openSettings(section),
+		onAddSkill: () => setAddSkillOpen(true),
 		onCompact: () => {
 			void api.compact().catch((error: unknown) => {
 				toast(error instanceof Error ? error.message : String(error), "error");
@@ -991,6 +995,7 @@ export function App(): ReactElement {
 			)}
 
 			<ToastHost />
+			<SkillUploadDialog open={addSkillOpen} onClose={() => setAddSkillOpen(false)} onCreated={refreshSettings} />
 			{settingsOpen ? (
 				<SettingsPage
 					settings={settings}
