@@ -192,7 +192,7 @@ export function AddMenu({
 												close();
 											}}
 										>
-											<Tooltip label={path} className="tip-grow">
+											<Tooltip label={path} side="top" className="tip-grow">
 												<span className="path">{path}</span>
 											</Tooltip>
 										</button>
@@ -244,10 +244,10 @@ export function AddMenu({
 												{skill.name.slice(0, 1).toUpperCase()}
 											</span>
 											<span className="sk-col">
-												<Tooltip label={skill.name} className="tip-col">
+												<Tooltip label={skill.name} side="top" className="tip-col">
 													<span className="n">{skill.name}</span>
 												</Tooltip>
-												<Tooltip label={skill.description} className="tip-col">
+												<Tooltip label={skill.description} side="top" className="tip-col">
 													<span className="d">{skill.description}</span>
 												</Tooltip>
 											</span>
@@ -300,7 +300,7 @@ export function AddMenu({
 									mcpServers.slice(0, 6).map((server) => (
 										<div key={server.name} className="pop-i two" style={{ pointerEvents: "none" }}>
 											<span className="sk-col">
-												<Tooltip label={server.name} className="tip-col">
+												<Tooltip label={server.name} side="top" className="tip-col">
 													<span className="n">{server.name}</span>
 												</Tooltip>
 												<span className="d">{serverStatusLabel(server.status)}</span>
