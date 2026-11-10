@@ -1,5 +1,5 @@
 import { ArrowUp, Check, ChevronDown, Folder, FolderOpen, GripVertical, Square, X, Zap } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactElement } from "react";
 import { api } from "../api.ts";
 import { cn, Dialog, Popover, toast } from "../components/ui/index.ts";
 import { formatTokens } from "../lib/format.ts";
@@ -69,8 +69,23 @@ export function Composer(props: ComposerProps): ReactElement {
 	const [creating, setCreating] = useState(false);
 	const [createError, setCreateError] = useState<string | undefined>(undefined);
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+	const unitRef = useRef<HTMLDivElement | null>(null);
 	const historyRef = useRef<string[]>([]);
 	const historyIndexRef = useRef(-1);
+	/** 补全浮层朝哪边开：空草稿页输入框常在半空，硬往上顶会被窗口切掉 */
+	const [mentionPlacement, setMentionPlacement] = useState({ flipped: false, maxHeight: 320 });
+
+	const placeMentions = useCallback((): void => {
+		const unit = unitRef.current;
+		if (unit === null) return;
+		const rect = unit.getBoundingClientRect();
+		const above = rect.top - 14;
+		const below = window.innerHeight - rect.bottom - 14;
+		// 上方位置够就不动；不够且下方更宽裕才翻下去，避免为了统一反而挡死
+		const flipped = above < 240 && below > above;
+		const room = flipped ? below : above;
+		setMentionPlacement({ flipped, maxHeight: Math.max(120, Math.min(320, room)) });
+	}, []);
 
 	useEffect(() => {
 		const element = textareaRef.current;
@@ -287,6 +302,14 @@ export function Composer(props: ComposerProps): ReactElement {
 
 	const mentionList = mentionItems(mention, props.skills);
 
+	// 浮层每次出现、窗口每次改高都要重新量，位置算错就换回默认的「往上顶」
+	useLayoutEffect(() => {
+		if (mentionList.length === 0) return;
+		placeMentions();
+		window.addEventListener("resize", placeMentions);
+		return () => window.removeEventListener("resize", placeMentions);
+	}, [mentionList.length, placeMentions]);
+
 	const openCreateWorkspace = (): void => {
 		setCreateName("");
 		setCreateError(undefined);
@@ -319,7 +342,7 @@ export function Composer(props: ComposerProps): ReactElement {
 	};
 
 	return (
-		<div className="comp-unit">
+		<div className="comp-unit" ref={unitRef}>
 			{props.blank === true ? (
 				<div className="comp-cap">
 					<span className={cn("chip ws-chip", props.workspacePath.length === 0 && "is-unbound")}>
@@ -407,7 +430,12 @@ export function Composer(props: ComposerProps): ReactElement {
 			) : null}
 
 			{mentionList.length > 0 ? (
-				<div className="mention" role="listbox" aria-label="补全候选">
+				<div
+					className={cn("mention", mentionPlacement.flipped && "is-flip")}
+					role="listbox"
+					aria-label="补全候选"
+					style={{ maxHeight: mentionPlacement.maxHeight }}
+				>
 					<div className="mention-list">
 						{groupMentions(mention, mentionList).map((group) => (
 							<div key={group.label} className="mention-group">
